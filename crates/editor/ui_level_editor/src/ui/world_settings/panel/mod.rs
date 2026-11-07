@@ -9,21 +9,20 @@ use std::sync::Arc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Sizable,
     button::{Button, ButtonVariants as _},
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
     input::{InputEvent, InputState, NumberInput},
     popover::Popover,
-    v_flex,
+    v_flex, ActiveTheme, Sizable,
 };
 use ui_common::inspector::{Inspector, InspectorRow};
 use ui_common::inspector_model::CardDesc;
 
 use engine_fs::world_roles::{EngineRole, ROLES};
 
-use crate::WorldSettingsPanel;
 use crate::state::LevelEditorState;
+use crate::WorldSettingsPanel;
 
 mod environment_section;
 mod input_section;
@@ -309,27 +308,25 @@ impl WorldSettingsPanelImpl {
 
     fn watch_blueprint_index(&self, cx: &mut Context<WorldSettingsPanel>) {
         let mut events = engine_fs::subscribe();
-        cx.spawn(async move |this, cx| {
-            loop {
-                let Ok(event) = events.recv().await else {
-                    continue;
-                };
-                if !is_blueprint_index_path(&event.path) {
-                    continue;
-                }
-
-                cx.update(|cx| {
-                    let _ = this.update(cx, |panel, cx| {
-                        for role_picker in &mut panel.world_settings.role_pickers {
-                            role_picker.catalog = BlueprintCatalogState::Loading;
-                        }
-                        panel
-                            .world_settings
-                            .load_blueprint_catalog_with_rebuild(cx, false);
-                        cx.notify();
-                    });
-                });
+        cx.spawn(async move |this, cx| loop {
+            let Ok(event) = events.recv().await else {
+                continue;
+            };
+            if !is_blueprint_index_path(&event.path) {
+                continue;
             }
+
+            cx.update(|cx| {
+                let _ = this.update(cx, |panel, cx| {
+                    for role_picker in &mut panel.world_settings.role_pickers {
+                        role_picker.catalog = BlueprintCatalogState::Loading;
+                    }
+                    panel
+                        .world_settings
+                        .load_blueprint_catalog_with_rebuild(cx, false);
+                    cx.notify();
+                });
+            });
         })
         .detach();
     }
@@ -883,7 +880,7 @@ fn catalog_status(
 #[cfg(test)]
 mod tests {
     use super::{
-        BlueprintCatalogState, EngineRole, blueprint_label, catalog_message, load_role_blueprints,
+        blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState, EngineRole,
     };
 
     #[test]

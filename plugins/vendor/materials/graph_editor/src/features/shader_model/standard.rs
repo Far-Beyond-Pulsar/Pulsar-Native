@@ -2,7 +2,7 @@
 //!
 //! Defines the built-in shader models that ship with the editor.
 
-use super::{ShaderModel, ShaderModelInput, register};
+use super::{register, ShaderModel, ShaderModelInput};
 
 pub fn register_standard_models() {
     register(ShaderModel {
@@ -25,8 +25,8 @@ pub fn register_standard_models() {
     register(ShaderModel {
         id: "Standard_pbr".to_string(),
         name: "Standard PBR".to_string(),
-        description:
-            "Physically-based shader with base color, metallic, roughness, and normal".to_string(),
+        description: "Physically-based shader with base color, metallic, roughness, and normal"
+            .to_string(),
         inputs: vec![
             ShaderModelInput {
                 id: "base_color".to_string(),

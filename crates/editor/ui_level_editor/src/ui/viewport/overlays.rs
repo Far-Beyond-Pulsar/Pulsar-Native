@@ -4,8 +4,8 @@ use super::*;
 
 use crate::ui::toolbar::view_mode_dropdown::ViewModePickerState;
 use rust_i18n::t;
-use ui::IconName;
 use ui::button::Button;
+use ui::IconName;
 
 impl ViewportPanel {
     /// The view-mode picker this viewport shows: its own when it was split off,

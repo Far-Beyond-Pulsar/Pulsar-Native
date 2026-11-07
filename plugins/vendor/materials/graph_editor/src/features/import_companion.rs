@@ -61,7 +61,10 @@ impl ImportCompanion for MaterialFromImages {
             .and_then(|stem| stem.to_str())
             .unwrap_or("model");
         // Beside the mesh, wherever the user keeps it: nesting is theirs to do.
-        let folder = context.native_asset.parent().unwrap_or(context.project_root);
+        let folder = context
+            .native_asset
+            .parent()
+            .unwrap_or(context.project_root);
         // The name must not depend on how many surfaces have images, or a
         // re-import after adding a texture would make a second set.
         let single = context.surfaces.len() == 1;
@@ -129,7 +132,9 @@ fn write_material(
     surface: &SourceSurface,
     project_root: &Path,
 ) -> Result<(), String> {
-    let graph = build_graph(surface, |image| texture_reference(image, folder, project_root))?;
+    let graph = build_graph(surface, |image| {
+        texture_reference(image, folder, project_root)
+    })?;
     let asset = ShaderAsset::with_graph(graph);
     let text = serialize_shader_with_header(&asset)?;
     std::fs::create_dir_all(material)
@@ -167,20 +172,36 @@ fn node(id: &str, kind: &str, x: f64, y: f64) -> Result<NodeInstance, String> {
     for input in &definition.inputs {
         instance.inputs.push(PinInstance::new(
             input.id.clone(),
-            Pin::new(input.id.clone(), input.name.clone(), pin_type(input), PinType::Input),
+            Pin::new(
+                input.id.clone(),
+                input.name.clone(),
+                pin_type(input),
+                PinType::Input,
+            ),
         ));
     }
     for output in &definition.outputs {
         instance.outputs.push(PinInstance::new(
             output.id.clone(),
-            Pin::new(output.id.clone(), output.name.clone(), pin_type(output), PinType::Output),
+            Pin::new(
+                output.id.clone(),
+                output.name.clone(),
+                pin_type(output),
+                PinType::Output,
+            ),
         ));
     }
     Ok(instance)
 }
 
 fn connect(graph: &mut GraphDescription, from: &str, to: &str, pin: &str) {
-    graph.add_connection(Connection::new(from, "result", to, pin, ConnectionType::Data));
+    graph.add_connection(Connection::new(
+        from,
+        "result",
+        to,
+        pin,
+        ConnectionType::Data,
+    ));
 }
 
 /// One image sample per image, wired to the output pin its role feeds. A
@@ -208,9 +229,10 @@ fn build_graph(
         let feeds: &[(Option<&str>, &str)] = match image.role {
             SourceImageRole::BaseColor => &[(None, "base_color")],
             SourceImageRole::Emissive => &[(None, "emissive_color")],
-            SourceImageRole::MetallicRoughness => {
-                &[(Some("component_g"), "roughness"), (Some("component_b"), "metallic")]
-            }
+            SourceImageRole::MetallicRoughness => &[
+                (Some("component_g"), "roughness"),
+                (Some("component_b"), "metallic"),
+            ],
             SourceImageRole::Roughness => &[(Some("component_r"), "roughness")],
             SourceImageRole::Metallic => &[(Some("component_r"), "metallic")],
             SourceImageRole::Occlusion => &[(Some("component_r"), "ambient_occlusion")],
@@ -289,7 +311,10 @@ fn feed_pin(
     if pin == "normal" && current == "vec4<f32>" {
         // The decode builds a tangent frame from the surface normal and world
         // position; every normal map shares those two inputs.
-        for (id, kind) in [("normal_in", "frag_normal"), ("position_in", "world_position")] {
+        for (id, kind) in [
+            ("normal_in", "frag_normal"),
+            ("position_in", "world_position"),
+        ] {
             if !graph.nodes.contains_key(id) {
                 graph.add_node(node(id, kind, 300.0, y + 110.0)?);
             }
@@ -315,7 +340,6 @@ fn feed_pin(
     connect(graph, &from, "output", pin);
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -397,7 +421,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn every_connection_matches_the_type_its_pin_declares() {
         let graph = build_graph(
@@ -411,7 +434,11 @@ mod tests {
             |path| Ok(path.to_string_lossy().into_owned()),
         )
         .unwrap();
-        for connection in graph.connections.iter().filter(|c| c.target_node == "output") {
+        for connection in graph
+            .connections
+            .iter()
+            .filter(|c| c.target_node == "output")
+        {
             let source = &graph.nodes[&connection.source_node].node_type;
             assert_eq!(
                 return_type(source),
@@ -448,8 +475,15 @@ mod tests {
         std::fs::write(root.join("rock.png"), b"png").unwrap();
         let native = root.join("rock.mesh");
         let surfaces = vec![
-            surface(&[(SourceImageRole::BaseColor, root.join("rock.png").to_str().unwrap())]),
-            SourceSurface { slot: 0, name: "Bare".into(), images: vec![] },
+            surface(&[(
+                SourceImageRole::BaseColor,
+                root.join("rock.png").to_str().unwrap(),
+            )]),
+            SourceSurface {
+                slot: 0,
+                name: "Bare".into(),
+                images: vec![],
+            },
         ];
         let context = ImportCompanionContext {
             project_root: root,
@@ -510,7 +544,11 @@ mod tests {
         let sources = [PathBuf::from("a.fbx")];
         let probe = |importer, nearby: &[PathBuf]| {
             MaterialFromImages
-                .offer(&ImportProbe { importer, sources: &sources, nearby_images: nearby })
+                .offer(&ImportProbe {
+                    importer,
+                    sources: &sources,
+                    nearby_images: nearby,
+                })
                 .is_some()
         };
         assert!(probe("mesh", &[PathBuf::from("x.png")]));

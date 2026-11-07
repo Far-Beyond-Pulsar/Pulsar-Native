@@ -578,7 +578,7 @@ fn finish_prepared_hydration_with_registry(
 #[cfg(test)]
 mod interactive_hydration_tests {
     use super::*;
-    use std::sync::{Arc, Mutex, mpsc};
+    use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
 
     #[test]

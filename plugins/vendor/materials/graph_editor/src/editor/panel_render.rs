@@ -58,7 +58,6 @@ impl EventEmitter<PanelEvent> for ShaderEditorPanel {}
 impl ShaderEditorPanel {
     /// Render compiler results panel (compilation history and status)
     pub fn render_compiler_results(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-
         let history_entries: Vec<_> = self.compilation_history.iter().rev().cloned().collect();
         let item_sizes = std::rc::Rc::new(
             history_entries
@@ -72,12 +71,12 @@ impl ShaderEditorPanel {
         if let Some(message) = &self.material_preview_error {
             preview_errors.push(("Material preview".to_string(), message.clone()));
         }
-        preview_errors.extend(self.previews.errors().into_iter().map(|error| {
-            (
-                format!("Pin preview: {}", error.label),
-                error.message,
-            )
-        }));
+        preview_errors.extend(
+            self.previews
+                .errors()
+                .into_iter()
+                .map(|error| (format!("Pin preview: {}", error.label), error.message)),
+        );
         let compiler_entity = cx.entity().clone();
         let scroll_handle = self.compiler_output_scroll_handle.clone();
         let scrollbar_state = self.compiler_output_scrollbar_state.clone();
@@ -387,7 +386,8 @@ impl ShaderEditorPanel {
                                 move |_panel, range, _window, cx| {
                                     range
                                         .map(|ix| -> AnyElement {
-                                            let Some((node_id, node_title, position)) = nodes.get(ix)
+                                            let Some((node_id, node_title, position)) =
+                                                nodes.get(ix)
                                             else {
                                                 return div().h(px(34.0)).into_any_element();
                                             };

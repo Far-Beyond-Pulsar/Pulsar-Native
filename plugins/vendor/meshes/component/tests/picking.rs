@@ -11,14 +11,10 @@ use pulsar_scenedb::{Entity, World};
 
 fn spawn_cube(world: &mut World, id: &str, z: f64) {
     world
-        .spawn_object(
-            SpawnObject::new(id)
-                .with_id(id)
-                .with_transform(Transform {
-                    position: [0.0, 0.0, z],
-                    ..Default::default()
-                }),
-        )
+        .spawn_object(SpawnObject::new(id).with_id(id).with_transform(Transform {
+            position: [0.0, 0.0, z],
+            ..Default::default()
+        }))
         .unwrap();
 }
 

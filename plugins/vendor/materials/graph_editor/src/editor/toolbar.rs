@@ -24,8 +24,8 @@ use ui::{
 };
 
 use crate::actions::{AddGraphComment, CompileShader, ReloadShaderFromDisk};
-use crate::features::compilation::CompilationState;
 use crate::editor::panel::{MeshType, ShaderEditorPanel};
+use crate::features::compilation::CompilationState;
 use crate::features::shader_model;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,32 +194,29 @@ impl ToolbarRenderer {
             // ── Group 5 · View Toggles ───────────────────────────────────────
             // Matches the level-editor toggle pattern:
             //   inactive → secondary (default), active → primary
-            .child(
-                h_flex()
-                    .gap_1p5()
-                    .items_center()
-                    .child({
-                        // Debugging aid, off by default: live per-pin texture
-                        // previews. Each compiles its own shader and renders
-                        // every frame, so shaders only compile when the user
-                        // presses Compile unless this is switched on.
-                        let btn = Button::new("toolbar-debug-previews")
-                            .icon(IconName::Bug)
-                            .tooltip("Debug: live pin texture previews (compiles on every edit)")
-                            .on_click(cx.listener(|panel, _, _, cx| {
-                                let enabled = !panel.previews.enabled();
-                                panel.previews.set_enabled(enabled);
-                                // The presenter reserves (or frees) the preview rows.
-                                panel.canvas.update(cx, |canvas, cx| canvas.refresh_scene(cx));
-                                cx.notify();
-                            }));
-                        if previews_on {
-                            btn.primary()
-                        } else {
-                            btn
-                        }
-                    })
-            )
+            .child(h_flex().gap_1p5().items_center().child({
+                // Debugging aid, off by default: live per-pin texture
+                // previews. Each compiles its own shader and renders
+                // every frame, so shaders only compile when the user
+                // presses Compile unless this is switched on.
+                let btn = Button::new("toolbar-debug-previews")
+                    .icon(IconName::Bug)
+                    .tooltip("Debug: live pin texture previews (compiles on every edit)")
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        let enabled = !panel.previews.enabled();
+                        panel.previews.set_enabled(enabled);
+                        // The presenter reserves (or frees) the preview rows.
+                        panel
+                            .canvas
+                            .update(cx, |canvas, cx| canvas.refresh_scene(cx));
+                        cx.notify();
+                    }));
+                if previews_on {
+                    btn.primary()
+                } else {
+                    btn
+                }
+            }))
             // ── Group 6 · Shader Model & Preview ─────────────────────────────
             .child(
                 h_flex()
@@ -228,7 +225,8 @@ impl ToolbarRenderer {
                     .child({
                         let models = shader_model::get_all_models();
                         let current = current_shader_model.clone();
-                        let current_name = models.iter()
+                        let current_name = models
+                            .iter()
                             .find(|m| m.id == current)
                             .map(|m| m.name.as_str())
                             .unwrap_or("Shader Model");
@@ -237,8 +235,11 @@ impl ToolbarRenderer {
                             .tooltip("Shader Model (click to cycle)")
                             .on_click(cx.listener(|panel, _, _window, cx| {
                                 let models = shader_model::get_all_models();
-                                if models.is_empty() { return; }
-                                let current_idx = models.iter()
+                                if models.is_empty() {
+                                    return;
+                                }
+                                let current_idx = models
+                                    .iter()
                                     .position(|m| m.id == panel.shader_model)
                                     .unwrap_or(0);
                                 let next_idx = (current_idx + 1) % models.len();
@@ -253,7 +254,8 @@ impl ToolbarRenderer {
                             .tooltip("Preview Mesh (click to cycle)")
                             .on_click(cx.listener(|panel, _, _window, cx| {
                                 let variants = MeshType::variants();
-                                let current_idx = variants.iter()
+                                let current_idx = variants
+                                    .iter()
                                     .position(|m| *m == panel.preview_mesh)
                                     .unwrap_or(0);
                                 let next_idx = (current_idx + 1) % variants.len();
@@ -265,11 +267,15 @@ impl ToolbarRenderer {
                         let btn = Button::new("toolbar-auto-rotate")
                             .label("Auto")
                             .tooltip("Toggle auto-rotate preview");
-                        if preview_auto_rotate { btn.primary() } else { btn }
-                            .on_click(cx.listener(|panel, _, _, cx| {
-                                panel.preview_auto_rotate = !panel.preview_auto_rotate;
-                                cx.notify();
-                            }))
+                        if preview_auto_rotate {
+                            btn.primary()
+                        } else {
+                            btn
+                        }
+                        .on_click(cx.listener(|panel, _, _, cx| {
+                            panel.preview_auto_rotate = !panel.preview_auto_rotate;
+                            cx.notify();
+                        }))
                     }),
             )
             .child(toolbar_separator(cx))
@@ -302,10 +308,7 @@ impl ToolbarRenderer {
                             .bg(cx.theme().muted.opacity(0.3))
                             .border_1()
                             .border_color(cx.theme().border.opacity(0.5))
-                            .child(
-                                Icon::new(IconName::Component)
-                                    .size(px(14.0)),
-                            )
+                            .child(Icon::new(IconName::Component).size(px(14.0)))
                             .child(
                                 div()
                                     .text_sm()

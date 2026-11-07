@@ -37,8 +37,7 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        let panel =
-            cx.new(|cx| crate::AssetViewerPanel::new(file_path.clone(), window, cx));
+        let panel = cx.new(|cx| crate::AssetViewerPanel::new(file_path.clone(), window, cx));
         let undo = editor_context.services.undo.clone();
         panel.update(cx, |panel, _| panel.set_undo_service(undo));
         Ok(Arc::new(panel))

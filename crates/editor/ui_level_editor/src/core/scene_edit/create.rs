@@ -26,16 +26,12 @@ pub fn create_at(state: &mut LevelEditorState, id: &str, position: [f64; 3]) -> 
     // Keep the override effective for extensions that create through a custom
     // command instead of `extend::add_object`. This is a no-op when the
     // creation helper already applied the point.
-    let created_id = result
-        .affected_ids
-        .first()
-        .cloned()
-        .or_else(|| {
-            state
-                .scene
-                .selected_object()
-                .filter(|selected| Some(selected) != previous_selection.as_ref())
-        });
+    let created_id = result.affected_ids.first().cloned().or_else(|| {
+        state
+            .scene
+            .selected_object()
+            .filter(|selected| Some(selected) != previous_selection.as_ref())
+    });
     if let Some(created_id) = created_id {
         crate::commands::execute_command(
             state,

@@ -29,7 +29,11 @@ impl OrbitCamera {
         ];
         let fwd_len =
             (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
-        let fwd = [forward[0] / fwd_len, forward[1] / fwd_len, forward[2] / fwd_len];
+        let fwd = [
+            forward[0] / fwd_len,
+            forward[1] / fwd_len,
+            forward[2] / fwd_len,
+        ];
 
         let world_up = [0.0, 1.0, 0.0];
         let right = [
@@ -37,9 +41,12 @@ impl OrbitCamera {
             world_up[2] * fwd[0] - world_up[0] * fwd[2],
             world_up[0] * fwd[1] - world_up[1] * fwd[0],
         ];
-        let right_len =
-            (right[0] * right[0] + right[1] * right[1] + right[2] * right[2]).sqrt();
-        let r = [right[0] / right_len, right[1] / right_len, right[2] / right_len];
+        let right_len = (right[0] * right[0] + right[1] * right[1] + right[2] * right[2]).sqrt();
+        let r = [
+            right[0] / right_len,
+            right[1] / right_len,
+            right[2] / right_len,
+        ];
 
         let up = [
             fwd[1] * r[2] - fwd[2] * r[1],
@@ -80,7 +87,11 @@ impl OrbitCamera {
         ];
         let fwd_len =
             (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
-        let fwd = [forward[0] / fwd_len, forward[1] / fwd_len, forward[2] / fwd_len];
+        let fwd = [
+            forward[0] / fwd_len,
+            forward[1] / fwd_len,
+            forward[2] / fwd_len,
+        ];
 
         let world_up = [0.0, 1.0, 0.0];
         let right = [
@@ -88,9 +99,12 @@ impl OrbitCamera {
             world_up[2] * fwd[0] - world_up[0] * fwd[2],
             world_up[0] * fwd[1] - world_up[1] * fwd[0],
         ];
-        let right_len =
-            (right[0] * right[0] + right[1] * right[1] + right[2] * right[2]).sqrt();
-        let r = [right[0] / right_len, right[1] / right_len, right[2] / right_len];
+        let right_len = (right[0] * right[0] + right[1] * right[1] + right[2] * right[2]).sqrt();
+        let r = [
+            right[0] / right_len,
+            right[1] / right_len,
+            right[2] / right_len,
+        ];
 
         let up = [
             fwd[1] * r[2] - fwd[2] * r[1],

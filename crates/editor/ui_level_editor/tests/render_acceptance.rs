@@ -725,11 +725,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
-            let id = add_object(
-                &mut state,
-                "pending mesh",
-                ObjectType::Empty,
-            );
+            let id = add_object(&mut state, "pending mesh", ObjectType::Empty);
             components::add_component(
                 &mut state.scene.world_mut(),
                 &id,
@@ -2740,7 +2736,10 @@ fn water_volumes_simulate_their_own_disturbances_on_the_frame_clock() {
     harness.frames(&mut renderer, || {});
     let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
     println!("WATER pond pushed {pond_waves}");
-    assert!(pond_waves > 1e-4, "the body did not move the pond: {pond_waves}");
+    assert!(
+        pond_waves > 1e-4,
+        "the body did not move the pond: {pond_waves}"
+    );
 
     // Realtime off freezes the frame clock, and the water with it.
     renderer.set_viewport_realtime(false);

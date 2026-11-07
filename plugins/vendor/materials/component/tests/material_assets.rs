@@ -17,12 +17,14 @@
 use std::path::Path;
 use std::time::Duration;
 
-use materials_component::assets::material_sources_for_file;
 use helio_mats::instance::MaterialInstanceComponent;
+use materials_component::assets::material_sources_for_file;
 use meshes_component::components::{
     StaticMeshComponent, StaticMeshMaterialSlot, resolve_slot_material,
 };
-use meshes_component::mesh_materials::{MeshMaterialInstances, MeshMaterials, material_asset_id_of};
+use meshes_component::mesh_materials::{
+    MeshMaterialInstances, MeshMaterials, material_asset_id_of,
+};
 use pulsar_scenedb::{AssetState, Entity, World};
 
 fn write_surface(path: &Path, base_color: [f32; 4]) {
@@ -122,7 +124,10 @@ fn instance(world: &World, entity: Entity, index: usize) -> &MaterialInstanceCom
 
 /// The instance entity of slot `index` of `entity`'s mesh.
 fn slot_instance(world: &World, entity: Entity, index: usize) -> Entity {
-    world.get::<MeshMaterials>(entity).expect("the mesh has its instances").0[index]
+    world
+        .get::<MeshMaterials>(entity)
+        .expect("the mesh has its instances")
+        .0[index]
 }
 
 /// The base colour slot `index` of `entity`'s mesh draws with.
@@ -135,11 +140,9 @@ fn slot_color(world: &World, entity: Entity, index: usize) -> [f32; 4] {
 fn is_graph(world: &World, entity: Entity, index: usize) -> bool {
     let instance = instance(world, entity, index);
     let id = instance.source().asset_id();
-    instance.bound().is_some_and(|material| {
-        material
-            .resolve(id, 0, None, &Default::default())
-            .is_err()
-    })
+    instance
+        .bound()
+        .is_some_and(|material| material.resolve(id, 0, None, &Default::default()).is_err())
 }
 
 /// Whether any of `entity`'s slots draws with a material reading the clock.
@@ -206,7 +209,11 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
         .slots[0]
         .material_asset = "materials/blue.mat".into();
     instances.step(&mut world);
-    assert_eq!(world.asset_ref_count(red), 0, "an unnamed material is dropped");
+    assert_eq!(
+        world.asset_ref_count(red),
+        0,
+        "an unnamed material is dropped"
+    );
     assert_eq!(world.asset_ref_count(blue), 1);
     resolve(&mut world, &mut instances);
     assert_eq!(slot_color(&world, mesh, 0), BLUE);

@@ -26,8 +26,11 @@ pub fn decode(content: &str) -> Result<ShaderAsset, String> {
     match formats::deserialize_shader(content) {
         Ok(asset) => Ok(asset),
         Err(error) => {
-            if graphy_blueprint::legacy::is_legacy_format(&formats::strip_header_comments(content)) {
-                Ok(ShaderAsset::with_graph(GraphDescription::new("Shader Graph")))
+            if graphy_blueprint::legacy::is_legacy_format(&formats::strip_header_comments(content))
+            {
+                Ok(ShaderAsset::with_graph(GraphDescription::new(
+                    "Shader Graph",
+                )))
             } else {
                 Err(error)
             }
@@ -155,7 +158,8 @@ impl ShaderEditorPanel {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create directory: {}", e))?;
         }
-        std::fs::write(&target_path, &content).map_err(|e| format!("Failed to write file: {}", e))?;
+        std::fs::write(&target_path, &content)
+            .map_err(|e| format!("Failed to write file: {}", e))?;
         tracing::info!("saved {} bytes to {:?}", content.len(), target_path);
         Ok(())
     }
@@ -227,7 +231,11 @@ impl ShaderEditorPanel {
         self.install_graph(main_graph, cx);
         if let Some(view) = view {
             self.canvas.update(cx, |canvas, cx| {
-                canvas.set_view(Vec2::new(view.pan_offset_x, view.pan_offset_y), view.zoom, cx)
+                canvas.set_view(
+                    Vec2::new(view.pan_offset_x, view.pan_offset_y),
+                    view.zoom,
+                    cx,
+                )
             });
         } else {
             self.canvas.update(cx, |canvas, cx| canvas.frame_all(cx));
@@ -286,8 +294,7 @@ impl ShaderEditorPanel {
         cx: &mut Context<Self>,
     ) -> Result<(), String> {
         let content = encode(&self.to_shader_asset(cx))?;
-        std::fs::write(export_path, &content)
-            .map_err(|e| format!("Failed to export shader: {}", e))
+        std::fs::write(export_path, &content).map_err(|e| format!("Failed to export shader: {}", e))
     }
 
     fn get_graph_file_path(&self) -> Option<PathBuf> {
@@ -367,12 +374,17 @@ fn contained_nodes(canvas: &graphy_gpui::canvas::GraphCanvas) -> Vec<Vec<String>
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, encode, formats, resolve_shader_path, ShaderAsset, ShaderEditorState, GRAPH_SAVE_FILE_NAME};
-    use graphy_blueprint::GraphViewState;
-    use graphy::GraphDescription;
-    use std::path::Path;
-    use graphy::{Connection, ConnectionType, DataType, NodeInstance, Pin, PinInstance, PinType, Position};
+    use super::{
+        decode, encode, formats, resolve_shader_path, ShaderAsset, ShaderEditorState,
+        GRAPH_SAVE_FILE_NAME,
+    };
     use graphy::core::GraphComment;
+    use graphy::GraphDescription;
+    use graphy::{
+        Connection, ConnectionType, DataType, NodeInstance, Pin, PinInstance, PinType, Position,
+    };
+    use graphy_blueprint::GraphViewState;
+    use std::path::Path;
 
     fn v(text: &str) -> serde_json::Value {
         serde_json::from_str(text).unwrap()
@@ -402,7 +414,12 @@ mod tests {
         let mut sample = NodeInstance::new("a7d0", "texture_sample", Position::new(-60.0, 60.0));
         sample.inputs.push(PinInstance::new(
             "texture",
-            Pin::new("texture", "texture", DataType::typed("TextureSrc"), PinType::Input),
+            Pin::new(
+                "texture",
+                "texture",
+                DataType::typed("TextureSrc"),
+                PinType::Input,
+            ),
         ));
         sample.set_property("texture", "guid:tex-1234");
         graph.add_node(sample);
@@ -415,14 +432,32 @@ mod tests {
         let mut out = NodeInstance::new("f003", "fragment_output", Position::new(200.0, 0.0));
         out.inputs.push(PinInstance::new(
             "color",
-            Pin::new("color", "color", DataType::typed("vec4<f32>"), PinType::Input),
+            Pin::new(
+                "color",
+                "color",
+                DataType::typed("vec4<f32>"),
+                PinType::Input,
+            ),
         ));
         graph.add_node(out);
 
-        graph.add_connection(Connection::new("9c42", "result", "e5a1", "input", ConnectionType::Data));
-        graph.add_connection(Connection::new("e5a1", "output", "f003", "color", ConnectionType::Data));
+        graph.add_connection(Connection::new(
+            "9c42",
+            "result",
+            "e5a1",
+            "input",
+            ConnectionType::Data,
+        ));
+        graph.add_connection(Connection::new(
+            "e5a1",
+            "output",
+            "f003",
+            "color",
+            ConnectionType::Data,
+        ));
 
-        let mut comment = GraphComment::new("Base colour", Position::new(-340.0, 100.0), (240.0, 140.0));
+        let mut comment =
+            GraphComment::new("Base colour", Position::new(-340.0, 100.0), (240.0, 140.0));
         comment.id = "c-1".into();
         comment.color = [0.2, 0.4, 0.8, 0.35];
         comment.contained_node_ids = vec!["9c42".into()];
@@ -430,8 +465,13 @@ mod tests {
 
         let mut asset = ShaderAsset::with_graph(graph);
         asset.shader_metadata.description = "wood".into();
-        asset.shader_metadata.extra.insert("tags".into(), v(r#"["pbr"]"#));
-        asset.extra.insert("future_field".into(), v(r#"{"keep": true}"#));
+        asset
+            .shader_metadata
+            .extra
+            .insert("tags".into(), v(r#"["pbr"]"#));
+        asset
+            .extra
+            .insert("future_field".into(), v(r#"{"keep": true}"#));
         let mut state = ShaderEditorState::new();
         state.graph_view_states.insert(
             "main".into(),
@@ -457,12 +497,21 @@ mod tests {
         assert_eq!(as_json(&asset), as_json(&back));
         assert_eq!(back.main_graph.nodes.len(), 5);
         assert_eq!(back.main_graph.connections.len(), 2);
-        assert_eq!(back.main_graph.nodes["9c42"].properties["value"], v("[0.8, 0.5, 0.2, 1.0]"));
+        assert_eq!(
+            back.main_graph.nodes["9c42"].properties["value"],
+            v("[0.8, 0.5, 0.2, 1.0]")
+        );
         assert_eq!(back.main_graph.comments[0].color, [0.2, 0.4, 0.8, 0.35]);
-        assert_eq!(back.main_graph.comments[0].contained_node_ids, vec!["9c42".to_string()]);
+        assert_eq!(
+            back.main_graph.comments[0].contained_node_ids,
+            vec!["9c42".to_string()]
+        );
         assert_eq!(back.extra["future_field"], v(r#"{"keep": true}"#));
         assert_eq!(back.shader_metadata.extra["tags"], v(r#"["pbr"]"#));
-        assert_eq!(back.editor_state.unwrap().graph_view_states["main"].zoom, 0.75);
+        assert_eq!(
+            back.editor_state.unwrap().graph_view_states["main"].zoom,
+            0.75
+        );
     }
 
     #[test]
@@ -497,7 +546,10 @@ mod tests {
         after.sort();
         assert_eq!(before, after);
         assert_eq!(again.main_graph.nodes["0b1e"].properties["value"], v("0.5"));
-        assert_eq!(as_json(&again)["main_graph"]["connections"], as_json(&asset)["main_graph"]["connections"]);
+        assert_eq!(
+            as_json(&again)["main_graph"]["connections"],
+            as_json(&asset)["main_graph"]["connections"]
+        );
         assert_eq!(again.main_graph.comments[0].id, "c-1");
     }
 
@@ -521,7 +573,10 @@ mod tests {
 }"#;
         let asset = decode(old).unwrap();
         assert_eq!(asset.main_graph.metadata.name, "Shader Graph");
-        assert_eq!(asset.shader_metadata.extra["blueprint_type"], v(r#""Generic""#));
+        assert_eq!(
+            asset.shader_metadata.extra["blueprint_type"],
+            v(r#""Generic""#)
+        );
         // Saving it back keeps the legacy block.
         let json = as_json(&asset);
         assert_eq!(json["shader_metadata"]["blueprint_type"], v(r#""Generic""#));

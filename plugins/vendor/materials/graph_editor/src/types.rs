@@ -80,12 +80,17 @@ mod tests {
     #[test]
     fn wgsl_types_connect_by_name() {
         let r = resolver();
-        assert_eq!(r.compatibility(&t("vec3<f32>"), &t("vec3<f32>")), Compatibility::Exact);
+        assert_eq!(
+            r.compatibility(&t("vec3<f32>"), &t("vec3<f32>")),
+            Compatibility::Exact
+        );
         assert!(matches!(
             r.compatibility(&t("vec3<f32>"), &t("vec4<f32>")),
             Compatibility::Incompatible(_)
         ));
-        assert!(!r.compatibility(&t("f32"), &t("TextureSrc")).is_connectable());
+        assert!(!r
+            .compatibility(&t("f32"), &t("TextureSrc"))
+            .is_connectable());
     }
 
     #[test]
@@ -100,7 +105,9 @@ mod tests {
     fn execution_never_meets_data() {
         let r = resolver();
         assert!(!r.compatibility(&DataType::Exec, &t("f32")).is_connectable());
-        assert!(r.compatibility(&DataType::Exec, &DataType::Exec).is_connectable());
+        assert!(r
+            .compatibility(&DataType::Exec, &DataType::Exec)
+            .is_connectable());
     }
 
     #[test]
@@ -109,6 +116,9 @@ mod tests {
         assert!(!is_texture_previewable(&t("f32")));
         assert!(is_texture(&t("TextureSrc")));
         assert!(is_texture(&t("texture_2d<f32>")));
-        assert_eq!(pin_color(&t("TextureSrc")), pin_color(&t("texture_2d<f32>")));
+        assert_eq!(
+            pin_color(&t("TextureSrc")),
+            pin_color(&t("texture_2d<f32>"))
+        );
     }
 }

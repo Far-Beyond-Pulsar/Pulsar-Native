@@ -106,7 +106,9 @@ impl PropertiesRenderer {
             }
             ([], [index]) => Self::render_comment(panel, *index, window, cx),
             ([], []) => Self::render_empty_state(cx),
-            (nodes, comments) => Self::render_multi_selection_state(nodes.len(), comments.len(), cx),
+            (nodes, comments) => {
+                Self::render_multi_selection_state(nodes.len(), comments.len(), cx)
+            }
         }
     }
 
@@ -125,7 +127,9 @@ impl PropertiesRenderer {
             let existing = existing.clone();
             let focused = existing.read(cx).focus_handle(cx).is_focused(window);
             if !focused && existing.read(cx).text().to_string() != current {
-                existing.update(cx, |input, cx| input.set_value(current.to_string(), window, cx));
+                existing.update(cx, |input, cx| {
+                    input.set_value(current.to_string(), window, cx)
+                });
             }
             return existing;
         }
@@ -138,7 +142,10 @@ impl PropertiesRenderer {
             &input,
             window,
             move |this, state: &Entity<InputState>, event: &InputEvent, _window, cx| {
-                if matches!(event, InputEvent::Change | InputEvent::Blur | InputEvent::PressEnter { .. }) {
+                if matches!(
+                    event,
+                    InputEvent::Change | InputEvent::Blur | InputEvent::PressEnter { .. }
+                ) {
                     let text = state.read(cx).text().to_string();
                     apply(this, text, cx);
                 }
@@ -185,11 +192,15 @@ impl PropertiesRenderer {
         let mut input_rows = Vec::new();
         for pin in &node.inputs {
             let connected = connected_inputs.contains(&pin.id);
-            input_rows.push(Self::render_input_pin_row(panel, node, pin, connected, window, cx));
+            input_rows.push(Self::render_input_pin_row(
+                panel, node, pin, connected, window, cx,
+            ));
         }
         let mut property_rows = Vec::new();
         for (key, value) in &other_properties {
-            property_rows.push(Self::render_property_field(panel, node, key, value, window, cx));
+            property_rows.push(Self::render_property_field(
+                panel, node, key, value, window, cx,
+            ));
         }
 
         v_flex()
@@ -231,11 +242,9 @@ impl PropertiesRenderer {
                     v_flex()
                         .gap_3()
                         .child(Self::render_section_header("Outputs", cx))
-                        .child(
-                            v_flex()
-                                .gap_1p5()
-                                .children(node.outputs.iter().map(|pin| Self::render_pin_row(pin, cx))),
-                        ),
+                        .child(v_flex().gap_1p5().children(
+                            node.outputs.iter().map(|pin| Self::render_pin_row(pin, cx)),
+                        )),
                 )
             })
             .when(!property_rows.is_empty(), |el| {
@@ -253,7 +262,11 @@ impl PropertiesRenderer {
                     .child(Self::render_section_header("Node Info", cx))
                     .child(Self::render_info_row("Node ID", &node.id, cx))
                     .child(Self::render_info_row("Type", &node.node_type, cx))
-                    .child(Self::render_info_row("Position", &format!("({x:.0}, {y:.0})"), cx)),
+                    .child(Self::render_info_row(
+                        "Position",
+                        &format!("({x:.0}, {y:.0})"),
+                        cx,
+                    )),
             )
             .into_any_element()
     }
@@ -268,7 +281,12 @@ impl PropertiesRenderer {
             return Self::render_empty_state(cx);
         };
         let [r, g, b, a] = comment.color;
-        let swatch = gpui::Rgba { r, g, b, a: a.max(0.35) };
+        let swatch = gpui::Rgba {
+            r,
+            g,
+            b,
+            a: a.max(0.35),
+        };
         let key = format!("comment#{}", comment.id);
         let input = Self::text_input(
             panel,
@@ -447,7 +465,14 @@ impl PropertiesRenderer {
         let Some(type_info) = runtime_type(ty) else {
             if !matches!(
                 name,
-                "f32" | "vec2<f32>" | "vec3<f32>" | "vec4<f32>" | "int" | "uint" | "bool" | "mat4x4<f32>"
+                "f32"
+                    | "vec2<f32>"
+                    | "vec3<f32>"
+                    | "vec4<f32>"
+                    | "int"
+                    | "uint"
+                    | "bool"
+                    | "mat4x4<f32>"
             ) {
                 return row.into_any_element();
             }
@@ -462,11 +487,17 @@ impl PropertiesRenderer {
                 format!("{}#{}", node.id, pin.id),
                 &stored,
                 "value",
-                move |this, text, cx| this.set_node_property(&node_id, &pin_id, text_to_value(&text), cx),
+                move |this, text, cx| {
+                    this.set_node_property(&node_id, &pin_id, text_to_value(&text), cx)
+                },
                 window,
                 cx,
             );
-            return h_flex().gap_1().child(row).child(TextInput::new(&input)).into_any_element();
+            return h_flex()
+                .gap_1()
+                .child(row)
+                .child(TextInput::new(&input))
+                .into_any_element();
         };
 
         let state_key = format!("{}#{}", node.id, pin.id);
@@ -506,7 +537,11 @@ impl PropertiesRenderer {
             cx,
         );
 
-        v_flex().gap_1p5().child(row).child(widget).into_any_element()
+        v_flex()
+            .gap_1p5()
+            .child(row)
+            .child(widget)
+            .into_any_element()
     }
 
     fn render_pin_row(pin: &PinInstance, cx: &mut Context<ShaderEditorPanel>) -> impl IntoElement {
@@ -600,7 +635,11 @@ impl PropertiesRenderer {
             .into_any_element()
     }
 
-    fn render_info_row(label: &str, value: &str, cx: &mut Context<ShaderEditorPanel>) -> impl IntoElement {
+    fn render_info_row(
+        label: &str,
+        value: &str,
+        cx: &mut Context<ShaderEditorPanel>,
+    ) -> impl IntoElement {
         h_flex()
             .w_full()
             .justify_between()

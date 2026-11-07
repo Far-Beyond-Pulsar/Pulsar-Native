@@ -32,16 +32,16 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
-use ui::Sizable;
 use ui::menu::popup_menu::PopupMenu;
-use ui::{ActiveTheme, v_flex};
+use ui::Sizable;
+use ui::{v_flex, ActiveTheme};
 use ui_common::ViewportControls;
 
 use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
-use components::nerds_overlay::{NerdsOverlay, render_nerds_overlay};
-use components::performance_overlay::{PerformanceOverlay, render_performance_overlay};
+use components::nerds_overlay::{render_nerds_overlay, NerdsOverlay};
+use components::performance_overlay::{render_performance_overlay, PerformanceOverlay};
 use input_state::InputState;
 use performance::*;
 
@@ -92,7 +92,11 @@ impl ViewportCursorCapture {
 
     #[cfg(target_os = "windows")]
     fn initiating_button_vk(self) -> i32 {
-        if self == Self::Pan { 0x04 } else { 0x02 }
+        if self == Self::Pan {
+            0x04
+        } else {
+            0x02
+        }
     }
 
     fn is_active(self) -> bool {

@@ -19,7 +19,9 @@ use std::collections::HashMap;
 
 use helio_mats::asset::MATERIAL_ASSET_KIND;
 use helio_mats::instance::{MaterialSource, acquire, release, row_of};
-use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, Entity, World};
+use pulsar_scenedb::{
+    ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, Entity, World,
+};
 use pulsar_scenedb_derive::SceneStore;
 
 use crate::components::{SkeletalMeshComponent, StaticMeshComponent, StaticMeshMaterialSlot};
@@ -91,7 +93,10 @@ pub fn resolve_slot_material(
     if id.is_zero() {
         return ResolvedMaterial::surface(&source.fallback);
     }
-    let loaded = match helio_component::asset_component::load_asset_now(MATERIAL_ASSET_KIND, &source.asset) {
+    let loaded = match helio_component::asset_component::load_asset_now(
+        MATERIAL_ASSET_KIND,
+        &source.asset,
+    ) {
         Ok(payload) => payload.downcast::<MaterialPayload>().ok(),
         Err(error) => {
             tracing::warn!(source = %source.asset, %error, "static mesh material could not be loaded; using the imported material");
@@ -116,7 +121,6 @@ fn static_sources(mesh: &StaticMeshComponent) -> Vec<MaterialSource> {
     }
     mesh.material_slots.slots.iter().map(slot_source).collect()
 }
-
 
 /// The meshes' instances, kept in step with their slots.
 #[derive(Default)]
@@ -200,14 +204,15 @@ impl MeshMaterialInstances {
             }
             return;
         };
-        if self
-            .held
-            .get(&entity)
-            .is_some_and(|(held, instances)| *held == sources && instances.iter().all(|i| world.is_alive(*i)))
-        {
+        if self.held.get(&entity).is_some_and(|(held, instances)| {
+            *held == sources && instances.iter().all(|i| world.is_alive(*i))
+        }) {
             return;
         }
-        let instances: Vec<Entity> = sources.iter().map(|source| acquire(world, source)).collect();
+        let instances: Vec<Entity> = sources
+            .iter()
+            .map(|source| acquire(world, source))
+            .collect();
         if let Some((_, old)) = self.held.insert(entity, (sources, instances.clone())) {
             for instance in old {
                 release(world, instance);

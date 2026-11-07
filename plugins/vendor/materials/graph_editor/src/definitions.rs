@@ -71,27 +71,29 @@ impl NodeDefinitions {
         })
     }
 
-    fn from_shader_metadata(
-        metadata: Vec<graphy::core::NodeMetadata>,
-    ) -> NodeDefinitions {
+    fn from_shader_metadata(metadata: Vec<graphy::core::NodeMetadata>) -> NodeDefinitions {
         let mut categories_map: HashMap<String, Vec<NodeDefinition>> = HashMap::new();
 
         // Add reroute node to Utility category
-            categories_map
-                .entry("Utility".to_string())
-                .or_insert_with(Vec::new)
-                .push(NodeDefinition {
-                    id: "reroute".to_string(),
-                    name: "Reroute".to_string(),
-                    icon: "•".to_string(),
-                    description: "Organize connections with a pass-through node (typeless until connected)".to_string(),
-                    documentation: "Organize connections with a pass-through node (typeless until connected)".to_string(),
-                    inputs: vec![],
-                    outputs: vec![],
-                    properties: HashMap::new(),
-                    color: None,
-                    is_event: false,
-                });
+        categories_map
+            .entry("Utility".to_string())
+            .or_insert_with(Vec::new)
+            .push(NodeDefinition {
+                id: "reroute".to_string(),
+                name: "Reroute".to_string(),
+                icon: "•".to_string(),
+                description:
+                    "Organize connections with a pass-through node (typeless until connected)"
+                        .to_string(),
+                documentation:
+                    "Organize connections with a pass-through node (typeless until connected)"
+                        .to_string(),
+                inputs: vec![],
+                outputs: vec![],
+                properties: HashMap::new(),
+                color: None,
+                is_event: false,
+            });
 
         // Constant input nodes — editable values inline in the Properties panel
         let constants: Vec<(&str, &str, &str, &str)> = vec![
@@ -120,7 +122,10 @@ impl NodeDefinitions {
                     name: name.to_string(),
                     icon: icon.to_string(),
                     description: format!("Constant {} value — edit in the Properties panel", name),
-                    documentation: format!("Constant {} value — edit in the Properties panel", name),
+                    documentation: format!(
+                        "Constant {} value — edit in the Properties panel",
+                        name
+                    ),
                     inputs: vec![],
                     outputs: vec![out_pin],
                     properties: const_props.clone(),
@@ -190,7 +195,8 @@ impl NodeDefinitions {
                     "Input" => "⬇",
                     "Output" => "⬆",
                     _ => "⚙️",
-                }.to_string(),
+                }
+                .to_string(),
                 description: description.clone(),
                 documentation: description,
                 inputs,

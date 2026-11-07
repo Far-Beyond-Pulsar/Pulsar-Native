@@ -2,16 +2,21 @@
 //! and handles input, and owns the context menu and node picker; the title editor is
 //! editor chrome Graphy leaves to the host.
 
+use super::panel::ShaderEditorPanel;
 use gpui::*;
 use ui::input::TextInput;
-use super::panel::ShaderEditorPanel;
 
 impl ShaderEditorPanel {
     /// The canvas of the document and the overlays over it.
-    pub(crate) fn render_center(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_center(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = crate::theme::graph_theme(cx);
         if self.canvas.read(cx).theme() != &theme {
-            self.canvas.update(cx, |canvas, cx| canvas.set_theme(theme, cx));
+            self.canvas
+                .update(cx, |canvas, cx| canvas.set_theme(theme, cx));
         }
         let canvas = self.canvas.clone();
         div()
@@ -59,4 +64,3 @@ impl ShaderEditorPanel {
         .into_any_element()
     }
 }
-

@@ -62,13 +62,23 @@ pub fn node_from_definition(definition: &NodeDefinition, id: &str, pos: Position
     for pin in &definition.inputs {
         node.inputs.push(PinInstance::new(
             pin.id.clone(),
-            Pin::new(pin.id.clone(), pin.name.clone(), pin.data_type.clone(), PinType::Input),
+            Pin::new(
+                pin.id.clone(),
+                pin.name.clone(),
+                pin.data_type.clone(),
+                PinType::Input,
+            ),
         ));
     }
     for pin in &definition.outputs {
         node.outputs.push(PinInstance::new(
             pin.id.clone(),
-            Pin::new(pin.id.clone(), pin.name.clone(), pin.data_type.clone(), PinType::Output),
+            Pin::new(
+                pin.id.clone(),
+                pin.name.clone(),
+                pin.data_type.clone(),
+                PinType::Output,
+            ),
         ));
     }
     for (key, value) in &definition.properties {
@@ -138,7 +148,6 @@ pub struct ShaderProfile {
     resolver: graphy::ChainResolver,
     previews: Arc<PinPreviews>,
 }
-
 
 impl ShaderProfile {
     pub fn new(previews: Arc<PinPreviews>) -> Self {
@@ -293,7 +302,10 @@ mod tests {
                 rows,
                 min_width,
             };
-            (presentation.extra_rows.len(), NodeLayout::compute(&spec, &m))
+            (
+                presentation.extra_rows.len(),
+                NodeLayout::compute(&spec, &m),
+            )
         };
 
         let (extra, off) = layout_of(&profile);
@@ -360,7 +372,9 @@ mod tests {
         // The pin of the row above, and the pin below the preview, are pins.
         let node = scene.node("n").unwrap();
         for (index, side_pin) in [0usize, 2].into_iter().enumerate() {
-            let at = node.pin_pos(graphy_render::PinSide::Output, side_pin).unwrap();
+            let at = node
+                .pin_pos(graphy_render::PinSide::Output, side_pin)
+                .unwrap();
             match scene.hit_test(at, 1.0, tol) {
                 Hit::Pin(PinAddr { pin, .. }) => assert_eq!(pin, side_pin, "pin {index}"),
                 other => panic!("expected pin {side_pin}, got {other:?}"),

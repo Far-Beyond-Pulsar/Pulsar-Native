@@ -170,7 +170,11 @@ pub fn serialize_shader(asset: &ShaderAsset) -> Result<String, String> {
 
 /// The asset as file text: header, then JSON.
 pub fn serialize_shader_with_header(asset: &ShaderAsset) -> Result<String, String> {
-    Ok(format!("{}{}", generate_file_header(), serialize_shader(asset)?))
+    Ok(format!(
+        "{}{}",
+        generate_file_header(),
+        serialize_shader(asset)?
+    ))
 }
 
 /// Deserialize a shader asset from JSON string (with or without header)

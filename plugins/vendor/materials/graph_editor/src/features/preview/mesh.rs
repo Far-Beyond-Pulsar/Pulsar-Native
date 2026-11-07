@@ -83,35 +83,77 @@ pub fn generate_sphere(radius: f32, sectors: u32, stacks: u32) -> PreviewMeshDat
 
 pub fn generate_quad() -> PreviewMeshData {
     let vertices = vec![
-        PreviewVertex { position: [-1.0, -1.0, 0.0], normal: [0.0, 0.0, 1.0], uv: [0.0, 1.0] },
-        PreviewVertex { position: [1.0, -1.0, 0.0], normal: [0.0, 0.0, 1.0], uv: [1.0, 1.0] },
-        PreviewVertex { position: [1.0, 1.0, 0.0], normal: [0.0, 0.0, 1.0], uv: [1.0, 0.0] },
-        PreviewVertex { position: [-1.0, 1.0, 0.0], normal: [0.0, 0.0, 1.0], uv: [0.0, 0.0] },
+        PreviewVertex {
+            position: [-1.0, -1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            uv: [0.0, 1.0],
+        },
+        PreviewVertex {
+            position: [1.0, -1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            uv: [1.0, 1.0],
+        },
+        PreviewVertex {
+            position: [1.0, 1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            uv: [1.0, 0.0],
+        },
+        PreviewVertex {
+            position: [-1.0, 1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            uv: [0.0, 0.0],
+        },
     ];
     let indices = vec![0, 1, 2, 0, 2, 3];
     let index_count = indices.len() as u32;
-    PreviewMeshData { vertices, indices, index_count }
+    PreviewMeshData {
+        vertices,
+        indices,
+        index_count,
+    }
 }
 
 pub fn generate_cube() -> PreviewMeshData {
     let positions: [[f32; 3]; 24] = [
         // Front face (+Z)
-        [-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
         // Back face (-Z)
-        [1.0, -1.0, -1.0], [-1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [1.0, 1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [-1.0, -1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [1.0, 1.0, -1.0],
         // Top face (+Y)
-        [-1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0],
+        [-1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
         // Bottom face (-Y)
-        [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, -1.0, 1.0], [-1.0, -1.0, 1.0],
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, -1.0, 1.0],
+        [-1.0, -1.0, 1.0],
         // Right face (+X)
-        [1.0, -1.0, 1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [1.0, 1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [1.0, 1.0, 1.0],
         // Left face (-X)
-        [-1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, 1.0, 1.0], [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [-1.0, 1.0, 1.0],
+        [-1.0, 1.0, -1.0],
     ];
 
     let normals: [[f32; 3]; 6] = [
-        [0.0, 0.0, 1.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
     ];
 
     let uvs: [[f32; 2]; 4] = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
@@ -129,13 +171,19 @@ pub fn generate_cube() -> PreviewMeshData {
         }
     }
 
-    let indices: Vec<u32> = (0..6).flat_map(|f| {
-        let b = f * 4;
-        vec![b, b + 1, b + 2, b, b + 2, b + 3]
-    }).collect();
+    let indices: Vec<u32> = (0..6)
+        .flat_map(|f| {
+            let b = f * 4;
+            vec![b, b + 1, b + 2, b, b + 2, b + 3]
+        })
+        .collect();
 
     let index_count = indices.len() as u32;
-    PreviewMeshData { vertices, indices, index_count }
+    PreviewMeshData {
+        vertices,
+        indices,
+        index_count,
+    }
 }
 
 pub fn generate_cinderblock() -> PreviewMeshData {
@@ -153,97 +201,285 @@ pub fn generate_cinderblock() -> PreviewMeshData {
 
     // Front face of outer box (has a recess)
     // We create vertices for the ring around the recess
-    let outer_verts: [[f32; 3]; 4] = [
-        [-ox, -oy, oz], [ox, -oy, oz], [ox, oy, oz], [-ox, oy, oz],
-    ];
-    let inner_verts: [[f32; 3]; 4] = [
-        [-cx, -cy, oz], [cx, -cy, oz], [cx, cy, oz], [-cx, cy, oz],
-    ];
+    let outer_verts: [[f32; 3]; 4] = [[-ox, -oy, oz], [ox, -oy, oz], [ox, oy, oz], [-ox, oy, oz]];
+    let inner_verts: [[f32; 3]; 4] = [[-cx, -cy, oz], [cx, -cy, oz], [cx, cy, oz], [-cx, cy, oz]];
     let recess_verts: [[f32; 3]; 4] = [
-        [-cx, -cy, oz - cz], [cx, -cy, oz - cz], [cx, cy, oz - cz], [-cx, cy, oz - cz],
+        [-cx, -cy, oz - cz],
+        [cx, -cy, oz - cz],
+        [cx, cy, oz - cz],
+        [-cx, cy, oz - cz],
     ];
 
     // Front face ring (outer rect with inner hole - use 2 triangles per segment)
     // Top segment
-    vs.push(PreviewVertex { position: outer_verts[0], normal: [0.0, 0.0, 1.0], uv: [0.0, 1.0] });
-    vs.push(PreviewVertex { position: outer_verts[1], normal: [0.0, 0.0, 1.0], uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: inner_verts[1], normal: [0.0, 0.0, 1.0], uv: [0.7, 0.7] });
-    vs.push(PreviewVertex { position: inner_verts[0], normal: [0.0, 0.0, 1.0], uv: [0.3, 0.7] });
+    vs.push(PreviewVertex {
+        position: outer_verts[0],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: outer_verts[1],
+        normal: [0.0, 0.0, 1.0],
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[1],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.7, 0.7],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[0],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.3, 0.7],
+    });
 
     // Right segment
-    vs.push(PreviewVertex { position: outer_verts[1], normal: [0.0, 0.0, 1.0], uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: outer_verts[2], normal: [0.0, 0.0, 1.0], uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: inner_verts[2], normal: [0.0, 0.0, 1.0], uv: [0.7, 0.3] });
-    vs.push(PreviewVertex { position: inner_verts[1], normal: [0.0, 0.0, 1.0], uv: [0.7, 0.7] });
+    vs.push(PreviewVertex {
+        position: outer_verts[1],
+        normal: [0.0, 0.0, 1.0],
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: outer_verts[2],
+        normal: [0.0, 0.0, 1.0],
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[2],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.7, 0.3],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[1],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.7, 0.7],
+    });
 
     // Bottom segment
-    vs.push(PreviewVertex { position: outer_verts[2], normal: [0.0, 0.0, 1.0], uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: outer_verts[3], normal: [0.0, 0.0, 1.0], uv: [0.0, 0.0] });
-    vs.push(PreviewVertex { position: inner_verts[3], normal: [0.0, 0.0, 1.0], uv: [0.3, 0.3] });
-    vs.push(PreviewVertex { position: inner_verts[2], normal: [0.0, 0.0, 1.0], uv: [0.7, 0.3] });
+    vs.push(PreviewVertex {
+        position: outer_verts[2],
+        normal: [0.0, 0.0, 1.0],
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: outer_verts[3],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[3],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.3, 0.3],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[2],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.7, 0.3],
+    });
 
     // Left segment
-    vs.push(PreviewVertex { position: outer_verts[3], normal: [0.0, 0.0, 1.0], uv: [0.0, 0.0] });
-    vs.push(PreviewVertex { position: outer_verts[0], normal: [0.0, 0.0, 1.0], uv: [0.0, 1.0] });
-    vs.push(PreviewVertex { position: inner_verts[0], normal: [0.0, 0.0, 1.0], uv: [0.3, 0.7] });
-    vs.push(PreviewVertex { position: inner_verts[3], normal: [0.0, 0.0, 1.0], uv: [0.3, 0.3] });
+    vs.push(PreviewVertex {
+        position: outer_verts[3],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: outer_verts[0],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[0],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.3, 0.7],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[3],
+        normal: [0.0, 0.0, 1.0],
+        uv: [0.3, 0.3],
+    });
 
     // Recess inner faces (back wall of cavity)
     let recess_norm = [0.0, 0.0, -1.0];
-    vs.push(PreviewVertex { position: recess_verts[0], normal: recess_norm, uv: [0.0, 1.0] });
-    vs.push(PreviewVertex { position: recess_verts[1], normal: recess_norm, uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: recess_verts[2], normal: recess_norm, uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: recess_verts[3], normal: recess_norm, uv: [0.0, 0.0] });
+    vs.push(PreviewVertex {
+        position: recess_verts[0],
+        normal: recess_norm,
+        uv: [0.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[1],
+        normal: recess_norm,
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[2],
+        normal: recess_norm,
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[3],
+        normal: recess_norm,
+        uv: [0.0, 0.0],
+    });
 
     // Recess side walls (inset edges)
     // Top wall of recess
-    vs.push(PreviewVertex { position: inner_verts[0], normal: [0.0, -1.0, 0.0], uv: [0.0, 0.0] });
-    vs.push(PreviewVertex { position: inner_verts[1], normal: [0.0, -1.0, 0.0], uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: recess_verts[1], normal: [0.0, -1.0, 0.0], uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: recess_verts[0], normal: [0.0, -1.0, 0.0], uv: [0.0, 1.0] });
+    vs.push(PreviewVertex {
+        position: inner_verts[0],
+        normal: [0.0, -1.0, 0.0],
+        uv: [0.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[1],
+        normal: [0.0, -1.0, 0.0],
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[1],
+        normal: [0.0, -1.0, 0.0],
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[0],
+        normal: [0.0, -1.0, 0.0],
+        uv: [0.0, 1.0],
+    });
 
     // Bottom wall of recess
-    vs.push(PreviewVertex { position: inner_verts[3], normal: [0.0, 1.0, 0.0], uv: [0.0, 0.0] });
-    vs.push(PreviewVertex { position: inner_verts[2], normal: [0.0, 1.0, 0.0], uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: recess_verts[2], normal: [0.0, 1.0, 0.0], uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: recess_verts[3], normal: [0.0, 1.0, 0.0], uv: [0.0, 1.0] });
+    vs.push(PreviewVertex {
+        position: inner_verts[3],
+        normal: [0.0, 1.0, 0.0],
+        uv: [0.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[2],
+        normal: [0.0, 1.0, 0.0],
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[2],
+        normal: [0.0, 1.0, 0.0],
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[3],
+        normal: [0.0, 1.0, 0.0],
+        uv: [0.0, 1.0],
+    });
 
     // Right wall of recess
-    vs.push(PreviewVertex { position: inner_verts[1], normal: [1.0, 0.0, 0.0], uv: [0.0, 0.0] });
-    vs.push(PreviewVertex { position: inner_verts[2], normal: [1.0, 0.0, 0.0], uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: recess_verts[2], normal: [1.0, 0.0, 0.0], uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: recess_verts[1], normal: [1.0, 0.0, 0.0], uv: [0.0, 1.0] });
+    vs.push(PreviewVertex {
+        position: inner_verts[1],
+        normal: [1.0, 0.0, 0.0],
+        uv: [0.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[2],
+        normal: [1.0, 0.0, 0.0],
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[2],
+        normal: [1.0, 0.0, 0.0],
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[1],
+        normal: [1.0, 0.0, 0.0],
+        uv: [0.0, 1.0],
+    });
 
     // Left wall of recess
-    vs.push(PreviewVertex { position: inner_verts[0], normal: [-1.0, 0.0, 0.0], uv: [0.0, 0.0] });
-    vs.push(PreviewVertex { position: inner_verts[3], normal: [-1.0, 0.0, 0.0], uv: [1.0, 0.0] });
-    vs.push(PreviewVertex { position: recess_verts[3], normal: [-1.0, 0.0, 0.0], uv: [1.0, 1.0] });
-    vs.push(PreviewVertex { position: recess_verts[0], normal: [-1.0, 0.0, 0.0], uv: [0.0, 1.0] });
+    vs.push(PreviewVertex {
+        position: inner_verts[0],
+        normal: [-1.0, 0.0, 0.0],
+        uv: [0.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: inner_verts[3],
+        normal: [-1.0, 0.0, 0.0],
+        uv: [1.0, 0.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[3],
+        normal: [-1.0, 0.0, 0.0],
+        uv: [1.0, 1.0],
+    });
+    vs.push(PreviewVertex {
+        position: recess_verts[0],
+        normal: [-1.0, 0.0, 0.0],
+        uv: [0.0, 1.0],
+    });
 
     // Remaining 5 faces of outer box (simple quad faces)
-    let back_face = [[1.0, -1.0, -1.0], [-1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [1.0, 1.0, -1.0]];
+    let back_face = [
+        [1.0, -1.0, -1.0],
+        [-1.0, -1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [1.0, 1.0, -1.0],
+    ];
     for corner in 0..4 {
-        vs.push(PreviewVertex { position: back_face[corner], normal: [0.0, 0.0, -1.0], uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner] });
+        vs.push(PreviewVertex {
+            position: back_face[corner],
+            normal: [0.0, 0.0, -1.0],
+            uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner],
+        });
     }
 
-    let top_face = [[-1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, -1.0], [-1.0, 1.0, -1.0]];
+    let top_face = [
+        [-1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+    ];
     for corner in 0..4 {
-        vs.push(PreviewVertex { position: top_face[corner], normal: [0.0, 1.0, 0.0], uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner] });
+        vs.push(PreviewVertex {
+            position: top_face[corner],
+            normal: [0.0, 1.0, 0.0],
+            uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner],
+        });
     }
 
-    let bottom_face = [[-1.0, -1.0, -1.0], [1.0, -1.0, -1.0], [1.0, -1.0, 1.0], [-1.0, -1.0, 1.0]];
+    let bottom_face = [
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, -1.0, 1.0],
+        [-1.0, -1.0, 1.0],
+    ];
     for corner in 0..4 {
-        vs.push(PreviewVertex { position: bottom_face[corner], normal: [0.0, -1.0, 0.0], uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner] });
+        vs.push(PreviewVertex {
+            position: bottom_face[corner],
+            normal: [0.0, -1.0, 0.0],
+            uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner],
+        });
     }
 
-    let right_face = [[1.0, -1.0, 1.0], [1.0, -1.0, -1.0], [1.0, 1.0, -1.0], [1.0, 1.0, 1.0]];
+    let right_face = [
+        [1.0, -1.0, 1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [1.0, 1.0, 1.0],
+    ];
     for corner in 0..4 {
-        vs.push(PreviewVertex { position: right_face[corner], normal: [1.0, 0.0, 0.0], uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner] });
+        vs.push(PreviewVertex {
+            position: right_face[corner],
+            normal: [1.0, 0.0, 0.0],
+            uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner],
+        });
     }
 
-    let left_face = [[-1.0, -1.0, -1.0], [-1.0, -1.0, 1.0], [-1.0, 1.0, 1.0], [-1.0, 1.0, -1.0]];
+    let left_face = [
+        [-1.0, -1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [-1.0, 1.0, 1.0],
+        [-1.0, 1.0, -1.0],
+    ];
     for corner in 0..4 {
-        vs.push(PreviewVertex { position: left_face[corner], normal: [-1.0, 0.0, 0.0], uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner] });
+        vs.push(PreviewVertex {
+            position: left_face[corner],
+            normal: [-1.0, 0.0, 0.0],
+            uv: [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]][corner],
+        });
     }
 
     // Build indices (2 triangles per 4-vertex quad)
@@ -259,5 +495,9 @@ pub fn generate_cinderblock() -> PreviewMeshData {
     }
 
     let index_count = indices.len() as u32;
-    PreviewMeshData { vertices: vs, indices, index_count }
+    PreviewMeshData {
+        vertices: vs,
+        indices,
+        index_count,
+    }
 }

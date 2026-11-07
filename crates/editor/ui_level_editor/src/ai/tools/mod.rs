@@ -586,7 +586,10 @@ mod tests {
             }),
         );
         let id = spawned["created_id"].as_str().unwrap().to_string();
-        assert_eq!(spawned["object"]["kind"], "empty", "a lamp is its component");
+        assert_eq!(
+            spawned["object"]["kind"], "empty",
+            "a lamp is its component"
+        );
         assert_eq!(spawned["object"]["position"], json!([1.0, 2.0, 3.0]));
 
         let components = call("level_editor_get_components", json!({ "id": id }));

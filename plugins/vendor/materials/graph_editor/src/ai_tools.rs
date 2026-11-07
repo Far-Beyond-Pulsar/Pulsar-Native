@@ -1,9 +1,10 @@
 use anyhow::{anyhow, Result};
 
+use graphy::core::GraphComment;
+use graphy::ConnectionType;
+use graphy::{Connection, GraphDescription, NodeInstance, PinInstance, Position};
 use plugin_editor_api::{AiToolDefinition, PluginError};
 use serde_json::{json, Value};
-use graphy::core::GraphComment;
-use graphy::{Connection, GraphDescription, NodeInstance, PinInstance, Position};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -11,7 +12,6 @@ use std::time::Instant;
 use tool_registry::{PluginToolRegistry, ToolContext, ToolRegistry};
 use tool_registry_macros::tool;
 use tracing::debug;
-use graphy::ConnectionType;
 
 use crate::definitions::NodeDefinitions;
 
@@ -647,7 +647,10 @@ pub fn blueprint_add_connection(
 pub fn blueprint_remove_connection(connection_id: String) -> Result<Value> {
     with_session_mut(|session| {
         let before = session.graph.connections.len();
-        session.graph.connections.retain(|c| c.id.as_deref() != Some(connection_id.as_str()));
+        session
+            .graph
+            .connections
+            .retain(|c| c.id.as_deref() != Some(connection_id.as_str()));
         let removed = before != session.graph.connections.len();
         if removed {
             session.dirty = true;

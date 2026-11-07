@@ -16,8 +16,7 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    components, level_io, objects, LevelEditorCameraState, ObjectType,
-    SceneObjectData, Transform,
+    components, level_io, objects, LevelEditorCameraState, ObjectType, SceneObjectData, Transform,
 };
 use helio_mesh_api::{MeshUpload, PackedVertex};
 use serde_json::{json, Value};

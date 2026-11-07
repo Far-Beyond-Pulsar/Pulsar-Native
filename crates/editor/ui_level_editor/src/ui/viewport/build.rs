@@ -33,11 +33,7 @@ fn world_position_on_ground_plane(
     let (sin_pitch, cos_pitch) = camera.pitch.sin_cos();
     let forward = [sin_yaw * cos_pitch, sin_pitch, -cos_yaw * cos_pitch];
     let right = [cos_yaw, 0.0, sin_yaw];
-    let up = [
-        -sin_yaw * sin_pitch,
-        cos_pitch,
-        cos_yaw * sin_pitch,
-    ];
+    let up = [-sin_yaw * sin_pitch, cos_pitch, cos_yaw * sin_pitch];
     // Helio's editor camera uses a 45 degree vertical perspective FOV.
     let tan_half_fov = (45.0_f32.to_radians() * 0.5).tan();
     let aspect = width / height;
@@ -121,7 +117,10 @@ impl ViewportPanel {
             let create_entries = create_entries.clone();
             let action_context = action_context.clone();
             Rc::new(
-                move |mut menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>, world_position: Option<[f64; 3]>| {
+                move |mut menu: PopupMenu,
+                      window: &mut Window,
+                      cx: &mut Context<PopupMenu>,
+                      world_position: Option<[f64; 3]>| {
                     menu = menu.action_context(action_context.clone());
                     menu = menu.submenu(t!("LevelEditor.Menu.Create"), window, cx, {
                         let create_entries = create_entries.clone();
