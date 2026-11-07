@@ -601,9 +601,10 @@ pub fn keyframes(keys: &[ImportedKey]) -> Vec<Keyframe> {
                     rotation: key.rotation_out_tangent,
                     scale: key.scale_out_tangent,
                 },
-                rotation_quaternion: (key.rotation_interpolation
-                    == helio_asset_compat::ImportedInterpolation::CubicSpline)
-                    .then_some(key.rotation_quaternion),
+                // Also keep the last/held key of a cubic channel and the
+                // original quaternions of LINEAR/STEP channels. The outgoing
+                // mode alone does not describe the incoming segment.
+                rotation_quaternion: Some(key.rotation_quaternion),
             }
         })
         .collect()
