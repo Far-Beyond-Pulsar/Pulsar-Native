@@ -67,3 +67,16 @@ main, re-pin the submodule to that main commit, then merge the Pulsar PR (see
 "Submodule pins" in `.agents/CRATES.md`).
 
 See `.agents/` for detailed docs on each subsystem.
+
+## Required for rendering work
+
+Any change that touches Helio (`crates/renderer/helio`) or Pulsar's rendering
+side must load the **`helio-architecture`** skill first:
+[`crates/renderer/helio/.agents/skills/helio-architecture/SKILL.md`](crates/renderer/helio/.agents/skills/helio-architecture/SKILL.md).
+Rendering work includes the plugins under `plugins/vendor/*`, SceneDB
+components that publish GPU rows, features and passes, WGSL, render graphs and
+presets, scene derivations, and object-kind editor tools. Bug fixes, perf
+work, tests and small changes count too. Anything you brief must load it as
+well, and end with its report section (Design, AAA comparison, Deleted,
+Verified). The skill lives in Helio and is the single source; don't copy its
+rules here.
