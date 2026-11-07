@@ -56,7 +56,11 @@ fn graph_routed_coverage_is_attached_and_cleared_without_draws() {
             );
             let mut resources = helio_core::ResourceRegistry::empty();
             // Graph-owned attachments are bindings, not typed resource slots.
-            resources.write_texture_binding(helio_frame_api::color::REACTIVE_MASK, &coverage_view, "test");
+            resources.write_texture_binding(
+                helio_frame_api::color::REACTIVE_MASK,
+                &coverage_view,
+                "test",
+            );
             resources.write_texture_view(
                 helio_core::ResourceKey::new(helio_frame_api::color::SCENE_COLOR),
                 &color_view,

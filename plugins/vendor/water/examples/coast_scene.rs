@@ -37,19 +37,24 @@ fn upload_materials(
 
     let mut slots = Vec::new();
     for (index, texture) in scene.textures.iter().enumerate() {
-        let kind = kinds[index].unwrap_or(if texture.format == wgpu::TextureFormat::Rgba8UnormSrgb {
-            TexelKind::Colour
-        } else {
-            TexelKind::Data
-        });
+        let kind =
+            kinds[index].unwrap_or(if texture.format == wgpu::TextureFormat::Rgba8UnormSrgb {
+                TexelKind::Colour
+            } else {
+                TexelKind::Data
+            });
         // Scans ship 2k-4k maps; past `cap` they are halved so ~190 materials
         // fit in VRAM.
-        let (mut width, mut height, mut data) = (texture.width, texture.height, texture.data.clone());
+        let (mut width, mut height, mut data) =
+            (texture.width, texture.height, texture.data.clone());
         while width.max(height) > cap && width > 1 && height > 1 {
-            let img = image::RgbaImage::from_raw(width, height, data).ok_or("invalid RGBA texture")?;
+            let img =
+                image::RgbaImage::from_raw(width, height, data).ok_or("invalid RGBA texture")?;
             width /= 2;
             height /= 2;
-            data = image::imageops::resize(&img, width, height, image::imageops::FilterType::Triangle).into_raw();
+            data =
+                image::imageops::resize(&img, width, height, image::imageops::FilterType::Triangle)
+                    .into_raw();
         }
         let chain = mip_chain(&data, width, height, kind);
         let refs: Vec<&[u8]> = chain.iter().map(|l| l.texels.as_slice()).collect();
@@ -82,8 +87,9 @@ fn upload_materials(
 
     let mut ids = Vec::new();
     for material in &scene.materials {
-        let mut row =
-            helio_mats::host_rows::MaterialComponent::from(helio_mats::MaterialRow::from(material.gpu));
+        let mut row = helio_mats::host_rows::MaterialComponent::from(
+            helio_mats::MaterialRow::from(material.gpu),
+        );
         let t = &material.textures;
         if let Some(r) = t.base_color {
             row.tex_base_color = slots[r.texture_index];
@@ -158,7 +164,12 @@ fn scatter(
         };
         // Small ones are far more common than large ones.
         let t = rng.next().powf(2.4);
-        out.push((x, z, size.0 + t * (size.1 - size.0), rng.next() * std::f32::consts::TAU));
+        out.push((
+            x,
+            z,
+            size.0 + t * (size.1 - size.0),
+            rng.next() * std::f32::consts::TAU,
+        ));
     }
     out
 }
@@ -220,12 +231,34 @@ pub fn build(
 
     // Boulder fields drift along the tide lines; pebbles gather around them.
     let boulder_fields = [
-        (-24.0, 6.0), (6.0, -2.0), (30.0, 14.0), (-8.0, 26.0), (44.0, -6.0),
-        (-9.0, 11.0), (4.0, 8.0), (-1.0, 14.0), (12.0, 16.0), (-18.0, 17.0),
+        (-24.0, 6.0),
+        (6.0, -2.0),
+        (30.0, 14.0),
+        (-8.0, 26.0),
+        (44.0, -6.0),
+        (-9.0, 11.0),
+        (4.0, 8.0),
+        (-1.0, 14.0),
+        (12.0, 16.0),
+        (-18.0, 17.0),
     ];
-    let wrack_line = [(-30.0, 12.0), (-10.0, 14.0), (10.0, 11.0), (28.0, 13.0), (0.0, 18.0), (-5.0, 12.0)];
+    let wrack_line = [
+        (-30.0, 12.0),
+        (-10.0, 14.0),
+        (10.0, 11.0),
+        (28.0, 13.0),
+        (0.0, 18.0),
+        (-5.0, 12.0),
+    ];
     // Dune grass and shrubs grow in drifts behind the beach.
-    let dunes = [(-50.0, 34.0), (-22.0, 40.0), (8.0, 36.0), (34.0, 44.0), (58.0, 32.0), (-4.0, 52.0)];
+    let dunes = [
+        (-50.0, 34.0),
+        (-22.0, 40.0),
+        (8.0, 36.0),
+        (34.0, 44.0),
+        (58.0, 32.0),
+        (-4.0, 52.0),
+    ];
     let uniform = |rng: &mut Rng, n: usize, a: (f32, f32, f32, f32), s: (f32, f32)| {
         scatter(rng, n, &[(0.0, 0.0)], 1.0, 1.0, a, s)
     };
@@ -242,7 +275,12 @@ pub fn build(
             })
             .unwrap_or(dir.join("missing.gltf"))
     };
-    let put = |world: &mut World, path: std::path::PathBuf, instances: &[Instance], cap: u32, rest: Option<f32>| -> Result<(), String> {
+    let put = |world: &mut World,
+               path: std::path::PathBuf,
+               instances: &[Instance],
+               cap: u32,
+               rest: Option<f32>|
+     -> Result<(), String> {
         if !path.exists() {
             eprintln!("coast kit: {} missing, skipped", path.display());
             return Ok(());
@@ -254,42 +292,162 @@ pub fn build(
     };
 
     // Cliffs close the cove.
-    put(world, ph("coastal_cliff_01"), &[(-95.0, 28.0, 80.0, 1.2), (-60.0, 100.0, 95.0, 0.3), (135.0, 70.0, 90.0, 4.1)], 2048, None)?;
-    put(world, ph("coastal_cliff_02"), &[(100.0, 16.0, 85.0, -1.0), (25.0, 115.0, 120.0, 3.4), (-130.0, 75.0, 100.0, 0.9)], 2048, None)?;
-    put(world, ph("coastal_cliff_04"), &[(-150.0, 20.0, 90.0, 1.7), (170.0, 20.0, 80.0, 4.6)], 2048, None)?;
+    put(
+        world,
+        ph("coastal_cliff_01"),
+        &[
+            (-95.0, 28.0, 80.0, 1.2),
+            (-60.0, 100.0, 95.0, 0.3),
+            (135.0, 70.0, 90.0, 4.1),
+        ],
+        2048,
+        None,
+    )?;
+    put(
+        world,
+        ph("coastal_cliff_02"),
+        &[
+            (100.0, 16.0, 85.0, -1.0),
+            (25.0, 115.0, 120.0, 3.4),
+            (-130.0, 75.0, 100.0, 0.9),
+        ],
+        2048,
+        None,
+    )?;
+    put(
+        world,
+        ph("coastal_cliff_04"),
+        &[(-150.0, 20.0, 90.0, 1.7), (170.0, 20.0, 80.0, 4.6)],
+        2048,
+        None,
+    )?;
 
     // Sea stacks, headlands and shoreline ledges.
-    put(world, ph("coast_land_rocks_02"), &[(-46.0, -4.0, 24.0, 0.4), (60.0, -12.0, 28.0, 2.2)], 2048, None)?;
-    put(world, ph("coast_land_rocks_03"), &[(-72.0, -30.0, 32.0, 3.0), (24.0, -26.0, 22.0, 1.1)], 2048, None)?;
-    put(world, ph("coast_land_rocks_04"), &[(0.0, -46.0, 30.0, 5.0), (-22.0, -30.0, 18.0, 2.4)], 2048, None)?;
-    put(world, ph("coast_line_01"), &[(-35.0, -1.0, 42.0, 0.2), (70.0, 8.0, 38.0, 2.9)], 2048, None)?;
-    put(world, ph("coast_line_02"), &[(40.0, 2.0, 36.0, 3.2), (-78.0, 14.0, 36.0, 0.5)], 2048, None)?;
-    place(
-        world, device, queue, &root.join("megascans_nordic_beach_high.glb"),
-        &[
-            (-13.0, 1.0, 11.0, 0.3), (18.0, -9.0, 13.0, 2.0), (35.0, -25.0, 18.0, 0.8),
-            (-34.0, -6.0, 9.0, 3.9), (52.0, 6.0, 8.0, 1.4), (-52.0, 20.0, 12.0, 5.2),
-            (4.0, -30.0, 15.0, 4.4),
-        ],
-        2048, None,
+    put(
+        world,
+        ph("coast_land_rocks_02"),
+        &[(-46.0, -4.0, 24.0, 0.4), (60.0, -12.0, 28.0, 2.2)],
+        2048,
+        None,
+    )?;
+    put(
+        world,
+        ph("coast_land_rocks_03"),
+        &[(-72.0, -30.0, 32.0, 3.0), (24.0, -26.0, 22.0, 1.1)],
+        2048,
+        None,
+    )?;
+    put(
+        world,
+        ph("coast_land_rocks_04"),
+        &[(0.0, -46.0, 30.0, 5.0), (-22.0, -30.0, 18.0, 2.4)],
+        2048,
+        None,
+    )?;
+    put(
+        world,
+        ph("coast_line_01"),
+        &[(-35.0, -1.0, 42.0, 0.2), (70.0, 8.0, 38.0, 2.9)],
+        2048,
+        None,
+    )?;
+    put(
+        world,
+        ph("coast_line_02"),
+        &[(40.0, 2.0, 36.0, 3.2), (-78.0, 14.0, 36.0, 0.5)],
+        2048,
+        None,
     )?;
     place(
-        world, device, queue, &root.join("coast_rocks_01/coast_rocks_01_4k.gltf"),
-        &[(-38.0, -15.0, 34.0, 0.2), (48.0, -38.0, 40.0, 2.1), (-4.0, -52.0, 46.0, 1.1)],
-        2048, None,
+        world,
+        device,
+        queue,
+        &root.join("megascans_nordic_beach_high.glb"),
+        &[
+            (-13.0, 1.0, 11.0, 0.3),
+            (18.0, -9.0, 13.0, 2.0),
+            (35.0, -25.0, 18.0, 0.8),
+            (-34.0, -6.0, 9.0, 3.9),
+            (52.0, 6.0, 8.0, 1.4),
+            (-52.0, 20.0, 12.0, 5.2),
+            (4.0, -30.0, 15.0, 4.4),
+        ],
+        2048,
+        None,
+    )?;
+    place(
+        world,
+        device,
+        queue,
+        &root.join("coast_rocks_01/coast_rocks_01_4k.gltf"),
+        &[
+            (-38.0, -15.0, 34.0, 0.2),
+            (48.0, -38.0, 40.0, 2.1),
+            (-4.0, -52.0, 46.0, 1.1),
+        ],
+        2048,
+        None,
     )?;
 
     // Boulders and stones across the beach, four rock scans for variety.
-    for (k, id) in ["coast_rocks_02", "coast_rocks_03", "coast_rocks_05", "boulder_01"].iter().enumerate() {
-        let items = scatter(&mut rng, 26, &boulder_fields, 7.0 + k as f32, 0.2, area, (0.5, 3.4));
+    for (k, id) in [
+        "coast_rocks_02",
+        "coast_rocks_03",
+        "coast_rocks_05",
+        "boulder_01",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let items = scatter(
+            &mut rng,
+            26,
+            &boulder_fields,
+            7.0 + k as f32,
+            0.2,
+            area,
+            (0.5, 3.4),
+        );
         put(world, ph(id), &items, 1024, None)?;
     }
     let mid_rocks = scatter(&mut rng, 70, &boulder_fields, 7.0, 0.2, area, (0.45, 3.0));
-    place(world, device, queue, &root.join("coast_rocks_01/coast_rocks_01_4k.gltf"), &mid_rocks, 1024, None)?;
+    place(
+        world,
+        device,
+        queue,
+        &root.join("coast_rocks_01/coast_rocks_01_4k.gltf"),
+        &mid_rocks,
+        1024,
+        None,
+    )?;
     let stones = scatter(&mut rng, 240, &boulder_fields, 6.0, 0.2, area, (0.35, 2.4));
-    place(world, device, queue, &root.join("sand_rocks_small_01/sand_rocks_small_01_4k.gltf"), &stones, 1024, None)?;
-    let shells = scatter(&mut rng, 320, &wrack_line, 5.0, 0.2, (-40.0, 40.0, 6.0, 34.0), (0.14, 0.34));
-    place(world, device, queue, &root.join("lambis_shell/lambis_shell_4k.gltf"), &shells, 1024, None)?;
+    place(
+        world,
+        device,
+        queue,
+        &root.join("sand_rocks_small_01/sand_rocks_small_01_4k.gltf"),
+        &stones,
+        1024,
+        None,
+    )?;
+    let shells = scatter(
+        &mut rng,
+        320,
+        &wrack_line,
+        5.0,
+        0.2,
+        (-40.0, 40.0, 6.0, 34.0),
+        (0.14, 0.34),
+    );
+    place(
+        world,
+        device,
+        queue,
+        &root.join("lambis_shell/lambis_shell_4k.gltf"),
+        &shells,
+        1024,
+        None,
+    )?;
 
     // Wrack line: driftwood, branches, bark.
     let l = scatter(&mut rng, 7, &wrack_line, 9.0, 0.1, area, (2.6, 6.0));
@@ -310,20 +468,76 @@ pub fn build(
     put(world, ph("shrub_sorrel_01"), &l, 1024, None)?;
     let l = uniform(&mut rng, 10, (-70.0, 70.0, 40.0, 70.0), (3.5, 5.5));
     put(world, ph("pachira_aquatica_01"), &l, 1024, None)?;
-    for (i, id) in ["island_tree_01", "island_tree_02", "island_tree_03"].iter().enumerate() {
-        let l = uniform(&mut rng, 4, (-80.0 + i as f32 * 8.0, 80.0, 48.0, 90.0), (8.0, 13.0));
+    for (i, id) in ["island_tree_01", "island_tree_02", "island_tree_03"]
+        .iter()
+        .enumerate()
+    {
+        let l = uniform(
+            &mut rng,
+            4,
+            (-80.0 + i as f32 * 8.0, 80.0, 48.0, 90.0),
+            (8.0, 13.0),
+        );
         put(world, ph(id), &l, 1024, None)?;
     }
 
     // Props: a beached cache, a pier into the surf, a buoy and a ship offshore.
-    put(world, ph("lifebuoy"), &[(3.0, 16.0, 0.9, 0.4), (-14.0, 13.0, 0.9, 2.2)], 1024, None)?;
-    put(world, ph("wooden_barrels_01"), &[(-20.0, 20.0, 1.2, 0.5), (14.0, 9.0, 1.1, 2.0)], 1024, None)?;
-    put(world, ph("wooden_crate_01"), &[(8.0, 20.0, 1.0, 0.2), (10.0, 21.5, 0.9, 0.9)], 1024, None)?;
-    put(world, ph("wooden_crate_02"), &[(-4.0, 19.0, 0.9, 1.4)], 1024, None)?;
-    put(world, ph("treasure_chest"), &[(-7.0, 15.0, 0.8, 0.7)], 1024, None)?;
-    put(world, ph("modular_wooden_pier"), &[(22.0, -8.0, 18.0, std::f32::consts::FRAC_PI_2)], 1024, None)?;
-    put(world, ph("lateral_sea_marker"), &[(-30.0, -45.0, 5.0, 0.0)], 1024, Some(-0.4))?;
-    put(world, ph("ship_pinnace"), &[(-45.0, -105.0, 36.0, 0.7)], 1024, Some(-3.4))?;
+    put(
+        world,
+        ph("lifebuoy"),
+        &[(3.0, 16.0, 0.9, 0.4), (-14.0, 13.0, 0.9, 2.2)],
+        1024,
+        None,
+    )?;
+    put(
+        world,
+        ph("wooden_barrels_01"),
+        &[(-20.0, 20.0, 1.2, 0.5), (14.0, 9.0, 1.1, 2.0)],
+        1024,
+        None,
+    )?;
+    put(
+        world,
+        ph("wooden_crate_01"),
+        &[(8.0, 20.0, 1.0, 0.2), (10.0, 21.5, 0.9, 0.9)],
+        1024,
+        None,
+    )?;
+    put(
+        world,
+        ph("wooden_crate_02"),
+        &[(-4.0, 19.0, 0.9, 1.4)],
+        1024,
+        None,
+    )?;
+    put(
+        world,
+        ph("treasure_chest"),
+        &[(-7.0, 15.0, 0.8, 0.7)],
+        1024,
+        None,
+    )?;
+    put(
+        world,
+        ph("modular_wooden_pier"),
+        &[(22.0, -8.0, 18.0, std::f32::consts::FRAC_PI_2)],
+        1024,
+        None,
+    )?;
+    put(
+        world,
+        ph("lateral_sea_marker"),
+        &[(-30.0, -45.0, 5.0, 0.0)],
+        1024,
+        Some(-0.4),
+    )?;
+    put(
+        world,
+        ph("ship_pinnace"),
+        &[(-45.0, -105.0, 36.0, 0.7)],
+        1024,
+        Some(-3.4),
+    )?;
     Ok(())
 }
 
@@ -345,7 +559,9 @@ fn place(
     let mut hi = Vec3::splat(f32::NEG_INFINITY);
     for mesh in &scene.meshes {
         for v in &mesh.vertices {
-            let p = mesh.node_transform.transform_point3(Vec3::from_array(v.position));
+            let p = mesh
+                .node_transform
+                .transform_point3(Vec3::from_array(v.position));
             lo = lo.min(p);
             hi = hi.max(p);
         }

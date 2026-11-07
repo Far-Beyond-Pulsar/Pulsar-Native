@@ -312,7 +312,6 @@ impl<'de> Deserialize<'de> for ObjectType {
     }
 }
 
-
 // ── Error type ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]

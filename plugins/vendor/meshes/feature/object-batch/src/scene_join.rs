@@ -678,8 +678,7 @@ impl SceneDerivation for SceneJoin {
         let skin_handles = self.input(inputs, keys.skin_handles, HANDLE_ROW_BYTES);
         let palette_handles = self.input(inputs, keys.palette_handles, HANDLE_ROW_BYTES);
         let sections = self.input(inputs, keys.mesh_sections, MESH_SECTION_ROW_BYTES);
-        let material_row_handles =
-            self.input(inputs, keys.material_row_handles, HANDLE_ROW_BYTES);
+        let material_row_handles = self.input(inputs, keys.material_row_handles, HANDLE_ROW_BYTES);
         let material_rows = self.input(inputs, keys.material_rows, MATERIAL_ROW_BYTES);
         let material_keys = self.input(inputs, keys.material_keys, MATERIAL_KEY_ROW_BYTES);
         // Meshes are placed from rows composed only up to their nearest rigid

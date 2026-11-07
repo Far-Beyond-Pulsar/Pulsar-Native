@@ -2,9 +2,7 @@
 
 use std::time::Duration;
 
-use gpui::{
-    Animation, AnimationExt as _, bounce, ease_in_out, prelude::*, *,
-};
+use gpui::{Animation, AnimationExt as _, bounce, ease_in_out, prelude::*, *};
 use ui::{
     ActiveTheme as _, Disableable as _, Sizable as _, StyledExt as _,
     button::{Button, ButtonVariants as _},

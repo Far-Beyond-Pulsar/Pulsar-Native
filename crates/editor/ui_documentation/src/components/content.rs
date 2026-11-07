@@ -74,7 +74,12 @@ impl DocumentationWindow {
                     .unwrap_or(file);
                 relative
                     .components()
-                    .map(|part| part.as_os_str().to_string_lossy().trim_end_matches(".md").to_owned())
+                    .map(|part| {
+                        part.as_os_str()
+                            .to_string_lossy()
+                            .trim_end_matches(".md")
+                            .to_owned()
+                    })
                     .collect()
             }),
         };
@@ -239,11 +244,17 @@ impl DocumentationWindow {
                 .bordered(false),
         );
         let preview_pane = div().size_full().scrollable(ScrollbarAxis::Vertical).child(
-            v_flex().w_full().max_w(px(860.0)).mx_auto().px_8().py_6().child(
-                TextView::markdown("guide-preview", markdown, window, cx)
-                    .debounce_ms(30)
-                    .selectable(),
-            ),
+            v_flex()
+                .w_full()
+                .max_w(px(860.0))
+                .mx_auto()
+                .px_8()
+                .py_6()
+                .child(
+                    TextView::markdown("guide-preview", markdown, window, cx)
+                        .debounce_ms(30)
+                        .selectable(),
+                ),
         );
 
         match self.manual_docs.view_mode {

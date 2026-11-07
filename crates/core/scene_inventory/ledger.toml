@@ -548,6 +548,62 @@ test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_
 status = "verified"
 
 [[schema]]
+type = "MaterialComponent"
+path = "helio_mats::host_rows::MaterialComponent"
+buffers = ["materials"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "the material instance's GPU dispatch, at the instance entity's row"
+owner = "helio_mats::host_rows"
+disposition = "keep: the material table row a drawer reads by entity row"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/materials/component/tests/material_assets.rs"
+status = "verified"
+
+[[schema]]
+type = "MaterialInstanceComponent"
+path = "helio_mats::instance::MaterialInstanceComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "none: an interned instance (helio_mats::instance::acquire); its dispatch writes MaterialComponent and MaterialKeyComponent"
+owner = "helio_mats::instance"
+disposition = "keep: a material source (asset, surface, fallback) as an entity, shared by every slot naming it"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/materials/component/tests/material_assets.rs"
+status = "verified"
+
+[[schema]]
+type = "MaterialKeyComponent"
+path = "helio_mats::instance::MaterialKeyComponent"
+buffers = ["material_keys"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "the material instance's GPU dispatch"
+owner = "helio_mats::instance"
+disposition = "keep: the class and graph key a drawer's pipeline is chosen by"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
+status = "verified"
+
+[[schema]]
+type = "MeshMaterialRows"
+path = "meshes_component::mesh_materials::MeshMaterialRows"
+buffers = ["mesh_material_rows"]
+clears_on_remove = false
+releases_var_len = true
+registered = false
+writer = "MeshMaterialInstances (a scene subsystem), only when a mesh's slots change"
+owner = "meshes_component::mesh_materials"
+disposition = "keep: a mesh's slot table beside the mesh, so assigning a material never rewrites the mesh's geometry rows"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
+status = "verified"
+
+[[schema]]
 type = "SkeletalMeshComponent"
 path = "meshes_component::components::skeletal_mesh_component::SkeletalMeshComponent"
 buffers = ["builtin_mesh_index", "builtin_mesh_vertex", "skeletal_bone_palette", "skeletal_skin_vertices"]
@@ -751,7 +807,7 @@ status = "verified"
 [[site]]
 pattern = "change-cursor"
 file = "plugins/vendor/voxel/component/src/sync.rs"
-count = 6
+count = 4
 owner = "voxel_component::sync (VoxelWorldSync)"
 disposition = "keep: independent VoxelTerrainComponent, VoxelTerrainLayersComponent and AtmosphereComponent cursors, read in two places (the check and the drain after a replaced world); the renderer's scene step re-checks edit journals against their ground, and skies against their world's air, only when one of them changed (a replaced world reopens them)"
 target_contract = "Phase 5; 04-state-notifications.md"
@@ -1774,11 +1830,41 @@ test = "tracked in #1055"
 status = "unfinished"
 
 [[buffer]]
+key = "material_keys"
+producers = ["MaterialKeyComponent"]
+consumers = []
+owner = "helio_mats::instance (MaterialKeyComponent)"
+disposition = "keep: each material instance's class and graph key at its entity row; the meshes' scene join reads it to pick a drawer's pipeline (bound by the join, not by a pass crate)"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "mesh_material_rows"
+producers = ["MeshMaterialRows"]
+consumers = []
+owner = "meshes_component::mesh_materials (MeshMaterialRows)"
+disposition = "keep: each mesh's slot -> material instance row table; the scene join reads it per section"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "mesh_material_rows::handles"
+producers = []
+consumers = ["meshes_component"]
+owner = "meshes_component::mesh_materials (MeshMaterialRows)"
+disposition = "keep: the var-len ranges of the slot tables, read by the scene join"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
 key = "post_process_volumes"
 producers = ["PostProcessVolumeComponent"]
-consumers = ["helio-pass-post-volumes", "helio-pass-volumetric-fog"]
+consumers = ["helio-pass-post-volumes"]
 owner = "helio-scene-derivations environment join (execution output, one row per component instance)"
-disposition = "keep: the join places each volume from its owner's transform; the post-process resolver and volumetric fog read it"
+disposition = "keep: the join places each volume from its owner's transform; the post-process resolver reads it (fog reads its own media rows since p17)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
 status = "verified"
@@ -2571,9 +2657,9 @@ status = "verified"
 [[pass]]
 crate = "helio-pass-volumetric-fog"
 in_default_graph = false
-reads = ["global_fog_media", "local_fog_media", "post_process_volumes"]
+reads = ["global_fog_media", "local_fog_media"]
 owner = "helio-presets (mapping); helio-pass-volumetric-fog (algorithm)"
-disposition = "keep: reads the environment join's fog / post-process outputs, derived from authored components (Phase 4)"
+disposition = "keep: reads the fog's media rows, derived from authored components (Phase 4); no post-process input since fog left post (p17)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
@@ -2766,14 +2852,34 @@ test = "none: no test names this row; the owning plugin's suites cover its behav
 status = "unverified"
 
 [[site]]
-pattern = "asset-binding"
+pattern = "change-cursor"
 file = "plugins/vendor/meshes/component/src/mesh_materials.rs"
+count = 4
+owner = "meshes_component::mesh_materials (MeshMaterialInstances)"
+disposition = "keep: the static and skeletal mesh journals, opened once and read each step; a mesh whose slots changed (re)acquires its slots' material instances, so material rows follow writes and never scan every mesh"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/meshes/component/tests/scene_join_rows.rs; plugins/vendor/meshes/component/tests/movement_scaling.rs"
+status = "verified"
+
+[[site]]
+pattern = "asset-binding"
+file = "plugins/vendor/materials/api/src/instance.rs"
 count = 1
-owner = "plugins/vendor/meshes/component/src/mesh_materials.rs"
-disposition = "keep: the kind's own, moved with it into its plugin (plugin-migration.md Phases B and C)"
-target_contract = "Phase C; plugin-migration.md"
-test = "none: no test names this row; the owning plugin's suites cover its behaviour"
-status = "unverified"
+owner = "helio_mats::instance (MaterialInstanceComponent)"
+disposition = "keep: binds a loaded material asset into the instances naming it; the instance writes its material and key rows"
+target_contract = "p17; plugin-migration.md (material instances)"
+test = "plugins/vendor/materials/component/tests/material_assets.rs"
+status = "verified"
+
+[[site]]
+pattern = "add-component"
+file = "plugins/vendor/lights/editor/src/level_editor.rs"
+count = 1
+owner = "lights_plugin::level_editor (the sky rig)"
+disposition = "keep: the sky rig adds its sun and moon lights through the editor's undoable AddComponent command when missing"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "crates/editor/ui_level_editor/tests/level_editor.rs"
+status = "verified"
 
 [[site]]
 pattern = "asset-binding"
@@ -2818,7 +2924,7 @@ status = "unverified"
 [[site]]
 pattern = "change-cursor"
 file = "plugins/vendor/meshes/component/src/lib.rs"
-count = 1
+count = 2
 owner = "plugins/vendor/meshes/component/src/lib.rs"
 disposition = "keep: the kind's own, moved with it into its plugin (plugin-migration.md Phases B and C)"
 target_contract = "Phase C; plugin-migration.md"

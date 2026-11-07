@@ -61,7 +61,10 @@ impl KeybindingsWindow {
         let (icon, text) = if self.entries.is_empty() {
             (IconName::Key, "No actions are registered yet.")
         } else {
-            (IconName::Search, "No action matches. Try another word or filter.")
+            (
+                IconName::Search,
+                "No action matches. Try another word or filter.",
+            )
         };
         v_flex()
             .flex_1()
@@ -87,7 +90,10 @@ fn render_row(ix: usize, entry: ActionEntry, cx: &mut Context<KeybindingsWindow>
     let subtitle = match (&conflicted_with, &entry.info.doc) {
         (Some(other), _) => Some((
             true,
-            format!("Shortcut taken by {}", crate::utils::registry::describe_name(other).1),
+            format!(
+                "Shortcut taken by {}",
+                crate::utils::registry::describe_name(other).1
+            ),
         )),
         (None, Some(doc)) => Some((false, doc.lines().next().unwrap_or("").to_owned())),
         (None, None) => None,
@@ -203,7 +209,11 @@ fn render_row(ix: usize, entry: ActionEntry, cx: &mut Context<KeybindingsWindow>
                         })
                         .opacity(if entry.info.bindable { 1.0 } else { 0.35 })
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            if this.entries.iter().any(|e| e.info.name == name && e.info.bindable) {
+                            if this
+                                .entries
+                                .iter()
+                                .any(|e| e.info.name == name && e.info.bindable)
+                            {
                                 handlers::start_recording(
                                     this,
                                     name.clone(),
@@ -285,7 +295,11 @@ pub(super) fn render_chip(
             )
         })
         .when(shadowed, |chip| {
-            chip.child(Icon::new(IconName::TriangleAlert).size_3p5().text_color(theme.warning))
+            chip.child(
+                Icon::new(IconName::TriangleAlert)
+                    .size_3p5()
+                    .text_color(theme.warning),
+            )
         })
         .on_click({
             let binding = binding.clone();

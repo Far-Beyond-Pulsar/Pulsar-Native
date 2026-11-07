@@ -8,8 +8,8 @@
 //! deciding whether an unbinding (`NoAction`) blocks lower-precedence matches.
 
 use gpui::{
-    Action, App, Global, KeyBinding, KeyBindingContextPredicate, KeyBindingMetaIndex, Keystroke, NoAction,
-    is_no_action,
+    Action, App, Global, KeyBinding, KeyBindingContextPredicate, KeyBindingMetaIndex, Keystroke,
+    NoAction, is_no_action,
 };
 
 use super::overrides::{Binding, Entry, Override};
@@ -121,7 +121,10 @@ fn build(override_: &Override, cx: &App) -> Result<KeyBinding, String> {
         Some(name) => (
             cx.build_action(name, override_.params.clone())
                 .map_err(|error| error.to_string())?,
-            override_.params.as_ref().map(|params| params.to_string().into()),
+            override_
+                .params
+                .as_ref()
+                .map(|params| params.to_string().into()),
         ),
         None => (Box::new(NoAction {}), None),
     };
@@ -200,8 +203,8 @@ fn words(camel: &str) -> String {
     let mut out = String::new();
     let mut previous: Option<char> = None;
     for ch in camel.chars() {
-        let boundary = previous
-            .is_some_and(|p| (p.is_lowercase() || p.is_ascii_digit()) && ch.is_uppercase());
+        let boundary =
+            previous.is_some_and(|p| (p.is_lowercase() || p.is_ascii_digit()) && ch.is_uppercase());
         if boundary {
             out.push(' ');
         }
@@ -268,14 +271,20 @@ mod tests {
 
     #[test]
     fn chords_normalize_to_one_spelling() {
-        assert_eq!(normalize_keystrokes("ctrl-k   shift-ctrl-s").unwrap(), "ctrl-k ctrl-shift-s");
+        assert_eq!(
+            normalize_keystrokes("ctrl-k   shift-ctrl-s").unwrap(),
+            "ctrl-k ctrl-shift-s"
+        );
         assert!(normalize_keystrokes("").is_err());
     }
 
     #[test]
     fn contexts_normalize_and_blank_is_none() {
         assert_eq!(normalize_context("  ").unwrap(), None);
-        assert_eq!(normalize_context("Editor").unwrap().as_deref(), Some("Editor"));
+        assert_eq!(
+            normalize_context("Editor").unwrap().as_deref(),
+            Some("Editor")
+        );
         assert!(normalize_context("Editor &&").is_err());
     }
 

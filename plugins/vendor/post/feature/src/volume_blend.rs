@@ -1,9 +1,7 @@
 //! Pass-owned SceneDB settings resolution, including empty scenes.
 use helio_core::graph::ResourceBuilder;
 use helio_core::{PassContext, PrepareContext, RenderPass, ResourceKey, Result as HelioResult};
-use helio_pass_postprocess::{
-    AUTO_EXPOSURE_MAYBE_ACTIVE, BLOOM_MAYBE_ACTIVE, POST_SETTINGS,
-};
+use helio_pass_postprocess::{AUTO_EXPOSURE_MAYBE_ACTIVE, BLOOM_MAYBE_ACTIVE, POST_SETTINGS};
 use pulsar_scenedb::gpu::BufferKey;
 use wgpu::util::DeviceExt;
 
@@ -158,7 +156,6 @@ fn volume_row_enables_auto_exposure(row: &[u8]) -> bool {
         _ => true,
     }
 }
-
 
 impl PostProcessVolumeBlendPass {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -527,7 +524,6 @@ mod activity_tests {
             "manual by default"
         );
     }
-
 
     #[test]
     fn default_settings_leave_bloom_off() {

@@ -208,7 +208,8 @@ pub(crate) fn record_key(
         _ => {
             if let Some(recorder) = &mut this.recorder {
                 if recorder.keys.len() >= MAX_STROKES {
-                    recorder.error = Some(format!("A shortcut can have at most {MAX_STROKES} keys"));
+                    recorder.error =
+                        Some(format!("A shortcut can have at most {MAX_STROKES} keys"));
                 } else {
                     recorder.keys.push(keystroke.unparse());
                     recorder.error = None;

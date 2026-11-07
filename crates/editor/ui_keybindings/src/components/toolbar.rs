@@ -68,7 +68,11 @@ impl KeybindingsWindow {
             .child({
                 let button = Button::new("reset-all-keybindings")
                     .icon(IconName::Undo)
-                    .label(if armed { "Click again to reset all" } else { "Reset all" })
+                    .label(if armed {
+                        "Click again to reset all"
+                    } else {
+                        "Reset all"
+                    })
                     .small()
                     .on_click(cx.listener(|this, _, _, cx| handlers::reset_all(this, cx)));
                 if armed {
@@ -146,7 +150,11 @@ impl KeybindingsWindow {
                         .bg(color.opacity(0.12))
                         .border_b_1()
                         .border_color(color.opacity(0.3))
-                        .child(Icon::new(IconName::TriangleAlert).size_4().text_color(color))
+                        .child(
+                            Icon::new(IconName::TriangleAlert)
+                                .size_4()
+                                .text_color(color),
+                        )
                         .child(div().flex_1().min_w_0().child(text))
                 }))
                 .into_any_element(),
@@ -156,11 +164,15 @@ impl KeybindingsWindow {
     pub(crate) fn render_status_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let total = self.entries.len();
-        let bound = self.entries.iter().filter(|e| !e.bindings.is_empty()).count();
+        let bound = self
+            .entries
+            .iter()
+            .filter(|e| !e.bindings.is_empty())
+            .count();
         let changed = self.count(Filter::Customized);
         let conflicts = self.count(Filter::Conflicts);
-        let path = Self::project()
-            .map(|project| file::keybindings_path(&project).display().to_string());
+        let path =
+            Self::project().map(|project| file::keybindings_path(&project).display().to_string());
 
         let summary = format!(
             "{} of {total} actions shown  ·  {bound} bound  ·  {changed} changed{}",

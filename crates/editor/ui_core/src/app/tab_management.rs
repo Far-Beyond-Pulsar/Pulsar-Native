@@ -205,7 +205,11 @@ impl PulsarApp {
         if editor_project_root.is_none() {
             if let Some(project_root) = self.state.project_path.clone() {
                 let state = ui::dock::PanelState::default().with_file(path.to_string_lossy());
-                let panel = ui::dock::LazyPanel::waking(state, super::layout::lazy_builder(project_root), cx);
+                let panel = ui::dock::LazyPanel::waking(
+                    state,
+                    super::layout::lazy_builder(project_root),
+                    cx,
+                );
                 self.state.center_tabs.update(cx, |tabs, cx| {
                     tabs.add_panel(panel, window, cx);
                 });

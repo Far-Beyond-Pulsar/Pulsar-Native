@@ -36,11 +36,7 @@ inventory::submit! {
 // ── Create menu ─────────────────────────────────────────────────────────────
 
 /// The Create menu's light of `shape`: enabled, at the origin.
-fn menu_light(
-    state: &mut LevelEditorState,
-    name: &str,
-    shape: Shape,
-) -> CommandResult {
+fn menu_light(state: &mut LevelEditorState, name: &str, shape: Shape) -> CommandResult {
     let mut light = LightComponent::default();
     light.general.enabled = true;
     light.general.light_type = shape;
@@ -102,11 +98,7 @@ inventory::submit! {
 
 /// The mixer's light of `shape` (a directional one starts at 2 lux·sr, a
 /// usable sun).
-fn environment_light(
-    state: &mut LevelEditorState,
-    name: &str,
-    shape: Shape,
-) -> CommandResult {
+fn environment_light(state: &mut LevelEditorState, name: &str, shape: Shape) -> CommandResult {
     let mut light = LightComponent::default();
     light.general.light_type = shape;
     if shape == Shape::Directional {
@@ -356,19 +348,20 @@ fn apply_sun(state: &mut LevelEditorState, sun: Sun) -> CommandResult {
         }
     };
 
-    let mut set = |state: &mut LevelEditorState, prop: &str, value: Box<dyn std::any::Any + Send>| {
-        execute_command(
-            state,
-            SceneCommand::SetComponentProperty {
-                id: object_id.clone(),
-                class_name: "LightComponent".into(),
-                component_index,
-                prop_name: prop.into(),
-                value,
-            },
-        )
-        .changed
-    };
+    let mut set =
+        |state: &mut LevelEditorState, prop: &str, value: Box<dyn std::any::Any + Send>| {
+            execute_command(
+                state,
+                SceneCommand::SetComponentProperty {
+                    id: object_id.clone(),
+                    class_name: "LightComponent".into(),
+                    component_index,
+                    prop_name: prop.into(),
+                    value,
+                },
+            )
+            .changed
+        };
     changed |= set(state, "color.color", Box::new(sun.color));
     changed |= set(state, "intensity.intensity", Box::new(sun.intensity));
     // The light's own direction (the rig's lights share the sky object's

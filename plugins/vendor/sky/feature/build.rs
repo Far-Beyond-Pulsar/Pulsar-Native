@@ -26,7 +26,12 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(sky_presets_missing)");
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("deep-space");
     std::fs::create_dir_all(&out).unwrap();
-    if LAYERS.iter().all(|(_, name)| out.join(name).metadata().map(|m| m.len() > 0).unwrap_or(false)) {
+    if LAYERS.iter().all(|(_, name)| {
+        out.join(name)
+            .metadata()
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
+    }) {
         return;
     }
     match fetch(&out) {
@@ -61,13 +66,19 @@ fn fetch(out: &Path) -> Result<(), String> {
             bytes
         }
     };
-    let digest: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+    let digest: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     if digest != SHA256 {
         return Err(format!("archive checksum mismatch (got {digest})"));
     }
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
     for (entry, name) in LAYERS {
-        let mut file = archive.by_name(entry).map_err(|e| format!("{entry}: {e}"))?;
+        let mut file = archive
+            .by_name(entry)
+            .map_err(|e| format!("{entry}: {e}"))?;
         let mut data = Vec::with_capacity(file.size() as usize);
         file.read_to_end(&mut data).map_err(|e| e.to_string())?;
         std::fs::write(out.join(name), data).map_err(|e| e.to_string())?;

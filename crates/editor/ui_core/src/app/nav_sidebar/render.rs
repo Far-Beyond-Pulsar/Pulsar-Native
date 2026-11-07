@@ -323,17 +323,15 @@ impl NavSidebar {
             .when(tab.active, |el| el.bg(theme.sidebar_accent))
             .hover(|el| el.bg(theme.list_hover))
             .when(!tab.is_open(), |el| el.opacity(0.5))
-            .child(
-                tab_icon_element(
-                    tab,
-                    16.,
-                    if tab.active {
-                        theme.primary
-                    } else {
-                        theme.muted_foreground
-                    },
-                ),
-            )
+            .child(tab_icon_element(
+                tab,
+                16.,
+                if tab.active {
+                    theme.primary
+                } else {
+                    theme.muted_foreground
+                },
+            ))
             .when(tab.unsaved, |el| {
                 el.child(
                     unsaved_dot(theme.warning)
@@ -777,17 +775,15 @@ impl NavSidebar {
             })
             .when(!tab.active, |el| el.hover(|el| el.bg(theme.list_hover)))
             .when(!tab.is_open(), |el| el.text_color(theme.muted_foreground))
-            .child(
-                tab_icon_element(
-                    tab,
-                    14.,
-                    if tab.active {
-                        theme.primary
-                    } else {
-                        theme.muted_foreground
-                    },
-                ),
-            )
+            .child(tab_icon_element(
+                tab,
+                14.,
+                if tab.active {
+                    theme.primary
+                } else {
+                    theme.muted_foreground
+                },
+            ))
             .child(
                 div()
                     .flex_1()

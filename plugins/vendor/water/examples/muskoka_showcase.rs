@@ -93,42 +93,103 @@ struct Tod {
 }
 
 fn weather(seed: u32, cirrus: f32) -> PlanetWeather {
-    PlanetWeather { seed, cirrus, evolution: 0.0, ..PlanetWeather::earth() }
+    PlanetWeather {
+        seed,
+        cirrus,
+        evolution: 0.0,
+        ..PlanetWeather::earth()
+    }
 }
 
 fn tod(name: &str) -> Tod {
-    let seed = std::env::var("MUSKOKA_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(11);
+    let seed = std::env::var("MUSKOKA_SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(11);
     let base = CloudLayer {
-        bottom_km: 1.6, top_km: 4.4, coverage: 0.45, kind: 0.85, extinction: 45.0,
-        weather_km: 20.0, shape_km: 5.0, detail_km: 0.7, wind: [0.3, 0.0, 0.15],
-        albedo: [0.99; 3], erosion: 0.5, representation: helio_pass_sky::CloudRepresentation::Volumetric,
+        bottom_km: 1.6,
+        top_km: 4.4,
+        coverage: 0.45,
+        kind: 0.85,
+        extinction: 45.0,
+        weather_km: 20.0,
+        shape_km: 5.0,
+        detail_km: 0.7,
+        wind: [0.3, 0.0, 0.15],
+        albedo: [0.99; 3],
+        erosion: 0.5,
+        representation: helio_pass_sky::CloudRepresentation::Volumetric,
         weather: weather(seed, 0.55),
     };
     let tannin = ([0.006, 0.028, 0.030], [0.55, 0.16, 0.10]);
     match name {
         "dawn" => Tod {
-            elevation: 4.5, azimuth: 32.0, sun_color: [1.0, 0.95, 0.88], sun_intensity: 5.0,
-            ambient: [0.5, 0.55, 0.7], ambient_intensity: 0.12, exposure: 3.4,
-            clouds: CloudLayer { coverage: 0.38, kind: 0.55, bottom_km: 1.2, top_km: 3.2, weather: weather(seed, 0.4), ..base },
-            water_color: tannin.0, extinction: tannin.1, mist: (0.0032, 0.045, 0.6),
+            elevation: 4.5,
+            azimuth: 32.0,
+            sun_color: [1.0, 0.95, 0.88],
+            sun_intensity: 5.0,
+            ambient: [0.5, 0.55, 0.7],
+            ambient_intensity: 0.12,
+            exposure: 3.4,
+            clouds: CloudLayer {
+                coverage: 0.38,
+                kind: 0.55,
+                bottom_km: 1.2,
+                top_km: 3.2,
+                weather: weather(seed, 0.4),
+                ..base
+            },
+            water_color: tannin.0,
+            extinction: tannin.1,
+            mist: (0.0032, 0.045, 0.6),
         },
         "golden" => Tod {
-            elevation: 7.0, azimuth: 322.0, sun_color: [1.0, 0.95, 0.88], sun_intensity: 5.0,
-            ambient: [0.5, 0.55, 0.7], ambient_intensity: 0.12, exposure: 3.2,
-            clouds: CloudLayer { coverage: 0.5, kind: 0.8, weather: weather(seed, 0.7), ..base },
-            water_color: tannin.0, extinction: tannin.1, mist: (0.0011, 0.02, 0.65),
+            elevation: 7.0,
+            azimuth: 322.0,
+            sun_color: [1.0, 0.95, 0.88],
+            sun_intensity: 5.0,
+            ambient: [0.5, 0.55, 0.7],
+            ambient_intensity: 0.12,
+            exposure: 3.2,
+            clouds: CloudLayer {
+                coverage: 0.5,
+                kind: 0.8,
+                weather: weather(seed, 0.7),
+                ..base
+            },
+            water_color: tannin.0,
+            extinction: tannin.1,
+            mist: (0.0011, 0.02, 0.65),
         },
         "night" => Tod {
-            elevation: 40.0, azimuth: 150.0, sun_color: [0.55, 0.65, 0.95], sun_intensity: 0.05,
-            ambient: [0.2, 0.28, 0.5], ambient_intensity: 2.5, exposure: 5.0,
-            clouds: CloudLayer { coverage: 0.08, weather: weather(seed, 0.1), ..base },
-            water_color: [0.004, 0.012, 0.012], extinction: tannin.1, mist: (0.0006, 0.02, 0.5),
+            elevation: 40.0,
+            azimuth: 150.0,
+            sun_color: [0.55, 0.65, 0.95],
+            sun_intensity: 0.05,
+            ambient: [0.2, 0.28, 0.5],
+            ambient_intensity: 2.5,
+            exposure: 5.0,
+            clouds: CloudLayer {
+                coverage: 0.08,
+                weather: weather(seed, 0.1),
+                ..base
+            },
+            water_color: [0.004, 0.012, 0.012],
+            extinction: tannin.1,
+            mist: (0.0006, 0.02, 0.5),
         },
         _ => Tod {
-            elevation: 56.0, azimuth: 205.0, sun_color: [1.0, 0.97, 0.9], sun_intensity: 5.0,
-            ambient: [0.5, 0.58, 0.75], ambient_intensity: 0.1, exposure: 2.3,
+            elevation: 56.0,
+            azimuth: 205.0,
+            sun_color: [1.0, 0.97, 0.9],
+            sun_intensity: 5.0,
+            ambient: [0.5, 0.58, 0.75],
+            ambient_intensity: 0.1,
+            exposure: 2.3,
             clouds: base,
-            water_color: tannin.0, extinction: tannin.1, mist: (0.0004, 0.012, 0.55),
+            water_color: tannin.0,
+            extinction: tannin.1,
+            mist: (0.0004, 0.012, 0.55),
         },
     }
 }
@@ -185,19 +246,32 @@ impl ApplicationHandler for App {
             config = config.with_tsr_quality(helio_pass_tsr::TsrQuality::Native);
         }
         let mut scene_db = new_scene_db_with_gpu_mirror_and(&device, &queue, |store| {
-            helio_pass_water_sim::host_rows::WaterVolumeComponent::register_gpu_columns_growable(store, 8, &device);
+            helio_pass_water_sim::host_rows::WaterVolumeComponent::register_gpu_columns_growable(
+                store, 8, &device,
+            );
             lens_rows::LensComponent::register_gpu_columns_growable(store, 64, &device);
             lens_rows::LensElementComponent::register_gpu_columns_growable(store, 64, &device);
-            helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(store, 16, &device);
+            helio_pass_volumetric_fog::host_rows::GlobalFogComponent::register_gpu_columns_growable(
+                store, 16, &device,
+            );
             helio_pass_volumetric_fog::host_rows::LocalFogVolumeComponent::register_gpu_columns_growable(store, 16, &device);
             helio_pass_volumetric_fog::host_rows::VolumetricFogSettingsComponent::register_gpu_columns_growable(store, 16, &device);
         });
-        let textures = Arc::new(std::sync::RwLock::new(pulsar_scenedb::gpu::TextureStore::new(8192)));
-        let mirror = scene_db_handle(&scene_db).with_texture_store(textures).expect("texture store");
+        let textures = Arc::new(std::sync::RwLock::new(
+            pulsar_scenedb::gpu::TextureStore::new(8192),
+        ));
+        let mirror = scene_db_handle(&scene_db)
+            .with_texture_store(textures)
+            .expect("texture store");
         scene_db.world.attach_gpu_mirror(mirror);
         // Virtual geometry carries the scanned trees: no triangle cap.
-        let mut vg = (std::env::var("MUSKOKA_VG").as_deref() != Ok("0") && vg_support::Vg::supported(&device))
-            .then(|| vg_support::Vg::new(PathBuf::from("D:/GitHub/Pulsar-Native/target/muskoka-assets/vgcache")));
+        let mut vg = (std::env::var("MUSKOKA_VG").as_deref() != Ok("0")
+            && vg_support::Vg::supported(&device))
+        .then(|| {
+            vg_support::Vg::new(PathBuf::from(
+                "D:/GitHub/Pulsar-Native/target/muskoka-assets/vgcache",
+            ))
+        });
         if let Some(vg) = &vg {
             config = vg.config(config);
         }
@@ -239,7 +313,10 @@ impl ApplicationHandler for App {
             row.night_sky_enabled = 0;
             row.shooting_stars_enabled = 0;
         }
-        scene_db.world.insert(sky_id, helio_pass_sky::host_rows::AtmosphereComponent::from(row));
+        scene_db.world.insert(
+            sky_id,
+            helio_pass_sky::host_rows::AtmosphereComponent::from(row),
+        );
 
         // ── light: the sun (or moon), with a shadow map and shafts ──
         let to_sun = toward(tod.elevation, tod.azimuth);
@@ -249,7 +326,12 @@ impl ApplicationHandler for App {
             helio_light_api::GpuLight {
                 position_range: [0.0, 0.0, 0.0, f32::MAX],
                 direction_outer: [travel.x, travel.y, travel.z, 0.0],
-                color_intensity: [tod.sun_color[0], tod.sun_color[1], tod.sun_color[2], tod.sun_intensity],
+                color_intensity: [
+                    tod.sun_color[0],
+                    tod.sun_color[1],
+                    tod.sun_color[2],
+                    tod.sun_intensity,
+                ],
                 shadow_index: 0,
                 light_type: helio_light_api::LightType::Directional as u32,
                 god_rays_enabled: 1,
@@ -265,7 +347,9 @@ impl ApplicationHandler for App {
             match std::env::var("MUSKOKA_VIEWS") {
                 Ok(list) => {
                     let wanted: Vec<&str> = list.split(',').map(str::trim).collect();
-                    all.into_iter().filter(|v| wanted.contains(&v.name)).collect()
+                    all.into_iter()
+                        .filter(|v| wanted.contains(&v.name))
+                        .collect()
                 }
                 Err(_) => all,
             }
@@ -275,7 +359,10 @@ impl ApplicationHandler for App {
             // it does not brighten the sky).
             for v in &views {
                 let p = v.position + glam::Vec3::new(0.0, 14.0, 0.0);
-                spawn_light(&mut scene_db.world, point_light([p.x, p.y, p.z], [0.55, 0.68, 1.0], 260.0, 180.0));
+                spawn_light(
+                    &mut scene_db.world,
+                    point_light([p.x, p.y, p.z], [0.55, 0.68, 1.0], 260.0, 180.0),
+                );
             }
         }
 
@@ -285,15 +372,24 @@ impl ApplicationHandler for App {
         scene_db.world.insert(
             fog,
             helio_pass_volumetric_fog::host_rows::GlobalFogComponent {
-                enabled: (std::env::var_os("MUSKOKA_NOFOG").is_none()) as u32, mode: 1, extinction, height_falloff: falloff, height: 0.0,
-                anisotropy, albedo: [0.82, 0.88, 1.0], ..Default::default()
+                enabled: (std::env::var_os("MUSKOKA_NOFOG").is_none()) as u32,
+                mode: 1,
+                extinction,
+                height_falloff: falloff,
+                height: 0.0,
+                anisotropy,
+                albedo: [0.82, 0.88, 1.0],
+                ..Default::default()
             },
         );
         let fog_settings = scene_db.world.spawn();
         scene_db.world.insert(
             fog_settings,
             helio_pass_volumetric_fog::host_rows::VolumetricFogSettingsComponent {
-                quality: 1, max_distance: 1800.0, light_max_distance: 1800.0, ..Default::default()
+                quality: 1,
+                max_distance: 1800.0,
+                light_max_distance: 1800.0,
+                ..Default::default()
             },
         );
 
@@ -308,10 +404,19 @@ impl ApplicationHandler for App {
             wave_direction: [0.7, 0.7],
             wave_steepness: 0.3,
             water_color: tod.water_color,
-            extinction: std::env::var("MUSKOKA_EXT").ok().and_then(|s| { let v: Vec<f32> = s.split(',').filter_map(|x| x.parse().ok()).collect(); (v.len() == 3).then(|| [v[0], v[1], v[2]]) }).unwrap_or(tod.extinction),
+            extinction: std::env::var("MUSKOKA_EXT")
+                .ok()
+                .and_then(|s| {
+                    let v: Vec<f32> = s.split(',').filter_map(|x| x.parse().ok()).collect();
+                    (v.len() == 3).then(|| [v[0], v[1], v[2]])
+                })
+                .unwrap_or(tod.extinction),
             foam_threshold: 0.05,
             foam_amount: 0.4,
-            reflection_strength: std::env::var("MUSKOKA_REFL").ok().and_then(|s| s.parse().ok()).unwrap_or(1.0),
+            reflection_strength: std::env::var("MUSKOKA_REFL")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1.0),
             refraction_strength: 0.06,
             fresnel_power: 5.0,
             caustics_enabled: true,
@@ -344,29 +449,53 @@ impl ApplicationHandler for App {
         let root = std::env::var("MUSKOKA_ASSETS")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("D:/GitHub/Pulsar-Native/target/muskoka-assets"));
-        let density = std::env::var("MUSKOKA_DENSITY").ok().and_then(|s| s.parse().ok()).unwrap_or(1.0);
+        let density = std::env::var("MUSKOKA_DENSITY")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1.0);
         let started = std::time::Instant::now();
-        forest_scene::build(&mut scene_db.world, &root, &device, &queue, density, &mut vg).expect("forest scene");
+        forest_scene::build(
+            &mut scene_db.world,
+            &root,
+            &device,
+            &queue,
+            density,
+            &mut vg,
+        )
+        .expect("forest scene");
         eprintln!("scene built in {:.0?}", started.elapsed());
         // The water row once more, now the scene is in: the volume's first write
         // must not be the only one the GPU mirror sees.
-        if let Some(mut water) = scene_db.world.get_mut::<helio_pass_water_sim::host_rows::WaterVolumeComponent>(water_id) {
+        if let Some(mut water) = scene_db
+            .world
+            .get_mut::<helio_pass_water_sim::host_rows::WaterVolumeComponent>(water_id)
+        {
             *water = lake_row;
         }
         if let Some(vg) = &vg {
-            eprintln!("virtual geometry: {} instances, {:.1}M source triangles", vg.instances, vg.triangles as f64 / 1e6);
+            eprintln!(
+                "virtual geometry: {} instances, {:.1}M source triangles",
+                vg.instances,
+                vg.triangles as f64 / 1e6
+            );
         }
         if let Some(sim) = renderer.find_pass_mut::<WaterSimPass>() {
             sim.set_shore_map(Some(
                 helio_pass_water_sim::WaterShoreMap::from_terrain(
-                    [0.0, 0.0], [1600.0, 1600.0], 0.0, &forest_scene::Lake,
+                    [0.0, 0.0],
+                    [1600.0, 1600.0],
+                    0.0,
+                    &forest_scene::Lake,
                 )
                 .expect("shoreline bake"),
             ));
             sim.set_ocean_rest_height(0.0).expect("rest height");
         }
 
-        renderer.set_feature_live(helio::AmbientLight { color: tod.ambient, intensity: tod.ambient_intensity });
+        renderer.set_feature_live(helio::AmbientLight {
+            color: tod.ambient,
+            intensity: tod.ambient_intensity,
+        });
         renderer.set_clear_color([0.0025, 0.0035, 0.01, 1.0]);
         let mut post = helio_pass_postprocess::PostProcessSettings::default();
         post.tonemap_operator = helio::TonemapOperator::AgxPunchy;
@@ -405,7 +534,9 @@ impl ApplicationHandler for App {
             for (i, slot) in slots.iter().enumerate() {
                 let element = elements
                     .get(i)
-                    .map_or_else(bytemuck::Zeroable::zeroed, |e| lens_rows::LensElementComponent::from(*e));
+                    .map_or_else(bytemuck::Zeroable::zeroed, |e| {
+                        lens_rows::LensElementComponent::from(*e)
+                    });
                 scene_db.world.insert(*slot, element);
             }
             let entity = scene_db.world.spawn();
@@ -417,12 +548,28 @@ impl ApplicationHandler for App {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("D:/GitHub/Pulsar-Native/target/muskoka-out"));
         std::fs::create_dir_all(&out_dir).expect("output directory");
-        let frames_per_view = std::env::var("MUSKOKA_FRAMES").ok().and_then(|s| s.parse().ok()).unwrap_or(100);
+        let frames_per_view = std::env::var("MUSKOKA_FRAMES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(100);
 
         let mut state = AppState {
-            window, surface, device, queue, surface_format: format, usage, renderer, scene_db,
-            lens: lens_entity, views, view_index: 0, frames_per_view, out_dir, tod: name,
-            capture: None, done: false,
+            window,
+            surface,
+            device,
+            queue,
+            surface_format: format,
+            usage,
+            renderer,
+            scene_db,
+            lens: lens_entity,
+            views,
+            view_index: 0,
+            frames_per_view,
+            out_dir,
+            tod: name,
+            capture: None,
+            done: false,
         };
         state.arm();
         self.state = Some(state);
@@ -479,14 +626,23 @@ impl AppState {
         std::env::set_var("HELIO_CAPTURE", &path);
         std::env::set_var("HELIO_CAPTURE_FRAME", self.frames_per_view.to_string());
         self.capture = Some(SurfaceCapture::from_env());
-        if let Some(mut lens) = self.scene_db.world.get_mut::<lens_rows::LensComponent>(self.lens) {
+        if let Some(mut lens) = self
+            .scene_db
+            .world
+            .get_mut::<lens_rows::LensComponent>(self.lens)
+        {
             lens.focus_distance_m = view.focus_m;
         }
         // A cut: nothing before it is history for the temporal resolve.
         if let Some(tsr) = self.renderer.find_pass_mut::<helio_pass_tsr::TsrPass>() {
             tsr.reset_history();
         }
-        eprintln!("view {} ({}/{})", view.name, self.view_index + 1, self.views.len());
+        eprintln!(
+            "view {} ({}/{})",
+            view.name,
+            self.view_index + 1,
+            self.views.len()
+        );
     }
 
     fn render(&mut self) {
@@ -509,10 +665,14 @@ impl AppState {
         );
         common::flush_scene_db(&self.scene_db, &self.queue);
         let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture) | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             _ => return,
         };
-        if let Err(e) = self.renderer.render(&camera, &output.texture.create_view(&Default::default())) {
+        if let Err(e) = self
+            .renderer
+            .render(&camera, &output.texture.create_view(&Default::default()))
+        {
             log::error!("render error: {e:?}");
         }
         let saved = self

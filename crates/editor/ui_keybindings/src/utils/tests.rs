@@ -37,7 +37,10 @@ fn overrides_unbind_and_rebind_over_the_defaults(cx: &mut TestAppContext) {
             KeyBinding::new("ctrl-b", Beta, None),
         ]);
         let warnings = registry::apply(
-            &[entry("ctrl-a", None), entry("ctrl-j", Some("kbtest::Alpha"))],
+            &[
+                entry("ctrl-a", None),
+                entry("ctrl-j", Some("kbtest::Alpha")),
+            ],
             cx,
         );
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -69,10 +72,17 @@ fn rebuilding_replaces_the_users_bindings_and_keeps_later_defaults(cx: &mut Test
         cx.bind_keys([KeyBinding::new("ctrl-b", Beta, None)]);
         registry::apply(&[entry("ctrl-k", Some("kbtest::Alpha"))], cx);
 
-        assert!(press(cx, "ctrl-j", &[]).is_empty(), "the old override is gone");
+        assert!(
+            press(cx, "ctrl-j", &[]).is_empty(),
+            "the old override is gone"
+        );
         assert_eq!(press(cx, "ctrl-k", &[]), vec!["kbtest::Alpha"]);
         assert_eq!(press(cx, "ctrl-a", &[]), vec!["kbtest::Alpha"]);
-        assert_eq!(press(cx, "ctrl-b", &[]), vec!["kbtest::Beta"], "the later default survived");
+        assert_eq!(
+            press(cx, "ctrl-b", &[]),
+            vec!["kbtest::Beta"],
+            "the later default survived"
+        );
 
         registry::apply(&[], cx);
         assert!(press(cx, "ctrl-k", &[]).is_empty());
@@ -101,7 +111,10 @@ fn startup_binds_the_projects_file_over_the_defaults(cx: &mut TestAppContext) {
     let project = tempfile::tempdir().unwrap();
     file::save(
         project.path(),
-        &[entry("ctrl-a", None), entry("ctrl-J", Some("kbtest::Alpha"))],
+        &[
+            entry("ctrl-a", None),
+            entry("ctrl-J", Some("kbtest::Alpha")),
+        ],
     )
     .unwrap();
     cx.update(|cx| {
@@ -146,9 +159,7 @@ fn switching_project_loads_that_projects_file(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn unbinding_a_global_shortcut_keeps_contextual_bindings_on_the_same_keys(
-    cx: &mut TestAppContext,
-) {
+fn unbinding_a_global_shortcut_keeps_contextual_bindings_on_the_same_keys(cx: &mut TestAppContext) {
     cx.update(|cx| {
         cx.bind_keys([
             KeyBinding::new("ctrl-a", Alpha, None),
@@ -162,7 +173,10 @@ fn unbinding_a_global_shortcut_keeps_contextual_bindings_on_the_same_keys(
             vec!["kbtest::Beta"],
             "the contextual binding still fires"
         );
-        assert!(press(cx, "ctrl-a", &[]).is_empty(), "the global one is gone");
+        assert!(
+            press(cx, "ctrl-a", &[]).is_empty(),
+            "the global one is gone"
+        );
 
         // Changing the file again brings the removed default back.
         registry::apply(&[], cx);
@@ -176,10 +190,7 @@ fn an_unbinding_only_removes_what_was_bound_before_it(cx: &mut TestAppContext) {
     cx.update(|cx| {
         cx.bind_keys([KeyBinding::new("ctrl-a", Alpha, None)]);
         registry::apply(
-            &[
-                entry("ctrl-a", None),
-                entry("ctrl-a", Some("kbtest::Beta")),
-            ],
+            &[entry("ctrl-a", None), entry("ctrl-a", Some("kbtest::Beta"))],
             cx,
         );
         assert_eq!(press(cx, "ctrl-a", &[]), vec!["kbtest::Beta"]);

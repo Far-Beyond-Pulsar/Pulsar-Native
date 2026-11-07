@@ -28,18 +28,22 @@ pub use helio_water_api::{WATER_HITBOX_GATE_WORD, WATER_HITBOX_SOURCE_ROW_BYTES}
 
 /// A volume: its surface height, sun and world phase (`rows_volumes.wgsl`), with
 /// the sun the lights' directional light.
-const VOLUMES_PLACEMENT: Placement =
-    Placement::new("water_volumes", include_str!("../shaders/rows_volumes.wgsl"))
-        .from_owner()
-        .lit();
+const VOLUMES_PLACEMENT: Placement = Placement::new(
+    "water_volumes",
+    include_str!("../shaders/rows_volumes.wgsl"),
+)
+.from_owner()
+.lit();
 /// The global wind over the volumes (`rows_wind.wgsl`).
 const WIND_PLACEMENT: Placement =
     Placement::new("water_wind", include_str!("../shaders/rows_wind.wgsl"));
 /// A hitbox bounded by the meshes its owner holds (`rows_hitboxes.wgsl`).
-const HITBOXES_PLACEMENT: Placement =
-    Placement::new("water_hitboxes", include_str!("../shaders/rows_hitboxes.wgsl"))
-        .from_owner()
-        .mesh_bounded();
+const HITBOXES_PLACEMENT: Placement = Placement::new(
+    "water_hitboxes",
+    include_str!("../shaders/rows_hitboxes.wgsl"),
+)
+.from_owner()
+.mesh_bounded();
 
 pub const WATER_VOLUMES_KEY: BufferKey = BufferKey::of("water_volumes");
 pub const WATER_HITBOXES_KEY: BufferKey = BufferKey::of("water_hitboxes");

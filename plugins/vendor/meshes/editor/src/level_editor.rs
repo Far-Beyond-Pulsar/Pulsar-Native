@@ -28,11 +28,7 @@ inventory::submit! {
 }
 
 /// A primitive mesh (`meshes/primitives/<file>`) at the origin.
-fn primitive(
-    state: &mut LevelEditorState,
-    name: &str,
-    file: &str,
-) -> CommandResult {
+fn primitive(state: &mut LevelEditorState, name: &str, file: &str) -> CommandResult {
     let mesh = StaticMeshComponent::for_mesh_asset(&format!("meshes/primitives/{file}"));
     add_object(
         state,

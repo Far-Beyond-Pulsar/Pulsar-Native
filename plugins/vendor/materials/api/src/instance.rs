@@ -33,7 +33,7 @@ use pulsar_scenedb::{AssetId, AssetView, Entity, World};
 use pulsar_scenedb_derive::SceneStore;
 
 use crate::asset::{
-    MATERIAL_ASSET_KIND, MaterialAsset, MaterialPayload, ResolvedMaterial, SurfaceValues,
+    MaterialAsset, MaterialPayload, ResolvedMaterial, SurfaceValues, MATERIAL_ASSET_KIND,
 };
 use crate::host_rows::MaterialComponent;
 
@@ -113,7 +113,10 @@ impl std::fmt::Debug for MaterialInstanceComponent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MaterialInstanceComponent")
             .field("source", &self.source)
-            .field("bound", &self.bound.as_ref().map(|(id, version, _)| (id.0, version)))
+            .field(
+                "bound",
+                &self.bound.as_ref().map(|(id, version, _)| (id.0, version)),
+            )
             .finish()
     }
 }
@@ -153,7 +156,10 @@ impl MaterialInstanceComponent {
                 .resolve(*id, *version, mirror, &self.source.fallback)
                 .unwrap_or_else(|error| {
                     if mirror.is_some() {
-                        log::warn!("material '{}' could not be resolved ({error}); drawing its fallback", self.source.asset);
+                        log::warn!(
+                            "material '{}' could not be resolved ({error}); drawing its fallback",
+                            self.source.asset
+                        );
                     }
                     ResolvedMaterial::surface(&self.source.fallback)
                 }),

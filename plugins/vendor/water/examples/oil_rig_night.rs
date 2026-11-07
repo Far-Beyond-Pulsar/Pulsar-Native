@@ -36,10 +36,30 @@ struct WaterlineProp {
 }
 
 const WATERLINE_PROPS: &[WaterlineProp] = &[
-    WaterlineProp { position: [-7.0, 0.55, 23.0], half_extents: [1.0, 0.55, 0.8], color: [0.72, 0.24, 0.08, 1.0], roughness: 0.42 },
-    WaterlineProp { position: [-7.0, 1.75, 23.0], half_extents: [0.72, 0.62, 0.62], color: [0.82, 0.57, 0.18, 1.0], roughness: 0.34 },
-    WaterlineProp { position: [7.0, 0.6, 20.0], half_extents: [0.78, 0.6, 0.78], color: [0.05, 0.34, 0.48, 1.0], roughness: 0.22 },
-    WaterlineProp { position: [16.0, 0.45, 7.0], half_extents: [0.52, 0.45, 0.52], color: [0.9, 0.36, 0.08, 1.0], roughness: 0.28 },
+    WaterlineProp {
+        position: [-7.0, 0.55, 23.0],
+        half_extents: [1.0, 0.55, 0.8],
+        color: [0.72, 0.24, 0.08, 1.0],
+        roughness: 0.42,
+    },
+    WaterlineProp {
+        position: [-7.0, 1.75, 23.0],
+        half_extents: [0.72, 0.62, 0.62],
+        color: [0.82, 0.57, 0.18, 1.0],
+        roughness: 0.34,
+    },
+    WaterlineProp {
+        position: [7.0, 0.6, 20.0],
+        half_extents: [0.78, 0.6, 0.78],
+        color: [0.05, 0.34, 0.48, 1.0],
+        roughness: 0.22,
+    },
+    WaterlineProp {
+        position: [16.0, 0.45, 7.0],
+        half_extents: [0.52, 0.45, 0.52],
+        color: [0.9, 0.36, 0.08, 1.0],
+        roughness: 0.28,
+    },
 ];
 
 use winit::{
@@ -143,10 +163,30 @@ impl ApplicationHandler for App {
         let sky_id = spawn_sky(&mut scene_db.world, [1.0, 0.92, 0.78]);
         let time_of_day = std::env::var("WATER_TIME_OF_DAY").unwrap_or_else(|_| "night".into());
         let (sun_direction, sun_color, sun_intensity, ambient) = match time_of_day.as_str() {
-            "dawn" => ([0.15, -0.18, -0.97], [1.0, 0.48, 0.24], 1.1, [0.10, 0.075, 0.09]),
-            "day" => ([0.12, -0.96, -0.25], [1.0, 0.97, 0.9], 2.0, [0.15, 0.18, 0.22]),
-            "sunset" => ([0.25, -0.12, -0.96], [1.0, 0.36, 0.17], 0.8, [0.09, 0.055, 0.08]),
-            _ => ([0.2, -0.9, -0.3], [0.36, 0.47, 0.72], 0.025, [0.045, 0.06, 0.08]),
+            "dawn" => (
+                [0.15, -0.18, -0.97],
+                [1.0, 0.48, 0.24],
+                1.1,
+                [0.10, 0.075, 0.09],
+            ),
+            "day" => (
+                [0.12, -0.96, -0.25],
+                [1.0, 0.97, 0.9],
+                2.0,
+                [0.15, 0.18, 0.22],
+            ),
+            "sunset" => (
+                [0.25, -0.12, -0.96],
+                [1.0, 0.36, 0.17],
+                0.8,
+                [0.09, 0.055, 0.08],
+            ),
+            _ => (
+                [0.2, -0.9, -0.3],
+                [0.36, 0.47, 0.72],
+                0.025,
+                [0.045, 0.06, 0.08],
+            ),
         };
         // A real directional emitter drives atmospheric scattering and cloud
         // lighting. The HDR panorama below is a separate appearance layer.
@@ -173,7 +213,8 @@ impl ApplicationHandler for App {
             sky.shooting_stars_enabled = u32::from(time_of_day == "night");
             if time_of_day == "sunset" {
                 if let Ok(hdri) = std::env::var("WATER_HDRI_PATH") {
-                    sky.sky_texture_source = helio_pass_sky::sky_texture::custom_source(Path::new(&hdri));
+                    sky.sky_texture_source =
+                        helio_pass_sky::sky_texture::custom_source(Path::new(&hdri));
                     sky.sky_texture_intensity = 1.0;
                     sky.sky_texture_opacity = 0.8;
                 }
@@ -524,11 +565,10 @@ impl AppState {
         );
 
         common::flush_scene_db(&self.scene_db, &self.queue);
-        if let Err(e) = self.capture.render_window_frame(
-            &mut self.renderer,
-            &camera,
-            &self.surface,
-        ) {
+        if let Err(e) = self
+            .capture
+            .render_window_frame(&mut self.renderer, &camera, &self.surface)
+        {
             log::error!("Render error: {:?}", e);
         }
     }

@@ -84,9 +84,9 @@ fn parse(text: &str, path: &Path) -> Loaded {
     };
     let Some(object) = value.as_object() else {
         keep_copy(path);
-        loaded
-            .warnings
-            .push(format!("{FILE_NAME} is not a JSON object; a copy was kept as {FILE_NAME}.bak"));
+        loaded.warnings.push(format!(
+            "{FILE_NAME} is not a JSON object; a copy was kept as {FILE_NAME}.bak"
+        ));
         return loaded;
     };
     let version = object.get("version").and_then(Value::as_u64).unwrap_or(1);
@@ -105,9 +105,10 @@ fn parse(text: &str, path: &Path) -> Loaded {
             Ok(entry) if !entry.keystrokes.trim().is_empty() => loaded.overrides.push(entry),
             Ok(_) => {
                 skipped = true;
-                loaded
-                    .warnings
-                    .push(format!("entry {} has no keystrokes and was skipped", ix + 1));
+                loaded.warnings.push(format!(
+                    "entry {} has no keystrokes and was skipped",
+                    ix + 1
+                ));
             }
             Err(error) => {
                 skipped = true;
@@ -166,7 +167,11 @@ mod tests {
         ];
         save(dir.path(), &overrides).unwrap();
         assert!(keybindings_path(dir.path()).is_file());
-        assert!(!keybindings_path(dir.path()).with_extension("json.tmp").exists());
+        assert!(
+            !keybindings_path(dir.path())
+                .with_extension("json.tmp")
+                .exists()
+        );
         assert_eq!(load(dir.path()).overrides, overrides);
     }
 
@@ -226,8 +231,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = keybindings_path(dir.path());
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, r#"{ "bindings": [ { "keystrokes": "f5", "action": "a::Run" } ] }"#)
-            .unwrap();
-        assert_eq!(load(dir.path()).overrides, vec![entry("f5", Some("a::Run"))]);
+        std::fs::write(
+            &path,
+            r#"{ "bindings": [ { "keystrokes": "f5", "action": "a::Run" } ] }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            load(dir.path()).overrides,
+            vec![entry("f5", Some("a::Run"))]
+        );
     }
 }

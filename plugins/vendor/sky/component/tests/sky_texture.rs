@@ -1,8 +1,8 @@
 //! The sky texture layer on the authored component: defaults, saved-level
 //! compatibility, independence from the procedural layers, selection,
 //! orientation and blend.
-use helio_pass_sky::sky_texture::{custom_path, source};
 use helio_pass_sky::AtmosphereRow;
+use helio_pass_sky::sky_texture::{custom_path, source};
 use sky_component::{AtmosphereComponent, SkyTexturePreset};
 
 #[test]
@@ -34,7 +34,11 @@ fn texture_and_procedural_layers_are_independent() {
     let row = both.to_row();
     assert_eq!(row.sky_texture_source, source::GALAXY);
     assert_eq!(
-        (row.night_sky_enabled, row.shooting_stars_enabled, row.clouds_enabled),
+        (
+            row.night_sky_enabled,
+            row.shooting_stars_enabled,
+            row.clouds_enabled
+        ),
         (1, 1, 1)
     );
     let no_stars = AtmosphereComponent {
@@ -42,13 +46,19 @@ fn texture_and_procedural_layers_are_independent() {
         ..both.clone()
     }
     .to_row();
-    assert_eq!((no_stars.night_sky_enabled, no_stars.sky_texture_source), (0, source::GALAXY));
+    assert_eq!(
+        (no_stars.night_sky_enabled, no_stars.sky_texture_source),
+        (0, source::GALAXY)
+    );
     let no_texture = AtmosphereComponent {
         sky_texture_enabled: false,
         ..both
     }
     .to_row();
-    assert_eq!((no_texture.night_sky_enabled, no_texture.sky_texture_source), (1, source::NONE));
+    assert_eq!(
+        (no_texture.night_sky_enabled, no_texture.sky_texture_source),
+        (1, source::NONE)
+    );
 }
 
 #[test]
@@ -64,7 +74,10 @@ fn preset_selection_orientation_and_blend_reach_the_row() {
     ] {
         sky.sky_texture_preset = preset;
         assert_eq!(sky.to_row().sky_texture_source, code);
-        assert_eq!(AtmosphereComponent::from_row(&sky.to_row()).sky_texture_preset, preset);
+        assert_eq!(
+            AtmosphereComponent::from_row(&sky.to_row()).sky_texture_preset,
+            preset
+        );
     }
     sky.sky_texture_yaw_deg = 90.0;
     sky.sky_texture_pitch_deg = -30.0;
@@ -75,7 +88,10 @@ fn preset_selection_orientation_and_blend_reach_the_row() {
     assert!((row.sky_texture_yaw - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
     assert!((row.sky_texture_pitch + 30f32.to_radians()).abs() < 1e-6);
     assert!((row.sky_texture_roll - 15f32.to_radians()).abs() < 1e-6);
-    assert_eq!((row.sky_texture_intensity, row.sky_texture_opacity), (3.0, 1.0));
+    assert_eq!(
+        (row.sky_texture_intensity, row.sky_texture_opacity),
+        (3.0, 1.0)
+    );
 }
 
 #[test]
@@ -90,7 +106,10 @@ fn a_custom_file_round_trips_and_an_empty_one_shows_nothing() {
     let row = sky.to_row();
     assert_ne!(row.sky_texture_source & source::CUSTOM, 0);
     assert_eq!(custom_path(row.sky_texture_source).unwrap(), absolute);
-    assert_eq!(AtmosphereComponent::from_row(&row).sky_texture_file, sky.sky_texture_file);
+    assert_eq!(
+        AtmosphereComponent::from_row(&row).sky_texture_file,
+        sky.sky_texture_file
+    );
     let empty = AtmosphereComponent {
         sky_texture_file: String::new(),
         ..sky

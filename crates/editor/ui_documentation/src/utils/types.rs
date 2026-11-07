@@ -8,7 +8,11 @@ pub enum DocCategory {
 }
 
 impl DocCategory {
-    pub const ALL: [DocCategory; 3] = [DocCategory::Engine, DocCategory::Project, DocCategory::Manual];
+    pub const ALL: [DocCategory; 3] = [
+        DocCategory::Engine,
+        DocCategory::Project,
+        DocCategory::Manual,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {

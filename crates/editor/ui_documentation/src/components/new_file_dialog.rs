@@ -65,12 +65,15 @@ pub fn render_new_file_dialog(
                     h_flex()
                         .gap_2()
                         .justify_end()
-                        .child(Button::new("cancel-new-guide").label("Cancel").ghost().on_click(
-                            cx.listener(|this, _, _, cx| {
-                                handlers::close_new_file_dialog(this);
-                                cx.notify();
-                            }),
-                        ))
+                        .child(
+                            Button::new("cancel-new-guide")
+                                .label("Cancel")
+                                .ghost()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    handlers::close_new_file_dialog(this);
+                                    cx.notify();
+                                })),
+                        )
                         .child(
                             Button::new("create-new-guide")
                                 .label("Create")

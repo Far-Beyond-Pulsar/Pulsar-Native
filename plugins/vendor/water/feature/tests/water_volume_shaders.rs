@@ -2,7 +2,9 @@
 //! one declaration (`WATER_VOLUME_SNIPPET`) and the snippets its pass
 //! composes it with, as the passes build them.
 
-use helio_pass_water_sim::pipeline::{WATER_LIGHTS_SNIPPET, WATER_SHORE_SNIPPET, WATER_SKY_SNIPPET};
+use helio_pass_water_sim::pipeline::{
+    WATER_LIGHTS_SNIPPET, WATER_SHORE_SNIPPET, WATER_SKY_SNIPPET,
+};
 use helio_pass_water_sim::surface_query::WATER_QUERY_SNIPPET;
 use helio_pass_water_sim::WATER_VOLUME_SNIPPET;
 

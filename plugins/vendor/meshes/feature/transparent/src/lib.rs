@@ -526,8 +526,9 @@ impl RenderPass for TransparentPass {
         })];
         if self.reactive_mask {
             attachments.push(Some(wgpu::RenderPassColorAttachment {
-                view: resources
-                    .texture_view(helio_core::ResourceKey::new(helio_frame_api::color::REACTIVE_MASK))?,
+                view: resources.texture_view(helio_core::ResourceKey::new(
+                    helio_frame_api::color::REACTIVE_MASK,
+                ))?,
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {

@@ -39,8 +39,7 @@ use pulsar_scenedb::{Entity, World};
 
 use crate::scene::hierarchy_transform;
 use crate::scene::{
-    ObjectType, RenderProps, SceneWorldExt, SharedScene, SpawnObject,
-    Transform, Visibility,
+    ObjectType, RenderProps, SceneWorldExt, SharedScene, SpawnObject, Transform, Visibility,
 };
 
 /// Errors from [`RuntimeLevel::load`].

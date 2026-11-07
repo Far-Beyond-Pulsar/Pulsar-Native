@@ -68,9 +68,9 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
 }
 pub use pulsar_scene_model::{
     attachments, components, frames, hierarchy_transform, instance, level_instances, partitions,
-    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name,
-    ObjectId, ObjectType, Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex,
-    SpawnObject, StableId, Transform, Visibility,
+    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name, ObjectId, ObjectType,
+    Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId,
+    Transform, Visibility,
 };
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
 

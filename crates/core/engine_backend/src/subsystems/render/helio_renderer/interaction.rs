@@ -990,7 +990,13 @@ fn view_icon(world: &World, object: Entity) -> Option<Vec2> {
 /// A ray against an icon of `size` (world units per unit of depth) facing
 /// the camera at the object's position. Object scale/rotation do not affect
 /// icons. Ray distance lets meshes occlude the icon.
-fn icon_hit(view: View, transform: Transform, size: Vec2, origin: Vec3, direction: Vec3) -> Option<f32> {
+fn icon_hit(
+    view: View,
+    transform: Transform,
+    size: Vec2,
+    origin: Vec3,
+    direction: Vec3,
+) -> Option<f32> {
     let center = view.relative(transform.position);
     let depth = (center - view.position).dot(view.forward);
     if depth <= 0.001 || depth >= view.far {
@@ -1427,14 +1433,10 @@ mod tests {
 
     fn spawn_cube(world: &mut World, id: &str, z: f64) {
         let object = world
-            .spawn_object(
-                SpawnObject::new(id)
-                    .with_id(id)
-                    .with_transform(Transform {
-                        position: [0.0, 0.0, z],
-                        ..Default::default()
-                    }),
-            )
+            .spawn_object(SpawnObject::new(id).with_id(id).with_transform(Transform {
+                position: [0.0, 0.0, z],
+                ..Default::default()
+            }))
             .unwrap();
         world.insert(object, TestBox);
     }

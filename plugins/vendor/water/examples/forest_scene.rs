@@ -56,8 +56,11 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 
 /// Shore radius (m) from the lake's centre at angle `th`.
 fn shore_radius(th: f32) -> f32 {
-    520.0 + 90.0 * (2.0 * th + 1.0).sin() + 60.0 * (3.0 * th + 0.3).sin()
-        + 40.0 * (5.0 * th + 2.0).sin() + 25.0 * (9.0 * th + 0.7).sin()
+    520.0
+        + 90.0 * (2.0 * th + 1.0).sin()
+        + 60.0 * (3.0 * th + 0.3).sin()
+        + 40.0 * (5.0 * th + 2.0).sin()
+        + 25.0 * (9.0 * th + 0.7).sin()
 }
 
 /// (x, z, radius, height above the water) of each island.
@@ -86,16 +89,17 @@ pub fn height(x: f32, z: f32) -> f32 {
     } else {
         // Granite shelving up from the water, then forested hills.
         let base = 0.062 * s.min(36.0) + 0.04 * (s - 36.0).max(0.0);
-        let ledges = 0.8 * (fbm(x / 6.5, z / 6.5, 3, 11) * 0.5 + 0.5).powi(2)
-            * smoothstep(0.0, 12.0, s) * (1.0 - smoothstep(25.0, 90.0, s));
+        let ledges = 0.8
+            * (fbm(x / 6.5, z / 6.5, 3, 11) * 0.5 + 0.5).powi(2)
+            * smoothstep(0.0, 12.0, s)
+            * (1.0 - smoothstep(25.0, 90.0, s));
         let hills = 46.0 * inland * (fbm(x / 330.0, z / 330.0, 4, 3) * 0.5 + 0.5)
             + 5.0 * fbm(x / 42.0, z / 42.0, 3, 5) * smoothstep(10.0, 90.0, s);
         base + ledges + hills + 0.5 * fbm(x / 9.0, z / 9.0, 3, 13) * smoothstep(0.0, 20.0, s)
     };
     for &(cx, cz, r, top) in &ISLANDS {
         let d2 = ((x - cx).powi(2) + (z - cz).powi(2)) / (r * r);
-        h += (top + 4.0) * (-1.3 * d2).exp()
-            + 0.6 * fbm(x / 8.0, z / 8.0, 2, 17) * (-d2).exp();
+        h += (top + 4.0) * (-1.3 * d2).exp() + 0.6 * fbm(x / 8.0, z / 8.0, 2, 17) * (-d2).exp();
     }
     h
 }
@@ -151,13 +155,66 @@ pub fn views() -> Vec<View> {
     let lake = Vec3::new(0.0, 0.0, 0.0);
     let at = |p: Vec3, q: Vec3| yaw_to(p, q);
     vec![
-        View { name: "hero", position: hero, yaw: at(hero, lake) + 0.12, pitch: 0.05, fov: 0.78, focus_m: 18.0 },
-        View { name: "low", position: low, yaw: at(low, Vec3::new(-120.0, 0.0, -260.0)), pitch: 0.03, fov: 0.78, focus_m: 40.0 },
-        View { name: "canopy", position: canopy, yaw: at(canopy, lake) + 2.7, pitch: 0.95, fov: 1.05, focus_m: 25.0 },
-        View { name: "overtops", position: Vec3::new(overtops_ground.x, overtops_ground.y + 52.0, overtops_ground.z), yaw: at(overtops_ground, lake), pitch: -0.08, fov: 0.95, focus_m: 400.0 },
-        View { name: "island", position: island, yaw: at(island, Vec3::new(0.0, 0.0, -600.0)) - 0.2, pitch: 0.04, fov: 0.8, focus_m: 120.0 },
-        View { name: "sky", position: wide, yaw: at(wide, lake) - 0.3, pitch: 0.34, fov: 1.15, focus_m: 150.0 },
-        View { name: "forest", position: through, yaw: at(through, lake), pitch: 0.06, fov: 0.8, focus_m: 14.0 },
+        View {
+            name: "hero",
+            position: hero,
+            yaw: at(hero, lake) + 0.12,
+            pitch: 0.05,
+            fov: 0.78,
+            focus_m: 18.0,
+        },
+        View {
+            name: "low",
+            position: low,
+            yaw: at(low, Vec3::new(-120.0, 0.0, -260.0)),
+            pitch: 0.03,
+            fov: 0.78,
+            focus_m: 40.0,
+        },
+        View {
+            name: "canopy",
+            position: canopy,
+            yaw: at(canopy, lake) + 2.7,
+            pitch: 0.95,
+            fov: 1.05,
+            focus_m: 25.0,
+        },
+        View {
+            name: "overtops",
+            position: Vec3::new(
+                overtops_ground.x,
+                overtops_ground.y + 52.0,
+                overtops_ground.z,
+            ),
+            yaw: at(overtops_ground, lake),
+            pitch: -0.08,
+            fov: 0.95,
+            focus_m: 400.0,
+        },
+        View {
+            name: "island",
+            position: island,
+            yaw: at(island, Vec3::new(0.0, 0.0, -600.0)) - 0.2,
+            pitch: 0.04,
+            fov: 0.8,
+            focus_m: 120.0,
+        },
+        View {
+            name: "sky",
+            position: wide,
+            yaw: at(wide, lake) - 0.3,
+            pitch: 0.34,
+            fov: 1.15,
+            focus_m: 150.0,
+        },
+        View {
+            name: "forest",
+            position: through,
+            yaw: at(through, lake),
+            pitch: 0.06,
+            fov: 0.8,
+            focus_m: 14.0,
+        },
     ]
 }
 
@@ -175,20 +232,35 @@ fn register(
     cap: u32,
 ) -> Result<u32, String> {
     while width.max(height_px) > cap && width > 1 && height_px > 1 {
-        let img = image::RgbaImage::from_raw(width, height_px, data).ok_or("invalid RGBA texture")?;
+        let img =
+            image::RgbaImage::from_raw(width, height_px, data).ok_or("invalid RGBA texture")?;
         width /= 2;
         height_px /= 2;
-        data = image::imageops::resize(&img, width, height_px, image::imageops::FilterType::Triangle).into_raw();
+        data = image::imageops::resize(
+            &img,
+            width,
+            height_px,
+            image::imageops::FilterType::Triangle,
+        )
+        .into_raw();
     }
     let chain = mip_chain(&data, width, height_px, kind);
     let refs: Vec<&[u8]> = chain.iter().map(|l| l.texels.as_slice()).collect();
     let descriptor = wgpu::TextureDescriptor {
         label,
-        size: wgpu::Extent3d { width, height: height_px, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height: height_px,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: refs.len() as u32,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: if kind.is_srgb() { wgpu::TextureFormat::Rgba8UnormSrgb } else { wgpu::TextureFormat::Rgba8Unorm },
+        format: if kind.is_srgb() {
+            wgpu::TextureFormat::Rgba8UnormSrgb
+        } else {
+            wgpu::TextureFormat::Rgba8Unorm
+        },
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     };
@@ -199,9 +271,13 @@ fn register(
         .map_err(|e| format!("{e:?}"))
 }
 
-fn texture_store(world: &World) -> Result<std::sync::Arc<std::sync::RwLock<pulsar_scenedb::gpu::TextureStore>>, String> {
+fn texture_store(
+    world: &World,
+) -> Result<std::sync::Arc<std::sync::RwLock<pulsar_scenedb::gpu::TextureStore>>, String> {
     let mirror = world.gpu_mirror().cloned().ok_or("no GPU mirror")?;
-    mirror.texture_store().ok_or_else(|| "no texture store".to_string())
+    mirror
+        .texture_store()
+        .ok_or_else(|| "no texture store".to_string())
 }
 
 /// A material from a Poly Haven texture set (`diff.jpg`, `nor.jpg`, `arm.jpg`).
@@ -214,12 +290,28 @@ fn texture_material(
 ) -> Result<Entity, String> {
     let store = texture_store(world)?;
     let load = |name: &str, kind| -> Result<u32, String> {
-        let img = image::open(dir.join(name)).map_err(|e| format!("{}: {e}", dir.join(name).display()))?.to_rgba8();
+        let img = image::open(dir.join(name))
+            .map_err(|e| format!("{}: {e}", dir.join(name).display()))?
+            .to_rgba8();
         let (w, h) = img.dimensions();
-        register(&store, device, queue, Some(name), w, h, img.into_raw(), kind, cap)
+        register(
+            &store,
+            device,
+            queue,
+            Some(name),
+            w,
+            h,
+            img.into_raw(),
+            kind,
+            cap,
+        )
     };
     let mut row = helio_mats::host_rows::MaterialComponent::from(helio_mats::MaterialRow::new(
-        [1.0, 1.0, 1.0, 1.0], 1.0, 0.0, [0.0; 3], 0.0,
+        [1.0, 1.0, 1.0, 1.0],
+        1.0,
+        0.0,
+        [0.0; 3],
+        0.0,
     ));
     row.tex_base_color = load("diff.jpg", TexelKind::Colour)?;
     row.tex_normal = load("nor.jpg", TexelKind::Normal)?;
@@ -271,29 +363,50 @@ fn upload_materials(
     }
     let mut slots = Vec::new();
     for (index, texture) in scene.textures.iter().enumerate() {
-        let kind = kinds[index].unwrap_or(if texture.format == wgpu::TextureFormat::Rgba8UnormSrgb {
-            TexelKind::Colour
-        } else {
-            TexelKind::Data
-        });
+        let kind =
+            kinds[index].unwrap_or(if texture.format == wgpu::TextureFormat::Rgba8UnormSrgb {
+                TexelKind::Colour
+            } else {
+                TexelKind::Data
+            });
         let mut data = texture.data.clone();
         if granite && matches!(kind, TexelKind::Colour) {
             cool_granite(&mut data);
         }
         slots.push(register(
-            &store, device, queue, texture.label.as_deref(), texture.width, texture.height,
-            data, kind, cap,
+            &store,
+            device,
+            queue,
+            texture.label.as_deref(),
+            texture.width,
+            texture.height,
+            data,
+            kind,
+            cap,
         )?);
     }
     let mut ids = Vec::new();
     for material in &scene.materials {
-        let mut row = helio_mats::host_rows::MaterialComponent::from(helio_mats::MaterialRow::from(material.gpu));
+        let mut row = helio_mats::host_rows::MaterialComponent::from(
+            helio_mats::MaterialRow::from(material.gpu),
+        );
         let t = &material.textures;
-        if let Some(r) = t.base_color { row.tex_base_color = slots[r.texture_index]; }
-        if let Some(r) = t.normal { row.tex_normal = slots[r.texture_index]; row.flags |= helio_mats::FLAG_HAS_NORMAL_MAP; }
-        if let Some(r) = t.roughness_metallic { row.tex_roughness = slots[r.texture_index]; }
-        if let Some(r) = t.occlusion { row.tex_occlusion = slots[r.texture_index]; }
-        if let Some(r) = t.emissive { row.tex_emissive = slots[r.texture_index]; }
+        if let Some(r) = t.base_color {
+            row.tex_base_color = slots[r.texture_index];
+        }
+        if let Some(r) = t.normal {
+            row.tex_normal = slots[r.texture_index];
+            row.flags |= helio_mats::FLAG_HAS_NORMAL_MAP;
+        }
+        if let Some(r) = t.roughness_metallic {
+            row.tex_roughness = slots[r.texture_index];
+        }
+        if let Some(r) = t.occlusion {
+            row.tex_occlusion = slots[r.texture_index];
+        }
+        if let Some(r) = t.emissive {
+            row.tex_emissive = slots[r.texture_index];
+        }
         // Leaves arrive alpha-blended; cut them out instead (sorted blending of
         // thousands of cards is wrong, and virtual geometry draws only cutouts).
         if row.flags & helio_mats::FLAG_ALPHA_BLEND != 0 {
@@ -325,7 +438,14 @@ enum Ground {
     /// crowns between the individual trees.
     Canopy,
 }
-const GROUNDS: [Ground; 6] = [Ground::Granite, Ground::Pebbles, Ground::Grass, Ground::Duff, Ground::Humus, Ground::Canopy];
+const GROUNDS: [Ground; 6] = [
+    Ground::Granite,
+    Ground::Pebbles,
+    Ground::Grass,
+    Ground::Duff,
+    Ground::Humus,
+    Ground::Canopy,
+];
 
 fn ground_at(x: f32, z: f32) -> Ground {
     let h = height(x, z);
@@ -363,14 +483,22 @@ struct Lists {
 /// cell goes to the ground class its centre says. `skip`: tiles centred inside
 /// this half extent are left to a finer lattice.
 fn lattice(tiles: usize, cells: usize, cell: f32, drop: f32, skip: f32) -> [Lists; 6] {
-    let mut lists: [Lists; 6] = std::array::from_fn(|_| Lists { vertices: Vec::new(), indices: Vec::new(), last_tile: usize::MAX, base: 0 });
+    let mut lists: [Lists; 6] = std::array::from_fn(|_| Lists {
+        vertices: Vec::new(),
+        indices: Vec::new(),
+        last_tile: usize::MAX,
+        base: 0,
+    });
     let tile = cell * cells as f32;
     let origin = -(tiles as f32) * tile * 0.5;
     let per = cells + 1;
     for tj in 0..tiles {
         for ti in 0..tiles {
             let tile_index = tj * tiles + ti;
-            let (cx, cz) = (origin + (ti as f32 + 0.5) * tile, origin + (tj as f32 + 0.5) * tile);
+            let (cx, cz) = (
+                origin + (ti as f32 + 0.5) * tile,
+                origin + (tj as f32 + 0.5) * tile,
+            );
             if cx.abs() < skip && cz.abs() < skip {
                 continue;
             }
@@ -385,25 +513,35 @@ fn lattice(tiles: usize, cells: usize, cell: f32, drop: f32, skip: f32) -> [List
             for j in 0..cells {
                 for i in 0..cells {
                     let (x, z, _) = positions[j * per + i];
-                    let class = GROUNDS.iter().position(|g| *g == ground_at(x + cell * 0.5, z + cell * 0.5)).unwrap();
+                    let class = GROUNDS
+                        .iter()
+                        .position(|g| *g == ground_at(x + cell * 0.5, z + cell * 0.5))
+                        .unwrap();
                     let list = &mut lists[class];
                     if list.last_tile != tile_index {
                         list.last_tile = tile_index;
                         list.base = list.vertices.len() as u32;
                         for (k, &(x, z, y)) in positions.iter().enumerate() {
                             let n = normal_at(x, z);
-                            list.vertices.push(helio_mesh_api::PackedVertex::from_components(
-                                [x, y, z],
-                                n.to_array(),
-                                [(k % per) as f32 / cells as f32, (k / per) as f32 / cells as f32],
-                                Vec3::new(1.0, -n.x / n.y.max(0.2), 0.0).normalize().to_array(),
-                                1.0,
-                            ));
+                            list.vertices
+                                .push(helio_mesh_api::PackedVertex::from_components(
+                                    [x, y, z],
+                                    n.to_array(),
+                                    [
+                                        (k % per) as f32 / cells as f32,
+                                        (k / per) as f32 / cells as f32,
+                                    ],
+                                    Vec3::new(1.0, -n.x / n.y.max(0.2), 0.0)
+                                        .normalize()
+                                        .to_array(),
+                                    1.0,
+                                ));
                         }
                     }
                     let a = list.base + (j * per + i) as u32;
                     let b = a + per as u32;
-                    list.indices.extend_from_slice(&[a, b, a + 1, a + 1, b, b + 1]);
+                    list.indices
+                        .extend_from_slice(&[a, b, a + 1, a + 1, b, b + 1]);
                 }
             }
         }
@@ -411,7 +549,12 @@ fn lattice(tiles: usize, cells: usize, cell: f32, drop: f32, skip: f32) -> [List
     lists
 }
 
-fn build_terrain(world: &mut World, device: &wgpu::Device, queue: &wgpu::Queue, root: &Path) -> Result<(), String> {
+fn build_terrain(
+    world: &mut World,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    root: &Path,
+) -> Result<(), String> {
     let tex = root.join("tex");
     let mut materials = [
         texture_material(world, device, queue, &tex.join("mossy_rock"), 2048)?,
@@ -422,8 +565,14 @@ fn build_terrain(world: &mut World, device: &wgpu::Device, queue: &wgpu::Queue, 
         texture_material(world, device, queue, &tex.join("leafy_grass"), 2048)?,
     ];
     // The grass sets are dry and pale: tint them to a lush summer green.
-    for (class, tint) in [(2usize, [0.45, 0.72, 0.30, 1.0f32]), (3, [0.50, 0.68, 0.34, 1.0]), (5, [0.16, 0.30, 0.10, 1.0])] {
-        if let Some(mut row) = world.get_mut::<helio_mats::host_rows::MaterialComponent>(materials[class]) {
+    for (class, tint) in [
+        (2usize, [0.45, 0.72, 0.30, 1.0f32]),
+        (3, [0.50, 0.68, 0.34, 1.0]),
+        (5, [0.16, 0.30, 0.10, 1.0]),
+    ] {
+        if let Some(mut row) =
+            world.get_mut::<helio_mats::host_rows::MaterialComponent>(materials[class])
+        {
             row.base_color = tint;
         }
     }
@@ -437,8 +586,15 @@ fn build_terrain(world: &mut World, device: &wgpu::Device, queue: &wgpu::Queue, 
             if list.indices.is_empty() {
                 continue;
             }
-            let mesh = spawn_mesh(world, helio_mesh_api::MeshUpload { vertices: list.vertices, indices: list.indices });
-            spawn_object(world, mesh, materials[class], Mat4::IDENTITY, radius).map_err(str::to_owned)?;
+            let mesh = spawn_mesh(
+                world,
+                helio_mesh_api::MeshUpload {
+                    vertices: list.vertices,
+                    indices: list.indices,
+                },
+            );
+            spawn_object(world, mesh, materials[class], Mat4::IDENTITY, radius)
+                .map_err(str::to_owned)?;
         }
     }
     Ok(())
@@ -475,7 +631,14 @@ struct Inst {
 }
 
 fn inst(x: f32, z: f32, size: f32, rng: &mut Rng) -> Inst {
-    Inst { x, z, size, yaw: rng.range(0.0, std::f32::consts::TAU), tilt: [0.0; 2], lift: 0.0 }
+    Inst {
+        x,
+        z,
+        size,
+        yaw: rng.range(0.0, std::f32::consts::TAU),
+        tilt: [0.0; 2],
+        lift: 0.0,
+    }
 }
 
 fn model_path(root: &Path, id: &str) -> Option<PathBuf> {
@@ -514,7 +677,10 @@ fn place(
             return Ok(0);
         }
     };
-    let granite = matches!(id, "boulder_01" | "rock_07" | "rock_09" | "stone_01" | "rock_face_01" | "rock_face_02");
+    let granite = matches!(
+        id,
+        "boulder_01" | "rock_07" | "rock_09" | "stone_01" | "rock_face_01" | "rock_face_02"
+    );
     let materials = upload_materials(world, &scene, device, queue, cap, granite)?;
     // `variants`: the file holds several alternative trees (its source meshes),
     // each instance is one of them. Otherwise the whole file is one object.
@@ -523,7 +689,11 @@ fn place(
         ids.sort_unstable();
         ids.dedup();
         ids.iter()
-            .map(|id| (0..scene.meshes.len()).filter(|&k| scene.meshes[k].source_mesh == *id).collect())
+            .map(|id| {
+                (0..scene.meshes.len())
+                    .filter(|&k| scene.meshes[k].source_mesh == *id)
+                    .collect()
+            })
             .collect()
     } else {
         vec![(0..scene.meshes.len()).collect()]
@@ -536,12 +706,17 @@ fn place(
             for &k in group {
                 let mesh = &scene.meshes[k];
                 for v in &mesh.vertices {
-                    let p = mesh.node_transform.transform_point3(Vec3::from_array(v.position));
+                    let p = mesh
+                        .node_transform
+                        .transform_point3(Vec3::from_array(v.position));
                     lo = lo.min(p);
                     hi = hi.max(p);
                 }
             }
-            ((hi - lo).max_element().max(0.001), Vec3::new((lo.x + hi.x) * 0.5, lo.y, (lo.z + hi.z) * 0.5))
+            (
+                (hi - lo).max_element().max(0.001),
+                Vec3::new((lo.x + hi.x) * 0.5, lo.y, (lo.z + hi.z) * 0.5),
+            )
         })
         .collect();
     enum Part {
@@ -551,9 +726,14 @@ fn place(
     let mut parts: Vec<Option<Part>> = (0..scene.meshes.len()).map(|_| None).collect();
     let mut objects = 0;
     for (n, i) in instances.iter().enumerate() {
-        let g = if groups.len() > 1 { ((i.yaw * 997.0) as usize + n) % groups.len() } else { 0 };
+        let g = if groups.len() > 1 {
+            ((i.yaw * 997.0) as usize + n) % groups.len()
+        } else {
+            0
+        };
         let (size, base) = bounds[g];
-        let rotation = Quat::from_rotation_y(i.yaw) * Quat::from_euler(glam::EulerRot::XZY, i.tilt[1], i.tilt[0], 0.0);
+        let rotation = Quat::from_rotation_y(i.yaw)
+            * Quat::from_euler(glam::EulerRot::XZY, i.tilt[1], i.tilt[0], 0.0);
         for &k in &groups[g] {
             let source = &scene.meshes[k];
             let triangles = source.indices.len() as u64 / 3;
@@ -564,11 +744,16 @@ fn place(
                     }
                     _ => Part::Classic(spawn_mesh(
                         world,
-                        helio_mesh_api::MeshUpload { vertices: source.vertices.clone(), indices: source.indices.clone() },
+                        helio_mesh_api::MeshUpload {
+                            vertices: source.vertices.clone(),
+                            indices: source.indices.clone(),
+                        },
                     )),
                 });
             }
-            let material = *materials.get(source.material_index.unwrap_or(0)).ok_or("scan material missing")?;
+            let material = *materials
+                .get(source.material_index.unwrap_or(0))
+                .ok_or("scan material missing")?;
             let transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(i.size / size),
                 rotation,
@@ -577,10 +762,18 @@ fn place(
                 * source.node_transform;
             match parts[k].as_ref().unwrap() {
                 Part::Classic(mesh) => {
-                    spawn_object(world, *mesh, material, transform, i.size * 1.1).map_err(str::to_owned)?;
+                    spawn_object(world, *mesh, material, transform, i.size * 1.1)
+                        .map_err(str::to_owned)?;
                 }
                 Part::Vg(asset) => {
-                    vg.as_mut().unwrap().instance(world, *asset, material, transform, i.size * 1.1, triangles)?;
+                    vg.as_mut().unwrap().instance(
+                        world,
+                        *asset,
+                        material,
+                        transform,
+                        i.size * 1.1,
+                        triangles,
+                    )?;
                 }
             }
             objects += 1;
@@ -592,12 +785,20 @@ fn place(
 /// Parts with at least this many triangles go through virtual geometry (when the
 /// device has it); smaller ones stay classic.
 fn vg_min_triangles() -> u64 {
-    std::env::var("MUSKOKA_VG_MIN").ok().and_then(|v| v.parse().ok()).unwrap_or(20_000)
+    std::env::var("MUSKOKA_VG_MIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20_000)
 }
 
 /// Jittered grid over the square of half extent `half`: one candidate per cell
 /// of `cell` metres, kept with the probability `keep(x, z)` gives.
-fn candidates(rng: &mut Rng, half: f32, cell: f32, mut keep: impl FnMut(f32, f32, &mut Rng) -> bool) -> Vec<(f32, f32)> {
+fn candidates(
+    rng: &mut Rng,
+    half: f32,
+    cell: f32,
+    mut keep: impl FnMut(f32, f32, &mut Rng) -> bool,
+) -> Vec<(f32, f32)> {
     let n = (2.0 * half / cell) as i32;
     let mut out = Vec::new();
     for j in 0..n {
@@ -613,11 +814,20 @@ fn candidates(rng: &mut Rng, half: f32, cell: f32, mut keep: impl FnMut(f32, f32
 }
 
 fn near_any(points: &[Vec3], x: f32, z: f32, radius: f32) -> bool {
-    points.iter().any(|p| (p.x - x).powi(2) + (p.z - z).powi(2) < radius * radius)
+    points
+        .iter()
+        .any(|p| (p.x - x).powi(2) + (p.z - z).powi(2) < radius * radius)
 }
 
 /// The whole scene. `density` scales every planting (1.0 is the full forest).
-pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu::Queue, density: f32, vg: &mut Option<crate::vg_support::Vg>) -> Result<(), String> {
+pub fn build(
+    world: &mut World,
+    root: &Path,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    density: f32,
+    vg: &mut Option<crate::vg_support::Vg>,
+) -> Result<(), String> {
     build_terrain(world, device, queue, root)?;
     let focus: Vec<Vec3> = views().iter().map(|v| v.position).collect();
     let mut rng = Rng(60_606);
@@ -632,7 +842,14 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
     let stand = |x: f32, z: f32| (fbm(x / 95.0, z / 95.0, 3, 77) * 0.5 + 0.5).clamp(0.0, 1.0);
 
     // ── shore rocks: the granite's boulders, along the whole shoreline ──
-    let boulder_ids = ["boulder_01", "rock_07", "rock_09", "stone_01", "rock_moss_set_01", "rock_moss_set_02"];
+    let boulder_ids = [
+        "boulder_01",
+        "rock_07",
+        "rock_09",
+        "stone_01",
+        "rock_moss_set_01",
+        "rock_moss_set_02",
+    ];
     let mut by_rock: Vec<Vec<Inst>> = vec![Vec::new(); boulder_ids.len()];
     let spots = candidates(&mut rng, 760.0, 5.5, |x, z, r| {
         let s = shore_s(x, z);
@@ -662,7 +879,12 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
         for _ in 0..((r / 9.0) as usize + 2) {
             let a = rng.range(0.0, std::f32::consts::TAU);
             let d = rng.range(0.2, 1.1) * r;
-            islets.push(inst(cx + a.cos() * d, cz + a.sin() * d, rng.size(3.0, 9.0, 1.6), &mut rng));
+            islets.push(inst(
+                cx + a.cos() * d,
+                cz + a.sin() * d,
+                rng.size(3.0, 9.0, 1.6),
+                &mut rng,
+            ));
         }
     }
     put!("rock_09", islets, 2048);
@@ -681,7 +903,10 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
     let mut hero_firs: Vec<Inst> = Vec::new();
     for (x, z) in candidates(&mut rng, 900.0, 10.0, |x, z, r| {
         let s = shore_s(x, z);
-        s > 9.0 && s < 160.0 && near_any(&focus, x, z, 110.0) && r.next() < (0.35 + 0.65 * stand(x, z)) * 0.8 * density
+        s > 9.0
+            && s < 160.0
+            && near_any(&focus, x, z, 110.0)
+            && r.next() < (0.35 + 0.65 * stand(x, z)) * 0.8 * density
     }) {
         let mut t = inst(x, z, 0.0, &mut rng);
         t.tilt = [rng.range(-0.04, 0.04), rng.range(-0.04, 0.04)];
@@ -704,10 +929,18 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
     let mut mid: [Vec<Inst>; 4] = Default::default();
     for (x, z) in candidates(&mut rng, 1500.0, 14.0, |x, z, r| {
         let s = shore_s(x, z);
-        s > 12.0 && s < 380.0 && !near_any(&focus, x, z, 60.0) && r.next() < (0.3 + 0.7 * stand(x, z)) * 0.78 * density
+        s > 12.0
+            && s < 380.0
+            && !near_any(&focus, x, z, 60.0)
+            && r.next() < (0.3 + 0.7 * stand(x, z)) * 0.78 * density
     }) {
         let k = (rng.next() * 4.0) as usize % 4;
-        let size = match k { 0 => rng.size(13.0, 24.0, 1.4), 1 => rng.size(14.0, 26.0, 1.4), 2 => rng.size(12.0, 22.0, 1.4), _ => rng.size(11.0, 19.0, 1.4) };
+        let size = match k {
+            0 => rng.size(13.0, 24.0, 1.4),
+            1 => rng.size(14.0, 26.0, 1.4),
+            2 => rng.size(12.0, 22.0, 1.4),
+            _ => rng.size(11.0, 19.0, 1.4),
+        };
         let mut t = inst(x, z, size, &mut rng);
         t.tilt = [rng.range(-0.05, 0.05), rng.range(-0.05, 0.05)];
         mid[k].push(t);
@@ -748,14 +981,20 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
     let ground_ok = |x: f32, z: f32| shore_s(x, z) > 3.0 && height(x, z) > 0.4;
     let mut ferns: Vec<Inst> = Vec::new();
     for (x, z) in candidates(&mut rng, 760.0, 2.0, |x, z, r| {
-        ground_ok(x, z) && shore_s(x, z) < 130.0 && near_any(&focus, x, z, 70.0) && r.next() < (0.25 + 0.75 * stand(x, z)) * 0.7 * density
+        ground_ok(x, z)
+            && shore_s(x, z) < 130.0
+            && near_any(&focus, x, z, 70.0)
+            && r.next() < (0.25 + 0.75 * stand(x, z)) * 0.7 * density
     }) {
         ferns.push(inst(x, z, rng.size(0.5, 1.4, 1.6), &mut rng));
     }
     put!("fern_02", ferns, 1024);
     let mut shrubs: [Vec<Inst>; 4] = Default::default();
     for (x, z) in candidates(&mut rng, 760.0, 6.5, |x, z, r| {
-        ground_ok(x, z) && shore_s(x, z) < 160.0 && near_any(&focus, x, z, 120.0) && r.next() < 0.6 * density
+        ground_ok(x, z)
+            && shore_s(x, z) < 160.0
+            && near_any(&focus, x, z, 120.0)
+            && r.next() < 0.6 * density
     }) {
         let k = (rng.next() * 4.0) as usize % 4;
         shrubs[k].push(inst(x, z, rng.size(0.7, 2.4, 1.6), &mut rng));
@@ -767,7 +1006,10 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
     put!("shrub_04", s4, 1024);
     let mut tufts: [Vec<Inst>; 3] = Default::default();
     for (x, z) in candidates(&mut rng, 760.0, 2.8, |x, z, r| {
-        ground_ok(x, z) && shore_s(x, z) < 90.0 && near_any(&focus, x, z, 80.0) && r.next() < 0.4 * density
+        ground_ok(x, z)
+            && shore_s(x, z) < 90.0
+            && near_any(&focus, x, z, 80.0)
+            && r.next() < 0.4 * density
     }) {
         let k = (rng.next() * 3.0) as usize % 3;
         tufts[k].push(inst(x, z, rng.size(0.5, 1.3, 1.4), &mut rng));
@@ -781,7 +1023,10 @@ pub fn build(world: &mut World, root: &Path, device: &wgpu::Device, queue: &wgpu
     let mut stumps: Vec<Inst> = Vec::new();
     let mut sticks: Vec<Inst> = Vec::new();
     for (x, z) in candidates(&mut rng, 760.0, 9.0, |x, z, r| {
-        ground_ok(x, z) && shore_s(x, z) < 140.0 && near_any(&focus, x, z, 100.0) && r.next() < 0.5 * density
+        ground_ok(x, z)
+            && shore_s(x, z) < 140.0
+            && near_any(&focus, x, z, 100.0)
+            && r.next() < 0.5 * density
     }) {
         match (rng.next() * 4.0) as usize % 4 {
             0 => roots.push(inst(x, z, rng.size(1.2, 3.2, 1.5), &mut rng)),

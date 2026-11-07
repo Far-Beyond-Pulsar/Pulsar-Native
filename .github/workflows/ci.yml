@@ -255,7 +255,7 @@ jobs:
           # The explicit root-workspace members from plugin repositories: their
           # built-in integrations, and the GPUI-free Blueprint compiler tested
           # against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("blueprint_compiler", "input_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin")
+          $expectedVendorWorkspaceMembers = @("animation_component", "blueprint_compiler", "input_plugin", "physics_plugin", "skeletal_animation_plugin", "skeletal_assets", "ui_editor_plugin")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )

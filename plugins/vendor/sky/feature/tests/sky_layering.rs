@@ -19,7 +19,9 @@ fn body_of<'a>(source: &'a str, function: &str) -> &'a str {
 
 #[test]
 fn composite_layers_the_panorama_under_the_procedural_sky() {
-    let texture = COMPOSITE.find("sky_texture_radiance(d, pixel_angle)").unwrap();
+    let texture = COMPOSITE
+        .find("sky_texture_radiance(d, pixel_angle)")
+        .unwrap();
     let disks = COMPOSITE
         .find("radiance += directional_disk_radiance(d, through)")
         .unwrap();
@@ -121,7 +123,11 @@ fn custom_files_get_stable_distinct_codes() {
 
 #[test]
 fn size_cap_and_mip_chain() {
-    let image = build_image(2 * MAX_WIDTH, MAX_WIDTH, vec![0.5; (2 * MAX_WIDTH * MAX_WIDTH * 3) as usize]);
+    let image = build_image(
+        2 * MAX_WIDTH,
+        MAX_WIDTH,
+        vec![0.5; (2 * MAX_WIDTH * MAX_WIDTH * 3) as usize],
+    );
     assert_eq!((image.width, image.height), (MAX_WIDTH, MAX_WIDTH / 2));
     assert_eq!(image.mips.len(), 13);
     assert_eq!(image.mips[0].len() as u32, MAX_WIDTH * (MAX_WIDTH / 2) * 4);
@@ -149,7 +155,10 @@ fn builtin_presets_decode_and_the_combination_is_brighter() {
     assert_eq!((galaxy.width, galaxy.height), (4096, 2048));
     assert_eq!((both.width, both.height), (4096, 2048));
     assert!(total(&nebula) > 0.0);
-    assert!(total(&both) > total(&galaxy), "the nebula is added to the galaxy");
+    assert!(
+        total(&both) > total(&galaxy),
+        "the nebula is added to the galaxy"
+    );
 }
 
 #[test]

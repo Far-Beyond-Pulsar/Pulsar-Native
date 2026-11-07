@@ -6,10 +6,10 @@
 // are included in the binary and discovered by `register_all_windows`.
 use ui_about as _;
 use ui_documentation as _;
-use ui_keybindings as _;
 use ui_fab_search as _;
 use ui_flamegraph as _;
 use ui_git_manager as _;
+use ui_keybindings as _;
 use ui_multiplayer as _;
 use ui_plugin_manager as _;
 use ui_settings as _;

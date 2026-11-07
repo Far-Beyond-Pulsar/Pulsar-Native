@@ -17,17 +17,17 @@ use wgpu::util::DeviceExt;
 pub mod components;
 pub mod gpu_types;
 pub mod ocean_fft;
+pub mod reactivity;
 mod reflection_capture;
 pub mod shoreline;
 pub mod surface_query;
-pub mod reactivity;
 pub mod transmission;
 pub use components::WATER_HITBOXES;
-pub use reactivity::WaterReactivityPass;
 pub use components::WATER_VOLUMES;
 pub use components::{WaterHitboxRow, WaterVolumeRow};
 pub use gpu_types::*;
 pub use ocean_fft::{OceanSpectrum, CASCADE_LENGTHS as OCEAN_CASCADE_LENGTHS};
+pub use reactivity::WaterReactivityPass;
 pub use shoreline::{WaterShoreMap, WaterTerrainProvider, SHORE_MAP_SIZE};
 pub use surface_query::{
     WaterSurfaceQueries, WaterSurfaceQueryConsumer, WaterSurfaceQueryPoint,

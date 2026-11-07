@@ -177,7 +177,10 @@ mod tests {
         }];
         let list = entries(&user);
         assert!(list[1].conflicted);
-        assert_eq!(list[1].bindings[0].shadowed_by.as_deref(), Some("app::Unused"));
+        assert_eq!(
+            list[1].bindings[0].shadowed_by.as_deref(),
+            Some("app::Unused")
+        );
         assert!(list[2].bindings[0].user);
         assert!(!list[2].conflicted);
     }

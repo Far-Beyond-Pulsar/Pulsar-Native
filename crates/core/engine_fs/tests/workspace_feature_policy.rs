@@ -114,7 +114,6 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         ("asset_import".to_owned(), features(&[])),
         ("engine_backend".to_owned(), features(&[])),
         ("engine_state".to_owned(), features(&["editor"])),
-        ("helio_component".to_owned(), features(&[])),
         ("pulsar_class".to_owned(), features(&[])),
         ("pulsar_content".to_owned(), features(&[])),
         ("pulsar_game".to_owned(), features(&[])),

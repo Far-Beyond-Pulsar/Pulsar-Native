@@ -116,7 +116,9 @@ impl PluginDescriptor {
     /// The module that carries the descriptor ([`installed!`]): the first
     /// runtime module, or for an editor tool its first editor module.
     pub fn installing_module(&self) -> &str {
-        self.modules().next().expect("a parsed descriptor lists a module")
+        self.modules()
+            .next()
+            .expect("a parsed descriptor lists a module")
     }
 
     /// Every module, runtime then editor.

@@ -136,9 +136,12 @@ impl Render for KeybindingsWindow {
         let banner = self.render_banner(cx);
         let list = self.render_list(cx);
         let status = self.render_status_bar(cx);
-        let recorder = self.recorder.is_some().then(|| self.render_recorder(window, cx));
-        let details = (self.recorder.is_none() && self.details.is_some())
-            .then(|| self.render_details(cx));
+        let recorder = self
+            .recorder
+            .is_some()
+            .then(|| self.render_recorder(window, cx));
+        let details =
+            (self.recorder.is_none() && self.details.is_some()).then(|| self.render_details(cx));
 
         v_flex()
             .track_focus(&self.focus_handle)
@@ -171,4 +174,3 @@ impl window_manager::PulsarWindow for KeybindingsWindow {
         cx.new(|cx| KeybindingsWindow::new(window, cx))
     }
 }
-

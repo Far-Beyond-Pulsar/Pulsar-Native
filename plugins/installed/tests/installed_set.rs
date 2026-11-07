@@ -50,22 +50,31 @@ fn ident(package: &str) -> String {
 fn blocks(plugins: &[(PathBuf, PluginDescriptor)]) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut dependencies = Vec::new();
     let mut features = vec!["editor = [".to_string()];
-    let mut reexports = Vec::new();
+    // (crate, editor only): re-exported in crate order, as rustfmt orders
+    // `use` items, so the generated file is formatted.
+    let mut uses = Vec::new();
     for (_, plugin) in plugins {
         for module in &plugin.modules.runtime {
             dependencies.push(format!("{module} = {{ workspace = true }}"));
-            reexports.push(format!("pub use {};", ident(module)));
+            uses.push((ident(module), false));
         }
         for module in &plugin.modules.editor {
             dependencies.push(format!(
                 "{module} = {{ workspace = true, optional = true }}"
             ));
             features.push(format!("    \"dep:{module}\","));
-            reexports.push("#[cfg(feature = \"editor\")]".to_string());
-            reexports.push(format!("pub use {};", ident(module)));
+            uses.push((ident(module), true));
         }
     }
     features.push("]".to_string());
+    uses.sort();
+    let mut reexports = Vec::new();
+    for (module, editor) in uses {
+        if editor {
+            reexports.push("#[cfg(feature = \"editor\")]".to_string());
+        }
+        reexports.push(format!("pub use {module};"));
+    }
     (dependencies, features, reexports)
 }
 

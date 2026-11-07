@@ -16,10 +16,8 @@ pub const WATER_SHORE_SNIPPET: helio_core::shader::ShaderSnippet = helio_core::w
 pub const WATER_SKY_SNIPPET: helio_core::shader::ShaderSnippet =
     helio_core::wgsl_snippet!("//!use water_sky", "../shaders/water_sky.wgsl");
 
-pub const WATER_LIGHTS_SNIPPET: helio_core::shader::ShaderSnippet = helio_core::wgsl_snippet!(
-    "//!use water_lights",
-    "../shaders/water_lights.wgsl"
-);
+pub const WATER_LIGHTS_SNIPPET: helio_core::shader::ShaderSnippet =
+    helio_core::wgsl_snippet!("//!use water_lights", "../shaders/water_lights.wgsl");
 
 fn storage_read_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {

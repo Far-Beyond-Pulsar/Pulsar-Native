@@ -52,5 +52,8 @@ fn a_preset_becomes_resident_and_turning_it_off_frees_it() {
     }
     eprintln!("resident after {:?}", start.elapsed());
     let _ = cache.view(&device, &queue, source::NONE);
-    assert!(!cache.is_resident(code), "turning the layer off frees the texture");
+    assert!(
+        !cache.is_resident(code),
+        "turning the layer off frees the texture"
+    );
 }

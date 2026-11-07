@@ -14,14 +14,14 @@
 //! they are on screen.
 
 use crate::inspector_model::{
-    CardDesc, CollapseState, InspectorItem, Query, category_color, category_default_collapsed,
-    flatten,
+    category_color, category_default_collapsed, flatten, CardDesc, CollapseState, InspectorItem,
+    Query,
 };
 use gpui::{prelude::*, *};
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::scroll::{Scrollbar, ScrollbarState};
-use ui::{ActiveTheme, Icon, IconName, Sizable as _, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable as _};
 
 /// What the host is asked to render.
 #[derive(Clone, Debug, PartialEq, Eq)]

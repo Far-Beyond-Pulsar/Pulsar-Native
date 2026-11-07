@@ -366,7 +366,12 @@ impl SkyTextureCache {
         };
         match polled {
             Some((modified, Ok(Ok(image)))) => {
-                tracing::info!("sky texture {code:#x} loaded ({}x{}, {} mips)", image.width, image.height, image.mips.len());
+                tracing::info!(
+                    "sky texture {code:#x} loaded ({}x{}, {} mips)",
+                    image.width,
+                    image.height,
+                    image.mips.len()
+                );
                 self.pending = None;
                 self.loaded = Some(upload(device, queue, code, modified, &image));
             }

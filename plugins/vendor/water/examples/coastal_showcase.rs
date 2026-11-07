@@ -10,8 +10,8 @@
 //!   Mouse drag  — look around (click to grab cursor)
 //!   Escape      — release cursor / exit
 
-mod common;
 mod coast_scene;
+mod common;
 mod lens_rows;
 
 use common::{
@@ -140,8 +140,12 @@ impl ApplicationHandler for App {
             lens_rows::LensComponent::register_gpu_columns_growable(store, 64, &device);
             lens_rows::LensElementComponent::register_gpu_columns_growable(store, 64, &device);
         });
-        let textures = Arc::new(std::sync::RwLock::new(pulsar_scenedb::gpu::TextureStore::new(2048)));
-        let mirror = scene_db_handle(&scene_db).with_texture_store(textures).expect("coast texture store");
+        let textures = Arc::new(std::sync::RwLock::new(
+            pulsar_scenedb::gpu::TextureStore::new(2048),
+        ));
+        let mirror = scene_db_handle(&scene_db)
+            .with_texture_store(textures)
+            .expect("coast texture store");
         scene_db.world.attach_gpu_mirror(mirror);
         let mut renderer = RendererBuilder::new(config, scene_db_handle(&scene_db))
             // The water example's features plus the camera lens and its flares.
@@ -158,16 +162,18 @@ impl ApplicationHandler for App {
         // sharp at grazing angles instead of smearing to their mean colour.
         // Opt-in (WATER_ANISO=1): overriding the material sampler currently makes the
         // water disappear, so the default sampler stays until that is understood.
-        if std::env::var_os("WATER_ANISO").is_some() { renderer.set_feature(helio_mats::MaterialSampler(wgpu::SamplerDescriptor {
-            label: Some("Coast repeat anisotropic sampler"),
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Linear,
-            anisotropy_clamp: 16,
-            ..Default::default()
-        })); }
+        if std::env::var_os("WATER_ANISO").is_some() {
+            renderer.set_feature(helio_mats::MaterialSampler(wgpu::SamplerDescriptor {
+                label: Some("Coast repeat anisotropic sampler"),
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::Repeat,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                anisotropy_clamp: 16,
+                ..Default::default()
+            }));
+        }
 
         let sky_id = spawn_sky(&mut scene_db.world, [1.0, 0.92, 0.78]);
         let time_of_day = std::env::var("WATER_TIME_OF_DAY").unwrap_or_else(|_| "day".into());
@@ -187,15 +193,54 @@ impl ApplicationHandler for App {
         }
         let tod = match time_of_day.as_str() {
             // Morning: warm, low sun over the sea, bright fill so the beach reads.
-            "morning" => Tod { sun_direction: [0.45, -0.42, 0.78], sun_color: [1.0, 0.7, 0.5], sun_intensity: 3.0, ambient: [0.62, 0.5, 0.52], ambient_intensity: 1.5, exposure: 3.0, cloud: 0.45, hdri_opacity: 0.85, water_color: [0.02, 0.07, 0.10], extinction: [0.30, 0.10, 0.05] },
+            "morning" => Tod {
+                sun_direction: [0.45, -0.42, 0.78],
+                sun_color: [1.0, 0.7, 0.5],
+                sun_intensity: 3.0,
+                ambient: [0.62, 0.5, 0.52],
+                ambient_intensity: 1.5,
+                exposure: 3.0,
+                cloud: 0.45,
+                hdri_opacity: 0.85,
+                water_color: [0.02, 0.07, 0.10],
+                extinction: [0.30, 0.10, 0.05],
+            },
             // Night: a dim moon (the stars, galaxy and nebula fade by the lights'
             // brightness, so it stays near 0.04), the beach lit by cool fill.
-            "night" => Tod { sun_direction: [0.3, -0.5, 0.8], sun_color: [0.55, 0.65, 0.95], sun_intensity: 0.04, ambient: [0.2, 0.28, 0.5], ambient_intensity: 3.0, exposure: 5.0, cloud: 0.05, hdri_opacity: 1.0, water_color: [0.004, 0.02, 0.05], extinction: [0.38, 0.13, 0.03] },
+            "night" => Tod {
+                sun_direction: [0.3, -0.5, 0.8],
+                sun_color: [0.55, 0.65, 0.95],
+                sun_intensity: 0.04,
+                ambient: [0.2, 0.28, 0.5],
+                ambient_intensity: 3.0,
+                exposure: 5.0,
+                cloud: 0.05,
+                hdri_opacity: 1.0,
+                water_color: [0.004, 0.02, 0.05],
+                extinction: [0.38, 0.13, 0.03],
+            },
             // Noon: the default.
-            _ => Tod { sun_direction: [0.7, -0.58, -0.42], sun_color: [1.0, 0.93, 0.8], sun_intensity: 4.5, ambient: [0.14, 0.18, 0.26], ambient_intensity: 0.11, exposure: 2.3, cloud: 0.3, hdri_opacity: 0.0, water_color: [0.015, 0.11, 0.15], extinction: [0.26, 0.08, 0.04] },
+            _ => Tod {
+                sun_direction: [0.7, -0.58, -0.42],
+                sun_color: [1.0, 0.93, 0.8],
+                sun_intensity: 4.5,
+                ambient: [0.14, 0.18, 0.26],
+                ambient_intensity: 0.11,
+                exposure: 2.3,
+                cloud: 0.3,
+                hdri_opacity: 0.0,
+                water_color: [0.015, 0.11, 0.15],
+                extinction: [0.26, 0.08, 0.04],
+            },
         };
-        let (sun_direction, sun_color, sun_intensity, ambient) = (tod.sun_direction, tod.sun_color, tod.sun_intensity, tod.ambient);
-        let assets = std::env::var("WATER_BLOG_ASSETS").expect("set WATER_BLOG_ASSETS to the scan directory");
+        let (sun_direction, sun_color, sun_intensity, ambient) = (
+            tod.sun_direction,
+            tod.sun_color,
+            tod.sun_intensity,
+            tod.ambient,
+        );
+        let assets = std::env::var("WATER_BLOG_ASSETS")
+            .expect("set WATER_BLOG_ASSETS to the scan directory");
         // A real directional emitter drives atmospheric scattering and cloud
         // lighting. The HDR panorama below is a separate appearance layer.
         let sun = helio_light_api::GpuLight {
@@ -211,8 +256,15 @@ impl ApplicationHandler for App {
             // The moon stays dim so the stars and galaxy show; cool fill lights from
             // above (not directional, so they do not brighten the sky) let the
             // beach, rocks and ship read in the moonlit scene.
-            for (position, intensity) in [([-30.0, 38.0, 30.0], 380.0), ([30.0, 30.0, 8.0], 240.0), ([0.0, 45.0, -20.0], 190.0)] {
-                spawn_light(&mut scene_db.world, point_light(position, [0.55, 0.68, 1.0], intensity, 600.0));
+            for (position, intensity) in [
+                ([-30.0, 38.0, 30.0], 380.0),
+                ([30.0, 30.0, 8.0], 240.0),
+                ([0.0, 45.0, -20.0], 190.0),
+            ] {
+                spawn_light(
+                    &mut scene_db.world,
+                    point_light(position, [0.55, 0.68, 1.0], intensity, 600.0),
+                );
             }
         }
         if let Some(mut sky) = scene_db
@@ -231,7 +283,11 @@ impl ApplicationHandler for App {
             // time but the procedural day. WATER_HDRI_PATH overrides the file.
             let hdri = std::env::var("WATER_HDRI_PATH")
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|_| Path::new(&assets).join("hdri").join(format!("{time_of_day}.hdr")));
+                .unwrap_or_else(|_| {
+                    Path::new(&assets)
+                        .join("hdri")
+                        .join(format!("{time_of_day}.hdr"))
+                });
             if time_of_day == "night" {
                 // Stars, the Milky Way and a nebula: the built-in galaxy + nebula
                 // panorama (CC0 Deep-Space Skybox) under dense procedural stars,
@@ -306,7 +362,10 @@ impl ApplicationHandler for App {
             ..Default::default()
         };
         let water_id = spawn_water_volume(&mut scene_db.world, ocean);
-        if let Some(mut water) = scene_db.world.get_mut::<helio_pass_water_sim::host_rows::WaterVolumeComponent>(water_id) {
+        if let Some(mut water) = scene_db
+            .world
+            .get_mut::<helio_pass_water_sim::host_rows::WaterVolumeComponent>(water_id)
+        {
             let direction = -glam::Vec3::from_array(sun_direction).normalize();
             water.sun_direction = [direction.x, direction.y, direction.z, sun_intensity];
         }
@@ -324,11 +383,18 @@ impl ApplicationHandler for App {
             sim.set_sim_dynamics(0.04, 0.990);
         }
 
-        coast_scene::build(&mut scene_db.world, Path::new(&assets), &device, &queue).expect("coastal scan scene");
+        coast_scene::build(&mut scene_db.world, Path::new(&assets), &device, &queue)
+            .expect("coastal scan scene");
         if let Some(sim) = renderer.find_pass_mut::<WaterSimPass>() {
-            sim.set_shore_map(Some(helio_pass_water_sim::WaterShoreMap::from_terrain(
-                [0.0, 0.0], [512.0, 512.0], 0.0, &coast_scene::Beach,
-            ).expect("shoreline bake")));
+            sim.set_shore_map(Some(
+                helio_pass_water_sim::WaterShoreMap::from_terrain(
+                    [0.0, 0.0],
+                    [512.0, 512.0],
+                    0.0,
+                    &coast_scene::Beach,
+                )
+                .expect("shoreline bake"),
+            ));
             sim.set_ocean_rest_height(0.0).expect("rest height");
         }
         let _light_ids = Vec::new();
@@ -359,7 +425,8 @@ impl ApplicationHandler for App {
         renderer.set_scene_payload(&helio_pass_postprocess::POST_BASELINE, Arc::new(post));
 
         let view = std::env::var("WATER_CAPTURE_VIEW").unwrap_or_default();
-        let (mut cam_pos, cam_yaw, cam_pitch) = match std::env::var("WATER_CAPTURE_VIEW").as_deref() {
+        let (mut cam_pos, cam_yaw, cam_pitch) = match std::env::var("WATER_CAPTURE_VIEW").as_deref()
+        {
             // 1.4 m under the surface in the cove, looking steeply up so the edge of the
             // Snell window is in frame.
             Ok("underwater") => (glam::Vec3::new(0.0, -1.5, -42.0), 0.0, 0.14),
@@ -380,7 +447,9 @@ impl ApplicationHandler for App {
         // Cameras stay above the sand: a view authored from the water side of
         // the slope can otherwise end up under the beach.
         if view != "underwater" {
-            cam_pos.y = cam_pos.y.max(coast_scene::height(cam_pos.x, cam_pos.z) + 1.4);
+            cam_pos.y = cam_pos
+                .y
+                .max(coast_scene::height(cam_pos.x, cam_pos.z) + 1.4);
         }
 
         // Camera optics for the stills: a 35 mm lens at f/5.6 focused per view, the
@@ -419,7 +488,9 @@ impl ApplicationHandler for App {
             for (i, slot) in slots.iter().enumerate() {
                 let element = elements
                     .get(i)
-                    .map_or_else(bytemuck::Zeroable::zeroed, |e| lens_rows::LensElementComponent::from(*e));
+                    .map_or_else(bytemuck::Zeroable::zeroed, |e| {
+                        lens_rows::LensElementComponent::from(*e)
+                    });
                 scene_db.world.insert(*slot, element);
             }
             let lens_entity = scene_db.world.spawn();
@@ -592,14 +663,11 @@ impl AppState {
         );
 
         common::flush_scene_db(&self.scene_db, &self.queue);
-        if let Err(e) = self.capture.render_window_frame(
-            &mut self.renderer,
-            &camera,
-            &self.surface,
-        ) {
+        if let Err(e) = self
+            .capture
+            .render_window_frame(&mut self.renderer, &camera, &self.surface)
+        {
             log::error!("Render error: {:?}", e);
         }
     }
 }
-
-

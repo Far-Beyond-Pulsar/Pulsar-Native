@@ -56,16 +56,13 @@ impl KeybindingsWindow {
                         v_flex()
                             .gap_0p5()
                             .child(div().text_base().font_semibold().child(title.clone()))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!(
-                                        "{}  ·  {} shortcuts",
-                                        entry.info.name,
-                                        entry.bindings.len()
-                                    )),
-                            ),
+                            .child(div().text_xs().text_color(theme.muted_foreground).child(
+                                format!(
+                                    "{}  ·  {} shortcuts",
+                                    entry.info.name,
+                                    entry.bindings.len()
+                                ),
+                            )),
                     )
                     .child(
                         v_flex()
@@ -79,14 +76,12 @@ impl KeybindingsWindow {
                                     .items_center()
                                     .child(render_chip(CHIP_ROW, ix, &entry, view, cx))
                                     .when_some(view.shadowed_by.clone(), |row, other| {
-                                        row.child(
-                                            div().text_xs().text_color(theme.warning).child(
-                                                format!(
-                                                    "never fires: taken by {}",
-                                                    crate::utils::registry::describe_name(&other).1
-                                                ),
+                                        row.child(div().text_xs().text_color(theme.warning).child(
+                                            format!(
+                                                "never fires: taken by {}",
+                                                crate::utils::registry::describe_name(&other).1
                                             ),
-                                        )
+                                        ))
                                     })
                             })),
                     )

@@ -597,7 +597,9 @@ pub(crate) fn lazy_builder(project_root: PathBuf) -> ui::dock::LazyBuilder {
     ui::dock::set_icon_resolver(|path| {
         let manager = plugin_manager::global()?;
         let manager = manager.read();
-        manager.get_file_type_for_path(path).map(|ft| ft.icon.clone())
+        manager
+            .get_file_type_for_path(path)
+            .map(|ft| ft.icon.clone())
     });
     Arc::new(move |state, window, cx| build_deferred(state, &project_root, window, cx).ok())
 }

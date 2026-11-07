@@ -65,7 +65,11 @@ fn open(
     (view.unwrap(), cx)
 }
 
-fn action_index(view: &gpui::Entity<KeybindingsWindow>, cx: &VisualTestContext, name: &str) -> usize {
+fn action_index(
+    view: &gpui::Entity<KeybindingsWindow>,
+    cx: &VisualTestContext,
+    name: &str,
+) -> usize {
     view.read_with(cx, |window, _| {
         window
             .entries
@@ -123,11 +127,16 @@ fn recording_a_shortcut_saves_to_the_project_and_rebinds_live(cx: &mut TestAppCo
     });
     // Plain Backspace takes the last key back; Escape closes without saving.
     cx.simulate_keystrokes("backspace");
-    view.read_with(&cx, |window, _| assert!(window.recorder.as_ref().unwrap().keys.is_empty()));
+    view.read_with(&cx, |window, _| {
+        assert!(window.recorder.as_ref().unwrap().keys.is_empty())
+    });
     cx.simulate_keystrokes("ctrl-j enter");
 
     view.read_with(&cx, |window, _| {
-        assert!(window.recorder.is_none(), "enter saved and closed the dialog");
+        assert!(
+            window.recorder.is_none(),
+            "enter saved and closed the dialog"
+        );
     });
     cx.update(|_, cx| {
         assert!(press(cx, "ctrl-a").is_empty(), "the old shortcut is gone");
@@ -210,13 +219,17 @@ fn an_action_with_many_shortcuts_opens_a_details_dialog(cx: &mut TestAppContext)
     });
     view.update(&mut cx, |window, cx| window.refresh(cx));
     let alpha = action_index(&view, &cx, "kbwin::Alpha");
-    view.read_with(&cx, |window, _| assert_eq!(window.entries[alpha].bindings.len(), 3));
+    view.read_with(&cx, |window, _| {
+        assert_eq!(window.entries[alpha].bindings.len(), 3)
+    });
 
     view.update(&mut cx, |window, cx| {
         handlers::show_details(window, "kbwin::Alpha".into(), cx)
     });
     cx.run_until_parked();
-    view.read_with(&cx, |window, _| assert_eq!(window.details.as_deref(), Some("kbwin::Alpha")));
+    view.read_with(&cx, |window, _| {
+        assert_eq!(window.details.as_deref(), Some("kbwin::Alpha"))
+    });
     view.update(&mut cx, |window, cx| handlers::close_details(window, cx));
     view.read_with(&cx, |window, _| assert!(window.details.is_none()));
 }

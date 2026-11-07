@@ -68,7 +68,10 @@ impl Binding {
             self.action,
             self.keystrokes,
             self.context.as_deref().unwrap_or(""),
-            self.params.as_ref().map(Value::to_string).unwrap_or_default()
+            self.params
+                .as_ref()
+                .map(Value::to_string)
+                .unwrap_or_default()
         )
     }
 }
@@ -374,7 +377,10 @@ mod tests {
 
         reset_action(&defaults, &mut overrides, "a::Toggle");
         assert!(overrides.is_empty());
-        assert_eq!(live(&defaults, &overrides), vec![pair("a::Toggle", "ctrl-space")]);
+        assert_eq!(
+            live(&defaults, &overrides),
+            vec![pair("a::Toggle", "ctrl-space")]
+        );
         assert!(!is_customized(&defaults, &overrides, "a::Toggle"));
     }
 
@@ -393,7 +399,10 @@ mod tests {
             Binding::new("a::Toggle", "ctrl-j", None),
             false,
         );
-        assert_eq!(live(&defaults, &overrides), vec![pair("a::Toggle", "ctrl-j")]);
+        assert_eq!(
+            live(&defaults, &overrides),
+            vec![pair("a::Toggle", "ctrl-j")]
+        );
     }
 
     #[test]
@@ -440,7 +449,10 @@ mod tests {
             Binding::new("b::Other", "ctrl-space", None),
             true,
         );
-        assert_eq!(live(&defaults, &overrides), vec![pair("b::Other", "ctrl-space")]);
+        assert_eq!(
+            live(&defaults, &overrides),
+            vec![pair("b::Other", "ctrl-space")]
+        );
         // The other action is shown as changed too.
         assert!(is_customized(&defaults, &overrides, "a::Toggle"));
     }
@@ -472,19 +484,23 @@ mod tests {
             &mut overrides,
             &Binding::new("a::Global", "ctrl-c", None),
         );
-        assert_eq!(live(&defaults, &overrides), vec![pair("fm::Copy", "ctrl-c")]);
+        assert_eq!(
+            live(&defaults, &overrides),
+            vec![pair("fm::Copy", "ctrl-c")]
+        );
         // One entry in the file: nothing had to be put back.
         assert_eq!(overrides.len(), 1);
     }
 
     #[test]
     fn unbinding_one_of_two_actions_sharing_a_slot_keeps_the_other() {
-        let defaults = [
-            bind("a::One", "f1", None),
-            bind("a::Two", "f1", None),
-        ];
+        let defaults = [bind("a::One", "f1", None), bind("a::Two", "f1", None)];
         let mut overrides = Vec::new();
-        remove_binding(&defaults, &mut overrides, &Binding::new("a::One", "f1", None));
+        remove_binding(
+            &defaults,
+            &mut overrides,
+            &Binding::new("a::One", "f1", None),
+        );
         assert_eq!(live(&defaults, &overrides), vec![pair("a::Two", "f1")]);
     }
 
@@ -496,9 +512,16 @@ mod tests {
         ];
         let bindings = effective_with(&defaults, &[]);
         assert_eq!(shadowed_by(&bindings), vec![None, None]);
-        assert!(find_clashes(&bindings, "ctrl-c", &Some("Editor".into()), Some("fm::Copy"))
+        assert!(
+            find_clashes(
+                &bindings,
+                "ctrl-c",
+                &Some("Editor".into()),
+                Some("fm::Copy")
+            )
             .iter()
-            .all(|c| c.binding.action == "ed::Copy"));
+            .all(|c| c.binding.action == "ed::Copy")
+        );
     }
 
     #[test]
@@ -524,14 +547,24 @@ mod tests {
 
     #[test]
     fn reset_action_drops_only_that_actions_changes() {
-        let defaults = [
-            bind("a::One", "f1", None),
-            bind("a::Two", "f2", None),
-        ];
+        let defaults = [bind("a::One", "f1", None), bind("a::Two", "f2", None)];
         let mut overrides = Vec::new();
-        remove_binding(&defaults, &mut overrides, &Binding::new("a::One", "f1", None));
-        add_binding(&defaults, &mut overrides, Binding::new("a::One", "f9", None), false);
-        remove_binding(&defaults, &mut overrides, &Binding::new("a::Two", "f2", None));
+        remove_binding(
+            &defaults,
+            &mut overrides,
+            &Binding::new("a::One", "f1", None),
+        );
+        add_binding(
+            &defaults,
+            &mut overrides,
+            Binding::new("a::One", "f9", None),
+            false,
+        );
+        remove_binding(
+            &defaults,
+            &mut overrides,
+            &Binding::new("a::Two", "f2", None),
+        );
         reset_action(&defaults, &mut overrides, "a::One");
         assert_eq!(live(&defaults, &overrides), vec![pair("a::One", "f1")]);
         assert!(is_customized(&defaults, &overrides, "a::Two"));
