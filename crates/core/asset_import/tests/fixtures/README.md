@@ -11,3 +11,12 @@ The two primitives share the attribute accessors and use separate materials.
 
 Khronos glTF Validator reports zero errors. Its warning about the unskinned node
 using a weighted mesh is intentional: that instance must import as static content.
+`cubic_spline.gltf` is a small self-contained glTF 2.0 regression asset, using
+the same two-joint strip arrangement as `rigged_import.rs`. Its embedded buffer
+contains authored in/value/out triplets, with radial quaternion derivatives,
+independent TRS times, a sub-microsecond translation interval, signed/zero
+scales, a second animated bone, and LINEAR/STEP channels.
+
+The integration test compares imported/saved/reopened samples with an independent
+f64 Bezier/de Casteljau calculation of the glTF Hermite curves, then checks CPU
+skinning against the reference transform. No extra linear samples are baked.
