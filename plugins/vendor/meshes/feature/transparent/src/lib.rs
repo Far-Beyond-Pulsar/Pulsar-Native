@@ -438,7 +438,7 @@ impl RenderPass for TransparentPass {
         let mut writes = Vec::with_capacity(2);
         writes.extend(self.color_target);
         if self.reactive_mask {
-            writes.push("transparency_reactivity");
+            writes.push(helio_frame_api::color::REACTIVE_MASK);
         }
         helio_frame_api::static_names(&writes)
     }
@@ -446,7 +446,7 @@ impl RenderPass for TransparentPass {
     fn declare_resources(&self, builder: &mut ResourceBuilder) {
         if self.reactive_mask {
             builder.write_color_raw(
-                "transparency_reactivity",
+                helio_frame_api::color::REACTIVE_MASK,
                 wgpu::TextureFormat::R8Unorm,
                 helio_core::graph::ResourceSize::MatchSurface,
             );
@@ -527,7 +527,7 @@ impl RenderPass for TransparentPass {
         if self.reactive_mask {
             attachments.push(Some(wgpu::RenderPassColorAttachment {
                 view: resources
-                    .texture_view(helio_core::ResourceKey::new("transparency_reactivity"))?,
+                    .texture_view(helio_core::ResourceKey::new(helio_frame_api::color::REACTIVE_MASK))?,
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {

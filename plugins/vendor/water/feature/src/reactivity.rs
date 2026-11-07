@@ -17,7 +17,7 @@ use helio_core::{PassContext, RenderPass, ResourceKey, Result as HelioResult};
 pub const WATER_SURFACE_DEPTH: &str = "water_surface_depth";
 
 /// The mask TSR reads (`helio_frame_api::color::ReactiveMask` turns it on).
-const MASK: &str = "transparency_reactivity";
+const MASK: &str = helio_frame_api::color::REACTIVE_MASK;
 
 /// Raises `transparency_reactivity` where the water surface is.
 pub struct WaterReactivityPass {
