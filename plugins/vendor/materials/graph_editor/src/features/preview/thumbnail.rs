@@ -1,8 +1,9 @@
 //! Headless thumbnail rendering for saved material assets.
 
 use super::{mesh, renderer::PreviewRenderer};
-use crate::{features::compilation::lowering::compile_graph_to_wgsl, io::formats::deserialize_shader};
+use crate::io::formats::deserialize_shader;
 use image::RgbaImage;
+use materials_component::graph_preview::{compile_graph, GraphPreview};
 use std::path::Path;
 
 const THUMBNAIL_SIZE: u32 = 128;
@@ -17,7 +18,10 @@ pub fn render_material_thumbnail(path: &Path) -> Option<RgbaImage> {
     };
     let contents = std::fs::read_to_string(&graph_path).ok()?;
     let asset = deserialize_shader(&contents).ok()?;
-    let wgsl = compile_graph_to_wgsl(&asset.main_graph)
+    let root = engine_state::get_project_path()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    let compiled = compile_graph(&asset.main_graph, &root)
         .map_err(|error| {
             tracing::warn!(
                 "Could not compile material thumbnail for {:?}: {}",
@@ -27,11 +31,11 @@ pub fn render_material_thumbnail(path: &Path) -> Option<RgbaImage> {
             error
         })
         .ok()?;
-    render_first_frame(&wgsl)
+    render_first_frame(&compiled)
 }
 
-fn render_first_frame(wgsl: &str) -> Option<RgbaImage> {
-    match smol::block_on(async { render_first_frame_async(wgsl).await }) {
+fn render_first_frame(compiled: &GraphPreview) -> Option<RgbaImage> {
+    match smol::block_on(async { render_first_frame_async(compiled).await }) {
         Ok(image) => Some(image),
         Err(error) => {
             tracing::warn!("Material thumbnail render failed: {error}");
@@ -40,7 +44,7 @@ fn render_first_frame(wgsl: &str) -> Option<RgbaImage> {
     }
 }
 
-async fn render_first_frame_async(wgsl: &str) -> Result<RgbaImage, String> {
+async fn render_first_frame_async(compiled: &GraphPreview) -> Result<RgbaImage, String> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
@@ -74,7 +78,7 @@ async fn render_first_frame_async(wgsl: &str) -> Result<RgbaImage, String> {
     let mut renderer = PreviewRenderer::new();
     renderer.set_plain_black_background(true);
     renderer.initialize(&device, &queue, &config);
-    renderer.update_shader(wgsl);
+    renderer.update_shader(compiled);
     if !renderer.has_material_pipeline() {
         return Err("Material shader did not produce a preview pipeline".into());
     }
@@ -170,8 +174,8 @@ mod tests {
     use crate::definitions::NodeDefinitions;
     use crate::io::formats::{serialize_shader_with_header, ShaderAsset};
     use psgc::{
-        Connection, ConnectionType, GraphDescription, NodeInstance, Pin, PinInstance,
-        PinType, Position,
+        Connection, ConnectionType, GraphDescription, NodeInstance, Pin, PinInstance, PinType,
+        Position,
     };
     use std::path::PathBuf;
 

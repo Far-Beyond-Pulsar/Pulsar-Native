@@ -11,6 +11,11 @@ description = "Materials (pulsar.materials): the registrations of the plugin's H
 name = "materials_component"
 
 [dependencies]
+# The preview program (`preview_program`): its pipeline, error scope and
+# preview textures.
+image = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+pollster = "=0.4.0"
 # The plugin's descriptor and its registrations' origin.
 pulsar_plugins = { workspace = true }
 # The game's slim feature set (as pulsar_game): linking the plugin must not
@@ -18,6 +23,9 @@ pulsar_plugins = { workspace = true }
 # the workspace table cannot opt out of default features.
 engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
 engine_state = { workspace = true }
+# Texture references in graphs resolve through the project's file index.
+engine_fs = { workspace = true }
+pulsar_reflection = { workspace = true }
 inventory = { workspace = true }
 wgpu = { workspace = true }
 helio = { workspace = true }
@@ -37,9 +45,7 @@ tracing = { workspace = true }
 [dev-dependencies]
 # A mesh to place their rows by (tests only; the crate links no mesh).
 meshes_component = { workspace = true }
-pollster = "=0.4.0"
 engine_state = { workspace = true }
-image = { workspace = true }
 pulsar_world_registry = { workspace = true }
 tempfile = { workspace = true }
 

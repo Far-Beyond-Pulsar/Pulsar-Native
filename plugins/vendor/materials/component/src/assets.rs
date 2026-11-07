@@ -197,10 +197,7 @@ fn load_graph(source: &str, bytes: &[u8]) -> Result<GraphMaterial, String> {
     let mut textures = Vec::new();
     let mut texture_sources = Vec::with_capacity(graph_textures.len());
     for asset in graph_textures {
-        let path = match &root {
-            Some(root) if Path::new(&asset).is_relative() => root.join(&asset),
-            _ => PathBuf::from(&asset),
-        };
+        let path = crate::graph::texture_path(&asset, root.as_deref());
         let texture_source = helio_component::texture_assets::texture_source_for_file(&path);
         let image = helio_component::texture_assets::decode_image_file(&path)
             .map_err(|error| format!("texture '{asset}': {error}"))?;

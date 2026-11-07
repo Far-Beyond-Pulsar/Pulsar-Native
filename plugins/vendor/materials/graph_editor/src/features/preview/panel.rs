@@ -20,7 +20,7 @@ pub struct MaterialPreviewPanel {
     pub auto_rotate_speed: f32,
     surface_handle: Option<gpui::WgpuSurfaceHandle>,
     needs_rebuild: bool,
-    last_shader_source: Option<String>,
+    last_shader_source: Option<materials_component::graph_preview::GraphPreview>,
     /// The in-flight background shader build. Replacing it drops (cancels)
     /// a superseded one, so rapid edits only ever apply the newest shader.
     shader_build: Option<Task<()>>,
@@ -215,8 +215,12 @@ impl MaterialPreviewPanel {
     /// editor: shader compilation and texture decoding run on a worker, and
     /// the finished pipeline is swapped in while the previous one keeps
     /// drawing. A shader the GPU rejects leaves the old pipeline in place.
-    pub fn update_shader(&mut self, wgsl_source: &str, cx: &mut Context<Self>) {
-        if self.last_shader_source.as_deref() == Some(wgsl_source) {
+    pub fn update_shader(
+        &mut self,
+        compiled: &materials_component::graph_preview::GraphPreview,
+        cx: &mut Context<Self>,
+    ) {
+        if self.last_shader_source.as_ref() == Some(compiled) {
             return;
         }
         // Not initialized yet: leave `last_shader_source` unset so the next
@@ -224,8 +228,8 @@ impl MaterialPreviewPanel {
         let Some(inputs) = self.renderer.shader_build_inputs() else {
             return;
         };
-        self.last_shader_source = Some(wgsl_source.to_string());
-        let source = wgsl_source.to_string();
+        self.last_shader_source = Some(compiled.clone());
+        let source = compiled.clone();
         self.shader_build = Some(cx.spawn(async move |this, cx| {
             let build = cx
                 .background_executor()
@@ -267,16 +271,16 @@ impl MaterialPreviewPanel {
             self.renderer.camera.pitch = pitch;
         }
 
-        let wgsl_to_compile: Option<String> = self
+        let compiled = self
             .editor
             .upgrade()
-            .and_then(|editor| editor.read(cx).last_compiled_wgsl.clone());
+            .and_then(|editor| editor.read(cx).last_compiled.clone());
 
         // Nothing compiles until the user presses Compile (F7): opening or
         // editing a graph must never start shader compilation on its own.
-        if let Some(ref wgsl) = wgsl_to_compile {
+        if let Some(ref compiled) = compiled {
             if self.renderer.device.is_some() && self.renderer.queue.is_some() {
-                self.update_shader(wgsl, cx);
+                self.update_shader(compiled, cx);
             }
         }
 
@@ -343,7 +347,7 @@ impl MaterialPreviewPanel {
         let no_shader_hint = self
             .editor
             .upgrade()
-            .is_some_and(|editor| editor.read(cx).last_compiled_wgsl.is_none())
+            .is_some_and(|editor| editor.read(cx).last_compiled.is_none())
             .then(|| {
                 div()
                     .absolute()

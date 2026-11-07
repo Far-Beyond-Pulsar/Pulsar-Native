@@ -25,7 +25,7 @@ use graphy::GraphDescription;
 use graphy_gpui::canvas::GraphCanvas;
 
 use crate::editor::panel::ShaderEditorPanel;
-use crate::features::compilation::lowering::{compile_preview_wgsl_for_pin, node_title};
+use crate::features::compilation::lowering::{node_title, pin_preview_graph};
 use crate::features::compilation::CompilationState;
 use crate::types::{is_texture_previewable, type_name};
 use renderer::PinPreviewRenderer;
@@ -189,7 +189,9 @@ impl PinPreviews {
         });
         {
             let live = self.views.borrow();
-            self.errors.borrow_mut().retain(|key, _| live.contains_key(key));
+            self.errors
+                .borrow_mut()
+                .retain(|key, _| live.contains_key(key));
         }
         let errors = self.errors.clone();
         let view = cx.new(|_| PinPreview::new(key.clone(), canvas, editor, errors));
@@ -327,12 +329,16 @@ impl PinPreview {
             let built = cx
                 .background_executor()
                 .spawn(async move {
-                    let wgsl = compile_preview_wgsl_for_pin(&graph, &node_id, &pin_id)?;
-                    let renderer = catch_unwind(AssertUnwindSafe(|| {
-                        PinPreviewRenderer::new(&device, &queue, &wgsl)
+                    let preview = pin_preview_graph(&graph, &node_id, &pin_id)?;
+                    let root = engine_state::get_project_path()
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_default();
+                    let compiled =
+                        materials_component::graph_preview::compile_graph(&preview, &root)?;
+                    catch_unwind(AssertUnwindSafe(|| {
+                        PinPreviewRenderer::new(&device, &queue, &compiled)
                     }))
-                    .map_err(|_| "The GPU rejected the preview shader (see log)".to_string())?;
-                    Ok::<_, String>(renderer)
+                    .map_err(|_| "The GPU rejected the preview shader (see log)".to_string())?
                 })
                 .await;
             let _ = this.update(cx, |this, cx| {
@@ -342,7 +348,10 @@ impl PinPreview {
                 }
                 let result = match built {
                     Ok(renderer) => {
-                        this.built = Some(Built { signature, renderer });
+                        this.built = Some(Built {
+                            signature,
+                            renderer,
+                        });
                         Ok(())
                     }
                     // The graph does not compile into a preview (yet): show none
@@ -406,14 +415,24 @@ impl PinPreview {
         if !settled {
             // Edits are still arriving: a build for an earlier state would be
             // thrown away when it lands, so cancel it now.
-            if self.pending.as_ref().is_some_and(|p| p.signature != signature) {
+            if self
+                .pending
+                .as_ref()
+                .is_some_and(|p| p.signature != signature)
+            {
                 self.pending = None;
             }
         }
-        let stale = self.built.as_ref().map_or(true, |b| b.signature != signature);
+        let stale = self
+            .built
+            .as_ref()
+            .map_or(true, |b| b.signature != signature);
         // A build for this exact state is running, or already failed: do not
         // start another one every frame.
-        let attempted = self.pending.as_ref().is_some_and(|p| p.signature == signature);
+        let attempted = self
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.signature == signature);
         if settled && stale && !attempted {
             let graph = graph.clone();
             self.start_build(
@@ -449,9 +468,7 @@ impl PinPreview {
 impl Render for PinPreview {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let display: AnyElement = match &self.surface {
-            Some(surface) => wgpu_surface(surface.clone())
-                .size_full()
-                .into_any_element(),
+            Some(surface) => wgpu_surface(surface.clone()).size_full().into_any_element(),
             None => div().size_full().bg(gpui::rgb(0x0d0d0d)).into_any_element(),
         };
         let driver = frame_driver(&cx.entity(), &self.driver)
@@ -558,7 +575,8 @@ mod tests {
     #[test]
     fn signature_follows_what_a_preview_depends_on() {
         let mut graph = GraphDescription::new("g");
-        let mut node = graphy::NodeInstance::new("n", "float_constant", graphy::Position::new(0.0, 0.0));
+        let mut node =
+            graphy::NodeInstance::new("n", "float_constant", graphy::Position::new(0.0, 0.0));
         node.set_property("value", 1.0);
         graph.add_node(node);
         let before = graph_preview_signature(&graph);

@@ -182,7 +182,7 @@ pub struct AssetViewerPanel {
     /// Preview colour of each slot's current material.
     pub slot_colors: Vec<[f32; 4]>,
     /// Compiled shader-graph material per slot (None: plain colour).
-    pub graph_draws: Vec<Option<super::graph_material::GraphDraw>>,
+    pub graph_draws: Vec<Option<materials_component::preview_program::GraphDraw>>,
     /// True while graph materials are being parsed, compiled and prepared for
     /// the GPU. This is independent of surface creation so the panel can show
     /// a loading state without blocking the first editor frame.

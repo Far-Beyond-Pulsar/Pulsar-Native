@@ -19,6 +19,7 @@ pulsar_plugins::installed!("../pulsar-plugin.toml");
 pub mod assets;
 pub mod graph;
 pub mod graph_preview;
+pub mod preview_program;
 pub mod sampler;
 
 /// The materials' features: the texture table.

@@ -29,6 +29,8 @@ engine_fs = { workspace = true }
 
 # Shader compiler stack
 psgc = { workspace = true }
+# The materials' one compiler and preview program.
+materials_component = { workspace = true }
 wgsl_std = { path = "../../../../crates/third-party/psgc/crates/wgsl_std" }
 
 uuid = { workspace = true }

@@ -47,7 +47,12 @@ pub enum MeshType {
 
 impl MeshType {
     pub fn variants() -> &'static [MeshType] {
-        &[MeshType::Sphere, MeshType::Quad, MeshType::Cube, MeshType::Cinderblock]
+        &[
+            MeshType::Sphere,
+            MeshType::Quad,
+            MeshType::Cube,
+            MeshType::Cinderblock,
+        ]
     }
 
     pub fn name(&self) -> &'static str {
@@ -152,7 +157,8 @@ pub struct ShaderEditorPanel {
     pub shader_model: String,
 
     // Compiled WGSL output
-    pub last_compiled_wgsl: Option<String>,
+    /// The last material compile (the materials' compiler's output).
+    pub last_compiled: Option<materials_component::graph_preview::GraphPreview>,
 
     // Preview settings
     pub preview_mesh: MeshType,
@@ -189,8 +195,9 @@ impl ShaderEditorPanel {
                 .await;
             let _ = cx.update_window(window_handle, |_, window, cx| {
                 let _ = this.update(cx, |panel, cx| {
-                    let result = parsed
-                        .and_then(|(path, asset)| panel.apply_loaded_asset(path, asset, window, cx));
+                    let result = parsed.and_then(|(path, asset)| {
+                        panel.apply_loaded_asset(path, asset, window, cx)
+                    });
                     panel.file_loading = false;
                     match result {
                         Ok(()) => {
@@ -252,17 +259,18 @@ impl ShaderEditorPanel {
         let time = add("time", -400.0, 80.0);
         let rainbow = add("rainbow", -100.0, 0.0);
         let output = add("fragment_output", 200.0, 0.0);
-        let mut connect = |from: &Option<String>, from_pin: &str, to: &Option<String>, to_pin: &str| {
-            if let (Some(from), Some(to)) = (from, to) {
-                graph.add_connection(graphy::Connection::new(
-                    from,
-                    from_pin,
-                    to,
-                    to_pin,
-                    graphy::ConnectionType::Data,
-                ));
-            }
-        };
+        let mut connect =
+            |from: &Option<String>, from_pin: &str, to: &Option<String>, to_pin: &str| {
+                if let (Some(from), Some(to)) = (from, to) {
+                    graph.add_connection(graphy::Connection::new(
+                        from,
+                        from_pin,
+                        to,
+                        to_pin,
+                        graphy::ConnectionType::Data,
+                    ));
+                }
+            };
         connect(&frag_uv, "result", &rainbow, "uv");
         connect(&time, "result", &rainbow, "shift");
         connect(&rainbow, "result", &output, "color");
@@ -275,8 +283,14 @@ impl ShaderEditorPanel {
         let previews = Arc::new(PinPreviews::new());
         let profile = Arc::new(ShaderProfile::new(previews.clone()));
         let canvas = cx.new(|cx| {
-            GraphCanvas::new(graph, profile.clone(), system_fonts(), crate::theme::graph_theme(cx), cx)
-                .expect("the bundled canvas font parses")
+            GraphCanvas::new(
+                graph,
+                profile.clone(),
+                system_fonts(),
+                crate::theme::graph_theme(cx),
+                cx,
+            )
+            .expect("the bundled canvas font parses")
         });
         previews.attach(canvas.downgrade(), cx.weak_entity());
 
@@ -294,10 +308,13 @@ impl ShaderEditorPanel {
         subscriptions.push(cx.subscribe_in(
             &canvas,
             window,
-            |this, _canvas, event: &CanvasEvent, window, cx| this.on_canvas_event(event, window, cx),
+            |this, _canvas, event: &CanvasEvent, window, cx| {
+                this.on_canvas_event(event, window, cx)
+            },
         ));
 
-        let history: SharedHistory<Command> = Arc::new(std::sync::Mutex::new(History::with_capacity(100)));
+        let history: SharedHistory<Command> =
+            Arc::new(std::sync::Mutex::new(History::with_capacity(100)));
         let meta = DocMeta::default();
         Self {
             focus_handle: cx.focus_handle(),
@@ -324,7 +341,7 @@ impl ShaderEditorPanel {
             undo_service: None,
             pin_property_state: PropertyStateManager::new(),
             detail_inputs: std::collections::HashMap::new(),
-            last_compiled_wgsl: None,
+            last_compiled: None,
             preview_mesh: MeshType::Sphere,
             preview_auto_rotate: true,
             preview_rotation: (0.0, 0.3),
@@ -352,7 +369,8 @@ impl ShaderEditorPanel {
 
     /// Replaces the document (load, reload). Undo history is dropped with it.
     pub(crate) fn install_graph(&mut self, graph: GraphDescription, cx: &mut Context<Self>) {
-        self.canvas.update(cx, |canvas, cx| canvas.set_graph(graph, cx));
+        self.canvas
+            .update(cx, |canvas, cx| canvas.set_graph(graph, cx));
         {
             let mut history = plugin_editor_api::undo::lock(&self.history);
             history.clear();
@@ -417,7 +435,12 @@ impl ShaderEditorPanel {
 
     // ── Canvas events ──────────────────────────────────────────────────────
 
-    fn on_canvas_event(&mut self, event: &CanvasEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_canvas_event(
+        &mut self,
+        event: &CanvasEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match event {
             CanvasEvent::Edited {
                 label,
@@ -482,7 +505,12 @@ impl ShaderEditorPanel {
         let mut commands = vec![GraphCommand::AddNode(node.clone())];
         if let Some(source) = source {
             let graph = self.canvas.read(cx).graph();
-            commands.extend(graphy_gpui::connect_new_node_commands(&*self.profile, graph, &source, &node));
+            commands.extend(graphy_gpui::connect_new_node_commands(
+                &*self.profile,
+                graph,
+                &source,
+                &node,
+            ));
         }
         self.canvas
             .update(cx, |canvas, cx| canvas.apply("Add node", &commands, cx))
@@ -516,9 +544,9 @@ impl ShaderEditorPanel {
             key: key.to_string(),
             value,
         };
-        let _ = self
-            .canvas
-            .update(cx, |canvas, cx| canvas.apply("Edit property", &[command], cx));
+        let _ = self.canvas.update(cx, |canvas, cx| {
+            canvas.apply("Edit property", &[command], cx)
+        });
     }
 
     // ── Comments ───────────────────────────────────────────────────────────
@@ -537,7 +565,13 @@ impl ShaderEditorPanel {
         );
         comment.id = Uuid::new_v4().to_string();
         comment.color = [0.2, 0.4, 0.8, 0.35];
-        let selected: Vec<String> = canvas_ref.controller().selection.nodes.iter().cloned().collect();
+        let selected: Vec<String> = canvas_ref
+            .controller()
+            .selection
+            .nodes
+            .iter()
+            .cloned()
+            .collect();
         let rects: Vec<_> = selected
             .iter()
             .filter_map(|id| canvas_ref.scene().node(id))
@@ -547,8 +581,16 @@ impl ShaderEditorPanel {
             const PADDING: f32 = 30.0;
             let left = rects.iter().map(|r| r.min.x).fold(f32::INFINITY, f32::min) - PADDING;
             let top = rects.iter().map(|r| r.min.y).fold(f32::INFINITY, f32::min) - PADDING;
-            let right = rects.iter().map(|r| r.max.x).fold(f32::NEG_INFINITY, f32::max) + PADDING;
-            let bottom = rects.iter().map(|r| r.max.y).fold(f32::NEG_INFINITY, f32::max) + PADDING;
+            let right = rects
+                .iter()
+                .map(|r| r.max.x)
+                .fold(f32::NEG_INFINITY, f32::max)
+                + PADDING;
+            let bottom = rects
+                .iter()
+                .map(|r| r.max.y)
+                .fold(f32::NEG_INFINITY, f32::max)
+                + PADDING;
             comment.position = Position::new(snap(f64::from(left)), snap(f64::from(top)));
             comment.size = (
                 snap(f64::from(right - left)).max(100.0),
@@ -558,7 +600,11 @@ impl ShaderEditorPanel {
         }
         let index = canvas_ref.graph().comments.len();
         let _ = canvas.update(cx, |canvas, cx| {
-            canvas.apply("Add comment", &[GraphCommand::AddComment { index, comment }], cx)
+            canvas.apply(
+                "Add comment",
+                &[GraphCommand::AddComment { index, comment }],
+                cx,
+            )
         });
     }
 
@@ -631,4 +677,3 @@ impl ShaderEditorPanel {
         self.canvas.read(cx).graph().nodes.get(id).cloned()
     }
 }
-

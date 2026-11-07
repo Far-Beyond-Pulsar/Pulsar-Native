@@ -41,6 +41,40 @@ pub fn texture_assets(graph: &psgc::GraphDescription) -> Result<Vec<String>, Str
     Ok(assets.into_iter().collect())
 }
 
+/// The image file a graph's texture asset names: a texture reference
+/// (`TextureRef`, the asset's id) through the project's file index, else a
+/// path, relative to `project_root`. The one place a graph's textures
+/// resolve, for the engine's materials and the editors' previews alike.
+pub fn texture_path(asset: &str, project_root: Option<&std::path::Path>) -> std::path::PathBuf {
+    let Some(root) = project_root else {
+        return std::path::PathBuf::from(asset);
+    };
+    if let Some(reference) = pulsar_reflection::TextureRef::parse(asset) {
+        if let Some(path) = engine_fs::open_project_file_index(root)
+            .ok()
+            .flatten()
+            .and_then(|index| {
+                index
+                    .path_for_asset_id_kind("texture", reference.as_str())
+                    .ok()
+                    .flatten()
+            })
+        {
+            return if path.is_relative() {
+                root.join(path)
+            } else {
+                path
+            };
+        }
+    }
+    let path = std::path::Path::new(asset);
+    if path.is_relative() {
+        root.join(path)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn is_texture_sample(kind: &str) -> bool {
     matches!(
         kind,
@@ -119,6 +153,48 @@ pub fn texture_uses(
     uses
 }
 
+/// A copy of `graph` with its input defaults in the shape PSGC reads: numbers
+/// and booleans typed as text (what the graph editor's fields and older files
+/// store) become numbers and booleans, and a blank default of an input pin is
+/// dropped so the pin falls back to the shader type's default (serialized as
+/// `""` it would reach the WGSL as a string literal). The one normalization
+/// every compile of a graph goes through.
+pub fn prepare(graph: &psgc::GraphDescription) -> psgc::GraphDescription {
+    let mut prepared = graph.clone();
+    for node in prepared.nodes.values_mut() {
+        let inputs: Vec<String> = node.inputs.iter().map(|pin| pin.id.clone()).collect();
+        let keys: Vec<String> = node.properties.keys().cloned().collect();
+        for key in keys {
+            let Some(serde_json::Value::String(text)) = node.properties.get(&key) else {
+                continue;
+            };
+            match property_to_psgc_value(text, inputs.contains(&key)) {
+                Some(value) => {
+                    node.properties.insert(key, value);
+                }
+                None => {
+                    node.properties.remove(&key);
+                }
+            }
+        }
+    }
+    prepared
+}
+
+fn property_to_psgc_value(value: &str, is_input_property: bool) -> Option<serde_json::Value> {
+    let value = value.trim();
+    if is_input_property && value.is_empty() {
+        return None;
+    }
+    Some(if let Ok(number) = value.parse::<f64>() {
+        serde_json::json!(number)
+    } else if let Ok(boolean) = value.parse::<bool>() {
+        serde_json::json!(boolean)
+    } else {
+        serde_json::json!(value)
+    })
+}
+
 /// Bind graph textures through `GpuMaterial` fields before code generation.
 /// The map values are graph-local texture ordinals, not scene texture slots,
 /// so the compiled source and its pipeline key stay independent of residency.
@@ -140,7 +216,7 @@ pub fn compile_material_graph(
             ));
         }
     }
-    let mut graph = graph.clone();
+    let mut graph = prepare(graph);
     for node in graph.nodes.values_mut() {
         if !is_texture_sample(&node.node_type) {
             continue;
@@ -264,6 +340,37 @@ fn bind_graph_texture_samplers(source: &mut String) {
             );
             search_from = second_comma + 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod property_conversion_tests {
+    use super::property_to_psgc_value;
+
+    #[test]
+    fn blank_input_property_uses_shader_default() {
+        assert_eq!(property_to_psgc_value("", true), None);
+        assert_eq!(property_to_psgc_value("   ", true), None);
+    }
+
+    #[test]
+    fn blank_non_input_property_is_preserved() {
+        assert_eq!(
+            property_to_psgc_value("", false),
+            Some(serde_json::Value::String(String::new()))
+        );
+    }
+
+    #[test]
+    fn scalar_input_properties_keep_their_types() {
+        assert_eq!(
+            property_to_psgc_value("0.5", true),
+            Some(serde_json::json!(0.5))
+        );
+        assert_eq!(
+            property_to_psgc_value("true", true),
+            Some(serde_json::json!(true))
+        );
     }
 }
 

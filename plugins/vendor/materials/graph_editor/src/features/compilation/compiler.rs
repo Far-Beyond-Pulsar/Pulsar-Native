@@ -1,7 +1,7 @@
 //! Compiler - Compile shader graphs to WGSL code via PSGC
 
-use crate::editor::panel::{CompilationHistoryEntry, ShaderEditorPanel};
 use super::{CompilationState, CompilationStatus};
+use crate::editor::panel::{CompilationHistoryEntry, ShaderEditorPanel};
 use gpui::*;
 
 // ── ShaderEditorPanel helpers ──────────────────────────────────────────────
@@ -54,17 +54,27 @@ impl ShaderEditorPanel {
         cx.notify();
     }
 
-    /// Compile to WGSL via PSGC
+    /// Compile the document as the engine draws it: the WGSL of the
+    /// material's preview program (the graph composed into its template).
     pub fn compile_to_wgsl(&self, cx: &App) -> Result<String, String> {
-        Self::compile_document(self.document_snapshot(cx)?)
+        let preview = Self::compile_document(self.document_snapshot(cx)?)?;
+        materials_component::preview_program::program_source(&preview)
     }
 
-    /// PSGC compile plus WGSL validation. Pure CPU work on owned data: run
-    /// it on a worker, never inside a UI update.
-    fn compile_document(graph: graphy::GraphDescription) -> Result<String, String> {
-        let wgsl = super::lowering::compile_graph_to_wgsl(&graph)?;
-        validate_wgsl(&wgsl)?;
-        Ok(wgsl)
+    /// The materials' one compiler (`materials_component::graph`) over the
+    /// document, validated as the program it draws with. Pure CPU work on
+    /// owned data: run it on a worker, never inside a UI update.
+    fn compile_document(
+        graph: graphy::GraphDescription,
+    ) -> Result<materials_component::graph_preview::GraphPreview, String> {
+        let root = engine_state::get_project_path()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        let preview = materials_component::graph_preview::compile_graph(&graph, &root)?;
+        validate_wgsl(&materials_component::preview_program::program_source(
+            &preview,
+        )?)?;
+        Ok(preview)
     }
 
     /// Start compilation (called from toolbar)
@@ -110,11 +120,12 @@ impl ShaderEditorPanel {
         };
 
         match result {
-            Ok(Ok(wgsl_code)) => {
+            Ok(Ok(preview)) => {
                 let _ = panel_entity.update(cx, |panel, cx| {
                     let elapsed_ms = started_at.elapsed().as_millis();
+                    let wgsl_code = preview.snippet.clone();
 
-                    panel.last_compiled_wgsl = Some(wgsl_code.clone());
+                    panel.last_compiled = Some(preview);
 
                     panel.compilation_status = CompilationStatus {
                         state: CompilationState::Success,

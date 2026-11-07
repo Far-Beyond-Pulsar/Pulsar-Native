@@ -1,14 +1,15 @@
-//! Shader-graph materials in the mesh viewer.
+//! The materials' preview program: a material drawn on a preview mesh as the
+//! engine's drawers draw it, for the editors that show one (the mesh viewer's
+//! slots, the graph editor's preview and thumbnails).
 //!
-//! The graph is compiled by the same code the renderer uses
-//! (`materials_component::graph_preview`) and composed into the default material
-//! class's template exactly as a drawer composes it
-//! (`RadiantTemplate::compose`), so `radiant_eval_surface` produces the same
-//! albedo, emissive and alpha the engine would. The viewer's program is a
-//! drawer's: a vertex stage (position, normal, UV) and a small fragment
-//! stage that lights the surface.
+//! The graph is compiled by the materials' one compiler
+//! ([`crate::graph_preview`]) and composed into the default material class's
+//! template exactly as a drawer composes it (`RadiantTemplate::compose`), so
+//! `radiant_eval_surface` produces the albedo, emissive and alpha the engine
+//! would. The program is a drawer's: a vertex stage (position, normal, UV)
+//! and a small fragment stage that lights the surface.
 
-use materials_component::graph_preview::GraphPreview;
+use crate::graph_preview::GraphPreview;
 
 /// The viewer's program. The material table's bindings are declared as every
 /// drawer declares them (group 1; the viewer binds only the textures, which
@@ -134,10 +135,23 @@ pub fn write_globals_at(queue: &wgpu::Queue, buffer: &wgpu::Buffer, frame: u32, 
     queue.write_buffer(buffer, GLOBALS_TIME_OFFSET, &time.to_le_bytes());
 }
 
-/// A compiled graph material: its pipeline and its texture bind group.
+/// What a host writes into the uniform block at group 3 (its layout's
+/// binding 0): the view-projection, the render mode (`x` 0: lit, else
+/// unlit) and a base colour.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PreviewUniforms {
+    pub view_proj: [[f32; 4]; 4],
+    pub render_mode: [u32; 4],
+    pub base_color: [f32; 4],
+}
+
+/// A compiled graph material: its pipeline, its texture bind group (group
+/// 1) and the empty bind group its layout keeps at group 2.
 pub struct GraphDraw {
     pub pipeline: wgpu::RenderPipeline,
     pub textures: wgpu::BindGroup,
+    pub empty: wgpu::BindGroup,
 }
 
 /// Everything a graph pipeline shares with the viewer's own mesh pipeline.
@@ -147,17 +161,44 @@ pub struct GraphContext<'a> {
     pub target_format: wgpu::TextureFormat,
     /// Layout of the template's `Globals` buffer (group 0, binding 1).
     pub globals_layout: &'a wgpu::BindGroupLayout,
-    /// Layout of the per-draw uniform buffer (bound at group 3).
+    /// Layout of the per-draw uniform buffer (bound at group 3; a
+    /// [`PreviewUniforms`]).
     pub uniform_layout: &'a wgpu::BindGroupLayout,
+    /// The host's depth target, if it has one.
+    pub depth_format: Option<wgpu::TextureFormat>,
+    /// The winding of the host's mesh fronts.
+    pub front_face: wgpu::FrontFace,
+}
+
+/// The largest side, in texels, a preview texture keeps: a preview never
+/// needs a 4K image, so a graph sampling several does not put hundreds of
+/// MiB on the GPU for a few hundred pixels.
+const PREVIEW_MAX_TEXTURE: u32 = 1024;
+
+/// `image` scaled down (aspect kept) so its larger side is at most
+/// [`PREVIEW_MAX_TEXTURE`]; smaller images are returned as they are.
+pub fn fit_preview_texture(image: image::DynamicImage) -> image::DynamicImage {
+    let (width, height) = (image.width(), image.height());
+    let longest = width.max(height);
+    if longest <= PREVIEW_MAX_TEXTURE {
+        return image;
+    }
+    let scale = f64::from(PREVIEW_MAX_TEXTURE) / f64::from(longest);
+    image.resize_exact(
+        ((f64::from(width) * scale).round() as u32).max(1),
+        ((f64::from(height) * scale).round() as u32).max(1),
+        image::imageops::FilterType::Triangle,
+    )
 }
 
 fn load_texture(
     ctx: &GraphContext<'_>,
     path: &std::path::Path,
 ) -> Result<wgpu::TextureView, String> {
-    let rgba = image::open(path)
-        .map_err(|error| format!("texture {}: {error}", path.display()))?
-        .to_rgba8();
+    let rgba = fit_preview_texture(
+        image::open(path).map_err(|error| format!("texture {}: {error}", path.display()))?,
+    )
+    .to_rgba8();
     let (width, height) = rgba.dimensions();
     Ok(upload_rgba(ctx, width, height, rgba.as_raw()))
 }
@@ -238,17 +279,15 @@ pub fn build(
         entries: &entries,
     });
 
-    let template = helio_mats::RadiantTemplateRegistry::new();
-    let template = template
-        .get(helio_mats::MATERIAL_CLASS_DEFAULT)
-        .ok_or("the default Radiant template is missing")?;
-    let source = helio_mats::apply_webgpu_material_bindings(
-        &template.compose(VIEWER_PROGRAM, &preview.snippet, slots, &[]),
-        slots,
-    );
+    let source = program_source(preview)?;
 
     let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("graph material empty layout"),
+        entries: &[],
+    });
+    let empty = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("graph material empty"),
+        layout: &empty_layout,
         entries: &[],
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -288,12 +327,12 @@ pub fn build(
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
-            front_face: wgpu::FrontFace::Cw,
+            front_face: ctx.front_face,
             cull_mode: Some(wgpu::Face::Back),
             ..Default::default()
         },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
+        depth_stencil: ctx.depth_format.map(|format| wgpu::DepthStencilState {
+            format,
             depth_write_enabled: Some(true),
             depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: wgpu::StencilState::default(),
@@ -306,5 +345,24 @@ pub fn build(
     if let Some(error) = pollster::block_on(scope.pop()) {
         return Err(error.to_string());
     }
-    Ok(GraphDraw { pipeline, textures })
+    Ok(GraphDraw {
+        pipeline,
+        textures,
+        empty,
+    })
+}
+
+/// The program `preview` draws with: the preview program with the graph
+/// composed into the default material class's template, as a drawer
+/// composes it. An editor validates a graph by compiling this.
+pub fn program_source(preview: &GraphPreview) -> Result<String, String> {
+    let slots = preview.textures.len().max(1);
+    let template = helio_mats::RadiantTemplateRegistry::new();
+    let template = template
+        .get(helio_mats::MATERIAL_CLASS_DEFAULT)
+        .ok_or("the default Radiant template is missing")?;
+    Ok(helio_mats::apply_webgpu_material_bindings(
+        &template.compose(VIEWER_PROGRAM, &preview.snippet, slots, &[]),
+        slots,
+    ))
 }

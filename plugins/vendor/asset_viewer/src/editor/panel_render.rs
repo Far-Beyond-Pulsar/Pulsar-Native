@@ -960,10 +960,10 @@ impl AssetViewerPanel {
 
         // The template's `Globals`: graph materials read the frame counter
         // and the shared clock from it.
-        let globals_layout = super::graph_material::globals_layout(device);
+        let globals_layout = materials_component::preview_program::globals_layout(device);
         let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("graph material globals"),
-            size: super::graph_material::GLOBALS_SIZE,
+            size: materials_component::preview_program::GLOBALS_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -2084,7 +2084,7 @@ impl AssetViewerPanel {
         // Advance the graph clock every frame, so `time` nodes animate.
         self.frame_counter = self.frame_counter.wrapping_add(1);
         if let Some(globals) = &self.globals_buffer {
-            super::graph_material::write_globals(queue, globals, self.frame_counter);
+            materials_component::preview_program::write_globals(queue, globals, self.frame_counter);
         }
         if let Some(buf) = &self.mesh_uniform_buffer {
             for (draw, (_, color, _)) in draws.iter().enumerate() {

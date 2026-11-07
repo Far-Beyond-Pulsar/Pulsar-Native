@@ -1,87 +1,13 @@
-//! WGPU-based 3D preview renderer
+//! The material preview: the material drawn on the preview mesh with the
+//! materials' preview program (`materials_component::preview_program`), so it
+//! shows what the engine's drawers draw, over the editor's sky backdrop.
 
 use super::camera::OrbitCamera;
 use super::mesh::PreviewVertex;
+use materials_component::graph_preview::GraphPreview;
+use materials_component::preview_program::{self, GraphDraw, PreviewUniforms};
 use wgpu::*;
 
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct PreviewUniforms {
-    view_proj: [[f32; 4]; 4],
-    model: [[f32; 4]; 4],
-    time: f32,
-    _padding: [f32; 3],
-}
-
-const VERTEX_SHADER_SRC: &str = r#"
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
-};
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) world_pos: vec3<f32>,
-};
-
-struct Uniforms {
-    view_proj: mat4x4<f32>,
-    model: mat4x4<f32>,
-    time: f32,
-};
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-// WGSL has no built-in matrix inverse. This computes `transpose(inverse(m))`
-// directly via the adjugate/determinant method — i.e. the normal matrix for
-// model matrix `m` — since that's the only thing it's used for here.
-fn normal_matrix3x3(m: mat3x3<f32>) -> mat3x3<f32> {
-    let a = m[0];
-    let b = m[1];
-    let c = m[2];
-
-    let cross_bc = cross(b, c);
-    let cross_ca = cross(c, a);
-    let cross_ab = cross(a, b);
-
-    let det = dot(a, cross_bc);
-    let inv_det = 1.0 / det;
-
-    return mat3x3<f32>(
-        cross_bc * inv_det,
-        cross_ca * inv_det,
-        cross_ab * inv_det,
-    );
-}
-
-@vertex
-fn vertex_main(input: VertexInput) -> VertexOutput {
-    let world_pos = (uniforms.model * vec4(input.position, 1.0)).xyz;
-    let model3 = mat3x3<f32>(
-        uniforms.model[0].xyz,
-        uniforms.model[1].xyz,
-        uniforms.model[2].xyz,
-    );
-    let normal_mat = normal_matrix3x3(model3);
-
-    var output: VertexOutput;
-    output.position = uniforms.view_proj * vec4(world_pos, 1.0);
-    output.uv = input.uv;
-    output.normal = normalize(normal_mat * input.normal);
-    output.world_pos = world_pos;
-    return output;
-}
-"#;
-
-/// Fullscreen sky/horizon gradient, drawn behind the preview mesh.
-///
-/// Reconstructs a view ray per-pixel from the camera basis vectors (no
-/// matrix inversion needed) and shades it with a zenith→horizon→ground
-/// gradient, a warm horizon glow band, and a slowly orbiting sun — handy as
-/// a stable visual reference for checking the camera's orientation.
 const SKY_SHADER_SRC: &str = r#"
 struct SkyUniforms {
     camera_right: vec4<f32>,
@@ -166,151 +92,18 @@ struct SkyUniforms {
     params: [f32; 4],
 }
 
-fn texture_source_paths(wgsl: &str) -> Vec<String> {
-    wgsl.lines()
-        .filter_map(|line| line.trim().strip_prefix("// TextureSrc:"))
-        .filter_map(|path| serde_json::from_str::<String>(path.trim()).ok())
-        .collect()
-}
-
-fn create_texture_bindings(
-    device: &Device,
-    queue: &Queue,
-    asset_paths: &[String],
-) -> (BindGroupLayout, BindGroup, Vec<Texture>) {
-    let mut entries = Vec::with_capacity(asset_paths.len() + 1);
-    entries.push(BindGroupLayoutEntry {
-        binding: 0,
-        visibility: ShaderStages::FRAGMENT,
-        ty: BindingType::Sampler(SamplerBindingType::Filtering),
-        count: None,
-    });
-    for index in 0..asset_paths.len() {
-        entries.push(BindGroupLayoutEntry {
-            binding: index as u32 + 1,
-            visibility: ShaderStages::FRAGMENT,
-            ty: BindingType::Texture {
-                sample_type: TextureSampleType::Float { filterable: true },
-                view_dimension: TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        });
-    }
-    let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-        label: Some("material texture bindings"),
-        entries: &entries,
-    });
-
-    let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
-    let mut textures = Vec::with_capacity(asset_paths.len());
-    let mut views = Vec::with_capacity(asset_paths.len());
-    for (index, asset_path) in asset_paths.iter().enumerate() {
-        let relative_path = std::path::Path::new(asset_path);
-        let resolved_path = if relative_path.is_absolute() {
-            relative_path.to_path_buf()
-        } else {
-            project_root
-                .as_ref()
-                .map(|root| root.join(relative_path))
-                .unwrap_or_else(|| relative_path.to_path_buf())
-        };
-        // A preview sphere never needs a 4K texture: scale the larger side
-        // down before the RGBA conversion, so a material graph sampling
-        // several 4K images does not put hundreds of MiB on the GPU for a
-        // few hundred pixels of preview.
-        let decoded = image::open(&resolved_path)
-            .map(|image| fit_preview_texture(image).to_rgba8());
-        let (width, height, pixels) = match decoded {
-            Ok(image) => (
-                image.width().max(1),
-                image.height().max(1),
-                image.into_raw(),
-            ),
-            Err(error) => {
-                tracing::warn!(
-                    "Could not load material preview texture '{}': {}",
-                    resolved_path.display(),
-                    error
-                );
-                (1, 1, vec![255, 255, 255, 255])
-            }
-        };
-        let texture = device.create_texture(&TextureDescriptor {
-            label: Some(&format!("material preview texture {index}")),
-            size: Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8UnormSrgb,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: TextureAspect::All,
-            },
-            &pixels,
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width * 4),
-                rows_per_image: Some(height),
-            },
-            Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
-        views.push(texture.create_view(&TextureViewDescriptor::default()));
-        textures.push(texture);
-    }
-
-    let sampler = device.create_sampler(&SamplerDescriptor {
-        label: Some("material preview sampler"),
-        mag_filter: FilterMode::Linear,
-        min_filter: FilterMode::Linear,
-        mipmap_filter: MipmapFilterMode::Linear,
-        ..Default::default()
-    });
-    let mut bind_entries = Vec::with_capacity(views.len() + 1);
-    bind_entries.push(BindGroupEntry {
-        binding: 0,
-        resource: BindingResource::Sampler(&sampler),
-    });
-    for (index, view) in views.iter().enumerate() {
-        bind_entries.push(BindGroupEntry {
-            binding: index as u32 + 1,
-            resource: BindingResource::TextureView(view),
-        });
-    }
-    let bind_group = device.create_bind_group(&BindGroupDescriptor {
-        label: Some("material preview texture bind group"),
-        layout: &layout,
-        entries: &bind_entries,
-    });
-
-    (layout, bind_group, textures)
-}
-
 pub struct PreviewRenderer {
     pub device: Option<Device>,
     pub queue: Option<Queue>,
-    pipeline: Option<RenderPipeline>,
-    pipeline_layout: Option<PipelineLayout>,
+    /// The material's pipeline and texture bind groups.
+    draw: Option<GraphDraw>,
+    /// The program's uniform block (group 3) and clock (group 0).
     uniform_buffer: Option<Buffer>,
     uniform_bind_group_layout: Option<BindGroupLayout>,
     bind_group: Option<BindGroup>,
-    texture_bind_group_layout: Option<BindGroupLayout>,
-    texture_bind_group: Option<BindGroup>,
-    _texture_assets: Vec<Texture>,
+    globals_layout: Option<BindGroupLayout>,
+    globals_buffer: Option<Buffer>,
+    globals_bind_group: Option<BindGroup>,
     pub mesh_vertex_buffer: Option<Buffer>,
     pub mesh_index_buffer: Option<Buffer>,
     pub mesh_index_count: u32,
@@ -326,151 +119,70 @@ pub struct PreviewRenderer {
     start_time: std::time::Instant,
 }
 
-
 /// Handles a shader build needs; see [`PreviewRenderer::shader_build_inputs`].
 #[derive(Clone)]
 pub struct ShaderBuildInputs {
     device: Device,
     queue: Queue,
     uniform_layout: BindGroupLayout,
+    globals_layout: BindGroupLayout,
     target_format: TextureFormat,
 }
 
-/// The GPU objects one compiled preview shader produces.
+/// The GPU objects one compiled material produces.
 pub struct ShaderBuild {
-    pipeline: Option<RenderPipeline>,
-    pipeline_layout: PipelineLayout,
-    texture_bind_group_layout: Option<BindGroupLayout>,
-    texture_bind_group: Option<BindGroup>,
-    texture_assets: Vec<Texture>,
-    /// Why the GPU rejected the shader; `None` when `pipeline` was built.
+    draw: Option<GraphDraw>,
+    /// Why the GPU rejected the program; `None` when `draw` was built.
     pub error: Option<String>,
 }
 
-/// Compile `wgsl_source` into a pipeline. Slow (shader compilation, texture
-/// decode); safe to call from any thread, so the editor never waits on it.
-///
-/// PSGC compiles each shader graph to a complete, self-contained
-/// `@fragment fn fragment_main(...)` module, used directly as the fragment
-/// shader rather than wrapped inside another function.
-pub fn build_shader(inputs: &ShaderBuildInputs, wgsl_source: &str) -> ShaderBuild {
-    let ShaderBuildInputs {
-        device,
-        queue,
-        uniform_layout,
-        target_format,
-    } = inputs;
-    // User-authored graphs must not route validation failures through
-    // WGPU's uncaptured-error handler, which panics the editor.
-    let error_scope = device.push_error_scope(ErrorFilter::Validation);
-
-    let texture_sources = texture_source_paths(wgsl_source);
-    let texture_resources = if texture_sources.is_empty() {
-        None
-    } else {
-        Some(create_texture_bindings(device, queue, &texture_sources))
+/// Build the preview program for `compiled` (the materials' compiler's
+/// output). Slow (shader compilation, texture decode); safe to call from any
+/// thread, so the editor never waits on it. A program the GPU rejects comes
+/// back as an error, never through wgpu's panicking handler.
+pub fn build_shader(inputs: &ShaderBuildInputs, compiled: &GraphPreview) -> ShaderBuild {
+    let context = preview_program::GraphContext {
+        device: &inputs.device,
+        queue: &inputs.queue,
+        target_format: inputs.target_format,
+        globals_layout: &inputs.globals_layout,
+        uniform_layout: &inputs.uniform_layout,
+        depth_format: None,
+        front_face: FrontFace::Ccw,
     };
-    let texture_assets = texture_resources
-        .as_ref()
-        .map(|(_, _, textures)| textures.iter().map(Texture::clone).collect())
-        .unwrap_or_default();
-    let texture_bind_group_layout = texture_resources
-        .as_ref()
-        .map(|(layout, _, _)| layout.clone());
-    let texture_bind_group = texture_resources
-        .as_ref()
-        .map(|(_, bind_group, _)| bind_group.clone());
-
-    let mut layouts = vec![Some(uniform_layout)];
-    if let Some((texture_layout, _, _)) = texture_resources.as_ref() {
-        layouts.push(Some(texture_layout));
-    }
-    let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-        label: Some("material preview pipeline layout"),
-        bind_group_layouts: &layouts,
-        immediate_size: 0,
-    });
-
-    let vs_module = device.create_shader_module(ShaderModuleDescriptor {
-        label: Some("preview vertex shader"),
-        source: ShaderSource::Wgsl(VERTEX_SHADER_SRC.into()),
-    });
-    let fs_module = device.create_shader_module(ShaderModuleDescriptor {
-        label: Some("preview fragment shader"),
-        source: ShaderSource::Wgsl(wgsl_source.into()),
-    });
-    let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-        label: Some("preview pipeline"),
-        // Use the bind group layout created in `initialize()` (and shared
-        // with the renderer's bind group) explicitly: `layout: None` would
-        // derive its own internal layout via shader reflection, a *different*
-        // layout object, incompatible with that bind group at draw time.
-        layout: Some(&pipeline_layout),
-        vertex: VertexState {
-            module: &vs_module,
-            entry_point: Some("vertex_main"),
-            compilation_options: PipelineCompilationOptions::default(),
-            buffers: &[Some(VertexBufferLayout {
-                array_stride: std::mem::size_of::<PreviewVertex>() as u64,
-                step_mode: VertexStepMode::Vertex,
-                attributes: &[
-                    VertexAttribute {
-                        format: VertexFormat::Float32x3,
-                        offset: 0,
-                        shader_location: 0,
-                    },
-                    VertexAttribute {
-                        format: VertexFormat::Float32x3,
-                        offset: 12,
-                        shader_location: 1,
-                    },
-                    VertexAttribute {
-                        format: VertexFormat::Float32x2,
-                        offset: 24,
-                        shader_location: 2,
-                    },
-                ],
-            })],
+    let layout = VertexBufferLayout {
+        array_stride: std::mem::size_of::<PreviewVertex>() as u64,
+        step_mode: VertexStepMode::Vertex,
+        attributes: &[
+            VertexAttribute {
+                format: VertexFormat::Float32x3,
+                offset: 0,
+                shader_location: 0,
+            },
+            VertexAttribute {
+                format: VertexFormat::Float32x3,
+                offset: 12,
+                shader_location: 1,
+            },
+            VertexAttribute {
+                format: VertexFormat::Float32x2,
+                offset: 24,
+                shader_location: 2,
+            },
+        ],
+    };
+    match preview_program::build(&context, compiled, &[Some(layout)]) {
+        Ok(draw) => ShaderBuild {
+            draw: Some(draw),
+            error: None,
         },
-        fragment: Some(FragmentState {
-            module: &fs_module,
-            entry_point: Some("fragment_main"),
-            compilation_options: PipelineCompilationOptions::default(),
-            targets: &[Some(ColorTargetState {
-                format: *target_format,
-                blend: Some(BlendState::ALPHA_BLENDING),
-                write_mask: ColorWrites::ALL,
-            })],
-        }),
-        primitive: PrimitiveState {
-            topology: PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
-            unclipped_depth: false,
-            polygon_mode: PolygonMode::Fill,
-            conservative: false,
-        },
-        depth_stencil: None,
-        multisample: MultisampleState::default(),
-        multiview_mask: None,
-        cache: None,
-    });
-
-    let (pipeline, error) = match smol::block_on(error_scope.pop()) {
-        Some(error) => {
-            tracing::error!("Material preview pipeline rejected shader: {error}");
-            (None, Some(error.to_string()))
+        Err(error) => {
+            tracing::error!("Material preview pipeline rejected the program: {error}");
+            ShaderBuild {
+                draw: None,
+                error: Some(error),
+            }
         }
-        None => (Some(pipeline), None),
-    };
-    ShaderBuild {
-        pipeline,
-        error,
-        pipeline_layout,
-        texture_bind_group_layout,
-        texture_bind_group,
-        texture_assets,
     }
 }
 
@@ -479,14 +191,13 @@ impl PreviewRenderer {
         Self {
             device: None,
             queue: None,
-            pipeline: None,
-            pipeline_layout: None,
+            draw: None,
             uniform_buffer: None,
             uniform_bind_group_layout: None,
             bind_group: None,
-            texture_bind_group_layout: None,
-            texture_bind_group: None,
-            _texture_assets: Vec::new(),
+            globals_layout: None,
+            globals_buffer: None,
+            globals_bind_group: None,
             mesh_vertex_buffer: None,
             mesh_index_buffer: None,
             mesh_index_count: 0,
@@ -541,12 +252,6 @@ impl PreviewRenderer {
         });
         self.uniform_bind_group_layout = Some(bind_group_layout.clone());
 
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("preview pipeline layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("preview bind group"),
             layout: &bind_group_layout,
@@ -556,7 +261,25 @@ impl PreviewRenderer {
             }],
         });
         self.bind_group = Some(bind_group);
-        self.pipeline_layout = Some(pipeline_layout);
+
+        // The program's clock (the frame and the time graph `time` nodes read).
+        let globals_layout = preview_program::globals_layout(device);
+        let globals_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("preview clock"),
+            size: preview_program::GLOBALS_SIZE,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.globals_bind_group = Some(device.create_bind_group(&BindGroupDescriptor {
+            label: Some("preview clock bind group"),
+            layout: &globals_layout,
+            entries: &[BindGroupEntry {
+                binding: 1,
+                resource: globals_buffer.as_entire_binding(),
+            }],
+        }));
+        self.globals_layout = Some(globals_layout);
+        self.globals_buffer = Some(globals_buffer);
 
         // Sky pass: its own uniform buffer/bind group/pipeline so it stays
         // independent of whatever bind group layout the compiled material
@@ -649,6 +372,7 @@ impl PreviewRenderer {
             device: self.device.clone()?,
             queue: self.queue.clone()?,
             uniform_layout: self.uniform_bind_group_layout.clone()?,
+            globals_layout: self.globals_layout.clone()?,
             target_format: self
                 .surface_config
                 .as_ref()
@@ -660,9 +384,9 @@ impl PreviewRenderer {
     /// Build and install a shader on the calling thread. Used where blocking
     /// is fine (thumbnails); the interactive preview builds with
     /// [`build_shader`] on a worker and installs with [`Self::apply_shader`].
-    pub fn update_shader(&mut self, wgsl_source: &str) {
+    pub fn update_shader(&mut self, compiled: &GraphPreview) {
         if let Some(inputs) = self.shader_build_inputs() {
-            self.apply_shader(build_shader(&inputs, wgsl_source));
+            self.apply_shader(build_shader(&inputs, compiled));
         }
         self.needs_recompile = false;
     }
@@ -670,12 +394,8 @@ impl PreviewRenderer {
     /// Install a finished [`ShaderBuild`]. A shader the GPU rejected keeps
     /// the previous pipeline on screen.
     pub fn apply_shader(&mut self, build: ShaderBuild) {
-        self._texture_assets = build.texture_assets;
-        self.texture_bind_group_layout = build.texture_bind_group_layout;
-        self.texture_bind_group = build.texture_bind_group;
-        self.pipeline_layout = Some(build.pipeline_layout);
-        if let Some(pipeline) = build.pipeline {
-            self.pipeline = Some(pipeline);
+        if let Some(draw) = build.draw {
+            self.draw = Some(draw);
         }
         self.needs_recompile = false;
     }
@@ -772,7 +492,8 @@ impl PreviewRenderer {
         // Only draw the material mesh once both the compiled-shader pipeline
         // and the mesh geometry are uploaded; the sky still renders on its
         // own otherwise, so the surface is never left blank/grey.
-        let mesh_ready = self.pipeline.is_some()
+        let mesh_ready = self.draw.is_some()
+            && self.globals_bind_group.is_some()
             && self.uniform_buffer.is_some()
             && self.bind_group.is_some()
             && self.mesh_vertex_buffer.is_some()
@@ -780,23 +501,22 @@ impl PreviewRenderer {
             && self.mesh_index_count > 0;
 
         if mesh_ready {
-            let model: [[f32; 4]; 4] = [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ];
-
             let uniforms = PreviewUniforms {
                 view_proj,
-                model,
-                time: elapsed,
-                _padding: [0.0; 3],
+                // Lit.
+                render_mode: [0; 4],
+                base_color: [1.0; 4],
             };
             queue.write_buffer(
                 self.uniform_buffer.as_ref().unwrap(),
                 0,
                 bytemuck::bytes_of(&uniforms),
+            );
+            preview_program::write_globals_at(
+                queue,
+                self.globals_buffer.as_ref().unwrap(),
+                0,
+                elapsed,
             );
         }
 
@@ -844,16 +564,15 @@ impl PreviewRenderer {
             }
 
             if mesh_ready {
-                let pipeline = self.pipeline.as_ref().unwrap();
-                let bind_group = self.bind_group.as_ref().unwrap();
+                let draw = self.draw.as_ref().unwrap();
                 let vertex_buffer = self.mesh_vertex_buffer.as_ref().unwrap();
                 let index_buffer = self.mesh_index_buffer.as_ref().unwrap();
 
-                rpass.set_pipeline(pipeline);
-                rpass.set_bind_group(0, bind_group, &[]);
-                if let Some(texture_bind_group) = &self.texture_bind_group {
-                    rpass.set_bind_group(1, texture_bind_group, &[]);
-                }
+                rpass.set_pipeline(&draw.pipeline);
+                rpass.set_bind_group(0, self.globals_bind_group.as_ref().unwrap(), &[]);
+                rpass.set_bind_group(1, &draw.textures, &[]);
+                rpass.set_bind_group(2, &draw.empty, &[]);
+                rpass.set_bind_group(3, self.bind_group.as_ref().unwrap(), &[]);
                 rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 rpass.set_index_buffer(index_buffer.slice(..), IndexFormat::Uint32);
                 rpass.draw_indexed(0..self.mesh_index_count, 0, 0..1);
@@ -864,7 +583,7 @@ impl PreviewRenderer {
     }
 
     pub fn has_material_pipeline(&self) -> bool {
-        self.pipeline.is_some()
+        self.draw.is_some()
     }
 
     pub fn resize(&mut self, width: u32, height: u32, config: &SurfaceConfiguration) {
@@ -877,25 +596,18 @@ impl PreviewRenderer {
 mod tests {
     use super::*;
 
-    const GOOD_FRAGMENT: &str = r#"
-struct FragmentInput {
-    @location(0) uv: vec2<f32>,
-    @location(1) normal: vec3<f32>,
-    @location(2) world_pos: vec3<f32>,
-};
-@fragment
-fn fragment_main(input: FragmentInput) -> @location(0) vec4<f32> {
-    return vec4<f32>(input.uv, 0.0, 1.0);
-}
-"#;
+    /// A graph that compiles: the default class's surface.
+    fn good() -> GraphPreview {
+        GraphPreview::default()
+    }
 
     /// A type error, as a half-edited graph can produce.
-    const BAD_FRAGMENT: &str = r#"
-@fragment
-fn fragment_main() -> @location(0) vec4<f32> {
-    return vec4<f32>("not a number");
-}
-"#;
+    fn bad() -> GraphPreview {
+        GraphPreview {
+            snippet: "/*RADIANT_GRAPH_DECLARATIONS*/\nfn broken() -> f32 { return vec4<f32>(\"x\"); }\n/*RADIANT_GRAPH_BODY*/\n".into(),
+            textures: Vec::new(),
+        }
+    }
 
     fn inputs() -> ShaderBuildInputs {
         let instance = Instance::new(InstanceDescriptor::new_without_display_handle());
@@ -916,16 +628,18 @@ fn fragment_main() -> @location(0) vec4<f32> {
                 count: None,
             }],
         });
+        let globals_layout = preview_program::globals_layout(&device);
         ShaderBuildInputs {
             device,
             queue,
             uniform_layout,
+            globals_layout,
             target_format: TextureFormat::Bgra8Unorm,
         }
     }
 
     /// The build runs on a worker thread (so the editor never waits on shader
-    /// compilation), and a shader the GPU rejects is reported as "no
+    /// compilation), and a program the GPU rejects is reported as "no
     /// pipeline" instead of reaching wgpu's panicking error handler.
     #[test]
     fn shader_builds_run_off_thread_and_rejected_shaders_do_not_panic() {
@@ -936,53 +650,23 @@ fn fragment_main() -> @location(0) vec4<f32> {
         let (worker, good) = std::thread::spawn(move || {
             (
                 std::thread::current().id(),
-                build_shader(&worker_inputs, GOOD_FRAGMENT),
+                build_shader(&worker_inputs, &good()),
             )
         })
         .join()
-        .expect("a valid shader builds on a worker");
+        .expect("a valid material builds on a worker");
         assert_ne!(worker, caller);
-        assert!(good.pipeline.is_some(), "a valid shader yields a pipeline");
+        assert!(
+            good.draw.is_some(),
+            "a valid material yields a pipeline: {:?}",
+            good.error
+        );
 
-        let bad = std::thread::spawn(move || build_shader(&inputs, BAD_FRAGMENT))
+        let bad = std::thread::spawn(move || build_shader(&inputs, &bad()))
             .join()
-            .expect("a rejected shader must not panic the worker");
-        assert!(bad.pipeline.is_none(), "a rejected shader yields no pipeline");
+            .expect("a rejected program must not panic the worker");
+        assert!(bad.draw.is_none(), "a rejected program yields no pipeline");
         assert!(good.error.is_none());
-        assert!(bad.error.is_some(), "a rejected shader reports why");
-    }
-}
-
-/// The largest side, in texels, a preview texture keeps.
-const PREVIEW_MAX_TEXTURE: u32 = 1024;
-
-/// `image` scaled down (aspect kept) so its larger side is at most
-/// [`PREVIEW_MAX_TEXTURE`]; smaller images are returned as they are.
-fn fit_preview_texture(image: image::DynamicImage) -> image::DynamicImage {
-    let (width, height) = (image.width(), image.height());
-    let longest = width.max(height);
-    if longest <= PREVIEW_MAX_TEXTURE {
-        return image;
-    }
-    let scale = f64::from(PREVIEW_MAX_TEXTURE) / f64::from(longest);
-    image.resize_exact(
-        ((f64::from(width) * scale).round() as u32).max(1),
-        ((f64::from(height) * scale).round() as u32).max(1),
-        image::imageops::FilterType::Triangle,
-    )
-}
-
-#[cfg(test)]
-mod preview_texture_tests {
-    use super::*;
-
-    #[test]
-    fn large_preview_textures_are_scaled_down_and_small_ones_kept() {
-        let big = image::DynamicImage::new_rgb8(4096, 2048);
-        let fitted = fit_preview_texture(big);
-        assert_eq!((fitted.width(), fitted.height()), (1024, 512));
-        let small = image::DynamicImage::new_rgb8(300, 200);
-        let kept = fit_preview_texture(small);
-        assert_eq!((kept.width(), kept.height()), (300, 200));
+        assert!(bad.error.is_some(), "a rejected program reports why");
     }
 }

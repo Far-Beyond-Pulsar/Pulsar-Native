@@ -125,7 +125,9 @@ impl Render for PropertiesPanel {
             div()
                 .size_full()
                 .bg(cx.theme().sidebar)
-                .child(editor.update(cx, |editor, cx| PropertiesRenderer::render(editor, window, cx)))
+                .child(editor.update(cx, |editor, cx| {
+                    PropertiesRenderer::render(editor, window, cx)
+                }))
         } else {
             div().child("Editor not available")
         }
@@ -156,10 +158,10 @@ impl PreviewPanel {
 impl Render for PreviewPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(editor) = self.editor.upgrade() {
-            let wgsl = editor.read(cx).last_compiled_wgsl.clone();
-            if let Some(wgsl) = wgsl {
+            let compiled = editor.read(cx).last_compiled.clone();
+            if let Some(compiled) = compiled {
                 self.preview.update(cx, |preview, cx| {
-                    preview.update_shader(&wgsl, cx);
+                    preview.update_shader(&compiled, cx);
                 });
             }
         }

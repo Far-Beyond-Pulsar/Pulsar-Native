@@ -213,12 +213,14 @@ impl AssetViewerPanel {
             let draws = cx
                 .background_executor()
                 .spawn(async move {
-                    let context = super::graph_material::GraphContext {
+                    let context = materials_component::preview_program::GraphContext {
                         device: &device,
                         queue: &queue,
                         target_format: config.format,
                         globals_layout: &globals_layout,
                         uniform_layout: &layout,
+                        depth_format: Some(wgpu::TextureFormat::Depth32Float),
+                        front_face: wgpu::FrontFace::Cw,
                     };
                     material_paths
                         .into_iter()
@@ -229,7 +231,7 @@ impl AssetViewerPanel {
                             .map(|preview| {
                                 preview
                                     .and_then(|preview| {
-                                        super::graph_material::build(
+                                        materials_component::preview_program::build(
                                             &context,
                                             &preview,
                                             &[Some(vertex_layout.clone())],

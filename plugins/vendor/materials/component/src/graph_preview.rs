@@ -12,7 +12,7 @@ use crate::graph::{compile_material_graph, texture_assets};
 use helio_mats::asset::SHADER_GRAPH_FILE;
 
 /// A graph material ready to host in a preview shader.
-#[derive(Debug)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct GraphPreview {
     /// Radiant graph snippet (declarations + surface body) for
     /// `RadiantTemplate::build_shader_source`.
@@ -62,8 +62,16 @@ fn compile_file(file: &Path, project_root: &Path) -> Result<GraphPreview, String
             .clone(),
     )
     .map_err(|error| format!("invalid main_graph: {error}"))?;
+    compile_graph(&graph, project_root)
+}
 
-    let assets = texture_assets(&graph)?;
+/// Compile the graph document `graph` (an editor's, not saved yet) for a
+/// preview, its textures resolved against `project_root`.
+pub fn compile_graph(
+    graph: &psgc::GraphDescription,
+    project_root: &Path,
+) -> Result<GraphPreview, String> {
+    let assets = texture_assets(graph)?;
     let bindings = assets
         .iter()
         .enumerate()
@@ -71,16 +79,9 @@ fn compile_file(file: &Path, project_root: &Path) -> Result<GraphPreview, String
         .collect();
     let textures = assets
         .iter()
-        .map(|asset| {
-            let path = Path::new(asset);
-            if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                project_root.join(path)
-            }
-        })
+        .map(|asset| crate::graph::texture_path(asset, Some(project_root)))
         .collect();
-    let mut snippet = compile_material_graph(&graph, &bindings)?;
+    let mut snippet = compile_material_graph(graph, &bindings)?;
     // The standalone viewer has no scene material row, so specialize the
     // stable material fields to its own densely bound texture table.
     for (ordinal, field) in crate::graph::GRAPH_TEXTURE_FIELDS.iter().enumerate() {
