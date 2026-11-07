@@ -7,7 +7,6 @@
 //! all share one [`SharedScene`].
 
 // Persistent texture/material/sectioned-mesh/object resource components.
-pub mod render_resources;
 
 // Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
 // into SceneDb instead of pulsar_scene::SceneLoader's direct
@@ -69,14 +68,9 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
 }
 pub use pulsar_scene_model::{
     attachments, components, frames, hierarchy_transform, instance, level_instances, partitions,
-    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, LightType, MeshType, Name,
+    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name,
     ObjectId, ObjectType, Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex,
     SpawnObject, StableId, Transform, Visibility,
-};
-pub use render_resources::{
-    insert_render_resources, MaterialComponent, MaterialResource, MaterialTextureResource,
-    MeshObjectComponent, MeshObjectResource, MeshSectionResource, SectionedMeshComponent,
-    SectionedMeshResource, TextureComponent, TextureResource,
 };
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
 

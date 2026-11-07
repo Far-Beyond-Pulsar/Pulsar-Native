@@ -115,7 +115,8 @@ fn the_plugins_register_their_modes_sections_and_mixer_entries() {
     );
 }
 
-/// A starter setup adds a sky and a sun when missing, as undoable steps.
+/// A starter setup adds a sky and its rig (a sun and a moon) when missing,
+/// as undoable steps.
 #[test]
 fn a_starter_setup_adds_a_sky_and_a_sun() {
     let mut state = LevelEditorState::new();
@@ -128,7 +129,8 @@ fn a_starter_setup_adds_a_sky_and_a_sun() {
     );
     assert_eq!(
         installed_plugins::lights_component::directional_lights(&world).len(),
-        1
+        2,
+        "the sky rig's sun and moon"
     );
     drop(world);
     let again = extend::apply_environment_preset(&mut state, "golden_hour");

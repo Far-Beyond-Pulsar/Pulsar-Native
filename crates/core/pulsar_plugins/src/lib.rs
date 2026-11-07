@@ -9,7 +9,8 @@
 //! - A plugin describes itself in `pulsar-plugin.toml` beside its crates
 //!   ([`PluginDescriptor`]: id, default, the plugins it requires, and its
 //!   modules: the crates a game links and the crates the editor links). Its
-//!   runtime module carries the descriptor into whatever links it
+//!   first module (a runtime module, or the editor module of a plugin that
+//!   is an editor tool only) carries the descriptor into whatever links it
 //!   ([`installed!`]), so the plugins a binary links are the plugins it has
 //!   installed ([`installed`]).
 //! - A project lists the plugins it enables in its `Pulsar.toml`
@@ -87,7 +88,9 @@ fn enabled_by_default() -> bool {
 #[serde(deny_unknown_fields)]
 pub struct Modules {
     /// What a game links (components, runtime, the Helio feature's
-    /// registration). The first carries the descriptor ([`installed!`]).
+    /// registration). Empty for an editor tool (an asset editor), which a
+    /// game never links.
+    #[serde(default)]
     pub runtime: Vec<String>,
     /// What the editor links in addition (the editor plugin).
     #[serde(default)]
@@ -101,13 +104,19 @@ impl PluginDescriptor {
         if descriptor.id.trim().is_empty() {
             return Err("a plugin descriptor needs an `id`".into());
         }
-        if descriptor.modules.runtime.is_empty() {
+        if descriptor.modules().next().is_none() {
             return Err(format!(
-                "plugin `{}` lists no runtime module (`[modules] runtime`)",
+                "plugin `{}` lists no module (`[modules] runtime` or `editor`)",
                 descriptor.id
             ));
         }
         Ok(descriptor)
+    }
+
+    /// The module that carries the descriptor ([`installed!`]): the first
+    /// runtime module, or for an editor tool its first editor module.
+    pub fn installing_module(&self) -> &str {
+        self.modules().next().expect("a parsed descriptor lists a module")
     }
 
     /// Every module, runtime then editor.
@@ -143,8 +152,8 @@ inventory::collect!(InstalledPlugin);
 
 /// Carry this plugin's descriptor (at `path`, relative to the calling
 /// crate's manifest directory) into whatever links the crate: the plugin is
-/// then installed there. Its first runtime module calls it once, at its
-/// root; the crate then has `PLUGIN_DESCRIPTOR` (the source) and
+/// then installed there. Its first module
+/// ([`PluginDescriptor::installing_module`]) calls it once, at its root; the crate then has `PLUGIN_DESCRIPTOR` (the source) and
 /// `plugin_descriptor()` (parsed), which its editor module reads its name
 /// and description from.
 #[macro_export]

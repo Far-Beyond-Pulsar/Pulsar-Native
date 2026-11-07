@@ -89,7 +89,7 @@ impl HelioViewport {
                 let data = SceneObjectData {
                     id: String::new(),
                     name,
-                    object_type: ObjectType::Mesh(MeshType::Custom),
+                    object_type: ObjectType::Empty,
                     transform: Transform {
                         position,
                         ..Transform::default()
@@ -355,7 +355,7 @@ impl HelioViewport {
                 let mesh_object = SceneObjectData {
                     id: String::new(),
                     name: imported_name,
-                    object_type: ObjectType::Mesh(MeshType::Custom),
+                    object_type: ObjectType::Empty,
                     transform: Transform::default(),
                     visible: true,
                     locked: false,

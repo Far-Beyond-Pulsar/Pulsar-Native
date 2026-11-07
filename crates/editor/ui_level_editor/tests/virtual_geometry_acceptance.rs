@@ -37,7 +37,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::scene_edit::components;
-use ui_level_editor::scene_edit::{MeshType, ObjectType, Transform};
+use ui_level_editor::scene_edit::{ObjectType, Transform};
 use ui_level_editor::{LevelEditorState, SceneObjectData};
 
 const SIZE: u32 = 256;
@@ -363,7 +363,7 @@ fn scene(vg: Option<VirtualGeometryComponent>) -> (LevelEditorState, String) {
             data: SceneObjectData {
                 id: String::new(),
                 name: "dense sphere".to_string(),
-                object_type: ObjectType::Mesh(MeshType::Custom),
+                object_type: ObjectType::Empty,
                 transform: Transform::default(),
                 visible: true,
                 locked: false,

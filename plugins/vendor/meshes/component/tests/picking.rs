@@ -6,7 +6,7 @@ use engine_backend::subsystems::render::helio_renderer::SceneInteraction;
 use glam::{DVec3, Vec3};
 use meshes_component::components::{MeshGeometryKey, StaticMeshComponent};
 use pulsar_scene_model::world_ext::SceneWorldExt;
-use pulsar_scene_model::{MeshType, ObjectType, SpawnObject, Transform};
+use pulsar_scene_model::{SpawnObject, Transform};
 use pulsar_scenedb::{Entity, World};
 
 fn spawn_cube(world: &mut World, id: &str, z: f64) {
@@ -14,7 +14,6 @@ fn spawn_cube(world: &mut World, id: &str, z: f64) {
         .spawn_object(
             SpawnObject::new(id)
                 .with_id(id)
-                .with_object_type(ObjectType::Mesh(MeshType::Cube))
                 .with_transform(Transform {
                     position: [0.0, 0.0, z],
                     ..Default::default()

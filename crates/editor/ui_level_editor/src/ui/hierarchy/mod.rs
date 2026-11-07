@@ -268,6 +268,9 @@ impl HierarchyItem for SceneObjectItem {
         if self.object.icon_asset.is_some() {
             return IconName::Image;
         }
+        if let Some((icon, _)) = &self.object.kind_icon {
+            return icon.clone();
+        }
         HierarchyPanel::get_icon_for_object_type(self.object.object_type)
     }
 
@@ -282,6 +285,9 @@ impl HierarchyItem for SceneObjectItem {
         }
         if self.object.icon_asset.is_some() {
             return tree_colors::DOC_TEAL;
+        }
+        if let Some((_, color)) = &self.object.kind_icon {
+            return *color;
         }
         HierarchyPanel::get_icon_color_for_type(self.object.object_type, cx)
     }
@@ -851,11 +857,7 @@ impl HierarchyPanel {
         match object_type {
             ObjectType::Camera => IconName::Camera,
             ObjectType::Folder => IconName::Folder,
-            ObjectType::Light(_) => IconName::LightBulb,
-            ObjectType::Mesh(_) => IconName::Box,
             ObjectType::Empty => IconName::Circle,
-            ObjectType::ParticleSystem => IconName::Sparks,
-            ObjectType::AudioSource => IconName::MusicNote,
             ObjectType::Blueprint => IconName::Code,
         }
     }
@@ -867,11 +869,7 @@ impl HierarchyPanel {
         match object_type {
             ObjectType::Camera => tree_colors::CODE_BLUE,
             ObjectType::Folder => tree_colors::FOLDER,
-            ObjectType::Light(_) => tree_colors::SPECIAL_YELLOW,
-            ObjectType::Mesh(_) => tree_colors::CODE_PURPLE,
             ObjectType::Empty => cx.theme().muted_foreground,
-            ObjectType::ParticleSystem => tree_colors::EFFECT_ORANGE,
-            ObjectType::AudioSource => tree_colors::DOC_TEAL,
             ObjectType::Blueprint => tree_colors::CODE_BLUE,
         }
     }

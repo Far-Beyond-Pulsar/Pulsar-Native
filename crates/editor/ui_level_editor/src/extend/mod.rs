@@ -86,6 +86,26 @@ pub fn tool_modes() -> Vec<&'static ToolModeRegistration> {
     sorted::<ToolModeRegistration>(|mode| mode.order)
 }
 
+// ── Object icons ────────────────────────────────────────────────────────────
+
+/// How the hierarchy shows an object a kind's components make (a light, a
+/// mesh): its icon and colour. The scene model's object types are
+/// structural only, so what an object is shows from its components; the
+/// first registration (in `order`) that answers wins.
+pub struct ObjectIconRegistration {
+    pub origin: &'static str,
+    pub order: i32,
+    /// The icon and colour for `object`, if this kind's components make it.
+    pub icon: fn(&World, Entity) -> Option<(ui::IconName, gpui::Hsla)>,
+}
+
+/// The icon and colour a kind gives `object`, if any.
+pub fn object_icon(world: &World, object: Entity) -> Option<(ui::IconName, gpui::Hsla)> {
+    sorted::<ObjectIconRegistration>(|registration| registration.order)
+        .into_iter()
+        .find_map(|registration| (registration.icon)(world, object))
+}
+
 // ── Create entries ──────────────────────────────────────────────────────────
 
 /// Something the user can add to a level: an entry of the Create menu,
@@ -443,6 +463,7 @@ pub fn ai_tool_namespaces() -> impl Iterator<Item = &'static AiToolNamespace> {
 }
 
 extension_point!(
+    ObjectIconRegistration,
     ToolModeRegistration,
     CreateEntry,
     EnvironmentPreset,

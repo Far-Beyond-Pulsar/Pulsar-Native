@@ -111,10 +111,9 @@ fn spawn(state: &mut LevelEditorState, spec: SpawnSpec) -> Result<String> {
 ///
 /// # Arguments
 /// * `name` - Display name.
-/// * `kind` - Editor tag for icon and picking: empty (default), folder,
-///   camera, light_directional, light_point, light_spot, light_area,
-///   mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom,
-///   particle_system, audio_source. Use `folder` to group objects.
+/// * `kind` - What the object is structurally: empty (default), folder,
+///   camera, blueprint. Use `folder` to group objects; a light, mesh or
+///   other content is a component (`components`).
 /// * `parent_id` - Parent object id; omit for a root object.
 /// * `position` - `[x, y, z]` in metres. Default origin.
 /// * `rotation` - Euler angles `[pitch, yaw, roll]` in degrees. Default zero.

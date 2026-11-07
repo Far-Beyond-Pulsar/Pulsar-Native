@@ -141,10 +141,10 @@ fn every_descriptor_is_installed_by_its_runtime_module() {
     for (dir, plugin) in descriptors() {
         assert!(
             linked.contains(&plugin.id.as_str()),
-            "{} is not installed: its runtime module `{}` must call \
+            "{} is not installed: its module `{}` must call \
              `pulsar_plugins::installed!(\"../pulsar-plugin.toml\")`",
             dir.display(),
-            plugin.modules.runtime[0]
+            plugin.installing_module()
         );
         for required in &plugin.requires {
             assert!(

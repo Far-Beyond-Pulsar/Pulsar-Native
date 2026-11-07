@@ -12,7 +12,26 @@ use ui_level_editor::commands::{CommandResult, SceneCommand, TypedComponent, exe
 use ui_level_editor::extend::{
     CreateEntry, EnvironmentListing, EnvironmentPreset, add_object, create,
 };
-use ui_level_editor::scene_edit::{LightType, ObjectType, Transform};
+use ui_level_editor::scene_edit::{ObjectType, Transform};
+
+// ── Hierarchy ───────────────────────────────────────────────────────────────
+
+// An object holding a light shows as one.
+inventory::submit! {
+    ui_level_editor::extend::ObjectIconRegistration {
+        origin: pulsar_plugins::origin!(),
+        order: 100,
+        icon: |world, object| {
+            engine_backend::scene::attachments::instances(world, object)
+                .iter()
+                .any(|instance| world.get::<LightComponent>(*instance).is_some())
+                .then_some((
+                    ui::IconName::LightBulb,
+                    ui::hierarchical_tree::tree_colors::SPECIAL_YELLOW,
+                ))
+        },
+    }
+}
 
 // ── Create menu ─────────────────────────────────────────────────────────────
 
@@ -21,7 +40,6 @@ fn menu_light(
     state: &mut LevelEditorState,
     name: &str,
     shape: Shape,
-    kind: LightType,
 ) -> CommandResult {
     let mut light = LightComponent::default();
     light.general.enabled = true;
@@ -29,7 +47,7 @@ fn menu_light(
     add_object(
         state,
         name,
-        ObjectType::Light(kind),
+        ObjectType::Empty,
         Transform::default(),
         vec![TypedComponent::new(light)],
     )
@@ -44,7 +62,7 @@ inventory::submit! {
         quick_add: None,
         offered: None,
         order: 100,
-        create: |state| menu_light(state, "Point Light", Shape::Point, LightType::Point),
+        create: |state| menu_light(state, "Point Light", Shape::Point),
     }
 }
 
@@ -57,7 +75,7 @@ inventory::submit! {
         quick_add: None,
         offered: None,
         order: 110,
-        create: |state| menu_light(state, "Spot Light", Shape::Spot, LightType::Spot),
+        create: |state| menu_light(state, "Spot Light", Shape::Spot),
     }
 }
 
@@ -75,7 +93,6 @@ inventory::submit! {
                 state,
                 "Directional Light",
                 Shape::Directional,
-                LightType::Directional,
             )
         },
     }
@@ -89,7 +106,6 @@ fn environment_light(
     state: &mut LevelEditorState,
     name: &str,
     shape: Shape,
-    kind: LightType,
 ) -> CommandResult {
     let mut light = LightComponent::default();
     light.general.light_type = shape;
@@ -99,7 +115,7 @@ fn environment_light(
     add_object(
         state,
         name,
-        ObjectType::Light(kind),
+        ObjectType::Empty,
         Transform::default(),
         vec![TypedComponent::new(light)],
     )
@@ -124,7 +140,7 @@ inventory::submit! {
             add_object(
                 state,
                 "Point Light",
-                ObjectType::Light(LightType::Point),
+                ObjectType::Empty,
                 Transform::default(),
                 vec![TypedComponent::new(LightComponent::default())],
             )
@@ -141,7 +157,7 @@ inventory::submit! {
         quick_add: None,
         offered: None,
         order: 401,
-        create: |state| environment_light(state, "Spot Light", Shape::Spot, LightType::Spot),
+        create: |state| environment_light(state, "Spot Light", Shape::Spot),
     }
 }
 
@@ -159,7 +175,6 @@ inventory::submit! {
                 state,
                 "Directional Light",
                 Shape::Directional,
-                LightType::Directional,
             )
         },
     }

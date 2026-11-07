@@ -1,11 +1,10 @@
 //! Scripting-language plugins are part of a build exactly when their crates
-//! are linked (features `blueprint`, `typescript`), through the plugin API
-//! alone: the editor shell (`ui_core`) depends on none of them (#882), and
-//! editor and headless tools discover the same languages.
+//! are linked (the installed set's Blueprints plugin; feature `typescript`),
+//! through the plugin API alone: the editor shell (`ui_core`) depends on none
+//! of them (#882), and editor and headless tools discover the same languages.
 
 // Linking the crates is what includes them, as `main.rs` does.
-#[cfg(feature = "blueprint")]
-use blueprint_editor_plugin as _;
+use installed_plugins as _;
 #[cfg(feature = "typescript")]
 use plugin_typescript as _;
 
@@ -21,11 +20,8 @@ fn registry() -> BuiltinEditorRegistry {
 }
 
 #[test]
-fn the_blueprint_editor_is_present_exactly_when_the_feature_is_on() {
-    assert_eq!(
-        registry().provider_by_id(BLUEPRINT).is_some(),
-        cfg!(feature = "blueprint")
-    );
+fn the_blueprint_editor_is_installed() {
+    assert!(registry().provider_by_id(BLUEPRINT).is_some());
 }
 
 #[test]
@@ -35,11 +31,7 @@ fn each_language_comes_with_its_crate_and_only_with_it() {
         .iter()
         .map(|l| l.id().to_owned())
         .collect();
-    assert_eq!(
-        ids.iter().any(|i| i == "blueprint"),
-        cfg!(feature = "blueprint"),
-        "{ids:?}"
-    );
+    assert!(ids.iter().any(|i| i == "blueprint"), "{ids:?}");
     assert_eq!(
         ids.iter().any(|i| i == "typescript"),
         cfg!(feature = "typescript"),
@@ -63,7 +55,6 @@ fn the_editor_and_headless_tools_find_the_same_languages() {
     assert_eq!(editor, headless);
 }
 
-#[cfg(feature = "blueprint")]
 #[test]
 fn the_blueprint_editor_offers_its_file_type_and_editor_through_the_ordinary_registry_path() {
     use plugin_manager::{EditorRegistry, FileTypeRegistry};

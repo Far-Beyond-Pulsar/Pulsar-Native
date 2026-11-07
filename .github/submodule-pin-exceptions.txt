@@ -7,9 +7,15 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
-plugins/vendor/physics_plugin 4825d870586f949412ee8fcf8baa3e50e709d9d3 Far-Beyond-Pulsar/Plugin_Physics#6 (rewrite phase C step 3 part B; lands with Pulsar-Native#1592)
-plugins/vendor/blueprint_editor e98fb5363c5eb224eb10b80215b72acbcc60796b Far-Beyond-Pulsar/Plugin_Blueprints#40 (rewrite phase C step 3 part B; lands with Pulsar-Native#1592)
-crates/renderer/helio 94e2252fc690f70d2fce43f6f010b46474079f2d Far-Beyond-Pulsar/Helio#388 (rewrite phase C cleanup with rewrite/p10-meshes merged; the stacked rewrite PRs land together)
+plugins/vendor/blueprint_editor 41fe0c982e6092b76cc99ee26b2da83b096671ca Far-Beyond-Pulsar/Plugin_Blueprints#41 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/code_editor 3f96c60a661f3d8406f966d21232315d918e1e49 Far-Beyond-Pulsar/Plugin_CodeEditor#17 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/table_editor 28ebb8ffb39d72b5269e5c30346dbfa7bbfef126 Far-Beyond-Pulsar/Plugin_DBTable#4 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/matter_editor d0a914e023ea683ff93ca6938020f1e226fd0bc9 Far-Beyond-Pulsar/Plugin_Matter#7 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/skm_editor 37c48accbd2a526712599397871110754554efa5 Far-Beyond-Pulsar/Plugin_SKM#12 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/physics_plugin 9926890ff0e3d876a1e6d527fc131537c7f9db01 Far-Beyond-Pulsar/Plugin_Physics#7 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/ui_editor 9e6c30ebd78c16f409a18ea7a8e4a029ea31cf3a Far-Beyond-Pulsar/Plugin_UI#3 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+plugins/vendor/input_plugin db849675d373ce08f2d3b9ea013f82857585c421 Far-Beyond-Pulsar/Plugin_Input#2 (rewrite phase C p17: the plugin's descriptor and editor provider; lands with Pulsar-Native#1596)
+crates/renderer/helio 09161d2ccec40b63b9e3880aa67a4fcbcd6d3757 Far-Beyond-Pulsar/Helio#388 (rewrite phase C cleanup with rewrite/p10-meshes merged; the stacked rewrite PRs land together)
 crates/renderer/helio 1f86e4bda4532d956e3b4db2652a1d67516fc52a Far-Beyond-Pulsar/Helio#388 (rewrite phase C p17, the cleanup phase; the stacked rewrite PRs land together)
 crates/renderer/helio 4b9a9db4a57f1c52175f19950c0a2c39e22f5dd5 Far-Beyond-Pulsar/Helio#387 (rewrite phase C step 3 part B; the stacked rewrite PRs land together)
 crates/renderer/helio 53248a956ff476487e7c04e54830a6d867d9d53d Far-Beyond-Pulsar/Helio#386 (rewrite phase C step 3; the stacked rewrite PRs land together)

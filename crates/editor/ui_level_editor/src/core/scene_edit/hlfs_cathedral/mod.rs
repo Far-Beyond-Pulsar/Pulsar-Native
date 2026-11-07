@@ -16,7 +16,7 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
+    components, level_io, objects, LevelEditorCameraState, ObjectType,
     SceneObjectData, Transform,
 };
 use helio_mesh_api::{MeshUpload, PackedVertex};
@@ -168,7 +168,7 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
             &mut world,
             object(
                 &batch.name,
-                ObjectType::Mesh(MeshType::Custom),
+                ObjectType::Empty,
                 [0.0; 3],
                 Some(&architecture),
             ),
@@ -191,7 +191,7 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
                 &mut world,
                 object(
                     &name,
-                    ObjectType::Light(LightType::Point),
+                    ObjectType::Empty,
                     position.map(f64::from),
                     Some(&folder),
                 ),
@@ -364,14 +364,17 @@ fn default_level_loads_the_cathedral() {
     let camera = level_io::load_from_file_with_editor_camera(&mut world, &path)
         .expect("default level loads");
     let all = objects::get_all_objects(&world);
-    let meshes = all
-        .iter()
-        .filter(|o| matches!(o.object_type, ObjectType::Mesh(_)))
-        .count();
-    let lights = all
-        .iter()
-        .filter(|o| matches!(o.object_type, ObjectType::Light(_)))
-        .count();
+    // What an object is, is its components'.
+    let holding = |class: &str| {
+        all.iter()
+            .filter(|o| {
+                components::get_component_class_names(&world, &o.id)
+                    .iter()
+                    .any(|name| name == class)
+            })
+            .count()
+    };
+    let (meshes, lights) = (holding("StaticMeshComponent"), holding("LightComponent"));
     assert_eq!((meshes, lights), (14, 17));
     // The editor rewrites the camera whenever the level is saved, so
     // compare with what the file holds rather than a fixed position.

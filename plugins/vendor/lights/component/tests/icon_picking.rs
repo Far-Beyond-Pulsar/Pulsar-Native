@@ -3,18 +3,34 @@
 //! a nearer object occludes it. (Moved from engine_backend's interaction tests
 //! with the icon: picking names no kind.)
 
-use engine_backend::scene::{ObjectType, SceneWorldExt, SpawnObject, Transform, Visibility};
+use engine_backend::scene::{SceneWorldExt, SpawnObject, Transform, Visibility};
 use engine_backend::subsystems::render::helio_renderer::SceneInteraction;
 use glam::{DVec3, Vec2, Vec3};
 use lights_component::LightComponent;
 use pulsar_scenedb::{Entity, World};
+
+/// A test kind's content: a unit box on objects carrying it (what a mesh
+/// would offer picking through its own registration).
+struct TestBox;
+
+inventory::submit! {
+    engine_backend::subsystems::render::helio_renderer::ContentGeometryRegistration {
+        origin: pulsar_plugins::origin!(),
+        local_bounds: |world, object| {
+            world
+                .get::<TestBox>(object)
+                .map(|_| (Vec3::splat(-0.5), Vec3::splat(0.5)))
+        },
+        hit: |_, _, _, _| None,
+        triangles: |_, _| {},
+    }
+}
 
 fn spawn_light(world: &mut World, position: [f64; 3], scale: [f32; 3]) -> Entity {
     let owner = world
         .spawn_object(
             SpawnObject::new("light")
                 .with_id("light")
-                .with_object_type(ObjectType::Light(engine_backend::scene::LightType::Point))
                 .with_transform(Transform {
                     position,
                     scale,
@@ -56,17 +72,17 @@ fn light_icons_pick_the_visible_extent_at_any_distance() {
 fn mesh_in_front_occludes_light_icon_selection() {
     let mut world = World::new();
     spawn_light(&mut world, [0.0, 0.0, -100.0], [1.0; 3]);
-    world
+    let mesh = world
         .spawn_object(
             SpawnObject::new("mesh")
                 .with_id("mesh")
-                .with_object_type(ObjectType::Mesh(engine_backend::scene::MeshType::Cube))
                 .with_transform(Transform {
                     position: [0.0, 0.0, -10.0],
                     ..Default::default()
                 }),
         )
         .unwrap();
+    world.insert(mesh, TestBox);
     assert_eq!(
         SceneInteraction::default().pick(&world, DVec3::ZERO, -Vec3::Z),
         Some("mesh".into())

@@ -296,9 +296,9 @@ jobs:
           }
 
           # Scripting languages are plugins on equal footing: the editor shell
-          # must not link any of them. The Blueprint editor registers itself
-          # at link time (plugin_manager::LinkedEditorProvider) and is part of
-          # a build through pulsar_engine's `blueprint` feature.
+          # must not link any of them. The Blueprint editor is a plugin
+          # (`pulsar.blueprints`): its crate submits its editor provider
+          # (plugin_manager::PluginEditorProvider) and the installed set links it.
           foreach ($language in @("blueprint_editor_plugin", "blueprint_compiler")) {
             if ($uiCoreDependencies -contains $language) {
               throw "ui_core depends on $language; scripting languages must stay plugins"

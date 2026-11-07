@@ -32,7 +32,7 @@ use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
 use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::scene_edit::components;
-use ui_level_editor::scene_edit::{LightType, MeshType, ObjectType, Transform};
+use ui_level_editor::scene_edit::{ObjectType, Transform};
 use ui_level_editor::{LevelEditorState, SceneObjectData};
 
 const SIZE: u32 = 256;
@@ -367,7 +367,7 @@ fn drop_matte_mesh(state: &mut LevelEditorState) -> String {
 }
 
 fn drop_mesh_with(state: &mut LevelEditorState, surface: Value) -> String {
-    let id = add_object(state, "SM_Cube", ObjectType::Mesh(MeshType::Custom));
+    let id = add_object(state, "SM_Cube", ObjectType::Empty);
     let mut world = state.scene.world_mut();
     components::add_component(
         &mut world,
@@ -728,7 +728,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let id = add_object(
                 &mut state,
                 "pending mesh",
-                ObjectType::Mesh(MeshType::Custom),
+                ObjectType::Empty,
             );
             components::add_component(
                 &mut state.scene.world_mut(),
@@ -771,7 +771,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             drop_matte_mesh(&mut state);
             let mut renderer = harness.renderer(&state);
             let unlit = harness.frames(&mut renderer, || {});
-            let id = add_object(&mut state, "Light", ObjectType::Light(LightType::Point));
+            let id = add_object(&mut state, "Light", ObjectType::Empty);
             // Above and in front of the mesh, between it and the camera.
             move_to(&mut state, &id, [0.0, radius * 1.5, radius * 2.0]);
             match data {
@@ -1267,7 +1267,7 @@ fn add_light(
     light_type: installed_plugins::lights_component::LightType,
     intensity: f32,
 ) -> String {
-    let id = add_object(state, "Light", ObjectType::Light(LightType::Point));
+    let id = add_object(state, "Light", ObjectType::Empty);
     move_to(state, &id, position);
     assert!(
         execute_command(

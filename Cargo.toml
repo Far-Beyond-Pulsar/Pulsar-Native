@@ -302,6 +302,19 @@ lights_component                   = { path = "plugins/vendor/lights/component" 
 lights_plugin                      = { path = "plugins/vendor/lights/editor", features = ["builtin"] }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 pulsar_plugins                     = { path = "crates/core/pulsar_plugins" }
+# Plugins whose crate is the plugin (the editor tools and the pre-rewrite
+# plugins), linked by the installed set (plugins/installed). `builtin` drops
+# the dynamic-loader exports a plugin library carries for a DLL build.
+asset_viewer_plugin = { path = "plugins/vendor/asset_viewer", features = ["builtin"] }
+blueprint_editor_plugin = { path = "plugins/vendor/blueprint_editor", features = ["builtin"] }
+editor_table_plugin = { path = "plugins/vendor/table_editor" }
+input_plugin = { path = "plugins/vendor/input_plugin", features = ["builtin"] }
+physics_plugin = { path = "plugins/vendor/physics_plugin", features = ["builtin"] }
+plugin_matter = { path = "plugins/vendor/matter_editor" }
+render_bps_plugin = { path = "plugins/vendor/render_bps", features = ["builtin"] }
+script_editor_plugin = { path = "plugins/vendor/code_editor", features = ["builtin"] }
+skeletal_animation_plugin = { path = "plugins/vendor/skm_editor", features = ["builtin"] }
+ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
 # Every installed plugin's modules (runtime; `editor` adds the editor
 # plugins). Hosts link the set, never a plugin by name.
 installed_plugins                  = { path = "plugins/installed", default-features = false }
@@ -659,6 +672,7 @@ pulsar_script_vm  = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
 engine_fs         = { path = "crates/core/engine_fs" }
 plugin_manager    = { path = "crates/core/plugin_manager" }
+pulsar_plugins    = { path = "crates/core/pulsar_plugins" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 # The flamegraph reads ONE global profiler. Helio pins `profiling` from this
 # repo by git rev; without this patch helio-core links a second copy with its

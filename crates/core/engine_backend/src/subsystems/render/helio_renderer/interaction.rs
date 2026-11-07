@@ -1,7 +1,7 @@
 //! Transform handles with shared solid geometry for drawing and picking.
 use super::gizmo_geometry::{meshes, rotation_grid, Handle};
 use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
-use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
+use crate::scene::{GizmoType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{DVec3, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
 use pulsar_scenedb::{Entity, World};
@@ -181,8 +181,7 @@ impl SceneInteraction {
             .query::<&StableId>()
             .filter_map(|(entity, id)| {
                 let visibility = world.get::<Visibility>(entity)?;
-                let object_type = *world.get::<ObjectType>(entity)?;
-                if !visibility.visible || !is_pickable(object_type) {
+                if !visibility.visible {
                     return None;
                 }
                 let transform = world_transform_of(world, entity)?;
@@ -192,7 +191,10 @@ impl SceneInteraction {
                     let distance = icon_hit(self.view, transform, size, origin, direction)?;
                     return Some((distance, Some(entity) != selected, id.0.clone()));
                 }
-                let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
+                // Otherwise by what it draws: an object without content (an
+                // empty, a folder, a mesh not loaded yet) is picked in the
+                // hierarchy.
+                let (min, max) = object_bounds(world, entity, transform, self.view)?;
                 let broad_phase = ray_aabb(origin, direction, min, max)?;
                 let (has_geometry, triangle_hit) =
                     content_hit_distance(world, entity, transform, self.view, origin, direction);
@@ -245,12 +247,11 @@ impl SceneInteraction {
                     return None;
                 }
                 let visibility = world.get::<Visibility>(entity)?;
-                let object_type = *world.get::<ObjectType>(entity)?;
-                if !visibility.visible || !is_pickable(object_type) {
+                if !visibility.visible {
                     return None;
                 }
                 let transform = world_transform_of(world, entity)?;
-                let (min, max) = object_bounds(world, entity, &object_type, transform, self.view);
+                let (min, max) = object_bounds(world, entity, transform, self.view)?;
                 let broad_phase = ray_aabb(relative_origin, direction, min, max)?;
                 let (has_geometry, triangle_hit) = content_hit_distance(
                     world,
@@ -1005,31 +1006,15 @@ fn icon_hit(view: View, transform: Transform, size: Vec2, origin: Vec3, directio
         .then_some((hit - origin).dot(direction))
 }
 
-fn is_pickable(object_type: ObjectType) -> bool {
-    matches!(object_type, ObjectType::Mesh(_) | ObjectType::Light(_))
-}
-
-fn local_half_extent(object_type: &ObjectType) -> Vec3 {
-    match object_type {
-        ObjectType::Mesh(crate::scene::MeshType::Plane) => Vec3::new(0.5, 0.02, 0.5),
-        ObjectType::Mesh(crate::scene::MeshType::Cylinder) => Vec3::new(0.5, 0.5, 0.5),
-        ObjectType::Mesh(crate::scene::MeshType::Sphere) => Vec3::splat(0.5),
-        ObjectType::Mesh(_) => Vec3::splat(0.5),
-        ObjectType::Light(_) => Vec3::splat(0.25),
-        _ => Vec3::ZERO,
-    }
-}
-
 /// Box of what the object draws, in `view`'s coordinates: its content's
 /// local boxes ([`ContentGeometryRegistration::local_bounds`]: its enabled mesh
-/// instances' bounding spheres), or, without any, a unit box for its type.
+/// instances' bounding spheres); `None` without any.
 fn object_bounds(
     world: &World,
     entity: Entity,
-    object_type: &ObjectType,
     transform: Transform,
     view: View,
-) -> (Vec3, Vec3) {
+) -> Option<(Vec3, Vec3)> {
     let mut local: Option<(Vec3, Vec3)> = None;
     for (min, max) in pulsar_plugins::registered::<ContentGeometryRegistration>()
         .filter_map(|registration| (registration.local_bounds)(world, entity))
@@ -1039,22 +1024,12 @@ fn object_bounds(
             None => (min, max),
         });
     }
-    let Some((min, max)) = local else {
-        return world_bounds(object_type, transform, view);
-    };
+    let (min, max) = local?;
     let rotation = rotation_matrix(transform);
     let scale = Vec3::from_array(transform.scale);
     let center = rotation * ((min + max) * 0.5 * scale) + view.relative(transform.position);
     let extents = rotation.abs() * ((max - min) * 0.5 * scale.abs());
-    (center - extents, center + extents)
-}
-
-fn world_bounds(object_type: &ObjectType, transform: Transform, view: View) -> (Vec3, Vec3) {
-    let half = local_half_extent(object_type);
-    let rotation = rotation_matrix(transform);
-    let extents = rotation.abs() * (half * Vec3::from_array(transform.scale).abs());
-    let center = view.relative(transform.position);
-    (center - extents, center + extents)
+    Some((center - extents, center + extents))
 }
 
 fn rotation_matrix(transform: Transform) -> Mat3 {
@@ -1093,7 +1068,7 @@ fn ray_aabb(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f32> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::{MeshType, SpawnObject};
+    use crate::scene::SpawnObject;
 
     fn setup(mode: GizmoType) -> (World, SceneInteraction, Entity) {
         let mut world = World::new();
@@ -1434,18 +1409,34 @@ mod tests {
         }
     }
 
+    /// A test kind's content: a unit box on objects carrying it.
+    struct TestBox;
+
+    inventory::submit! {
+        ContentGeometryRegistration {
+            origin: "engine_backend",
+            local_bounds: |world, object| {
+                world
+                    .get::<TestBox>(object)
+                    .map(|_| (Vec3::splat(-0.5), Vec3::splat(0.5)))
+            },
+            hit: |_, _, _, _| None,
+            triangles: |_, _| {},
+        }
+    }
+
     fn spawn_cube(world: &mut World, id: &str, z: f64) {
-        world
+        let object = world
             .spawn_object(
                 SpawnObject::new(id)
                     .with_id(id)
-                    .with_object_type(ObjectType::Mesh(MeshType::Cube))
                     .with_transform(Transform {
                         position: [0.0, 0.0, z],
                         ..Default::default()
                     }),
             )
             .unwrap();
+        world.insert(object, TestBox);
     }
 
     #[test]
@@ -1464,17 +1455,17 @@ mod tests {
     #[test]
     fn hidden_mesh_is_not_pickable() {
         let mut world = World::new();
-        world
+        let hidden = world
             .spawn_object(
                 SpawnObject::new("Hidden")
                     .with_id("hidden")
-                    .with_object_type(ObjectType::Mesh(MeshType::Cube))
                     .with_visibility(Visibility {
                         visible: false,
                         locked: false,
                     }),
             )
             .unwrap();
+        world.insert(hidden, TestBox);
         assert_eq!(
             SceneInteraction::default().pick(&world, DVec3::ZERO, -Vec3::Z),
             None

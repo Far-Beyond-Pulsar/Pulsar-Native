@@ -189,9 +189,7 @@ mod undo_redo_tests {
                 data: SceneObjectData {
                     id: String::new(),
                     name: "Light".to_string(),
-                    object_type: crate::scene_edit::ObjectType::Light(
-                        crate::scene_edit::LightType::Point,
-                    ),
+                    object_type: crate::scene_edit::ObjectType::Empty,
                     transform: crate::scene_edit::Transform::default(),
                     visible: true,
                     locked: false,
@@ -281,9 +279,7 @@ mod undo_redo_tests {
                 data: SceneObjectData {
                     id: String::new(),
                     name: "Light".to_string(),
-                    object_type: crate::scene_edit::ObjectType::Light(
-                        crate::scene_edit::LightType::Point,
-                    ),
+                    object_type: crate::scene_edit::ObjectType::Empty,
                     transform: crate::scene_edit::Transform::default(),
                     visible: true,
                     locked: false,
@@ -371,9 +367,7 @@ mod undo_redo_tests {
                 data: SceneObjectData {
                     id: String::new(),
                     name: "Light".to_string(),
-                    object_type: crate::scene_edit::ObjectType::Light(
-                        crate::scene_edit::LightType::Point,
-                    ),
+                    object_type: crate::scene_edit::ObjectType::Empty,
                     transform: crate::scene_edit::Transform::default(),
                     visible: true,
                     locked: false,

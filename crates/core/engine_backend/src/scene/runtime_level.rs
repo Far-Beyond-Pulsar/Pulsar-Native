@@ -39,7 +39,7 @@ use pulsar_scenedb::{Entity, World};
 
 use crate::scene::hierarchy_transform;
 use crate::scene::{
-    LightType, MeshType, ObjectType, RenderProps, SceneWorldExt, SharedScene, SpawnObject,
+    ObjectType, RenderProps, SceneWorldExt, SharedScene, SpawnObject,
     Transform, Visibility,
 };
 
@@ -489,18 +489,6 @@ fn object_type(object_type: FileObjectType) -> ObjectType {
         FileObjectType::Empty | FileObjectType::Unknown => ObjectType::Empty,
         FileObjectType::Folder => ObjectType::Folder,
         FileObjectType::Camera => ObjectType::Camera,
-        FileObjectType::Mesh(mesh) => ObjectType::Mesh(match mesh {
-            pulsar_scene::format::MeshType::Cube => MeshType::Cube,
-            pulsar_scene::format::MeshType::Sphere => MeshType::Sphere,
-            pulsar_scene::format::MeshType::Cylinder => MeshType::Cylinder,
-            pulsar_scene::format::MeshType::Plane => MeshType::Plane,
-            pulsar_scene::format::MeshType::Custom => MeshType::Custom,
-        }),
-        FileObjectType::Light(light) => ObjectType::Light(match light {
-            pulsar_scene::format::LightType::Directional => LightType::Directional,
-            pulsar_scene::format::LightType::Point => LightType::Point,
-            pulsar_scene::format::LightType::Spot => LightType::Spot,
-        }),
     }
 }
 

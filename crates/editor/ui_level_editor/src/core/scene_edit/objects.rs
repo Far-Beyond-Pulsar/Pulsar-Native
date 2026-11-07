@@ -135,6 +135,9 @@ pub struct HierarchyObjectProjection {
     pub visible: bool,
     pub children: Vec<ObjectId>,
     pub icon_asset: Option<String>,
+    /// The icon and colour a kind's components give the object
+    /// ([`crate::extend::ObjectIconRegistration`]).
+    pub kind_icon: Option<(ui::IconName, gpui::Hsla)>,
 }
 
 pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> HierarchyObjectProjection {
@@ -163,6 +166,7 @@ pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> Hierarch
             .filter_map(id_of)
             .collect(),
         icon_asset,
+        kind_icon: crate::extend::object_icon(world, entity),
     }
 }
 

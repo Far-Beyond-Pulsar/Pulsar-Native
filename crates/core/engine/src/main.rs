@@ -43,12 +43,6 @@ static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
 #[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
-// The Blueprint editor registers itself at link time; linking the crate is
-// what includes it in the build (feature `blueprint`).
-#[cfg(feature = "blueprint")]
-use blueprint_editor_plugin as _;
-#[cfg(feature = "render-graph")]
-use render_bps_plugin as _;
 // Force-link the built-in Trait Editor so its `LinkedEditorProvider` inventory
 // registration is retained in the final binary, as with the Blueprint editor.
 #[cfg(feature = "typescript")]

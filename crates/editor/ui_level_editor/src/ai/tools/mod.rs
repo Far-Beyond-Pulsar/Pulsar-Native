@@ -30,7 +30,7 @@ use crate::commands::{
 };
 use crate::scene_edit::{self, SceneObjectData};
 use crate::LevelEditorState;
-use engine_backend::scene::{LightType, MeshType, ObjectType, SceneWorldExt};
+use engine_backend::scene::{ObjectType, SceneWorldExt};
 use pulsar_scenedb::World;
 
 mod classes;
@@ -148,25 +148,20 @@ pub fn require_object(state: &LevelEditorState, id: &str) -> Result<SceneObjectD
 
 // ── Object kinds ─────────────────────────────────────────────────────────────
 
-const KINDS: &str = "empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source";
+/// Object kinds are structural; what an object draws or lights is its
+/// components (a `LightComponent`, a `StaticMeshComponent`), which a spawn
+/// lists.
+const KINDS: &str = "empty, folder, camera, blueprint";
 
 fn object_type_from_kind(kind: &str) -> Result<ObjectType> {
     Ok(match kind {
         "empty" => ObjectType::Empty,
         "folder" => ObjectType::Folder,
         "camera" => ObjectType::Camera,
-        "light_directional" => ObjectType::Light(LightType::Directional),
-        "light_point" => ObjectType::Light(LightType::Point),
-        "light_spot" => ObjectType::Light(LightType::Spot),
-        "light_area" => ObjectType::Light(LightType::Area),
-        "mesh_cube" => ObjectType::Mesh(MeshType::Cube),
-        "mesh_sphere" => ObjectType::Mesh(MeshType::Sphere),
-        "mesh_cylinder" => ObjectType::Mesh(MeshType::Cylinder),
-        "mesh_plane" => ObjectType::Mesh(MeshType::Plane),
-        "mesh_custom" => ObjectType::Mesh(MeshType::Custom),
-        "particle_system" => ObjectType::ParticleSystem,
-        "audio_source" => ObjectType::AudioSource,
-        other => bail!("Unknown kind '{other}'. Valid kinds: {KINDS}"),
+        "blueprint" => ObjectType::Blueprint,
+        other => bail!(
+            "Unknown kind '{other}'. Valid kinds: {KINDS}; a light, mesh or other content is a component in `components`"
+        ),
     })
 }
 
@@ -175,17 +170,6 @@ fn object_kind(object_type: &ObjectType) -> &'static str {
         ObjectType::Empty => "empty",
         ObjectType::Folder => "folder",
         ObjectType::Camera => "camera",
-        ObjectType::Light(LightType::Directional) => "light_directional",
-        ObjectType::Light(LightType::Point) => "light_point",
-        ObjectType::Light(LightType::Spot) => "light_spot",
-        ObjectType::Light(LightType::Area) => "light_area",
-        ObjectType::Mesh(MeshType::Cube) => "mesh_cube",
-        ObjectType::Mesh(MeshType::Sphere) => "mesh_sphere",
-        ObjectType::Mesh(MeshType::Cylinder) => "mesh_cylinder",
-        ObjectType::Mesh(MeshType::Plane) => "mesh_plane",
-        ObjectType::Mesh(MeshType::Custom) => "mesh_custom",
-        ObjectType::ParticleSystem => "particle_system",
-        ObjectType::AudioSource => "audio_source",
         ObjectType::Blueprint => "blueprint",
     }
 }
@@ -594,7 +578,6 @@ mod tests {
             "level_editor_spawn_object",
             json!({
                 "name": "Lamp",
-                "kind": "light_point",
                 "position": [1.0, 2.0, 3.0],
                 "components": [{
                     "class_name": "LightComponent",
@@ -603,7 +586,7 @@ mod tests {
             }),
         );
         let id = spawned["created_id"].as_str().unwrap().to_string();
-        assert_eq!(spawned["object"]["kind"], "light_point");
+        assert_eq!(spawned["object"]["kind"], "empty", "a lamp is its component");
         assert_eq!(spawned["object"]["position"], json!([1.0, 2.0, 3.0]));
 
         let components = call("level_editor_get_components", json!({ "id": id }));

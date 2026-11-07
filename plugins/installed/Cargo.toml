@@ -9,6 +9,10 @@ description = "The installed plugins: every plugin under plugins/vendor that des
 pulsar_plugins = { workspace = true }
 # BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
+skeletal_animation_plugin = { workspace = true, optional = true }
+asset_viewer_plugin = { workspace = true, optional = true }
+blueprint_editor_plugin = { workspace = true, optional = true }
+script_editor_plugin = { workspace = true, optional = true }
 decals_component = { workspace = true }
 decals_plugin = { workspace = true, optional = true }
 fog_component = { workspace = true }
@@ -17,26 +21,32 @@ foliage_component = { workspace = true }
 foliage_plugin = { workspace = true, optional = true }
 gi_component = { workspace = true }
 gi_plugin = { workspace = true, optional = true }
+input_plugin = { workspace = true }
 lens_component = { workspace = true }
 lens_plugin = { workspace = true, optional = true }
 lights_component = { workspace = true }
 lights_plugin = { workspace = true, optional = true }
 materials_component = { workspace = true }
 materials_plugin = { workspace = true, optional = true }
+plugin_matter = { workspace = true, optional = true }
 meshes_component = { workspace = true }
 meshes_plugin = { workspace = true, optional = true }
 particles_component = { workspace = true }
 particles_plugin = { workspace = true, optional = true }
+physics_plugin = { workspace = true }
 portals_component = { workspace = true }
 portals_plugin = { workspace = true, optional = true }
 post_component = { workspace = true }
 post_plugin = { workspace = true, optional = true }
+render_bps_plugin = { workspace = true, optional = true }
 sky_component = { workspace = true }
 sky_plugin = { workspace = true, optional = true }
 splines_component = { workspace = true }
 splines_plugin = { workspace = true, optional = true }
 sprites_component = { workspace = true }
 sprites_plugin = { workspace = true, optional = true }
+editor_table_plugin = { workspace = true, optional = true }
+ui_editor_plugin = { workspace = true, optional = true }
 voxel_component = { workspace = true }
 voxel_plugin = { workspace = true, optional = true }
 water_component = { workspace = true }
@@ -49,6 +59,10 @@ default = ["editor"]
 # BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
 editor = [
+    "dep:skeletal_animation_plugin",
+    "dep:asset_viewer_plugin",
+    "dep:blueprint_editor_plugin",
+    "dep:script_editor_plugin",
     "dep:decals_plugin",
     "dep:fog_plugin",
     "dep:foliage_plugin",
@@ -56,13 +70,17 @@ editor = [
     "dep:lens_plugin",
     "dep:lights_plugin",
     "dep:materials_plugin",
+    "dep:plugin_matter",
     "dep:meshes_plugin",
     "dep:particles_plugin",
     "dep:portals_plugin",
     "dep:post_plugin",
+    "dep:render_bps_plugin",
     "dep:sky_plugin",
     "dep:splines_plugin",
     "dep:sprites_plugin",
+    "dep:editor_table_plugin",
+    "dep:ui_editor_plugin",
     "dep:voxel_plugin",
     "dep:water_plugin",
 ]

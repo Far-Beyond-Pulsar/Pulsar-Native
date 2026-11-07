@@ -37,7 +37,7 @@ mod hlfs_cathedral;
 #[cfg(test)]
 mod tests;
 
-pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
+pub use engine_backend::scene::{ObjectId, ObjectType};
 pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
 
 // ── Transform ─────────────────────────────────────────────────────────────

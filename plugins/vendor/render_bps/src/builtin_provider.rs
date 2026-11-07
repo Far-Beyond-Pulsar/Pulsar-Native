@@ -1,7 +1,8 @@
 //! The Render Graph editor as a built-in editor provider.
 //!
 //! Built into a binary (feature `builtin`) the plugin registers itself at link
-//! time through `plugin_manager::LinkedEditorProvider`, as the Blueprint editor
+//! time through `plugin_manager::PluginEditorProvider` (offered only while
+//! the plugin is enabled for the project), as the Blueprint editor
 //! does. The two share nothing: each opens its own editor over its own documents.
 
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 use gpui::{App, Window};
 use plugin_editor_api::*;
-use plugin_manager::{BuiltinEditorProvider, EditorContext, LinkedEditorProvider};
+use plugin_manager::{BuiltinEditorProvider, EditorContext, PluginEditorProvider};
 use ui::dock::PanelView;
 
 use crate::{file_type, open_editor, EDITOR, FILE_TYPE};
@@ -52,5 +53,8 @@ impl BuiltinEditorProvider for RenderBpsBuiltinProvider {
 }
 
 plugin_manager::inventory::submit! {
-    LinkedEditorProvider { create: || Arc::new(RenderBpsBuiltinProvider) }
+    PluginEditorProvider {
+        origin: pulsar_plugins::origin!(),
+        create: || Arc::new(RenderBpsBuiltinProvider),
+    }
 }

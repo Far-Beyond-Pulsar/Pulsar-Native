@@ -33,7 +33,7 @@ use installed_plugins::meshes_component::vg_settings::{
 };
 use std::collections::HashMap;
 use ui_level_editor::commands::{execute_command, SceneCommand};
-use ui_level_editor::scene_edit::{MeshType, ObjectType, Transform};
+use ui_level_editor::scene_edit::{ObjectType, Transform};
 use ui_level_editor::{LevelEditorState, SceneObjectData};
 
 const SIZE: u32 = 256;
@@ -170,7 +170,7 @@ fn scene() -> LevelEditorState {
                 data: SceneObjectData {
                     id: String::new(),
                     name: format!("crowd {i}"),
-                    object_type: ObjectType::Mesh(MeshType::Custom),
+                    object_type: ObjectType::Empty,
                     transform: Transform {
                         position,
                         rotation: [0.0; 3],
