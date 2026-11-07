@@ -1,5 +1,5 @@
 //! The meshes' scene join: the frontend's authored mesh rows to the object
-//! and material rows the meshes' passes draw from, on the GPU
+//! rows the meshes' passes draw from, on the GPU
 //! (Pulsar-Native#1035, Phase 2; `03-gpu-reflection-and-rendering.md`).
 //! Lights have their own derivation (`helio_pass_light_cull::scene_rows`).
 //!
@@ -7,10 +7,15 @@
 //! objects (a mesh instance joined to its object's transform and visibility)
 //! installs a [`SceneJoin`] as a scene derivation
 //! (`helio::RendererBuilder::with_scene_derivation`). Each frame its input
-//! rows changed, the join recomputes one `StaticObjectRow`-shaped row and one
-//! material row per section of every placed mesh instance, published as
-//! `"static_objects"`/`"materials"` for the object-batch, G-buffer, shadow
-//! and virtual-geometry passes.
+//! rows changed, the join recomputes one `StaticObjectRow`-shaped row per
+//! section of every placed mesh instance, published as `"static_objects"`
+//! for the object-batch, G-buffer, shadow and virtual-geometry passes. A
+//! section names its material slot; the mesh's slots' rows of the
+//! materials' table (the material instances' `"materials"` rows,
+//! `helio_mats::instance`) are a var-len row of the mesh entity: the join
+//! writes the slot's table row into the object row, reads the instance's
+//! shading class and graph hash from its key row, and writes no material
+//! data.
 //!
 //! "Placed" means: the instance is attached and enabled, the generation it
 //! recorded for its owner is the owner's current one, the owner is not
@@ -45,12 +50,14 @@ use helio_scene_join::{origin_bits, origin_pair};
 pub const HANDLE_ROW_BYTES: u64 = 8;
 /// A mesh instance's object-row flags (`u32`).
 pub const MESH_FLAGS_ROW_BYTES: u64 = 4;
-/// One mesh section: draw range, material class and graph hash, then a
-/// `helio_mats::GpuMaterial` (the materials' row).
-pub const MESH_SECTION_ROW_BYTES: u64 = 128;
+/// One mesh section: draw range and its material slot.
+pub const MESH_SECTION_ROW_BYTES: u64 = 16;
+/// One material table row of a mesh's slot (`u32`).
+pub const MATERIAL_ROW_BYTES: u64 = 4;
+/// A material instance's key row (`helio_mats::instance::MaterialKeyComponent`).
+pub const MATERIAL_KEY_ROW_BYTES: u64 = 16;
 
 const OBJECT_ROW_BYTES: u64 = 252;
-const MATERIAL_ROW_BYTES: u64 = 96;
 const WORKGROUP: u32 = 64;
 
 /// The mesh join's shader as compiled (shader validation without a device).
@@ -58,11 +65,9 @@ pub fn mesh_join_source() -> String {
     join_wgsl(include_str!("../shaders/scene_join_meshes.wgsl"))
 }
 
-/// A join shader as compiled: the shared join declarations and the
-/// materials' row (`//!use material_row`: the sections carry it).
+/// A join shader as compiled: the shared join declarations.
 fn join_wgsl(source: &str) -> String {
-    helio_core::shader::resolve_with(&join_source(source), &[helio_mats::MATERIAL_ROW_SNIPPET])
-        .into_owned()
+    join_source(source)
 }
 
 /// Where the frontend's authored rows live. See the module doc for what
@@ -90,9 +95,18 @@ pub struct SceneJoinKeys {
     pub palette_handles: BufferKey,
     /// The section pool; one output object row per pool slot.
     pub mesh_sections: BufferKey,
+    /// Mesh instances' slot material rows (handle table of `material_rows`).
+    pub material_row_handles: BufferKey,
+    /// Every mesh's slots' rows of the materials' table.
+    pub material_rows: BufferKey,
+    /// The material instances' key rows (`helio_mats::instance::MATERIAL_KEYS`),
+    /// at the rows `material_rows` names.
+    pub material_keys: BufferKey,
 }
 
 pub const OBJECTS_KEY: BufferKey = BufferKey::of("static_objects");
+/// The materials' table the object rows index (the material instances'
+/// rows, not this join's).
 pub const MATERIALS_KEY: BufferKey = helio_mats::MATERIALS.key();
 /// A marker whose `content_generation` moves only when the *structure* of the
 /// object rows changes (objects added, removed, hidden, or their mesh,
@@ -182,7 +196,6 @@ pub struct SceneJoin {
     /// Bound in place of an optional input that is not registered yet.
     empty: wgpu::Buffer,
     objects: Output,
-    materials: Output,
     /// Signatures of the mesh join's inputs at its last run, split into the
     /// structure and the placement (see `derive`).
     last_structure_inputs: Option<u64>,
@@ -458,7 +471,6 @@ impl SceneJoin {
                 mapped_at_creation: false,
             }),
             objects: Output::new(device, "Scene Join Objects", OBJECT_ROW_BYTES),
-            materials: Output::new(device, "Scene Join Materials", MATERIAL_ROW_BYTES),
             last_structure_inputs: None,
             last_placement_inputs: None,
             structure_generation: 0,
@@ -666,6 +678,10 @@ impl SceneDerivation for SceneJoin {
         let skin_handles = self.input(inputs, keys.skin_handles, HANDLE_ROW_BYTES);
         let palette_handles = self.input(inputs, keys.palette_handles, HANDLE_ROW_BYTES);
         let sections = self.input(inputs, keys.mesh_sections, MESH_SECTION_ROW_BYTES);
+        let material_row_handles =
+            self.input(inputs, keys.material_row_handles, HANDLE_ROW_BYTES);
+        let material_rows = self.input(inputs, keys.material_rows, MATERIAL_ROW_BYTES);
+        let material_keys = self.input(inputs, keys.material_keys, MATERIAL_KEY_ROW_BYTES);
         // Meshes are placed from rows composed only up to their nearest rigid
         // frame (and tagged with that frame's space) when a hierarchy resolve
         // ran ahead of this join; otherwise from the plain transform rows, in the
@@ -688,8 +704,7 @@ impl SceneDerivation for SceneJoin {
         // ── Meshes ──────────────────────────────────────────────────────
         let instance_rows = section_handles.map_or(0, |h| rows_of(h, HANDLE_ROW_BYTES));
         let output_rows = sections.map_or(0, |h| rows_of(h, MESH_SECTION_ROW_BYTES));
-        let grew = self.objects.ensure(ctx.device, output_rows)
-            | self.materials.ensure(ctx.device, output_rows);
+        let grew = self.objects.ensure(ctx.device, output_rows);
         // What the join's rows are made of splits in two. The *structure*
         // (which objects exist, their meshes, materials, flags, visibility)
         // changes rarely and decides how the object batch sorts and groups
@@ -711,11 +726,13 @@ impl SceneDerivation for SceneJoin {
             palette_handles,
             sections,
             spaces,
+            // A slot that names another material, or a material that changes
+            // class (a graph that loaded), regroups its draws.
+            material_row_handles,
+            material_rows,
+            material_keys,
         ];
-        let structure_signature = signature(
-            &structure_inputs,
-            &[self.objects.epoch, self.materials.epoch],
-        );
+        let structure_signature = signature(&structure_inputs, &[self.objects.epoch]);
         let placement_signature = signature(&[transforms], &[ox, oy, oz]);
         let structure_changed = grew || self.last_structure_inputs != Some(structure_signature);
         let placement_changed = self.last_placement_inputs != Some(placement_signature);
@@ -789,7 +806,6 @@ impl SceneDerivation for SceneJoin {
                 encoder.clear_buffer(&self.moved.link, 0, None);
                 encoder.clear_buffer(&self.moved.lists[self.moved.current], 0, Some(8));
                 encoder.clear_buffer(&self.objects.buffer, 0, None);
-                encoder.clear_buffer(&self.materials.buffer, 0, None);
                 if let (
                     Some(owners),
                     Some(generations),
@@ -834,9 +850,11 @@ impl SceneDerivation for SceneJoin {
                         palette_handles.map_or(&self.empty, |h| &h.buffer),
                         &sections.buffer,
                         &self.objects.buffer,
-                        &self.materials.buffer,
+                        material_keys.map_or(&self.empty, |h| &h.buffer),
                         &self.moved.link,
                         spaces.map_or(&self.empty, |h| &h.buffer),
+                        material_row_handles.map_or(&self.empty, |h| &h.buffer),
+                        material_rows.map_or(&self.empty, |h| &h.buffer),
                     ];
                     let reusable = self.mesh_bind.as_ref().is_some_and(|(buffers, _)| {
                         buffers.iter().zip(bound).all(|(cached, now)| cached == now)
@@ -864,6 +882,8 @@ impl SceneDerivation for SceneJoin {
                                 entry(14, bound[13]),
                                 entry(15, bound[14]),
                                 entry(16, bound[15]),
+                                entry(17, bound[16]),
+                                entry(18, bound[17]),
                             ],
                         });
                         self.mesh_bind =
@@ -881,10 +901,10 @@ impl SceneDerivation for SceneJoin {
                     self.moved.link_built = true;
                 }
             }
-            // Objects hold placements, so any change moves them. Materials
-            // and the structure marker only follow the structure: consumers
-            // that sort and group on them (`ObjectBatch`) keep their work
-            // across a frame that only moved things.
+            // Objects hold placements, so any change moves them. The
+            // structure marker only follows the structure: consumers that
+            // sort and group on it (`ObjectBatch`) keep their work across a
+            // frame that only moved things.
             self.objects.content_generation += 1;
             if let Some(complete) = moved_ran {
                 self.moved.generation = if complete {
@@ -894,7 +914,6 @@ impl SceneDerivation for SceneJoin {
                 };
             }
             if structure_changed {
-                self.materials.content_generation += 1;
                 self.structure_generation += 1;
             }
             recorded = true;
@@ -902,7 +921,6 @@ impl SceneDerivation for SceneJoin {
 
         let mut buffers = vec![
             (OBJECTS_KEY, self.objects.handle()),
-            (MATERIALS_KEY, self.materials.handle()),
             (
                 OBJECTS_MOVED_KEY,
                 BufferHandle {

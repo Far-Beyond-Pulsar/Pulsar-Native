@@ -1,163 +1,252 @@
-//! A static mesh's slot materials: the material assets its slots name, as
-//! the world binds them, and the material each section draws with.
+//! A mesh's slot materials as the materials' instances.
 //!
-//! A slot names a material asset by path (its own assignment, or the mesh
-//! asset's default for the slot). [`StaticMeshComponent`]'s handle
-//! collector declares one [`AssetId`] of the materials' kind
-//! ([`helio_mats::asset::MATERIAL_ASSET_KIND`]) per slot material, so the
-//! world counts the references however the value was written, loads each
-//! with the materials plugin's loader and binds the loaded
-//! [`MaterialPayload`] into the component's [`BoundMaterials`]. The draw
-//! derived for the mesh asks the bound material for its row
-//! ([`helio_mats::asset::MaterialAsset::resolve`]); it never reads a file
-//! or links the materials plugin. Without the plugin (or while a material
-//! is loading or failed) a slot draws the mesh's imported surface.
+//! Each slot of a mesh draws with a material instance (`helio_mats::instance`):
+//! an entity of the materials' table, shared by every slot drawing the same
+//! thing. The slot's source is its explicit surface override, else the
+//! material asset it names (its own assignment or the mesh asset's default),
+//! falling back to the mesh's imported surface. [`MeshMaterialInstances`]
+//! (a scene subsystem) keeps each mesh's instances in step with its slots:
+//! it reads the meshes' change journal, acquires the instances a changed mesh
+//! needs, releases the ones it no longer does, and gives the mesh's entity a
+//! [`MeshMaterialRows`] (the slots' table rows, mirrored to the GPU, which
+//! the scene join reads per section) and a [`MeshMaterials`] (the instances).
+//! The mesh component itself is never written: its draw rows name a slot,
+//! so assigning or reloading a material costs that small row, not the mesh's
+//! geometry and draw rows. The mesh never resolves, binds or uploads a
+//! material.
 
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::HashMap;
 
-use helio_mats::asset::{MATERIAL_ASSET_KIND, MaterialAsset, MaterialPayload, ResolvedMaterial};
-use pulsar_scenedb::{AssetId, AssetView};
+use helio_mats::asset::MATERIAL_ASSET_KIND;
+use helio_mats::instance::{MaterialSource, acquire, release, row_of};
+use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, Entity, World};
+use pulsar_scenedb_derive::SceneStore;
 
-use crate::components::{StaticMeshComponent, StaticMeshMaterialSlot};
+use crate::components::{SkeletalMeshComponent, StaticMeshComponent, StaticMeshMaterialSlot};
 
-/// The materials a mesh's slots are bound to, as the world loaded them, each
-/// with its content version. Never authored or saved.
-#[derive(Clone, Default)]
-pub struct BoundMaterials(Vec<(AssetId, u64, Arc<dyn MaterialAsset>)>);
+/// Pool of every mesh's slot table rows; its handle table is
+/// `mesh_material_rows::handles`, keyed by the mesh instance entity.
+pub const MESH_MATERIAL_ROWS_BUFFER: &str = "mesh_material_rows";
 
-impl BoundMaterials {
-    /// The bound material `id`, with its content version.
-    pub fn get(&self, id: AssetId) -> Option<(u64, &Arc<dyn MaterialAsset>)> {
-        if id.is_zero() {
-            return None;
-        }
-        self.0
-            .iter()
-            .find(|(bound, _, _)| *bound == id)
-            .map(|(_, version, material)| (*version, material))
-    }
+/// A mesh's slots' rows of the materials' table, in slot order: a section
+/// draws with `rows[section.material_slot]`. A mesh has none until its
+/// instances exist (the frame it was added), and the scene join skips a
+/// section without one.
+#[derive(SceneStore, Clone, Debug, Default, PartialEq)]
+pub struct MeshMaterialRows {
+    #[gpu(buffer = "mesh_material_rows")]
+    pub rows: Vec<u32>,
 }
 
-impl std::fmt::Debug for BoundMaterials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list()
-            .entries(self.0.iter().map(|(id, version, _)| (id.0, version)))
-            .finish()
-    }
-}
+/// The material instances a mesh's slots hold, in slot order (what
+/// [`MeshMaterialRows`] names on the GPU), for what reads the materials on
+/// the CPU (whether a mesh's surface animates).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MeshMaterials(pub Vec<Entity>);
 
-/// Registers how a [`StaticMeshComponent`] takes in a loaded material.
-/// Idempotent; done on the first [`slot_material_asset_id`].
-fn register_mesh_material_binding() {
-    static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(|| {
-        pulsar_scenedb::register_binding::<StaticMeshComponent>(
-            MATERIAL_ASSET_KIND,
-            bind_mesh_material,
-        );
-    });
+/// What `slot` draws: its surface override, else the material asset it
+/// names (declared so the world loads it), with the imported surface as the
+/// fallback.
+pub fn slot_source(slot: &StaticMeshMaterialSlot) -> MaterialSource {
+    if let Some(surface) = slot.surface_override {
+        return MaterialSource::surface(surface);
+    }
+    let asset = helio_component::asset_component::asset_source(slot.effective_material_asset())
+        .map(|source| {
+            helio_component::asset_component::declared_asset_id(MATERIAL_ASSET_KIND, &source);
+            source
+        })
+        .unwrap_or_default();
+    MaterialSource {
+        asset,
+        surface: None,
+        fallback: slot.imported_surface,
+    }
 }
 
 /// The asset id of the material `path` names, without declaring it.
-pub fn material_asset_id_of(path: &str) -> AssetId {
-    helio_component::asset_component::asset_source(path).map_or(AssetId::ZERO, |source| {
-        AssetId::of(MATERIAL_ASSET_KIND, &source)
-    })
+pub fn material_asset_id_of(path: &str) -> pulsar_scenedb::AssetId {
+    helio_component::asset_component::asset_source(path)
+        .map_or(pulsar_scenedb::AssetId::ZERO, |source| {
+            pulsar_scenedb::AssetId::of(MATERIAL_ASSET_KIND, &source)
+        })
 }
 
-/// The asset id of the material `path` names, declared so the world can
-/// load it. [`AssetId::ZERO`] for an empty path.
-pub fn slot_material_asset_id(path: &str) -> AssetId {
-    let Some(source) = helio_component::asset_component::asset_source(path) else {
-        return AssetId::ZERO;
-    };
-    register_mesh_material_binding();
-    helio_component::asset_component::declared_asset_id(MATERIAL_ASSET_KIND, &source)
-}
-
-/// The material a slot draws with, as an asset: none for an explicit
-/// surface override (which ignores any material) or an empty assignment.
-pub fn slot_material_id(slot: &StaticMeshMaterialSlot) -> AssetId {
-    if slot.surface_override.is_some() {
-        return AssetId::ZERO;
+/// What `slot` draws outside a world (tools such as thumbnails and the asset
+/// viewer): its material asset is loaded now, on the caller's thread, with
+/// the materials plugin's loader, and resolved in `mirror`'s scene if given.
+/// An empty slot, or one whose material cannot be loaded (or no enabled
+/// plugin loads), draws its fallback (with a warning for a failed load). In
+/// a world, the slot's instance resolves instead.
+pub fn resolve_slot_material(
+    slot: Option<&StaticMeshMaterialSlot>,
+    mirror: Option<&pulsar_scenedb::gpu::GpuMirrorHandle>,
+) -> helio_mats::asset::ResolvedMaterial {
+    use helio_mats::asset::{MaterialPayload, ResolvedMaterial};
+    let source = slot.map_or_else(default_source, slot_source);
+    if let Some(surface) = &source.surface {
+        return ResolvedMaterial::surface(surface);
     }
-    material_asset_id_of(slot.effective_material_asset())
+    let id = source.asset_id();
+    if id.is_zero() {
+        return ResolvedMaterial::surface(&source.fallback);
+    }
+    let loaded = match helio_component::asset_component::load_asset_now(MATERIAL_ASSET_KIND, &source.asset) {
+        Ok(payload) => payload.downcast::<MaterialPayload>().ok(),
+        Err(error) => {
+            tracing::warn!(source = %source.asset, %error, "static mesh material could not be loaded; using the imported material");
+            None
+        }
+    };
+    loaded
+        .and_then(|material| material.0.resolve(id, 0, mirror, &source.fallback).ok())
+        .unwrap_or_else(|| ResolvedMaterial::surface(&source.fallback))
 }
 
-/// `StaticMeshComponent`'s handle collector's material half: one declared
-/// id per slot that names a material.
-pub(crate) fn collect_mesh_materials(
-    mesh: &StaticMeshComponent,
-    out: &mut Vec<pulsar_scenedb::handle_ledger::HandleId>,
-) {
-    for slot in &mesh.material_slots.slots {
-        if slot.surface_override.is_none() {
-            let id = slot_material_asset_id(slot.effective_material_asset());
-            if !id.is_zero() {
-                out.push(id.handle());
+/// What a mesh with no slots draws.
+fn default_source() -> MaterialSource {
+    MaterialSource::surface(Default::default())
+}
+
+/// The sources a static mesh's slots draw, one per slot (one default for a
+/// mesh without slots, whose single section uses slot 0).
+fn static_sources(mesh: &StaticMeshComponent) -> Vec<MaterialSource> {
+    if mesh.material_slots.slots.is_empty() {
+        return vec![default_source()];
+    }
+    mesh.material_slots.slots.iter().map(slot_source).collect()
+}
+
+
+/// The meshes' instances, kept in step with their slots.
+#[derive(Default)]
+pub struct MeshMaterialInstances {
+    cursors: Option<(ChangeCursor, ChangeCursor)>,
+    scratch: Vec<ComponentChange>,
+    /// Per mesh instance entity: the sources it holds and their instances.
+    held: HashMap<Entity, (Vec<MaterialSource>, Vec<Entity>)>,
+}
+
+impl MeshMaterialInstances {
+    pub const NAME: &'static str = "pulsar.meshes.material_instances";
+
+    pub fn step(&mut self, world: &mut World) {
+        let rescan = match &mut self.cursors {
+            None => {
+                self.cursors = Some((
+                    world.open_change_cursor::<StaticMeshComponent>(),
+                    world.open_change_cursor::<SkeletalMeshComponent>(),
+                ));
+                true
+            }
+            Some((statics, skeletals)) => {
+                self.scratch.clear();
+                let a = world.read_changes(statics, &mut self.scratch);
+                let b = world.read_changes(skeletals, &mut self.scratch);
+                matches!(a, ChangeRead::Overflowed) || matches!(b, ChangeRead::Overflowed)
+            }
+        };
+        let changed: Vec<(Entity, bool)> = if rescan {
+            let mut all: Vec<(Entity, bool)> = world
+                .query::<&StaticMeshComponent>()
+                .map(|(entity, _)| (entity, true))
+                .chain(
+                    world
+                        .query::<&SkeletalMeshComponent>()
+                        .map(|(entity, _)| (entity, true)),
+                )
+                .collect();
+            // Meshes gone since: release what they held.
+            all.extend(
+                self.held
+                    .keys()
+                    .filter(|entity| !world.is_alive(**entity))
+                    .map(|entity| (*entity, false)),
+            );
+            all
+        } else {
+            self.scratch
+                .iter()
+                .map(|change| (change.entity, change.kind != ComponentChangeKind::Removed))
+                .collect()
+        };
+        for (entity, present) in changed {
+            self.sync(world, entity, present);
+        }
+    }
+
+    fn sync(&mut self, world: &mut World, entity: Entity, present: bool) {
+        let sources = if !present {
+            None
+        } else if let Some(mesh) = world.get::<StaticMeshComponent>(entity) {
+            Some(static_sources(mesh))
+        } else if world.get::<SkeletalMeshComponent>(entity).is_some() {
+            // Skeletal meshes have no slots yet: every section draws the
+            // default surface.
+            Some(vec![default_source()])
+        } else {
+            None
+        };
+        let Some(sources) = sources else {
+            if let Some((_, instances)) = self.held.remove(&entity) {
+                for instance in instances {
+                    release(world, instance);
+                }
+            }
+            // A removed mesh component leaves its entity drawing nothing.
+            if world.is_alive(entity) {
+                world.remove::<MeshMaterialRows>(entity);
+                world.remove::<MeshMaterials>(entity);
+            }
+            return;
+        };
+        if self
+            .held
+            .get(&entity)
+            .is_some_and(|(held, instances)| *held == sources && instances.iter().all(|i| world.is_alive(*i)))
+        {
+            return;
+        }
+        let instances: Vec<Entity> = sources.iter().map(|source| acquire(world, source)).collect();
+        if let Some((_, old)) = self.held.insert(entity, (sources, instances.clone())) {
+            for instance in old {
+                release(world, instance);
             }
         }
-    }
-}
-
-/// How a mesh takes in a loaded (or failed) material: kept for the slots
-/// naming it, and only the materials its slots still name are kept.
-fn bind_mesh_material(mesh: &mut StaticMeshComponent, view: &AssetView) {
-    let named: HashSet<AssetId> = mesh
-        .material_slots
-        .slots
-        .iter()
-        .map(slot_material_id)
-        .filter(|id| !id.is_zero())
-        .collect();
-    let bound = &mut mesh.materials.0;
-    bound.retain(|(id, _, _)| named.contains(id) && *id != view.id);
-    if !named.contains(&view.id) {
-        return;
-    }
-    match view.payload::<MaterialPayload>() {
-        Some(material) => {
-            // What the material reads that a cache dropped (a graph's
-            // textures) starts coming back now, ahead of the scene that
-            // will upload it.
-            material.0.warm();
-            bound.push((view.id, view.version, material.0.clone()))
+        let rows = MeshMaterialRows {
+            rows: instances.iter().map(|instance| row_of(*instance)).collect(),
+        };
+        if world.get::<MeshMaterialRows>(entity) != Some(&rows) {
+            world.insert(entity, rows);
         }
-        None => tracing::warn!(
-            source = view.source,
-            state = ?view.state,
-            "static mesh material could not be loaded; its slots use the imported material"
-        ),
+        if world.get::<MeshMaterials>(entity).map(|held| &held.0) != Some(&instances) {
+            world.insert(entity, MeshMaterials(instances));
+        }
     }
 }
 
-/// The material a slot draws with: an explicit surface override, the bound
-/// material (`bound`, the `version` of asset `id`) resolved in `mirror`'s
-/// scene, or the mesh's imported surface while it has none (unloaded,
-/// failed, nothing assigned, or a material that needs a scene drawn
-/// without one).
-pub fn resolve_material(
-    slot: Option<&StaticMeshMaterialSlot>,
-    bound: Option<(AssetId, u64, &dyn MaterialAsset)>,
-    mirror: Option<&pulsar_scenedb::gpu::GpuMirrorHandle>,
-) -> ResolvedMaterial {
-    let Some(slot) = slot else {
-        return ResolvedMaterial::surface(&Default::default());
-    };
-    if let Some(surface) = slot.surface_override {
-        return ResolvedMaterial::surface(&surface);
+impl pulsar_scenedb::Subsystem for MeshMaterialInstances {
+    fn name(&self) -> &'static str {
+        Self::NAME
     }
-    let imported = slot.imported_surface;
-    match bound {
-        Some((id, version, material)) => material
-            .resolve(id, version, mirror, &imported)
-            .unwrap_or_else(|error| {
-                if mirror.is_some() {
-                    tracing::warn!(%error, "could not resolve a slot material; using the imported material");
-                }
-                ResolvedMaterial::surface(&imported)
-            }),
-        None => ResolvedMaterial::surface(&imported),
+
+    fn simulate_a(&mut self, world: &mut World, _witness: &pulsar_scenedb::gpu::SimulateA) {
+        self.step(world);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
+pulsar_world_registry::inventory::submit! {
+    pulsar_world_registry::SceneSubsystemRegistration {
+        origin: pulsar_plugins::origin!(),
+        name: MeshMaterialInstances::NAME,
+        install: |scene| scene.register_subsystem(MeshMaterialInstances::default()),
     }
 }

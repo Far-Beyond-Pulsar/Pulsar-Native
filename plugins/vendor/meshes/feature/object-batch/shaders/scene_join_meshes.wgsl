@@ -1,23 +1,26 @@
-//!use material_row
 // Mesh join: one thread per mesh-instance row. A placed instance (attached,
-// enabled, owner alive and not hidden) writes one object row and one
-// material row per section, at the section's slot in the sections pool;
-// every other slot stays zero (the object-batch pass skips rows whose
-// `mesh_generation` is 0).
+// enabled, owner alive and not hidden) writes one object row per section
+// whose material slot has a live material instance, at the section's slot in
+// the sections pool; every other slot stays zero (the object-batch pass skips
+// rows whose `mesh_generation` is 0). The object row indexes the materials'
+// table by the slot's row (`meshes_component::MeshMaterialRows`).
 
-/// `helio_component::MeshSectionDraw` (128 bytes).
+/// `meshes_component::MeshSectionDraw` (16 bytes).
 struct Section {
     first_index: u32,
     index_count: u32,
+    // The mesh's material slot (an index of its material rows).
+    material_slot: u32,
+    _pad: u32,
+}
+
+/// `helio_mats::instance::MaterialKeyComponent` (16 bytes): how draws with
+/// the instance sort and group. `live` is 0 for no instance.
+struct MaterialKey {
     material_class: u32,
     graph_hash_lo: u32,
     graph_hash_hi: u32,
-    _pad0: u32,
-    _pad1: u32,
-    _pad2: u32,
-    // The section's material row (the materials' `GpuMaterial`,
-    // `//!use material_row`).
-    material: GpuMaterial,
+    live: u32,
 }
 
 /// `helio_pass_gbuffer::StaticObjectComponent` (252 bytes).
@@ -68,7 +71,7 @@ struct MeshJoinUniforms {
 @group(0) @binding(11) var<storage, read> palette_handles: array<Handle>;
 @group(0) @binding(12) var<storage, read> sections: array<Section>;
 @group(0) @binding(13) var<storage, read_write> objects_out: array<StaticObjectRow>;
-@group(0) @binding(14) var<storage, read_write> materials_out: array<GpuMaterial>;
+@group(0) @binding(14) var<storage, read> material_keys: array<MaterialKey>;
 // Per-owner heads then per-instance links of a linked list of the placed
 // instances each owner carries (`head + 1`, 0 ends the list), rebuilt by every
 // full join so a later moved-owner join can find an owner's instances.
@@ -76,6 +79,10 @@ struct MeshJoinUniforms {
 // Per object: the space (coordinate-space slot of its nearest rigid frame) it is
 // drawn in, zero for the world. Absent (a zero-length buffer) outside a hierarchy.
 @group(0) @binding(16) var<storage, read> spaces: array<u32>;
+// Per mesh instance: its slots' rows of the materials' table
+// (`MeshMaterialRows`), a range of `material_rows`.
+@group(0) @binding(17) var<storage, read> material_row_handles: array<Handle>;
+@group(0) @binding(18) var<storage, read> material_rows: array<u32>;
 
 /// The owner entity of instance `row` when the instance should draw, else
 /// `NO_OWNER`: attached and enabled, its recorded owner generation matches
@@ -203,11 +210,28 @@ fn cs_join_meshes(@builtin(global_invocation_id) gid: vec3<u32>) {
             break;
         }
         let section = sections[slot];
-        materials_out[slot] = section.material;
+        // A section whose material does not exist yet (the frame its mesh was
+        // added) draws nothing until it does.
+        if row >= arrayLength(&material_row_handles) {
+            continue;
+        }
+        let materials = material_row_handles[row];
+        if section.material_slot >= materials.count
+            || materials.offset + section.material_slot >= arrayLength(&material_rows) {
+            continue;
+        }
+        let material_row = material_rows[materials.offset + section.material_slot];
+        if material_row >= arrayLength(&material_keys) {
+            continue;
+        }
+        let key = material_keys[material_row];
+        if key.live == 0u {
+            continue;
+        }
         objects_out[slot] = StaticObjectRow(
             row,
             generation,
-            slot,
+            material_row,
             generation,
             model,
             model,
@@ -216,9 +240,9 @@ fn cs_join_meshes(@builtin(global_invocation_id) gid: vec3<u32>) {
             section.index_count,
             indices.offset + section.first_index,
             i32(vertices.offset),
-            section.material_class,
-            section.graph_hash_lo,
-            section.graph_hash_hi,
+            key.material_class,
+            key.graph_hash_lo,
+            key.graph_hash_hi,
             flags,
             skin.offset - vertices.offset,
             palette.offset,

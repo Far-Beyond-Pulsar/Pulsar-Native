@@ -73,6 +73,8 @@ impl Join {
 
     /// [`Self::run`] in a frame whose world origin is `origin`.
     fn run_at(&mut self, scene: &mut SceneDb, origin: glam::DVec3) -> SceneBufferProjection {
+        // The meshes' material instances are a scene subsystem's.
+        pulsar_world_registry::install_scene_subsystems(scene);
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
         let mut inputs = SceneBufferProjection::from_store_all(mirror.store());

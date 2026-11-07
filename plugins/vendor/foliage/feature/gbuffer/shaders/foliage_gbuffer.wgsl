@@ -1,3 +1,4 @@
+//!use gbuffer_output
 //!use helio_prelude
 //!use helio_foliage_wind
 //!use helio_foliage_common
@@ -26,8 +27,8 @@
 // ── Targets ─────────────────────────────────────────────────────────────────
 //
 // The pipeline declares all EIGHT G-buffer targets so it can be fused into the GBuffer
-// subpass chain. Grass writes six of them; the other two carry `ColorWrites::empty()` on
-// the Rust side and are simply absent from `FoliageGBufferOutput` below:
+// subpass chain. Grass writes six of them (the frame's `GBufferOutput`, zero in the
+// other two); the other two carry `ColorWrites::empty()` on the Rust side:
 //
 //   0 albedo       Rgba8Unorm   written
 //   1 normal       Rgba16Float  written
@@ -920,22 +921,12 @@ fn vs_box(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) ins
 // Fragment stage
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Locations 5 and 6 are deliberately absent — see the file header. wgpu's
-/// fragment-interface check iterates the shader's outputs and does not demand one per
-/// declared target, so the pipeline still validates against all eight attachments while
-/// the two unwritten ones carry `ColorWrites::empty()`.
-struct FoliageGBufferOutput {
-    @location(0) albedo: vec4<f32>,
-    @location(1) normal: vec4<f32>,
-    @location(2) orm: vec4<f32>,
-    @location(3) emissive: vec4<f32>,
-    /// `(-1, -1.5)`: foliage's tag. Negative x: no lightmap (the target's clear value
-    /// `(0, 0)` would read as a lightmapped surface); y -1.5 (clear of the voxel pass's
-    /// -2 and of portal chains, below -2.5): the deferred pass leaves screen-space AO
-    /// off it (dense blades overwhelm the kernel; they carry their own height AO).
-    @location(4) lightmap_uv: vec2<f32>,
-    @location(7) velocity: vec4<f32>,
-}
+// The fragment writes the frame's `GBufferOutput` (`//!use gbuffer_output`).
+// `lightmap_uv` is `GBUFFER_TAG_OWN_OCCLUSION`, `(-1, -1.5)`: foliage's tag. Negative
+// x: no lightmap (the target's clear value `(0, 0)` would read as a lightmapped
+// surface); y -1.5 (clear of the voxel pass's -2 and of portal chains, below -2.5):
+// the deferred pass leaves screen-space AO off it (dense blades overwhelm the kernel;
+// they carry their own height AO).
 
 fn foliage_velocity(clip_position: vec2<f32>, prev_clip: vec4<f32>) -> vec2<f32> {
     let prev_ndc = prev_clip.xy / prev_clip.w;
@@ -947,7 +938,7 @@ fn foliage_velocity(clip_position: vec2<f32>, prev_clip: vec4<f32>) -> vec2<f32>
 }
 
 @fragment
-fn fs_main(input: VertexOutput, @builtin(front_facing) front_facing: bool) -> FoliageGBufferOutput {
+fn fs_main(input: VertexOutput, @builtin(front_facing) front_facing: bool) -> GBufferOutput {
     // ── Colour ────────────────────────────────────────────────────────────────
     // The type's authored colour (a multiplier on the ground's for ground-coloured types,
     // so grass is the turf's colour), else the procedural root-to-tip green; varied per
@@ -990,7 +981,7 @@ fn fs_main(input: VertexOutput, @builtin(front_facing) front_facing: bool) -> Fo
     // own canopy.
     let ao = mix(0.45, 1.0, input.height_frac);
 
-    var out: FoliageGBufferOutput;
+    var out: GBufferOutput;
     if (globals.flags & FOLIAGE_FLAG_DEBUG_LOD) != 0u {
         var lod_colour = vec3<f32>(1.0, 0.0, 0.0);
         if input.lod == 1u {

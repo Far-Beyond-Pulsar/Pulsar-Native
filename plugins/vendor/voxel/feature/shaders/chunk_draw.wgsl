@@ -2187,19 +2187,8 @@ fn textured_normal(n: vec3<f32>, t: vec3<f32>, c: ChunkDraw, axis: u32) -> vec3<
     return normalize(tu * t.x + tv * t.y + n * t.z);
 }
 
-// The frame's G-buffer targets, in location order
-// (`helio_frame_api::gbuffer::TARGETS`).
-struct GOut {
-    @location(0) albedo: vec4<f32>,
-    @location(1) normal: vec4<f32>,
-    @location(2) orm: vec4<f32>,
-    @location(3) emissive: vec4<f32>,
-    @location(4) lightmap_uv: vec2<f32>,
-    @location(5) sss: vec4<f32>,
-    @location(6) extra: vec4<f32>,
-    @location(7) velocity: vec4<f32>,
-    @builtin(frag_depth) depth: f32,
-}
+// `GBufferDepthOutput`: the frame's G-buffer targets and the depth
+// (`//!use gbuffer_output`).
 
 // The hits the frame shows, over the meshes' gbuffer. Which those are was
 // decided once, by `shadow` against the meshes' depth (`mesh_point`): a hit
@@ -2212,7 +2201,7 @@ struct GOut {
 // behind it with `shadow`'s zero normal: black grass) and left the depth
 // garbage (runs of eight equal texels, the sky's too).
 @fragment
-fn publish(@builtin(position) pixel: vec4<f32>) -> GOut {
+fn publish(@builtin(position) pixel: vec4<f32>) -> GBufferDepthOutput {
     let p = vec2<i32>(pixel.xy);
     let v = textureLoad(hit_visibility, p, 0).xy;
     let shading = textureLoad(hit_normal, p, 0);
@@ -2232,7 +2221,7 @@ fn publish(@builtin(position) pixel: vec4<f32>) -> GOut {
     let pixel_m = pixel_width(vec2<u32>(pixel.xy), size, t);
     let look = surface_look(v.x, cell, axis, sign, material, position, pixel_m, vec2<u32>(pixel.xy));
     let f0 = 0.03;
-    var out: GOut;
+    var out: GBufferDepthOutput;
     var albedo = look.albedo;
     let row = slot_material(material);
     var roughness = row.roughness_metallic.x;

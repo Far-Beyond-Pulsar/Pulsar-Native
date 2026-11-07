@@ -226,6 +226,8 @@ impl Bench {
         stages.mutate = start.elapsed();
 
         let start = Instant::now();
+        // The meshes' material instances are a scene subsystem's.
+        pulsar_world_registry::install_scene_subsystems(&mut self.scene);
         self.scene.step();
         stages.flush = start.elapsed();
 

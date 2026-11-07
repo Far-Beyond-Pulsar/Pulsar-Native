@@ -98,6 +98,9 @@ pub fn scene_join_keys(context: &ObjectJoinContext) -> SceneJoinKeys {
         skin_handles: BufferKey::of(SKELETAL_SKIN_HANDLES_BUFFER),
         palette_handles: BufferKey::of(SKELETAL_PALETTE_HANDLES_BUFFER),
         mesh_sections: BufferKey::of(MESH_SECTIONS_BUFFER),
+        material_row_handles: BufferKey::of("mesh_material_rows::handles"),
+        material_rows: BufferKey::of(mesh_materials::MESH_MATERIAL_ROWS_BUFFER),
+        material_keys: BufferKey::of(helio_mats::instance::MATERIAL_KEYS),
     }
 }
 
@@ -115,9 +118,13 @@ fn register_columns(
     // the VirtualGeometryInstances derivation (`vg_instance_overrides`).
     VirtualGeometryComponent::register_gpu_columns_growable(store, 256, device);
     SkeletalMeshComponent::register_gpu_columns_growable(store, 128, device);
-    // The scene join's inputs; the object and material rows passes draw
-    // are the join's outputs, not SceneDB's.
+    // The scene join's inputs; the object rows passes draw are the join's
+    // output, not SceneDB's.
     StaticMeshDraw::register_gpu_columns_growable(store, 4096, device);
+    // Each mesh's slots' rows of the material table, and the table itself:
+    // the instances' rows.
+    mesh_materials::MeshMaterialRows::register_gpu_columns_growable(store, 4096, device);
+    helio_mats::instance::register_columns(store, device);
 }
 
 fn scene_join(
@@ -235,17 +242,35 @@ inventory::submit! {
 
 // ── Runtime registrations ───────────────────────────────────────────────────
 
-// A mesh drawn with a shader graph that reads the frame clock animates.
+// A mesh drawn with a shader graph that reads the frame clock animates. The
+// answer changes when a mesh does or when an instance binds its material.
+fn meshes_read_time(world: &World) -> bool {
+    world
+        .query::<&StaticMeshComponent>()
+        .filter(|(instance, _)| pulsar_scene_model::attachments::is_enabled(world, *instance))
+        .any(|(entity, _)| {
+            let instances = world.get::<mesh_materials::MeshMaterials>(entity);
+            instances.into_iter().flat_map(|held| held.0.iter()).any(|instance| {
+                world
+                    .get::<helio_mats::instance::MaterialInstanceComponent>(*instance)
+                    .is_some_and(|instance| instance.reads_time())
+            })
+        })
+}
+
 inventory::submit! {
     engine_backend::subsystems::render::AnimatedContentRegistration {
         origin: pulsar_plugins::origin!(),
         watch: |world| world.open_change_cursor::<StaticMeshComponent>(),
-        animated: |world| {
-            world
-                .query::<&StaticMeshComponent>()
-                .filter(|(instance, _)| pulsar_scene_model::attachments::is_enabled(world, *instance))
-                .any(|(_, mesh)| mesh_reads_time(mesh))
-        },
+        animated: meshes_read_time,
+    }
+}
+
+inventory::submit! {
+    engine_backend::subsystems::render::AnimatedContentRegistration {
+        origin: pulsar_plugins::origin!(),
+        watch: |world| world.open_change_cursor::<helio_mats::instance::MaterialInstanceComponent>(),
+        animated: meshes_read_time,
     }
 }
 
@@ -399,5 +424,9 @@ mod tests {
         );
         assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
         assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
+        assert_eq!(
+            size_of::<helio_mats::instance::MaterialKeyComponent>() as u64,
+            join::MATERIAL_KEY_ROW_BYTES
+        );
     }
 }

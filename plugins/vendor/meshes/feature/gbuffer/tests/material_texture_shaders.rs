@@ -39,7 +39,7 @@ fn validate_program(
 
 #[test]
 fn every_material_class_composes_into_every_mesh_program() {
-    let rows = [helio_mesh_api::DRAW_ROWS_SNIPPET];
+    let rows = helio_pass_gbuffer::GBUFFER_PROGRAM_SNIPPETS;
     let lit = [
         helio_mesh_api::DRAW_ROWS_SNIPPET,
         helio_light_api::LIGHT_LIST_SNIPPET,

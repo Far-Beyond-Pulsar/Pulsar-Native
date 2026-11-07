@@ -1105,7 +1105,6 @@ type RegisteredStaticMeshMaterialSlots = StaticMeshMaterialSlots;
     deserialize,
     scene_store
 )]
-#[scene_store(collect_handles = crate::mesh_materials::collect_mesh_materials)]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (e.g. "meshes/primitives/SM_Cube.fbx").
     ///
@@ -1141,12 +1140,6 @@ pub struct StaticMeshComponent {
     #[serde(skip)]
     pub mesh: AssetId,
 
-    /// The materials the slots name (their own assignments or the mesh's
-    /// defaults), as the world loaded them (SceneDB#84). The handle
-    /// collector counts one reference per slot material; never authored or
-    /// saved.
-    #[serde(skip)]
-    pub materials: crate::mesh_materials::BoundMaterials,
 
     /// Which loaded geometry `vertices`/`indices` hold, the id their GPU copy
     /// is interned under (see [`MeshGeometryKey`]). Set by the binding.

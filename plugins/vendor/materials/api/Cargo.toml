@@ -14,6 +14,9 @@ gpu = []
 # (`host_rows`): examples and tests enable it; engines produce the rows from
 # their own material assets.
 host-rows = ["dep:helio-components", "dep:pulsar_scenedb_derive", "dep:pulsar_reflection", "dep:serde_json"]
+# Material instances as entities (`instance`): the scene's material table,
+# which kinds that draw with materials acquire rows from.
+instances = ["host-rows"]
 
 [dependencies]
 helio-core = { workspace = true }

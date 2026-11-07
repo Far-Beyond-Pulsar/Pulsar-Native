@@ -32,7 +32,7 @@ helio-feature-api = { workspace = true }
 helio-scene-join = { workspace = true }
 helio-settings = { workspace = true }
 helio-mesh-api = { workspace = true }
-helio-mats = { workspace = true }
+helio-mats = { workspace = true, features = ["instances"] }
 helio-asset-compat = { workspace = true }
 helio-pass-forward-lit = { workspace = true }
 helio-pass-gbuffer = { workspace = true }

@@ -1,18 +1,14 @@
-//! The material row as a SceneDB component, for standalone hosts (examples,
-//! tests): it carries its contract row's exact fields (`same_layout!`), so
-//! SceneDB mirrors it into the [`crate::MATERIALS`] buffer the drawers read.
-//! Engines produce the rows from their own material assets. Behind the
-//! `host-rows` feature.
+//! The material row as a SceneDB component: it carries its contract row's
+//! exact fields (`same_layout!`), so SceneDB mirrors it into the
+//! [`crate::MATERIALS`] buffer the drawers read. Material instances
+//! (`crate::instance`) write it as their derived row; standalone hosts
+//! (examples, tests) may author it directly. Behind the `host-rows` feature.
 
 use helio_components::same_layout;
 use pulsar_scenedb_derive::SceneStore;
 
-/// A material authored as a SceneDB component.
-///
-/// The row deliberately keeps the existing G-buffer shader ABI for this
-/// migration step, but its lifetime and updates are now owned by the World.
-/// Render passes resolve the packed `"materials"` buffer by key; no renderer
-/// material table publication is required for the row itself.
+/// A material row as a SceneDB component, at its entity's row of the packed
+/// `"materials"` buffer render passes resolve by key.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[gpu(layout = packed, buffer = "materials")]

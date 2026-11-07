@@ -11,13 +11,16 @@
 //! publishes the texture table; the drawers of every kind read it and the
 //! rows through this crate.
 //!
-//! Holds no scene storage of its own: persistent material authoring is a
-//! SceneDB component storing a [`MaterialRow`] under [`MATERIALS`] (for
-//! standalone hosts, [`host_rows`] with the `host-rows` feature).
+//! The scene's material table is SceneDB's: one [`MaterialRow`] under
+//! [`MATERIALS`] per material instance entity (`instance`, with the
+//! `instances` feature), which kinds that draw with materials acquire; a
+//! standalone host may write rows itself ([`host_rows`], `host-rows`).
 
 pub mod asset;
 #[cfg(feature = "host-rows")]
 pub mod host_rows;
+#[cfg(feature = "instances")]
+pub mod instance;
 pub mod material;
 pub mod radiant;
 pub mod row;

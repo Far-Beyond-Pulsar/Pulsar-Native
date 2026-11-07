@@ -318,10 +318,7 @@ impl PortalInstancePass {
                 template,
                 &self.base_shader,
                 graph.as_deref().unwrap_or(""),
-                &[
-                    helio_mesh_api::DRAW_ROWS_SNIPPET,
-                    helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
-                ],
+                &PORTAL_PROGRAM_SNIPPETS,
                 self.material_binding,
                 "PortalInstance Graph Shader",
             );
@@ -331,6 +328,14 @@ impl PortalInstancePass {
         &self.graph_pipelines[&graph_hash]
     }
 }
+
+/// The snippets the portal G-buffer program composes with: the meshes'
+/// draw rows, the portals' view, and the frame's G-buffer output.
+pub const PORTAL_PROGRAM_SNIPPETS: [helio_core::shader::ShaderSnippet; 3] = [
+    helio_mesh_api::DRAW_ROWS_SNIPPET,
+    helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
+    helio_frame_api::gbuffer::OUTPUT_SNIPPET,
+];
 
 /// The portal G-buffer program (`gbuffer_portal.wgsl`): the meshes' rows
 /// (`mesh_draw_rows`) and the materials' snippets are resolved when a
@@ -353,10 +358,7 @@ fn portal_shader_source(material_binding: helio_mats::MaterialBindingConfig) -> 
         &base_shader_text(),
         "",
         material_binding.max_textures,
-        &[
-            helio_mesh_api::DRAW_ROWS_SNIPPET,
-            helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
-        ],
+        &PORTAL_PROGRAM_SNIPPETS,
     );
     if material_binding.uses_binding_arrays() {
         Cow::Owned(source)
@@ -940,10 +942,7 @@ mod material_tests {
             &super::base_shader_text(),
             graph,
             256,
-            &[
-                helio_mesh_api::DRAW_ROWS_SNIPPET,
-                helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
-            ],
+            &crate::PORTAL_PROGRAM_SNIPPETS,
         )
     }
 

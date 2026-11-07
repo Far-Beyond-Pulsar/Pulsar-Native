@@ -570,6 +570,7 @@ impl FoliageGBufferPass {
             &[
                 helio_pass_foliage_place::WIND_SNIPPET,
                 helio_pass_foliage_place::COMMON_SNIPPET,
+                helio_frame_api::gbuffer::OUTPUT_SNIPPET,
             ],
         );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1162,6 +1163,7 @@ impl FoliageBoxesPass {
             &[
                 helio_pass_foliage_place::WIND_SNIPPET,
                 helio_pass_foliage_place::COMMON_SNIPPET,
+                helio_frame_api::gbuffer::OUTPUT_SNIPPET,
             ],
         );
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

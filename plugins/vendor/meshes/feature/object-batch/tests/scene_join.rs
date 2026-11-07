@@ -38,6 +38,9 @@ const KEYS: SceneJoinKeys = SceneJoinKeys {
     skin_handles: BufferKey::of("t_skin_handles"),
     palette_handles: BufferKey::of("t_palette_handles"),
     mesh_sections: BufferKey::of("t_sections"),
+    material_row_handles: BufferKey::of("t_material_row_handles"),
+    material_rows: BufferKey::of("t_material_rows"),
+    material_keys: BufferKey::of("t_material_keys"),
 };
 
 const LIGHT_KEYS: LightJoinKeys = LightJoinKeys {
@@ -101,11 +104,18 @@ impl Transform {
 struct Section {
     first_index: u32,
     index_count: u32,
+    material_slot: u32,
+    pad: u32,
+}
+
+/// `helio_mats::instance::MaterialKeyComponent`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct MaterialKey {
     material_class: u32,
     graph_hash_lo: u32,
     graph_hash_hi: u32,
-    pad: [u32; 3],
-    material: helio_mats::GpuMaterial,
+    live: u32,
 }
 
 struct Scene {
@@ -209,23 +219,6 @@ fn run_at(
     projection
 }
 
-fn material(base: f32) -> helio_mats::GpuMaterial {
-    helio_mats::GpuMaterial {
-        base_color: [base, 0.5, 0.25, 1.0],
-        emissive: [0.0; 4],
-        roughness_metallic: [0.5, 0.0, 1.5, 0.5],
-        tex_base_color: u32::MAX,
-        tex_normal: u32::MAX,
-        tex_roughness: u32::MAX,
-        tex_emissive: u32::MAX,
-        tex_occlusion: u32::MAX,
-        workflow: 0,
-        flags: 0,
-        material_class: 0,
-        class_params: [0.0; 4],
-    }
-}
-
 fn model_of(t: &Transform) -> glam::Mat4 {
     glam::Mat4::from_scale_rotation_translation(
         glam::Vec3::from_array(t.scale),
@@ -304,23 +297,34 @@ fn base_scene() -> Scene {
         &[0u32, helio_mesh_api::INSTANCE_FLAG_MOVABLE, 0, 0],
     );
     scene.put(KEYS.section_handles, &[[0u32, 0], [0, 2], [0, 0], [2, 1]]);
-    let section = |first_index, index_count, base| Section {
+    // Material instances at table rows 4 (a graph) and 6 (the default
+    // class); row 5 is no instance. Instance 1's slots 0 and 1 draw with rows
+    // 4 and 6, instance 3's slot 0 with row 6.
+    let section = |first_index, index_count, material_slot| Section {
         first_index,
         index_count,
-        material_class: 0,
-        graph_hash_lo: 0,
-        graph_hash_hi: 0,
-        pad: [0; 3],
-        material: material(base),
+        material_slot,
+        pad: 0,
     };
     scene.put(
         KEYS.mesh_sections,
-        &[
-            section(0, 12, 0.1),
-            section(12, 24, 0.2),
-            section(0, 36, 0.3),
-        ],
+        &[section(0, 12, 0), section(12, 24, 1), section(0, 36, 0)],
     );
+    scene.put(
+        KEYS.material_row_handles,
+        &[[0u32, 0], [0, 2], [0, 0], [2, 1]],
+    );
+    scene.put(KEYS.material_rows, &[4u32, 6, 6]);
+    let key = |material_class, graph_hash: u64, live| MaterialKey {
+        material_class,
+        graph_hash_lo: graph_hash as u32,
+        graph_hash_hi: (graph_hash >> 32) as u32,
+        live,
+    };
+    let mut keys = vec![key(0, 0, 0); 7];
+    keys[4] = key(3, 0x0000_0001_0000_0002, 1);
+    keys[6] = key(0, 0, 1);
+    scene.put(KEYS.material_keys, &keys);
     let mut light = helio_light_api::GpuLight {
         position_range: [0.0, 0.0, 0.0, 10.0],
         direction_outer: [0.0, -1.0, 0.0, 0.5],
@@ -366,15 +370,13 @@ fn placed_instances_are_joined_with_their_owner_and_nothing_else_is() {
         &queue,
         &out.get(BufferKey::of("static_objects")).unwrap().buffer,
     );
-    let materials: Vec<helio_mats::GpuMaterial> = read(
-        &device,
-        &queue,
-        &out.get(BufferKey::of("materials")).unwrap().buffer,
-    );
     let transform = Transform::at([1.0, 2.0, 3.0], [30.0, 45.0, 10.0], [2.0, 1.0, 0.5]);
     let model = model_of(&transform);
     let center = model.transform_point3(glam::Vec3::new(0.5, 0.0, 0.0));
-    for (slot, (first, count, base)) in [(0u32, (0u32, 12u32, 0.1f32)), (1, (12, 24, 0.2))] {
+    for (slot, (first, count, row, class, hash)) in [
+        (0u32, (0u32, 12u32, 4u32, 3u32, 0x0000_0001_0000_0002u64)),
+        (1, (12, 24, 6, 0, 0)),
+    ] {
         let expected = StaticObjectComponent::from(helio_mesh_api::StaticObjectRow::new(
             1,
             5 + 1,
@@ -397,8 +399,16 @@ fn placed_instances_are_joined_with_their_owner_and_nothing_else_is() {
                 got.material_slot,
                 got.material_generation
             ),
-            (1, 6, slot, 6),
-            "section {slot} identity"
+            (1, 6, row, 6),
+            "section {slot} identity: its material's table row"
+        );
+        assert_eq!(
+            (
+                got.material_class,
+                u64::from(got.graph_hash_lo) | (u64::from(got.graph_hash_hi) << 32)
+            ),
+            (class, hash),
+            "section {slot} groups by its material's key"
         );
         assert_eq!(
             (
@@ -434,10 +444,6 @@ fn placed_instances_are_joined_with_their_owner_and_nothing_else_is() {
             "bounds {:?} vs {:?}",
             got.bounds,
             expected.bounds
-        );
-        assert_eq!(
-            materials[slot as usize].base_color[0], base,
-            "section {slot} material"
         );
     }
     assert_eq!(
@@ -694,9 +700,8 @@ fn unchanged_inputs_record_nothing_and_keep_the_outputs() {
 }
 
 /// Moving objects must not read as a change to what the objects are. The
-/// object batch re-sorts the whole scene whenever the materials or the
-/// structure marker move, and the transform column moves every frame an
-/// object is dragged.
+/// object batch re-sorts the whole scene whenever the structure marker
+/// moves, and the transform column moves every frame an object is dragged.
 #[test]
 fn moving_objects_moves_the_objects_but_not_the_structure() {
     let Some((device, queue)) = device() else {
@@ -712,9 +717,8 @@ fn moving_objects_moves_the_objects_but_not_the_structure() {
             .content_generation
     };
     let first = run(&mut join, &device, &queue, &scene, 1);
-    let (objects, materials, structure) = (
+    let (objects, structure) = (
         generation(&first, "static_objects"),
-        generation(&first, "materials"),
         generation(&first, "scene_objects_structure"),
     );
 
@@ -757,19 +761,20 @@ fn moving_objects_moves_the_objects_but_not_the_structure() {
         "the objects hold placements, so they changed"
     );
     assert_eq!(
-        generation(&moved, "materials"),
-        materials,
-        "materials follow the structure"
-    );
-    assert_eq!(
         generation(&moved, "scene_objects_structure"),
         structure,
         "moving objects is not a structural change"
     );
 
-    // And a change to what an object is does move all three.
+    // And a change to what an object is does move both.
     let retargeted = derive(&mut join, bump(KEYS.mesh_flags));
     assert!(generation(&retargeted, "static_objects") > generation(&moved, "static_objects"));
-    assert!(generation(&retargeted, "materials") > materials);
     assert!(generation(&retargeted, "scene_objects_structure") > structure);
+
+    // A material that changes class (a graph that loaded) regroups draws.
+    let regrouped = derive(&mut join, bump(KEYS.material_keys));
+    assert!(
+        generation(&regrouped, "scene_objects_structure")
+            > generation(&retargeted, "scene_objects_structure")
+    );
 }

@@ -1787,17 +1787,11 @@ fn skeletal_mesh_draw_dispatch(
     let sections = component
         .mesh_sections
         .iter()
-        .map(|section| {
-            let surface = crate::mesh_cache::ImportedSurfaceMaterial::default();
-            MeshSectionDraw {
-                first_index: section.first_index,
-                index_count: section.index_count,
-                material_class: 0,
-                graph_hash_lo: 0,
-                graph_hash_hi: 0,
-                _pad: [0; 3],
-                material: surface.row([helio_mats::GpuMaterial::NO_TEXTURE; 5]),
-            }
+        .map(|section| MeshSectionDraw {
+            first_index: section.first_index,
+            index_count: section.index_count,
+            material_slot: 0,
+            _pad: 0,
         })
         .collect::<Vec<_>>();
     let draw = StaticMeshDraw {

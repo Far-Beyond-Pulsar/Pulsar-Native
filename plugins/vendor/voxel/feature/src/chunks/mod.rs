@@ -3035,7 +3035,7 @@ fn draw_source(plane: bool, counting: bool) -> String {
     let source = |rel: &str, embedded: &'static str| {
         helio_core::shader::hot::source_text(env!("CARGO_MANIFEST_DIR"), rel, embedded)
     };
-    (helio_core::shader::PRELUDE.to_owned() + &format!("const DOMAIN_UNIT: f32 = {};\n", crate::grid::DOMAIN_UNIT) + &helio_core::shader::hot::source_text(helio_voxel_world::wgsl::DIR, helio_voxel_world::wgsl::NOISE_PATH, helio_voxel_world::wgsl::NOISE) + helio_gi_api::GI_COMMON_SNIPPET.source + helio_light_api::SUN_OCCLUSION_SNIPPET.source + helio_light_api::LIGHT_LIST_SNIPPET.source + helio_mats::MATERIAL_ROW_SNIPPET.source + helio_mats::PBR_EVAL_SNIPPET.source + helio_foliage_api::GROUND_SNIPPET.source + &walk_templates(&source("shaders/chunk_draw.wgsl", include_str!("../../shaders/chunk_draw.wgsl"))))
+    (helio_core::shader::PRELUDE.to_owned() + &format!("const DOMAIN_UNIT: f32 = {};\n", crate::grid::DOMAIN_UNIT) + &helio_core::shader::hot::source_text(helio_voxel_world::wgsl::DIR, helio_voxel_world::wgsl::NOISE_PATH, helio_voxel_world::wgsl::NOISE) + helio_gi_api::GI_COMMON_SNIPPET.source + helio_light_api::SUN_OCCLUSION_SNIPPET.source + helio_light_api::LIGHT_LIST_SNIPPET.source + helio_mats::MATERIAL_ROW_SNIPPET.source + helio_mats::PBR_EVAL_SNIPPET.source + helio_foliage_api::GROUND_SNIPPET.source + helio_frame_api::gbuffer::OUTPUT_SNIPPET.source + &walk_templates(&source("shaders/chunk_draw.wgsl", include_str!("../../shaders/chunk_draw.wgsl"))))
         .replace("COUNTERS", if counting { "@group(0) @binding(9) var<storage, read_write> counters: array<atomic<u32>, 256>;" } else { "" })
         .replace("WCOUNT(1)", &wcount(1))
         .replace("WCOUNT(3)", &wcount(3))

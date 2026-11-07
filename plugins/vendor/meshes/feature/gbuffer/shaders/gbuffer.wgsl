@@ -1,3 +1,4 @@
+//!use gbuffer_output
 enable wgpu_binding_array;
 //!use helio_prelude
 //!use specular_aa
@@ -254,16 +255,7 @@ fn vs_main(v: Vertex, @location(15) slot: u32, @builtin(vertex_index) vertex_ind
 
 // ── Fragment ─────────────────────────────────────────────────────────────────
 
-struct GBufferOutput {
-    @location(0) albedo:      vec4<f32>,
-    @location(1) normal:      vec4<f32>,
-    @location(2) orm:         vec4<f32>,
-    @location(3) emissive:    vec4<f32>,
-    @location(4) lightmap_uv: vec2<f32>,
-    @location(5) sss:         vec4<f32>,
-    @location(6) extra:       vec4<f32>,
-    @location(7) velocity:    vec4<f32>,  // motion.xy, view-depth residual.z, flags.w (compute_velocity)
-}
+// `GBufferOutput`: the frame's targets (`//!use gbuffer_output`).
 
 fn compute_velocity(input: VertexOutput) -> vec4<f32> {
     let prev_ndc = input.prev_clip_position.xy / input.prev_clip_position.w;

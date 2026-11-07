@@ -1,12 +1,14 @@
-//! Mesh materials as world assets (SceneDB#84): each slot's material (a
-//! surface document or a shader-graph folder) is counted as a reference of
-//! the mesh however the value was written, loaded off the write path and
-//! bound into the mesh; the draw reads only what was bound. A changed
-//! material file, or a texture a graph samples, reloads the material in
-//! every mesh using it.
+//! Mesh materials as world assets (SceneDB#84) through material instances:
+//! each slot draws with an instance (`helio_mats::instance`) the meshes'
+//! subsystem acquires for it, shared by every slot drawing the same
+//! material. The instance's material (a surface document or a shader-graph
+//! folder) is counted as a reference however the mesh was written, loaded
+//! off the write path and bound into the instance; the draw reads only what
+//! was bound. A changed material file, or a texture a graph samples,
+//! reloads the material once for every mesh using it.
 //!
-//! The mesh reads the materials through the materials' api only
-//! (`helio_mats::asset`); this crate's loader serves them.
+//! The meshes read the materials through the materials' api only
+//! (`helio_mats`); this crate's loader serves them.
 //!
 //! One test, because the project path sources resolve against is a process
 //! global. No GPU: a graph is compiled against texture slots when a mirror
@@ -16,10 +18,11 @@ use std::path::Path;
 use std::time::Duration;
 
 use materials_component::assets::material_sources_for_file;
+use helio_mats::instance::MaterialInstanceComponent;
 use meshes_component::components::{
-    StaticMeshComponent, StaticMeshMaterialSlot, mesh_reads_time, resolve_slot_material,
+    StaticMeshComponent, StaticMeshMaterialSlot, resolve_slot_material,
 };
-use meshes_component::mesh_materials::{material_asset_id_of, resolve_material, slot_material_id};
+use meshes_component::mesh_materials::{MeshMaterialInstances, MeshMaterials, material_asset_id_of};
 use pulsar_scenedb::{AssetState, Entity, World};
 
 fn write_surface(path: &Path, base_color: [f32; 4]) {
@@ -101,34 +104,51 @@ fn mesh_with(slots: &[&str]) -> StaticMeshComponent {
     mesh
 }
 
-fn resolve(world: &mut World) {
+/// Load what the instances name, after the meshes' subsystem caught up.
+fn resolve(world: &mut World, instances: &mut MeshMaterialInstances) {
+    instances.step(world);
     assert!(
         world.resolve_assets_blocking(Duration::from_secs(30)),
         "material assets did not load"
     );
 }
 
-/// The base colour slot `index` of `entity`'s mesh draws with.
-fn slot_color(world: &World, entity: Entity, index: usize) -> [f32; 4] {
-    let mesh = world.get::<StaticMeshComponent>(entity).unwrap();
-    let slot = &mesh.material_slots.slots[index];
-    let id = slot_material_id(slot);
-    let bound = mesh
-        .materials
-        .get(id)
-        .map(|(version, material)| (id, version, material.as_ref()));
-    resolve_material(Some(slot), bound, None).row.base_color
+/// The instance slot `index` of `entity`'s mesh draws with.
+fn instance(world: &World, entity: Entity, index: usize) -> &MaterialInstanceComponent {
+    world
+        .get::<MaterialInstanceComponent>(slot_instance(world, entity, index))
+        .expect("the slot has an instance")
 }
 
-/// Whether `path` is bound into `entity`'s mesh as a graph: a material
+/// The instance entity of slot `index` of `entity`'s mesh.
+fn slot_instance(world: &World, entity: Entity, index: usize) -> Entity {
+    world.get::<MeshMaterials>(entity).expect("the mesh has its instances").0[index]
+}
+
+/// The base colour slot `index` of `entity`'s mesh draws with.
+fn slot_color(world: &World, entity: Entity, index: usize) -> [f32; 4] {
+    instance(world, entity, index).resolve(None).row.base_color
+}
+
+/// Whether slot `index` of `entity`'s mesh is bound to a graph: a material
 /// that draws only in a scene (its textures take slots there).
-fn is_graph(world: &World, entity: Entity, path: &str) -> bool {
-    let mesh = world.get::<StaticMeshComponent>(entity).unwrap();
-    let id = material_asset_id_of(path);
-    mesh.materials.get(id).is_some_and(|(version, material)| {
+fn is_graph(world: &World, entity: Entity, index: usize) -> bool {
+    let instance = instance(world, entity, index);
+    let id = instance.source().asset_id();
+    instance.bound().is_some_and(|material| {
         material
-            .resolve(id, version, None, &Default::default())
+            .resolve(id, 0, None, &Default::default())
             .is_err()
+    })
+}
+
+/// Whether any of `entity`'s slots draws with a material reading the clock.
+fn reads_time(world: &World, entity: Entity) -> bool {
+    let held = world.get::<MeshMaterials>(entity).unwrap();
+    held.0.iter().any(|instance| {
+        world
+            .get::<MaterialInstanceComponent>(*instance)
+            .is_some_and(|instance| instance.reads_time())
     })
 }
 
@@ -164,19 +184,19 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
 
     // ── A typed insert names its slots' materials; the world loads them ────
     let mut world = World::new();
+    let mut instances = MeshMaterialInstances::default();
     let mesh = world.spawn();
     world.insert(mesh, mesh_with(&["materials/red.mat", "materials/glow"]));
+    instances.step(&mut world);
     assert_eq!(world.asset_ref_count(red), 1);
     assert_eq!(world.asset_ref_count(glow), 1);
     let imported = slot_color(&world, mesh, 0);
-    resolve(&mut world);
+    resolve(&mut world, &mut instances);
     assert_eq!(world.asset_state(red), AssetState::Ready);
     assert_eq!(slot_color(&world, mesh, 0), RED);
     assert_ne!(imported, RED, "nothing read in the write");
-    assert!(is_graph(&world, mesh, "materials/glow"));
-    assert!(!mesh_reads_time(
-        world.get::<StaticMeshComponent>(mesh).unwrap()
-    ));
+    assert!(is_graph(&world, mesh, 1));
+    assert!(!reads_time(&world, mesh));
 
     // ── A typed write swaps one slot's material; the other stays bound ─────
     world
@@ -185,15 +205,11 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
         .material_slots
         .slots[0]
         .material_asset = "materials/blue.mat".into();
-    assert_eq!(world.asset_ref_count(red), 0);
+    instances.step(&mut world);
+    assert_eq!(world.asset_ref_count(red), 0, "an unnamed material is dropped");
     assert_eq!(world.asset_ref_count(blue), 1);
-    resolve(&mut world);
+    resolve(&mut world, &mut instances);
     assert_eq!(slot_color(&world, mesh, 0), BLUE);
-    let bound = world.get::<StaticMeshComponent>(mesh).unwrap();
-    assert!(
-        bound.materials.get(red).is_none(),
-        "an unnamed material is dropped"
-    );
 
     // ── Adding a slot (a reimport with more sections) counts its material ──
     world
@@ -203,11 +219,10 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
         .slots
         .push(slot("materials/pulse"));
     let pulse = material_asset_id_of("materials/pulse");
+    instances.step(&mut world);
     assert_eq!(world.asset_ref_count(pulse), 1);
-    resolve(&mut world);
-    assert!(mesh_reads_time(
-        world.get::<StaticMeshComponent>(mesh).unwrap()
-    ));
+    resolve(&mut world, &mut instances);
+    assert!(reads_time(&world, mesh));
 
     // ── A surface override ignores the slot's material: no reference ───────
     world
@@ -216,17 +231,22 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
         .material_slots
         .slots[2]
         .surface_override = Some(Default::default());
+    instances.step(&mut world);
     assert_eq!(world.asset_ref_count(pulse), 0);
-    resolve(&mut world);
-    assert!(!mesh_reads_time(
-        world.get::<StaticMeshComponent>(mesh).unwrap()
-    ));
+    resolve(&mut world, &mut instances);
+    assert!(!reads_time(&world, mesh));
 
-    // ── Reload: the document changes, every mesh using it is rebound ───────
+    // ── Reload: the document changes, every mesh using it draws it ─────────
     let other = world.spawn();
     world.insert(other, mesh_with(&["materials/blue.mat"]));
-    resolve(&mut world);
+    resolve(&mut world, &mut instances);
     assert_eq!(slot_color(&world, other, 0), BLUE, "shared, already loaded");
+    assert_eq!(
+        slot_instance(&world, other, 0),
+        slot_instance(&world, mesh, 0),
+        "one instance for every slot drawing the same material"
+    );
+    assert_eq!(world.asset_ref_count(blue), 1);
     let version = world.asset_version(blue);
     write_surface(&materials.join("blue.mat"), GREEN);
     let sources = material_sources_for_file(&materials.join("blue.mat"));
@@ -234,7 +254,7 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
     for source in &sources {
         assert_eq!(world.asset_source_changed(source), 1);
     }
-    resolve(&mut world);
+    resolve(&mut world, &mut instances);
     assert!(world.asset_version(blue) > version);
     assert_eq!(slot_color(&world, mesh, 0), GREEN);
     assert_eq!(slot_color(&world, other, 0), GREEN);
@@ -251,9 +271,9 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
     for source in &sources {
         world.asset_source_changed(source);
     }
-    resolve(&mut world);
+    resolve(&mut world, &mut instances);
     assert!(world.asset_version(glow) > glow_version);
-    assert!(is_graph(&world, mesh, "materials/glow"));
+    assert!(is_graph(&world, mesh, 1));
 
     // ── Missing and corrupt materials: the imported surface, no panic ──────
     for path in [
@@ -267,7 +287,7 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
             .material_slots
             .slots[0]
             .material_asset = path.into();
-        resolve(&mut world);
+        resolve(&mut world, &mut instances);
         assert!(
             matches!(
                 world.asset_state(material_asset_id_of(path)),
@@ -293,8 +313,9 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
         level_mesh,
         *decoded.downcast::<StaticMeshComponent>().unwrap(),
     );
+    instances.step(&mut world);
     assert_eq!(world.asset_ref_count(red), 1);
-    resolve(&mut world);
+    resolve(&mut world, &mut instances);
     assert_eq!(slot_color(&world, level_mesh, 0), RED);
     // Saving it writes the slot's path, never the loaded material.
     let saved =
@@ -312,6 +333,12 @@ fn materials_load_rebind_reload_and_survive_bad_input() {
     world.despawn(level_mesh);
     world.despawn(other);
     world.despawn(mesh);
+    instances.step(&mut world);
+    assert_eq!(
+        world.query::<&MaterialInstanceComponent>().count(),
+        0,
+        "the last user's release despawns an instance"
+    );
     for id in [red, blue, glow, pulse] {
         assert_eq!(world.asset_ref_count(id), 0);
     }

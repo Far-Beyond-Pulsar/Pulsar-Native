@@ -161,6 +161,12 @@ pub struct GBufferPass {
 /// packing, over the materials' snippets; a template's surface function is
 /// composed after it.
 pub const GBUFFER_PROGRAM: &str = include_str!("../shaders/gbuffer.wgsl");
+/// The snippets [`GBUFFER_PROGRAM`] composes with: the meshes' draw rows and
+/// the frame's G-buffer output.
+pub const GBUFFER_PROGRAM_SNIPPETS: [helio_core::shader::ShaderSnippet; 2] = [
+    helio_mesh_api::DRAW_ROWS_SNIPPET,
+    helio_frame_api::gbuffer::OUTPUT_SNIPPET,
+];
 
 /// Coordinate-space slots backed by GPU storage (slot 0 is the identity). An
 /// instance carries its space id in 8 bits of its flags, so 256 is the most.
@@ -1168,7 +1174,7 @@ impl GBufferPass {
                 template,
                 GBUFFER_PROGRAM,
                 graph_wgsl,
-                &[helio_mesh_api::DRAW_ROWS_SNIPPET],
+                &GBUFFER_PROGRAM_SNIPPETS,
                 self.material_binding,
                 "GBuffer Shader",
             );

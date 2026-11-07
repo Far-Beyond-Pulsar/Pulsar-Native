@@ -13,10 +13,7 @@ fn the_portal_draw_validates_with_every_material_class() {
             program,
             "",
             4,
-            &[
-                helio_mesh_api::DRAW_ROWS_SNIPPET,
-                helio_pass_portal_cull::PORTAL_VIEW_SNIPPET,
-            ],
+            &helio_pass_portal_instances::PORTAL_PROGRAM_SNIPPETS,
         );
         for source in [
             native.clone(),
