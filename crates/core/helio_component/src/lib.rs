@@ -11,6 +11,7 @@ pub mod asset_component;
 pub mod components;
 pub mod cooked_texture;
 mod motion_gate;
+pub mod skinning;
 mod static_move_watch;
 pub mod subsystems;
 pub mod texture_assets;

@@ -100,8 +100,14 @@ impl PrefabAsset {
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let mut prefab: Self = serde_json::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
+        // The plugins' record migrations, as a level's objects get them: a
+        // migrated prefab is written back once, with the slot ids below.
+        let migrated = prefab.migrate_records();
+        for what in &migrated {
+            tracing::info!(path = %path.display(), "{what}");
+        }
         let renamed = prefab.reassign_slot_ids();
-        if renamed.changed {
+        if renamed.changed || !migrated.is_empty() {
             // Record old → new before rewriting the prefab, so a level keyed
             // by the old ids can still find its slots (#933).
             if !renamed.aliases.is_empty() {
@@ -123,6 +129,32 @@ impl PrefabAsset {
             }
         }
         Ok(prefab)
+    }
+
+    /// Run the plugins' record migrations
+    /// ([`crate::records::migrate_entries`]) on the components: what each
+    /// that changed them did. A component a migration adds gets its slot id
+    /// from [`Self::reassign_slot_ids`].
+    pub fn migrate_records(&mut self) -> Vec<&'static str> {
+        let Ok(Value::Array(mut entries)) = serde_json::to_value(&self.components) else {
+            return Vec::new();
+        };
+        let migrated = crate::records::migrate_entries(&mut entries);
+        if migrated.is_empty() {
+            return migrated;
+        }
+        match serde_json::from_value(Value::Array(entries)) {
+            Ok(components) => {
+                self.components = components;
+                migrated
+            }
+            Err(error) => {
+                tracing::warn!(
+                    "a record migration left the prefab unreadable, kept as it was: {error}"
+                );
+                Vec::new()
+            }
+        }
     }
 
     /// Write `<dir>/prefab.json`.

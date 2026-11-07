@@ -240,6 +240,9 @@ fn meshes_absent() {
         assert!(!registered(class), "{class} is registered");
     }
     assert!(registered("LightComponent"), "the lights stay");
+    // the animator stays: it drives skinned meshes through a contract, and has none
+    assert!(registered("AnimationComponent"), "the animator stays");
+    assert!(helio_component::skinning::skeletal_pose_access().is_some());
     let features = render_features::plugin_features();
     for id in [
         "helio.mesh.batch",
@@ -253,7 +256,7 @@ fn meshes_absent() {
         asset_import::importer_for("fbx").is_none(),
         "a model importer is registered"
     );
-    assert!(helio_mesh_api::skinning::skinned_mesh_access().is_none());
+    assert!(helio_component::skinning::skinned_mesh_access().is_none());
     let entries: Vec<_> = ui_level_editor::extend::create_entries()
         .into_iter()
         .map(|entry| entry.id)
@@ -318,7 +321,7 @@ fn meshes_absent() {
     engine_state::set_project_path(on.path().display().to_string());
     assert!(registered("StaticMeshComponent"));
     assert!(asset_import::importer_for("fbx").is_some());
-    assert!(helio_mesh_api::skinning::skinned_mesh_access().is_some());
+    assert!(helio_component::skinning::skinned_mesh_access().is_some());
 }
 
 /// Every engine preset's graph over the enabled plugins' features: its

@@ -15,6 +15,7 @@
 
 // BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
 // by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
+pub use animation_component;
 #[cfg(feature = "editor")]
 pub use skeletal_animation_plugin;
 #[cfg(feature = "editor")]

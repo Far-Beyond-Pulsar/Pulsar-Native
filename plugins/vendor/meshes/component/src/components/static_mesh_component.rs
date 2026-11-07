@@ -1140,7 +1140,6 @@ pub struct StaticMeshComponent {
     #[serde(skip)]
     pub mesh: AssetId,
 
-
     /// Which loaded geometry `vertices`/`indices` hold, the id their GPU copy
     /// is interned under (see [`MeshGeometryKey`]). Set by the binding.
     #[serde(skip)]

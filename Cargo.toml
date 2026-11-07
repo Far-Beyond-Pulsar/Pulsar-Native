@@ -20,6 +20,7 @@ members = [
     "plugins/vendor/skm_editor",
     # The skeletal asset formats, shared by that plugin and the asset importer.
     "plugins/vendor/skm_editor/skeletal_assets",
+    "plugins/vendor/skm_editor/component",
     # Physics asset types (materials, collision layers); in-repo cdylib plugin.
     "plugins/vendor/physics_plugin",
     # Widget assets (.widget) and the WYSIWYG widget editor; built-in plugin of the editor.
@@ -262,6 +263,7 @@ engine_fs                          = { path = "crates/core/engine_fs", default-f
 editor_task_queue                  = { path = "crates/core/editor_task_queue" }
 asset_import                       = { path = "crates/core/asset_import" }
 skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeletal_assets" }
+animation_component                = { path = "plugins/vendor/skm_editor/component" }
 # The voxel plugin (`pulsar.voxel`): hosts link the component crate (the game)
 # or the editor plugin crate (the editor); its other crates are below, with
 # the Helio crates.

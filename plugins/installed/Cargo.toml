@@ -9,6 +9,7 @@ description = "The installed plugins: every plugin under plugins/vendor that des
 pulsar_plugins = { workspace = true }
 # BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
+animation_component = { workspace = true }
 skeletal_animation_plugin = { workspace = true, optional = true }
 asset_viewer_plugin = { workspace = true, optional = true }
 blueprint_editor_plugin = { workspace = true, optional = true }
@@ -103,7 +104,6 @@ helio_component = { workspace = true }
 plugin_editor_api = { workspace = true }
 # The absent meshes: no model importer, no skinned access.
 asset_import = { workspace = true }
-helio-mesh-api = { workspace = true }
 wgpu = { workspace = true }
 pollster = "1.0"
 glam = { workspace = true }

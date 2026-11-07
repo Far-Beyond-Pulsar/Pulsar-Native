@@ -25,7 +25,6 @@ pub mod host_rows;
 mod indirect_draw;
 mod object_batch_frame_data;
 pub mod rows;
-pub mod skinning;
 
 pub use asset_types::{MeshUpload, PackedVertex, SectionedMeshUpload};
 pub use culled_batch_frame_data::CulledBatchFrameData;

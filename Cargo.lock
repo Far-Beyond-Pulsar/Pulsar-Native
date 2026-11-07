@@ -320,6 +320,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
+name = "animation_component"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "engine_fs",
+ "engine_state",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio_component",
+ "inventory",
+ "pulsar_class",
+ "pulsar_events",
+ "pulsar_game",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "skeletal_assets",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "annotate-snippets"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5641,9 +5669,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-components",
  "helio-core",
- "inventory",
  "naga",
- "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -7389,6 +7415,7 @@ dependencies = [
 name = "installed_plugins"
 version = "0.1.0"
 dependencies = [
+ "animation_component",
  "asset_import",
  "asset_viewer_plugin",
  "blueprint_editor_plugin",
@@ -7407,7 +7434,6 @@ dependencies = [
  "helio",
  "helio-core",
  "helio-mats",
- "helio-mesh-api",
  "helio-presets",
  "helio_component",
  "image",
@@ -8459,7 +8485,9 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 name = "materials_component"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "helio",
  "helio-feature-api",
@@ -8473,6 +8501,7 @@ dependencies = [
  "pollster 0.4.0",
  "psgc",
  "pulsar_plugins",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde_json",
@@ -8498,6 +8527,7 @@ dependencies = [
  "graphy-render",
  "image",
  "log",
+ "materials_component",
  "naga",
  "parking_lot",
  "plugin_editor_api",
@@ -11071,7 +11101,7 @@ dependencies = [
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
- "helio-mesh-api",
+ "helio_component",
  "inventory",
  "plugin_editor_api",
  "plugin_manager",

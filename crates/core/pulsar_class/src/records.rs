@@ -92,6 +92,15 @@ impl RecordMigrations {
     }
 }
 
+/// Run every plugin's entry migration on one component list (a level
+/// object's or a class prefab's): what each that changed it did.
+pub fn migrate_entries(entries: &mut Vec<Value>) -> Vec<&'static str> {
+    pulsar_plugins::registered::<RecordMigrationRegistration>()
+        .filter(|migration| migration.entries.is_some_and(|migrate| migrate(entries)))
+        .map(|migration| migration.description)
+        .collect()
+}
+
 /// Run every record migration on `root`, a level's JSON.
 pub fn migrate_component_records(root: &mut Value) -> RecordMigrations {
     let mut report = RecordMigrations::default();

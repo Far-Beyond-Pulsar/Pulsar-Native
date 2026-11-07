@@ -11,9 +11,9 @@
 //!   (`ObjectJoinRegistration`), the virtual-geometry host and the authored
 //!   LOD selection ([`host_part`], a `RenderHostPartRegistration`), picking,
 //!   framing and debug geometry (`ContentGeometryRegistration`), animated surfaces (`AnimatedContentRegistration`),
-//!   movability, the skeletal animation phase and notifies
-//!   (`TickPhaseRegistration`, `ComponentEventsRegistration`), the headless
-//!   report, the virtual-geometry project settings ([`vg_settings`]) and the
+//!   movability, the skinned meshes an animator drives
+//!   (`helio_component::skinning::SkinnedMeshAccess`), the headless report,
+//!   the virtual-geometry project settings ([`vg_settings`]) and the
 //!   mesh asset reloads.
 //! - The plugin's Helio features: the object batch (first in the frame's
 //!   prepare slot), its culling around the depth pyramid, the drawers (the
@@ -29,7 +29,6 @@
 // installs the plugin; a project enables it or not (`pulsar_plugins`).
 pulsar_plugins::installed!("../pulsar-plugin.toml");
 
-pub mod anim_source;
 pub mod authored_lod;
 pub mod components;
 pub mod host_part;
@@ -250,11 +249,14 @@ fn meshes_read_time(world: &World) -> bool {
         .filter(|(instance, _)| pulsar_scene_model::attachments::is_enabled(world, *instance))
         .any(|(entity, _)| {
             let instances = world.get::<mesh_materials::MeshMaterials>(entity);
-            instances.into_iter().flat_map(|held| held.0.iter()).any(|instance| {
-                world
-                    .get::<helio_mats::instance::MaterialInstanceComponent>(*instance)
-                    .is_some_and(|instance| instance.reads_time())
-            })
+            instances
+                .into_iter()
+                .flat_map(|held| held.0.iter())
+                .any(|instance| {
+                    world
+                        .get::<helio_mats::instance::MaterialInstanceComponent>(*instance)
+                        .is_some_and(|instance| instance.reads_time())
+                })
         })
 }
 
@@ -282,78 +284,29 @@ inventory::submit! {
     }
 }
 
-// The skeletal meshes' animation: their phase before the game's systems
-// (physics reads this frame's pose), their notifies after the scripts.
+// An animator (the animation plugin's) finds the skinned mesh it drives and
+// shows its pose there (`helio_component::skinning`).
 inventory::submit! {
-    engine_backend::scene::game_hooks::TickPhaseRegistration {
+    helio_component::skinning::SkinnedMeshAccess {
         origin: pulsar_plugins::origin!(),
-        name: "skeletal_animation",
-        before_systems: Some(run_animation_phase),
-        after_scripts: Some(publish_animation_notifies),
-    }
-}
-
-fn publish_animation_notifies(
-    world: &mut World,
-    hub: &pulsar_events::EventHub,
-    resolve: engine_backend::scene::game_hooks::ScriptVariableResolver,
-) {
-    flush_animation_notifies(world, hub, resolve);
-}
-
-// Another kind (a physics rig) reads and drives a skinned mesh through the
-// meshes' api (`helio_mesh_api::skinning`).
-inventory::submit! {
-    helio_mesh_api::skinning::SkinnedMeshAccess {
-        origin: pulsar_plugins::origin!(),
-        component: pulsar_scenedb::component_id::<SkeletalMeshComponent>,
-        pose: |world, instance| {
-            let component = world.get::<SkeletalMeshComponent>(instance)?;
-            Some(helio_mesh_api::skinning::SkinnedPose {
-                mesh: component.mesh.as_ref().map(|mesh| mesh.as_str().to_string()),
-                bone_ids: component
-                    .loaded_skeleton
-                    .as_ref()
-                    .map(|skeleton| {
-                        skeleton
-                            .skeleton()
-                            .bones
-                            .into_iter()
-                            .map(|bone| bone.id)
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                bone_world_pose: component.bone_world_pose.clone(),
-            })
+        instance: |world, owner, ordinal| {
+            pulsar_world_registry::instances::resolve_instance(
+                world,
+                owner,
+                components::SKELETAL_MESH_COMPONENT,
+                ordinal,
+            )
         },
-        drive_bones: |world, instance, bones| {
+        binding: |world, instance| {
+            world
+                .get::<SkeletalMeshComponent>(instance)
+                .map(|mesh| mesh.binding())
+        },
+        show_pose: |world, instance, bones, pose| {
             world
                 .get_mut::<SkeletalMeshComponent>(instance)
-                .is_some_and(|mut component| component.apply_physics_bones(bones))
-        },
-        release_bones: |world, instance| {
-            if let Some(mut component) = world.get_mut::<SkeletalMeshComponent>(instance) {
-                component.clear_physics_pose();
-            }
-        },
-    }
-}
-
-// A skeletal mesh's events are the notifies its animation assets declare.
-inventory::submit! {
-    engine_backend::scene::ComponentEventsRegistration {
-        origin: pulsar_plugins::origin!(),
-        class_name: "SkeletalMeshComponent",
-        events: |root, assets| {
-            let catalog = component_animation_notify_events(root, assets);
-            engine_backend::scene::ComponentEventCatalog {
-                events: catalog.events,
-                diagnostics: catalog
-                    .diagnostics
-                    .into_iter()
-                    .map(|diagnostic| (diagnostic.path, diagnostic.error))
-                    .collect(),
-            }
+                .map(|mut mesh| mesh.show_pose(bones, pose))
+                .is_some()
         },
     }
 }
