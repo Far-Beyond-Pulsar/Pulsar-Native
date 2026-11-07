@@ -6,19 +6,16 @@ use std::time::Instant;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
-pub use helio::PortalDebugText;
 
-use super::fly_camera::{altitude_speed_scale, direction, yaw_pitch, FlyCamera};
+use super::camera_ground::{altitude_speed_scale, CameraGround};
+use super::fly_camera::{direction, yaw_pitch, FlyCamera};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_camera;
 use super::scene_renderer::{
-    ortho_depth_range, DeviceOwner, FrameProjection, FrameView, SceneRenderer,
-    SceneRendererOptions, VoxelGround,
-};
-use super::voxel_backend::{
-    VoxelBackendRegistry, VoxelBrushCommit, VoxelChunkSaves, VoxelRayHint, UNPICKED_REACH_M,
+    ortho_depth_range, DeviceOwner, FrameCrop, FrameProjection, FrameView, SceneRenderer,
+    SceneRendererOptions,
 };
 type GizmoMode = GizmoType;
 
@@ -61,47 +58,6 @@ impl TemporalSettling {
         }
     }
 }
-
-/// Append a backend's brush edit to the terrain's journal and advance the
-/// source revision. SceneDB persists the journal with the level.
-pub(super) fn apply_voxel_brush_commit(
-    world: &mut pulsar_scenedb::World,
-    commit: VoxelBrushCommit,
-) -> bool {
-    let entity = pulsar_scenedb::Entity::from_bits(commit.id.entity_bits);
-    let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else {
-        return false;
-    };
-    if !terrain.editable {
-        return false;
-    }
-    terrain.edits.push(commit.edit);
-    terrain.edits.extend(commit.then);
-    terrain.source_revision = terrain.source_revision.wrapping_add(1);
-    true
-}
-
-/// A brush sample: the pointer ray when it was taken, and the pick that
-/// asked the renderer for the terrain hit under it.
-struct PendingBrush {
-    pick: u64,
-    /// The renderer's answer once it arrived: the hit drawn under the
-    /// sample, or none (sky).
-    answer: Option<Option<helio_pass_voxel_planet::engine::PickHit>>,
-    requested: Instant,
-    stroke: u64,
-    origin: DVec3,
-    direction: DVec3,
-    request: VoxelBrushRequest,
-}
-
-/// How long a brush sample waits for the renderer's hit before it walks the
-/// exact terrain without one.
-const PICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
-/// After a stamp within this distance, brush samples stamp on the frame of
-/// their input: the exact walk from the eye to twice that distance costs
-/// under a millisecond, where a renderer pick takes frames.
-const INSTANT_STAMP_M: f64 = 40.0;
 
 /// Where a frame's time went: milliseconds between successive marks, logged
 /// for slow frames (`VOXEL_FRAME_PHASES`).
@@ -297,7 +253,7 @@ struct CameraSyncMember {
 /// A `Vec`-backed mailbox, not a single-slot `Option` like
 /// `pending_gizmo_mode` below -- click and release are order-sensitive and
 /// must not collapse into "latest wins."
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum PendingPointerEvent {
     /// Latest-wins pointer position.  Unlike clicks, intermediate hover
     /// positions have no semantic value and must not build up a queue during
@@ -310,14 +266,16 @@ pub enum PendingPointerEvent {
         norm_x: f32,
         norm_y: f32,
     },
-    /// A sculpt stroke sample. `start` begins a stroke (pointer down); the
-    /// drag samples after it are latest-wins, since the renderer fills the
-    /// gap from the stroke's previous stamp.
-    VoxelBrush {
+    /// A tool acting along the ray under the pointer (the sculpt tool's
+    /// strokes): the render thread casts the ray with the frame's camera and
+    /// calls the tool with the scene. `start` begins a stroke (pointer
+    /// down); the drag samples after it are latest-wins, since a stroke
+    /// fills the gaps between its samples.
+    ToolRay {
         norm_x: f32,
         norm_y: f32,
-        request: VoxelBrushRequest,
         start: bool,
+        tool: ToolRay,
     },
     LeftRelease,
 }
@@ -327,7 +285,7 @@ impl PendingPointerEvent {
     fn latest_wins(&self) -> bool {
         matches!(
             self,
-            Self::MouseMove { .. } | Self::VoxelBrush { start: false, .. }
+            Self::MouseMove { .. } | Self::ToolRay { start: false, .. }
         )
     }
 
@@ -351,38 +309,16 @@ impl PendingPointerEvent {
     }
 }
 
-/// One sculpt-tool stroke sample, applied where the pointer ray first hits
-/// voxel terrain.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VoxelBrushRequest {
-    /// Remove digs into the hit block; Add builds on the face in front of
-    /// it; Paint recolours solid blocks.
-    pub op: helio_voxel_data::VoxelBrushOp,
-    pub shape: helio_voxel_data::VoxelBrushShape,
-    /// Brush radius (half size for a cube) in metres.
-    pub radius: f32,
-    /// Terrain material for Add and Paint.
-    pub material: u32,
-    /// Edit exactly one block, whatever the radius.
-    pub single_block: bool,
-    /// What a stamp does with the brush (see [`VoxelBrushTool`]).
-    pub tool: VoxelBrushTool,
-    /// Flatten: the ground height (radial, m) the stroke levels to, set by
-    /// the renderer from the stroke's first stamp.
-    pub level: Option<f64>,
-}
+/// What a tool does along a pointer ray: called on the render thread with
+/// the scene, the ray's origin (the camera's eye, world frame) and
+/// direction, and whether it starts a stroke.
+#[derive(Clone)]
+pub struct ToolRay(pub Arc<dyn Fn(&mut pulsar_scenedb::World, DVec3, DVec3, bool) + Send + Sync>);
 
-/// What a sculpt stamp does.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum VoxelBrushTool {
-    /// The brush itself, with its op (dig, build, paint).
-    #[default]
-    Stamp,
-    /// Level the ground under the brush to the height where the stroke
-    /// started: carve above it, fill below it.
-    Flatten,
-    /// Ease the ground under the brush to its local average height.
-    Smooth,
+impl std::fmt::Debug for ToolRay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ToolRay")
+    }
 }
 
 /// Cheap, `Clone`-able handle bundle for issuing editor commands
@@ -411,20 +347,18 @@ pub struct HelioEditorMailbox {
     camera_sync_locked: Arc<AtomicBool>,
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
-    pending_portal_debug_texts: Arc<Mutex<Option<Vec<helio::PortalDebugText>>>>,
-    pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
+    pending_view_payloads: Arc<Mutex<Vec<(&'static str, Option<ViewPayload>)>>>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
-    voxel_chunk_saves: VoxelChunkSaves,
     requested_pipeline: super::pipelines::RequestedPipeline,
 }
 
 /// A debug view advertised by a pass in the editor viewport's render graph.
 pub type ViewportDebugLegend = helio::DebugViewLegend;
 
-/// Editor-only view selection for portal diagnostics. The renderer keeps its
-/// color output lit while the editor draws portal labels and pairing overlays.
-pub const PORTAL_DEBUG_VIEW_MODE: u32 = 35;
+/// What an editor publishes for one viewport's passes, under a feature's
+/// payload contract key (`helio_core::PayloadContract`).
+pub type ViewPayload = Arc<dyn std::any::Any + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ViewportDebugView {
@@ -467,11 +401,6 @@ impl HelioEditorMailbox {
     /// has not taken it yet.
     pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
         self.static_drag_warning.lock().ok()?.take()
-    }
-
-    /// Where saves ask the renderer for the voxel planet's edited chunks.
-    pub fn voxel_chunk_saves(&self) -> VoxelChunkSaves {
-        self.voxel_chunk_saves.clone()
     }
 
     /// The gizmo drags finished since the last call, oldest first.
@@ -529,18 +458,13 @@ impl HelioEditorMailbox {
         self.requested_pipeline.set(id);
     }
 
-    /// Update world-anchored portal labels rendered by Helio's overlay pass.
-    pub fn set_portal_debug_texts(&self, texts: Vec<helio::PortalDebugText>) {
-        if let Ok(mut pending) = self.pending_portal_debug_texts.lock() {
-            *pending = Some(texts);
-        }
-    }
-
-    /// Show the geometry mapped through the selected portal in the editor.
-    /// An empty vector clears the ghost overlay.
-    pub fn set_portal_debug_geometry(&self, vertices: Vec<[f64; 3]>) {
-        if let Ok(mut pending) = self.pending_portal_debug_geometry.lock() {
-            *pending = Some(vertices);
+    /// Publish `payload` for this viewport's passes under a feature's payload
+    /// contract key (`None` withdraws it): editor-only data a plugin's
+    /// overlay draws (a portal's labels and what it maps), beside what the
+    /// scene publishes. Applied at the next frame, which it wakes.
+    pub fn set_view_payload(&self, key: &'static str, payload: Option<ViewPayload>) {
+        if let Ok(mut pending) = self.pending_view_payloads.lock() {
+            pending.push((key, payload));
         }
     }
 
@@ -647,8 +571,7 @@ pub struct HelioRenderer {
     ortho_boom: f32,
     /// Debug views advertised by the active render graph, exposed to editor UI.
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
-    pending_portal_debug_texts: Arc<Mutex<Option<Vec<helio::PortalDebugText>>>>,
-    pending_portal_debug_geometry: Arc<Mutex<Option<Vec<[f64; 3]>>>>,
+    pending_view_payloads: Arc<Mutex<Vec<(&'static str, Option<ViewPayload>)>>>,
     /// A fixed frame delta for deterministic captures; see
     /// [`Self::set_frame_delta_override`].
     frame_delta_override: Option<f32>,
@@ -663,15 +586,12 @@ pub struct HelioRenderer {
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
     /// Gizmo drags that moved their object, taken by the UI for undo.
     completed_drags: Arc<Mutex<Vec<CompletedDrag>>>,
-    /// Saves' requests for the voxel planet's edited chunks (its backend
-    /// answers them).
-    voxel_chunk_saves: VoxelChunkSaves,
 
-    // ── Virtual geometry ──
-    /// Replaces the project's virtual-geometry settings (tests, tools); the
-    /// scene renderer owns the streaming host.
-    virtual_geometry_override:
-        Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+    // ── Host parts ──
+    /// Applied to the plugins' render-host parts of every scene renderer
+    /// this makes (tests, tools: a plugin's settings in place of the
+    /// project's).
+    host_part_setups: Vec<super::scene_renderer::HostPartSetup>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -687,8 +607,8 @@ pub struct HelioRenderer {
     applied_pipeline: Option<String>,
 
     // ── Camera State ──
-    /// The perspective camera's pose: its frame follows the voxel ground's
-    /// local vertical (the game's free camera flies the same way).
+    /// The perspective camera's pose: its frame follows the ground's local
+    /// vertical (the game's free camera flies the same way).
     cam: FlyCamera,
     // Smoothed local-space velocity: x=right, y=up, z=forward (units/sec).
     cam_local_velocity: Vec3,
@@ -728,29 +648,20 @@ pub struct HelioRenderer {
     /// Frame counter used to throttle GPU profiler reads to once every
     /// N frames so a fast idle loop doesn't hammer the timing API.
     profiler_frame_counter: u32,
-    /// The current sculpt stroke (counted up at each pointer down) and the
-    /// last stamp applied, with its stroke: a stroke's stamps are filled in
-    /// between, never joined to another stroke's.
-    voxel_stroke: u64,
-    voxel_stroke_last: Option<(u64, VoxelBrushCommit)>,
-    /// Flatten: the level each stroke started at.
-    voxel_stroke_level: Option<(u64, f64)>,
-    /// Brush samples waiting for the renderer's hit under them, in order.
-    voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
-    /// The voxel ground under the camera (local vertical, height above it),
-    /// from the last frame.
-    voxel_ground: VoxelGround,
+    /// The ground under the camera (local vertical, height above it), from
+    /// the last frame.
+    camera_ground: CameraGround,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
-    voxel_stats_log: bool,
+    stats_log: bool,
     /// The last rendered frame's phases (`FramePhases`), for harnesses.
     last_phases: Vec<(&'static str, f32)>,
-    last_voxel_stats_log: Instant,
+    last_stats_log: Instant,
     /// Frames rendered since the last stats line and the slowest of them
     /// (ms): the viewport's own rate, beside the renderer's GPU time.
-    voxel_stats_frames: (u32, f32),
+    stats_frames: (u32, f32),
 }
 
 struct HelioInner {
@@ -767,31 +678,41 @@ struct HelioInner {
     applied_postprocess: Option<crate::scene::EditorPostProcess>,
     /// The debug mode last handed to the graph (0: lit).
     applied_debug_mode: u32,
-    /// Watches the scene for spline changes; created with the first sync.
-    spline_lines: Option<helio_component::components::SplineLines>,
+    /// The plugins' editor line sets (`EditorLinesRegistration`), each
+    /// watching the scene; created with the first sync.
+    editor_lines: Option<Vec<(&'static str, Box<dyn super::render_features::EditorLines>)>>,
 }
 
 use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
 
 impl HelioRenderer {
-    /// The virtual-geometry streaming runtime (readiness, settings), once
-    /// the renderer is built.
-    pub fn virtual_geometry_runtime(&self) -> Option<&helio_vg_stream::VgRuntime> {
-        self.inner
-            .as_ref()
-            .map(|inner| inner.scene.virtual_geometry_runtime())
+    /// The scene renderer's host part of type `T` (a plugin's), once the
+    /// renderer is built.
+    pub fn host_part<T: super::host_parts::RenderHostPart>(&self) -> Option<&T> {
+        self.inner.as_ref()?.scene.host_part::<T>()
     }
 
-    /// Use `settings` instead of the project's `project.virtual_geometry` ones
-    /// (`None` restores them). Tests and tools; takes effect next frame.
-    pub fn set_virtual_geometry_settings(
+    /// The scene renderer's host part of type `T` (a plugin's), once the
+    /// renderer is built.
+    pub fn host_part_mut<T: super::host_parts::RenderHostPart>(&mut self) -> Option<&mut T> {
+        self.inner.as_mut()?.scene.host_part_mut::<T>()
+    }
+
+    /// Apply `setup` to the host parts now and to those of every scene
+    /// renderer this makes later; a later setup under the same `key`
+    /// replaces it. Tests and tools (a plugin's settings in place of the
+    /// project's).
+    pub fn set_up_host_parts(
         &mut self,
-        settings: Option<pulsar_settings::project::virtual_geometry::VirtualGeometrySettings>,
+        key: &'static str,
+        setup: Arc<dyn Fn(&mut dyn super::host_parts::RenderHostPart) + Send + Sync>,
     ) {
-        self.virtual_geometry_override = settings;
         if let Some(inner) = self.inner.as_mut() {
-            inner.scene.set_virtual_geometry_settings(settings);
+            inner.scene.set_up_host_parts(setup.as_ref());
         }
+        self.host_part_setups
+            .retain(|(existing, _)| *existing != key);
+        self.host_part_setups.push((key, setup));
     }
 
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
@@ -817,15 +738,13 @@ impl HelioRenderer {
             active_view: ViewKind::Perspective,
             ortho_boom: CAMERA_PIVOT_DISTANCE as f32,
             viewport_debug_views: Arc::new(Mutex::new(Vec::new())),
-            pending_portal_debug_texts: Arc::new(Mutex::new(None)),
-            pending_portal_debug_geometry: Arc::new(Mutex::new(None)),
+            pending_view_payloads: Arc::new(Mutex::new(Vec::new())),
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
-            voxel_chunk_saves: VoxelChunkSaves::default(),
-            virtual_geometry_override: None,
+            host_part_setups: Vec::new(),
             reset_taa_next_frame: false,
             device_loss: None,
             reported_device_loss: false,
@@ -850,17 +769,13 @@ impl HelioRenderer {
             temporal_settling: TemporalSettling::default(),
             gizmo_dirty: true,
             profiler_frame_counter: 0,
-            voxel_stroke: 0,
-            voxel_stroke_last: None,
-            voxel_stroke_level: None,
-            voxel_brush_picks: Default::default(),
-            voxel_ground: VoxelGround::default(),
+            camera_ground: CameraGround::default(),
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
-            voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
+            stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_phases: Vec::new(),
-            last_voxel_stats_log: Instant::now(),
-            voxel_stats_frames: (0, 0.0),
+            last_stats_log: Instant::now(),
+            stats_frames: (0, 0.0),
         }
     }
 
@@ -892,10 +807,11 @@ impl HelioRenderer {
         }
     }
 
-    /// Height of the camera above the voxel ground below it, when a voxel
-    /// terrain is shown (what the camera's speed scales with).
-    pub fn voxel_altitude(&self) -> Option<f64> {
-        self.voxel_ground.altitude
+    /// The ground under the camera as of the last frame, as the scene's
+    /// content reports it: its local vertical and the camera's height above
+    /// it (what the camera's speed scales with).
+    pub fn camera_ground(&self) -> CameraGround {
+        self.camera_ground
     }
 
     /// The last measured frame's GPU milliseconds in all and by pass, for
@@ -918,18 +834,12 @@ impl HelioRenderer {
         &self.last_phases
     }
 
-    /// The voxel backends' diagnostics lines (`PULSAR_VOXEL_STATS`), for
+    /// The renderer's diagnostics lines (`PULSAR_VOXEL_STATS`), for
     /// harnesses.
-    pub fn voxel_diagnostics(&self) -> Vec<String> {
+    pub fn diagnostics(&self) -> Vec<String> {
         self.inner
             .as_ref()
-            .map_or_else(Vec::new, |inner| inner.scene.voxel_diagnostics())
-    }
-
-    /// The direction towards the scene's sun as the voxel terrain traces it
-    /// (the last read of the scene), if it has one.
-    pub fn sun_direction(&self) -> Option<[f32; 3]> {
-        self.inner.as_ref()?.scene.sun_direction()
+            .map_or_else(Vec::new, |inner| inner.scene.diagnostics())
     }
 
     /// The camera's view direction in world space.
@@ -943,11 +853,6 @@ impl HelioRenderer {
         self.active_view
             .axis_basis()
             .map_or(self.cam.frame_up(), |(_, _, up)| up)
-    }
-
-    /// The voxel worlds' renderers, once the renderer is built.
-    fn voxels(&self) -> Option<&VoxelBackendRegistry> {
-        self.inner.as_ref().map(|inner| inner.scene.voxels())
     }
 
     /// World-space forward, right and up of the editor camera.
@@ -1072,9 +977,8 @@ impl HelioRenderer {
                 SceneRendererOptions {
                     editor_mode: true,
                     device: DeviceOwner::Host,
-                    chunk_saves: self.voxel_chunk_saves.clone(),
                     pipeline: self.requested_pipeline.get(),
-                    virtual_geometry: self.virtual_geometry_override,
+                    host_part_setups: self.host_part_setups.clone(),
                 },
             );
             scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
@@ -1113,7 +1017,7 @@ impl HelioRenderer {
                 has_rendered_frame: false,
                 applied_postprocess: None,
                 applied_debug_mode: 0,
-                spline_lines: None,
+                editor_lines: None,
             };
             self.inner = Some(inner);
             self.applied_graph_settings = Some(graph_settings.clone());
@@ -1142,6 +1046,33 @@ impl HelioRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) -> Option<wgpu::SubmissionIndex> {
+        self.render_frame_internal(_device, _queue, view, width, height, format, None)
+    }
+
+    /// Draw one crop of a larger output while keeping scene time fixed.
+    pub fn render_capture_tile(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        crop: FrameCrop,
+    ) -> Option<wgpu::SubmissionIndex> {
+        self.render_frame_internal(device, queue, view, width, height, format, Some(crop))
+    }
+
+    fn render_frame_internal(
+        &mut self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        crop: Option<FrameCrop>,
+    ) -> Option<wgpu::SubmissionIndex> {
         // When the Inspector capture is active, put the engine-side render
         // phases into the same bounded WGPUI timeline as Window::draw. The
         // cfg keeps the renderer usable without the optional editor UI, and
@@ -1154,7 +1085,11 @@ impl HelioRenderer {
         let frame_start = Instant::now();
         let mut phases = FramePhases::new(frame_start);
         let now = Instant::now();
-        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        let dt = if crop.is_some() {
+            0.0
+        } else {
+            now.duration_since(self.last_frame).as_secs_f32().min(0.1)
+        };
         self.last_frame = now;
         self.frame_count += 1;
         self.profiler_frame_counter += 1;
@@ -1182,7 +1117,9 @@ impl HelioRenderer {
         // `handle_left_release` already set `self.gizmo_dirty = true`
         // internally, so processing them here needs no extra plumbing to keep
         // this frame from idling out on a drag-release commit.
-        let mut pending_pointer_events = {
+        let mut pending_pointer_events = if crop.is_some() {
+            Vec::new()
+        } else {
             profiling::profile_scope!("helio_take_pending_pointer_events");
             let mut batch = std::mem::take(&mut self.pointer_events_scratch);
             if let Ok(mut events) = self.pending_pointer_events.lock() {
@@ -1214,23 +1151,34 @@ impl HelioRenderer {
                         profiling::profile_scope!("helio_handle_left_release");
                         self.handle_left_release();
                     }
-                    PendingPointerEvent::VoxelBrush {
+                    PendingPointerEvent::ToolRay {
                         norm_x,
                         norm_y,
-                        request,
                         start,
+                        tool,
                     } => {
-                        self.handle_voxel_brush(norm_x, norm_y, request, start);
+                        profiling::profile_scope!("helio_tool_ray");
+                        let (origin, direction) = self.pointer_ray(norm_x, norm_y);
+                        if direction != DVec3::ZERO {
+                            (tool.0)(
+                                &mut self.scene_store.write().world,
+                                origin,
+                                direction,
+                                start,
+                            );
+                            self.gizmo_dirty = true;
+                        }
                     }
                 }
             }
         }
         self.pointer_events_scratch = pending_pointer_events;
-        self.resolve_voxel_brushes();
         phases.mark("pointer");
 
         // ── Detect input activity BEFORE consuming ──────────────────────────────
-        let (had_input, needs_resize) = {
+        let (had_input, needs_resize) = if crop.is_some() {
+            (false, false)
+        } else {
             profiling::profile_scope!("helio_read_camera_input");
             let Ok(input) = self.camera_input.lock() else {
                 return None;
@@ -1256,7 +1204,7 @@ impl HelioRenderer {
         let _engine_frame_diagnostic = (self.frame_count, width, height);
 
         let view_kind_changed = self.apply_view_kind();
-        {
+        if crop.is_none() {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
         }
@@ -1271,49 +1219,26 @@ impl HelioRenderer {
             self.apply_postprocess_baseline()
         };
         let debug_view_changed = self.apply_viewport_debug_mode();
-        self.apply_view_fog();
         let ortho_half_height = self.ortho_half_height();
 
-        let portal_debug_texts = self
-            .pending_portal_debug_texts
+        let view_payloads = self
+            .pending_view_payloads
             .lock()
-            .ok()
-            .and_then(|mut pending| pending.take());
-        let portal_debug_geometry = self
-            .pending_portal_debug_geometry
-            .lock()
-            .ok()
-            .and_then(|mut pending| pending.take());
-        let measured_deferred_light_ms = self
-            .inner
-            .as_ref()
-            .and_then(|inner| {
-                inner
-                    .scene
-                    .renderer
-                    .timing_snapshot()
-                    .passes
-                    .iter()
-                    .find(|pass| pass.name == "DeferredLight")
-                    .and_then(|pass| pass.gpu_ms)
-            })
-            .unwrap_or(0.0);
+            .map(|mut pending| std::mem::take(&mut *pending))
+            .unwrap_or_default();
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => return None,
         };
 
-        let portal_debug_texts_changed = portal_debug_texts
-            .map(|texts| inner.scene.renderer.set_portal_debug_texts(texts))
-            .unwrap_or(false);
-        let portal_debug_geometry_changed = portal_debug_geometry
-            .map(|vertices| inner.scene.renderer.set_portal_debug_geometry(vertices))
-            .unwrap_or(false);
-        let measured_deferred_light_changed = inner
-            .scene
-            .renderer
-            .set_deferred_light_timing_ms(measured_deferred_light_ms);
+        let view_payloads_changed = !view_payloads.is_empty();
+        for (key, payload) in view_payloads {
+            inner.scene.set_view_payload(key, payload);
+        }
+        // Passes whose output shows their own cost (the lighting's cost view)
+        // get their measured GPU time.
+        let measured_deferred_light_changed = inner.scene.renderer.feed_measured_gpu_times();
 
         // ── Idle detection ───────────────────────────────────────────────────────
         // If the camera is fully stopped, no scene changes are pending, and no
@@ -1322,7 +1247,7 @@ impl HelioRenderer {
         // background loop to skip present/publish — the compositor holds the last
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let realtime = self.viewport_realtime.load(Ordering::Acquire);
+        let realtime = crop.is_none() && self.viewport_realtime.load(Ordering::Acquire);
         let (scene_revision, animated) = {
             profiling::profile_scope!("helio_scene_store_read (revision)");
             let store = self.scene_store.read();
@@ -1348,21 +1273,19 @@ impl HelioRenderer {
         let temporal_activity = !camera_stopped
             || has_pending_scene
             || has_pending_editor
+            // Content streaming in, building, or waiting on the renderer
+            // (a sculpt stroke's picks: idling mid-drag stalled the stroke).
             || inner.scene.needs_frame()
-            // Brush samples wait for GPU picks, which only rendered frames
-            // answer: idling mid-drag stalled the stroke (no edits until
-            // something else rendered).
-            || !self.voxel_brush_picks.is_empty()
             || self.gizmo_dirty
             || viewport_resized
             || postprocess_changed
             || debug_view_changed
-            || portal_debug_texts_changed
-            || portal_debug_geometry_changed
+            || view_payloads_changed
             || (self.viewport_debug_mode.load(Ordering::Acquire) == 34
                 && measured_deferred_light_changed)
             || view_kind_changed
             || camera_synced
+            || crop.is_some()
             // Realtime animation: wind, particles, shader-graph `time`.
             || animated
             || self.reset_taa_next_frame;
@@ -1377,8 +1300,7 @@ impl HelioRenderer {
                 scene = has_pending_scene,
                 scene_revision,
                 editor = has_pending_editor,
-                voxel = inner.scene.needs_frame(),
-                brush_picks = self.voxel_brush_picks.len(),
+                content = inner.scene.needs_frame(),
                 gizmo = self.gizmo_dirty,
                 resized = viewport_resized,
                 postprocess = postprocess_changed,
@@ -1451,7 +1373,9 @@ impl HelioRenderer {
         // The renderer only advances that authoritative database at the frame
         // boundary; it never builds a CPU projection or submits per-object data.
         let mut sync_ms = 0.0;
-        if has_pending_scene {
+        // Content still settling steps too: its scene subsystems take what
+        // finished off the thread (a voxel world built, a pick answered).
+        if crop.is_none() && (has_pending_scene || inner.scene.content_settling()) {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::scene_db_step");
             profiling::profile_scope!("helio_scene_db_step");
@@ -1463,22 +1387,22 @@ impl HelioRenderer {
                 self.scene_store.write()
             };
             {
-                // Splines are SceneDB components drawn by Helio's editor debug
-                // pass in world space, so they follow the camera like the grid.
-                // Their lines are rebuilt only when a spline or its owner changed.
-                profiling::profile_scope!("helio_sync_spline_lines");
-                let spline_lines = inner.spline_lines.get_or_insert_with(|| {
-                    helio_component::components::SplineLines::new(&scene_store.world)
+                // The plugins' editor line sets (a spline's curve) are drawn
+                // by Helio's editor debug pass in world space, so they follow
+                // the camera like the grid; each rebuilds only when what it
+                // shows changed.
+                profiling::profile_scope!("helio_sync_editor_lines");
+                let editor_lines = inner.editor_lines.get_or_insert_with(|| {
+                    super::render_features::editor_lines(&scene_store.world)
                 });
-                if let Some(lines) = spline_lines.poll(&scene_store.world) {
-                    inner
-                        .scene
-                        .renderer
-                        .debug_set_editor_lines("splines", lines);
+                for (name, lines) in editor_lines.iter_mut() {
+                    if let Some(lines) = lines.poll(&scene_store.world) {
+                        inner.scene.renderer.debug_set_editor_lines(name, lines);
+                    }
                 }
             }
-            // Voxel worlds' dependents follow them (edits their ground,
-            // skies their terrain), then SceneDB steps.
+            // SceneDB steps, with the subsystems plugins add to scenes
+            // (voxel worlds build and follow their journals).
             inner.scene.step_scene(&mut scene_store);
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_store.world.revision();
@@ -1494,10 +1418,10 @@ impl HelioRenderer {
         phases.mark("inspector");
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
-        // The camera's frame follows the voxel ground's local vertical, and
-        // its speed the height above it.
-        let ground = inner.scene.voxel_ground(self.cam.position);
-        self.voxel_ground = ground;
+        // The camera's frame follows the ground's local vertical, and its
+        // speed the height above it.
+        let ground = inner.scene.camera_ground(self.cam.position);
+        self.camera_ground = ground;
         phases.mark("ground");
         self.cam.follow_ground(ground.up);
         let t_prepare = Instant::now();
@@ -1513,7 +1437,9 @@ impl HelioRenderer {
                     eye: self.cam.position,
                     forward,
                     up: frame_up,
-                    aspect: width as f32 / height.max(1) as f32,
+                    aspect: crop.map_or(width as f32 / height.max(1) as f32, |crop| {
+                        crop.full_size[0] as f32 / crop.full_size[1].max(1) as f32
+                    }),
                     projection: if self.active_view.is_orthographic() {
                         FrameProjection::Orthographic {
                             half_height: ortho_half_height,
@@ -1525,6 +1451,7 @@ impl HelioRenderer {
                             far: 10_000.0,
                         }
                     },
+                    crop,
                 },
                 [width, height],
             )
@@ -1553,6 +1480,9 @@ impl HelioRenderer {
                 .draw_gizmo(&mut inner.scene.renderer, &store.world);
         }
 
+        if crop.is_some() {
+            self.reset_taa_next_frame = true;
+        }
         if self.reset_taa_next_frame {
             if let Some(pass) = inner
                 .scene
@@ -1565,18 +1495,17 @@ impl HelioRenderer {
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
-        if self.voxel_stats_log && self.last_voxel_stats_log.elapsed().as_secs_f32() >= 0.5 {
-            let fps = self.voxel_stats_frames.0 as f32
-                / self.last_voxel_stats_log.elapsed().as_secs_f32();
-            let slowest = self.voxel_stats_frames.1;
-            self.voxel_stats_frames = (0, 0.0);
-            self.last_voxel_stats_log = Instant::now();
+        if self.stats_log && self.last_stats_log.elapsed().as_secs_f32() >= 0.5 {
+            let fps = self.stats_frames.0 as f32 / self.last_stats_log.elapsed().as_secs_f32();
+            let slowest = self.stats_frames.1;
+            self.stats_frames = (0, 0.0);
+            self.last_stats_log = Instant::now();
             let (forward, _, up) = self.cam.basis();
-            for line in inner.scene.voxel_diagnostics() {
+            for line in inner.scene.diagnostics() {
                 tracing::info!(
                     "VOXEL_STATS fps={fps:.1} slowest_frame_ms={slowest:.1} altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} graph_gpu_ms={:?}",
-                    self.voxel_ground.altitude.unwrap_or(f64::NAN),
-                    altitude_speed_scale(&self.voxel_ground),
+                    self.camera_ground.altitude.unwrap_or(f64::NAN),
+                    altitude_speed_scale(&self.camera_ground),
                     self.cam.position.to_array(),
                     forward.to_array(),
                     up.to_array(),
@@ -1604,10 +1533,20 @@ impl HelioRenderer {
             {
                 profiling::profile_scope!("helio_renderer_render");
                 let renderer = &mut inner.scene.renderer;
-                // The editor's animation clock: wall time while realtime,
-                // frozen otherwise.
-                renderer.set_frame_delta_override(self.frame_delta_override);
-                renderer.set_camera_jitter_override(self.camera_jitter_override);
+                // Keep temporal-filter weights deterministic across tiles.
+                // Animation time is frozen independently through the frame
+                // clock override below; Helio requires a positive delta for
+                // temporal filters even while that clock is paused.
+                renderer.set_frame_delta_override(if crop.is_some() {
+                    Some(1.0 / 60.0)
+                } else {
+                    self.frame_delta_override
+                });
+                renderer.set_camera_jitter_override(if crop.is_some() {
+                    Some([0.0, 0.0])
+                } else {
+                    self.camera_jitter_override
+                });
                 renderer.set_frame_clock_delta(if realtime { None } else { Some(0.0) });
                 match renderer.render(&camera, &view) {
                     Ok(()) => render_succeeded = true,
@@ -1631,10 +1570,7 @@ impl HelioRenderer {
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         phases.mark("render");
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
-        self.voxel_stats_frames = (
-            self.voxel_stats_frames.0 + 1,
-            self.voxel_stats_frames.1.max(frame_ms),
-        );
+        self.stats_frames = (self.stats_frames.0 + 1, self.stats_frames.1.max(frame_ms));
         if frame_ms >= 50.0 {
             tracing::warn!(
                 "VOXEL_FRAME_PHASES frame_ms={frame_ms:.1} {}",
@@ -1777,8 +1713,8 @@ impl HelioRenderer {
         // Movement is level within the camera frame: W/S along the horizontal
         // view direction, Q/E along the local vertical.
         let (fwd, right, frame_up) = self.cam.level_axes();
-        // Over voxel worlds speed grows with height above the ground.
-        let altitude = altitude_speed_scale(&self.voxel_ground) as f32;
+        // Over ground the scene reports, speed grows with height above it.
+        let altitude = altitude_speed_scale(&self.camera_ground) as f32;
         let speed = altitude
             * if input.boost {
                 input.move_speed * 3.0
@@ -1805,15 +1741,16 @@ impl HelioRenderer {
             (fwd * self.cam_local_velocity.z * dt).as_dvec3(),
         ];
         self.cam.position += steps[0] + steps[1] + steps[2];
-        // The editor camera never enters solid voxel terrain. From air (a
+        // The editor camera never enters solid ground. From air (a
         // cave, a dig, above ground) it slides along what it touches: each
         // axis of the move is kept only if it stays in air. Lifting to the
         // surface is only for a camera already buried (spawned or teleported
         // into rock): lifting on contact threw it out of caves.
-        let lift = |renderer: &Self, eye: DVec3| {
+        let lift = |renderer: &mut Self, eye: DVec3| {
             renderer
-                .voxels()
-                .and_then(|voxels| voxels.lift_out_of_ground(eye))
+                .inner
+                .as_mut()
+                .and_then(|inner| inner.scene.lift_out_of_ground(eye))
         };
         if lift(self, self.cam.position).is_some() {
             if lift(self, before).is_none() {
@@ -1939,23 +1876,6 @@ impl HelioRenderer {
         true
     }
 
-    /// Orthographic views (top, front, side) never fog: fog is a function of
-    /// the distance from the eye, which means nothing in a parallel projection,
-    /// and a haze over a drawing meant for measuring defeats it. Set every
-    /// frame, since a rebuilt graph starts with the fog on.
-    fn apply_view_fog(&mut self) {
-        let fog = !self.active_view.is_orthographic();
-        if let Some(inner) = self.inner.as_mut() {
-            if let Some(pass) = inner
-                .scene
-                .renderer
-                .find_pass_mut::<helio_pass_volumetric_fog::VolumetricFogPass>()
-            {
-                pass.set_active(fog);
-            }
-        }
-    }
-
     /// Adopt the view the editor asked for. Returns whether it changed.
     fn apply_view_kind(&mut self) -> bool {
         let wanted = ViewKind::from_u8(self.view_kind.load(Ordering::Acquire));
@@ -2009,11 +1929,12 @@ impl HelioRenderer {
         true
     }
 
-    /// Keep the post-process resolver's baseline in step with the toolbar's
+    /// Keep the viewport's post-process baseline in step with the toolbar's
     /// Bloom toggle and the project's graphics settings: a renderer setting
-    /// ([`crate::scene::EditorPostProcess`]), so nothing is written into the
-    /// scene. Returns whether it changed this frame. Also drains the legacy
-    /// feature commands, which carry no state.
+    /// ([`crate::scene::EditorPostProcess`]), published as the frame's
+    /// `helio_pass_postprocess::POST_BASELINE` (a view payload), so nothing
+    /// is written into the scene. Returns whether it changed this frame.
+    /// Also drains the legacy feature commands, which carry no state.
     fn apply_postprocess_baseline(&mut self) -> bool {
         while let Ok(command) = self.command_receiver.try_recv() {
             match command {
@@ -2031,15 +1952,10 @@ impl HelioRenderer {
         if inner.applied_postprocess == Some(desired) {
             return false;
         }
-        let queue = inner.queue.clone();
-        let Some(resolver) = inner
-            .scene
-            .renderer
-            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
-        else {
-            return false;
-        };
-        resolver.set_defaults(&queue, &desired.settings());
+        inner.scene.set_view_payload(
+            helio_pass_postprocess::POST_BASELINE.key(),
+            Some(Arc::new(desired.settings())),
+        );
         inner.applied_postprocess = Some(desired);
         tracing::info!(
             bloom = desired.bloom_enabled,
@@ -2049,15 +1965,13 @@ impl HelioRenderer {
         true
     }
 
-    /// The post-process baseline the editor viewport's resolver holds, once
-    /// the renderer is initialized.
+    /// The post-process baseline the editor viewport publishes, once the
+    /// renderer is initialized and has published one.
     pub fn postprocess_defaults(&mut self) -> Option<helio_pass_postprocess::PostProcessSettings> {
         let inner = self.inner.as_mut()?;
         inner
-            .scene
-            .renderer
-            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
-            .map(|resolver| resolver.defaults().clone())
+            .applied_postprocess
+            .map(|baseline| baseline.settings())
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -2082,18 +1996,14 @@ impl HelioRenderer {
             .map(|inner| inner.scene.renderer.debug_depth_texture())
     }
 
-    /// The water simulation's height field as of the last encoded frame
-    /// (Helio's `WaterSimPass::sim_texture`: layer `volume row * 3 +
-    /// cascade`); `None` before the renderer is initialized. Read-only
-    /// diagnostics: lets a test read the simulated water back.
-    pub fn debug_water_sim_texture(&self) -> Option<&wgpu::Texture> {
-        self.inner.as_ref().and_then(|inner| {
-            inner
-                .scene
-                .renderer
-                .find_pass::<helio_pass_water_sim::WaterSimPass>()
-                .map(|pass| pass.sim_texture())
-        })
+    /// The graph's pass of type `T` as of the last encoded frame; `None`
+    /// before the renderer is initialized or when the graph has none.
+    /// Read-only diagnostics: lets a plugin's test read its pass's state back
+    /// (a water simulation's height field).
+    pub fn debug_pass<T: helio_core::RenderPass + 'static>(&self) -> Option<&T> {
+        self.inner
+            .as_ref()
+            .and_then(|inner| inner.scene.renderer.find_pass::<T>())
     }
 
     /// The default graph's passes, in execution order, and whether each
@@ -2131,20 +2041,9 @@ impl HelioRenderer {
         self.pending_deselect.store(true, Ordering::Release);
     }
 
-    /// A brush sample under the pointer: it asks the renderer for the
-    /// terrain hit there and is applied when the answer arrives (a few
-    /// frames later), searched coarse to fine around it.
-    fn handle_voxel_brush(
-        &mut self,
-        norm_x: f32,
-        norm_y: f32,
-        request: VoxelBrushRequest,
-        start: bool,
-    ) {
-        profiling::profile_scope!("voxel_brush");
-        if start {
-            self.voxel_stroke += 1;
-        }
+    /// The ray under view point (`norm_x`, `norm_y`) (0..1 from the top
+    /// left) from the camera's eye, world frame: zero when degenerate.
+    fn pointer_ray(&self, norm_x: f32, norm_y: f32) -> (DVec3, DVec3) {
         let (width, height) = self.viewport_size;
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let (forward, right, up) = self.camera_basis();
@@ -2154,183 +2053,7 @@ impl HelioRenderer {
         let direction = (forward + right * x * aspect * tan + up * y * tan)
             .normalize_or_zero()
             .as_dvec3();
-        if direction == DVec3::ZERO {
-            return;
-        }
-        let brush = PendingBrush {
-            pick: 0,
-            answer: None,
-            requested: Instant::now(),
-            stroke: self.voxel_stroke,
-            origin: self.cam.position,
-            direction,
-            request,
-        };
-        // Near the last stamp (any stroke's), with no older sample still
-        // waiting (it must land first): stamp now, walking the exact terrain
-        // from the eye to twice that distance. A surface beyond it takes the
-        // renderer's pick.
-        let near = self
-            .voxel_stroke_last
-            .as_ref()
-            .map(|(_, last)| last.distance)
-            .filter(|&d| d <= INSTANT_STAMP_M);
-        if let Some(distance) = near.filter(|_| self.voxel_brush_picks.is_empty()) {
-            if self.apply_voxel_brush(&brush, VoxelRayHint::Reach(distance * 2.0)) {
-                return;
-            }
-        }
-        match self
-            .voxels()
-            .and_then(|voxels| voxels.request_pick([norm_x, norm_y]))
-        {
-            Some(pick) => self
-                .voxel_brush_picks
-                .push_back(PendingBrush { pick, ..brush }),
-            // Nothing drawn to pick yet: a bounded exact walk.
-            None => {
-                self.apply_voxel_brush(&brush, VoxelRayHint::Reach(UNPICKED_REACH_M));
-            }
-        }
-    }
-
-    /// Apply brush samples in order as their renderer hits arrive: where the
-    /// renderer drew the surface under them (what the user aimed at). A
-    /// sample over the sky stamps nothing; one with no answer in time walks
-    /// the exact terrain within a bounded reach.
-    fn resolve_voxel_brushes(&mut self) {
-        if self.voxel_brush_picks.is_empty() {
-            return;
-        }
-        profiling::profile_scope!("voxel_resolve_brushes");
-        let picks = self.voxels().map(VoxelBackendRegistry::take_picks);
-        for pick in picks.unwrap_or_default() {
-            if let Some(brush) = self
-                .voxel_brush_picks
-                .iter_mut()
-                .find(|b| b.pick == pick.id)
-            {
-                brush.answer = Some(pick.hit);
-            }
-        }
-        while let Some(front) = self.voxel_brush_picks.front() {
-            let hint = match front.answer {
-                Some(Some(hit)) => Some(VoxelRayHint::Drawn(hit)),
-                Some(None) => None,
-                None if front.requested.elapsed() >= PICK_TIMEOUT => {
-                    Some(VoxelRayHint::Reach(UNPICKED_REACH_M))
-                }
-                None => break,
-            };
-            let brush = self
-                .voxel_brush_picks
-                .pop_front()
-                .expect("front checked above");
-            if let Some(hint) = hint {
-                self.apply_voxel_brush(&brush, hint);
-            }
-        }
-    }
-
-    /// Apply a brush sample where its ray hits the terrain ([`VoxelRayHint`]).
-    /// Returns whether a stamp was applied.
-    fn apply_voxel_brush(&mut self, brush: &PendingBrush, hint: VoxelRayHint) -> bool {
-        profiling::profile_scope!("voxel_apply_brush");
-        let started = Instant::now();
-        // The frame's projection of this revision (a stamp moves it on).
-        let Some(read) = self.inner.as_mut().map(|inner| inner.scene.scene_read()) else {
-            return false;
-        };
-        let entries = &read.entries;
-        // Flatten levels every stamp of a stroke to its first stamp's ground.
-        let mut request = brush.request;
-        if request.tool == VoxelBrushTool::Flatten {
-            request.level = self
-                .voxel_stroke_level
-                .filter(|(stroke, _)| *stroke == brush.stroke)
-                .map(|(_, level)| level);
-        }
-        let projected = started.elapsed();
-        let ray = {
-            profiling::profile_scope!("voxel_edit_ray");
-            self.voxels().map_or(Ok(None), |voxels| {
-                voxels.edit_ray(&entries, brush.origin, brush.direction, hint, request)
-            })
-        };
-        let walked = started.elapsed();
-        // `journaled`: when the stamps were in the terrain's journal (the
-        // rest of the commit is the backend's own world update).
-        let slow = |hit: Option<f64>, journaled: Option<std::time::Duration>| {
-            let ms = |d: std::time::Duration| d.as_secs_f64() * 1e3;
-            if started.elapsed().as_millis() >= 20 {
-                let journaled = journaled.unwrap_or(walked);
-                tracing::warn!(
-                    "VOXEL_BRUSH slow: {:.1} ms (entries {:.1}, ray {:.1}, journal {:.1}, backend {:.1}) hint={hint:?} hit={hit:?}",
-                    ms(started.elapsed()),
-                    ms(projected),
-                    ms(walked - projected),
-                    ms(journaled - walked),
-                    ms(started.elapsed() - journaled)
-                );
-            }
-        };
-        match ray {
-            Ok(Some(commit)) => {
-                // Fill the gap from the stroke's previous stamp, so fast drags
-                // stay continuous at any frame rate.
-                let voxel = entries
-                    .iter()
-                    .find(|e| e.id == commit.id)
-                    .map_or(0.1, |e| e.voxel_size);
-                if request.tool == VoxelBrushTool::Flatten && request.level.is_none() {
-                    self.voxel_stroke_level = Some((brush.stroke, commit.level));
-                }
-                // Stamps fill the gap from the stroke's previous one; flatten
-                // and smooth stamps overlap by their footprint.
-                let fill = self
-                    .voxel_stroke_last
-                    .as_ref()
-                    .filter(|(stroke, last)| {
-                        *stroke == brush.stroke
-                            && last.id == commit.id
-                            && request.tool == VoxelBrushTool::Stamp
-                    })
-                    .map(|(_, last)| {
-                        super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel)
-                    })
-                    .unwrap_or_default();
-                let mut stamps: Vec<VoxelBrushCommit> = fill
-                    .into_iter()
-                    .map(|edit| VoxelBrushCommit {
-                        edit,
-                        ..commit.clone()
-                    })
-                    .collect();
-                stamps.push(commit.clone());
-                let mut scene = self.scene_store.write();
-                stamps.retain(|stamp| apply_voxel_brush_commit(&mut scene.world, stamp.clone()));
-                self.gizmo_dirty |= !stamps.is_empty();
-                drop(scene);
-                let journaled = started.elapsed();
-                if let Some(voxels) = self.voxels() {
-                    voxels.stamped(&stamps);
-                }
-                slow(Some(commit.distance), Some(journaled));
-                self.voxel_stroke_last = Some((brush.stroke, commit));
-                true
-            }
-            Ok(_) => {
-                slow(None, None);
-                false
-            }
-            Err(error) => {
-                tracing::warn!("Voxel brush: {error}");
-                if let Ok(mut pending) = self.pending_errors.lock() {
-                    pending.push(format!("Voxel brush: {error}"));
-                }
-                false
-            }
-        }
+        (self.cam.position, direction)
     }
 
     pub fn get_scene_db_selected_id(&self) -> Option<String> {
@@ -2349,11 +2072,9 @@ impl HelioRenderer {
             camera_sync_locked: self.camera_sync_locked.clone(),
             camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
-            pending_portal_debug_texts: self.pending_portal_debug_texts.clone(),
-            pending_portal_debug_geometry: self.pending_portal_debug_geometry.clone(),
+            pending_view_payloads: self.pending_view_payloads.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
             completed_drags: self.completed_drags.clone(),
-            voxel_chunk_saves: self.voxel_chunk_saves.clone(),
             requested_pipeline: self.requested_pipeline.clone(),
         }
     }

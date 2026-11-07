@@ -1,0 +1,7 @@
+# splines plugin, level editor UI - ko
+
+LevelEditor.Spline.PointCount: "점 개수"
+LevelEditor.SplinePanel.Clear: "스플라인 지우기"
+LevelEditor.SplinePanel.Title: "스플라인"
+LevelEditor.ToolMode.Spline: "스플라인"
+LevelEditor.ToolMode.SplineDesc: "클릭하여 점 배치, Shift+클릭으로 지우기"

@@ -7,11 +7,9 @@
 //! (running on the GPUI main thread) can detect changes made by background
 //! threads (AI tools, asset import, etc.) and trigger a re-render.
 
-use crate::scene_edit::history::VoxelEditJournal;
 use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
 use crate::world_settings_data::WorldSettingsData;
 use engine_backend::scene::{SceneWorldExt as _, SharedScene};
-use engine_backend::subsystems::render::VoxelChunkSaves;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
@@ -88,17 +86,14 @@ pub struct SceneDomain {
     /// the gizmo at the restored selection.
     pub pending_selection_sync: bool,
     /// The level's undo history (Pulsar-Native#554, #931): one entry per
-    /// mutating `SceneCommand` (`execute_command` commits them) or voxel
-    /// stroke, in the order they were made, bounded at
+    /// mutating `SceneCommand` (`execute_command` commits them) or plugin
+    /// edit (a sculpt stroke), in the order they were made, bounded at
     /// [`MAX_UNDO_HISTORY`]. Registered with the host's `UndoService` under
     /// the level's file (see [`Self::set_current_scene`]).
     history: SharedHistory<SceneEdit>,
     /// The host's undo histories, when the editor was given them: the
     /// level's history is registered there under its file.
     pub undo_service: Option<UndoService>,
-    /// Where saves ask the viewport's renderer for the voxel terrain's
-    /// edited chunks (`ui::save`), once the viewport has one.
-    pub voxel_chunk_saves: Option<VoxelChunkSaves>,
 }
 
 /// One undoable change to a level.
@@ -106,18 +101,20 @@ pub struct SceneDomain {
 pub enum SceneEdit {
     /// A command's before/after state of the objects it touched.
     Scene(SceneHistoryDelta),
-    /// A voxel sculpt stroke: the edits it appended.
-    Voxel(VoxelEditJournal),
+    /// A plugin's own undo step (a sculpt stroke: the edits it appended).
+    Extension(Box<dyn crate::extend::ExtensionUndo>),
 }
 
 impl UndoEntry for SceneEdit {
     fn label(&self) -> String {
-        let key = match self {
-            SceneEdit::Scene(delta) => delta.label,
-            SceneEdit::Voxel(_) => Some("LevelEditor.Undo.Sculpt"),
-        };
-        key.map(|key| rust_i18n::t!(key).to_string())
-            .unwrap_or_default()
+        match self {
+            SceneEdit::Scene(delta) => delta
+                .label
+                .as_ref()
+                .map(|label| label.text())
+                .unwrap_or_default(),
+            SceneEdit::Extension(edit) => edit.label(),
+        }
     }
 }
 
@@ -143,7 +140,6 @@ impl Default for SceneDomain {
             pending_selection_sync: false,
             history: new_history(),
             undo_service: None,
-            voxel_chunk_saves: None,
         }
     }
 }
@@ -169,7 +165,6 @@ impl SceneDomain {
             pending_selection_sync: self.pending_selection_sync,
             history: new_history(),
             undo_service: self.undo_service.clone(),
-            voxel_chunk_saves: self.voxel_chunk_saves.clone(),
         }
     }
 
@@ -299,7 +294,7 @@ impl SceneDomain {
         &mut self,
         pre_state: SceneHistorySnapshot,
         post_state: SceneHistorySnapshot,
-        label: Option<&'static str>,
+        label: Option<scene_edit::history::UndoLabel>,
     ) {
         let mut history = lock(&self.history);
         history.push(SceneEdit::Scene(SceneHistoryDelta {
@@ -345,14 +340,19 @@ impl SceneDomain {
             }
             (pre, post)
         };
-        self.commit_labeled_checkpoint(pre, post, Some("LevelEditor.Undo.Move"));
+        self.commit_labeled_checkpoint(
+            pre,
+            post,
+            Some(scene_edit::history::UndoLabel::Key("LevelEditor.Undo.Move")),
+        );
         true
     }
 
-    /// Commit a voxel append-range without capturing the terrain component.
-    pub fn commit_voxel_journal(&mut self, journal: VoxelEditJournal) {
+    /// Commit a plugin's own undo step (a sculpt stroke's appended edits,
+    /// without capturing the terrain component).
+    pub fn commit_extension_edit(&mut self, edit: Box<dyn crate::extend::ExtensionUndo>) {
         let mut history = lock(&self.history);
-        history.push(SceneEdit::Voxel(journal));
+        history.push(SceneEdit::Extension(edit));
         history.seal();
     }
 
@@ -364,7 +364,7 @@ impl SceneDomain {
         lock(&self.history).can_redo()
     }
 
-    /// Undo the last edit, scene command or voxel stroke, in the order they
+    /// Undo the last edit, scene command or plugin edit, in the order they
     /// were made. Returns `true` if something was undone (the caller should
     /// then bump the revision/mark unsaved, which this method deliberately
     /// leaves to the caller since it has no `cx` to notify with here). An
@@ -374,7 +374,7 @@ impl SceneDomain {
         let mut history = lock(&history);
         history
             .undo(|edit| match edit {
-                SceneEdit::Voxel(journal) => self.apply_voxel_journal(journal, false),
+                SceneEdit::Extension(edit) => edit.undo(self),
                 SceneEdit::Scene(delta) => {
                     let ids = delta.ids();
                     let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
@@ -398,7 +398,7 @@ impl SceneDomain {
         let mut history = lock(&history);
         history
             .redo(|edit| match edit {
-                SceneEdit::Voxel(journal) => self.apply_voxel_journal(journal, true),
+                SceneEdit::Extension(edit) => edit.redo(self),
                 SceneEdit::Scene(delta) => {
                     let ids = delta.ids();
                     let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
@@ -412,41 +412,6 @@ impl SceneDomain {
                 }
             })
             .is_some()
-    }
-
-    fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
-        let mut world = self.world_mut();
-        for entry in &journal.entries {
-            let Some(entity) =
-                engine_backend::scene::attachments::instance_by_id(&world, entry.instance)
-            else {
-                return false;
-            };
-            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity)
-            else {
-                return false;
-            };
-            if redo {
-                if terrain.edits.len() != entry.before_len {
-                    return false;
-                }
-                terrain.edits.extend(entry.edits.iter().cloned());
-                terrain.source_revision = entry.after_revision;
-            } else {
-                // Edits folded into the journal's base (a save) are no
-                // longer undoable.
-                if terrain.edits.len() < entry.before_len + entry.edits.len()
-                    || terrain.edits.base_len() > entry.before_len
-                {
-                    return false;
-                }
-                while terrain.edits.len() > entry.before_len {
-                    terrain.edits.pop();
-                }
-                terrain.source_revision = entry.before_revision;
-            }
-        }
-        true
     }
 
     /// Rebuild the scene from `snapshot` in place. Bumps [`Self::rebuild_epoch`]

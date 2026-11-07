@@ -1,0 +1,12 @@
+[package]
+name = "helio-vg-format"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry cluster/page/hierarchy formats shared by the offline builder, streamer and GPU passes"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+naga = { version = "30.0.0", features = ["wgsl-in"] }

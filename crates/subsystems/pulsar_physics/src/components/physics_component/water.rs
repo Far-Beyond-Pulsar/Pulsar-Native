@@ -5,9 +5,9 @@
 //! A body on the `WaterSim` collision channel pushes the water it moves
 //! through. SceneDB derives a [`WaterHitboxSourceRow`] from the component
 //! on every insert, write, removal and replay, keyed by the component
-//! instance; the renderer's environment join (Helio's
-//! `helio-default-passes::environment_join`) bounds the body by its owner's
-//! meshes at the owner's transform, on the GPU, into the water
+//! instance, as water's api describes it (`helio_water_api`: the buffer and
+//! the row layout); the water plugin's row join bounds the body by its
+//! owner's meshes at the owner's transform, on the GPU, into the water
 //! simulation's hitbox rows, and the simulation keeps each body's previous
 //! bounds itself, so a body displaces water only as it moves.
 
@@ -202,8 +202,8 @@ pub fn water_buoyancy_force(
 
 use super::{CollisionChannel, PhysicsComponent};
 
-/// The buffer [`WaterHitboxSourceRow`]s live in.
-pub const WATER_HITBOX_SOURCES_BUFFER: &str = "water_hitbox_sources";
+/// The buffer [`WaterHitboxSourceRow`]s live in (water's api names it).
+pub use helio_water_api::WATER_HITBOX_SOURCES_BUFFER;
 
 /// How far, in metres, a body's push fades out past its bounds.
 pub const WATER_HITBOX_EDGE_SOFTNESS: f32 = 0.25;
@@ -211,9 +211,9 @@ pub const WATER_HITBOX_EDGE_SOFTNESS: f32 = 0.25;
 pub const WATER_HITBOX_STRENGTH: f32 = 1.0;
 
 /// A body's water interaction: `[edge softness (m), strength, interacts,
-/// 0]`, the layout `helio_default_passes::environment_join` reads
-/// (`WATER_HITBOX_SOURCE_ROW_BYTES`). Zero for a body that does not
-/// interact, which the join skips.
+/// 0]`, the layout water's api describes
+/// (`helio_water_api::WATER_HITBOX_SOURCE_ROW_BYTES`). Zero for a body that
+/// does not interact, which the join skips.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[gpu(layout = packed, buffer = "water_hitbox_sources")]
@@ -292,6 +292,23 @@ mod tests {
         physics.general.enabled = false;
         assert_eq!(WaterHitboxSourceRow::of(&physics).params, [0.0; 4]);
         assert_eq!(std::mem::size_of::<WaterHitboxSourceRow>(), 16);
+    }
+
+    /// The row and its buffer are water's api's.
+    #[test]
+    fn the_row_is_waters_hitbox_source_row() {
+        assert_eq!(
+            std::mem::size_of::<WaterHitboxSourceRow>() as u64,
+            helio_water_api::WATER_HITBOX_SOURCE_ROW_BYTES
+        );
+        assert_eq!(WATER_HITBOX_SOURCES_BUFFER, "water_hitbox_sources");
+        let mut physics = PhysicsComponent::default();
+        physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        let row = WaterHitboxSourceRow::of(&physics);
+        assert_ne!(
+            row.params[helio_water_api::WATER_HITBOX_GATE_WORD as usize],
+            0.0
+        );
     }
 
     /// Saved channels are their index; WaterSim follows Custom (8), so

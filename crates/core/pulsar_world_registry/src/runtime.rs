@@ -15,7 +15,7 @@
 
 use std::fmt;
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use pulsar_scenedb::runtime::{AppendList, AttachError};
 
@@ -24,7 +24,7 @@ use crate::{ComponentEventRegistration, ComponentTickRegistration, WorldComponen
 
 /// Version of [`WorldRuntimes`]' and [`Runtime`]'s ABI. Bump it on any
 /// change to their fields or to a type passed through them.
-pub const ABI_VERSION: u64 = 1;
+pub const ABI_VERSION: u64 = 2;
 
 const FINGERPRINT: u64 = {
     let parts = [
@@ -124,12 +124,31 @@ static UNFINISHED: AppendList<UnfinishedComponentRegistration> = AppendList::new
         .collect()
 });
 
+// The registries hand out only what passes the plugin gate: a class whose
+// origin is a disabled plugin's module is not registered, and neither are
+// its ticks, events or unfinished-class reports (`pulsar_plugins`). The
+// gate runs in the copy that owns the registries, where the project's
+// plugins are activated.
 static OWN: Runtime = Runtime {
     abi: FINGERPRINT,
-    world_components: || WORLD_COMPONENTS.get(),
-    ticks: || TICKS.get(),
-    events: || EVENTS.get(),
-    unfinished: || UNFINISHED.get(),
+    world_components: || {
+        static GATED: Gated<WorldComponentRegistration> = Gated::new();
+        GATED.get(WORLD_COMPONENTS.get(), |r| {
+            pulsar_plugins::origin_enabled(r.origin)
+        })
+    },
+    ticks: || {
+        static GATED: Gated<ComponentTickRegistration> = Gated::new();
+        GATED.get(TICKS.get(), |r| class_enabled(r.class_name))
+    },
+    events: || {
+        static GATED: Gated<ComponentEventRegistration> = Gated::new();
+        GATED.get(EVENTS.get(), |r| class_enabled(r.class_name))
+    },
+    unfinished: || {
+        static GATED: Gated<UnfinishedComponentRegistration> = Gated::new();
+        GATED.get(UNFINISHED.get(), |r| class_enabled(r.class_name))
+    },
     add_registrations: |r| {
         WORLD_COMPONENTS.extend(&r.world_components);
         TICKS.extend(&r.ticks);
@@ -137,6 +156,57 @@ static OWN: Runtime = Runtime {
         UNFINISHED.extend(&r.unfinished);
     },
 };
+
+/// Whether world component class `class_name` is not a disabled plugin's.
+fn class_enabled(class_name: &str) -> bool {
+    WORLD_COMPONENTS
+        .get()
+        .iter()
+        .filter(|r| r.class_name == class_name)
+        .all(|r| pulsar_plugins::origin_enabled(r.origin))
+}
+
+/// A registry's registrations that pass the plugin gate, rebuilt when the
+/// activated plugins or the registrations change (a plugin library appends
+/// its own). Each rebuild leaks one list: they happen once per project
+/// opened.
+struct Gated<T: 'static> {
+    cached: Mutex<Option<(u64, usize, &'static [&'static T])>>,
+}
+
+impl<T: 'static> Gated<T> {
+    const fn new() -> Self {
+        Self {
+            cached: Mutex::new(None),
+        }
+    }
+
+    fn get(&self, all: &'static [&'static T], keep: impl Fn(&T) -> bool) -> &'static [&'static T] {
+        let generation = pulsar_plugins::generation();
+        let mut cached = self
+            .cached
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some((cached_generation, len, list)) = *cached {
+            if cached_generation == generation && len == all.len() {
+                return list;
+            }
+        }
+        let list: &'static [&'static T] = if all.iter().all(|r| keep(r)) {
+            all
+        } else {
+            Box::leak(
+                all.iter()
+                    .copied()
+                    .filter(|r| keep(r))
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            )
+        };
+        *cached = Some((generation, all.len(), list));
+        list
+    }
+}
 
 static ATTACHED: AtomicPtr<Runtime> = AtomicPtr::new(std::ptr::null_mut());
 

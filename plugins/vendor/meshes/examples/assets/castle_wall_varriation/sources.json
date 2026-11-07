@@ -1,0 +1,20 @@
+[
+  {
+    "md5": "fac4d8fcb2660317e1e2e35ab527ba1f",
+    "map": "Diffuse",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/1k/castle_wall_varriation/castle_wall_varriation_diff_1k.png",
+    "sha256": "4110E9C0DFA37801DA8806DE7554FBCA36C5F7C399A5B4D1D8C63E3271798EF2"
+  },
+  {
+    "md5": "9dcdbd346e9fb8f245b64413e7f6ce9e",
+    "map": "nor_gl",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/1k/castle_wall_varriation/castle_wall_varriation_nor_gl_1k.png",
+    "sha256": "728BC41B35F271DCC4D12396A380E2204C3B274D0CCE0394C4749CDB25C87C47"
+  },
+  {
+    "md5": "0d8ad270a65e3de5f14ffba7f6b8c98f",
+    "map": "arm",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/png/1k/castle_wall_varriation/castle_wall_varriation_arm_1k.png",
+    "sha256": "312463E00607AB1537992C6A083C38533F5CD37BBAF2F50AF7FF39471A516BC4"
+  }
+]

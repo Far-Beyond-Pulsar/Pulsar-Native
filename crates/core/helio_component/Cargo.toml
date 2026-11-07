@@ -1,0 +1,58 @@
+[package]
+name = "helio_component"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+# `#[derive(SceneStore)]`'s generated GPU-column methods (`register_gpu_
+# columns`/`register_gpu_columns_growable`/the world-mirror dispatch
+# registration, ...) are wrapped in `#[cfg(feature = "gpu")]`. That `cfg`,
+# spliced into THIS crate by `#[engine_class(scene_store, ...)]`'s macro
+# expansion on `StaticMeshComponent` (Pulsar-Native#561 Phase D), checks
+# THIS crate's own Cargo features -- not `pulsar_scenedb`'s (already on via
+# the `features = ["gpu"]` on its root-workspace dependency spec) -- so a
+# crate defining `scene_store` components needs its own feature of exactly
+# this name too. On by default.
+default = ["gpu"]
+gpu = []
+
+[dependencies]
+# The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
+pulsar_plugins = { workspace = true }
+engine_class_derive = { workspace = true }
+# `prims-gpui`: this crate defines GPUI property editors (the reflected
+# list editor) via `#[pulsar_reflection::pulsar_type(editor = ...)]`.
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+pulsar_world_registry = { workspace = true }
+# Ground-material names registered by the plugins whose ground has them.
+inventory = { workspace = true }
+pulsar_events = { workspace = true }
+pulsar_scene_model = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
+helio.workspace = true
+helio-core.workspace = true
+helio-mats.workspace = true
+image.workspace = true
+# BC7 encoder (Intel ISPC Texture Compressor, prebuilt kernels) for cooked
+# textures; see src/cooked_texture.rs.
+intel_tex_2 = "0.5"
+helio-pass-postprocess = { workspace = true }
+wgpu.workspace = true
+gpui-ce.workspace = true
+ui.workspace = true
+plugin_editor_api.workspace = true
+engine_state.workspace = true
+
+[dev-dependencies]
+pollster = "=0.4.0"
+bytemuck = { workspace = true }
+naga = { version = "30.0.0", features = ["wgsl-in"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

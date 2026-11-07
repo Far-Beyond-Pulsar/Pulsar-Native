@@ -10,7 +10,6 @@ mod handlers;
 mod lifecycle;
 pub(crate) mod pie;
 mod playback_host;
-pub(crate) mod spline;
 pub(crate) mod split_viewports;
 mod workspace_sync;
 
@@ -298,6 +297,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_toggle_camera_mode_selector))
             .on_action(cx.listener(Self::on_toggle_viewport_options))
             .on_action(cx.listener(Self::on_open_environment_config))
+            .on_action(cx.listener(Self::on_open_high_res_screenshot))
             .on_action(cx.listener(Self::on_toggle_fps_graph_type))
             // Performance metrics toggles
             .on_action(cx.listener(Self::on_toggle_fps_graph))

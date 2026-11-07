@@ -1,7 +1,7 @@
 //! Sublevel placements as spaces.
 //!
 //! A sublevel placement (an object carrying
-//! [`SubLevelActorComponent`](helio_pass_gbuffer::SubLevelActorComponent)) is one
+//! [`SubLevelActorRow`](helio_mesh_api::SubLevelActorRow)) is one
 //! of the things that define a **space** (`.agents/FRAMES.md`): the content
 //! placed there is the object's descendants, drawn through one entry of the
 //! coordinate-space table, so moving the placement moves the whole sublevel with
@@ -21,7 +21,7 @@
 //! content several times (today each placement holds its own objects).
 
 use glam::Mat4;
-use helio_pass_gbuffer::SubLevelActorComponent;
+use helio_mesh_api::SubLevelActorRow;
 use pulsar_scene_model::frames::SpaceDefiner;
 use pulsar_scene_model::hierarchy_transform::{from_matrix, to_matrix};
 use pulsar_scene_model::Transform;
@@ -29,20 +29,20 @@ use pulsar_scenedb::{Entity, World};
 
 fn placements(world: &World) -> Vec<Entity> {
     world
-        .query::<&SubLevelActorComponent>()
+        .query::<&SubLevelActorRow>()
         .map(|(entity, _)| entity)
         .collect()
 }
 
 fn is_folded(world: &World, entity: Entity) -> bool {
     world
-        .get::<SubLevelActorComponent>(entity)
+        .get::<SubLevelActorRow>(entity)
         .is_none_or(|actor| actor.transform() == Mat4::IDENTITY)
 }
 
 /// Fold the placement's authored matrix into the object's own transform.
 fn fold(world: &mut World, entity: Entity) {
-    let Some(actor) = world.get::<SubLevelActorComponent>(entity).copied() else {
+    let Some(actor) = world.get::<SubLevelActorRow>(entity).copied() else {
         return;
     };
     if let Some(own) = world.get::<Transform>(entity).copied() {
@@ -51,7 +51,7 @@ fn fold(world: &mut World, entity: Entity) {
             *transform = folded;
         }
     }
-    if let Some(mut component) = world.get_mut::<SubLevelActorComponent>(entity) {
+    if let Some(mut component) = world.get_mut::<SubLevelActorRow>(entity) {
         component.transform = Mat4::IDENTITY.to_cols_array_2d();
     }
 }
@@ -81,7 +81,7 @@ mod tests {
         let actor = world.spawn_object(SpawnObject::new("room")).unwrap();
         world.insert(
             actor,
-            SubLevelActorComponent::new(3, Mat4::from_translation(glam::Vec3::new(10.0, 0.0, 0.0))),
+            SubLevelActorRow::new(3, Mat4::from_translation(glam::Vec3::new(10.0, 0.0, 0.0))),
         );
         let wall = world
             .spawn_object(SpawnObject::new("wall").with_parent(Some(actor)))
@@ -103,10 +103,7 @@ mod tests {
             [10.0, 0.0, 0.0]
         ));
         assert_eq!(
-            world
-                .get::<SubLevelActorComponent>(actor)
-                .unwrap()
-                .transform(),
+            world.get::<SubLevelActorRow>(actor).unwrap().transform(),
             Mat4::IDENTITY
         );
         // The table places the whole sublevel by that one matrix.
@@ -132,7 +129,7 @@ mod tests {
         use pulsar_scene_model::frames::make_frame;
         let mut world = World::new();
         let actor = world.spawn_object(SpawnObject::new("room")).unwrap();
-        world.insert(actor, SubLevelActorComponent::new(1, Mat4::IDENTITY));
+        world.insert(actor, SubLevelActorRow::new(1, Mat4::IDENTITY));
         let folder = world.spawn_object(SpawnObject::new("ship")).unwrap();
         make_frame(&mut world, folder).unwrap();
         let a = world.get::<SpaceSlot>(actor).unwrap().slot;

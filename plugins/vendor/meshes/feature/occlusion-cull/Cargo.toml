@@ -1,0 +1,19 @@
+[package]
+name = "helio-pass-occlusion-cull"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+helio-mesh-api = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-pass-hiz = { workspace = true }
+helio-core = { workspace = true }
+helio-pass-indirect-dispatch = { workspace = true }
+helio-bake-types = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+pollster = { version = "0.4" }
+glam = { workspace = true }

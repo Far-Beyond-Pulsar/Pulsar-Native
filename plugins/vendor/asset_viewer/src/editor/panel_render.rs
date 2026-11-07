@@ -493,7 +493,7 @@ pub(crate) fn load_vertex_density(
     let linked = linked_native_asset(path);
     let path = linked.as_deref().unwrap_or(path);
     let (positions, indices) = if path.extension().and_then(|ext| ext.to_str()) == Some("mesh") {
-        let asset = helio_component::subsystems::load_mesh_asset_upload(path)
+        let asset = meshes_component::mesh_files::load_mesh_asset_upload(path)
             .ok_or_else(|| native_mesh_error(path))?;
         let positions = asset
             .geometry
@@ -960,10 +960,10 @@ impl AssetViewerPanel {
 
         // The template's `Globals`: graph materials read the frame counter
         // and the shared clock from it.
-        let globals_layout = super::graph_material::globals_layout(device);
+        let globals_layout = materials_component::preview_program::globals_layout(device);
         let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("graph material globals"),
-            size: super::graph_material::GLOBALS_SIZE,
+            size: materials_component::preview_program::GLOBALS_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -1249,7 +1249,7 @@ impl AssetViewerPanel {
             .native_mesh_asset
             .as_deref()
             .cloned()
-            .or_else(|| helio_component::subsystems::load_mesh_asset_upload(path));
+            .or_else(|| meshes_component::mesh_files::load_mesh_asset_upload(path));
         let Some(asset) = asset else {
             let error = native_mesh_error(path);
             log::error!("{error}");
@@ -2084,7 +2084,7 @@ impl AssetViewerPanel {
         // Advance the graph clock every frame, so `time` nodes animate.
         self.frame_counter = self.frame_counter.wrapping_add(1);
         if let Some(globals) = &self.globals_buffer {
-            super::graph_material::write_globals(queue, globals, self.frame_counter);
+            materials_component::preview_program::write_globals(queue, globals, self.frame_counter);
         }
         if let Some(buf) = &self.mesh_uniform_buffer {
             for (draw, (_, color, _)) in draws.iter().enumerate() {

@@ -89,7 +89,7 @@ impl HelioViewport {
                 let data = SceneObjectData {
                     id: String::new(),
                     name,
-                    object_type: ObjectType::Mesh(MeshType::Custom),
+                    object_type: ObjectType::Empty,
                     transform: Transform {
                         position,
                         ..Transform::default()
@@ -206,9 +206,13 @@ impl HelioViewport {
         }
         let after =
             crate::scene_edit::history::capture_history_subset(&state.scene.world(), &[id.clone()]);
-        state
-            .scene
-            .commit_labeled_checkpoint(before, after, Some("LevelEditor.Undo.Add"));
+        state.scene.commit_labeled_checkpoint(
+            before,
+            after,
+            Some(crate::scene_edit::history::UndoLabel::Key(
+                "LevelEditor.Undo.Add",
+            )),
+        );
         state.scene.bump_revision(true);
         let _ = execute_command(&mut state, SceneCommand::SelectObject { id: Some(id) });
         true
@@ -351,7 +355,7 @@ impl HelioViewport {
                 let mesh_object = SceneObjectData {
                     id: String::new(),
                     name: imported_name,
-                    object_type: ObjectType::Mesh(MeshType::Custom),
+                    object_type: ObjectType::Empty,
                     transform: Transform::default(),
                     visible: true,
                     locked: false,

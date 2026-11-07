@@ -369,7 +369,7 @@ mod tests {
             WIN,
         )
         .unwrap();
-        assert_eq!(kinds(&p), ["bootstrap", "build", "run"]);
+        assert_eq!(kinds(&p), ["build", "run"]);
     }
 
     #[test]
@@ -425,10 +425,7 @@ mod tests {
             TargetPlatform::LinuxX86_64Gnu,
         ];
         let p = plan(&c, WIN).unwrap();
-        assert_eq!(
-            kinds(&p),
-            ["bootstrap", "clean", "check", "build", "check", "build"]
-        );
+        assert_eq!(kinds(&p), ["clean", "check", "build", "check", "build"]);
     }
 
     #[test]
@@ -459,7 +456,7 @@ mod tests {
         });
         c.platforms = vec![TargetPlatform::LinuxX86_64Gnu];
         let p = plan(&c, WIN).unwrap();
-        assert_eq!(kinds(&p), ["bootstrap", "build"]);
+        assert_eq!(kinds(&p), ["build"]);
         assert_eq!(p.warnings.len(), 1);
     }
 

@@ -136,7 +136,7 @@ pub fn select_world_camera(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_backend::scene::{MeshType, ObjectType, Transform, Visibility};
+    use engine_backend::scene::{ObjectType, Transform, Visibility};
 
     /// #637: the rendered camera comes from the shared world, not a
     /// renderer-private copy -- an ObjectType::Camera entity's transform
@@ -209,7 +209,7 @@ mod tests {
             .world
             .spawn_object(engine_backend::scene::SpawnObject::new("Cube"))
             .unwrap();
-        store.world.insert(plain, ObjectType::Mesh(MeshType::Cube));
+        store.world.insert(plain, ObjectType::Empty);
         store.world.insert(
             plain,
             Visibility {

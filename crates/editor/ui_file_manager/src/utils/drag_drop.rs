@@ -103,7 +103,9 @@ impl FileManagerDrawer {
             .into_iter()
             .filter_map(|path| {
                 let ext = path.extension()?.to_str()?.to_ascii_lowercase();
-                helio_component::mesh_cache::is_importable_model(&ext).then_some((ext, path))
+                asset_import::importer_for(&ext)
+                    .is_some()
+                    .then_some((ext, path))
             })
             .fold(Default::default(), |mut by_ext, (ext, path)| {
                 by_ext.entry(ext).or_default().push(path);
@@ -140,7 +142,7 @@ impl FileManagerDrawer {
         let (models, others): (Vec<PathBuf>, Vec<PathBuf>) = s.iter().cloned().partition(|p| {
             p.extension()
                 .and_then(|e| e.to_str())
-                .map(helio_component::mesh_cache::is_importable_model)
+                .map(|ext| asset_import::importer_for(ext).is_some())
                 .unwrap_or(false)
         });
 

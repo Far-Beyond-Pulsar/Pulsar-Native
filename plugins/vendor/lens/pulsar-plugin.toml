@@ -1,0 +1,15 @@
+# The `pulsar.lens` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.lens"
+name = "Camera Lens"
+description = "A camera's physically based lens: its component, presets, rows and the renderer features that resolve the image through it and draw its flare"
+enabled_by_default = true
+requires = []
+
+[modules]
+# What a game built for the project links.
+runtime = ["lens_component"]
+# What the editor links in addition.
+editor = ["lens_plugin"]

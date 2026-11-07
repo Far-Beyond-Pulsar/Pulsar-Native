@@ -1,0 +1,5 @@
+# lights plugin, level editor UI - lol
+
+LevelEditor.Create.DirectionalLight: "SUNNEH LITE"
+LevelEditor.Create.PointLight: "POINTY LITE"
+LevelEditor.Create.SpotLight: "SPOTZ LITE"

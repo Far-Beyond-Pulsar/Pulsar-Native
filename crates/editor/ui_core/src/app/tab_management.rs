@@ -199,6 +199,25 @@ impl PulsarApp {
             return;
         }
 
+        // A file of this project opens as a waking tab: it appears at once with
+        // a loading skeleton and its editor is built on the next frame, never
+        // inside this click.
+        if editor_project_root.is_none() {
+            if let Some(project_root) = self.state.project_path.clone() {
+                let state = ui::dock::PanelState::default().with_file(path.to_string_lossy());
+                let panel = ui::dock::LazyPanel::waking(
+                    state,
+                    super::layout::lazy_builder(project_root),
+                    cx,
+                );
+                self.state.center_tabs.update(cx, |tabs, cx| {
+                    tabs.add_panel(panel, window, cx);
+                });
+                self.refresh_open_editor_snapshot(cx);
+                return;
+            }
+        }
+
         // Update plugin manager with current project root
         if let Some(pm_lock) = plugin_manager::global() {
             let mut pm = pm_lock.write();

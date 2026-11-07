@@ -77,6 +77,7 @@ impl ViewportPanel {
             .and_then(|engine| engine.camera_input());
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
+        let right_mouse_dragged = self.right_mouse_dragged.clone();
         let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
         let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
         let stop_flag = self.input_thread_stop.clone();
@@ -260,6 +261,9 @@ impl ViewportPanel {
                             // same render-thread camera accumulator as other OSes.
                             let (dx, dy) = cursor::take_mouse_delta();
                             if dx != 0.0 || dy != 0.0 {
+                                if mouse_right_captured.load(Ordering::Acquire) {
+                                    right_mouse_dragged.store(true, Ordering::Release);
+                                }
                                 if let Some(cam) = &camera_input {
                                     if let Ok(mut input) = cam.lock() {
                                         if is_rotating {
@@ -292,6 +296,9 @@ impl ViewportPanel {
                                     let dy = point.y - locked_screen_y;
 
                                     if dx != 0 || dy != 0 {
+                                        if mouse_right_captured.load(Ordering::Acquire) {
+                                            right_mouse_dragged.store(true, Ordering::Release);
+                                        }
                                         if !just_activated {
                                             if let Some(cam) = &camera_input {
                                                 if let Ok(mut input) = cam.lock() {
@@ -330,6 +337,9 @@ impl ViewportPanel {
                         let (dx, dy) = cursor::take_mouse_delta();
 
                         if !just_activated && (dx != 0.0 || dy != 0.0) {
+                            if mouse_right_captured.load(Ordering::Acquire) {
+                                right_mouse_dragged.store(true, Ordering::Release);
+                            }
                             if let Some(cam) = &camera_input {
                                 if let Ok(mut input) = cam.lock() {
                                     if is_rotating {
@@ -355,6 +365,9 @@ impl ViewportPanel {
                         let (dx, dy) = cursor::take_mouse_delta();
 
                         if !just_activated && (dx != 0.0 || dy != 0.0) {
+                            if mouse_right_captured.load(Ordering::Acquire) {
+                                right_mouse_dragged.store(true, Ordering::Release);
+                            }
                             if let Some(cam) = &camera_input {
                                 if let Ok(mut input) = cam.lock() {
                                     if is_rotating {
@@ -387,6 +400,9 @@ impl ViewportPanel {
 
                                 if dx != 0 || dy != 0 {
                                     if !just_activated {
+                                        if mouse_right_captured.load(Ordering::Acquire) {
+                                            right_mouse_dragged.store(true, Ordering::Release);
+                                        }
                                         if let Some(cam) = &camera_input {
                                             if let Ok(mut input) = cam.lock() {
                                                 if is_rotating {

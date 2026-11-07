@@ -1,0 +1,34 @@
+[package]
+name = "foliage_plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Foliage (pulsar.foliage): the editor plugin -- its metadata, over the plugin's component crate"
+
+[lib]
+name = "foliage_plugin"
+
+[features]
+# Statically linked hosts (the editor) use the Rust API; the component crate
+# (with everything it registers) comes with this crate.
+builtin = []
+
+[dependencies]
+foliage_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+# The level editor UI: registrations through its extension points
+# (`ui_level_editor::extend`), each naming its origin.
+ui_level_editor = { workspace = true }
+inventory = { workspace = true }
+pulsar_plugins = { workspace = true }
+rust-i18n = { workspace = true }
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+ui_common = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+engine_state = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

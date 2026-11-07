@@ -1,0 +1,24 @@
+[package]
+name = "helio-light-host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The lights' Helio features and row components for standalone Helio hosts (pulsar.lights): the plugins' examples, tests and demos. Engines register their own components and install the lights' join."
+
+[dependencies]
+helio-feature-api = { workspace = true }
+helio-light-api = { workspace = true, features = ["host-rows"] }
+helio-pass-billboard = { workspace = true, features = ["host-rows"] }
+helio-pass-deferred-light = { workspace = true, features = ["host-rows"] }
+helio-pass-hlfs = { workspace = true }
+helio-pass-light-cull = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+pulsar_scenedb = { workspace = true }
+wgpu = { workspace = true }
+
+[dev-dependencies]
+glam = { workspace = true }
+helio = { workspace = true }
+helio-core = { workspace = true }
+helio-presets = { workspace = true }
+pollster = "0.4"

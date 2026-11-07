@@ -129,25 +129,30 @@ impl Render for HierarchyPanelWrapper {
                 }
             })
             .into_any_element();
-        // A 2D sprite at the centre of the view (#1060).
-        let sprite_state = self.state.clone();
-        let add_sprite_button = Button::new("add_sprite")
-            .icon(IconName::Image)
-            .ghost()
-            .xsmall()
-            .tooltip("Add 2D Sprite")
-            .on_click(move |_, _, _cx| {
-                crate::scene_edit::sprite::create_sprite(
-                    &mut sprite_state.write(),
-                    [0.0, 0.0],
-                    Default::default(),
-                );
+        // The plugins' quick-add buttons (a 2D sprite at the centre of the
+        // view, #1060).
+        let quick_adds = crate::extend::create_entries()
+            .into_iter()
+            .filter_map(|entry| {
+                let (icon, tooltip) = entry.quick_add?;
+                let state = self.state.clone();
+                Some(
+                    Button::new(SharedString::from(format!("quick_add_{}", entry.id)))
+                        .icon(icon())
+                        .ghost()
+                        .xsmall()
+                        .tooltip(tooltip)
+                        .on_click(move |_, _, _cx| {
+                            (entry.create)(&mut state.write());
+                        })
+                        .into_any_element(),
+                )
             })
-            .into_any_element();
+            .collect::<Vec<_>>();
         let add_button = h_flex()
             .gap_0p5()
             .child(add_button)
-            .child(add_sprite_button)
+            .children(quick_adds)
             .into_any_element();
 
         let wrapper_entity = cx.entity().downgrade();

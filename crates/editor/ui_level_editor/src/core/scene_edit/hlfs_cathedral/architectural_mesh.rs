@@ -1,7 +1,7 @@
 //! Shared procedural architecture primitives, batched by material.
 use super::demo_data::box_mesh;
 use glam::Vec3;
-use helio::PackedVertex;
+use helio_mesh_api::PackedVertex;
 
 #[derive(Default)]
 pub(crate) struct Mesh {

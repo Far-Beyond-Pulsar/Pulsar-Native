@@ -9,9 +9,13 @@ use ui_documentation as _;
 use ui_fab_search as _;
 use ui_flamegraph as _;
 use ui_git_manager as _;
+use ui_keybindings as _;
 use ui_multiplayer as _;
 use ui_plugin_manager as _;
 use ui_settings as _;
+// The object kinds' plugins are not this crate's: the editor binary links
+// the installed plugins (`installed_plugins`, generated from each plugin's
+// pulsar-plugin.toml) and the project enables them (`pulsar_plugins`).
 
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
@@ -55,22 +59,15 @@ pub use ui::OpenSettings;
 /// actions to registry name lookups.
 pub fn init(cx: &mut gpui::App) {
     use gpui::UpdateGlobal as _;
-    use ui_common::menu::{AboutApp, GoBack, GoForward, Preferences, Settings, ShowDocumentation};
+    use ui_common::menu::{
+        AboutApp, GoBack, GoForward, Preferences, Settings, ShowDocumentation, ShowShortcuts,
+    };
 
     root::register_window_wrappers(cx);
 
     // Secondary windows made by dragging a tab out of a dock area wear the
     // engine title bar.
     ui_common::popout_decorations::install(cx);
-
-    // The shader editor is linked as a built-in provider, so its dynamic
-    // plugin `on_load` hook is never run. Register its format renderer before
-    // the file drawer can request material previews.
-    shader_editor_plugin::register_material_thumbnail_renderer();
-
-    // Plugins tell the import pipeline what extra work they can do for an
-    // import; the pipeline itself knows nothing about what that work is.
-    asset_import::register_companion(shader_editor_plugin::material_import_companion());
 
     // Register global keybindings for actions that must work anywhere in the app
     #[cfg(target_os = "windows")]
@@ -92,6 +89,7 @@ pub fn init(cx: &mut gpui::App) {
         gpui::KeyBinding::new::<ToggleFileManager>("ctrl-space", ToggleFileManager {}, None),
         gpui::KeyBinding::new::<GoBack>("alt-left", GoBack {}, None),
         gpui::KeyBinding::new::<GoForward>("alt-right", GoForward {}, None),
+        gpui::KeyBinding::new::<ShowShortcuts>("ctrl-k ctrl-s", ShowShortcuts {}, None),
     ]);
 
     // Undo/Redo for whichever editor has focus, each on its own document's
@@ -122,6 +120,11 @@ pub fn init(cx: &mut gpui::App) {
     cx.on_action(|_: &ShowDocumentation, cx| {
         window_manager::WindowRegistry::update_global(cx, |reg, cx| {
             reg.open("DocumentationWindow", cx)
+        });
+    });
+    cx.on_action(|_: &ShowShortcuts, cx| {
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("KeybindingsWindow", cx)
         });
     });
 }

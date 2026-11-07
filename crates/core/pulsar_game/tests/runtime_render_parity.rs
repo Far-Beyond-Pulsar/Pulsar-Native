@@ -8,6 +8,8 @@
 //! construction); only the window surface is replaced by an offscreen
 //! texture. Needs a GPU adapter (lavapipe works); skips without one.
 
+// A game built for a project with every plugin links them all.
+use installed_plugins as _;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -16,7 +18,7 @@ use engine_backend::subsystems::render::{
     DeviceOwner, EditorCameraState, FrameProjection, FrameView, HelioRenderer, SceneRenderer,
     SceneRendererOptions,
 };
-use helio_component::components::StaticMeshComponent;
+use installed_plugins::meshes_component::components::StaticMeshComponent;
 use serde_json::json;
 
 const SIZE: u32 = 192;
@@ -118,6 +120,7 @@ fn look_at(eye: glam::Vec3, target: glam::Vec3, far: f32) -> FrameView {
             near: 0.1,
             far,
         },
+        crop: None,
     }
 }
 

@@ -159,6 +159,61 @@ fn generated_project_compiles_against_current_pins() {
     );
 }
 
+/// A project that disables plugins builds without them (Phase C step 2): its
+/// Pulsar.toml turns off the voxel, lights, materials and meshes plugins,
+/// the generated game links none of their crates, and it compiles (its
+/// starter script attaches its cube by class name, linking no plugin).
+#[test]
+#[ignore = "heavy: cargo-checks a whole generated game project; run via `just ci-drift-check`"]
+fn a_project_without_some_plugins_compiles_without_them() {
+    let project = tempfile::tempdir().expect("temp project dir");
+    std::fs::write(
+        project.path().join("Pulsar.toml"),
+        "[plugins]\n\"pulsar.voxel\" = false\n\"pulsar.lights\" = false\n\
+         \"pulsar.materials\" = false\n\"pulsar.meshes\" = false\n",
+    )
+    .unwrap();
+    generate_project(project.path(), "absent_probe");
+    let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
+    for absent in [
+        "voxel_component",
+        "lights_component",
+        "materials_component",
+        "meshes_component",
+    ] {
+        assert!(!manifest.contains(absent), "{absent} is linked");
+    }
+    assert!(
+        manifest.contains("decals_component"),
+        "the other plugins are linked"
+    );
+
+    let status =
+        cargo_check(project.path()).unwrap_or_else(|e| panic!("failed to spawn cargo check: {e}"));
+    assert!(
+        status.success(),
+        "a project without the voxel, lights, materials and meshes plugins does not compile"
+    );
+    // Nothing of theirs is in the game's dependency graph.
+    let tree = Command::new(cargo_exe())
+        .args(["tree", "-e", "normal", "--prefix", "none"])
+        .current_dir(project.path())
+        .output()
+        .expect("cargo tree");
+    let tree = String::from_utf8_lossy(&tree.stdout);
+    for absent in [
+        "voxel_component ",
+        "lights_component ",
+        "materials_component ",
+        "meshes_component ",
+    ] {
+        assert!(
+            !tree.contains(absent),
+            "{absent}is in the game's dependency tree"
+        );
+    }
+}
+
 /// Run an exported class in a real generated project, in both Cargo
 /// profiles. Class variables belong to each actor: two actors of one class
 /// keep separate counters, in debug and in release (the old Rust export

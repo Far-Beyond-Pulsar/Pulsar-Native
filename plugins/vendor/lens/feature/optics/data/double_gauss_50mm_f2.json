@@ -1,0 +1,88 @@
+{
+  "name": "Double-Gauss 50 mm f/2",
+  "source": "Six-element, four-group double Gauss after the commonly tabulated 'Double Gauss 28 degree field' sample data (Zemax sample file / lens-design textbooks, 100 mm scale; reconstructed, not verified against the primary source): radii/thicknesses 56.20238/152.2858/37.68262/inf/24.2313/STOP/-28.37731/inf/-37.92546/177.41176/-79.41143. Glasses mapped to catalog N-SK16 (crown) and F2 (flint); semi-apertures chosen here; uniformly scaled to EFL 50 mm, stop set to f/2, sensor at the paraxial focus.",
+  "focal_length_mm": 50.0,
+  "f_number": 2.0,
+  "sensor_half_diagonal_mm": 21.6333,
+  "surfaces": [
+    {
+      "radius": 27.21734,
+      "thickness": 4.2374,
+      "glass": {
+        "Catalog": "N-SK16"
+      },
+      "semi_aperture": 16.85273
+    },
+    {
+      "radius": 73.74804,
+      "thickness": 0.24214,
+      "glass": "Air",
+      "semi_aperture": 16.2716
+    },
+    {
+      "radius": 18.24871,
+      "thickness": 6.05342,
+      "glass": {
+        "Catalog": "N-SK16"
+      },
+      "semi_aperture": 14.52822
+    },
+    {
+      "radius": 0.0,
+      "thickness": 1.84024,
+      "glass": {
+        "Catalog": "F2"
+      },
+      "semi_aperture": 12.78484
+    },
+    {
+      "radius": 11.73459,
+      "thickness": 7.92729,
+      "glass": "Air",
+      "semi_aperture": 11.62258
+    },
+    {
+      "radius": 0.0,
+      "thickness": 6.65778,
+      "glass": "Air",
+      "semi_aperture": 7.94622,
+      "stop": true
+    },
+    {
+      "radius": -13.74239,
+      "thickness": 1.84024,
+      "glass": {
+        "Catalog": "F2"
+      },
+      "semi_aperture": 11.62258
+    },
+    {
+      "radius": 0.0,
+      "thickness": 5.32701,
+      "glass": {
+        "Catalog": "N-SK16"
+      },
+      "semi_aperture": 12.78484
+    },
+    {
+      "radius": -18.36631,
+      "thickness": 0.24214,
+      "glass": "Air",
+      "semi_aperture": 14.52822
+    },
+    {
+      "radius": 85.91588,
+      "thickness": 3.38992,
+      "glass": {
+        "Catalog": "N-SK16"
+      },
+      "semi_aperture": 15.69047
+    },
+    {
+      "radius": -38.45688,
+      "thickness": 31.28123,
+      "glass": "Air",
+      "semi_aperture": 15.10934
+    }
+  ]
+}

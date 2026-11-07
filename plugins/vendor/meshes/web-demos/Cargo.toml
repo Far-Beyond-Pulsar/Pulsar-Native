@@ -1,0 +1,85 @@
+[package]
+name = "helio-web-demos"
+version = "0.1.0"
+edition = "2021"
+description = "The meshes plugin's scenes compiled to WASM, one feature per demo; `cargo run --bin web` builds every demo and serves them"
+# wasm-pack reads wasm-opt config from this exact table. Placing `wasm-opt`
+# under a bare `[package.metadata]` is silently ignored, so wasm-opt still runs.
+# Disabling it removes a slow post-processing step and a source of build races.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+# cdylib  = wasm-bindgen output
+# rlib     = allows 'cargo check' on the native target for IDE support
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# ── one feature per demo ─────────────────────────────────────────────────────
+[features]
+default = []
+render_v2_basic     = []
+render_v2_sky       = []
+debug_shapes        = []
+indoor_room         = []
+indoor_corridor     = []
+outdoor_night       = []
+outdoor_canyon      = []
+indoor_cathedral    = []
+indoor_server_room  = []
+outdoor_city        = []
+outdoor_volcano     = []
+space_station       = []
+light_benchmark     = []
+hlfs_benchmark      = []
+sdf_demo            = ["dep:helio-pass-sdf"]
+vhs_backrooms       = ["dep:helio-pass-postprocess"]
+load_fbx            = []
+load_fbx_embedded   = []
+ship_flight         = []
+simple_graph        = []
+outdoor_rocks       = []
+editor_demo         = []
+hdr_demo            = ["dep:helio-pass-postprocess"]
+color_grading_demo  = ["dep:helio-pass-postprocess"]
+ies_demo            = []
+
+# ── dependencies ─────────────────────────────────────────────────────────────
+[dependencies]
+helio-pass-materials = { workspace = true }
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-mesh-host = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
+helio-mesh-api = { workspace = true }
+bytemuck = { workspace = true }
+helio-components = { workspace = true }
+helio-wasm = { workspace = true }
+helio               = { workspace = true }
+helio-core          = { workspace = true }
+helio-presets = { workspace = true }
+helio-asset-compat  = { workspace = true }
+pulsar_scenedb      = { workspace = true }
+helio-pass-sdf      = { workspace = true, optional = true }
+helio-pass-fxaa     = { workspace = true, optional = true }
+helio-pass-postprocess = { workspace = true, optional = true }
+wgpu                = { workspace = true }
+glam                = { workspace = true, features = ["bytemuck"] }
+log                 = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2" }
+# getrandom requires explicit js/wasm_js feature to work on wasm32-unknown-unknown.
+# Both v0.2 and v0.3 may appear in the dep graph (e.g. uuid uses 0.2, newer crates use 0.3).
+getrandom    = { version = "0.2", features = ["js"] }
+getrandom03  = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = { version = "0.11" }
+# The `web` builder and server (src/bin/web.rs).
+tiny_http = "0.12"
+ratatui = "0.29"
+crossterm = "0.28"

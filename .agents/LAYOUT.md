@@ -250,3 +250,28 @@ geometry, chrome) are unit tested. The GPUI-facing parts (restorer-built panels 
 a live window, commit, zoom application, pop-out open / events / capture,
 multi-window slots, reopen at startup) were compile-checked only; see the
 branch's final report.
+
+## Sleeping and awake tabs
+
+`ui::dock::lazy_panel` (`LazyPanel`, in the `ui` submodule) wraps every
+restorable file/restore-key tab, so the behaviour is generic and no editor knows
+about it.
+
+- **Sleeping**: only the saved `PanelState` is held, no editor exists. The tab is
+  drawn italic, greyer, with the `sleeping-leaf` icon (Lucide `leaf`, ISC).
+- **Waking**: the tab is displayed. A skeleton is painted, and the real panel is
+  built on the *next frame* through the same `build_deferred` path restore uses,
+  never inside the click or render. GPUI entities are main-thread only, so this
+  is deferred and staged, not off-thread: a slow editor constructor still costs
+  one frame once the skeleton is up.
+- **Awake**: the real panel renders in place.
+
+Restore (`Resolver::sleeping`) restores every eligible tab asleep, so all tabs
+exist upfront; only the displayed tab of the centre group wakes. Files opened
+from the UI appear as waking tabs. A tab sleeps after 10 min undisplayed
+(`SLEEP_AFTER`), checked every minute (`start_tab_sleep_sweeper`), unless it is
+one of the last 3 used (`KEEP_AWAKE_RECENT`), has unsaved changes, cannot be
+rebuilt from its dump, or owns panels that sit in another tab group.
+Tabs opened with a separate editor project root (developer source browsing) and
+pop-out tabs still build synchronously. The old defer-one-tab-per-frame queue
+(`DeferredTab`, `build_deferred_tabs`) is now unused by the resolver.

@@ -86,8 +86,13 @@ impl Render for ViewportPanelWrapper {
         }
 
         let state = self.state.read();
-        self.viewport_panel
-            .render(&state, self.state.clone(), &self.gpu_engine, cx)
+        self.viewport_panel.render(
+            &state,
+            self.state.clone(),
+            &self.gpu_engine,
+            self.focus_handle.clone(),
+            cx,
+        )
     }
 }
 

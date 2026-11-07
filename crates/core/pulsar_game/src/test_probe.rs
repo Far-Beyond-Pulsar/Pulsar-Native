@@ -112,6 +112,7 @@ fn vm_probe_remove(world: &mut World, entity: Entity) {
 
 pulsar_world_registry::inventory::submit! {
     WorldComponentRegistration {
+        origin: env!("CARGO_PKG_NAME"),
         class_name: "VmProbe",
         component_type: component_id::<VmProbe>,
         default_value: pulsar_world_registry::values::erased::default_value::<VmProbe>,

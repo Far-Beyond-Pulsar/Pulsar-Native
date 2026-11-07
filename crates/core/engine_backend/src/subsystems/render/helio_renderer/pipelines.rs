@@ -6,7 +6,8 @@
 //! [`register_project_pipeline`]. The level editor lists them in World
 //! Settings and stores the chosen id in the level; the viewport renderer and
 //! the game both resolve that id here, so a pipeline authored once runs in
-//! both.
+//! both. Every one builds over Helio's default features and the ones plugins
+//! add ([`super::render_features`]).
 
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -19,7 +20,10 @@ fn registry() -> &'static RwLock<RenderPipelineRegistry> {
     static REGISTRY: OnceLock<RwLock<RenderPipelineRegistry>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let mut registry = RenderPipelineRegistry::new();
-        helio_default_passes::pipelines::register_builtin_pipelines(&mut registry);
+        helio_presets::pipelines::register_builtin_pipelines(
+            &mut registry,
+            &super::render_features::plugin_features(),
+        );
         RwLock::new(registry)
     })
 }
@@ -58,7 +62,7 @@ pub fn register_preview_pipeline(
         Box::new(helio_graph_asset::GraphAssetPipeline::new(
             Arc::clone(&asset),
             Arc::clone(&nodes),
-            helio_default_passes::build_default_graph_external_with_context,
+            helio_presets::deferred,
         )) as Box<dyn IntoGraph>
     });
     if let Ok(mut registry) = registry().write() {
@@ -116,7 +120,11 @@ pub fn register_project_pipeline(
 
 fn node_registry_cell() -> &'static RwLock<helio_graph_asset::NodeRegistry> {
     static NODES: OnceLock<RwLock<helio_graph_asset::NodeRegistry>> = OnceLock::new();
-    NODES.get_or_init(|| RwLock::new(helio_default_passes::graphs::base_registry()))
+    NODES.get_or_init(|| {
+        RwLock::new(helio_presets::graphs::registry_with(
+            &super::render_features::plugin_features(),
+        ))
+    })
 }
 
 /// Builds the default graph once on a headless device and returns the pins its
@@ -179,25 +187,24 @@ fn probe_on(
         wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
     );
 
-    let config = helio::RendererConfig::new(64, 64, wgpu::TextureFormat::Bgra8UnormSrgb);
-    let mut env = helio_graph_asset::BuildEnv::new(
-        &device,
-        &queue,
-        config,
-        Arc::new(std::sync::Mutex::new(helio::DebugDrawState::default())),
-        &camera,
-        &debug_camera,
-        &cull_stats,
-        false,
+    let mut env = helio_graph_asset::build_env(&helio::PassBuildContext {
+        device: &device,
+        queue: &queue,
+        config: helio::RendererConfig::new(64, 64, wgpu::TextureFormat::Bgra8UnormSrgb),
+        debug_state: Arc::new(std::sync::Mutex::new(helio::DebugDrawState::default())),
+        camera_buffer: &camera,
+        debug_camera_buffer: &debug_camera,
+        cull_stats_buffer: &cull_stats,
+        owns_device: false,
         scene_db,
-    );
+    });
     // The registry as it is now: its pin table is shared, so the nodes it holds
     // get their pins when the result is applied.
     let registry = node_registry_cell()
         .read()
         .map(|r| r.clone())
         .map_err(|_| "node registry is poisoned".to_string())?;
-    helio_default_passes::graphs::probe_pins(&registry, &mut env)
+    helio_presets::graphs::probe_pins(&registry, &mut env)
 }
 
 /// The probe, on the shared device when one was offered, else a headless one.
@@ -256,7 +263,7 @@ pub fn graph_node_registry() -> helio_graph_asset::NodeRegistry {
         static APPLIED: std::sync::Once = std::sync::Once::new();
         APPLIED.call_once(|| {
             if let Ok(mut registry) = node_registry_cell().write() {
-                helio_default_passes::graphs::apply_probe(&mut registry, probe);
+                helio_presets::graphs::apply_probe(&mut registry, probe);
             }
         });
     }
@@ -270,7 +277,7 @@ pub fn graph_node_registry() -> helio_graph_asset::NodeRegistry {
 /// template for a new render graph.
 pub fn default_graph_template() -> helio_graph_asset::GraphAsset {
     let registry = graph_node_registry();
-    helio_default_passes::graphs::deferred_graph_asset(&registry)
+    helio_presets::graphs::deferred_graph_asset(&registry)
 }
 /// Offers a node type to render-graph assets. A plugin whose pass crate
 /// supplies a node registers it here; the graphs already registered as
@@ -339,7 +346,7 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
                 Box::new(helio_graph_asset::GraphAssetPipeline::new(
                     Arc::clone(&asset),
                     Arc::clone(&nodes),
-                    helio_default_passes::build_default_graph_external_with_context,
+                    helio_presets::deferred,
                 )) as Box<dyn IntoGraph>
             }),
         );
@@ -416,7 +423,7 @@ mod tests {
     #[test]
     fn unknown_ids_fall_back_to_the_default() {
         let default = resolve_pipeline(None).expect("built-ins are registered");
-        assert_eq!(default, helio_default_passes::pipelines::DEFAULT);
+        assert_eq!(default, helio_presets::pipelines::DEFAULT);
         assert_eq!(resolve_pipeline(Some("no/such.rendergraph")), Some(default));
     }
 

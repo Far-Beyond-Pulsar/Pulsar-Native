@@ -5,14 +5,11 @@ edition = "2021"
 description = "Scene file format and Helio loader for the Pulsar game runtime"
 
 [dependencies]
-helio               = { workspace = true }
-helio-asset-compat  = { workspace = true }
 serde      = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing    = { workspace = true }
 # Same reflection + component registrations the engine uses — ensures identical dispatch
 pulsar_reflection  = { workspace = true }
-helio_component    = { workspace = true }
 engine_fs          = { workspace = true }
 
 [lints]

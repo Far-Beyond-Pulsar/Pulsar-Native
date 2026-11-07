@@ -1,0 +1,22 @@
+[package]
+name = "helio-pass-vg-dense"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry Tier 3 (ultra-dense overlap): tiled depth-peel compute raster (3-NonRT) and ray-query primary visibility over proxy-LOD BLASes (3-RT)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-core = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-mats = { workspace = true }
+helio-pass-vg-cull = { workspace = true }
+helio-pass-vg-raster = { workspace = true }
+helio-vg-stream = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+log = { workspace = true }
+
+[dev-dependencies]
+pollster = { version = "0.4" }
+naga = { version = "30", features = ["wgsl-in"] }
+glam = { workspace = true }

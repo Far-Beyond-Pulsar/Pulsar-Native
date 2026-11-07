@@ -1,0 +1,7 @@
+# splines plugin, level editor UI - ar
+
+LevelEditor.Spline.PointCount: "النقاط"
+LevelEditor.SplinePanel.Clear: "مسح المسار المنحني"
+LevelEditor.SplinePanel.Title: "المسار المنحني"
+LevelEditor.ToolMode.Spline: "منحنى"
+LevelEditor.ToolMode.SplineDesc: "انقر لوضع نقاط، Shift+نقر للمسح"

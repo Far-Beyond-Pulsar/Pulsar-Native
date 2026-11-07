@@ -32,6 +32,131 @@ pub const HELIO_GIT_REVISION: &str = env!("PULSAR_HELIO_GIT_REVISION");
 /// bare `git = "…Pulsar-Native"` dependency otherwise produces.
 const GAME_MANIFEST_DEPS: &str = include_str!(concat!(env!("OUT_DIR"), "/game_manifest_deps.toml"));
 
+/// The plugins installed with this engine, as games are built from them:
+/// their descriptors (`DESCRIPTORS`) and their runtime modules' dependency
+/// specs (`DEPENDENCIES`), baked by `build.rs` from
+/// `plugins/vendor/*/pulsar-plugin.toml`.
+mod installed {
+    include!(concat!(env!("OUT_DIR"), "/game_plugins.rs"));
+}
+
+/// The first line of a game manifest's plugin block (inside
+/// `[dependencies]`), regenerated on every build from the project's
+/// `Pulsar.toml`.
+const PLUGINS_BEGIN: &str =
+    "# BEGIN project plugins: the runtime modules of the plugins Pulsar.toml enables";
+const PLUGINS_END: &str = "# END project plugins";
+
+/// The plugins installed with this engine (what a project can enable).
+pub fn installed_plugins() -> &'static [pulsar_plugins::PluginDescriptor] {
+    static INSTALLED: std::sync::OnceLock<Vec<pulsar_plugins::PluginDescriptor>> =
+        std::sync::OnceLock::new();
+    INSTALLED.get_or_init(|| {
+        let mut plugins: Vec<_> = installed::DESCRIPTORS
+            .iter()
+            .map(|source| {
+                pulsar_plugins::PluginDescriptor::parse(source)
+                    .expect("build.rs baked a descriptor that parses")
+            })
+            .collect();
+        plugins.sort_by(|a, b| a.id.cmp(&b.id));
+        plugins
+    })
+}
+
+/// The runtime modules a game built for the project at `project_root`
+/// links: those of the plugins its `Pulsar.toml` enables among the
+/// installed ones (`pulsar_plugins::resolve`; problems are logged). Nothing
+/// else of a plugin is linked, so a disabled plugin's kind is absent from
+/// the game.
+pub fn project_runtime_modules(project_root: &Path) -> Vec<&'static str> {
+    let project = pulsar_plugins::ProjectPlugins::read(project_root).unwrap_or_else(|error| {
+        tracing::error!("the project's plugin list: {error}; using every plugin's default");
+        pulsar_plugins::ProjectPlugins::default()
+    });
+    let resolution = pulsar_plugins::resolve(installed_plugins(), &project);
+    for problem in &resolution.problems {
+        tracing::warn!("{problem}");
+    }
+    resolution.runtime_modules(installed_plugins())
+}
+
+/// `manifest` with its plugin block (between [`PLUGINS_BEGIN`] and
+/// [`PLUGINS_END`]) holding `modules`' dependency lines, at the top of its
+/// `[dependencies]` table. A module the manifest names itself, outside the
+/// block, is left to that line.
+fn with_plugin_block(manifest: &str, modules: &[&str]) -> String {
+    let mut kept = Vec::new();
+    let mut in_block = false;
+    for line in manifest.lines() {
+        if line.trim() == PLUGINS_BEGIN {
+            in_block = true;
+        } else if in_block {
+            in_block = line.trim() != PLUGINS_END;
+        } else {
+            kept.push(line);
+        }
+    }
+    let stripped = kept.join("\n");
+    let mut block = vec![
+        PLUGINS_BEGIN.to_string(),
+        "# (regenerated on every build: enable or disable plugins in Pulsar.toml).".to_string(),
+    ];
+    for module in modules {
+        if dependency_line(&stripped, module).is_some() {
+            continue;
+        }
+        let spec = installed::DEPENDENCIES
+            .iter()
+            .find(|(name, _)| name == module)
+            .map(|(_, spec)| *spec)
+            .expect("every installed runtime module has a baked spec");
+        block.push(format!("{module} = {spec}"));
+    }
+    block.push(PLUGINS_END.to_string());
+    let block = block.join("\n");
+    let mut out = String::with_capacity(stripped.len() + block.len() + 32);
+    match kept.iter().position(|line| line.trim() == "[dependencies]") {
+        Some(table) => {
+            for line in &kept[..=table] {
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.push_str(&block);
+            out.push('\n');
+            for line in &kept[table + 1..] {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        None => {
+            out.push_str(stripped.trim_end());
+            out.push_str("\n\n[dependencies]\n");
+            out.push_str(&block);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// The generated `src/plugins.rs`: links each of `modules` (the enabled
+/// plugins' runtime modules) for its registrations.
+fn generated_plugins_rs(modules: &[&str]) -> String {
+    let mut out = String::from(
+        "//! The project's plugins: the runtime modules of the plugins its\n\
+         //! Pulsar.toml enables (`[plugins]`), linked for their registrations\n\
+         //! (components, scene subsystems, render features, settings). A\n\
+         //! disabled plugin is not linked: its kind is absent from the game.\n\
+         //!\n\
+         //! Generated by Pulsar Core Project Builder on every build; edit\n\
+         //! Pulsar.toml instead.\n\n",
+    );
+    for module in modules {
+        out.push_str(&format!("use {} as _;\n", rust_crate_ident(module)));
+    }
+    out
+}
+
 fn settings_string(
     settings: Option<&ProjectSettings>,
     owner: &str,
@@ -386,9 +511,16 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         })
         .unwrap_or(true);
 
+    // The enabled plugins' runtime modules: the only plugin crates the game
+    // links (a disabled plugin's kind is absent from it).
+    let plugin_modules = project_runtime_modules(project_root);
+
     if !should_write_cargo {
         let existing = existing_manifest.as_deref().unwrap_or_default();
-        let updated = ensure_generated_dependencies(existing, &script_crates);
+        let updated = with_plugin_block(
+            &ensure_generated_dependencies(existing, &script_crates),
+            &plugin_modules,
+        );
         let updated = remove_missing_local_patch_entries(&updated, project_root);
         if updated != existing {
             write_if_changed(&cargo_toml_path, updated.as_bytes()).map_err(|e| {
@@ -448,10 +580,13 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         "{package}\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n\
 {deps}\n[profile.dev]\nopt-level = {opt}\ndebug = {debug}\n{workspace_block}",
         package = package_lines.join("\n"),
-        deps = pin_compatible_dependencies(splice_script_dependencies(
-            GAME_MANIFEST_DEPS,
-            &script_crates,
-        )),
+        deps = with_plugin_block(
+            &pin_compatible_dependencies(splice_script_dependencies(
+                GAME_MANIFEST_DEPS,
+                &script_crates,
+            )),
+            &plugin_modules,
+        ),
         opt = profile_opt,
         debug = profile_debug,
         workspace_block = workspace_block(&script_crates),
@@ -526,6 +661,15 @@ pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
             .map_err(|e| format!("Failed to write src/main.rs: {e}"))?;
     }
 
+    // ── plugins.rs — the enabled plugins' runtime modules, linked ─────────────
+    // Always regenerated: Pulsar.toml's `[plugins]` is the source of truth
+    // (the manifest's plugin block lists the same modules).
+    write_if_changed(
+        &src_dir.join("plugins.rs"),
+        generated_plugins_rs(&project_runtime_modules(project_root)).as_bytes(),
+    )
+    .map_err(|e| format!("Failed to write src/plugins.rs: {e}"))?;
+
     // ── lib.rs — Play-In-Editor embedding shim (issue #243) ───────────────────
     ensure_embed_lib(&src_dir)?;
 
@@ -558,6 +702,7 @@ fn generated_main_rs(project_name: &str) -> String {
 
 mod classes;
 mod engine_main;
+mod plugins;
 
 fn main() {{
     tracing_subscriber::fmt()
@@ -797,7 +942,7 @@ fn starter_lib_rs() -> String {
 //! game runs and your actors re-bind to their existing entities instead of
 //! spawning duplicates.
 
-use pulsar_game::scene::{attach_value, attachments, StaticMeshComponent, Transform};
+use pulsar_game::scene::{attach_class, has_component, Transform};
 use pulsar_game::tick::TickLoop;
 // Re-exports: script crates need no direct scenedb dependency — everything
 // gameplay-facing rides on `pulsar_game`.
@@ -814,9 +959,12 @@ pub struct Spinner {
 
 impl Actor for Spinner {
     fn begin_play(&mut self, entity: Entity, world: &mut World) {
-        if attachments::enabled_components_of::<StaticMeshComponent>(world, entity).is_empty() {
-            let cube = StaticMeshComponent::for_mesh_asset("meshes/primitives/SM_Cube.fbx");
-            if let Err(error) = attach_value(world, entity, cube) {
+        // Components attach by class name and take their properties by
+        // name (the meshes plugin's component), so the script links no
+        // plugin.
+        if !has_component(world, entity, "StaticMeshComponent") {
+            let cube = [("mesh_asset", "\"meshes/primitives/SM_Cube.fbx\"")];
+            if let Err(error) = attach_class(world, entity, "StaticMeshComponent", &cube) {
                 eprintln!("Spinner: could not attach its cube mesh: {error}");
             }
         }
@@ -894,6 +1042,7 @@ use pulsar_pie_abi::{EngineContext, InputEvent, INIT_ERR, PIE_ABI_VERSION};
 
 mod classes;
 mod engine_main;
+mod plugins;
 
 /// ABI revision this game was built against; the editor refuses to load on a
 /// mismatch and asks the user to rebuild.
@@ -1243,6 +1392,81 @@ mod tests {
 
         assert!(text.contains("voxel_reference_project_scripts::register_scripts(game)?;"));
         assert!(!text.contains("voxel-reference-project_scripts::"));
+    }
+
+    /// A game built for a project links only the plugins its Pulsar.toml
+    /// enables (Phase C step 2): the manifest's plugin block and
+    /// `src/plugins.rs` name every enabled plugin's runtime module and no
+    /// disabled one's, follow the list when it changes, and leave a module the
+    /// user's own manifest names to that line.
+    #[test]
+    fn generated_game_links_only_enabled_plugins() {
+        let project = tempfile::tempdir().unwrap();
+        let write_list = |enabled: bool| {
+            std::fs::write(
+                project.path().join("Pulsar.toml"),
+                format!(
+                    "[plugins]\n\"pulsar.voxel\" = {enabled}\n\"pulsar.lights\" = {enabled}\n\
+                     \"pulsar.materials\" = {enabled}\n"
+                ),
+            )
+            .unwrap();
+        };
+        let block = |manifest: &str| -> Vec<String> {
+            manifest
+                .lines()
+                .skip_while(|line| line.trim() != super::PLUGINS_BEGIN)
+                .take_while(|line| line.trim() != super::PLUGINS_END)
+                .filter_map(|line| line.split_once(" = ").map(|(name, _)| name.to_string()))
+                .collect()
+        };
+        let installed: Vec<&str> = super::installed_plugins()
+            .iter()
+            .flat_map(|plugin| plugin.modules.runtime.iter().map(String::as_str))
+            .collect();
+        assert!(
+            installed.len() >= 16,
+            "every object kind's plugin is installed"
+        );
+
+        write_list(false);
+        super::ensure_core_bootstrap(project.path()).unwrap();
+        let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
+        let linked = block(&manifest);
+        for disabled in ["voxel_component", "lights_component", "materials_component"] {
+            assert!(
+                !manifest.contains(disabled),
+                "{disabled} is in the manifest"
+            );
+        }
+        assert_eq!(linked.len(), installed.len() - 3, "{linked:?}");
+        assert!(linked.iter().any(|m| m == "decals_component"));
+        let plugins_rs = std::fs::read_to_string(project.path().join("src/plugins.rs")).unwrap();
+        assert!(plugins_rs.contains("use decals_component as _;"));
+        assert!(!plugins_rs.contains("voxel_component"));
+        for file in ["src/main.rs", "src/lib.rs"] {
+            let text = std::fs::read_to_string(project.path().join(file)).unwrap();
+            assert!(
+                text.contains("mod plugins;"),
+                "{file} does not link the plugins"
+            );
+        }
+        toml::from_str::<toml::Table>(&manifest).expect("the manifest parses");
+
+        // The list changes: the next build follows it.
+        write_list(true);
+        super::ensure_core_bootstrap(project.path()).unwrap();
+        let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
+        assert_eq!(block(&manifest).len(), installed.len());
+        assert_eq!(manifest.matches(super::PLUGINS_BEGIN).count(), 1);
+
+        // A user-owned manifest keeps its own line for a module.
+        let own = "[package]\nname = \"mine\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+                   decals_component = { path = \"elsewhere\" }\n";
+        let updated = super::with_plugin_block(own, &["decals_component", "fog_component"]);
+        assert_eq!(block(&updated), ["fog_component"]);
+        assert!(updated.contains("decals_component = { path = \"elsewhere\" }"));
+        toml::from_str::<toml::Table>(&updated).expect("the manifest parses");
     }
 
     #[test]

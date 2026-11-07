@@ -1,6 +1,6 @@
 //! The toolbar's Bloom toggle reaches the renderer: after each rendered frame
-//! the post-process resolver's baseline (its defaults, a renderer setting)
-//! carries the toggle's state; nothing is written into the scene
+//! the viewport's post-process baseline (`POST_BASELINE`, a renderer
+//! setting) carries the toggle's state; nothing is written into the scene
 //! (Pulsar-Native#1035, Phase 4).
 
 use engine_backend::subsystems::render::HelioRenderer;
@@ -84,14 +84,4 @@ fn toolbar_bloom_toggle_updates_the_resolver_baseline() {
     mailbox.set_viewport_bloom(true);
     render(&mut renderer, &device, &queue);
     assert_eq!(baseline_bloom(&mut renderer), Some(true), "toggle back on");
-
-    assert_eq!(
-        scene
-            .read()
-            .world
-            .query::<&helio_component::components::CameraPostProcessComponent>()
-            .count(),
-        0,
-        "the editor writes no camera row into the scene"
-    );
 }

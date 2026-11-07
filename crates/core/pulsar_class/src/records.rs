@@ -26,13 +26,42 @@
 
 use std::collections::HashMap;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::overrides::normalize_component_data;
 use crate::template::layout;
 
-const MATERIAL_OVERRIDE: &str = "MaterialOverrideComponent";
-const STATIC_MESH: &str = "StaticMeshComponent";
+/// A plugin's migration of its classes' legacy records, run with the
+/// others on every level load ([`migrate_component_records`]): the meshes
+/// fold the retired `MaterialOverrideComponent` into the mesh and turn a
+/// bare `props.mesh_asset` into a mesh component. The plugin's component
+/// crate submits one (`inventory::submit!`); this crate names no class.
+/// How others do it: Unreal's per-class `Serialize`/`PostLoad` version
+/// fix-ups and core redirects, registered by the module owning the class.
+pub struct RecordMigrationRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// What it does, for reports ("folded MaterialOverrideComponent into
+    /// the mesh").
+    pub description: &'static str,
+    /// Rewrite one object's component entries (`{class_name, enabled,
+    /// data}`) in place; returns whether it changed them.
+    pub entries: Option<fn(entries: &mut Vec<Value>) -> bool>,
+    /// For an object with no component list: the entry its legacy props
+    /// describe, if any.
+    pub from_props: Option<fn(object: &Value) -> Option<Value>>,
+    /// Props keys the migration retired: removed from every object's props.
+    pub stale_props: &'static [&'static str],
+}
+
+inventory::collect!(RecordMigrationRegistration);
+
+impl pulsar_plugins::Registration for RecordMigrationRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
 
 /// Fields classes no longer have: `(class, field)`.
 pub const RETIRED_FIELDS: &[(&str, &str)] = &[
@@ -43,13 +72,11 @@ pub const RETIRED_FIELDS: &[(&str, &str)] = &[
 /// What the record migrations changed, per object id.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RecordMigrations {
-    /// Objects whose `MaterialOverrideComponent` was folded into their mesh
-    /// (or dropped, with no mesh to take it).
-    pub material_overrides: Vec<String>,
+    /// `(object id, what)` a plugin's migration changed
+    /// ([`RecordMigrationRegistration::description`]).
+    pub plugins: Vec<(String, &'static str)>,
     /// `(object id, class)` whose flat data was nested into the class shape.
     pub nested: Vec<(String, String)>,
-    /// Objects whose `props.mesh_asset` became a `StaticMeshComponent`.
-    pub mesh_asset_props: Vec<String>,
     /// `(object id, keys)` of projected component values removed from props.
     pub stripped_props: Vec<(String, Vec<String>)>,
     /// `(object id, class, fields)` of retired fields removed from data.
@@ -58,12 +85,20 @@ pub struct RecordMigrations {
 
 impl RecordMigrations {
     pub fn changed(&self) -> bool {
-        !self.material_overrides.is_empty()
+        !self.plugins.is_empty()
             || !self.nested.is_empty()
-            || !self.mesh_asset_props.is_empty()
             || !self.stripped_props.is_empty()
             || !self.retired_fields.is_empty()
     }
+}
+
+/// Run every plugin's entry migration on one component list (a level
+/// object's or a class prefab's): what each that changed it did.
+pub fn migrate_entries(entries: &mut Vec<Value>) -> Vec<&'static str> {
+    pulsar_plugins::registered::<RecordMigrationRegistration>()
+        .filter(|migration| migration.entries.is_some_and(|migrate| migrate(entries)))
+        .map(|migration| migration.description)
+        .collect()
 }
 
 /// Run every record migration on `root`, a level's JSON.
@@ -84,8 +119,12 @@ pub fn migrate_component_records(root: &mut Value) -> RecordMigrations {
             let Some(entries) = crate::migrate::component_list_mut(root, list) else {
                 continue;
             };
-            if fold_material_override(entries) && !report.material_overrides.contains(&id) {
-                report.material_overrides.push(id.clone());
+            for migration in pulsar_plugins::registered::<RecordMigrationRegistration>() {
+                let changed = migration.entries.is_some_and(|migrate| migrate(entries));
+                let entry = (id.clone(), migration.description);
+                if changed && !report.plugins.contains(&entry) {
+                    report.plugins.push(entry);
+                }
             }
             for entry in entries.iter_mut() {
                 if let Some(class) = nest_flat_properties(entry) {
@@ -99,12 +138,21 @@ pub fn migrate_component_records(root: &mut Value) -> RecordMigrations {
 
         let object = &mut root["objects"][index];
         if lists.is_empty() {
-            if let Some(entry) = mesh_from_props(object) {
+            let made: Vec<(Value, &'static str)> = pulsar_plugins::registered::<
+                RecordMigrationRegistration,
+            >()
+            .filter_map(|migration| Some((migration.from_props?(object)?, migration.description)))
+            .collect();
+            if !made.is_empty() {
+                let (entries, descriptions): (Vec<Value>, Vec<&'static str>) =
+                    made.into_iter().unzip();
                 object
                     .as_object_mut()
                     .expect("level objects are JSON objects")
-                    .insert("component_instances".into(), Value::Array(vec![entry]));
-                report.mesh_asset_props.push(id.clone());
+                    .insert("component_instances".into(), Value::Array(entries));
+                for description in descriptions {
+                    report.plugins.push((id.clone(), description));
+                }
             }
         }
 
@@ -127,30 +175,6 @@ pub fn migrate_component_records(root: &mut Value) -> RecordMigrations {
         }
     }
     report
-}
-
-/// Migration 1. Returns whether the list held a `MaterialOverrideComponent`.
-fn fold_material_override(entries: &mut Vec<Value>) -> bool {
-    let Some(position) = entries
-        .iter()
-        .position(|e| e.get("class_name").and_then(Value::as_str) == Some(MATERIAL_OVERRIDE))
-    else {
-        return false;
-    };
-    let legacy = entries
-        .remove(position)
-        .get("data")
-        .cloned()
-        .unwrap_or(Value::Null);
-    let mesh = entries
-        .iter_mut()
-        .find(|e| e.get("class_name").and_then(Value::as_str) == Some(STATIC_MESH))
-        .and_then(|e| e.get_mut("data"))
-        .and_then(Value::as_object_mut);
-    if let Some(mesh) = mesh {
-        mesh.entry("legacy_material_override").or_insert(legacy);
-    }
-    true
 }
 
 /// Migration 2. Returns the class when `entry`'s data was rewritten.
@@ -185,29 +209,9 @@ fn strip_retired_fields(entry: &mut Value) -> Option<(String, Vec<String>)> {
     (!removed.is_empty()).then_some((class, removed))
 }
 
-/// Migration 3. A `StaticMeshComponent` entry for `object`'s non-empty
-/// `props.mesh_asset`, in the class's own shape.
-fn mesh_from_props(object: &Value) -> Option<Value> {
-    let path = object
-        .get("props")?
-        .get("mesh_asset")?
-        .as_str()
-        .filter(|path| !path.trim().is_empty())?;
-    let mut data = pulsar_reflection::REGISTRY
-        .create_instance(STATIC_MESH)
-        .and_then(|instance| instance.to_json().ok())
-        .unwrap_or_else(|| Value::Object(Map::new()));
-    data.as_object_mut()?
-        .insert("mesh_asset".into(), Value::String(path.to_string()));
-    Some(serde_json::json!({
-        "class_name": STATIC_MESH,
-        "enabled": true,
-        "data": data,
-    }))
-}
-
 /// Migration 4. Removes from `object`'s props every key a projector of one
-/// of `classes` manages (asked to clear itself), plus a stale `mesh_asset`.
+/// of `classes` manages (asked to clear itself), plus the props keys the
+/// plugins' migrations retired.
 /// Returns the removed keys.
 fn strip_projected_props(object: &mut Value, classes: &[String]) -> Vec<String> {
     let Some(props) = object.get_mut("props").and_then(Value::as_object_mut) else {
@@ -218,7 +222,11 @@ fn strip_projected_props(object: &mut Value, classes: &[String]) -> Vec<String> 
     for class in classes {
         pulsar_reflection::apply_scene_props_for_class(class, &mut managed, None);
     }
-    managed.remove("mesh_asset");
+    for migration in pulsar_plugins::registered::<RecordMigrationRegistration>() {
+        for key in migration.stale_props {
+            managed.remove(*key);
+        }
+    }
     let mut removed: Vec<String> = props
         .keys()
         .filter(|key| !managed.contains_key(*key))
@@ -233,26 +241,6 @@ fn strip_projected_props(object: &mut Value, classes: &[String]) -> Vec<String> 
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn material_overrides_fold_into_the_mesh() {
-        let mut root = json!({
-            "objects": [{ "id": "a", "props": {}, "component_instances": [
-                { "class_name": "StaticMeshComponent", "data": { "mesh_asset": "m.glb" } },
-                { "class_name": "MaterialOverrideComponent", "data": { "roughness": 0.3 } }
-            ]}]
-        });
-        let report = migrate_component_records(&mut root);
-        assert_eq!(report.material_overrides, ["a"]);
-        let list = root["objects"][0]["component_instances"]
-            .as_array()
-            .unwrap();
-        assert_eq!(list.len(), 1);
-        assert_eq!(
-            list[0]["data"]["legacy_material_override"],
-            json!({ "roughness": 0.3 })
-        );
-    }
 
     #[test]
     fn retired_fields_leave_the_data() {
@@ -276,29 +264,5 @@ mod tests {
             json!({ "size": [1.0, 1.0, 1.0] })
         );
         assert!(!migrate_component_records(&mut root).changed());
-    }
-
-    #[test]
-    fn a_bare_mesh_asset_prop_becomes_a_component_and_leaves_props() {
-        let mut root = json!({
-            "objects": [
-                { "id": "a", "props": { "mesh_asset": "m.glb", "icon_asset": "i.png" } },
-                { "id": "b", "props": { "mesh_asset": "m.glb" }, "component_instances": [] }
-            ]
-        });
-        let report = migrate_component_records(&mut root);
-        assert_eq!(report.mesh_asset_props, ["a"]);
-        assert_eq!(
-            root["objects"][0]["component_instances"][0]["data"]["mesh_asset"],
-            "m.glb"
-        );
-        assert_eq!(
-            root["objects"][0]["props"],
-            json!({ "icon_asset": "i.png" })
-        );
-        // An object with a component list keeps it as it is; the stale
-        // copy goes.
-        assert_eq!(root["objects"][1]["component_instances"], json!([]));
-        assert_eq!(root["objects"][1]["props"], json!({}));
     }
 }

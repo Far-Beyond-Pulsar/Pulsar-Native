@@ -1,6 +1,6 @@
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    ActiveTheme as _, Disableable as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
@@ -10,145 +10,80 @@ use ui::{
 use crate::DocumentationWindow;
 use crate::handlers;
 
+/// A small modal asking for the name of a new guide.
 pub fn render_new_file_dialog(
     window: &DocumentationWindow,
-    theme: &ui::ThemeColor,
-    window_handle: &mut Window,
     cx: &mut Context<DocumentationWindow>,
 ) -> impl IntoElement {
+    let theme = cx.theme().clone();
+    let can_create = !window.new_file_name.trim().is_empty();
+
     div()
         .absolute()
         .inset_0()
         .flex()
         .items_center()
         .justify_center()
-        .bg(gpui::black().opacity(0.6))
+        .bg(gpui::black().opacity(0.5))
         .on_mouse_down(
-            gpui::MouseButton::Left,
+            MouseButton::Left,
             cx.listener(|this, _, _, cx| {
                 handlers::close_new_file_dialog(this);
                 cx.notify();
             }),
         )
         .child(
-            div()
-                .w(px(480.0))
-                .bg(theme.background)
+            v_flex()
+                .w(px(420.0))
+                .gap_4()
+                .p_5()
+                .bg(theme.popover)
+                .text_color(theme.popover_foreground)
                 .border_1()
                 .border_color(theme.border)
-                .rounded_xl()
-                .shadow_2xl()
-                .overflow_hidden()
-                .on_mouse_down(gpui::MouseButton::Left, |_event, _phase, cx| {
-                    cx.stop_propagation();
-                })
+                .rounded(theme.radius_lg)
+                .shadow_lg()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(
                     v_flex()
-                        .child(dialog_header(window, theme, cx))
-                        .child(dialog_body(window, theme))
-                        .child(dialog_footer(window, theme, window_handle, cx)),
-                ),
-        )
-}
-
-fn dialog_header(
-    window: &DocumentationWindow,
-    theme: &ui::ThemeColor,
-    cx: &mut Context<DocumentationWindow>,
-) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .h(px(56.0))
-        .px_6()
-        .items_center()
-        .justify_between()
-        .bg(theme.sidebar)
-        .border_b_1()
-        .border_color(theme.border)
-        .child(
-            h_flex()
-                .gap_3()
-                .items_center()
-                .child(Icon::new(IconName::Plus).size_4())
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_base()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child("New guide"),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("Saved as a Markdown file in the project's docs folder."),
+                        ),
+                )
+                .child(TextInput::new(&window.new_file_input_state).w_full())
                 .child(
-                    div()
-                        .text_base()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.foreground)
-                        .child("Create Documentation File"),
+                    h_flex()
+                        .gap_2()
+                        .justify_end()
+                        .child(
+                            Button::new("cancel-new-guide")
+                                .label("Cancel")
+                                .ghost()
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    handlers::close_new_file_dialog(this);
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("create-new-guide")
+                                .label("Create")
+                                .primary()
+                                .disabled(!can_create)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    handlers::create_new_file(this, window, cx);
+                                    cx.notify();
+                                })),
+                        ),
                 ),
-        )
-        .child(
-            Button::new("close-dialog")
-                .icon(IconName::Close)
-                .ghost()
-                .xsmall()
-                .on_click(cx.listener(|this, _, _, cx| {
-                    handlers::close_new_file_dialog(this);
-                    cx.notify();
-                })),
-        )
-}
-
-fn dialog_body(window: &DocumentationWindow, theme: &ui::ThemeColor) -> impl IntoElement {
-    v_flex().w_full().p_6().gap_4().child(
-        v_flex()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(theme.foreground)
-                    .child("File Name"),
-            )
-            .child(
-                TextInput::new(&window.new_file_input_state)
-                    .w_full()
-                    .appearance(true)
-                    .bordered(true),
-            )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child("File will be saved with .md extension"),
-            ),
-    )
-}
-
-fn dialog_footer(
-    window: &DocumentationWindow,
-    theme: &ui::ThemeColor,
-    _window_handle: &mut Window,
-    cx: &mut Context<DocumentationWindow>,
-) -> impl IntoElement {
-    h_flex()
-        .w_full()
-        .h(px(64.0))
-        .px_6()
-        .items_center()
-        .gap_3()
-        .justify_end()
-        .bg(theme.sidebar.opacity(0.5))
-        .border_t_1()
-        .border_color(theme.border)
-        .child(
-            Button::new("cancel-new-file")
-                .label("Cancel")
-                .ghost()
-                .on_click(cx.listener(|this, _, _, cx| {
-                    handlers::close_new_file_dialog(this);
-                    cx.notify();
-                })),
-        )
-        .child(
-            Button::new("create-new-file")
-                .label("Create File")
-                .icon(IconName::Plus)
-                .primary()
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    handlers::create_new_file(this, window, cx);
-                    cx.notify();
-                })),
         )
 }

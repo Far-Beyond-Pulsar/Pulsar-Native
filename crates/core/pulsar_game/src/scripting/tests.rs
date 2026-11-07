@@ -811,7 +811,7 @@ fn spawning_an_unknown_class_releases_the_entity() {
 /// and binds its component slots again against the rebuilt components.
 #[test]
 fn class_reload_rebinds_slots_of_live_instances() {
-    use helio_component::components::LightComponent;
+    use installed_plugins::lights_component::LightComponent;
 
     let project = tempfile::tempdir().unwrap();
     let light = serde_json::to_value(LightComponent::default()).unwrap();

@@ -1,0 +1,15 @@
+# The `pulsar.sky` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its kind is absent (see
+# crates/core/pulsar_plugins). The runtime module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.sky"
+name = "Sky"
+description = "The level's sky: the atmosphere component (air, sun disc, clouds and weather), its row and the renderer feature that draws it and publishes the sky's lighting inputs"
+enabled_by_default = true
+requires = []
+
+[modules]
+# What a game built for the project links.
+runtime = ["sky_component"]
+# What the editor links in addition.
+editor = ["sky_plugin"]

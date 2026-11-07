@@ -1,0 +1,17 @@
+[package]
+name = "helio-pass-sprite-cull"
+version = "0.1.0"
+edition = "2021"
+description = "Helio 2D pass: GPU compute culling + radix sort for a growable instance pool (paired with helio-pass-sprite-batch, no crate dependency on it)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+pulsar_scenedb = { workspace = true }
+helio-core = { workspace = true }
+wgpu       = { workspace = true }
+bytemuck   = { workspace = true, features = ["derive"] }
+log        = { workspace = true }
+
+[dev-dependencies]
+pollster = "0.4"
+naga = { version = "30", features = ["wgsl-in"] }

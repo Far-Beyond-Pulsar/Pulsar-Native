@@ -1,0 +1,6 @@
+# Copies that stay, each with what it waits on (Phase C step 1,
+# plugin-migration.md "As built, Phase C step 1"). One per line:
+#   path | symbol | waits on ...
+# The list may only shrink: the test fails on a copy missing here and on a
+# line whose copy is gone.
+

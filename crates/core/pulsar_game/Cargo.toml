@@ -67,17 +67,25 @@ input_plugin    = { path = "../../../plugins/vendor/input_plugin", default-featu
 # doesn't allow members to opt out of default features.
 engine_backend  = { path = "../engine_backend", default-features = false, features = ["render"] }
 
-# Component vocabulary re-exported to gameplay scripts (#653,
-# `pulsar_game::scene`): StaticMeshComponent / LightComponent are what user
-# script crates attach to make entities visible -- without this direct dep a
-# generated game's script crate could not name them.
+# Cameras, movability (`StaticMoveWatch`): the engine's shared pieces.
 helio_component = { workspace = true }
-skeletal_assets = { workspace = true }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+# Every installed plugin's runtime modules: the tests run a game built for a
+# project with every plugin (they name `installed_plugins::<module>` where
+# they need a plugin's type).
+installed_plugins = { workspace = true }
+helio-mats = { workspace = true }
+# The plugin pass lists test (tests/plugin_pass_lists.rs) builds Helio's
+# presets with the linked plugins' features, as the engine does.
+helio-core = { workspace = true }
+helio-presets = { workspace = true }
+helio-pass-portal-cull = { workspace = true }
+helio-pass-foliage-place = { workspace = true }
+helio-pass-gi = { workspace = true }
 # Drift guard (#652): the reference actor mirrors the exporter's emitted shape and
 # must keep compiling against the pinned crates; tempfile serves the
 # end-to-end generated-project cargo check (tests/generated_project_compiles).

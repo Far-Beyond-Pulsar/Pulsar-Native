@@ -346,7 +346,7 @@ impl MeshAssetPicker {
         let cache_root = self.thumbnail_cache_root.clone();
         let (tx, rx) = smol::channel::bounded::<Option<Arc<image::RgbaImage>>>(1);
 
-        crate::asset_thumbnails::register_mesh_thumbnail_renderer();
+        crate::asset_thumbnails::register_thumbnail_renderers();
         engine_fs::thumbnails::service().request(abs_path, cache_root, move |rgba| {
             smol::block_on(tx.send(rgba));
         });

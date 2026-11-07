@@ -124,6 +124,24 @@ pub struct LinkedEditorProvider {
 
 inventory::collect!(LinkedEditorProvider);
 
+/// A plugin's linked editor provider: a [`LinkedEditorProvider`] that counts
+/// only while the plugin that submitted it is enabled for the project
+/// (`pulsar_plugins::origin!()`), as every plugin registration does. A
+/// plugin's editor module submits this one.
+pub struct PluginEditorProvider {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    pub create: fn() -> Arc<dyn BuiltinEditorProvider>,
+}
+
+inventory::collect!(PluginEditorProvider);
+
+impl pulsar_plugins::Registration for PluginEditorProvider {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
 /// Registry for all built-in editors.
 pub struct BuiltinEditorRegistry {
     providers: Vec<Arc<dyn BuiltinEditorProvider>>,
@@ -142,14 +160,16 @@ impl BuiltinEditorRegistry {
         self.providers.push(provider);
     }
 
-    /// Register every linked provider ([`LinkedEditorProvider`]) that is not
-    /// already registered under the same id. Order among linked providers is
-    /// by provider id, so it does not depend on link order.
+    /// Register every linked provider ([`LinkedEditorProvider`], and each
+    /// enabled plugin's [`PluginEditorProvider`]) that is not already
+    /// registered under the same id. Order among linked providers is by
+    /// provider id, so it does not depend on link order.
     pub fn register_linked(&mut self) {
         let mut linked: Vec<Arc<dyn BuiltinEditorProvider>> =
             inventory::iter::<LinkedEditorProvider>
                 .into_iter()
                 .map(|l| (l.create)())
+                .chain(pulsar_plugins::registered::<PluginEditorProvider>().map(|l| (l.create)()))
                 .collect();
         linked.sort_by(|a, b| a.provider_id().cmp(b.provider_id()));
         for provider in linked {

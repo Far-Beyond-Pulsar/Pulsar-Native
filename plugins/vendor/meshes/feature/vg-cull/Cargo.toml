@@ -1,0 +1,22 @@
+[package]
+name = "helio-pass-vg-cull"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry GPU culling: instance BVH + cluster DAG cut, two-phase Hi-Z occlusion, tier/bin output"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-core = { workspace = true }
+helio-mats = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-vg-stream = { workspace = true }
+helio-pass-vg-bvh = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+log = { workspace = true }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }
+pollster = { version = "0.4" }
+glam = { workspace = true }
+helio-vg-build = { workspace = true }

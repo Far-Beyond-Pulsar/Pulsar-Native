@@ -1,0 +1,107 @@
+[package]
+name = "meshes_component"
+version = "0.1.0"
+edition = "2024"
+description = "Meshes (pulsar.meshes): the SceneDB components (static and skeletal meshes, their draw rows, authored LOD, virtual-geometry overrides), mesh assets and their import, the scene join, LOD selection, the virtual-geometry host and picking, and the registrations of the plugin's Helio features."
+
+# Hosts (the editor through the plugin crate, the game) link it; everything
+# registers through `inventory` once the crate is linked.
+[lib]
+name = "meshes_component"
+
+[features]
+# `#[derive(SceneStore)]`'s generated GPU-column methods are wrapped in
+# `#[cfg(feature = "gpu")]`, spliced into the crate defining the component:
+# this crate needs its own feature of exactly this name. On by default.
+default = ["gpu"]
+gpu = []
+
+[dependencies]
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+# The engine's shared pieces: the asset seams, images, movability.
+helio_component = { workspace = true }
+inventory = { workspace = true }
+helio = { workspace = true }
+helio-core = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-scene-join = { workspace = true }
+helio-settings = { workspace = true }
+helio-mesh-api = { workspace = true }
+helio-mats = { workspace = true, features = ["instances"] }
+helio-asset-compat = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-pass-object-batch = { workspace = true }
+helio-pass-occlusion-cull = { workspace = true }
+helio-pass-shadow = { workspace = true }
+helio-pass-transparent = { workspace = true }
+helio-pass-vg = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-vg-stream = { workspace = true }
+helio-vg-build = { workspace = true }
+# The animation runtime and skeletal formats the skeletal mesh decodes and
+# drives (the animation plugin's crate; see the plan doc's step 1 audit).
+skeletal_assets = { workspace = true }
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_events = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_settings = { workspace = true }
+# The model importer (`asset_import::ImporterRegistration`) and the record
+# migrations (`pulsar_class::records::RecordMigrationRegistration`).
+asset_import = { workspace = true }
+pulsar_class = { workspace = true }
+# The virtual-geometry project settings (`vg_settings`).
+pulsar-config = { workspace = true }
+plugin_editor_api = { workspace = true }
+engine_fs = { workspace = true }
+engine_state = { workspace = true }
+engine_subsystems = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+glam = { workspace = true, features = ["serde"] }
+image = { workspace = true }
+thiserror = { workspace = true }
+wgpu = { workspace = true }
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+ui_common = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+# Content-addressed asset identity (Pulsar-Native#632): xxh3-128 over decoded
+# mesh bytes for PMSH v1 backfill / non-native source paths, and as the
+# fallback path->id hash in `MeshAssetPath::content_id` (see mesh_cache.rs).
+twox-hash = { workspace = true }
+profiling = { workspace = true }
+
+[dev-dependencies]
+pollster = "=0.4.0"
+# The moved engine tests: the import service, the tick loop, picking.
+editor_task_queue = { workspace = true }
+parking_lot = { workspace = true }
+pulsar_game = { path = "../../../../crates/core/pulsar_game" }
+naga = { version = "30.0.0", features = ["wgsl-in"] }
+tempfile = { workspace = true }
+
+[[test]]
+name = "static_mesh_component_gpu_mirror"
+required-features = ["gpu"]
+
+[[test]]
+name = "content_dedup"
+required-features = ["gpu"]
+
+[[test]]
+name = "content_dedup_benchmarks"
+required-features = ["gpu"]
+
+[lints]
+workspace = true

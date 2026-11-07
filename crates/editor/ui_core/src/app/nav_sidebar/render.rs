@@ -126,6 +126,16 @@ fn tab_icon(tab: &SidebarTab) -> IconName {
     })
 }
 
+/// The tab's icon; a sleeping tab carries the green leaf in its lower right corner.
+fn tab_icon_element(tab: &SidebarTab, size: f32, color: Hsla) -> gpui::AnyElement {
+    let icon = Icon::new(tab_icon(tab)).size(px(size)).text_color(color);
+    if tab.asleep {
+        ui::dock::with_sleeping_badge(icon, px(8.)).into_any_element()
+    } else {
+        icon.into_any_element()
+    }
+}
+
 /// What the sidebar shows of the editor, read once per render.
 pub(super) struct EditorView {
     pub tabs: Vec<SidebarTab>,
@@ -313,15 +323,15 @@ impl NavSidebar {
             .when(tab.active, |el| el.bg(theme.sidebar_accent))
             .hover(|el| el.bg(theme.list_hover))
             .when(!tab.is_open(), |el| el.opacity(0.5))
-            .child(
-                Icon::new(tab_icon(tab))
-                    .size(px(16.))
-                    .text_color(if tab.active {
-                        theme.primary
-                    } else {
-                        theme.muted_foreground
-                    }),
-            )
+            .child(tab_icon_element(
+                tab,
+                16.,
+                if tab.active {
+                    theme.primary
+                } else {
+                    theme.muted_foreground
+                },
+            ))
             .when(tab.unsaved, |el| {
                 el.child(
                     unsaved_dot(theme.warning)
@@ -765,16 +775,23 @@ impl NavSidebar {
             })
             .when(!tab.active, |el| el.hover(|el| el.bg(theme.list_hover)))
             .when(!tab.is_open(), |el| el.text_color(theme.muted_foreground))
+            .child(tab_icon_element(
+                tab,
+                14.,
+                if tab.active {
+                    theme.primary
+                } else {
+                    theme.muted_foreground
+                },
+            ))
             .child(
-                Icon::new(tab_icon(tab))
-                    .size(px(14.))
-                    .text_color(if tab.active {
-                        theme.primary
-                    } else {
-                        theme.muted_foreground
-                    }),
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .when(tab.asleep, |el| el.italic().opacity(0.6))
+                    .child(tab.title.clone()),
             )
-            .child(div().flex_1().min_w_0().truncate().child(tab.title.clone()))
             .when(tab.unsaved, |el| el.child(unsaved_dot(theme.warning)))
             .child(
                 h_flex()

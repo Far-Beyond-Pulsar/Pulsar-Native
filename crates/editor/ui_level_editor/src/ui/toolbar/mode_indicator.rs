@@ -15,7 +15,7 @@ impl ModeIndicator {
         let theme = cx.theme();
         let current_mode = state.editor.tool_mode_registry.selected();
         let tool_icon = current_mode.icon();
-        let tool_label = t!(current_mode.label_key());
+        let tool_label = current_mode.label();
 
         div()
             .flex()
@@ -76,7 +76,7 @@ impl ModeIndicator {
                     .text_xs()
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(theme.foreground.opacity(0.8))
-                    .child(tool_label.into_owned()),
+                    .child(tool_label),
             )
     }
 }

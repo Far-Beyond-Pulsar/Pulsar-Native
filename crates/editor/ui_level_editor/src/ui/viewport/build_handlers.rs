@@ -146,17 +146,17 @@ pub(super) fn handle_mouse_move(
     );
     match tool_result {
         crate::tool_modes::ToolPointerResult::Consumed => return,
-        crate::tool_modes::ToolPointerResult::VoxelBrush(request) => {
-            // A drag stroke keeps only the latest brush position queued.
+        crate::tool_modes::ToolPointerResult::Ray(tool) => {
+            // A drag stroke keeps only the latest sample queued.
             if let Some(events) = &pointer_events_move {
                 if let Ok(mut events) = events.lock() {
                     engine_backend::subsystems::render::PendingPointerEvent::queue(
                         &mut events,
-                        engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
+                        engine_backend::subsystems::render::PendingPointerEvent::ToolRay {
                             norm_x,
                             norm_y,
-                            request,
                             start: false,
+                            tool,
                         },
                     );
                 }
@@ -530,15 +530,15 @@ pub(super) fn handle_left_mouse_down(
     );
     match dispatch_result {
         crate::tool_modes::ToolPointerResult::Consumed => return,
-        crate::tool_modes::ToolPointerResult::VoxelBrush(request) => {
+        crate::tool_modes::ToolPointerResult::Ray(tool) => {
             if let Some(events) = &pointer_events {
                 if let Ok(mut events) = events.lock() {
                     events.push(
-                        engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
+                        engine_backend::subsystems::render::PendingPointerEvent::ToolRay {
                             norm_x,
                             norm_y,
-                            request,
                             start: true,
+                            tool,
                         },
                     );
                 }

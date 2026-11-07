@@ -13,6 +13,7 @@ window_manager.workspace = true
 inventory.workspace = true
 plugin_manager.workspace = true
 plugin_editor_api.workspace = true
+engine_backend.workspace = true
 tracing.workspace = true
 
 [lints]

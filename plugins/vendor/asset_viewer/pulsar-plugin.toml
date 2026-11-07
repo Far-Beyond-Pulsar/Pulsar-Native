@@ -1,0 +1,15 @@
+# The `pulsar.asset_viewer` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its editors and file types are
+# absent (see crates/core/pulsar_plugins). Its first module carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.asset_viewer"
+name = "Asset Viewer"
+description = "Viewers for model files, meshes and images, and a mesh's slot materials"
+enabled_by_default = true
+requires = []
+
+[modules]
+# What a game built for the project links.
+runtime = []
+# What the editor links in addition.
+editor = ["asset_viewer_plugin"]

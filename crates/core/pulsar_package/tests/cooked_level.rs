@@ -5,7 +5,7 @@
 //! and an unknown class kept as its payload.
 
 use engine_backend::scene::{attachments, RuntimeLevel, SceneWorldExt};
-use helio_component::components::LightComponent;
+use installed_plugins::lights_component::LightComponent;
 use pulsar_class::ClassRegistry;
 use pulsar_package::cook::{cook_level, AssetResolver, AssetSet};
 use serde_json::{json, Value};

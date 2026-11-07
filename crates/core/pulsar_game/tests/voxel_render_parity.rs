@@ -19,6 +19,8 @@
 //! editor's, x8). The noise floor is the editor rendering it twice.
 //! Needs a GPU adapter; skips without one.
 
+// A game built for a project with every plugin links them all.
+use installed_plugins as _;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -224,6 +226,13 @@ fn editor() -> HelioRenderer {
     renderer
 }
 
+/// The direction towards the level's sun, as its voxel world traces it.
+fn level_sun() -> Option<Vec3> {
+    let mut scene = engine_backend::scene::new_scene();
+    RuntimeLevel::load_into(&level_path(), &mut scene.world).expect("the example planet loads");
+    installed_plugins::voxel_component::runtime::scene_sun(&scene.world)
+}
+
 /// The level's saved camera.
 fn level_pose() -> EditorCameraState {
     let extras =
@@ -244,23 +253,7 @@ fn level_pose() -> EditorCameraState {
 fn near_ground_pose(target: &Target) -> EditorCameraState {
     let mut renderer = editor();
     renderer.set_editor_camera_state(level_pose());
-    let mut sun = None;
-    for _ in 0..240 {
-        renderer.render_frame(
-            &target.device,
-            &target.queue,
-            &target.view,
-            WIDTH,
-            HEIGHT,
-            FORMAT,
-        );
-        target.wait();
-        sun = renderer.sun_direction();
-        if sun.is_some() {
-            break;
-        }
-    }
-    let sun = Vec3::from_array(sun.expect("the planet has a sun")).as_dvec3();
+    let sun = level_sun().expect("the planet has a sun").as_dvec3();
     let latitude = 40.0f64.to_radians();
     let mut spots: Vec<DVec3> = (0..24)
         .map(|step| {
@@ -294,7 +287,7 @@ fn near_ground_pose(target: &Target) -> EditorCameraState {
                 FORMAT,
             );
             target.wait();
-            altitude = renderer.voxel_altitude();
+            altitude = renderer.camera_ground().altitude;
             if altitude.is_some() {
                 break;
             }
@@ -362,7 +355,7 @@ fn editor_frame(target: &Target, pose: EditorCameraState) -> EditorShot {
         eye: DVec3::from_array(state.position),
         forward: renderer.camera_forward(),
         up: renderer.camera_up(),
-        altitude: renderer.voxel_altitude(),
+        altitude: renderer.camera_ground().altitude,
     };
     println!(
         "VOXEL PARITY editor: settled in {frames} frames; eye {:?} forward {:?} up {:?} altitude {:?} sun {:?}",
@@ -370,7 +363,7 @@ fn editor_frame(target: &Target, pose: EditorCameraState) -> EditorShot {
         shot.forward.to_array(),
         shot.up.to_array(),
         shot.altitude,
-        renderer.sun_direction()
+        level_sun()
     );
     assert_eq!(
         shot.eye,
@@ -446,7 +439,7 @@ fn game_frame(
         }
     }
     let frame = target.read();
-    let diagnostics = renderer.voxel_diagnostics().join(" | ");
+    let diagnostics = renderer.diagnostics().join(" | ");
     println!(
         "VOXEL PARITY game ({owner:?}): settled in {settled} frames, {frames} in all; eye {:?} forward {:?} up {:?}; {diagnostics}",
         view.eye.to_array(),
@@ -484,7 +477,7 @@ fn game_tick(
 ) -> FrameView {
     engine_backend::scene::pump_assets(scene);
     renderer.step_scene(&mut scene.write());
-    camera.follow_ground(renderer.voxel_ground(camera.position()));
+    camera.follow_ground(renderer.camera_ground(camera.position()));
     let view = camera
         .to_render_camera()
         .frame_view(WIDTH as f32 / HEIGHT as f32);

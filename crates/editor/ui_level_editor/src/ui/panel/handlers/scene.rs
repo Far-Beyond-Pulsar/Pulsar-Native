@@ -63,8 +63,9 @@ impl LevelEditorPanel {
     }
 }
 
-/// A camera framing `entity`: over the ground of a voxel world, or a few
-/// metres back from any other object along the current view.
+/// A camera framing `entity`: as a plugin frames it
+/// ([`crate::extend::CameraFraming`]: a voxel world over its ground), or a
+/// few metres back from any other object along the current view.
 fn focus_camera(
     world: &pulsar_scenedb::World,
     entity: pulsar_scenedb::Entity,
@@ -77,28 +78,24 @@ fn focus_camera(
         let (sp, cp) = f64::from(c.pitch).sin_cos();
         DVec3::new(sy * cp, sp, -cy * cp)
     });
-    let terrain = engine_backend::scene::attachments::enabled_components_of::<
-        helio_component::VoxelTerrainComponent,
-    >(world, entity)
-    .first()
-    .map(|(instance, _)| *instance);
-    let (position, forward) = if let Some(terrain) = terrain {
-        match helio_component::voxel_world::terrain_world(world, terrain) {
-            Ok(planet) => helio_component::voxel_world::frame_view(&planet, eye, forward, 30.0),
-            Err(error) => {
-                tracing::warn!("Focus: {error}");
-                return None;
+    let (position, forward) =
+        if let Some(framed) = crate::extend::frame_object(world, entity, eye, forward) {
+            match framed {
+                Ok(framed) => framed,
+                Err(error) => {
+                    tracing::warn!("Focus: {error}");
+                    return None;
+                }
             }
-        }
-    } else {
-        // Where the object is in the world, under any folder it is in.
-        let position =
-            engine_backend::scene::hierarchy_transform::world_transform_of(world, entity)
-                .map(|pose| pose.position)
-                .unwrap_or_default();
-        let target = DVec3::from_array(position.map(f64::from));
-        (target - forward * 8.0, forward)
-    };
+        } else {
+            // Where the object is in the world, under any folder it is in.
+            let position =
+                engine_backend::scene::hierarchy_transform::world_transform_of(world, entity)
+                    .map(|pose| pose.position)
+                    .unwrap_or_default();
+            let target = DVec3::from_array(position.map(f64::from));
+            (target - forward * 8.0, forward)
+        };
     Some(crate::scene_edit::LevelEditorCameraState {
         position: position.to_array(),
         yaw: forward.x.atan2(-forward.z) as f32,

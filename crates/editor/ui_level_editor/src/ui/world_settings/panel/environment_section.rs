@@ -1,4 +1,10 @@
 //! Environment mixer sidebar, presets, and selected-component properties.
+//!
+//! Everything it offers is registered by plugins ([`crate::extend`]): the
+//! starter setups ([`crate::extend::EnvironmentPreset`]), the add buttons
+//! (create entries with an environment label), the sidebar's level
+//! components (their World Settings sections) and listed classes
+//! ([`crate::extend::EnvironmentListing`]).
 
 use gpui::prelude::*;
 use gpui::*;
@@ -7,29 +13,28 @@ use ui::{
     h_flex, v_flex, ActiveTheme, Disableable as _, Sizable,
 };
 
+use crate::extend::{create_entries, environment_listings, level_component_sections};
 use crate::scene_edit::{components, objects};
-use crate::ui::world_settings::panel::sky_section::{component_property_rows, ClassProperties};
+use crate::ui::world_settings::panel::level_component_section::{
+    component_property_rows, ClassProperties,
+};
 use crate::WorldSettingsPanel;
 
-const COMPONENTS: &[(&str, &str)] = &[
-    ("LightComponent", "Light"),
-    ("GlobalFogComponent", "Global Fog"),
-    ("LocalFogVolumeComponent", "Local Fog Volume"),
-    ("PostProcessVolumeComponent", "Post Process Volume"),
-    ("ReflectionCaptureComponent", "Reflection Capture"),
-    ("WaterVolumeComponent", "Water Volume"),
-];
-
-const ADD_COMPONENTS: &[(&str, &str)] = &[
-    ("LightComponent", "Point Light"),
-    ("SpotLight", "Spot Light"),
-    ("DirectionalLight", "Directional Light"),
-    ("GlobalFogComponent", "Global Fog"),
-    ("LocalFogVolumeComponent", "Local Fog Volume"),
-    ("PostProcessVolumeComponent", "Post Process"),
-    ("ReflectionCaptureComponent", "Reflection Capture"),
-    ("WaterVolumeComponent", "Water Volume"),
-];
+/// The first component of the object `id`, as the mixer selects it.
+fn first_component(
+    state: &crate::state::LevelEditorState,
+    id: &str,
+) -> Option<EnvironmentSelection> {
+    let world = state.scene.world();
+    let class_name = components::get_component_class_names(&world, id)
+        .into_iter()
+        .next()?;
+    Some(EnvironmentSelection::Component {
+        object_id: id.to_string(),
+        class_name,
+        component_index: 0,
+    })
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum EnvironmentSelection {
@@ -67,22 +72,31 @@ impl super::WorldSettingsPanelImpl {
         cx: &mut Context<WorldSettingsPanel>,
     ) -> AnyElement {
         let state = self.state.clone();
-        let has_sun = !engine_backend::scene::level_rules::directional_lights(
-            &self.state.read().scene.world(),
-        )
-        .is_empty();
-        let presets = crate::scene_edit::environment::EnvironmentPreset::ALL
-            .into_iter()
-            .map(|preset| {
-                let state = state.clone();
-                Button::new(format!("environment-preset-{}", preset.label()))
-                    .label(preset.label())
-                    .small()
-                    .on_click(cx.listener(move |_panel, _event, _window, cx| {
-                        crate::scene_edit::environment::apply_preset(&mut state.write(), preset);
-                        cx.notify();
-                    }))
-            });
+        // What the plugins offer here (a disabled plugin's are absent).
+        let addable: Vec<_> = {
+            let state = self.state.read();
+            let world = state.scene.world();
+            create_entries()
+                .into_iter()
+                .filter_map(|entry| {
+                    let label = entry.environment_label?;
+                    let offered = entry.offered.is_none_or(|offered| offered(&world));
+                    Some((entry, label, offered))
+                })
+                .collect()
+        };
+        let presets: Vec<_> = crate::extend::environment_presets();
+        let presets_available = !presets.is_empty();
+        let presets = presets.into_iter().map(|preset| {
+            let state = state.clone();
+            Button::new(format!("environment-preset-{}", preset.id))
+                .label(preset.label)
+                .small()
+                .on_click(cx.listener(move |_panel, _event, _window, cx| {
+                    (preset.apply)(&mut state.write());
+                    cx.notify();
+                }))
+        });
 
         v_flex()
             .gap_2()
@@ -92,7 +106,9 @@ impl super::WorldSettingsPanelImpl {
                     .text_color(cx.theme().muted_foreground)
                     .child("Starter setups add a sky and sun when missing, then tune the sun."),
             )
-            .child(h_flex().gap_2().children(presets))
+            .when(presets_available, |this| {
+                this.child(h_flex().gap_2().children(presets))
+            })
             .child(
                 v_flex()
                     .gap_1()
@@ -102,30 +118,27 @@ impl super::WorldSettingsPanelImpl {
                             .text_color(cx.theme().muted_foreground)
                             .child("Add component"),
                     )
-                    .children(ADD_COMPONENTS.chunks(4).map(|group| {
+                    .children(addable.chunks(4).map(|group| {
                         h_flex()
                             .gap_2()
-                            .children(group.iter().map(|(class_name, label)| {
-                                let class_name = (*class_name).to_string();
+                            .children(group.iter().map(|(entry, label, offered)| {
+                                let entry = *entry;
                                 let state = self.state.clone();
-                                Button::new(format!("environment-add-{class_name}"))
+                                Button::new(format!("environment-add-{}", entry.id))
                                     .label(format!("+ {label}"))
                                     .small()
                                     .ghost()
-                                    .disabled(class_name == "DirectionalLight" && has_sun)
+                                    .disabled(!offered)
                                     .on_click(cx.listener(move |panel, _event, _window, cx| {
-                                        let result =
-                                            crate::scene_edit::environment::create_component(
-                                                &mut state.write(),
-                                                &class_name,
-                                            );
-                                        if let Some(id) = result.affected_ids.first() {
+                                        let mut state = state.write();
+                                        let result = (entry.create)(&mut state);
+                                        if let Some(selected) = result
+                                            .affected_ids
+                                            .first()
+                                            .and_then(|id| first_component(&state, id))
+                                        {
                                             panel.world_settings.environment_selection =
-                                                Some(EnvironmentSelection::Component {
-                                                    object_id: id.clone(),
-                                                    class_name: "LightComponent".to_string(),
-                                                    component_index: 0,
-                                                });
+                                                Some(selected);
                                         }
                                         cx.notify();
                                     }))
@@ -233,39 +246,28 @@ impl super::WorldSettingsPanelImpl {
         let state = self.state.read();
         let world = state.scene.world();
         let mut items = Vec::new();
-        for (class_name, title, missing_label) in [
-            (
-                engine_backend::scene::level_rules::ATMOSPHERE_CLASS,
-                "Sky and Atmosphere",
-                "Missing · creates a sky",
-            ),
-            (
-                engine_backend::scene::level_rules::WIND_CLASS,
-                "Global Wind",
-                "Missing · creates global wind",
-            ),
-        ] {
-            if let Some((object_id, object_name, component_index)) =
-                find_component(&world, class_name)
-            {
+        for section in level_component_sections() {
+            let class_name = section.class_name;
+            if let Some(found) = crate::extend::level_component(&world, section.find) {
                 items.push(SidebarItem {
-                    title: title.to_string(),
-                    subtitle: object_name,
+                    title: section.sidebar_title.to_string(),
+                    subtitle: found.object_name,
                     selection: EnvironmentSelection::Component {
-                        object_id,
+                        object_id: found.object_id,
                         class_name: class_name.to_string(),
-                        component_index,
+                        component_index: found.component_index,
                     },
                 });
             } else {
                 items.push(SidebarItem {
-                    title: title.to_string(),
-                    subtitle: missing_label.to_string(),
+                    title: section.sidebar_title.to_string(),
+                    subtitle: section.sidebar_missing.to_string(),
                     selection: EnvironmentSelection::Missing(class_name.to_string()),
                 });
             }
         }
-        for (class_name, label) in COMPONENTS {
+        for listing in environment_listings() {
+            let (class_name, label) = (&listing.class_name, listing.label);
             let mut found = false;
             for object in objects::get_all_objects(&world) {
                 for (component_index, component) in
@@ -306,22 +308,20 @@ impl super::WorldSettingsPanelImpl {
     ) -> AnyElement {
         match selection {
             Some(EnvironmentSelection::Missing(class_name)) => {
-                let label = COMPONENTS
-                    .iter()
-                    .find(|(class, _)| *class == class_name)
-                    .map(|(_, label)| *label)
-                    .or_else(|| match class_name.as_str() {
-                        "AtmosphereComponent" => Some("Sky and Atmosphere"),
-                        "WindComponent" => Some("Global Wind"),
-                        _ => None,
-                    })
+                let section = level_component_sections()
+                    .into_iter()
+                    .find(|section| section.class_name == class_name);
+                let listing = environment_listings()
+                    .into_iter()
+                    .find(|listing| listing.class_name == class_name);
+                let label = section
+                    .map(|section| section.sidebar_title)
+                    .or(listing.map(|listing| listing.label))
                     .unwrap_or("Environment Component");
-                let create_class = match class_name.as_str() {
-                    "AtmosphereComponent" => "AtmosphereComponent",
-                    "WindComponent" => "WindComponent",
-                    other => other,
-                }
-                .to_string();
+                let create = section.map(|section| section.create).or_else(|| {
+                    let entry = listing.and_then(|listing| listing.create_entry)?;
+                    crate::extend::create_entry(entry).map(|entry| entry.create)
+                });
                 let state = self.state.clone();
                 v_flex()
                     .gap_3()
@@ -337,60 +337,34 @@ impl super::WorldSettingsPanelImpl {
                             .text_color(cx.theme().muted_foreground)
                             .child("This environment item is not in the level yet."),
                     )
-                    .child(
-                        Button::new("environment-create-selected")
-                            .label(format!("Create {label}"))
-                            .small()
-                            .primary()
-                            .on_click(cx.listener(move |panel, _event, _window, cx| {
-                                let mut state = state.write();
-                                let result = match create_class.as_str() {
-                                    "AtmosphereComponent" => {
-                                        crate::scene_edit::environment::apply_preset(
-                                            &mut state,
-                                            crate::scene_edit::environment::EnvironmentPreset::ClearDay,
-                                        )
-                                    }
-                                    "WindComponent" => {
-                                        crate::scene_edit::wind::create_wind(&mut state)
-                                    }
-                                    _ => crate::scene_edit::environment::create_component(
-                                        &mut state,
-                                        &create_class,
-                                    ),
-                                };
-                                let selected = if create_class == "AtmosphereComponent" {
-                                    crate::scene_edit::sky::level_sky(&state.scene.world()).map(
-                                        |sky| EnvironmentSelection::Component {
-                                            object_id: sky.object_id,
-                                            class_name: create_class.clone(),
-                                            component_index: sky.component_index,
-                                        },
-                                    )
-                                } else {
-                                    result.affected_ids.first().map(|id| {
-                                        EnvironmentSelection::Component {
-                                            object_id: id.clone(),
-                                            class_name: if matches!(
-                                                create_class.as_str(),
-                                                "DirectionalLight" | "SpotLight"
-                                            ) {
-                                                "LightComponent".to_string()
-                                            } else {
-                                                create_class.clone()
+                    .when_some(create, |this, create| {
+                        this.child(
+                            Button::new("environment-create-selected")
+                                .label(format!("Create {label}"))
+                                .small()
+                                .primary()
+                                .on_click(cx.listener(move |panel, _event, _window, cx| {
+                                    let mut state = state.write();
+                                    create(&mut state);
+                                    // Select what now holds the class.
+                                    let selected =
+                                        find_component(&state.scene.world(), &class_name).map(
+                                            |(object_id, _, component_index)| {
+                                                EnvironmentSelection::Component {
+                                                    object_id,
+                                                    class_name: class_name.clone(),
+                                                    component_index,
+                                                }
                                             },
-                                            component_index: 0,
-                                        }
-                                    })
-                                };
-                                drop(state);
-                                if let Some(selected) = selected {
-                                    panel.world_settings.environment_selection =
-                                        Some(selected);
-                                }
-                                cx.notify();
-                            })),
-                    )
+                                        );
+                                    drop(state);
+                                    if let Some(selected) = selected {
+                                        panel.world_settings.environment_selection = Some(selected);
+                                    }
+                                    cx.notify();
+                                })),
+                        )
+                    })
                     .into_any_element()
             }
             Some(EnvironmentSelection::Component {
@@ -398,18 +372,20 @@ impl super::WorldSettingsPanelImpl {
                 class_name,
                 component_index,
             }) => {
-                if class_name == engine_backend::scene::level_rules::ATMOSPHERE_CLASS {
-                    return self.render_sky_section(window, cx);
-                }
-                if class_name == engine_backend::scene::level_rules::WIND_CLASS {
-                    return self.render_wind_section(window, cx);
+                if let Some(section) = level_component_sections()
+                    .into_iter()
+                    .find(|section| section.class_name == class_name)
+                {
+                    return self.render_level_component_section(section, window, cx);
                 }
                 let object_name = objects::get_all_objects(&self.state.read().scene.world())
                     .into_iter()
                     .find(|object| object.id == object_id)
                     .map(|object| object.name)
                     .unwrap_or_else(|| "Environment Component".to_string());
-                let Some((_, label)) = COMPONENTS.iter().find(|(name, _)| *name == class_name)
+                let Some(listing) = environment_listings()
+                    .into_iter()
+                    .find(|listing| listing.class_name == class_name)
                 else {
                     return div()
                         .text_sm()
@@ -431,11 +407,7 @@ impl super::WorldSettingsPanelImpl {
                 let Some(rows) = component_property_rows(
                     &self.state,
                     &mut self.environment_property_state,
-                    COMPONENTS
-                        .iter()
-                        .find(|(name, _)| *name == class_name)
-                        .unwrap()
-                        .0,
+                    listing.class_name,
                     &properties,
                     &object_id,
                     component_index,
@@ -456,7 +428,7 @@ impl super::WorldSettingsPanelImpl {
                                 div()
                                     .text_lg()
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child(format!("{object_name} · {label}")),
+                                    .child(format!("{object_name} · {}", listing.label)),
                             )
                             .child(
                                 div()

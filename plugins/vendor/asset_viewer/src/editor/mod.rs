@@ -1,4 +1,3 @@
-pub mod graph_material;
 #[cfg(test)]
 mod graph_material_tests;
 pub mod materials;

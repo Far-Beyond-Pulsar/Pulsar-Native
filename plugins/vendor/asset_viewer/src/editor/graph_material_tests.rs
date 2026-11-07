@@ -3,10 +3,12 @@
 //! These render through the viewer's real graph pipeline on a real device,
 //! so they need a GPU adapter; absence fails rather than skipping.
 
-use helio_component::graph_preview::GraphPreview;
+use materials_component::graph_preview::GraphPreview;
 use psgc::*;
 
-use super::graph_material::{build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE};
+use materials_component::preview_program::{
+    build, globals_layout, write_globals_at, GraphContext, GLOBALS_SIZE,
+};
 
 fn node(id: &str, kind: &str) -> NodeInstance {
     let meta = get_shader_nodes()
@@ -48,9 +50,10 @@ fn compile(graph: &GraphDescription) -> (tempfile::TempDir, GraphPreview) {
         serde_json::json!({ "main_graph": graph }).to_string(),
     )
     .unwrap();
-    let preview = helio_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
-        .expect("a graph material")
-        .expect("compiles");
+    let preview =
+        materials_component::graph_preview::compile_graph_preview(dir.path(), "M.material")
+            .expect("a graph material")
+            .expect("compiles");
     (dir, preview)
 }
 
@@ -99,6 +102,8 @@ fn a_graph_material_builds_a_viewer_pipeline() {
         target_format: wgpu::TextureFormat::Bgra8Unorm,
         globals_layout: &globals_layout,
         uniform_layout: &uniform_layout,
+        depth_format: Some(wgpu::TextureFormat::Depth32Float),
+        front_face: wgpu::FrontFace::Cw,
     };
     let layout = super::panel_render::mesh_vertex_layout();
     if let Err(error) = build(&ctx, &preview, &[Some(layout)]) {
@@ -119,6 +124,8 @@ fn render_at(preview: &GraphPreview, time: f32) -> [u8; 4] {
         target_format: format,
         globals_layout: &globals_layout,
         uniform_layout: &uniform_layout,
+        depth_format: Some(wgpu::TextureFormat::Depth32Float),
+        front_face: wgpu::FrontFace::Cw,
     };
     let draw = build(
         &ctx,

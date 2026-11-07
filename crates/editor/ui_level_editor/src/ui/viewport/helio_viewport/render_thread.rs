@@ -388,6 +388,14 @@ impl HelioViewport {
                 return;
             }
 
+            let screenshot_processing = this.shared_state.read().build.screenshot_processing;
+            if screenshot_processing != this.last_screenshot_processing {
+                this.last_screenshot_processing = screenshot_processing;
+                this.awaiting_render = true;
+                cx.notify();
+                return;
+            }
+
             let published = this.frames_published.load(Ordering::Acquire);
             if published == this.last_published_frame {
                 return;

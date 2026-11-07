@@ -1,0 +1,24 @@
+[package]
+name = "helio-pass-hlfs"
+version = "0.1.0"
+edition = "2021"
+description = "Helio render pass: Hierarchical Light-Field Sampling (HLFS)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-light-api = { workspace = true }
+helio-bake-types = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-core  = { workspace = true }
+wgpu      = { workspace = true }
+bytemuck  = { workspace = true, features = ["derive"] }
+glam      = { workspace = true }
+
+[dev-dependencies]
+pollster = "0.4"
+naga = { version = "30", features = ["wgsl-in"] }
+image = { workspace = true }
+half = "2"
+pulsar_scenedb = { workspace = true }
+helio-mats = { workspace = true }

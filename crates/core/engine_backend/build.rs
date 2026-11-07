@@ -1,6 +1,11 @@
 use std::{env, fs, path::Path, path::PathBuf};
 
-const HELIO_DEPENDENCIES: [&str; 3] = ["helio", "helio-asset-compat", "helio-default-passes"];
+const HELIO_DEPENDENCIES: [&str; 4] = [
+    "helio",
+    "helio-asset-compat",
+    "helio-presets",
+    "helio-scene-derivations",
+];
 
 /// Dependencies a generated game project needs, resolved from *this* engine
 /// build's `[workspace.dependencies]` so the game compiles against the exact
@@ -82,6 +87,64 @@ fn main() {
     let deps_path = out_dir.join("game_manifest_deps.toml");
     fs::write(&deps_path, manifest_deps)
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", deps_path.display()));
+
+    // ── Bake the installed plugins for generated games ────────────────────────
+    // A game links the runtime modules of the plugins its project enables
+    // (`core_project_builder`): the descriptors of the plugins installed with
+    // this engine (plugins/vendor/*/pulsar-plugin.toml) and each runtime
+    // module's dependency spec.
+    let plugins = build_game_plugins(dependencies, &workspace_root);
+    let plugins_path = out_dir.join("game_plugins.rs");
+    fs::write(&plugins_path, plugins)
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", plugins_path.display()));
+}
+
+/// `game_plugins.rs`: `DESCRIPTORS` (each installed plugin's descriptor) and
+/// `DEPENDENCIES` (each runtime module's spec, paths absolute).
+fn build_game_plugins(dependencies: &toml::Table, workspace_root: &Path) -> String {
+    let vendor = workspace_root.join("plugins/vendor");
+    println!("cargo:rerun-if-changed={}", vendor.display());
+    let mut dirs: Vec<PathBuf> = fs::read_dir(&vendor)
+        .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
+        .unwrap_or_default();
+    dirs.sort();
+    let mut descriptors = String::new();
+    let mut specs = String::new();
+    for dir in dirs {
+        let file = dir.join("pulsar-plugin.toml");
+        let Ok(source) = fs::read_to_string(&file) else {
+            continue;
+        };
+        println!("cargo:rerun-if-changed={}", file.display());
+        let descriptor: toml::Value =
+            toml::from_str(&source).unwrap_or_else(|error| panic!("{}: {error}", file.display()));
+        descriptors.push_str(&format!(
+            "    include_str!(r#\"{}\"#),\n",
+            absolute_path(workspace_root, &file.to_string_lossy())
+        ));
+        let runtime = descriptor
+            .get("modules")
+            .and_then(|modules| modules.get("runtime"))
+            .and_then(toml::Value::as_array)
+            .unwrap_or_else(|| panic!("{}: no `[modules] runtime`", file.display()));
+        for module in runtime.iter().filter_map(toml::Value::as_str) {
+            let spec = dependencies.get(module).unwrap_or_else(|| {
+                panic!(
+                    "{}: runtime module `{module}` is not in [workspace.dependencies]",
+                    file.display()
+                )
+            });
+            let spec = format_toml_inline(&rewrite_paths(spec, workspace_root));
+            specs.push_str(&format!("    (\"{module}\", r#\"{spec}\"#),\n"));
+        }
+    }
+    format!(
+        "/// The descriptors of the plugins installed with this engine.\n\
+         pub const DESCRIPTORS: &[&str] = &[\n{descriptors}];\n\n\
+         /// Each installed plugin's runtime modules, as a generated game's\n\
+         /// dependency specs.\n\
+         pub const DEPENDENCIES: &[(&str, &str)] = &[\n{specs}];\n"
+    )
 }
 
 fn dependency_revision<'a>(dependencies: &'a toml::Table, dependency: &str) -> &'a str {

@@ -1,0 +1,27 @@
+[package]
+name = "helio-pass-vg-shade"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry deferred shading: vis resolve, material binning, G-buffer attribute/material evaluation and final depth"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-frame-api = { workspace = true }
+helio-light-api = { workspace = true }
+helio-core = { workspace = true }
+helio-mats = { workspace = true }
+helio-pass-gbuffer = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-vg-stream = { workspace = true }
+helio-pass-vg-cull = { workspace = true }
+helio-pass-vg-raster = { workspace = true }
+helio-pass-vg-dense = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+glam = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }
+pollster = "0.4"

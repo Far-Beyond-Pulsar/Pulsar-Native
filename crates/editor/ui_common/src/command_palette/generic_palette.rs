@@ -607,7 +607,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
 
     /// Request a thumbnail once for a file row that the virtual list is drawing.
     fn ensure_thumbnail(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        crate::asset_thumbnails::register_mesh_thumbnail_renderer();
+        crate::asset_thumbnails::register_thumbnail_renderers();
         if self.thumbnails.contains_key(&path)
             || self.thumbnail_requested.contains(&path)
             || !engine_fs::thumbnails::supports_thumbnail(&path)

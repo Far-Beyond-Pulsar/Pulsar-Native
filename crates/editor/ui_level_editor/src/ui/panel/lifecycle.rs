@@ -224,7 +224,7 @@ impl LevelEditorPanel {
                             let mut state = state_arc.write();
                             state.scene.set_current_scene(path, false);
                             state.scene.world_settings = world_settings;
-                            state.editor.terrain.foliage_sets = editor_state.foliage_sets;
+                            crate::extend::load_editor_data(&mut state, Some(&editor_state));
                             state.scene.has_unsaved_changes = false;
                             state.scene.select_object(None);
                             state.scene.bump_revision(false);
@@ -335,9 +335,6 @@ impl LevelEditorPanel {
             .lock()
             .ok()
             .and_then(|engine| engine.editor_mailbox());
-        if let Some(mailbox) = &helio_mailbox {
-            shared_state.write().scene.voxel_chunk_saves = Some(mailbox.voxel_chunk_saves());
-        }
 
         let playback_host_id = engine_state::playback::new_playback_host_id();
         let poll_state = Arc::clone(&shared_state);
@@ -357,11 +354,12 @@ impl LevelEditorPanel {
                     .await;
                 // Report Play-In-Editor status to the engine-global playback state.
                 super::playback_host::publish_playback_status(playback_host_id, &poll_state.read());
-                // A released sculpt stroke becomes one undo step once the
-                // render thread applied its last samples.
-                if poll_state.read().editor.voxel_stroke.is_some() {
+                // A plugin's interaction that ended (a released sculpt
+                // stroke) becomes one undo step once the render thread
+                // applied its last samples.
+                if crate::extend::interaction_in_progress(&poll_state.read()) {
                     let mut s = poll_state.write();
-                    crate::state::voxel::VoxelStroke::finish(&mut s, false);
+                    crate::extend::finish_interactions(&mut s, false);
                 }
                 // A Stop the Game viewport did not process in time still
                 // restores the editor world (#925).

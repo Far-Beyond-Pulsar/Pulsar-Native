@@ -1,0 +1,57 @@
+[package]
+name = "sprites-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The sprites plugin's standalone hosts on Helio: 2D sprite demos"
+build = "build.rs"
+
+[features]
+# `#[derive(SceneStore)]` (the plugin's rows in `common.rs`) checks the
+# deriving crate's own `gpu` feature.
+default = ["gpu"]
+gpu = []
+
+[[bin]]
+name = "sprite_demo"
+path = "sprite_demo.rs"
+
+[[bin]]
+name = "sprite_stress_test"
+path = "sprite_stress_test.rs"
+
+[[bin]]
+name = "sprite_10m_demo"
+path = "sprite_10m_demo.rs"
+
+[[bin]]
+name = "sprite_dig_demo"
+path = "sprite_dig_demo.rs"
+
+[dependencies]
+helio-light-host = { workspace = true }
+helio-mesh-host = { workspace = true }
+# `#[derive(SceneStore)]` expands to reflection paths.
+pulsar_reflection = { workspace = true }
+bytemuck = { workspace = true }
+env_logger = "0.11"
+glam = { workspace = true }
+helio = { workspace = true }
+helio-components = { workspace = true }
+helio-core = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-pass-radiance-cascades-2d = { workspace = true }
+helio-pass-sprite-batch = { workspace = true }
+helio-pass-sprite-cull = { workspace = true }
+helio-pass-sprite-simulate = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
+helio-presets = { workspace = true }
+image = { workspace = true, features = ["png", "jpeg"] }
+log = { workspace = true }
+pollster = "0.4"
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+scenedb-inspector-agent = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }

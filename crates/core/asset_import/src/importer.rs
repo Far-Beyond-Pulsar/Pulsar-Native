@@ -1,4 +1,6 @@
-//! Per-format source conversion, selected by file extension.
+//! Per-format source conversion, selected by file extension: each format's
+//! importer is a plugin's ([`ImporterRegistration`]: the meshes' model
+//! importer), so the import service names no asset kind.
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -6,10 +8,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use helio_component::mesh_cache::{self, OptionsSchema};
-use plugin_editor_api::{SourceImage, SourceImageRole, SourceSurface};
+use plugin_editor_api::SourceSurface;
 
 use crate::db::ImportOutput;
+use crate::options::OptionsSchema;
 
 /// Import option values by field key, as the configurator produces them.
 pub type OptionValues = HashMap<String, Box<dyn Any + Send>>;
@@ -70,172 +72,106 @@ pub trait Importer: Send + Sync {
         options: &OptionValues,
         previous: &Previous,
     ) -> Result<Imported, String>;
-}
-
-struct MeshImporter;
-
-impl Importer for MeshImporter {
-    fn id(&self) -> &'static str {
-        "mesh"
-    }
-    fn handles(&self, ext: &str) -> bool {
-        mesh_cache::is_importable_model(ext)
-    }
-    fn options_schema(&self, ext: &str) -> Option<OptionsSchema> {
-        mesh_cache::options_schema(ext)
-    }
-    fn asset_path(&self, dir: &Path, source: &Path) -> PathBuf {
-        mesh_cache::native_mesh_path(dir, source)
-    }
-    fn stored_options(&self, asset: &Path, ext: &str, saved: Option<&Value>) -> OptionValues {
-        saved
-            .and_then(mesh_cache::option_values_from_json)
-            .unwrap_or_else(|| mesh_cache::resolve_options(asset, ext))
-    }
-    fn serialize_options(&self, options: &OptionValues) -> Value {
-        mesh_cache::option_values_to_json(options)
-    }
-    fn import(
+    /// Make each `(slot, material)` the native asset's default material for
+    /// that slot where it has none (what the user assigned stays): import
+    /// companions' outputs. An importer whose assets have no material slots
+    /// keeps the default (nothing to assign).
+    fn assign_default_materials(
         &self,
-        source: &Path,
-        asset: &Path,
-        options: &OptionValues,
-        previous: &Previous,
-    ) -> Result<Imported, String> {
-        let scene = mesh_cache::load_model_scene(source, options)?;
-        // A rigged model becomes a linked skeleton, skeletal mesh and
-        // animations; anything else is the static mesh it always was.
-        if !scene.rigs.is_empty() {
-            let surfaces = surfaces_of(&scene, source);
-            crate::rig::import_rigs(&scene, asset, previous, surfaces)
-        } else {
-            let surfaces = surfaces_of(&scene, source);
-            if scene.parts.len() > 1 {
-                return import_parts(&scene, source, asset, previous, surfaces);
-            }
-            mesh_cache::write_static_mesh(scene, asset).map(|asset| Imported {
-                asset,
-                outputs: Vec::new(),
-                surfaces,
-                parts: Vec::new(),
-            })
-        }
+        _asset: &Path,
+        _assignments: &[(u32, String)],
+    ) -> Result<(), String> {
+        Ok(())
     }
 }
 
-/// A source with several meshes becomes one `.mesh` per mesh, named
-/// `<model>_<mesh>.mesh` beside where the single mesh would have gone. The
-/// first is the import's primary asset and the rest are recorded as outputs
-/// named for the mesh they came from.
-fn import_parts(
-    scene: &helio_asset_compat::ConvertedScene,
-    source: &Path,
-    asset: &Path,
-    previous: &Previous,
-    surfaces: Vec<SourceSurface>,
-) -> Result<Imported, String> {
-    let dir = asset.parent().unwrap_or_else(|| Path::new("."));
-    let stem = source
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("model");
-    let written = mesh_cache::write_mesh_parts(scene, dir, stem)?;
-    let parts: Vec<ImportedPart> = written
-        .iter()
-        .map(|part| ImportedPart {
-            asset: part.path.clone(),
-            surfaces: part
-                .source_materials
-                .iter()
-                .enumerate()
-                .filter_map(|(slot, material)| {
-                    let mut surface = surfaces.get((*material)?)?.clone();
-                    surface.slot = slot as u32;
-                    Some(surface)
-                })
-                .collect(),
-        })
-        .collect();
-    let outputs = written
-        .iter()
-        .skip(1)
-        .map(|part| ImportOutput {
-            path: crate::db::relative_key(previous.project_root, &part.path),
-            kind: "mesh".to_string(),
-            id: None,
-            source_name: Some(part.name.clone()),
-            source_skin: None,
-        })
-        .collect();
-    Ok(Imported {
-        asset: written[0].path.clone(),
-        outputs,
-        surfaces,
-        parts,
-    })
+/// A plugin's importer, submitted by its component crate with
+/// `inventory::submit!`.
+pub struct ImporterRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    pub importer: &'static dyn Importer,
 }
 
-fn role_of(semantic: helio_asset_compat::TextureSemantic) -> Option<SourceImageRole> {
-    use helio_asset_compat::TextureSemantic as T;
-    match semantic {
-        T::BaseColor => Some(SourceImageRole::BaseColor),
-        T::Normal => Some(SourceImageRole::Normal),
-        T::MetallicRoughness => Some(SourceImageRole::MetallicRoughness),
-        T::Occlusion => Some(SourceImageRole::Occlusion),
-        T::Emissive => Some(SourceImageRole::Emissive),
-        T::SpecularColor | T::SpecularWeight => None,
+inventory::collect!(ImporterRegistration);
+
+impl pulsar_plugins::Registration for ImporterRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
     }
 }
 
-/// The source's materials as neutral surfaces: the images their texture
-/// slots name, plus images next to the model named after the material for
-/// roles the file leaves empty. Slot `i` is the native mesh's slot `i`.
-fn surfaces_of(scene: &helio_asset_compat::ConvertedScene, source: &Path) -> Vec<SourceSurface> {
-    let nearby = crate::companion::nearby_images(source);
-    let model_stem = source
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or_default();
-    let only_surface = scene.material_sources.len() == 1;
-    scene
-        .material_sources
-        .iter()
-        .enumerate()
-        .map(|(slot, material)| {
-            let mut surface = SourceSurface {
-                slot: slot as u32,
-                name: material.name.clone(),
-                images: material
-                    .images
-                    .iter()
-                    .filter_map(|image| {
-                        Some(SourceImage {
-                            role: role_of(image.semantic)?,
-                            path: image.path.clone(),
-                        })
-                    })
-                    .collect(),
-            };
-            crate::companion::complete_from_siblings(
-                &mut surface,
-                model_stem,
-                only_surface,
-                &nearby,
-            );
-            surface
-        })
-        .collect()
+fn importers() -> impl Iterator<Item = &'static dyn Importer> {
+    pulsar_plugins::registered::<ImporterRegistration>().map(|registration| registration.importer)
 }
-
-static IMPORTERS: &[&dyn Importer] = &[&MeshImporter];
 
 /// The importer for sources with extension `ext` (no dot, any case).
 pub fn importer_for(ext: &str) -> Option<&'static dyn Importer> {
     let ext = ext.to_ascii_lowercase();
-    IMPORTERS.iter().copied().find(|i| i.handles(&ext))
+    importers().find(|i| i.handles(&ext))
 }
 
 /// Look an importer up by its stored [`Importer::id`].
 pub fn importer_by_id(id: &str) -> Option<&'static dyn Importer> {
-    IMPORTERS.iter().copied().find(|i| i.id() == id)
+    importers().find(|i| i.id() == id)
+}
+
+/// A stand-in model importer for this crate's own tests (no plugin is
+/// linked into them): claims `.fbx` and `.obj` sources, writes a placeholder
+/// `.mesh`.
+#[cfg(test)]
+mod test_importer {
+    use super::*;
+
+    struct TestModelImporter;
+
+    impl Importer for TestModelImporter {
+        fn id(&self) -> &'static str {
+            "mesh"
+        }
+        fn handles(&self, ext: &str) -> bool {
+            matches!(ext, "fbx" | "obj")
+        }
+        fn options_schema(&self, _ext: &str) -> Option<OptionsSchema> {
+            None
+        }
+        fn asset_path(&self, dir: &Path, source: &Path) -> PathBuf {
+            dir.join(source.file_stem().unwrap_or_default())
+                .with_extension("mesh")
+        }
+        fn stored_options(
+            &self,
+            _asset: &Path,
+            _ext: &str,
+            _saved: Option<&Value>,
+        ) -> OptionValues {
+            OptionValues::new()
+        }
+        fn serialize_options(&self, _options: &OptionValues) -> Value {
+            Value::Null
+        }
+        fn import(
+            &self,
+            _source: &Path,
+            asset: &Path,
+            _options: &OptionValues,
+            _previous: &Previous,
+        ) -> Result<Imported, String> {
+            std::fs::write(asset, b"test mesh").map_err(|error| error.to_string())?;
+            Ok(Imported {
+                asset: asset.to_path_buf(),
+                outputs: Vec::new(),
+                surfaces: Vec::new(),
+                parts: Vec::new(),
+            })
+        }
+    }
+
+    inventory::submit! {
+        ImporterRegistration {
+            origin: pulsar_plugins::origin!(),
+            importer: &TestModelImporter,
+        }
+    }
 }

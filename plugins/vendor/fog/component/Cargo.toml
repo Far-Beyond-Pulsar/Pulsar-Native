@@ -1,0 +1,51 @@
+[package]
+name = "fog_component"
+version = "0.1.0"
+edition = "2024"
+description = "Fog (pulsar.fog): the global fog and local fog volume components, their rows and the registrations of the plugin's Helio feature (volumetric fog and its composite)"
+
+# Hosts (the editor through the plugin crate, the game) link it; the
+# components, their rows, scene rows and render feature register through
+# `inventory` once the crate is linked.
+[lib]
+name = "fog_component"
+
+[features]
+# `#[derive(SceneStore)]` checks the deriving crate's own `gpu` feature.
+default = ["gpu"]
+gpu = []
+
+[dependencies]
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+gpui-ce = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_scene_model = { workspace = true }
+helio_component = { workspace = true }
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+inventory = { workspace = true }
+# The engine-class derive logs through it.
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+wgpu = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-scene-join = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true }
+
+[dev-dependencies]
+pollster = "=0.4.0"
+glam = { workspace = true }
+helio-core = { workspace = true }
+
+[lints]
+workspace = true

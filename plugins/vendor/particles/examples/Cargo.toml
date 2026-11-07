@@ -1,0 +1,45 @@
+[package]
+name = "particles-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The particles plugin's standalone hosts on Helio: the Corona particle demo"
+
+[features]
+# `#[derive(SceneStore)]` (the plugin's rows in `common.rs`) checks the
+# deriving crate's own `gpu` feature.
+default = ["gpu"]
+gpu = []
+
+[[bin]]
+name = "corona_demo"
+path = "corona_demo.rs"
+
+[dependencies]
+helio-light-host = { workspace = true }
+helio-light-api = { workspace = true }
+helio-mesh-host = { workspace = true }
+helio-mats = { workspace = true, features = ["host-rows"] }
+# `#[derive(SceneStore)]` expands to reflection paths.
+pulsar_reflection = { workspace = true }
+bytemuck = { workspace = true }
+env_logger = "0.11"
+glam = { workspace = true }
+helio = { workspace = true }
+helio-components = { workspace = true }
+helio-core = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-mesh-api = { workspace = true }
+helio-pass-corona = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
+helio-presets = { workspace = true }
+image = { workspace = true, features = ["png", "jpeg"] }
+log = { workspace = true }
+pollster = "0.4"
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+scenedb-inspector-agent = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }

@@ -1,0 +1,460 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Pulsar multi-skin regression fixture"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1,
+        2,
+        20,
+        21
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "A",
+      "mesh": 0,
+      "skin": 0
+    },
+    {
+      "name": "B",
+      "mesh": 0,
+      "skin": 1
+    },
+    {
+      "name": "SceneRoot",
+      "children": [
+        3,
+        12
+      ]
+    },
+    {
+      "name": "A0",
+      "translation": [
+        0,
+        0,
+        0
+      ],
+      "children": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "name": "A1",
+      "translation": [
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A2",
+      "translation": [
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A3",
+      "translation": [
+        3,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A4",
+      "translation": [
+        4,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A5",
+      "translation": [
+        5,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A6",
+      "translation": [
+        6,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A7",
+      "translation": [
+        7,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "A8",
+      "translation": [
+        8,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B0",
+      "translation": [
+        20,
+        0,
+        0
+      ],
+      "children": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "name": "B1",
+      "translation": [
+        19,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B2",
+      "translation": [
+        18,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B3",
+      "translation": [
+        17,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B4",
+      "translation": [
+        16,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B5",
+      "translation": [
+        15,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B6",
+      "translation": [
+        14,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "B7",
+      "translation": [
+        13,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "AInstance",
+      "mesh": 0,
+      "skin": 0
+    },
+    {
+      "name": "StaticInstance",
+      "mesh": 0,
+      "translation": [
+        5,
+        0,
+        0
+      ]
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Body",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "JOINTS_0": 1,
+            "WEIGHTS_0": 2,
+            "JOINTS_1": 3,
+            "WEIGHTS_1": 4,
+            "JOINTS_2": 5,
+            "WEIGHTS_2": 6
+          },
+          "indices": 7,
+          "material": 0
+        },
+        {
+          "attributes": {
+            "POSITION": 0,
+            "JOINTS_0": 1,
+            "WEIGHTS_0": 2,
+            "JOINTS_1": 3,
+            "WEIGHTS_1": 4,
+            "JOINTS_2": 5,
+            "WEIGHTS_2": 6
+          },
+          "indices": 7,
+          "material": 1
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Cloth"
+    },
+    {
+      "name": "Trim"
+    }
+  ],
+  "skins": [
+    {
+      "name": "Rig",
+      "skeleton": 3,
+      "joints": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "inverseBindMatrices": 8
+    },
+    {
+      "name": "Rig",
+      "skeleton": 2,
+      "joints": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        3
+      ],
+      "inverseBindMatrices": 9
+    }
+  ],
+  "animations": [
+    {
+      "name": "Move",
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 3,
+            "path": "translation"
+          }
+        }
+      ],
+      "samplers": [
+        {
+          "input": 10,
+          "output": 11,
+          "interpolation": "LINEAR"
+        }
+      ]
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "type": "VEC3",
+      "count": 3,
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5123,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5123,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "type": "VEC4",
+      "count": 3
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5123,
+      "type": "SCALAR",
+      "count": 3
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "type": "MAT4",
+      "count": 9
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "type": "MAT4",
+      "count": 9
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "type": "SCALAR",
+      "count": 2,
+      "min": [
+        0
+      ],
+      "max": [
+        1
+      ]
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5126,
+      "type": "VEC3",
+      "count": 2
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 36
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 36,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 60,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 108,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 132,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 180,
+      "byteLength": 24
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 204,
+      "byteLength": 48
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 252,
+      "byteLength": 6
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 260,
+      "byteLength": 576
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 836,
+      "byteLength": 576
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1412,
+      "byteLength": 8
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1420,
+      "byteLength": 24
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1444,
+      "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAwAHAAYABQAEAAEABwAAAAAAzczMPM3MzDzNzEw9zcxMPQAAAD4AAAA+AAAAPgAAAD4AAIA+AABAPwAAAAAAAAAABAAFAAYABwADAAIAAQAAAAAAAAAAAAAAmpmZPc3MzD0AAAA+zcxMPQAAAD4AAAA+AAAAPgAAAD4AAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAIAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAvwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAMAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAEDAAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAwAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAoMAAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAMDAAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAADgwAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAMEAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAKDBAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACYwQAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAkMEAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIjBAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAwQAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAcMEAAAAAAAAAAAAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAGDBAAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAABQwQAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAMAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAA=="
+    }
+  ]
+}

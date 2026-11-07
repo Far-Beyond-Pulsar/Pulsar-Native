@@ -16,10 +16,9 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
-    SceneObjectData, Transform,
+    components, level_io, objects, LevelEditorCameraState, ObjectType, SceneObjectData, Transform,
 };
-use helio::{MeshUpload, PackedVertex};
+use helio_mesh_api::{MeshUpload, PackedVertex};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -114,10 +113,10 @@ fn build_batches() -> Vec<Batch> {
     batches
 }
 
-fn light(color: [f32; 3], intensity: f32, range: f32) -> helio_component::LightComponent {
-    let mut light = helio_component::LightComponent::default();
+fn light(color: [f32; 3], intensity: f32, range: f32) -> lights_component::LightComponent {
+    let mut light = lights_component::LightComponent::default();
     light.general.enabled = true;
-    light.general.light_type = helio_component::LightType::Point;
+    light.general.light_type = lights_component::LightType::Point;
     light.color.color = [color[0], color[1], color[2], 1.0];
     light.intensity.intensity = intensity;
     light.attenuation.range = range;
@@ -168,7 +167,7 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
             &mut world,
             object(
                 &batch.name,
-                ObjectType::Mesh(MeshType::Custom),
+                ObjectType::Empty,
                 [0.0; 3],
                 Some(&architecture),
             ),
@@ -191,7 +190,7 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
                 &mut world,
                 object(
                     &name,
-                    ObjectType::Light(LightType::Point),
+                    ObjectType::Empty,
                     position.map(f64::from),
                     Some(&folder),
                 ),
@@ -264,8 +263,8 @@ fn generate() {
     for batch in &batches {
         let path = root.join("assets").join(&batch.file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let id = helio_component::mesh_cache::content_id_for_bytes(&batch.mesh);
-        std::fs::write(&path, helio_component::mesh_cache::encode(&batch.mesh, id)).unwrap();
+        let id = meshes_component::mesh_cache::content_id_for_bytes(&batch.mesh);
+        std::fs::write(&path, meshes_component::mesh_cache::encode(&batch.mesh, id)).unwrap();
     }
     let world = build_world(&batches);
     level_io::save_to_file_with_editor_camera(
@@ -332,7 +331,7 @@ fn committed_meshes_match_generator() {
     for batch in build_batches() {
         let bytes = std::fs::read(root.join("assets").join(&batch.file))
             .unwrap_or_else(|e| panic!("{} missing: {e}", batch.file));
-        let (decoded, _) = helio_component::mesh_cache::decode(&bytes).expect("valid PMSH");
+        let (decoded, _) = meshes_component::mesh_cache::decode(&bytes).expect("valid PMSH");
         assert_eq!(decoded.indices, batch.mesh.indices, "{}", batch.file);
         assert_eq!(
             decoded.vertices.len(),
@@ -364,14 +363,17 @@ fn default_level_loads_the_cathedral() {
     let camera = level_io::load_from_file_with_editor_camera(&mut world, &path)
         .expect("default level loads");
     let all = objects::get_all_objects(&world);
-    let meshes = all
-        .iter()
-        .filter(|o| matches!(o.object_type, ObjectType::Mesh(_)))
-        .count();
-    let lights = all
-        .iter()
-        .filter(|o| matches!(o.object_type, ObjectType::Light(_)))
-        .count();
+    // What an object is, is its components'.
+    let holding = |class: &str| {
+        all.iter()
+            .filter(|o| {
+                components::get_component_class_names(&world, &o.id)
+                    .iter()
+                    .any(|name| name == class)
+            })
+            .count()
+    };
+    let (meshes, lights) = (holding("StaticMeshComponent"), holding("LightComponent"));
     assert_eq!((meshes, lights), (14, 17));
     // The editor rewrites the camera whenever the level is saved, so
     // compare with what the file holds rather than a fixed position.

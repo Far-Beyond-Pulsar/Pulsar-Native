@@ -277,6 +277,15 @@ impl PermanentLibrary {
             }
         })?;
 
+        // The loader knows this library by the name `/proc/self/fd/N`, and
+        // glibc's dlopen returns an already loaded object whose name matches.
+        // Closing the fd would let the next library open as the same `N`, and
+        // dlopen would hand back this one instead of loading it (every plugin
+        // after the first came back as the first). The library is never
+        // unloaded, so its fd stays open for the life of the process too.
+        #[cfg(target_os = "linux")]
+        std::mem::forget(file);
+
         tracing::info!(
             "Loaded permanent library: {:?} (sha256={:02x?}, will never unload)",
             path,

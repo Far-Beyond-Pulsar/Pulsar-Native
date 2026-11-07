@@ -117,11 +117,6 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         ("pulsar_class".to_owned(), features(&[])),
         ("pulsar_content".to_owned(), features(&[])),
         ("pulsar_game".to_owned(), features(&[])),
-        // `pulsar_rendering` (now `helio_component`) moved to
-        // `crates/renderer/helio/crates/helio-component` -- outside the fixed
-        // `crates/{core,editor,subsystems,agent-providers}` tree
-        // `member_manifests` scans below, so it's no longer discovered or
-        // covered by this policy check.
         ("pulsar_scene".to_owned(), features(&[])),
         ("pulsar_std".to_owned(), features(&[])),
         ("ui_common".to_owned(), features(&["editor"])),

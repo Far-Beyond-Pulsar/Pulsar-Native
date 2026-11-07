@@ -1,26 +1,34 @@
 //! A scene's renderer: Helio's renderer over a shared SceneDB scene, with
-//! the scene's voxel worlds and the frame's coordinate space. The one
+//! what the scene's content publishes and the frame's coordinate space. The one
 //! construction the editor viewport (`HelioRenderer`, which adds gizmos,
 //! picking, brushes and debug views) and the game (the standalone window and
 //! Play-in-Editor) render with, so a played level looks as the editor shows
 //! it.
 //!
-//! Per frame: [`SceneRenderer::step_scene`] advances the scene,
-//! [`SceneRenderer::prepare_frame`] streams virtual geometry, places the
-//! camera (at its f64 eye; Helio's frames are camera-relative, their origin
-//! following it), clip planes the voxel worlds certify, the live TSR preset)
-//! and publishes the voxel worlds' frames, [`SceneRenderer::render`] uploads
-//! the scene and draws.
+//! Per frame: [`SceneRenderer::step_scene`] advances the scene (and the
+//! subsystems plugins add to it), [`SceneRenderer::prepare_frame`] streams
+//! virtual geometry, places the camera (at its f64 eye; Helio's frames are
+//! camera-relative, their origin following it), clip planes the scene's
+//! ground certifies, the live TSR preset) and hands the renderer the CPU
+//! payloads the scene's content publishes (`pulsar_world_registry::
+//! scene_payloads`), [`SceneRenderer::render`] uploads the scene and draws.
 
 use std::sync::Arc;
 
 use glam::{DVec3, Vec3};
 use helio::{Camera, Renderer};
 
-use super::voxel_backend::{PlanetVoxelBackend, VoxelBackendRegistry, VoxelChunkSaves, VoxelView};
-use crate::scene::voxel_frame::{project_voxel_entries, VoxelWorldSync};
-use crate::scene::{SharedScene, SpaceSync, VirtualGeometryHost};
-use pulsar_settings::project::virtual_geometry::VirtualGeometrySettings;
+use super::camera_ground::{CameraGround, GroundQueries};
+use super::host_parts::RenderHostPart;
+use crate::scene::{SharedScene, SpaceSync};
+
+/// A change applied to a renderer's host parts when they are made (and to
+/// the existing ones): what a test or tool sets on a plugin's part, by key
+/// (a later setup with the same key replaces it).
+pub type HostPartSetup = (
+    &'static str,
+    Arc<dyn Fn(&mut dyn RenderHostPart) + Send + Sync>,
+);
 
 /// Who owns the renderer's device.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -39,14 +47,13 @@ pub struct SceneRendererOptions {
     /// them).
     pub editor_mode: bool,
     pub device: DeviceOwner,
-    /// Where saves ask the voxel planet's renderer for its edited chunks.
-    pub chunk_saves: VoxelChunkSaves,
     /// The render pipeline asked for (a registered id, see
     /// [`super::pipelines`]); `None`, an unregistered id or the default build
-    /// the engine's default graph with its voxel passes.
+    /// the engine's default graph.
     pub pipeline: Option<String>,
-    /// Virtual-geometry settings in place of the project's (tests, tools).
-    pub virtual_geometry: Option<VirtualGeometrySettings>,
+    /// Applied to the plugins' render-host parts when they are made
+    /// (tests, tools: a plugin's settings in place of the project's).
+    pub host_part_setups: Vec<HostPartSetup>,
 }
 
 impl SceneRendererOptions {
@@ -55,10 +62,9 @@ impl SceneRendererOptions {
         Self {
             editor_mode,
             device,
-            chunk_saves: VoxelChunkSaves::default(),
             // The level's pipeline (World Settings).
             pipeline: super::pipelines::level_pipeline(),
-            virtual_geometry: None,
+            host_part_setups: Vec::new(),
         }
     }
 }
@@ -74,12 +80,24 @@ pub struct FrameView {
     /// Width over height.
     pub aspect: f32,
     pub projection: FrameProjection,
+    /// Optional crop into the full output. `aspect` describes `full_size`,
+    /// while the actual render target can be as small as one GPU texture.
+    pub crop: Option<FrameCrop>,
+}
+
+/// One tile of a full-resolution image being rendered by `SceneRenderer`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameCrop {
+    pub full_size: [u32; 2],
+    pub origin: [u32; 2],
+    pub tile_size: [u32; 2],
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum FrameProjection {
     /// `fov_y` radians vertically. `near` and `far` are the camera's own clip
-    /// planes; over a voxel world the planes it certifies replace them.
+    /// planes; over ground that certifies planes (a voxel world) those
+    /// replace them.
     Perspective { fov_y: f32, near: f32, far: f32 },
     /// Looking at the eye from both sides, `half_height` up and down
     /// ([`ortho_camera`]).
@@ -89,18 +107,10 @@ pub enum FrameProjection {
 /// A frame placed by [`SceneRenderer::prepare_frame`].
 pub struct PreparedFrame {
     pub camera: Camera,
-    /// The voxel worlds' problems, when they changed this frame (an empty
-    /// list: they were fixed). Already logged.
+    /// The problems the scene's content reports (a voxel world that does
+    /// not build), when they changed this frame (an empty list: they were
+    /// fixed). Already logged.
     pub new_errors: Option<Vec<String>>,
-}
-
-/// The voxel ground under an eye.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct VoxelGround {
-    /// The local vertical (a planet's radial).
-    pub up: Option<DVec3>,
-    /// Height above the ground directly below.
-    pub altitude: Option<f64>,
 }
 
 pub struct SceneRenderer {
@@ -108,24 +118,23 @@ pub struct SceneRenderer {
     project_settings: super::project_settings::ProjectGraphSettingsCache,
     scene: SharedScene,
     queue: Arc<wgpu::Queue>,
-    voxels: VoxelBackendRegistry,
     /// The rigid-frame table last handed to the renderer (slot 0 is the
     /// world), so it is re-uploaded only when a frame moved.
     spaces: SpaceSync,
     /// What the frame reads from the scene, and the world revision it was
     /// read at: camera-only frames reuse it.
-    read: Option<(u64, Arc<VoxelSceneRead>)>,
+    read: Option<(u64, Arc<SceneRead>)>,
     last_errors: Vec<String>,
-    /// Drops voxel edits made on ground a terrain no longer has and keeps
-    /// skies with their terrain; created with the first step.
-    world_sync: Option<VoxelWorldSync>,
-    /// Builds, caches and streams the cluster assets of meshes whose owner
-    /// has a `VirtualGeometryComponent`; its runtime feeds the graph.
-    virtual_geometry: VirtualGeometryHost,
-    virtual_geometry_override: Option<VirtualGeometrySettings>,
+    /// The ground under cameras, as the scene's content reports it.
+    ground: GroundQueries,
+    /// The plugins' per-renderer state (`RenderHostPartRegistration`).
+    host_parts: Vec<Box<dyn RenderHostPart>>,
     /// The registered pipeline id the graph was built from (`None`: the
     /// default).
     pipeline: Option<String>,
+    /// What the host publishes for this view's passes besides the scene's
+    /// payloads ([`Self::set_view_payload`]).
+    view_payloads: Vec<(&'static str, super::ViewPayload)>,
 }
 
 impl SceneRenderer {
@@ -142,26 +151,33 @@ impl SceneRenderer {
         format: wgpu::TextureFormat,
         options: SceneRendererOptions,
     ) -> Self {
-        let mut voxels = VoxelBackendRegistry::new();
-        voxels
-            .register(Box::new(PlanetVoxelBackend::new(options.chunk_saves)))
-            .expect("built-in voxel renderer ID must be unique");
-
         // Every renderer setting comes from the project, through Helio's
-        // description of them; under "Automatic" TSR the voxel scene's
+        // description of them; under "Automatic" TSR the scene content's
         // preset.
         let settings = super::project_settings::renderer();
-        let voxel_quality = {
+        let scene_quality = {
             let store = scene.read();
-            let (entries, _) = project_voxel_entries(&store.world);
-            voxels.temporal_quality(&entries, [width, height])
+            temporal_quality(
+                pulsar_world_registry::scene_payloads(&store.world).temporal,
+                [width, height],
+            )
         };
-        let mut virtual_geometry = VirtualGeometryHost::new();
-        let mut config = super::project_settings::renderer_config(width, height, format, &settings)
-            .with_virtual_geometry(virtual_geometry.runtime());
-        if let Some(quality) = super::project_settings::tsr_quality(&settings, voxel_quality) {
+        let mut host_parts = super::host_parts::new_parts();
+        for part in &mut host_parts {
+            for (_, setup) in &options.host_part_setups {
+                setup(part.as_mut());
+            }
+        }
+        let mut config = host_parts.iter_mut().fold(
+            super::project_settings::renderer_config(width, height, format, &settings),
+            |config, part| part.configure(config),
+        );
+        if let Some(quality) = super::project_settings::tsr_quality(&settings, scene_quality) {
             config = config.with_tsr_quality(quality);
         }
+        // The plugins' features' settings: their features join whichever
+        // pipeline the level runs.
+        let config = super::render_features::configure(config);
 
         let scene_db =
             crate::scene::ensure_gpu_mirror(&mut scene.write(), device.clone(), queue.clone());
@@ -171,77 +187,67 @@ impl SceneRenderer {
             // Parent-relative transforms become world-space first, under the
             // same key, so the joins below read them unchanged.
             .with_scene_derivation(crate::scene::hierarchy_resolve(&device))
-            // Meshes and lights: Helio joins the authored rows on the GPU.
-            .with_scene_derivation(crate::scene::scene_join(&device, options.editor_mode))
-            // Virtual geometry: which assets are ready, then which instances
-            // are VG-active (both before the authored LOD, which they
-            // suppress).
-            .with_scene_derivation(crate::scene::virtual_geometry_asset_ready(
-                &virtual_geometry,
-                &device,
-            ))
-            .with_scene_derivation(crate::scene::virtual_geometry_instances(
-                &mut virtual_geometry,
-                &device,
-            ))
-            .with_scene_derivation(crate::scene::authored_lod_selection(
-                &device,
-                scene_db,
-                // Pulsar's derivations record into one encoder: they share
-                // one staging pool.
-                crate::gpu::Uploads::new(&device),
-            ))
-            .with_scene_derivation(crate::scene::environment_join(&device))
-            // Authored portals, paired and projected each frame by `spaces`.
-            .with_scene_derivation(crate::scene::portal_projection(
-                &device,
-                spaces.portal_input(),
-            ))
+            // Every plugin's object join (the meshes', the lights'): the
+            // authored rows joined on the GPU.
+            .with_scene_derivation(crate::scene::scene_join(&device, options.editor_mode));
+        // The plugins' host parts' derivations (the meshes' virtual
+        // geometry and authored LOD), between the object and row joins.
+        for part in &mut host_parts {
+            for derivation in part.derivations(&device, &scene_db) {
+                builder = builder.with_scene_derivation(derivation);
+            }
+        }
+        let mut builder = builder.with_scene_derivation(crate::scene::environment_join(&device));
+        // What the plugins' space producers project each frame (`spaces`).
+        for derivation in spaces.derivations(&device) {
+            builder = builder.with_scene_derivation(derivation);
+        }
+        let mut builder = builder
             // No default ambient: all illumination comes from the scene.
-            .with_ambient([0.0, 0.0, 0.0], 0.0);
+            .with_feature(helio::AmbientLight {
+                color: [0.0; 3],
+                intensity: 0.0,
+            });
         if options.device == DeviceOwner::Host {
             builder = builder.with_external_device();
         }
-        // The engine's default keeps its voxel passes; any other registered
-        // pipeline is built through `IntoGraph`.
+        // The level's registered pipeline, or the default deferred preset.
         let pipeline = super::pipelines::resolve_pipeline(options.pipeline.as_deref())
-            .filter(|id| *id != helio_default_passes::pipelines::DEFAULT);
+            .filter(|id| *id != helio_presets::pipelines::DEFAULT);
         let custom = pipeline
             .as_deref()
             .and_then(|id| super::pipelines::create_pipeline(Some(id)));
         let pipeline = custom.is_some().then_some(pipeline).flatten();
-        let builder = match custom {
-            Some(graph) => builder.with_boxed_graph(graph),
-            None => {
-                let voxel_passes = voxels.pass_factories();
-                builder.with_pass_build_context(Box::new(move |ctx| {
-                    helio_default_passes::build_default_graph_external_with_voxel_passes(
-                        ctx,
-                        voxel_passes,
-                    )
-                }))
-            }
-        };
+        let builder = builder.with_boxed_graph(custom.unwrap_or_else(|| {
+            Box::new(
+                helio_presets::Preset::Deferred
+                    .with_features(&super::render_features::plugin_features()),
+            )
+        }));
         let mut renderer = builder.build(device, queue.clone(), width, height, format);
-        // Scene materials read through trilinear, anisotropic, repeating
-        // filtering (project `streaming.texture_*` settings), not wgpu's
-        // nearest/clamp default.
-        renderer.set_material_sampler(
-            &super::material_sampler::SamplerSettings::from_project().descriptor(),
-        );
         Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),
             scene: scene.clone(),
             queue,
-            voxels,
             spaces,
             read: None,
             last_errors: Vec::new(),
-            world_sync: None,
-            virtual_geometry,
-            virtual_geometry_override: options.virtual_geometry,
+            ground: GroundQueries::default(),
+            host_parts,
             pipeline,
+            view_payloads: Vec::new(),
+        }
+    }
+
+    /// Publish `payload` for this view's passes under a feature's payload
+    /// contract key, every frame until replaced (`None` withdraws it):
+    /// editor-only data a plugin's overlay draws, beside what the scene
+    /// publishes.
+    pub fn set_view_payload(&mut self, key: &'static str, payload: Option<super::ViewPayload>) {
+        self.view_payloads.retain(|(existing, _)| *existing != key);
+        if let Some(payload) = payload {
+            self.view_payloads.push((key, payload));
         }
     }
 
@@ -251,97 +257,113 @@ impl SceneRenderer {
         self.pipeline.as_deref()
     }
 
-    /// The virtual-geometry streaming runtime (readiness, settings).
-    pub fn virtual_geometry_runtime(&self) -> &helio_vg_stream::VgRuntime {
-        self.virtual_geometry.runtime()
+    /// This renderer's host part of type `T` (a plugin's), if one was made.
+    pub fn host_part<T: RenderHostPart>(&self) -> Option<&T> {
+        self.host_parts
+            .iter()
+            .find_map(|part| part.as_any().downcast_ref::<T>())
     }
 
-    /// Use `settings` instead of the project's virtual-geometry settings
-    /// (`None` restores them); takes effect next frame.
-    pub fn set_virtual_geometry_settings(&mut self, settings: Option<VirtualGeometrySettings>) {
-        self.virtual_geometry_override = settings;
+    /// This renderer's host part of type `T` (a plugin's), if one was made.
+    pub fn host_part_mut<T: RenderHostPart>(&mut self) -> Option<&mut T> {
+        self.host_parts
+            .iter_mut()
+            .find_map(|part| part.as_any_mut().downcast_mut::<T>())
     }
 
-    /// The voxel worlds' renderers (picks, brush rays, the camera's ground).
-    pub fn voxels(&self) -> &VoxelBackendRegistry {
-        &self.voxels
-    }
-
-    /// Whether the voxel worlds need more frames to finish what they show
-    /// (a world building, chunks streaming in, a save waiting).
-    pub fn needs_frame(&self) -> bool {
-        self.voxels.needs_frame(&self.renderer)
-    }
-
-    /// The voxel renderers' diagnostics lines (`PULSAR_VOXEL_STATS`).
-    pub fn voxel_diagnostics(&self) -> Vec<String> {
-        self.voxels.diagnostics(&self.renderer)
-    }
-
-    /// Advance `scene` (this renderer's) a frame: voxel worlds' dependents
-    /// follow them, then SceneDB steps and flushes its GPU mirror.
-    pub fn step_scene(&mut self, scene: &mut pulsar_scenedb::SceneDb) {
-        {
-            profiling::profile_scope!("helio_sync_voxel_worlds");
-            self.world_sync
-                .get_or_insert_with(|| VoxelWorldSync::new(&scene.world))
-                .poll(&mut scene.world);
+    /// Apply `setup` to every host part now.
+    pub fn set_up_host_parts(&mut self, setup: &(dyn Fn(&mut dyn RenderHostPart) + Send + Sync)) {
+        for part in &mut self.host_parts {
+            setup(part.as_mut());
         }
+    }
+
+    /// Whether the renderer or the scene's content needs more frames to
+    /// finish what it shows (content streaming in or building, a request
+    /// the renderer answers a few frames later).
+    pub fn needs_frame(&self) -> bool {
+        self.content_settling() || self.renderer.needs_frame()
+    }
+
+    /// Whether the scene's content said it is still settling (a world
+    /// building, requests waiting on the renderer): its scene subsystems
+    /// need steps to take what finished.
+    pub fn content_settling(&self) -> bool {
+        pulsar_world_registry::scene_settling(&self.scene.read().world)
+    }
+
+    /// The renderer's diagnostics lines (`PULSAR_VOXEL_STATS`).
+    pub fn diagnostics(&self) -> Vec<String> {
+        self.renderer.diagnostics()
+    }
+
+    /// Advance `scene` (this renderer's) a frame: SceneDB steps the
+    /// subsystems plugins added to every scene, and flushes its GPU mirror.
+    pub fn step_scene(&mut self, scene: &mut pulsar_scenedb::SceneDb) {
         profiling::profile_scope!("helio_scene_store_step");
+        pulsar_world_registry::install_scene_subsystems(scene);
         scene.step();
     }
 
     /// What the frame reads from the scene, read once per world revision.
-    /// The voxel entries (and what else the frame reads with them) of the
-    /// scene's current revision: projected once per revision, shared by the
-    /// frame and every brush sample until the scene changes.
-    pub(super) fn scene_read(&mut self) -> Arc<VoxelSceneRead> {
+    fn scene_read(&mut self) -> Arc<SceneRead> {
         let store = self.scene.read();
         let revision = store.world.revision();
         match &self.read {
             Some((read_at, read)) if *read_at == revision => read.clone(),
             _ => {
-                let read = Arc::new(VoxelSceneRead::of(&store.world));
+                let read = Arc::new(SceneRead::of(&store.world, &self.host_parts));
                 self.read = Some((revision, read.clone()));
                 read
             }
         }
     }
 
-    /// The voxel ground under `eye`, as of the last published frame.
-    pub fn voxel_ground(&mut self, eye: DVec3) -> VoxelGround {
-        let read = self.scene_read();
-        VoxelGround {
-            up: self.voxels.local_up(&read.entries, eye),
-            altitude: self.voxels.altitude(&read.entries, eye),
-        }
+    /// The ground under `eye`, as the scene's content reports it
+    /// ([`super::camera_ground`]): a camera's local vertical and altitude.
+    pub fn camera_ground(&mut self, eye: DVec3) -> CameraGround {
+        let mut scene = self.scene.write();
+        self.ground.ground(&mut scene.world, eye)
     }
 
-    /// The direction towards the scene's sun as the voxel worlds trace it,
-    /// if it has one (the last read of the scene).
-    pub fn sun_direction(&self) -> Option<[f32; 3]> {
-        self.read.as_ref().and_then(|(_, read)| read.sun)
+    /// Where a camera at `eye` should be instead when `eye` is inside solid
+    /// ground: just above it.
+    pub fn lift_out_of_ground(&mut self, eye: DVec3) -> Option<DVec3> {
+        let mut scene = self.scene.write();
+        self.ground.lift_out_of_ground(&mut scene.world, eye)
     }
 
-    /// Place this frame's camera and publish the voxel worlds' frames for
-    /// it. `size` is the frame's in pixels.
+    /// Place this frame's camera and hand the renderer what the scene's
+    /// content publishes. `size` is the frame's in pixels.
     pub fn prepare_frame(&mut self, view: &FrameView, size: [u32; 2]) -> PreparedFrame {
         profiling::profile_scope!("helio_frame_prepare");
-        // Build and stream the virtual-geometry assets the scene asks for.
-        crate::scene::sync_virtual_geometry(
-            &mut self.virtual_geometry,
-            &self.scene,
-            self.virtual_geometry_override,
-        );
+        // The plugins' per-renderer state (the virtual-geometry assets the
+        // scene asks for, built and streamed).
+        for part in &mut self.host_parts {
+            part.prepare_frame(&self.scene);
+        }
         let read = self.scene_read();
+        // The CPU payloads the scene's content publishes for the features
+        // (a voxel world's volumes), by contract key.
+        let published = {
+            let store = self.scene.read();
+            pulsar_world_registry::scene_payloads(&store.world)
+        };
+        let mut payloads = helio_core::ScenePayloads::default();
+        for (key, payload) in published.payloads {
+            payloads.insert_any(key, payload);
+        }
+        for (key, payload) in &self.view_payloads {
+            payloads.insert_any(key, payload.clone());
+        }
 
-        // The live settings: the TSR preset (the voxel scene's under
+        // The live settings: the TSR preset (the scene content's under
         // "Automatic") and the render scale while TSR is off.
         let project_settings = self.project_settings.load();
         let settings = &project_settings.renderer;
         let tsr_quality = super::project_settings::tsr_quality(
             settings,
-            self.voxels.temporal_quality(&read.entries, size),
+            temporal_quality(published.temporal, size),
         );
         self.renderer.set_tsr_quality(tsr_quality);
         if tsr_quality.is_none() {
@@ -353,16 +375,19 @@ impl SceneRenderer {
 
         // Every frame is camera-relative: its world origin follows the eye
         // (Helio's `Renderer::origin_for`), and the rows the joins derive are
-        // relative to it. Voxel coordinates stay global (`view.eye`,
-        // `VoxelView`).
+        // relative to it. Voxel coordinates stay global.
         let origin = self.renderer.origin_for(view.eye);
         let camera = match view.projection {
             FrameProjection::Perspective { fov_y, near, far } => {
-                // Over a voxel world the planes it certifies: its empty space
-                // around the eye says nothing about authored meshes, whose
-                // close plane is kept.
-                let (near, far) = match self.voxels.camera_clip_range(&read.entries, view.eye) {
-                    Some((terrain_near, far)) if read.authored_meshes => {
+                // The planes the scene's ground certifies (a voxel world's
+                // empty space around the eye): they say nothing about other
+                // content (authored meshes), whose close plane is kept.
+                let certified = {
+                    let mut scene = self.scene.write();
+                    self.ground.clip_range(&mut scene.world, view.eye)
+                };
+                let (near, far) = match certified {
+                    Some((terrain_near, far)) if read.keeps_near_plane => {
                         (terrain_near.min(near), far)
                     }
                     Some(range) => range,
@@ -382,41 +407,33 @@ impl SceneRenderer {
                 ortho_camera(view.eye, view.forward, view.up, view.aspect, half_height)
             }
         };
-        // A lens that maps past the frame (fisheye, barrel distortion) needs
-        // a wider render than the frame, which it then crops back; the camera
-        // lens component owns how much, and tells the lens pass the same
-        // factor. TODO(review): this names one component's helper from the
-        // generic renderer, like the lens GPU column registration in
-        // `helio_bridge`; it belongs behind a view-projection hook that helio
-        // components register, once one exists.
-        let lens_overscan = helio_component::components::camera_lens_view_overscan(
+        // A view that maps past the frame (a fisheye or barrel-distorted
+        // lens) needs a wider render than the frame, which it then crops
+        // back; whatever owns the camera's optics says how much
+        // (`ViewOverscanRegistration`).
+        let overscan = super::render_features::view_overscan(
             &self.scene.read().world,
             camera.view_id,
             view.aspect,
         );
-        let camera = camera.with_overscan(lens_overscan);
+        let camera = camera.with_overscan(overscan);
+        let camera = view.crop.map_or(camera.clone(), |crop| {
+            camera.with_pixel_crop(crop.full_size, crop.origin, crop.tile_size)
+        });
         // Rigid frames: one matrix each, relative to the same origin. Their
         // members' rows never change when a frame moves; this table does.
-        // Portal chains are built for the portals this camera can see.
+        // Producers (portal projections) build only what this camera sees,
+        // and publish what their passes read about the frame.
         self.spaces
             .set_view(camera.view_proj_in(origin), camera.position_in(origin));
-        self.spaces.sync(&self.scene, origin, &mut self.renderer);
+        self.spaces
+            .sync(&self.scene, origin, &mut self.renderer, &mut payloads);
+        self.renderer.set_scene_payloads(payloads);
 
-        let mut errors = read.errors.clone();
-        errors.extend(
-            self.voxels
-                .configure_appearance(&mut self.renderer, &read.entries),
-        );
-        errors.extend(self.voxels.publish_frame(
-            &read.entries,
-            VoxelView {
-                position: view.eye.to_array(),
-                sun: read.sun,
-            },
-        ));
+        let errors = published.problems;
         let new_errors = (errors != self.last_errors).then(|| {
             for error in &errors {
-                tracing::warn!("Voxel terrain: {error}");
+                tracing::warn!("Scene: {error}");
             }
             self.last_errors = errors.clone();
             errors
@@ -487,62 +504,30 @@ pub(super) fn ortho_depth_range(half_height: f32) -> f32 {
 /// on both sides of the focus is in front of the near plane.
 const ORTHO_STANDOFF: f32 = 4096.0;
 
-/// What the voxel path reads from the scene: the voxel entries, whether any
-/// enabled static mesh exists and the sun direction. Read once per world
-/// revision.
+/// What the frame reads from the scene: whether it holds content the
+/// ground's certified planes say nothing about (a host part's:
+/// [`RenderHostPart::keeps_near_plane`]). Read once per world revision.
 #[derive(Clone)]
-pub(super) struct VoxelSceneRead {
-    pub(super) entries: Vec<crate::scene::voxel_frame::VoxelSceneEntry>,
-    errors: Vec<String>,
-    authored_meshes: bool,
-    sun: Option<[f32; 3]>,
+struct SceneRead {
+    keeps_near_plane: bool,
 }
 
-impl VoxelSceneRead {
-    fn of(world: &pulsar_scenedb::World) -> Self {
-        use helio_component::components::{LightComponent, LightType};
-        use pulsar_scene_model::attachments::ComponentOwner;
-        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(world);
-        let authored_meshes = world
-            .query::<(
-                &helio_component::components::StaticMeshComponent,
-                &ComponentOwner,
-            )>()
-            .any(|(_, (_, owner))| owner.is_enabled());
-        // Voxel terrain traces sunlight towards the scene's directional
-        // light: the opposite of the direction it travels, its owner's
-        // rotation of -Y. The light must be lit the way the scene join
-        // lights it: enabled, and its owner visible.
-        let mut sun_owner = None;
-        for (_, (light, owner)) in world.query::<(&LightComponent, &ComponentOwner)>() {
-            if !owner.is_enabled() || !light.general.enabled {
-                continue;
-            }
-            if light.general.light_type == LightType::Directional
-                && sun_owner.is_none()
-                && world
-                    .get::<pulsar_scene_model::Visibility>(owner.entity())
-                    .is_none_or(|visibility| visibility.visible)
-            {
-                sun_owner = Some(owner.entity());
-            }
-        }
-        let sun = sun_owner
-            .and_then(|owner| crate::scene::hierarchy_transform::world_transform_of(world, owner))
-            .map(|transform| {
-                let rotation = glam::Quat::from_euler(
-                    glam::EulerRot::YXZ,
-                    transform.rotation[1].to_radians(),
-                    transform.rotation[0].to_radians(),
-                    transform.rotation[2].to_radians(),
-                );
-                (rotation * Vec3::Y).to_array()
-            });
+impl SceneRead {
+    fn of(world: &pulsar_scenedb::World, parts: &[Box<dyn RenderHostPart>]) -> Self {
         Self {
-            entries,
-            errors,
-            authored_meshes,
-            sun,
+            keeps_near_plane: parts.iter().any(|part| part.keeps_near_plane(world)),
         }
     }
+}
+
+/// The TSR preset a scene prefers under "Automatic": content that samples
+/// stochastically (a voxel world's sun) wants temporal resolve, at a lower
+/// render scale above 1.5 megapixels.
+fn temporal_quality(content_wants_it: bool, size: [u32; 2]) -> Option<helio::TsrQuality> {
+    let pixels = u64::from(size[0]) * u64::from(size[1]);
+    content_wants_it.then_some(if pixels > 1_500_000 {
+        helio::TsrQuality::Quality
+    } else {
+        helio::TsrQuality::Native
+    })
 }

@@ -3,12 +3,12 @@
 
 use graphy::{Connection, ConnectionType, GraphCommand, NodeInstance, PinInstance, Position};
 use graphy_gpui::apply_transaction;
-use helio_default_passes::graphs::{base_registry, deferred_graph_asset};
 use helio_graph_asset::{
     buffers, core_nodes, sections, Connection as AssetWire, GraphAsset, NodeDescriptor,
     NodeInstance as AssetNode, NodeRegistry, Params, PinDesc, PinRef, PinType as RenderPinType,
     Severity,
 };
+use helio_presets::graphs::{base_registry, deferred_graph_asset};
 use serde_json::Value;
 
 use crate::document::{
@@ -213,7 +213,7 @@ fn nodes_added_in_the_editor_follow_the_authored_ones_by_id() {
 
 #[test]
 fn buffers_flatten_the_same_from_the_document_as_from_the_asset() {
-    let mut registry = NodeRegistry::with_core();
+    let mut registry = helio_graph_asset::core_registry();
     registry.register(
         NodeDescriptor::new("t.pass", "Pass", "Test", "", |_| Ok(())).with_pins(
             vec![
@@ -450,7 +450,7 @@ fn sorted_wires(asset: &GraphAsset) -> Vec<(String, String, String, String)> {
 #[test]
 fn collapsing_and_expanding_keep_the_pipeline_the_nodes_make() {
     use crate::collapse;
-    let mut registry = NodeRegistry::with_core();
+    let mut registry = helio_graph_asset::core_registry();
     registry.register(
         NodeDescriptor::new("t.pass", "Pass", "Test", "", |_| Ok(())).with_pins(
             vec![

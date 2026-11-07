@@ -20,6 +20,7 @@
 extern crate engine_backend;
 extern crate helio_component;
 extern crate input_plugin;
+extern crate installed_plugins;
 extern crate physics_plugin;
 extern crate pulsar_class;
 extern crate pulsar_physics;

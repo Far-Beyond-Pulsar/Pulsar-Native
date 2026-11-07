@@ -6,15 +6,7 @@
 //! components on demand. The editor, the renderer and the play-mode runtime
 //! all share one [`SharedScene`].
 
-#[cfg(feature = "render")]
-pub mod voxel_frame;
-// Ready-made voxel worlds (Earth, Moon, Desert, flat) added to a level in
-// one step: the example levels' worlds.
-#[cfg(feature = "render")]
-pub mod voxel_presets;
-
 // Persistent texture/material/sectioned-mesh/object resource components.
-pub mod render_resources;
 
 // Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
 // into SceneDb instead of pulsar_scene::SceneLoader's direct
@@ -37,29 +29,25 @@ pub mod level_rules;
 pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
-#[cfg(feature = "render")]
-mod authored_lod;
+pub mod component_events;
+pub mod game_hooks;
+pub use component_events::{
+    component_asset_events, ComponentEventCatalog, ComponentEventsRegistration,
+};
 #[cfg(feature = "render")]
 // Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
-#[cfg(feature = "render")]
-pub mod portals;
 pub mod sublevel_display;
 #[cfg(feature = "render")]
 pub mod sublevels;
 
 #[cfg(feature = "render")]
-pub use authored_lod::{
-    AuthoredLodKeys, AuthoredLodSelection, LodSelectionRow, LOD_SELECTIONS_KEY,
-};
-#[cfg(feature = "render")]
 pub use helio_bridge::{
-    authored_lod_selection, ensure_gpu_mirror, environment_join, environment_join_keys,
-    first_fixed_in_group, hierarchy_resolve, hierarchy_resolve_keys, portal_projection, scene_join,
-    scene_join_keys, sync_virtual_geometry, virtual_geometry_asset_ready,
-    virtual_geometry_instances, virtual_geometry_runtime_settings, SpaceSync, SpaceTable,
-    VgAssetReadyPublisher, VirtualGeometryHost, VirtualGeometryInstances,
+    ensure_gpu_mirror, environment_join, first_fixed_in_group, hierarchy_resolve,
+    hierarchy_resolve_keys, object_join_context, row_join_keys, scene_join, ObjectJoinContext,
+    ObjectJoinRegistration, SceneRowsRegistration, SpaceProducer, SpaceProducerRegistration,
+    SpaceSync, SpaceTable, NO_OWNER_BOUNDS,
 };
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
@@ -80,14 +68,9 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
 }
 pub use pulsar_scene_model::{
     attachments, components, frames, hierarchy_transform, instance, level_instances, partitions,
-    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, LightType, MeshType, Name,
-    ObjectId, ObjectType, Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex,
-    SpawnObject, StableId, Transform, Visibility,
-};
-pub use render_resources::{
-    insert_render_resources, MaterialComponent, MaterialResource, MaterialTextureResource,
-    MeshObjectComponent, MeshObjectResource, MeshSectionResource, SectionedMeshComponent,
-    SectionedMeshResource, TextureComponent, TextureResource,
+    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name, ObjectId, ObjectType,
+    Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId,
+    Transform, Visibility,
 };
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
 
@@ -142,52 +125,29 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     scene.write().world.pump_assets()
 }
 
-/// Apply one asset update to `world` (SceneDB#84): a mesh, texture or
-/// material update reloads that file's assets, and the world rebinds every
-/// component showing them when the new data arrives. A texture is also
-/// reloaded as part of every shader-graph material that samples it. A class
-/// (Blueprint) update rebuilds every placed instance of the class from its
-/// new definition, keeping each instance's overrides (see [`classes`]).
-/// Returns how many assets were queued plus how many entities were rebuilt.
-/// Other kinds are not world assets yet and are left to their own handlers.
+/// Apply one asset update to `world` (SceneDB#84): a changed file reloads
+/// the world assets it is or feeds, as each asset kind's owner maps it
+/// (`helio_component::AssetReloadRegistration`: a mesh file its mesh, an
+/// image its texture and every material graph sampling it, a material
+/// document its material), and the world rebinds every component showing
+/// them when the new data arrives. A class (Blueprint) update rebuilds every
+/// placed instance of the class from its new definition, keeping each
+/// instance's overrides (see [`classes`]). Returns how many assets were
+/// queued plus how many entities were rebuilt.
 pub fn reload_updated_asset(
     world: &mut pulsar_scenedb::World,
     event: &pulsar_events::AssetUpdated,
 ) -> usize {
-    use helio_component::material_assets::material_sources_for_file;
     match (&event.kind, event.path.as_deref()) {
-        (pulsar_events::AssetKind::Mesh, Some(path)) => {
-            world.asset_source_changed(&helio_component::components::mesh_source_for_file(path))
-        }
-        (pulsar_events::AssetKind::Texture, Some(path)) => {
-            world.asset_source_changed(&helio_component::texture_assets::texture_source_for_file(
-                path,
-            )) + reload_materials(world, material_sources_for_file(path))
-        }
-        (pulsar_events::AssetKind::Material, Some(path)) => {
-            reload_materials(world, material_sources_for_file(path))
-        }
         (pulsar_events::AssetKind::Blueprint, _) => {
             classes::reload_class_instances(world, event).len()
         }
+        (kind, Some(path)) => helio_component::asset_sources_for_file(kind, path)
+            .iter()
+            .map(|source| world.asset_source_changed(source))
+            .sum(),
         _ => 0,
     }
-}
-
-/// An animation asset file changed: the graph or sequence a component holds directly
-/// reloads through SceneDB, and every running graph that depends on the file
-/// recompiles in place (see `helio_component::components::reload_animation_dependencies`).
-fn reload_animation_asset(world: &mut pulsar_scenedb::World, path: &std::path::Path) -> usize {
-    let source = helio_component::components::animation_source_for_file(path);
-    world.asset_source_changed(&source)
-        + helio_component::components::reload_animation_dependencies(world, path)
-}
-
-fn reload_materials(world: &mut pulsar_scenedb::World, sources: Vec<String>) -> usize {
-    sources
-        .iter()
-        .map(|source| world.asset_source_changed(source))
-        .sum()
 }
 
 /// Keep `scene` current with updated assets for as long as the returned

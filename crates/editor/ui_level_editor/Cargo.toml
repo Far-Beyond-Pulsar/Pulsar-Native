@@ -5,6 +5,11 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# The extension points (`extend`): plugins' editor crates register tool
+# modes, create entries, World Settings sections, undo steps, save hooks and
+# overlays, each naming its origin; a disabled plugin's are skipped.
+pulsar_plugins = { workspace = true }
+inventory = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
@@ -42,15 +47,14 @@ ui_build.workspace = true
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 helio_component.workspace = true
 helio.workspace = true
-helio-voxel-data.workspace = true
+# No plugin's crate: every kind's editor UI is its plugin's editor crate,
+# registered through `extend` (Phase C step 3).
 helio-pass-buffer-view.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
 profiling.workspace = true
 ui_helio_viewport.workspace = true
 
-# Helio renderer and asset loading
-helio-asset-compat = { workspace = true }
 glam.workspace = true
 
 # Standard dependencies
@@ -67,6 +71,7 @@ rust-i18n.workspace = true
 wgpu.workspace = true
 smol = { workspace = true }
 image.workspace = true
+png.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics2 = "0.6"
@@ -87,6 +92,33 @@ wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
+helio-vg-format = { workspace = true }
+# Every installed plugin's runtime modules: the integration tests draw and
+# edit the kinds through their components (`installed_plugins`; with the
+# workspace's `editor` feature it also links the plugins' editor crates,
+# which depend on this crate: fine for integration tests, which link this
+# crate once). The unit tests name the component crates directly: through
+# `installed_plugins` they would link a second copy of this crate.
+installed_plugins = { workspace = true }
+decals_component = { workspace = true }
+fog_component = { workspace = true }
+foliage_component = { workspace = true }
+gi_component = { workspace = true }
+lens_component = { workspace = true }
+lights_component = { workspace = true }
+materials_component = { workspace = true }
+meshes_component = { workspace = true }
+particles_component = { workspace = true }
+portals_component = { workspace = true }
+post_component = { workspace = true }
+sky_component = { workspace = true }
+splines_component = { workspace = true }
+sprites_component = { workspace = true }
+voxel_component = { workspace = true }
+water_component = { workspace = true }
+# The HLFS cathedral generator (a test) writes mesh files.
+helio-mesh-api = { workspace = true }
+helio-presets.workspace = true
 tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test
 # (`workspace/panels/properties_perf_tests.rs`). Test binaries only.
@@ -102,6 +134,8 @@ pulsar_script_vm = { workspace = true }
 # virtual-geometry acceptance test.
 pulsar_settings = { workspace = true }
 helio-core = { workspace = true }
+# Reads the water simulation back (its pass, through `debug_pass`).
+helio-pass-water-sim = { workspace = true }
 # Writes the VG museum's textured material graphs (vg_museum generator test).
 psgc = { workspace = true }
 

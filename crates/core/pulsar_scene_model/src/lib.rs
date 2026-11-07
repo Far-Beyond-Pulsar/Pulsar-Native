@@ -42,31 +42,37 @@ pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 /// Same type as [`EditorObjectId`]; the alias the editor spells it as.
 pub type ObjectId = EditorObjectId;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// What an object is structurally. What it draws, lights or simulates is its
+/// components' (a mesh, a light, an emitter: each kind's plugin owns its
+/// component), never a variant here, so the scene model names no kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum ObjectType {
     Empty,
     Folder,
     Camera,
-    Light(LightType),
-    Mesh(MeshType),
-    ParticleSystem,
-    AudioSource,
     Blueprint,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LightType {
-    Directional,
-    Point,
-    Spot,
-    Area,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MeshType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Plane,
-    Custom,
+/// Levels saved before object types were structural name a kind
+/// (`{"Light": "Point"}`, `{"Mesh": "Cube"}`, `"ParticleSystem"`,
+/// `"AudioSource"`): such objects load as `Empty`, their components saying
+/// what they are.
+impl<'de> Deserialize<'de> for ObjectType {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Name(String),
+            Tagged(std::collections::BTreeMap<String, serde::de::IgnoredAny>),
+        }
+        Ok(match Repr::deserialize(de)? {
+            Repr::Name(name) => match name.as_str() {
+                "Folder" => ObjectType::Folder,
+                "Camera" => ObjectType::Camera,
+                "Blueprint" => ObjectType::Blueprint,
+                _ => ObjectType::Empty,
+            },
+            Repr::Tagged(_) => ObjectType::Empty,
+        })
+    }
 }

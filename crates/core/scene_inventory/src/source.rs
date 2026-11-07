@@ -501,7 +501,7 @@ pub fn editor_packages(root: &Path) -> BTreeSet<String> {
 /// (`T::register_gpu_columns*(…)` in a package of `linked`). Writes to an
 /// unregistered column are dropped by SceneDB, so a schema missing here
 /// never reaches the GPU. Each entry is the path as written at the call
-/// site, e.g. `helio_pass_gbuffer::StaticObjectComponent`.
+/// site, e.g. `helio_mesh_api::StaticObjectRow`.
 pub fn registered_gpu_schemas(root: &Path, linked: &BTreeSet<String>) -> BTreeSet<String> {
     let call = Regex::new(r"([A-Za-z_][\w:]*)::register_gpu_columns\w*\s*\(").unwrap();
     let mut out = BTreeSet::new();
@@ -543,14 +543,14 @@ pub struct PassCrate {
     pub package: String,
     /// Repository-relative directory.
     pub dir: String,
-    /// `helio-default-passes` depends on it.
+    /// `helio-presets` (the shipped pipelines' feature list) depends on it.
     pub in_default_graph: bool,
 }
 
 pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
     let helio = root.join("crates/renderer/helio/crates");
     let default_graph: BTreeSet<String> =
-        fs::read_to_string(helio.join("helio-default-passes/Cargo.toml"))
+        fs::read_to_string(helio.join("helio-presets/Cargo.toml"))
             .ok()
             .and_then(|text| text.parse::<toml::Table>().ok())
             .and_then(|t| t.get("dependencies").and_then(|d| d.as_table()).cloned())
@@ -558,9 +558,11 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
             .unwrap_or_default();
     let mut cache = HashMap::new();
     let mut out = Vec::new();
-    for group in ["passes/2d", "passes/3d"] {
-        let Ok(entries) = fs::read_dir(helio.join(group)) else {
-            continue;
+    // Helio's pass crates, and every plugin's feature crates
+    // (`plugins/vendor/<kind>/feature`, or the crates under it).
+    let children = |group: &Path| -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(group) else {
+            return Vec::new();
         };
         let mut dirs: Vec<PathBuf> = entries
             .flatten()
@@ -568,10 +570,27 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
             .filter(|p| p.is_dir())
             .collect();
         dirs.sort();
+        dirs
+    };
+    let mut candidates = children(&helio.join("passes/2d"));
+    candidates.extend(children(&helio.join("passes/3d")));
+    for plugin in children(&root.join("plugins/vendor")) {
+        let feature = plugin.join("feature");
+        if feature.join("Cargo.toml").is_file() {
+            candidates.push(feature);
+        } else {
+            candidates.extend(children(&feature));
+        }
+    }
+    {
+        let dirs = candidates;
         for dir in dirs {
             let Some(package) = package_name(&dir, &mut cache) else {
                 continue;
             };
+            if !package.starts_with("helio-pass-") {
+                continue;
+            }
             out.push(PassCrate {
                 in_default_graph: default_graph.contains(&package),
                 dir: dir

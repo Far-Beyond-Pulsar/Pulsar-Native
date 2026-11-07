@@ -1,0 +1,67 @@
+[package]
+name = "voxel_component"
+version = "0.1.0"
+edition = "2024"
+description = "Voxel worlds (pulsar.voxel): the voxel terrain components, their methods and runtime, the voxel file formats, ready-made worlds, and the registrations of the plugin's Helio feature"
+
+# Hosts (the editor through the plugin crate, the game) link it; the
+# components, scene subsystems, payload publishers, render features and
+# settings register through `inventory` once the crate is linked.
+[lib]
+name = "voxel_component"
+
+[dependencies]
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
+engine_class_derive = { workspace = true }
+# Enum properties get a dropdown editor, which needs the GPUI-typed prims (as helio-component).
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+# The `Reflectable` derive's generated enum dropdowns name `gpui`.
+gpui-ce = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_events = { workspace = true }
+pulsar_class = { workspace = true }
+pulsar_settings = { workspace = true }
+helio_component = { workspace = true }
+# Ready-made worlds are levels (`presets`); the renderer takes the plugin's
+# feature through its registrations. The game's slim feature set (as
+# pulsar_game): linking the plugin must not pull the editor's features into a
+# game build. A path dependency because the workspace table cannot opt out of
+# default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+inventory = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+glam = { workspace = true }
+tracing = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-settings = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true }
+helio-pass-sky = { workspace = true }
+# The plugin's api (data formats) and feature crates.
+helio-voxel-data = { workspace = true }
+helio-pass-voxel-planet = { workspace = true }
+
+[dev-dependencies]
+# The kinds a voxel world composes (sky, haze, wind, ground cover, sun, look):
+# the crate reaches them by class name and method (`others`, `sync`), never by
+# type; its tests link them so those instances exist.
+lights_component = { workspace = true }
+fog_component = { workspace = true }
+post_component = { workspace = true }
+foliage_component = { workspace = true }
+sky_component = { workspace = true }
+helio-pass-foliage-place = { workspace = true }
+bytemuck = { workspace = true }
+wgpu = { workspace = true }
+pollster = "=0.4.0"
+parking_lot = { workspace = true }
+engine_state = { workspace = true }
+image = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[lints]
+workspace = true

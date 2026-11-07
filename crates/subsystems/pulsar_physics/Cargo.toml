@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Water's api: the hitbox rows bodies on the WaterSim channel derive.
+helio-water-api = { workspace = true }
 engine_class_derive = { workspace = true }
 pulsar_reflection = { workspace = true }
 pulsar_scenedb = { workspace = true }

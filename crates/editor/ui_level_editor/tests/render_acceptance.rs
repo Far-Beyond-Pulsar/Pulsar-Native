@@ -19,17 +19,20 @@
 use std::collections::HashMap;
 
 use engine_backend::scene::SceneWorldExt;
+// Every installed plugin registers with the renderer, as in the editor.
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-use helio_component::components::{
-    LODLevel, MeshAssetPath, MeshGeometryKey, ObjectMovability, StaticMeshComponent,
-    StaticMeshMaterialSlot, StaticMeshMaterialSlots,
+use helio_component::components::ObjectMovability;
+use installed_plugins as _;
+use installed_plugins::meshes_component::components::{
+    LODLevel, MeshAssetPath, MeshGeometryKey, StaticMeshComponent, StaticMeshMaterialSlot,
+    StaticMeshMaterialSlots,
 };
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
 use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::scene_edit::components;
-use ui_level_editor::scene_edit::{LightType, MeshType, ObjectType, Transform};
+use ui_level_editor::scene_edit::{ObjectType, Transform};
 use ui_level_editor::{LevelEditorState, SceneObjectData};
 
 const SIZE: u32 = 256;
@@ -127,6 +130,23 @@ impl Frame {
             color_pixels,
             depth_texels,
         }
+    }
+
+    /// With `RENDER_ACCEPTANCE_DUMP_DIR` set, writes where this frame's depth
+    /// differs from `reference` (white) as `<name>.png`.
+    fn dump_depth_change(&self, reference: &Frame, name: &str) {
+        let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") else {
+            return;
+        };
+        let side = (self.depth.len() as f64).sqrt() as u32;
+        let mask: Vec<u8> = reference
+            .depth
+            .iter()
+            .zip(&self.depth)
+            .map(|(a, b)| if depth_differs(*a, *b) { 255 } else { 0 })
+            .collect();
+        let path = std::path::Path::new(&dir).join(format!("{name}.png"));
+        image::save_buffer(&path, &mask, side, side, image::ColorType::L8).expect("write dump");
     }
 
     /// With `RENDER_ACCEPTANCE_DUMP_DIR` set, writes the color image as `<name>.png`.
@@ -347,7 +367,7 @@ fn drop_matte_mesh(state: &mut LevelEditorState) -> String {
 }
 
 fn drop_mesh_with(state: &mut LevelEditorState, surface: Value) -> String {
-    let id = add_object(state, "SM_Cube", ObjectType::Mesh(MeshType::Custom));
+    let id = add_object(state, "SM_Cube", ObjectType::Empty);
     let mut world = state.scene.world_mut();
     components::add_component(
         &mut world,
@@ -403,8 +423,8 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
 
 /// The bright, opaque, emissive surface every acceptance mesh draws with, so
 /// it shows against the empty scene without depending on lights.
-fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
-    helio_component::mesh_cache::ImportedSurfaceMaterial {
+fn emissive_surface() -> installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
+    installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
         base_color: [1.0, 0.5, 0.1, 1.0],
         roughness: 0.7,
         metallic: 0.0,
@@ -417,9 +437,10 @@ fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
 /// A mesh built in code and inserted as a typed value: the cube's geometry,
 /// sections and bounds, every slot overridden with [`emissive_surface`].
 fn typed_mesh() -> StaticMeshComponent {
-    let upload =
-        helio_component::subsystems::load_mesh_asset_upload(std::path::Path::new(&mesh_asset()))
-            .expect("SM_Cube.fbx loads");
+    let upload = installed_plugins::meshes_component::mesh_files::load_mesh_asset_upload(
+        std::path::Path::new(&mesh_asset()),
+    )
+    .expect("SM_Cube.fbx loads");
     let radius = upload
         .geometry
         .vertices
@@ -704,11 +725,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
-            let id = add_object(
-                &mut state,
-                "pending mesh",
-                ObjectType::Mesh(MeshType::Custom),
-            );
+            let id = add_object(&mut state, "pending mesh", ObjectType::Empty);
             components::add_component(
                 &mut state.scene.world_mut(),
                 &id,
@@ -750,7 +767,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             drop_matte_mesh(&mut state);
             let mut renderer = harness.renderer(&state);
             let unlit = harness.frames(&mut renderer, || {});
-            let id = add_object(&mut state, "Light", ObjectType::Light(LightType::Point));
+            let id = add_object(&mut state, "Light", ObjectType::Empty);
             // Above and in front of the mesh, between it and the camera.
             move_to(&mut state, &id, [0.0, radius * 1.5, radius * 2.0]);
             match data {
@@ -942,10 +959,11 @@ fn history_level_replacement_and_viewports_need_no_resync() {
 
 #[test]
 fn environment_components_reach_the_frame() {
-    use helio_component::components::{
-        CameraPostProcessComponent, GlobalFogComponent, LocalFogVolumeComponent,
-        PostProcessVolumeComponent, WaterVolumeComponent,
+    use installed_plugins::fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
+    use installed_plugins::post_component::{
+        CameraPostProcessComponent, PostProcessVolumeComponent,
     };
+    use installed_plugins::water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -978,8 +996,10 @@ fn environment_components_reach_the_frame() {
     camera.view_id = 0;
     camera.settings.exposure_compensation = -3.0;
     let mut water = WaterVolumeComponent::default();
-    // A pool around the mesh, its surface through the mesh's centre.
+    // A pool around the mesh, its surface through the mesh's centre: a
+    // bounded volume (an ocean reaches the horizon wherever its owner is).
     water.size = [radius * 3.0; 3];
+    water.bounded = true;
 
     let cases: Vec<(&str, TypedComponent)> = vec![
         ("global fog", TypedComponent::new(fog)),
@@ -993,6 +1013,7 @@ fn environment_components_reach_the_frame() {
         drop_mesh(&mut state);
         let mut renderer = harness.renderer(&state);
         let before = harness.frames(&mut renderer, || {});
+        before.dump(&format!("environment_{}_before", label.replace(' ', "_")));
         let added = execute_command(
             &mut state,
             SceneCommand::AddObjectWithComponents {
@@ -1030,6 +1051,7 @@ fn environment_components_reach_the_frame() {
             // is the frame without it.
             move_to(&mut state, &id, [radius * 100.0, 0.0, 0.0]);
             let away = harness.frames(&mut renderer, || {});
+            away.dump(&format!("environment_{tag}_away"));
             let change = away.difference(&before);
             println!("PHASE4   {label} moved away vs without: {change:?}");
             assert!(
@@ -1046,6 +1068,7 @@ fn environment_components_reach_the_frame() {
             false
         ));
         let disabled = harness.frames(&mut renderer, || {});
+        disabled.dump(&format!("environment_{tag}_disabled"));
         let change = disabled.difference(&before);
         println!("PHASE4   {label} disabled vs without: {change:?}");
         assert!(
@@ -1062,7 +1085,7 @@ fn environment_components_reach_the_frame() {
 /// camera stands 4 m from the origin, 0.7 m up.
 #[test]
 fn foliage_reaches_the_frame() {
-    use helio_component::components::FoliageComponent;
+    use installed_plugins::foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -1114,12 +1137,14 @@ fn foliage_reaches_the_frame() {
     let id = added.affected_ids[0].clone();
     let with = settled(&mut renderer);
     with.dump("environment_foliage");
+    with.dump_depth_change(&before, "environment_foliage_depth");
     let change = with.difference(&before);
     println!("PHASE4 foliage vs without: {change:?}");
     // The scene has no light, so the blades shade dark: depth is what shows
-    // them drawn.
+    // them drawn, over 5% of the depth buffer (render resolution: under TSR
+    // it is smaller than the output).
     assert!(
-        change.depth_texels > (SIZE * SIZE / 20) as usize,
+        change.depth_texels > with.depth.len() / 20,
         "foliage drew no blades: {change:?}"
     );
 
@@ -1193,7 +1218,8 @@ fn every_pass_of_the_editor_graph_runs() {
         "LensFlare",
         "PostProcess",
         "DebugDraw",
-        "PerfOverlay",
+        // Not the performance overlay: since the scene-driven graph it is a
+        // member only while one of its modes is on (it is off here).
     ] {
         assert!(
             activity.iter().any(|(name, _)| name == expected),
@@ -1234,10 +1260,10 @@ fn transform(
 fn add_light(
     state: &mut LevelEditorState,
     position: [f32; 3],
-    light_type: helio_component::components::LightType,
+    light_type: installed_plugins::lights_component::LightType,
     intensity: f32,
 ) -> String {
-    let id = add_object(state, "Light", ObjectType::Light(LightType::Point));
+    let id = add_object(state, "Light", ObjectType::Empty);
     move_to(state, &id, position);
     assert!(
         execute_command(
@@ -1449,7 +1475,7 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
 /// inspector open or closed, through the editor's producers to the frame.
 #[test]
 fn mesh_and_light_variations_reach_the_frame() {
-    use helio_component::components::LightType as Kind;
+    use installed_plugins::lights_component::LightType as Kind;
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -1539,8 +1565,10 @@ fn mesh_and_light_variations_reach_the_frame() {
         let id = add_light(&mut state, [0.0, radius * 2.5, 0.0], Kind::Point, BRIGHT);
         let mut renderer = harness.renderer(&state);
         let shadowed = harness.frames(&mut renderer, || {});
+        shadowed.dump("light_shadows_on");
         set_light(&mut state, &id, "cast_shadows", Box::new(false));
         let unshadowed = harness.frames(&mut renderer, || {});
+        unshadowed.dump("light_shadows_off");
         let change = unshadowed.difference(&shadowed);
         println!(
             "PHASE7 cast_shadows off vs on: {change:?}, brightness {} -> {}",
@@ -1849,7 +1877,7 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     let light = add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        helio_component::components::LightType::Point,
+        installed_plugins::lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -1916,7 +1944,7 @@ fn sky_brightness(frame: &Frame) -> f64 {
 /// sky lights up; disabling or removing it makes the sky black again.
 #[test]
 fn the_sky_is_the_levels_atmosphere() {
-    use ui_level_editor::scene_edit::sky;
+    use plugin_kinds::sky;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -1935,7 +1963,7 @@ fn the_sky_is_the_levels_atmosphere() {
     add_light(
         &mut state,
         [1.0e4, 0.0, 0.0],
-        helio_component::components::LightType::Directional,
+        installed_plugins::lights_component::LightType::Directional,
         SUN,
     );
     let mut renderer = harness.renderer(&state);
@@ -1979,7 +2007,7 @@ const SUN: f32 = 20.0;
 /// `DecalComponent::fade_by` (its method), called as a script calls them.
 #[test]
 fn decals_reach_the_frame_and_scripts_set_their_opacity() {
-    use helio_component::components::{DecalComponent, DecalLayers};
+    use installed_plugins::decals_component::{DecalComponent, DecalLayers};
     use pulsar_script_vm::{Host, NativeRegistry, Value};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2002,7 +2030,7 @@ fn decals_reach_the_frame_and_scripts_set_their_opacity() {
     add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        helio_component::components::LightType::Point,
+        installed_plugins::lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -2123,7 +2151,7 @@ fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32
 /// restores its side of the frame while the other keeps drawing.
 #[test]
 fn particle_emitters_reach_the_frame_from_one_pool() {
-    use helio_component::components::{ParticleEmitterComponent, ParticleEmitterShape};
+    use installed_plugins::particles_component::{ParticleEmitterComponent, ParticleEmitterShape};
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2261,14 +2289,14 @@ fn particle_emitters_reach_the_frame_from_one_pool() {
 /// Edit the level's global wind in place, as its World Settings rows do.
 fn set_global_wind(
     state: &mut LevelEditorState,
-    edit: impl FnOnce(&mut helio_component::components::WindComponent),
+    edit: impl FnOnce(&mut installed_plugins::foliage_component::WindComponent),
 ) {
     let mut world = state.scene.world_mut();
     let (instance, _) =
-        engine_backend::scene::level_rules::level_wind(&world).expect("the level has a wind");
+        installed_plugins::foliage_component::level_wind(&world).expect("the level has a wind");
     edit(
         &mut world
-            .get_mut::<helio_component::components::WindComponent>(instance)
+            .get_mut::<installed_plugins::foliage_component::WindComponent>(instance)
             .unwrap(),
     );
 }
@@ -2283,7 +2311,7 @@ fn set_global_wind(
 /// foliage LOD cross-fade dither), so an unchanged frame is identical.
 #[test]
 fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
-    use helio_component::components::FoliageComponent;
+    use installed_plugins::foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2325,7 +2353,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
             components: vec![TypedComponent::new(foliage)],
         },
     );
-    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    assert!(plugin_kinds::create_wind(&mut state).changed);
     set_global_wind(&mut state, |wind| wind.speed = 8.0);
 
     let mut renderer = harness.renderer(&state);
@@ -2384,7 +2412,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
     let difference = changed.difference(&pose);
     println!("WIND global wind changed: {difference:?}");
     assert!(
-        difference.depth_texels > (SIZE * SIZE / 100) as usize,
+        difference.depth_texels > changed.depth.len() / 100,
         "changing the global wind did not change the foliage: {difference:?}"
     );
 }
@@ -2395,7 +2423,8 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
 /// the viewport goes idle again.
 #[test]
 fn a_realtime_viewport_keeps_rendering_animated_content() {
-    use helio_component::components::{FoliageComponent, ParticleEmitterComponent};
+    use installed_plugins::foliage_component::FoliageComponent;
+    use installed_plugins::particles_component::ParticleEmitterComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2485,7 +2514,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     let water = add(
         &mut state,
         "Lake",
-        TypedComponent::new(helio_component::components::WaterVolumeComponent::default()),
+        TypedComponent::new(installed_plugins::water_component::WaterVolumeComponent::default()),
     );
     assert!(keeps_rendering(&mut renderer), "live water went idle");
     assert!(components::set_component_enabled(
@@ -2501,7 +2530,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     foliage.general.enabled = true;
     foliage.wind.wind_speed = 0.0;
     add(&mut state, "meadow", TypedComponent::new(foliage));
-    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    assert!(plugin_kinds::create_wind(&mut state).changed);
     assert!(
         keeps_rendering(&mut renderer),
         "foliage in a wind went idle"
@@ -2525,7 +2554,8 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
 /// RGBA16F array texture.
 fn water_heights(harness: &Harness, renderer: &HelioRenderer, layer: u32) -> Vec<f32> {
     let texture = renderer
-        .debug_water_sim_texture()
+        .debug_pass::<helio_pass_water_sim::WaterSimPass>()
+        .map(|pass| pass.sim_texture())
         .expect("the editor graph simulates water");
     let size = texture.size();
     let row = size.width * 8;
@@ -2601,14 +2631,17 @@ fn roughness(heights: &[f32]) -> f32 {
     heights.iter().map(|h| h.abs()).sum::<f32>() / heights.len() as f32
 }
 
-/// Water dynamics (#1065): each volume simulates with its own wind, read
-/// back from the simulation: a windy lake moves while a calm pond beside it
-/// stays flat, the pond's waves start when its own wind does (nothing on
-/// the pass is touched), and the simulation advances on the frame clock, so
-/// it stands still with Realtime off.
+/// Water dynamics (#1065): each volume simulates on its own layers, read
+/// back from the simulation: a body pushing the lake moves the lake while
+/// the calm pond beside it stays flat, a body in the pond moves the pond,
+/// and the simulation advances on the frame clock, so it stands still with
+/// Realtime off. Wind seas come from the spectral ocean, not this solver
+/// (OPTICS.md: the volume solver carries local disturbances), so a volume's
+/// own wind shows on its surface, not in these layers.
 #[test]
-fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
-    use helio_component::components::WaterVolumeComponent;
+fn water_volumes_simulate_their_own_disturbances_on_the_frame_clock() {
+    use installed_plugins::water_component::WaterVolumeComponent;
+    use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2623,15 +2656,13 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
     engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
     let harness = Harness::new(device, queue, 1.0);
     let mut state = LevelEditorState::new();
-    let water = |wind_strength: f32| WaterVolumeComponent {
+    let water = WaterVolumeComponent {
         size: [20.0, 4.0, 20.0],
         use_global_wind: false,
-        wind_direction_x: 1.0,
-        wind_direction_z: 0.3,
-        wind_strength,
+        wind_strength: 0.0,
         ..Default::default()
     };
-    let add = |state: &mut LevelEditorState, name: &str, x: f32, water: WaterVolumeComponent| {
+    let add = |state: &mut LevelEditorState, name: &str, x: f32| {
         execute_command(
             state,
             SceneCommand::AddObjectWithComponents {
@@ -2652,43 +2683,62 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
                     component_instances: None,
                 },
                 parent_id: None,
-                components: vec![TypedComponent::new(water)],
+                components: vec![TypedComponent::new(water.clone())],
             },
         )
         .affected_ids[0]
             .clone()
     };
+    // A 1 m cube (SM_Cube is 200 units across) half under the surface, on
+    // the WaterSim collision channel.
+    let body = |state: &mut LevelEditorState, position: [f32; 3]| {
+        let id = drop_matte_mesh(state);
+        let placed = execute_command(
+            state,
+            SceneCommand::SetTransform {
+                id: id.clone(),
+                position: Some(position.map(f64::from)),
+                rotation: None,
+                scale: Some([0.005; 3]),
+            },
+        );
+        assert!(placed.changed);
+        let mut physics = PhysicsComponent::default();
+        physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        components::add_component_value(
+            &mut state.scene.world_mut(),
+            &id,
+            "PhysicsComponent",
+            Some(Box::new(physics)),
+        )
+        .expect("physics attached");
+        id
+    };
     // The lake takes the first water row (layers 0..3), the pond the
     // second (layers 3..6).
-    add(&mut state, "lake", 0.0, water(5.0));
+    add(&mut state, "lake", 0.0);
+    add(&mut state, "pond", 100.0);
+    let swimmer = body(&mut state, [2.0, 0.0, 2.0]);
     let mut renderer = harness.renderer(&state);
     renderer.set_frame_delta_override(Some(1.0 / 60.0));
-    harness.frames(&mut renderer, || {});
-    let pond = add(&mut state, "pond", 100.0, water(0.0));
     harness.frames(&mut renderer, || {});
     harness.frames(&mut renderer, || {});
 
     let lake_waves = roughness(&water_heights(&harness, &renderer, 0));
     let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
     println!("WATER lake {lake_waves} pond {pond_waves}");
-    assert!(lake_waves > 1e-4, "the windy lake is flat: {lake_waves}");
-    assert_eq!(pond_waves, 0.0, "the calm pond moved");
+    assert!(lake_waves > 1e-4, "the pushed lake is flat: {lake_waves}");
+    assert_eq!(pond_waves, 0.0, "the pond moved with the lake");
 
-    // The pond's own wind rises: its waves start.
-    let instance = first_instance(&state, &pond);
-    state
-        .scene
-        .world_mut()
-        .get_mut::<WaterVolumeComponent>(instance)
-        .unwrap()
-        .wind_strength = 5.0;
+    // The body swims over to the pond: the pond's own layers move.
+    move_to(&mut state, &swimmer, [102.0, 0.0, 2.0]);
     harness.frames(&mut renderer, || {});
     harness.frames(&mut renderer, || {});
     let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
-    println!("WATER pond in its own wind {pond_waves}");
+    println!("WATER pond pushed {pond_waves}");
     assert!(
         pond_waves > 1e-4,
-        "the pond's wind did not move it: {pond_waves}"
+        "the body did not move the pond: {pond_waves}"
     );
 
     // Realtime off freezes the frame clock, and the water with it.
@@ -2713,7 +2763,7 @@ fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
 /// stays put); moving it displaces the water where it goes.
 #[test]
 fn bodies_on_the_water_sim_channel_push_the_water() {
-    use helio_component::components::WaterVolumeComponent;
+    use installed_plugins::water_component::WaterVolumeComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2876,8 +2926,8 @@ fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
 /// restores the 3D frame.
 #[test]
 fn sprites_draw_in_2d_over_the_3d_scene() {
-    use helio_component::components::SpriteComponent;
-    use ui_level_editor::scene_edit::sprite::create_sprite;
+    use installed_plugins::sprites_component::SpriteComponent;
+    use plugin_kinds::create_sprite;
 
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -3099,7 +3149,7 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
 /// distance blurs, and disabling the lens restores the frame.
 #[test]
 fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
-    use helio_component::components::CameraLensComponent;
+    use installed_plugins::lens_component::CameraLensComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -3179,7 +3229,7 @@ fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
 /// inside the frame (the defocus test above) leaves it untouched.
 #[test]
 fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
-    use helio_component::components::{
+    use installed_plugins::lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensProjectionModel,
         LensRegionShape,
     };
@@ -3254,7 +3304,7 @@ fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
 /// against the same lens with its effect switched off.
 #[test]
 fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
-    use helio_component::components::{
+    use installed_plugins::lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice, LensPreset,
         LensRegionShape,
     };
@@ -3274,10 +3324,14 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     let harness = Harness::new(device, queue, radius);
 
     // Renders the mesh through `lens`, in focus so only the lens' own
-    // elements change the frame.
+    // elements change the frame. A bright wall behind it fills the frame to
+    // its corners, where a prescription's falloff shows.
     let render = |lens: CameraLensComponent| {
         let mut state = LevelEditorState::new();
         drop_mesh(&mut state);
+        let wall = drop_mesh(&mut state);
+        move_to(&mut state, &wall, [0.0, 0.0, -radius * 3.0]);
+        transform(&mut state, &wall, None, Some([12.0, 12.0, 0.05]));
         let mut renderer = harness.renderer(&state);
         execute_command(
             &mut state,
@@ -3337,9 +3391,17 @@ fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
     }];
     let mut bare = baked.clone();
     bare.elements.clear();
-    let baked = render(focused(baked));
     let bare = render(focused(bare));
-    let change = baked.difference(&bare);
+    // The bundled bank is traced on a background thread the lens starts
+    // (`start_baking`; minutes in a debug build): wait for it to arrive.
+    let start = std::time::Instant::now();
+    let change = loop {
+        let change = render(focused(baked.clone())).difference(&bare);
+        if change.color_pixels > 0 || start.elapsed() > std::time::Duration::from_secs(600) {
+            break change;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    };
     println!("LENS thin-lens prescription vs none: {change:?}");
     assert!(
         change.color_pixels > 0,
@@ -3782,11 +3844,11 @@ fn diag_portal_lighting() {
                 add_light(
                     state,
                     [1.0e4, 0.0, 0.0],
-                    helio_component::components::LightType::Directional,
+                    installed_plugins::lights_component::LightType::Directional,
                     SUN,
                 );
             }
-            assert!(ui_level_editor::scene_edit::sky::create_sky(state).changed);
+            assert!(plugin_kinds::sky::create_sky(state).changed);
         };
         let render = |state: &LevelEditorState| {
             let mut renderer = harness.renderer(state);
@@ -3911,7 +3973,7 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
             let light = add_light(
                 &mut state,
                 [x, radius * 1.5, radius * 4.0],
-                helio_component::components::LightType::Point,
+                installed_plugins::lights_component::LightType::Point,
                 BRIGHT,
             );
             set_light(&mut state, &light, "range", Box::new(1200.0f32));
@@ -3942,4 +4004,93 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
         "a light beside the portal lit the content it shows, which is far from it \
          ({beside_portal:+.2} against {beside_content:+.2} for a light beside the content)"
     );
+}
+
+/// The sky, wind and sprite plugins' create entries, through the shell's
+/// generic add path (their editor crates depend on the shell, so its tests
+/// do not link them; `installed_plugins`' `tests/level_editor.rs` tests the
+/// entries themselves).
+mod plugin_kinds {
+    use installed_plugins::foliage_component::WindComponent;
+    use installed_plugins::sprites_component::SpriteComponent;
+    use ui_level_editor::commands::{CommandResult, TypedComponent};
+    use ui_level_editor::extend::add_object;
+    use ui_level_editor::scene_edit::{ObjectType, Transform};
+    use ui_level_editor::LevelEditorState;
+
+    pub mod sky {
+        use installed_plugins::sky_component::{level_atmosphere, AtmosphereComponent};
+        use ui_level_editor::commands::{CommandResult, TypedComponent};
+        use ui_level_editor::extend::{level_component, LevelComponent};
+        use ui_level_editor::LevelEditorState;
+
+        pub const SKY_OBJECT_NAME: &str = "Sky";
+
+        pub fn level_sky(world: &pulsar_scenedb::World) -> Option<LevelComponent> {
+            level_component(world, level_atmosphere)
+        }
+
+        pub fn create_sky(state: &mut LevelEditorState) -> CommandResult {
+            super::add_unselected(
+                state,
+                SKY_OBJECT_NAME,
+                vec![TypedComponent::new(AtmosphereComponent::default())],
+            )
+        }
+    }
+
+    pub fn create_wind(state: &mut LevelEditorState) -> CommandResult {
+        add_unselected(
+            state,
+            "Wind",
+            vec![TypedComponent::new(WindComponent::default())],
+        )
+    }
+
+    /// An object holding `components`, added as one undoable command and
+    /// not selected (what the World Settings' create buttons did here).
+    fn add_unselected(
+        state: &mut LevelEditorState,
+        name: &str,
+        components: Vec<TypedComponent>,
+    ) -> CommandResult {
+        use ui_level_editor::commands::{execute_command, SceneCommand};
+        execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: ui_level_editor::SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components,
+            },
+        )
+    }
+
+    pub fn create_sprite(
+        state: &mut LevelEditorState,
+        position: [f32; 2],
+        sprite: SpriteComponent,
+    ) -> CommandResult {
+        add_object(
+            state,
+            "Sprite",
+            ObjectType::Empty,
+            Transform {
+                position: [f64::from(position[0]), f64::from(position[1]), 0.0],
+                ..Transform::default()
+            },
+            vec![TypedComponent::new(sprite)],
+        )
+    }
 }

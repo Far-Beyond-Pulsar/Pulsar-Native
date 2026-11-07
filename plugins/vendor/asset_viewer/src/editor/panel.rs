@@ -89,7 +89,7 @@ pub struct AssetViewerPanel {
     pub image_data: Option<(u32, u32, Vec<u8>)>,
     pub asset_loading: bool,
     pub asset_error: Option<String>,
-    pub native_mesh_asset: Option<std::sync::Arc<helio_component::mesh_cache::MeshAssetUpload>>,
+    pub native_mesh_asset: Option<std::sync::Arc<meshes_component::mesh_cache::MeshAssetUpload>>,
     pub modified: bool,
     pub save_path: Option<PathBuf>,
     pub tab_title: Option<String>,
@@ -178,11 +178,11 @@ pub struct AssetViewerPanel {
     /// `(first_index, index_count, material_slot)` per drawn section of a `.mesh`.
     pub mesh_sections: Vec<(u32, u32, usize)>,
     /// Imported surface of each `.mesh` slot (what an empty assignment draws).
-    pub slot_surfaces: Vec<helio_component::mesh_cache::ImportedSurfaceMaterial>,
+    pub slot_surfaces: Vec<meshes_component::mesh_cache::ImportedSurfaceMaterial>,
     /// Preview colour of each slot's current material.
     pub slot_colors: Vec<[f32; 4]>,
     /// Compiled shader-graph material per slot (None: plain colour).
-    pub graph_draws: Vec<Option<super::graph_material::GraphDraw>>,
+    pub graph_draws: Vec<Option<materials_component::preview_program::GraphDraw>>,
     /// True while graph materials are being parsed, compiled and prepared for
     /// the GPU. This is independent of surface creation so the panel can show
     /// a loading state without blocking the first editor frame.

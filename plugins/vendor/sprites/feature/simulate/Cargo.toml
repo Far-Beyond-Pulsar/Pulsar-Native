@@ -1,0 +1,14 @@
+[package]
+name = "helio-pass-sprite-simulate"
+version = "0.1.0"
+edition = "2021"
+description = "Helio 2D pass: GPU compute bounce-physics simulation writing directly into a sprite instance pool (paired with helio-pass-sprite-batch/-cull)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-core = { workspace = true }
+# The sprite row's WGSL (`SPRITE_INSTANCE_SNIPPET`); no pass types.
+helio-pass-sprite-cull = { workspace = true }
+wgpu       = { workspace = true }
+bytemuck   = { workspace = true, features = ["derive"] }
+log        = { workspace = true }

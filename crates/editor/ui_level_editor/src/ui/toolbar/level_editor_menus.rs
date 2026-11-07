@@ -12,7 +12,8 @@ use rust_i18n::t;
 
 use crate::ui::actions::{
     AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, NewScene, OpenEnvironmentConfig,
-    OpenScene, SaveScene, SaveSceneAs, ToggleCameraModeSelector, ToggleGrid, ToggleViewportOptions,
+    OpenHighResScreenshot, OpenScene, SaveScene, SaveSceneAs, ToggleCameraModeSelector, ToggleGrid,
+    ToggleViewportOptions,
 };
 use crate::LevelEditorState;
 
@@ -34,10 +35,17 @@ impl LevelEditorMenus {
                     .action_if(t!("LevelEditor.Menu.Delete"), DeleteObject, selected),
             )
             .menu(Self::create_menu())
-            .menu(EditorMenu::new(t!("LevelEditor.Menu.Tools")).action(
-                t!("LevelEditor.Menu.EnvironmentConfig"),
-                OpenEnvironmentConfig,
-            ))
+            .menu(
+                EditorMenu::new(t!("LevelEditor.Menu.Tools"))
+                    .action(
+                        t!("LevelEditor.Menu.EnvironmentConfig"),
+                        OpenEnvironmentConfig,
+                    )
+                    .action(
+                        t!("LevelEditor.Menu.HighResScreenshot"),
+                        OpenHighResScreenshot,
+                    ),
+            )
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.View"))
                     .action(t!("LevelEditor.Menu.ToggleGrid"), ToggleGrid)
@@ -60,27 +68,28 @@ impl LevelEditorMenus {
             )
     }
 
-    /// Create: what used to be the global Game Engine menu's objects and
-    /// lights, each added at the origin as one undo step and selected.
+    /// Create: the registered create entries (the shell's objects, the
+    /// plugins' lights, meshes and environment), each added at the origin as
+    /// one undo step and selected.
     fn create_menu() -> EditorMenu {
         let mut menu = EditorMenu::new(t!("LevelEditor.Menu.Create"));
         let mut last_group = None;
-        for &(kind, label) in crate::scene_edit::create::KINDS {
-            // Separators between objects, lights, meshes and environment.
-            let this_group = match kind.split('_').next() {
-                Some("light") => "light",
-                Some("mesh") => "mesh",
-                Some("sky" | "wind") => "environment",
-                _ => "object",
+        for entry in crate::extend::create_entries() {
+            let Some(label) = entry.menu_label else {
+                continue;
             };
+            // Separators between objects, lights, meshes and environment
+            // (each a hundred of `order`).
+            let this_group = entry.order.div_euclid(100);
             if last_group.is_some_and(|last| last != this_group) {
                 menu = menu.separator();
             }
             last_group = Some(this_group);
             menu = menu.action(
-                t!(label),
+                label(),
                 AddObjectOfType {
-                    object_type: kind.to_string(),
+                    object_type: entry.id.to_string(),
+                    world_position: None,
                 },
             );
         }

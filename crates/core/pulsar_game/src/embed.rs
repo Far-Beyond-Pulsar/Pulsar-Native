@@ -474,14 +474,14 @@ impl EmbeddedGame {
         // 3. Camera. The shared world's camera drives the view when present
         //    (the view target's, the best CameraComponent, a Camera-typed
         //    entity -- #637, no more unconditional freecam); the freecam
-        //    seeded from the editor view remains the fallback, on the voxel
+        //    seeded from the editor view remains the fallback, on the
         //    ground's local vertical.
         // The world's read lock is released before the ground is read.
         self.sync_freecam();
         let view_target = self.session.tick_loop.view_targets().local();
         let world_camera = select_world_camera(&self.scene_store.read(), view_target);
         let cam = world_camera.unwrap_or_else(|| {
-            let ground = self.renderer.voxel_ground(self.freecam.position());
+            let ground = self.renderer.camera_ground(self.freecam.position());
             self.freecam.follow_ground(ground);
             self.freecam.to_render_camera()
         });

@@ -266,24 +266,24 @@ impl SceneObject {
 
 // ── Object / mesh / light types ───────────────────────────────────────────────
 
-/// Broad category of a scene object.
+/// What a scene object is structurally; what it draws or lights is its
+/// components'.
 ///
-/// Unknown variants (e.g. `"ParticleSystem"`) deserialize as `Unknown` so that
-/// the scene still loads even if the runtime doesn't support all editor types.
+/// Unknown values, and the kinds levels named before object types were
+/// structural (`{"Mesh": "Cube"}`, `{"Light": "Point"}`, `"ParticleSystem"`),
+/// deserialize as `Unknown`, which the loader treats as `Empty`, so the scene
+/// still loads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum ObjectType {
     Empty,
     Folder,
     Camera,
-    Mesh(MeshType),
-    Light(LightType),
-    /// Any type the runtime doesn't recognise.  Treated as `Empty` by the loader.
+    /// Any other value. Treated as `Empty` by the loader.
     Unknown,
 }
 
-/// Custom deserializer for [`ObjectType`] that accepts both unit strings
-/// (`"Empty"`, `"ParticleSystem"`, …) and tagged objects
-/// (`{ "Mesh": "Cube" }`, `{ "Light": "Point" }`, …).
+/// Custom deserializer for [`ObjectType`]: unit strings (`"Empty"`, ...) and
+/// legacy tagged kinds (`{ "Mesh": "Cube" }`).
 fn deserialize_object_type<'de, D>(de: D) -> Result<ObjectType, D::Error>
 where
     D: Deserializer<'de>,
@@ -293,60 +293,13 @@ where
 }
 
 fn object_type_from_value(v: &Value) -> ObjectType {
-    match v {
-        Value::String(s) => match s.as_str() {
-            "Empty" => ObjectType::Empty,
-            "Folder" => ObjectType::Folder,
-            "Camera" => ObjectType::Camera,
-            other => {
-                tracing::debug!(
-                    type_ = other,
-                    "Unknown ObjectType string — treating as Empty"
-                );
-                ObjectType::Unknown
-            }
-        },
-        Value::Object(map) => {
-            if let Some(mesh_val) = map.get("Mesh") {
-                let mt = mesh_type_from_value(mesh_val);
-                ObjectType::Mesh(mt)
-            } else if let Some(light_val) = map.get("Light") {
-                let lt = light_type_from_value(light_val);
-                ObjectType::Light(lt)
-            } else {
-                tracing::debug!(map = ?map, "Unknown tagged ObjectType map — treating as Empty");
-                ObjectType::Unknown
-            }
-        }
-        other => {
-            tracing::debug!(value = ?other, "Unexpected ObjectType JSON value — treating as Empty");
+    match v.as_str() {
+        Some("Empty") => ObjectType::Empty,
+        Some("Folder") => ObjectType::Folder,
+        Some("Camera") => ObjectType::Camera,
+        _ => {
+            tracing::debug!(value = ?v, "object type names a kind or nothing known: loading it as Empty");
             ObjectType::Unknown
-        }
-    }
-}
-
-fn mesh_type_from_value(v: &Value) -> MeshType {
-    match v.as_str().unwrap_or("") {
-        "Cube" => MeshType::Cube,
-        "Sphere" => MeshType::Sphere,
-        "Cylinder" => MeshType::Cylinder,
-        "Plane" => MeshType::Plane,
-        "Custom" => MeshType::Custom,
-        other => {
-            tracing::debug!(type_ = other, "Unknown MeshType — treating as Cube");
-            MeshType::Cube
-        }
-    }
-}
-
-fn light_type_from_value(v: &Value) -> LightType {
-    match v.as_str().unwrap_or("") {
-        "Directional" => LightType::Directional,
-        "Point" => LightType::Point,
-        "Spot" => LightType::Spot,
-        other => {
-            tracing::debug!(type_ = other, "Unknown LightType — treating as Point");
-            LightType::Point
         }
     }
 }
@@ -357,25 +310,6 @@ impl<'de> Deserialize<'de> for ObjectType {
         let v: Value = Value::deserialize(de)?;
         Ok(object_type_from_value(&v))
     }
-}
-
-/// Built-in procedural mesh shapes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MeshType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Plane,
-    /// Custom asset; path provided in `props["asset_path"]`.
-    Custom,
-}
-
-/// Light kinds recognised by Helio.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LightType {
-    Directional,
-    Point,
-    Spot,
 }
 
 // ── Error type ─────────────────────────────────────────────────────────────────

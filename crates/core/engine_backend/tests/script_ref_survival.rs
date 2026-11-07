@@ -90,6 +90,7 @@ fn bridge_gizmo_remove(world: &mut World, entity: pulsar_scenedb::Entity) {
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
+        origin: env!("CARGO_PKG_NAME"),
         class_name: "BridgeGizmo",
         component_type: pulsar_scenedb::component_id::<BridgeGizmo>,
         default_value: pulsar_world_registry::values::erased::default_value::<BridgeGizmo>,

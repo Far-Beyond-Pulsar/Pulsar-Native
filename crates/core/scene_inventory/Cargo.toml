@@ -28,6 +28,9 @@ physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = [
 # The input plugin is linked the same way; its PlayerInputComponent is a scene
 # component.
 input_plugin = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["builtin"] }
+# Every installed object-kind plugin's runtime modules (generated from their
+# pulsar-plugin.toml): their components are scene components.
+installed_plugins = { workspace = true }
 
 [lints]
 workspace = true

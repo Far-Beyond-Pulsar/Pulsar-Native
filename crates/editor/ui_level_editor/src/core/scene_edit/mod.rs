@@ -28,20 +28,16 @@ use std::collections::{BTreeMap, HashMap};
 pub mod classes;
 pub mod components;
 pub mod create;
-pub mod environment;
 pub mod history;
 pub mod level_io;
 pub mod objects;
-pub mod sky;
-pub mod sprite;
-pub mod wind;
 
 #[cfg(test)]
 mod hlfs_cathedral;
 #[cfg(test)]
 mod tests;
 
-pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
+pub use engine_backend::scene::{ObjectId, ObjectType};
 pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
 
 // ── Transform ─────────────────────────────────────────────────────────────
@@ -158,9 +154,11 @@ pub struct LevelMetadata {
 pub struct LevelEditorFileState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera: Option<LevelEditorCameraState>,
-    /// Per-level foliage palette, including enabled meshes and placement rules.
-    #[serde(default)]
-    pub foliage_sets: crate::state::foliage_sets::FoliageSetLibrary,
+    /// The plugins' editor data, each under its key
+    /// ([`crate::extend::EditorData`]: the foliage plugin's `foliage_sets`
+    /// palette). A key no enabled plugin reads is kept as it was.
+    #[serde(flatten)]
+    pub plugins: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

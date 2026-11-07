@@ -5,6 +5,8 @@ edition = "2021"
 description = "Class-name-keyed registry of reflection-typed components in pulsar_scenedb::World: factories, boundary decode, clone and erased insert/remove, reflected property and method dispatch, object feeds, change watches and component lifecycles."
 
 [dependencies]
+# The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
+pulsar_plugins = { workspace = true }
 pulsar_scenedb    = { workspace = true }
 pulsar_events     = { workspace = true }
 pulsar_reflection = { workspace = true }

@@ -159,8 +159,9 @@ pub struct LevelSnapshot {
     class_names: HashMap<ObjectId, String>,
     editor_camera: Option<LevelEditorCameraState>,
     world_settings: WorldSettingsData,
-    /// None for world-only saves, which preserve the existing palette.
-    pub foliage_sets: Option<crate::state::foliage_sets::FoliageSetLibrary>,
+    /// The plugins' editor data by key ([`crate::extend::EditorData`]).
+    /// None for world-only saves, which preserve the file's.
+    pub editor_data: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 /// Capture what [`write_level`] writes. `registry` should be the project's
@@ -191,7 +192,7 @@ pub fn snapshot_level(
         class_names,
         editor_camera,
         world_settings,
-        foliage_sets: None,
+        editor_data: None,
     }
 }
 
@@ -204,7 +205,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         class_names,
         editor_camera,
         world_settings,
-        foliage_sets,
+        editor_data,
     } = snapshot;
     if let Some(parent_dir) = path.parent() {
         virtual_fs::create_dir_all(parent_dir)
@@ -223,8 +224,11 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
     if let Some(camera) = editor_camera {
         editor.get_or_insert_with(Default::default).camera = Some(camera);
     }
-    if let Some(foliage_sets) = foliage_sets {
-        editor.get_or_insert_with(Default::default).foliage_sets = foliage_sets;
+    if let Some(editor_data) = editor_data {
+        editor
+            .get_or_insert_with(Default::default)
+            .plugins
+            .extend(editor_data);
     }
     // Legacy `blueprint_bindings` are no longer written: loading migrates
     // them to `ClassInstance`. Only entries the migration could not express
@@ -306,14 +310,11 @@ pub(crate) fn log_record_migrations(
     records: &pulsar_class::records::RecordMigrations,
     path: &Path,
 ) {
-    for id in &records.material_overrides {
-        tracing::info!(object = %id, path = %path.display(), "Folded MaterialOverrideComponent into the mesh's material slots");
+    for (id, what) in &records.plugins {
+        tracing::info!(object = %id, path = %path.display(), "{what}");
     }
     for (id, class) in &records.nested {
         tracing::info!(object = %id, class = %class, path = %path.display(), "Rewrote flat component data to the class's shape");
-    }
-    for id in &records.mesh_asset_props {
-        tracing::info!(object = %id, path = %path.display(), "Turned props.mesh_asset into a StaticMeshComponent");
     }
     for (id, keys) in &records.stripped_props {
         tracing::info!(object = %id, path = %path.display(), ?keys, "Removed component copies from object props");
@@ -569,8 +570,8 @@ fn finish_prepared_hydration_with_registry(
             unresolved
         );
     }
-    // One sky and one directional light per level; extras are kept but
-    // disabled, logged.
+    // Keep one atmosphere and one global wind; directional lights are
+    // multiple by design.
     engine_backend::scene::level_rules::enforce_on_load(world);
 }
 
@@ -661,35 +662,39 @@ mod voxel_example_tests {
         // Over the foothills at the north pole, facing a range.
         assert_eq!(camera.position, [0.0, 6_371_631.0, 0.0]);
 
-        let (entries, errors) = engine_backend::scene::voxel_frame::project_voxel_entries(&world);
-        assert!(errors.is_empty(), "{errors:?}");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].generator.as_ref().unwrap().version, 1);
+        let terrains: Vec<_> = world
+            .query::<&voxel_component::VoxelTerrainComponent>()
+            .map(|(entity, terrain)| (entity, terrain.clone()))
+            .collect();
+        assert_eq!(terrains.len(), 1);
+        let (entity, terrain) = &terrains[0];
+        let source = voxel_component::world::entity_source(&world, *entity, terrain).unwrap();
+        assert_eq!(source.recipe.terrain.version, 1);
         // The Earth preset (seed 75: foothills at the pole, a range 23 km away).
         let stacks: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            helio_component::VoxelTerrainLayersComponent,
+            voxel_component::VoxelTerrainLayersComponent,
         >(&world)
         .map(|(_, _, c)| c.stack.clone())
         .collect();
-        assert_eq!(stacks, [helio_component::VoxelTerrainStack::earth()]);
+        assert_eq!(stacks, [voxel_component::VoxelTerrainStack::earth()]);
         // Graded like an outdoor scene: one unbound volume tone maps it.
         let volumes: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            helio_component::PostProcessVolumeComponent,
+            post_component::PostProcessVolumeComponent,
         >(&world)
         .map(|(_, _, v)| v.clone())
         .collect();
         // The planet's air, centred on the planet's object.
         let air: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            helio_component::AtmosphereComponent,
+            sky_component::AtmosphereComponent,
         >(&world)
         .map(|(_, _, a)| a.placement)
         .collect();
-        assert_eq!(air, [helio_component::AtmospherePlacement::PlanetAtOwner]);
+        assert_eq!(air, [sky_component::AtmospherePlacement::PlanetAtOwner]);
         assert_eq!(volumes.len(), 1);
         assert!(
             volumes[0].unbound
                 && volumes[0].settings.tonemap_operator
-                    == helio_component::TonemapOperator::AgxPunchy
+                    == post_component::TonemapOperator::AgxPunchy
         );
     }
 }

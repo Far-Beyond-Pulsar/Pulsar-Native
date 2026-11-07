@@ -18,7 +18,7 @@
 //! # Usage (editor / save)
 //!
 //! ```rust,ignore
-//! use pulsar_scene::{SceneFile, SceneObject, ObjectType, MeshType};
+//! use pulsar_scene::{SceneFile, SceneObject, ObjectType};
 //!
 //! let file = SceneFile {
 //!     version: 1,
@@ -26,7 +26,7 @@
 //!         SceneObject {
 //!             id: "ground".into(),
 //!             name: "Ground".into(),
-//!             object_type: ObjectType::Mesh(MeshType::Plane),
+//!             object_type: ObjectType::Folder,
 //!             scale: [10.0, 1.0, 10.0],
 //!             ..Default::default()
 //!         },
@@ -40,7 +40,6 @@ pub mod loader;
 
 // Flatten the most-used types to the crate root.
 pub use format::{
-    BlueprintBinding, BlueprintBindings, LightType, MeshType, ObjectType, SceneFile,
-    SceneLoadError, SceneObject,
+    BlueprintBinding, BlueprintBindings, ObjectType, SceneFile, SceneLoadError, SceneObject,
 };
-pub use loader::{component_instances_from_props, migrate_legacy_material_override_records};
+pub use loader::component_instances_from_props;

@@ -113,8 +113,6 @@ impl MemCache {
 /// Global singleton worker.  Lazily started on first access.
 static GLOBAL_SERVICE: OnceLock<ThumbnailService> = OnceLock::new();
 pub type AssetThumbnailRenderer = fn(&Path) -> Option<image::RgbaImage>;
-/// Backwards-compatible alias for existing mesh thumbnail providers.
-pub type MeshThumbnailRenderer = AssetThumbnailRenderer;
 static FORMAT_RENDERERS: OnceLock<Mutex<HashMap<String, AssetThumbnailRenderer>>> = OnceLock::new();
 
 /// Register a renderer for a file extension (with or without a leading dot).
@@ -132,17 +130,6 @@ pub fn register_thumbnail_renderer(extension: impl AsRef<str>, renderer: AssetTh
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .insert(extension, renderer);
-}
-
-/// Register the editor's shared mesh renderer for common model formats.
-/// Kept as a function pointer so this low-level filesystem crate does not
-/// depend on the renderer crate.
-pub fn register_mesh_thumbnail_renderer(renderer: MeshThumbnailRenderer) {
-    for extension in [
-        "fbx", "gltf", "glb", "obj", "usd", "usda", "usdc", "usdz", "uasset", "umap",
-    ] {
-        register_thumbnail_renderer(extension, renderer);
-    }
 }
 
 /// Whether the thumbnail service has a renderer for this path's extension.
@@ -420,29 +407,15 @@ fn get_or_generate_thumbnail_sync(
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Images, and the extensions a plugin registered a renderer for
+/// ([`register_thumbnail_renderer`]: the meshes' models and `.mesh`).
 fn is_supported_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "fbx"
-            | "mesh"
-            | "gltf"
-            | "glb"
-            | "obj"
-            | "usd"
-            | "usda"
-            | "usdc"
-            | "usdz"
-            | "uasset"
-            | "umap"
-            | "png"
-            | "jpg"
-            | "jpeg"
-            | "webp"
-            | "tga"
-            | "bmp"
-            | "gif"
-            | "material"
-    )
+        "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" | "material"
+    ) || FORMAT_RENDERERS
+        .get()
+        .is_some_and(|renderers| renderers.lock().contains_key(ext))
 }
 
 fn compute_cache_key(path: &Path) -> String {

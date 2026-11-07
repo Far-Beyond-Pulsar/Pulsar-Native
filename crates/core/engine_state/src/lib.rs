@@ -132,12 +132,17 @@ pub use settings::{
 };
 pub use settings_defaults::register_default_settings;
 
-/// Set the current project path.
+/// Set the current project path, and activate the project's plugins
+/// (`pulsar_plugins::activate_project`).
 ///
 /// Updates `EngineContext::project` so that all subsystems that read the
 /// context get the new value immediately.  The old write-once `OnceLock`
 /// static has been removed — use `EngineContext::global()` to read the path.
 pub fn set_project_path(path: String) {
+    // The project's plugins (its Pulsar.toml `[plugins]` list): from here on
+    // a disabled plugin's registrations are skipped, so its kind is absent
+    // from the scene, the renderer and the editor.
+    pulsar_plugins::activate_project(std::path::Path::new(&path));
     if let Some(ctx) = EngineContext::global() {
         let current = get_project_path();
         if current.as_deref() != Some(path.as_str()) {

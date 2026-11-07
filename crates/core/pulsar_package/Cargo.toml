@@ -42,6 +42,10 @@ plugin_editor_api = { workspace = true, optional = true }
 pulsar_world_registry.workspace = true
 engine_backend = { workspace = true }
 plugin_typescript = { workspace = true, optional = true }
+# Every installed plugin's runtime modules: the cook runs their record
+# migrations (`pulsar_class::records`), as the editor's load does. A level
+# cooked without them keeps what a plugin's migration drops.
+installed_plugins = { workspace = true }
 
 [dev-dependencies]
 helio_component = { workspace = true }

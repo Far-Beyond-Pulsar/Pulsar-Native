@@ -13,12 +13,20 @@ name = "asset_viewer_plugin"
 builtin = []
 
 [dependencies]
+# The plugin's descriptor and its editor provider's registration.
+pulsar_plugins = { workspace = true }
+plugin_manager = { workspace = true }
 gpui-ce = { workspace = true }
 ui      = { workspace = true }
 
 plugin_editor_api = { workspace = true }
 ui_common         = { workspace = true }
 helio_component   = { workspace = true }
+# Material graph previews (the materials' one compiler).
+materials_component = { workspace = true }
+# Mesh assets: the viewer shows `.mesh` files and their slots (it becomes
+# the meshes plugin's editor; plan doc, Phase C step 1).
+meshes_component = { workspace = true }
 helio-mats        = { workspace = true }
 pollster          = "0.4"
 engine_state      = { workspace = true }

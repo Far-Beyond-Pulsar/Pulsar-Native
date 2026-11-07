@@ -1,0 +1,112 @@
+//!use helio_prelude
+//! Billboard shader - camera-facing instanced quads
+//!
+//! Vertex inputs:
+//!   Slot 0 (per-vertex):   position (vec2), uv (vec2)
+//!   Slot 1 (per-instance): world_pos_pad (vec4), scale_flags (vec4), color (vec4)
+
+struct Globals {
+    frame: u32,
+    delta_time: f32,
+    ambient_intensity: f32,
+    _padding: f32,
+}
+@group(0) @binding(0) var<storage, read> cameras: array<Camera, 2>;
+@group(0) @binding(1) var<uniform> globals: Globals;
+@group(0) @binding(2) var<storage, read> instances: array<BillboardInstance>;
+
+// Group 1: sprite texture
+@group(1) @binding(0) var sprite_tex:     texture_2d<f32>;
+@group(1) @binding(1) var sprite_sampler: sampler;
+
+// ── Vertex inputs ──────────────────────────────────────────────────────────
+
+struct QuadVertex {
+    @location(0) position: vec2<f32>,
+    @location(1) uv:       vec2<f32>,
+}
+
+struct BillboardInstance {
+    world_pos_pad: vec4<f32>,
+    scale_flags:   vec4<f32>,
+    color:         vec4<f32>,
+}
+
+// ── Vertex output ───────────────────────────────────────────────────────────
+
+struct VertexOut {
+    @builtin(position) clip_pos: vec4<f32>,
+    @location(0)       uv:       vec2<f32>,
+    @location(1)       color:    vec4<f32>,
+}
+
+// ── Vertex shader ───────────────────────────────────────────────────────────
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOut {
+    let quad_positions = array<vec2<f32>, 6>(
+        vec2<f32>(-0.5, -0.5), vec2<f32>(0.5, -0.5), vec2<f32>(-0.5, 0.5),
+        vec2<f32>(-0.5, 0.5), vec2<f32>(0.5, -0.5), vec2<f32>(0.5, 0.5));
+    let quad_uvs = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0),
+        vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));
+    let quad_position = quad_positions[vertex_index];
+    let quad_uv = quad_uvs[vertex_index];
+    let inst = instances[instance_index];
+    // In the frame's space, like the camera.
+    let world_pos    = inst.world_pos_pad.xyz;
+    // Fit the source image inside the requested bounds without stretching.
+    let dimensions = vec2<f32>(textureDimensions(sprite_tex));
+    let scale = dimensions * min(abs(inst.scale_flags.x) / dimensions.x,
+                                 abs(inst.scale_flags.y) / dimensions.y);
+    let screen_scale = inst.scale_flags.z > 0.5;
+
+    // Build camera-facing (billboard) basis vectors
+    let cam_pos = cameras[0].position_near.xyz;
+    // Parallel to the image plane, including camera roll. Facing the eye
+    // instead distorts off-axis icons and degenerates when looking down/up.
+    let view = cameras[0].view;
+    let right = vec3<f32>(view[0].x, view[1].x, view[2].x);
+    let up = vec3<f32>(view[0].y, view[1].y, view[2].y);
+
+    // Offset in world space using the quad's local position
+    var offset = right * quad_position.x * scale.x
+               + up    * quad_position.y * scale.y;
+
+    // Optional: constant screen-space scaling.
+    // We must scale by VIEW-AXIS depth (dot with forward), NOT Euclidean distance.
+    // Perspective division uses view-depth, so: world_size = scale * view_depth
+    // → projected NDC size = scale * view_depth / view_depth = scale (constant).
+    // Using Euclidean distance instead causes off-axis billboards to appear larger.
+    // TODO: Can we use a branchless multiplication here somehow?
+    if screen_scale {
+        let view_depth = max(dot(cameras[0].forward_far.xyz, world_pos - cam_pos), 0.001);
+        offset        *= view_depth;
+    }
+
+    let final_pos = world_pos + offset;
+
+    var out: VertexOut;
+    out.clip_pos = cameras[0].view_proj * vec4<f32>(final_pos, 1.0); // view_proj at offset 128
+    // An instance at the eye cannot be projected: collapse it outside
+    // the clip volume.
+    let rel = cam_pos - world_pos;
+    if !(dot(rel, rel) > 1e-8) {
+        out.clip_pos = vec4<f32>(0.0, 0.0, -1.0, 1.0);
+    }
+    out.uv       = quad_uv;
+    out.color    = inst.color;
+    return out;
+}
+
+// ── Fragment shader ─────────────────────────────────────────────────────────
+
+@fragment
+fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    let tex_color = textureSample(sprite_tex, sprite_sampler, in.uv);
+    // Tint the sprite by the per-instance color; use texture alpha for transparency
+    let rgb   = tex_color.rgb * in.color.rgb;
+    let alpha = tex_color.a   * in.color.a;
+    if alpha < 0.01 { discard; }
+    return vec4<f32>(rgb, alpha);
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "map": "Diffuse",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/marble_01/marble_01_diff_2k.jpg",
+    "sha256": "D403786171716F86718BDD67EBA923D4FB6125C0636BACEF0E6A21DD5D623A48"
+  },
+  {
+    "map": "nor_gl",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/marble_01/marble_01_nor_gl_2k.jpg",
+    "sha256": "D5E17CCB2913ADBF28FCB781FDDF0AA711259DDEA6C1C918442F9A3589AA4660"
+  },
+  {
+    "map": "arm",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/marble_01/marble_01_arm_2k.jpg",
+    "sha256": "28A022C868FAF8D893A23082C54494FDC3381DB302B05BCBF7F310D353D7464A"
+  }
+]

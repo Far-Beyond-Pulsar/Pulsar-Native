@@ -280,15 +280,6 @@ pub struct InstanceReport {
     pub variables: BTreeMap<String, serde_json::Value>,
 }
 
-/// The world's static meshes at the end of a headless run.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
-pub struct MeshReport {
-    /// Every `StaticMeshComponent`.
-    pub components: usize,
-    /// Those bound to their loaded mesh's geometry.
-    pub bound: usize,
-}
-
 /// What a headless run did.
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct HeadlessReport {
@@ -305,8 +296,10 @@ pub struct HeadlessReport {
     pub instances: Vec<InstanceReport>,
     /// Script errors, link errors and dropped calls.
     pub problems: Vec<pulsar_events::ScriptProblem>,
-    /// Static meshes after the last frame, and how many are bound.
-    pub meshes: MeshReport,
+    /// What the plugins report about the world after the last frame, by
+    /// key (`ContentReportRegistration`: the meshes' `meshes`, how many
+    /// mesh components and how many bound).
+    pub world: BTreeMap<String, serde_json::Value>,
 }
 
 impl HeadlessReport {
@@ -325,18 +318,6 @@ impl HeadlessReport {
         let first = found.next()?;
         found.next().is_none().then_some(first)
     }
-}
-
-fn mesh_report(world: &pulsar_scenedb::World) -> MeshReport {
-    use helio_component::components::{MeshGeometryKey, StaticMeshComponent};
-    let mut report = MeshReport::default();
-    for (_, mesh) in world.query::<&StaticMeshComponent>() {
-        report.components += 1;
-        if mesh.geometry_key != MeshGeometryKey::NONE {
-            report.bound += 1;
-        }
-    }
-    report
 }
 
 /// Load the startup level into `game`'s world and run `frames` ticks with
@@ -369,7 +350,7 @@ pub fn run_headless(
         scripts: game.script_stats().clone(),
         instances: Vec::new(),
         problems: game.take_script_problems(),
-        meshes: mesh_report(&game.scene_store.read().world),
+        world: engine_backend::scene::game_hooks::content_reports(&game.scene_store.read().world),
     };
     if let Some(driver) = &game.scripts {
         let driver = driver

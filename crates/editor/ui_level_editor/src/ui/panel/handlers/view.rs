@@ -1,6 +1,18 @@
 use super::*;
 
 impl LevelEditorPanel {
+    pub(in crate::ui::panel) fn on_open_high_res_screenshot(
+        &mut self,
+        _: &OpenHighResScreenshot,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::ui::high_res_screenshot_window::HighResScreenshotWindow::open(
+            self.shared_state.clone(),
+            cx,
+        );
+    }
+
     pub(in crate::ui::panel) fn on_open_environment_config(
         &mut self,
         _: &OpenEnvironmentConfig,

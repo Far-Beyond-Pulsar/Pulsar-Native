@@ -4,10 +4,12 @@
 //! Its own test binary: the project path the loader resolves against is a
 //! process global.
 
+// A game built for a project with every plugin links them all.
+use installed_plugins as _;
 use std::path::Path;
 use std::time::Duration;
 
-use helio_component::components::StaticMeshComponent;
+use installed_plugins::meshes_component::components::StaticMeshComponent;
 use pulsar_game::tick::TickLoop;
 use pulsar_game::TickMode;
 use pulsar_scenedb::{Entity, World};

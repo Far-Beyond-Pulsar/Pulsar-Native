@@ -1,0 +1,53 @@
+[package]
+name = "materials_component"
+version = "0.1.0"
+edition = "2024"
+description = "Materials (pulsar.materials): the registrations of the plugin's Helio feature (the material texture table) and of its settings (the material sampler, from the project's texture streaming settings)"
+
+# Hosts (the editor through the plugin crate, the game) link it; the render
+# feature and its settings register through `inventory` once the crate is
+# linked.
+[lib]
+name = "materials_component"
+
+[dependencies]
+# The preview program (`preview_program`): its pipeline, error scope and
+# preview textures.
+image = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+pollster = "=0.4.0"
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+engine_state = { workspace = true }
+# Texture references in graphs resolve through the project's file index.
+engine_fs = { workspace = true }
+pulsar_reflection = { workspace = true }
+inventory = { workspace = true }
+wgpu = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-mats = { workspace = true }
+helio-pass-materials = { workspace = true }
+# The material assets: the generic asset seams (loader and reload
+# registrations), texture residency and cooking (images are core).
+helio_component = { workspace = true }
+plugin_editor_api = { workspace = true }
+pulsar_scenedb = { workspace = true }
+# The material graph compiler.
+psgc = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# A mesh to place their rows by (tests only; the crate links no mesh).
+meshes_component = { workspace = true }
+engine_state = { workspace = true }
+pulsar_world_registry = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

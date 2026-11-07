@@ -7,8 +7,6 @@
 
 use glam::{DVec3, Quat, Vec3};
 
-use super::scene_renderer::VoxelGround;
-
 /// Pitch is kept within this many radians of level.
 pub const PITCH_LIMIT: f32 = 1.5;
 
@@ -122,14 +120,6 @@ impl FlyCamera {
     pub fn local_yaw_pitch(&self) -> (f32, f32) {
         (self.yaw, self.pitch)
     }
-}
-
-/// How much faster than its base speed a camera flies at `ground`: the base
-/// speed within 20 m of the voxel ground, 50x at 1 km, orbit in seconds.
-pub fn altitude_speed_scale(ground: &VoxelGround) -> f64 {
-    ground
-        .altitude
-        .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6))
 }
 
 /// View direction for yaw (about +Y, 0 = -Z) and pitch.
@@ -249,13 +239,5 @@ mod tests {
         assert!(camera.frame_up().abs_diff_eq(Vec3::Y, 1e-6));
         let (yaw, pitch) = camera.world_yaw_pitch();
         assert!((yaw - 0.4).abs() < 1e-5 && (pitch + 0.2).abs() < 1e-5);
-    }
-
-    #[test]
-    fn speed_grows_with_altitude() {
-        let at = |altitude| VoxelGround { up: None, altitude };
-        assert_eq!(altitude_speed_scale(&at(None)), 1.0);
-        assert_eq!(altitude_speed_scale(&at(Some(2.0))), 1.0);
-        assert_eq!(altitude_speed_scale(&at(Some(1_000.0))), 50.0);
     }
 }

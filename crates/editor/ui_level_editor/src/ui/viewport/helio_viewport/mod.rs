@@ -12,13 +12,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
-use gpui::*;
+use gpui::{prelude::FluentBuilder as _, *};
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
-use crate::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
+use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 use helio_component::asset_component::component_for_asset;
 use pulsar_reflection::REGISTRY;
@@ -67,6 +67,7 @@ pub struct HelioViewport {
     /// Loading state seen by the frame pump; changes repaint the shared
     /// initialization overlay even before Helio has produced its first frame.
     last_loading_snapshot: Option<crate::state::EditorLoadingTaskSnapshot>,
+    last_screenshot_processing: bool,
     /// A repaint has been requested but `render()` has not run yet. Keeps the
     /// pump from stacking up notifies for a viewport that isn't being rendered.
     awaiting_render: bool,
@@ -97,6 +98,7 @@ mod frame_pacer;
 mod init_queue;
 mod render_thread;
 mod thumbnail;
+use thumbnail::capture_viewport_png_tiled;
 use thumbnail::capture_viewport_thumbnail;
 impl HelioViewport {
     pub fn new<V: 'static>(
@@ -119,6 +121,7 @@ impl HelioViewport {
             last_display_refresh_sample: Instant::now(),
             last_published_frame: 0,
             last_loading_snapshot: None,
+            last_screenshot_processing: false,
             awaiting_render: false,
             last_full_render: Instant::now(),
             viewport_size_at_last_full_render: None,
@@ -208,6 +211,10 @@ impl EventEmitter<DismissEvent> for HelioViewport {}
 impl Render for HelioViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         profiling::profile_scope!("helio_viewport_frame");
+        let (screenshot_processing, screenshot_progress) = {
+            let build = &self.shared_state.read().build;
+            (build.screenshot_processing, build.screenshot_progress)
+        };
         if self.debug_replace_with_yellow {
             return div()
                 .relative()
@@ -307,8 +314,122 @@ impl Render for HelioViewport {
             }
         }
 
+        // Keep exclusive access to Helio across every tile so the projection,
+        // scene state and frozen scene clock stay consistent until assembly ends.
+        let screenshot_size = self
+            .shared_state
+            .write()
+            .build
+            .pending_screenshot_size
+            .take();
+        if let Some((width, height)) = screenshot_size {
+            if let Some(surface) = self.surface.clone() {
+                let engine = self.gpu_engine.clone();
+                let state = self.shared_state.clone();
+                let progress_state = state.clone();
+                let temp_path = std::env::temp_dir().join(format!(
+                    "pulsar-screenshot-{}-{}.png",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_nanos()
+                ));
+                let output_path = temp_path.clone();
+                let capture = cx.background_executor().spawn(async move {
+                    let mut engine = engine
+                        .lock()
+                        .map_err(|_| "Helio renderer lock was poisoned".to_string())?;
+                    // Keep renderer panics inside this lock guard so they are
+                    // reported as capture failures instead of poisoning the
+                    // viewport renderer mutex or unwinding through the task.
+                    catch_unwind(AssertUnwindSafe(|| {
+                        capture_viewport_png_tiled(
+                            &mut engine,
+                            &surface,
+                            width,
+                            height,
+                            format,
+                            &output_path,
+                            move |completed, total| {
+                                progress_state.write().build.screenshot_progress =
+                                    Some((completed, total));
+                            },
+                        )
+                    }))
+                    .map_err(|payload| {
+                        let message = payload
+                            .downcast_ref::<String>()
+                            .map(String::as_str)
+                            .or_else(|| payload.downcast_ref::<&'static str>().copied())
+                            .unwrap_or("unknown panic");
+                        format!("Helio panicked while rendering a screenshot tile: {message}")
+                    })??;
+                    Ok::<_, String>(output_path)
+                });
+                cx.spawn_in(window, async move |this, cx| {
+                    let result = capture.await;
+                    {
+                        let mut state = state.write();
+                        state.build.screenshot_processing = false;
+                        state.build.screenshot_progress = None;
+                    }
+                    let temp_path = match result {
+                        Ok(path) => path,
+                        Err(error) => {
+                            tracing::warn!("High-resolution screenshot capture failed: {error}");
+                            let _ = std::fs::remove_file(&temp_path);
+                            this.update_in(cx, |_, window, cx| {
+                                window.push_notification(
+                                    Notification::error("Screenshot capture failed").message(error),
+                                    cx,
+                                );
+                            })
+                            .ok();
+                            return;
+                        }
+                    };
+                    let dialog = rfd::AsyncFileDialog::new()
+                        .set_title("Save High Res Screenshot")
+                        .add_filter("PNG image", &["png"])
+                        .set_file_name("screenshot.png");
+                    if let Some(file) = dialog.save_file().await {
+                        let path = file.path().to_path_buf();
+                        if let Err(error) = std::fs::copy(&temp_path, &path) {
+                            tracing::warn!("Failed to save high-resolution screenshot: {error}");
+                            this.update_in(cx, |_, window, cx| {
+                                window.push_notification(
+                                    Notification::error("Could not save screenshot")
+                                        .message(error.to_string()),
+                                    cx,
+                                );
+                            })
+                            .ok();
+                        }
+                    }
+                    if let Err(error) = std::fs::remove_file(&temp_path) {
+                        if error.kind() != std::io::ErrorKind::NotFound {
+                            tracing::warn!("Could not remove temporary screenshot: {error}");
+                        }
+                    }
+                })
+                .detach();
+            } else {
+                let mut state = self.shared_state.write();
+                state.build.screenshot_processing = false;
+                state.build.screenshot_progress = None;
+            }
+        }
+
         // Build the viewport element
         let viewport_element = if let Some(surface) = self.surface.clone() {
+            let (width, height) = surface.size();
+            {
+                let mut state = self.shared_state.write();
+                state.build.viewport_size = (width, height);
+                state.build.max_texture_dimension_2d =
+                    surface.device().limits().max_texture_dimension_2d;
+            }
             // Repaint this view whenever the render thread publishes a new frame,
             // so the compositor promotes `ready` -> `display` and
             // `WgpuSurface::prepaint` keeps observing the element's bounds (which
@@ -395,6 +516,24 @@ impl Render for HelioViewport {
                 }
             })
             .child(viewport_element)
+            .when(screenshot_processing, |el| {
+                el.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(rgba(0x00000099))
+                        .text_color(rgb(0xffffff))
+                        .child(match screenshot_progress {
+                            Some((completed, total)) => format!(
+                                "High resolution screenshot: {completed}/{total} tiles complete…"
+                            ),
+                            None => "High resolution screenshot is processing…".to_string(),
+                        }),
+                )
+            })
             .into_any_element()
     }
 }

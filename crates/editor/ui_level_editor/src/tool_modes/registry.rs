@@ -12,14 +12,9 @@ use super::{level_edit::LevelEditMode, ToolMode, ToolModeContext};
 pub struct ToolModeId(pub &'static str);
 
 impl ToolModeId {
+    /// The shell's own mode. Every other mode is a plugin's, with its own
+    /// id ([`crate::extend::ToolModeRegistration`]).
     pub const LEVEL_EDIT: Self = Self("level_edit");
-    /// Milestone 5's extensibility-demo mode (`tool_modes::spline::SplineMode`).
-    /// Registered via [`register_tool_modes`], never added to
-    /// [`ToolModeRegistry::builtin`].
-    pub const SPLINE: Self = Self("spline");
-    pub const VOXEL_SCULPT: Self = Self("voxel_sculpt");
-    /// Terrain sculpt and material painting mode.
-    pub const TERRAIN: Self = Self("terrain");
 }
 
 // ── ToolModeRegistry ───────────────────────────────────────────────────────
@@ -147,18 +142,11 @@ impl Default for ToolModeRegistry {
 
 // ── Registration surface for external modes ───────────────────────────────
 
-/// Registers every non-builtin tool mode. This is the design doc's §9 open
-/// question ("Registration surface for future external modes"), resolved by
-/// Milestone 5 (issue #714): a plain function, called once at editor
-/// construction right after [`ToolModeRegistry::builtin`], that adds modes
-/// purely through [`ToolModeRegistry::register`].
-///
-/// `builtin()` itself never grows a third entry -- that it doesn't is the
-/// actual point of this milestone. A future out-of-tree/plugin mode would
-/// hook in here (or from an equivalent function in its own crate called from
-/// this one) rather than by editing `builtin()`.
+/// Registers every plugin's tool mode ([`crate::extend::ToolModeRegistration`]),
+/// called once at editor construction right after [`ToolModeRegistry::builtin`].
+/// A mode whose plugin the project disables is not registered.
 pub fn register_tool_modes(registry: &mut ToolModeRegistry) {
-    registry.register(Box::new(super::spline::SplineMode::default()));
-    registry.register(Box::new(super::voxel_sculpt::VoxelSculptMode::default()));
-    registry.register(Box::new(super::terrain::TerrainMode::default()));
+    for mode in crate::extend::tool_modes() {
+        registry.register((mode.make)());
+    }
 }

@@ -1,0 +1,58 @@
+[package]
+name = "helio-pass-voxel-planet"
+version = "0.1.0"
+edition = "2021"
+description = "Destructible voxel worlds, drawn: chunk-tree residency, generation, drawing and lighting as Helio passes over helio-voxel-world"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+helio-light-api = { workspace = true }
+helio-pass-tsr = { workspace = true }
+helio-water-api = { workspace = true }
+helio-voxel-world = { workspace = true }
+glam = { version = "0.33", features = ["bytemuck"] }
+bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rustc-hash = "2.1"
+# Brush baking and coarse rebuilds across cores (`edit_store`).
+rayon = "1.12"
+# Host settings (`ResidencyConfig::from_settings`).
+helio-settings = { workspace = true }
+wgpu = { version = "30.0.1" }
+helio-core = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-frame-api = { workspace = true }
+# Specular anti-aliasing for the scene materials' normal maps.
+helio-mats = { workspace = true }
+helio-gi-api = { workspace = true }
+# Foliage grows on the terrain (`chunks::ground`).
+helio-foliage-api = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+image = { workspace = true }
+# Kept chunks in edit snapshots (`ChunkWorld::kept_snapshot`).
+miniz_oxide = { version = "0.8" }
+
+[dev-dependencies]
+helio-mats = { workspace = true, features = ["host-rows"] }
+helio-light-host = { workspace = true }
+helio-mesh-host = { workspace = true }
+pollster = "0.4"
+# examples/shader_stats.rs: driver statistics of the compute pipelines.
+ash = "0.38"
+naga = { version = "30.0.1", features = ["wgsl-in", "spv-out"] }
+# The terrain in Helio's presets, as an engine adds it (tests/presets.rs,
+# voxel_pass_graph.rs, foliage_on_voxels.rs, clouds.rs); dev-only: a feature
+# crate depends on Helio core and other plugins' api crates only.
+helio = { workspace = true }
+helio-presets = { workspace = true }
+helio-components = { workspace = true }
+helio-pass-foliage-place = { workspace = true, features = ["host-rows"] }
+helio-pass-foliage-gbuffer = { workspace = true }
+helio-pass-water-sim = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true }
+helio-pass-post-volumes = { workspace = true }
+helio-pass-forward-lit = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-sky = { workspace = true, features = ["host-rows"] }
+pulsar_scenedb = { workspace = true }

@@ -26,15 +26,15 @@ impl ToolModeDropdown {
         let current_id = state.editor.tool_mode_registry.selected_id();
         let current_mode = state.editor.tool_mode_registry.selected();
         let current_icon = current_mode.icon();
-        let current_label = t!(current_mode.label_key());
-        let current_tooltip = t!(current_mode.description_key());
+        let current_label = current_mode.label();
+        let current_tooltip = current_mode.description();
 
         let modes: Vec<(ToolModeId, String)> = state
             .editor
             .tool_mode_registry
             .modes()
             .iter()
-            .map(|m| (m.id(), t!(m.label_key()).to_string()))
+            .map(|m| (m.id(), m.label()))
             .collect();
 
         Button::new("tool_mode_dropdown")

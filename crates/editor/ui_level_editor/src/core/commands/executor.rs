@@ -1,16 +1,18 @@
 use super::{CommandResult, SceneCommand};
-use crate::scene_edit::history::capture_history_subset;
+use crate::scene_edit::history::{capture_history_subset, UndoLabel};
 use crate::state::LevelEditorState;
 use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 
-/// Locale key naming a command's undo entry in the Edit menu.
-fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
-    Some(match cmd {
+/// What a command's undo entry is called in the Edit menu.
+fn command_label(cmd: &SceneCommand) -> Option<UndoLabel> {
+    if let SceneCommand::Extension(command) = cmd {
+        return Some(UndoLabel::Text(command.label()));
+    }
+    Some(UndoLabel::Key(match cmd {
         SceneCommand::AddObject { .. }
         | SceneCommand::AddObjectWithComponents { .. }
         | SceneCommand::InstantiateClass { .. } => "LevelEditor.Undo.Add",
-        SceneCommand::AddVoxelWorld { .. } => "LevelEditor.Undo.AddVoxelWorld",
         SceneCommand::RemoveObject { .. } => "LevelEditor.Undo.Delete",
         SceneCommand::DuplicateObject { .. } => "LevelEditor.Undo.Duplicate",
         SceneCommand::ReparentObject { .. } => "LevelEditor.Undo.Reparent",
@@ -23,7 +25,7 @@ fn command_label(cmd: &SceneCommand) -> Option<&'static str> {
         SceneCommand::RemoveComponent { .. } => "LevelEditor.Undo.RemoveComponent",
         SceneCommand::SelectObject { .. } => return None,
         _ => "LevelEditor.Undo.Edit",
-    })
+    }))
 }
 
 fn command_scope(world: &pulsar_scenedb::World, cmd: &SceneCommand) -> Vec<String> {
@@ -57,9 +59,7 @@ fn command_scope(world: &pulsar_scenedb::World, cmd: &SceneCommand) -> Vec<Strin
         SceneCommand::SetMovability { ids, .. } => ids.clone(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
-        SceneCommand::AddVoxelWorld { .. } => {
-            engine_backend::scene::voxel_presets::objects_changed_by(world)
-        }
+        SceneCommand::Extension(command) => command.scope(world),
     }
 }
 
@@ -783,15 +783,15 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 {
                     let mut world = state.scene.world_mut();
                     for id in &ids {
+                        // Every component that authors a movability (a
+                        // mesh, a light: a `movability` property of that
+                        // type) and holds another one.
                         let targets: Vec<(usize, String)> =
                             components::get_component_class_names(&world, id)
                                 .into_iter()
                                 .enumerate()
                                 .filter(|(index, class_name)| {
-                                    matches!(
-                                        class_name.as_str(),
-                                        "StaticMeshComponent" | "LightComponent"
-                                    ) && components::read_live_component_property(
+                                    components::read_live_component_property(
                                         &world,
                                         id,
                                         class_name,
@@ -802,12 +802,13 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                                         value
                                     .downcast_ref::<helio_component::components::ObjectMovability>()
                                     .copied()
-                                    }) != Some(movability)
+                                    })
+                                    .is_some_and(|current| current != movability)
                                 })
                                 .collect();
                         for (index, class_name) in targets {
                             // Typed setter; `movability` is a flat property
-                            // name on both classes (lights via `#[sub_props]`).
+                            // name (lights' via `#[sub_props]`).
                             if components::update_live_component_property(
                                 &mut world,
                                 id,
@@ -825,44 +826,14 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     }
                 }
                 if affected.is_empty() {
-                    CommandResult::noop("No mesh or light to change")
+                    CommandResult::noop("Nothing with a movability to change")
                 } else {
                     state.scene.bump_revision(true);
                     CommandResult::ok(affected)
                 }
             }
 
-            SceneCommand::AddVoxelWorld { preset } => {
-                let setup = engine_backend::scene::voxel_presets::add_voxel_world(
-                    &mut state.scene.world_mut(),
-                    preset,
-                );
-                let setup = match setup {
-                    Ok(setup) => setup,
-                    Err(error) => {
-                        tracing::error!("Could not add the voxel world: {error}");
-                        return CommandResult::noop("The voxel world could not be added");
-                    }
-                };
-                state.scene.select_object(Some(setup.terrain.clone()));
-                state.scene.pending_selection_sync = true;
-                state.editor.camera_request =
-                    setup
-                        .camera
-                        .map(|camera| crate::scene_edit::LevelEditorCameraState {
-                            position: camera.position,
-                            yaw: camera.yaw,
-                            pitch: camera.pitch,
-                        });
-                state.scene.bump_revision(true);
-                let mut ids = vec![setup.terrain];
-                for id in setup.added.into_iter().chain(setup.changed) {
-                    if !ids.contains(&id) {
-                        ids.push(id);
-                    }
-                }
-                CommandResult::ok(ids)
-            }
+            SceneCommand::Extension(command) => command.apply(state),
         }
     })();
 

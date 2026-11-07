@@ -25,7 +25,7 @@ pub fn folder_context_menu(
         let mut menu = menu
             .submenu_with_icon(
                 Some(ui::Icon::new(ui::IconName::Plus)),
-                t!("FileManager.NewFolder").to_string(),
+                t!("FileManager.NewItem").to_string(),
                 window,
                 cx,
                 move |submenu, window, cx| {

@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
+use ui::{v_flex, ActiveTheme as _, Icon, IconName};
 
 pub fn render_empty_state(
     cx: &mut Context<crate::screen::PluginManagerWindow>,
@@ -37,7 +37,7 @@ pub fn render_empty_state(
                         .text_sm()
                         .text_center()
                         .text_color(cx.theme().muted_foreground)
-                        .child("Add plugin DLLs to the plugins/editor directory to get started."),
+                        .child("Built-in providers and compatible plugin libraries appear here after registration."),
                 ),
         )
 }

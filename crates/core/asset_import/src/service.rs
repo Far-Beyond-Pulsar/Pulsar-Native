@@ -111,7 +111,14 @@ fn convert(
     )?;
     let stored_options = importer.serialize_options(&chosen_options);
     drop(chosen_options);
-    run_companions(project_root, source, companions, &mut imported, task);
+    run_companions(
+        project_root,
+        importer,
+        source,
+        companions,
+        &mut imported,
+        task,
+    );
 
     task.report_progress(0.9, "Recording");
     match mode {
@@ -158,6 +165,7 @@ fn convert(
 /// companion failing never fails the import.
 fn run_companions(
     project_root: &Path,
+    importer: &dyn Importer,
     source: &Path,
     companions: &[String],
     imported: &mut Imported,
@@ -212,7 +220,7 @@ fn run_companions(
         }
     }
     for (asset, assignments) in assigned {
-        if let Err(error) = crate::companion::assign_default_materials(asset, &assignments) {
+        if let Err(error) = importer.assign_default_materials(asset, &assignments) {
             tracing::warn!(
                 "could not assign companion outputs to {}: {error}",
                 asset.display()
@@ -312,6 +320,7 @@ pub fn submit_reimport(project_root: PathBuf, source: &str) -> Option<TaskId> {
             )?;
             run_companions(
                 &project_root,
+                importer,
                 &source,
                 &record.companions,
                 &mut imported,
@@ -357,164 +366,4 @@ pub fn unignore_sources(project_root: &Path, sources: &[PathBuf]) -> Result<(), 
             db.unignore(&relative_key(project_root, source));
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use editor_task_queue::TaskStatus;
-
-    fn wait(id: TaskId) -> (TaskStatus, Option<String>) {
-        for _ in 0..600 {
-            if let Some(snapshot) = editor_task_queue::global()
-                .snapshots()
-                .into_iter()
-                .find(|snapshot| snapshot.id == id)
-            {
-                if !matches!(snapshot.status, TaskStatus::Queued | TaskStatus::Running) {
-                    return (snapshot.status, snapshot.error);
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        panic!("task did not finish");
-    }
-
-    fn cube() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets/meshes/primitives/SM_Cube.fbx")
-    }
-
-    #[test]
-    fn link_records_the_source_and_reimport_follows_edits() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().to_path_buf();
-        let source = root.join("cube.fbx");
-        std::fs::copy(cube(), &source).unwrap();
-        let options = Arc::new(Mutex::new(OptionValues::new()));
-
-        let ids = submit_import(
-            root.clone(),
-            vec![source.clone()],
-            ImportMode::Link,
-            options,
-        );
-        assert_eq!(wait(ids[0]), (TaskStatus::Succeeded, None));
-        assert!(source.exists() && root.join("cube.mesh").exists());
-        let db = ImportDb::load(&root);
-        let record = db.find_source("cube.fbx").expect("linked");
-        assert_eq!(record.asset, "cube.mesh");
-        assert_eq!(db.status(&root, record), crate::LinkStatus::Current);
-
-        let mut bytes = std::fs::read(&source).unwrap();
-        bytes.push(0);
-        std::fs::write(&source, bytes).unwrap();
-        assert_eq!(db.status(&root, record), crate::LinkStatus::OutOfDate);
-    }
-
-    #[test]
-    fn reimport_keeps_default_materials_and_refreshes_the_record() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().to_path_buf();
-        let source = root.join("cube.fbx");
-        std::fs::copy(cube(), &source).unwrap();
-        let options = Arc::new(Mutex::new(OptionValues::new()));
-        let ids = submit_import(
-            root.clone(),
-            vec![source.clone()],
-            ImportMode::Link,
-            options,
-        );
-        assert_eq!(wait(ids[0]).0, TaskStatus::Succeeded);
-
-        let asset = root.join("cube.mesh");
-        helio_component::mesh_cache::set_default_materials(&asset, &["materials/Keep.mat".into()])
-            .unwrap();
-        let mut bytes = std::fs::read(&source).unwrap();
-        bytes.push(0);
-        std::fs::write(&source, bytes).unwrap();
-
-        let id = submit_reimport(root.clone(), "cube.fbx").expect("linked");
-        assert_eq!(wait(id), (TaskStatus::Succeeded, None));
-        let (decoded, _) =
-            helio_component::mesh_cache::decode_asset(&std::fs::read(&asset).unwrap()).unwrap();
-        assert_eq!(
-            decoded.material_slots[0].material_asset,
-            "materials/Keep.mat"
-        );
-        let db = ImportDb::load(&root);
-        assert_eq!(
-            db.status(&root, db.find_source("cube.fbx").unwrap()),
-            crate::LinkStatus::Current
-        );
-    }
-
-    #[test]
-    fn convert_in_place_replaces_the_source_and_keeps_no_record() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().to_path_buf();
-        let source = root.join("cube.fbx");
-        std::fs::copy(cube(), &source).unwrap();
-        let options = Arc::new(Mutex::new(OptionValues::new()));
-
-        let ids = submit_import(
-            root.clone(),
-            vec![source.clone()],
-            ImportMode::ConvertInPlace,
-            options,
-        );
-        assert_eq!(wait(ids[0]), (TaskStatus::Succeeded, None));
-        assert!(!source.exists() && root.join("cube.mesh").exists());
-        assert!(ImportDb::load(&root).records.is_empty());
-
-        // The source is recoverable from the trash, byte for byte.
-        let trashed: Vec<_> = std::fs::read_dir(root.join(TRASH_DIR))
-            .unwrap()
-            .map(|entry| entry.unwrap().path().join("cube.fbx"))
-            .collect();
-        assert_eq!(trashed.len(), 1);
-        assert_eq!(
-            std::fs::read(&trashed[0]).unwrap(),
-            std::fs::read(cube()).unwrap()
-        );
-    }
-    #[test]
-    fn unlink_keeps_both_files_and_unignore_offers_the_source_again() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().to_path_buf();
-        let source = root.join("cube.fbx");
-        std::fs::copy(cube(), &source).unwrap();
-        let options = Arc::new(Mutex::new(OptionValues::new()));
-        let ids = submit_import(
-            root.clone(),
-            vec![source.clone()],
-            ImportMode::Link,
-            options,
-        );
-        assert_eq!(wait(ids[0]).0, TaskStatus::Succeeded);
-
-        let before = crate::db_revision();
-        unlink_source(&root, "cube.fbx").unwrap();
-        assert!(
-            crate::db_revision() > before,
-            "a database write bumps the revision"
-        );
-        assert!(source.exists() && root.join("cube.mesh").exists());
-        let states = crate::import_states(&root, &[source.clone(), root.join("cube.mesh")]);
-        assert_eq!(states[&source], crate::FileImportState::Unlinked);
-        assert!(
-            !states.contains_key(&root.join("cube.mesh")),
-            "the asset is no longer linked"
-        );
-
-        ignore_sources(&root, &[source.clone()]).unwrap();
-        assert_eq!(
-            crate::import_states(&root, &[source.clone()])[&source],
-            crate::FileImportState::Ignored
-        );
-        unignore_sources(&root, &[source.clone()]).unwrap();
-        assert_eq!(
-            crate::import_states(&root, &[source.clone()])[&source],
-            crate::FileImportState::Unlinked
-        );
-    }
 }

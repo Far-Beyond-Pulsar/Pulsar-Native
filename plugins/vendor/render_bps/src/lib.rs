@@ -178,3 +178,6 @@ pub use builtin_provider::RenderBpsBuiltinProvider;
 // DLL exports the loader symbols.
 #[cfg(not(feature = "builtin"))]
 export_plugin!(RenderBpsPlugin);
+
+// This plugin's descriptor (`pulsar-plugin.toml`): linking the crate installs it.
+pulsar_plugins::installed!("pulsar-plugin.toml");

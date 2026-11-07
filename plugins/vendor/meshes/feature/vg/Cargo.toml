@@ -1,0 +1,34 @@
+[package]
+name = "helio-pass-vg"
+version = "0.1.0"
+edition = "2021"
+description = "Virtual geometry's graph glue as a Helio feature: the pass chain, its order, and the passes that tie the streaming store to the graph."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# The instances' buffer, declared untraced geometry.
+helio-mesh-api = { workspace = true }
+helio-mats = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-core = { workspace = true }
+# The renderer config `with_virtual_geometry` adds VG's settings to.
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+wgpu = { workspace = true }
+log = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-vg-stream = { workspace = true }
+helio-pass-vg-bvh = { workspace = true }
+helio-pass-vg-cull = { workspace = true }
+helio-pass-vg-raster = { workspace = true }
+helio-pass-vg-dense = { workspace = true }
+helio-pass-vg-shade = { workspace = true }
+
+[dev-dependencies]
+helio-mats = { workspace = true, features = ["host-rows"] }
+helio-light-host = { workspace = true }
+pulsar_scenedb = { workspace = true }
+glam = { workspace = true }
+pollster = "0.4"
+helio-mesh-host = { workspace = true }
+helio-components = { workspace = true }

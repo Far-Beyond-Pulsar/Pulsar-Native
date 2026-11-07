@@ -7,9 +7,9 @@
 //!   sources whose file changed since they were imported.
 //! - [`db`] is the import database (`.pulsar/import_db.json`): for each *linked*
 //!   source, its path, content hash and the native asset it produced.
-//! - [`importer`] is the per-format conversion, selected by extension.
-//! - [`rig`] turns a rigged model into linked skeletal assets (a `.skeleton`, a
-//!   `.skmesh` and one `.animseq` per animation) in place of the static `.mesh`.
+//! - [`importer`] is the per-format conversion, selected by extension: each
+//!   format's importer is a plugin's registration (the meshes' models).
+//! - [`options`] are the import options an importer offers a configurator.
 //! - [`service`] runs conversions as tasks in the editor task queue, in one of
 //!   two modes: [`service::ImportMode::ConvertInPlace`] (the source is replaced
 //!   by the native asset and no record is kept) or [`service::ImportMode::Link`]
@@ -20,14 +20,18 @@
 pub mod companion;
 pub mod db;
 pub mod importer;
-pub mod rig;
+pub mod options;
 pub mod scan;
 pub mod service;
 pub mod state;
 
 pub use companion::{nearby_images, offers_for, register_companion, CompanionOffer};
 pub use db::{ImportDb, ImportOutput, ImportRecord, LinkStatus};
-pub use importer::{importer_for, Imported, ImportedPart, Importer, OptionValues, Previous};
+pub use importer::{
+    importer_by_id, importer_for, Imported, ImportedPart, Importer, ImporterRegistration,
+    OptionValues, Previous,
+};
+pub use options::{FieldConstraints, ImportField, OptionsSchema};
 pub use scan::{affects_scan, scan_project, OfferedOnce, ScanReport};
 pub use service::{
     ignore_sources, submit_import, submit_import_with_companions, submit_reimport, submit_scan,

@@ -1,0 +1,15 @@
+[package]
+name = "pulsar_plugins"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Which plugins a project has: plugin descriptors (pulsar-plugin.toml), the project's [plugins] list in Pulsar.toml, their resolution, and the gate every registration passes (a disabled plugin's registrations are absent)."
+
+[dependencies]
+inventory = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

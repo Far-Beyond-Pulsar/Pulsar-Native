@@ -318,6 +318,8 @@ pub mod instances;
 pub mod marshal;
 pub mod object_feed;
 pub mod runtime;
+pub mod scene_payloads;
+pub mod scene_subsystems;
 pub mod type_shims;
 pub mod unfinished;
 pub mod values;
@@ -358,6 +360,8 @@ pub use values::{
 pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 pub use change_watch::ComponentWatch;
 pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
+pub use scene_payloads::{scene_payloads, scene_settling, ScenePayloadRegistration, ScenePayloads};
+pub use scene_subsystems::{install_scene_subsystems, SceneSubsystemRegistration};
 
 use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, World};
@@ -368,6 +372,11 @@ use serde_json::Value;
 /// by hand.
 pub struct WorldComponentRegistration {
     pub class_name: &'static str,
+    /// The package that declares the class (`env!("CARGO_PKG_NAME")` where
+    /// `#[register_world_component]` expands): while that package's plugin
+    /// is disabled the class is not registered (`pulsar_plugins`), and its
+    /// stored instances load as `UnresolvedComponent`s, kept verbatim.
+    pub origin: &'static str,
     /// This class's `pulsar_scenedb::ComponentId`, as a function pointer
     /// rather than a precomputed value -- `component_id::<T>()` isn't
     /// `const fn` (it allocates on a type's first-ever call, via a global
@@ -463,6 +472,17 @@ fn find_by_component_id(
 /// so there is nothing to watch.
 pub fn component_id_for_class(class_name: &str) -> Option<ComponentId> {
     find(class_name).map(|r| (r.component_type)())
+}
+
+/// The registered component classes that have a method `name` (reflected
+/// or world): what a host calls by name on any component offering it, the
+/// way scripts do, without naming a class.
+pub fn components_with_method(name: &str) -> Vec<ComponentId> {
+    crate::runtime::world_components()
+        .iter()
+        .map(|r| (r.component_type)())
+        .filter(|cid| pulsar_scenedb::find_component_method(*cid, name).is_some())
+        .collect()
 }
 
 /// Hydrate `class_name`'s typed component from `data` onto `entity`: decode
@@ -825,6 +845,7 @@ mod tests {
 
     inventory::submit! {
         WorldComponentRegistration {
+            origin: env!("CARGO_PKG_NAME"),
             class_name: "TestComponent",
             component_type: pulsar_scenedb::component_id::<TestComponent>,
             default_value: test_default,

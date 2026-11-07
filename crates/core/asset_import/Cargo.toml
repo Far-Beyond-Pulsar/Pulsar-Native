@@ -7,10 +7,13 @@ publish = false
 [dependencies]
 engine_fs = { workspace = true }
 editor_task_queue = { workspace = true }
-helio_component = { workspace = true }
 plugin_editor_api = { workspace = true }
-helio-asset-compat = { workspace = true }
-skeletal_assets = { workspace = true }
+# Importers are plugins' registrations (`ImporterRegistration`), gated by
+# their origin.
+pulsar_plugins = { workspace = true }
+inventory = { workspace = true }
+# The import options' field types (`options`).
+pulsar_reflection = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 twox-hash = { workspace = true }
@@ -20,7 +23,6 @@ parking_lot = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-glam = { workspace = true }
 
 [lints]
 workspace = true

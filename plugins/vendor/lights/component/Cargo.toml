@@ -1,0 +1,70 @@
+[package]
+name = "lights_component"
+version = "0.1.0"
+edition = "2024"
+description = "Lights (pulsar.lights): the light and reflection capture components, the light's source row, its join, its editor icon and the registrations of the plugin's Helio features (shadow views, light binning, deferred and light-field lighting, billboards) and settings"
+
+# Hosts (the editor through the plugin crate, the game) link it; the
+# components, their rows, the join, render features, settings and level
+# rule register through `inventory` once the crate is linked.
+[lib]
+name = "lights_component"
+
+[features]
+# `#[derive(SceneStore)]` checks the deriving crate's own `gpu` feature.
+default = ["gpu"]
+gpu = []
+
+[dependencies]
+# The directional light's local direction (`advanced.rotation_offset`).
+glam = { workspace = true }
+# The plugin's descriptor and its registrations' origin.
+pulsar_plugins = { workspace = true }
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+gpui-ce = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_scenedb_derive = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_settings = { workspace = true }
+helio_component = { workspace = true }
+# The game's slim feature set (as pulsar_game): linking the plugin must not
+# pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+inventory = { workspace = true }
+# The engine-class derive logs through it.
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+bytemuck = { workspace = true, features = ["derive"] }
+wgpu = { workspace = true }
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+helio-scene-join = { workspace = true }
+helio-light-api = { workspace = true }
+helio-pass-billboard = { workspace = true }
+helio-pass-deferred-light = { workspace = true }
+helio-pass-hlfs = { workspace = true }
+helio-pass-light-cull = { workspace = true }
+helio-pass-shadow-matrix = { workspace = true }
+
+[dev-dependencies]
+# A mesh to place their rows by (tests only; the crate links no mesh).
+meshes_component = { workspace = true }
+pollster = "=0.4.0"
+helio-core = { workspace = true }
+# The engine's tests that load, reload and join lights (moved from
+# engine_backend with the component).
+helio-pass-object-batch = { workspace = true }
+pulsar_class = { workspace = true }
+pulsar_events = { workspace = true }
+pulsar_scene = { workspace = true }
+tempfile = { workspace = true }
+parking_lot = { workspace = true }
+helio-mesh-api = { workspace = true }
+pulsar_script_object_model = { workspace = true }
+
+[lints]
+workspace = true

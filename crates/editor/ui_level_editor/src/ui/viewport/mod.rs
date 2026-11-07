@@ -32,6 +32,7 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
+use ui::menu::popup_menu::PopupMenu;
 use ui::Sizable;
 use ui::{v_flex, ActiveTheme};
 use ui_common::ViewportControls;
@@ -241,6 +242,9 @@ pub struct ViewportPanel {
     last_mouse_y: Arc<AtomicI32>,
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
+    right_mouse_down_position: Rc<RefCell<Option<Point<Pixels>>>>,
+    right_mouse_dragged: Arc<AtomicBool>,
+    context_menu: Rc<RefCell<Option<(Point<Pixels>, Entity<PopupMenu>)>>>,
 
     /// Locked cursor position for infinite mouse movement
     locked_cursor_x: Arc<AtomicI32>,
@@ -304,6 +308,9 @@ impl ViewportPanel {
             last_mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_right_captured: Arc::new(AtomicBool::new(false)),
             mouse_middle_captured: Arc::new(AtomicBool::new(false)),
+            right_mouse_down_position: Rc::new(RefCell::new(None)),
+            right_mouse_dragged: Arc::new(AtomicBool::new(false)),
+            context_menu: Rc::new(RefCell::new(None)),
             locked_cursor_x: Arc::new(AtomicI32::new(0)),
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
             // MIN marks that the platform has no global cursor coordinate
@@ -322,6 +329,7 @@ impl ViewportPanel {
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        action_context: FocusHandle,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -337,7 +345,7 @@ impl ViewportPanel {
         );
 
         // Build the viewport UI
-        self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
+        self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, action_context, cx)
     }
 }
 
@@ -374,8 +382,7 @@ mod tests {
 
     #[test]
     fn cursor_capture_load_reads_both_buttons_as_a_right_drag_pan() {
-        // Shift + right-drag pans while keeping the right button as the
-        // capture's initiator: `PanRight` stores both flags.
+        // Shift + right-drag pan stores both capture flags.
         let right = AtomicBool::new(true);
         let middle = AtomicBool::new(true);
 

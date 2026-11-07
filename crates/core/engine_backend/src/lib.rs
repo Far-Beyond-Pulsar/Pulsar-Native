@@ -14,13 +14,12 @@ pub mod services;
 pub mod subsystems;
 
 // Force-link `helio_component`: this crate relies on its `inventory`-based
-// registrations (`#[register_world_component]`, its GPU row registrations),
-// but unlike its sibling crates (`ui_level_editor`, `pulsar_scene`) it does
-// not name every `helio_component` type directly. Without an explicit symbol
-// reference the linker can dead-strip the rest of `helio_component`'s
-// `#[used]` inventory statics in an optimized build.
+// registrations (the motion gate, texture reloads), but does not name every
+// `helio_component` item directly. Without an explicit symbol reference the
+// linker can dead-strip the rest of `helio_component`'s `#[used]` inventory
+// statics in an optimized build.
 use helio_component as _;
-pub use helio_component::{component_animation_notify_events, project_animation_notify_events};
+pub use scene::{component_asset_events, ComponentEventCatalog};
 
 #[cfg(feature = "render")]
 pub use services::GpuRenderer;

@@ -32,7 +32,7 @@ use crate::components::{Parent, RenderProps};
 use crate::hierarchy_transform::{world_matrix_of, MAX_DEPTH};
 
 /// Spaces the table can hold. A space id travels in 8 bits of an instance's
-/// flags (`helio_pass_object_batch::INSTANCE_COORDINATE_SPACE_*`), and slot 0 is
+/// flags (`helio_mesh_api::INSTANCE_COORDINATE_SPACE_*`), and slot 0 is
 /// the world.
 pub const MAX_SPACES: u32 = 255;
 
