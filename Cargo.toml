@@ -520,7 +520,6 @@ helio-bake-types = { path = "crates/renderer/helio/crates/helio-bake-types" }
 helio-controls = { path = "crates/renderer/helio/crates/helio-controls" }
 helio-pass-fxaa = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-fxaa" }
 helio-pass-hlfs = { path = "plugins/vendor/lights/feature/hlfs" }
-helio-pass-sdf = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sdf" }
 helio-wasm = { path = "crates/renderer/helio/crates/helio-wasm" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 

@@ -1870,7 +1870,7 @@ test = "plugins/vendor/fog/component/tests/scene_rows.rs; crates/editor/ui_level
 status = "verified"
 
 [[buffer]]
-key = "reflection_captures"
+key = "environment_probes"
 producers = ["ReflectionCaptureComponent"]
 consumers = []
 owner = "helio_pass_deferred_light::components::ReflectionCaptureComponent (the only schema); no engine writer"
@@ -2318,7 +2318,7 @@ crate = "helio-pass-deferred-light"
 in_default_graph = false
 reads = []
 owner = "helio-presets (mapping); helio-pass-deferred-light (algorithm)"
-disposition = "keep: reads scene_lights (joined from LightSourceRow) and water_volumes (joined from WaterVolumeSourceRow); reflection_captures has no authored producer yet (#1054)"
+disposition = "keep: reads scene_lights (joined from LightSourceRow) and water_volumes (joined from WaterVolumeSourceRow); environment_probes (reflection captures) has no authored producer yet (#1054)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); plugins/vendor/water/component/tests/scene_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
@@ -2515,16 +2515,6 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_co
 status = "verified"
 
 [[pass]]
-crate = "helio-pass-sdf"
-in_default_graph = false
-reads = []
-owner = "helio-presets"
-disposition = "not composed by helio-presets; out of scope until a graph adopts it"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
-
-[[pass]]
 crate = "helio-pass-shadow"
 in_default_graph = false
 reads = []
@@ -2553,16 +2543,6 @@ disposition = "keep: reads scene_lights, the scene join's output from each Light
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
-
-[[pass]]
-crate = "helio-pass-simple-cube"
-in_default_graph = true
-reads = []
-owner = "helio-pass-simple-cube"
-disposition = "not in the engine's graph: Helio's example graph (build_simple_graph)"
-target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
-status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-sky"

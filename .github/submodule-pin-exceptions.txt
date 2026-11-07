@@ -7,3 +7,10 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
+crates/renderer/helio a4a82d01e5ac Helio#392 (p18: Helio is core only); re-pin to main when it merges
+plugins/vendor/meshes 62d3e5dfb240 Plugin_Meshes#1 (p18, needs Helio#392); re-pin to main when it merges
+plugins/vendor/lights a6ecdf4471e2 Plugin_Lights#1 (p18, needs Helio#392); re-pin to main when it merges
+plugins/vendor/gi 56b821f8fdd2 Plugin_GI#1 (p18, needs Helio#392); re-pin to main when it merges
+plugins/vendor/voxel dc35790cd011 Plugin_Voxel#1 (p18, needs Helio#392); re-pin to main when it merges
+plugins/vendor/water b6ac33a83b3c Plugin_Water#1 (p18, needs Helio#392); re-pin to main when it merges
+plugins/vendor/post ae2c03675064 Plugin_Post#1 (p18, needs Helio#392); re-pin to main when it merges
