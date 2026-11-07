@@ -1868,6 +1868,7 @@ impl WaterSimPass {
             surface_queries: crate::surface_query::WaterSurfaceQueries::new(device),
             reflection_capture: None,
             ocean_rest_height: 0.0,
+            shore_swell: 1.0,
             shore_map: None,
             shore_map_dirty: false,
             _shore_texture: shore_texture,

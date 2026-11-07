@@ -134,7 +134,8 @@ fn emitter_vertex(vertex: u32, instance: u32) -> VertexOutput {
         let k = omega / celerity;
         let amp_scale = select(1.0, 0.45, train == 1u);
         let cap = (0.42 * depth + 0.14) * select(1.0, 0.5, train == 1u);
-        let amplitude = min(0.55 * amp_scale * env * exposure * shoal * group, cap);
+        let amplitude = min(0.55 * amp_scale * env * exposure * shoal * group, cap)
+            * clamp((shore_params.state.x - 0.5) * 2.0, 0.0, 1.0);
         let phase = omega * (travel.x + shore_params.state.y) + phase_noise * select(1.0, 1.37, train == 1u) + f32(train) * 2.1;
         let c = 0.5 + 0.5 * cos(phase);
         let s = sin(phase);

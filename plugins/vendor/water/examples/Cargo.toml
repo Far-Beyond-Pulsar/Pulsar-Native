@@ -39,7 +39,13 @@ helio-pass-perf-overlay = { workspace = true }
 helio-pass-gi = { workspace = true }
 helio-pass-sky = { workspace = true, features = ["host-rows"] }
 helio-pass-lens = { workspace = true }
+helio-pass-vg = { workspace = true }
+helio-vg-build = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-vg-stream = { workspace = true }
+half = "2"
 helio-pass-flare = { workspace = true }
+helio-pass-volumetric-fog = { workspace = true, features = ["host-rows"] }
 bytemuck = { workspace = true, features = ["derive"] }
 helio-pass-water-sim = { workspace = true, features = ["host-rows"] }
 helio-presets = { workspace = true }
@@ -57,3 +63,7 @@ winit = { workspace = true }
 [[bin]]
 name = "coastal_showcase"
 path = "coastal_showcase.rs"
+
+[[bin]]
+name = "muskoka_showcase"
+path = "muskoka_showcase.rs"

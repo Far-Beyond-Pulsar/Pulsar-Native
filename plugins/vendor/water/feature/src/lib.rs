@@ -231,6 +231,10 @@ pub struct WaterSimPass {
     /// Explicit terrain-derived shore inputs; absent by default because generic
     /// Helio scenes do not expose a terrain height query to render passes.
     pub(crate) shore_map: Option<WaterShoreMap>,
+    /// Scale (0..1) of the shoreline wave trains: 1 breakers, 0 none (a lake).
+    /// The FFT bands are damped by depth either way. Carried in the shore
+    /// params' enabled word (see `set_shore_swell`).
+    pub(crate) shore_swell: f32,
     pub(crate) shore_map_dirty: bool,
     pub(crate) _shore_texture: wgpu::Texture,
     pub(crate) shore_view: wgpu::TextureView,
@@ -557,6 +561,14 @@ impl WaterSimPass {
     /// Release a body's pending request and velocity history on teardown.
     pub fn remove_surface_query_body(&mut self, body_key: u64) {
         self.surface_queries.remove_body(body_key);
+    }
+
+    /// Scale (0..1) of the shoreline wave trains the shore map drives: 1 (the
+    /// default) is the full breakers, 0 none. A lake has no ocean swell to
+    /// break; the depth damping of the spectrum, which keeps waves off the
+    /// land, applies at any scale.
+    pub fn set_shore_swell(&mut self, scale: f32) {
+        self.shore_swell = scale.clamp(0.0, 1.0);
     }
 
     /// Set or clear the authored terrain-derived shoreline field. Setting a
@@ -1131,7 +1143,9 @@ impl RenderPass for WaterSimPass {
                     (map.center_xz[1] - ctx.world_origin.z) as f32,
                 ],
                 map.extent_xz,
-                1.0f32,
+                // The enabled word: below 0.5 no map, otherwise 0.5 + half the
+                // shoreline swell's scale (1.0, the default, is full breakers).
+                0.5 + 0.5 * self.shore_swell.clamp(0.0, 1.0),
             )
         } else {
             ([0.0; 2], [1.0; 2], 0.0f32)

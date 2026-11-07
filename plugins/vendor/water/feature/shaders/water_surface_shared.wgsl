@@ -69,6 +69,12 @@ fn shore_field(world_xz: vec2f, layer: i32) -> vec4f {
 // depth from the waterline: a crest never rides up over dry ground (the
 // surface draw only hides water the terrain is in front of, so any
 // displacement over the land would show as sheets and dashes on the beach).
+// The shoreline wave trains' scale (`WaterSimPass::set_shore_swell`), carried in the
+// shore params' enabled word: 1.0 is full breakers (and the default), 0.5 none.
+fn shore_swell_scale() -> f32 {
+    return clamp((shore_params.state.x - 0.5) * 2.0, 0.0, 1.0);
+}
+
 fn shore_ocean_damp(world_xz: vec2f) -> vec4f {
     if shore_params.state.x < 0.5 { return vec4f(1.0); }
     let depth = max(-shore_field(world_xz, 0).x, 0.0);
@@ -109,7 +115,7 @@ fn shore_wave(world_xz: vec2f) -> ShoreWave {
         let k = omega / celerity;
         let amp_scale = select(1.0, 0.45, train == 1u);
         let amplitude_cap = (0.42 * max(depth, 0.0) + 0.14) * select(1.0, 0.5, train == 1u);
-        let amplitude = min(0.55 * amp_scale * wave_env * shoal * group, amplitude_cap);
+        let amplitude = min(0.55 * amp_scale * wave_env * shoal * group, amplitude_cap) * shore_swell_scale();
         let phase = omega * (travel.x + shore_params.state.y) + phase_noise * select(1.0, 1.37, train == 1u) + f32(train) * 2.1;
         let c = 0.5 + 0.5 * cos(phase);
         let s = sin(phase);
