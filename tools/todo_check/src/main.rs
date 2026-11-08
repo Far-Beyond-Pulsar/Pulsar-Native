@@ -40,8 +40,13 @@ fn has_unreferenced_todo(comment: &str) -> bool {
     comment.match_indices("TODO").any(|(index, _)| {
         let before = comment[..index].chars().next_back();
         let after = comment[index + 4..].chars().next();
+        let is_marker = comment[..index]
+            .chars()
+            .all(|c| c.is_whitespace() || matches!(c, '*' | '!' | '/'))
+            || matches!(after, Some(':' | '('));
         !before.is_some_and(|c| c.is_alphanumeric() || c == '_')
             && !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+            && is_marker
             && !has_issue_reference(&comment[index + 4..])
     })
 }
@@ -209,6 +214,9 @@ mod tests {
         ));
         assert!(has_unreferenced_todo(" TODO(#0): fix this"));
         assert!(!has_unreferenced_todo(" placeholder TODOs"));
+        assert!(!has_unreferenced_todo(" check TODO comments"));
+        assert!(!has_unreferenced_todo(" with `TODO` placeholders"));
+        assert!(has_unreferenced_todo(" note: TODO: fix this"));
     }
 
     #[test]
@@ -217,7 +225,7 @@ mod tests {
         assert!(!scanner.line_has_unreferenced_todo(r#"let s = "// TODO";"#, Syntax::Slash, true));
         assert!(scanner.line_has_unreferenced_todo("let x = 1; // TODO: fix", Syntax::Slash, true));
         assert!(!scanner.line_has_unreferenced_todo("/* TODO #42 */", Syntax::Slash, true));
-        assert!(scanner.line_has_unreferenced_todo("/*", Syntax::Slash, true) == false);
+        assert!(!scanner.line_has_unreferenced_todo("/*", Syntax::Slash, true));
         assert!(scanner.line_has_unreferenced_todo(" * TODO: fix", Syntax::Slash, true));
         assert!(!scanner.line_has_unreferenced_todo(" */", Syntax::Slash, true));
         assert!(scanner.line_has_unreferenced_todo(
