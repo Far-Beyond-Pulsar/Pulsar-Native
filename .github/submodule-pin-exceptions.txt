@@ -7,14 +7,3 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
-crates/renderer/helio 496af77ce78b Helio#392 (p18: Helio is core only); re-pin to main when it merges
-plugins/vendor/meshes 62d3e5dfb240 Plugin_Meshes#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/lights a6ecdf4471e2 Plugin_Lights#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/gi 56b821f8fdd2 Plugin_GI#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/voxel dc35790cd011 Plugin_Voxel#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/water 8b523e21ee9e Plugin_Water#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/post ae2c03675064 Plugin_Post#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/blueprint_editor 03480e9720a4 Plugin_Blueprints#43 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
-plugins/vendor/code_editor 05a455430c59 Plugin_CodeEditor#18 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
-plugins/vendor/matter_editor 5b8187de987e Plugin_Matter#8 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
-plugins/vendor/table_editor fc2b767ef34a Plugin_DBTable#5 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
