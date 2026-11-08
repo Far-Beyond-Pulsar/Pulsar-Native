@@ -43,8 +43,7 @@ tokio = { workspace = true, features = ["full"] }
 rapier3d = { workspace = true, optional = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
-    pulsar_error = { path = "../pulsar_error" },
-
+pulsar_error = { path = "../pulsar_error" }
 dashmap = { workspace = true }
 bitflags = "2"
 
