@@ -1,0 +1,51 @@
+name: Welcome Comments
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  welcome-comment:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Post welcome message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isPR = !!context.payload.pull_request;
+            const issueNumber = context.issue.number;
+            const author = context.payload.sender.login;
+
+            let body = '';
+
+            if (isPR) {
+              body = `Hi @${author}, thanks for submitting this pull request!\n\n` +
+                `We manage our ongoing work balancing, task assignments, and technical collaboration directly in our community server. ` +
+                `Please join our Discord to coordinate with the team and discuss your PR:\n` +
+                `👉 https://discord.gg/BXyZDMeUJc`;
+            } else {
+              body = `Hi @${author}, thanks for opening this issue!\n\n` +
+                `For faster response times and to speak directly with our core contributors, feel free to join our Discord community:\n` +
+                `👉 https://discord.gg/BXyZDMeUJc`;
+            }
+
+            if (isPR) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: body
+              });
+            }

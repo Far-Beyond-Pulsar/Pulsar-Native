@@ -140,17 +140,12 @@ jobs:
           third_party=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.manifest_path | contains("/crates/third-party/")) | "--exclude=" + .name')
           # shellcheck disable=SC2086 # one --exclude per word
-          cargo clippy --workspace --exclude pulsar_docs $third_party --all-targets -- \
-            -A warnings \
-            -A dead_code \
-            -A clippy::too_many_arguments \
-            -A clippy::type_complexity \
-            -A clippy::match_like_matches_macro \
-            -A clippy::only_used_in_recursion \
-            -A improper_ctypes_definitions \
-            -A clippy::field_reassign_with_default \
-            -A clippy::result_large_err \
-            -A clippy::doc_overindented_list_items
+          cargo clippy --workspace --exclude pulsar_docs $third_party --all-targets -- -D warnings
+
+      # Check for stray TODO comments without issue reference
+      - name: todo comment check
+        run: |
+          cargo run -p todo_check
 
       # The Blueprint editor is a plugin: the editor must still build, and its
       # shell must not have grown a dependency back, without it.
