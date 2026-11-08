@@ -3,6 +3,15 @@
 Themes are JSON files in `themes/`. The engine loads them at startup via
 `ui::themes::init(cx)`.
 
+## Color picker raster images
+
+The shared picker in `crates/ui/wgpui-component/crates/ui/src/color_picker/`
+caches its wheel, S/V triangle, checkerboard and palette as raster images.
+Its bake samples use premultiplied color while composing coverage, then
+`helpers/paint.rs::put_rgba` converts them to straight RGBA bytes for WGPUI's
+`Rgba8Unorm` sprite atlas. The sprite shader handles alpha during blending.
+Tests and preview exports read that same RGBA order without swapping channels.
+
 ## Theme file format
 
 Each theme file is a `ThemeSet` containing a `name`, optional `author`/`url`,
