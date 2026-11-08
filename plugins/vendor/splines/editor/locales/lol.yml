@@ -1,7 +1,0 @@
-# splines plugin, level editor UI - lol
-
-LevelEditor.Spline.PointCount: "POINTZ"
-LevelEditor.SplinePanel.Clear: "Wipe spleen"
-LevelEditor.SplinePanel.Title: "Spleen"
-LevelEditor.ToolMode.Spline: "Splyne"
-LevelEditor.ToolMode.SplineDesc: "Clicky to put down point, Shift-clicky to deletez"

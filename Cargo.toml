@@ -1,4 +1,7 @@
 [workspace]
+# Crates inside plugin repositories (the submodules under plugins/vendor) are
+# named one by one, never by a glob: Pulsar chooses which of a plugin's crates
+# join its workspace (CI's vendor-member guard).
 members = [
     "crates/profiling",
     # The Blueprint plugin's graph -> script module compiler. The plugin
@@ -34,7 +37,12 @@ members = [
     # (components, methods, runtime, file formats), editor (the editor plugin)
     # and examples (its standalone hosts: voxel_craft, voxel_flight,
     # water_world). Built-in plugin of the editor and the game.
-    "plugins/vendor/voxel/*",
+    "plugins/vendor/voxel/api",
+    "plugins/vendor/voxel/world",
+    "plugins/vendor/voxel/feature",
+    "plugins/vendor/voxel/component",
+    "plugins/vendor/voxel/editor",
+    "plugins/vendor/voxel/examples",
     # The leaf object kinds' plugins (layered rewrite phase B, batch 1): each
     # has a component crate (components, methods, rows, registrations), its
     # feature crates (the Helio passes it brought from the Helio repo), an
@@ -45,7 +53,7 @@ members = [
     "plugins/vendor/particles/editor",
     "plugins/vendor/particles/examples",
         "tools/todo_check",
-        "plugins/vendor/sprites/component",
+    "plugins/vendor/sprites/component",
     "plugins/vendor/sprites/feature/*",
     "plugins/vendor/sprites/editor",
     "plugins/vendor/sprites/examples",
@@ -54,11 +62,14 @@ members = [
     "plugins/vendor/decals/editor",
     "plugins/vendor/decals/examples",
     "plugins/vendor/lens/component",
-    "plugins/vendor/lens/feature/*",
+    "plugins/vendor/lens/feature/flare",
+    "plugins/vendor/lens/feature/lens",
+    "plugins/vendor/lens/feature/optics",
     "plugins/vendor/lens/editor",
     "plugins/vendor/lens/examples",
     "plugins/vendor/portals/component",
-    "plugins/vendor/portals/feature/*",
+    "plugins/vendor/portals/feature/cull",
+    "plugins/vendor/portals/feature/instances",
     "plugins/vendor/portals/editor",
     "plugins/vendor/portals/examples",
     "plugins/vendor/splines/component",
@@ -81,7 +92,8 @@ members = [
     "plugins/vendor/water/examples",
     "plugins/vendor/foliage/api",
     "plugins/vendor/foliage/component",
-    "plugins/vendor/foliage/feature/*",
+    "plugins/vendor/foliage/feature/gbuffer",
+    "plugins/vendor/foliage/feature/place",
     "plugins/vendor/foliage/editor",
     "plugins/vendor/foliage/examples",
     # The lighting plugins (phase B, batch 3): GI (its api crate is the
@@ -103,8 +115,23 @@ members = [
     # demos, the component crate (the feature's registrations) and the
     # editor crate.
     "plugins/vendor/meshes/api",
-    "plugins/vendor/meshes/feature/*",
-    "plugins/vendor/meshes/vg/*",
+    "plugins/vendor/meshes/feature/forward",
+    "plugins/vendor/meshes/feature/gbuffer",
+    "plugins/vendor/meshes/feature/indirect-dispatch",
+    "plugins/vendor/meshes/feature/object-batch",
+    "plugins/vendor/meshes/feature/occlusion-cull",
+    "plugins/vendor/meshes/feature/shadow",
+    "plugins/vendor/meshes/feature/shadow-dirty",
+    "plugins/vendor/meshes/feature/transparent",
+    "plugins/vendor/meshes/feature/vg",
+    "plugins/vendor/meshes/feature/vg-bvh",
+    "plugins/vendor/meshes/feature/vg-cull",
+    "plugins/vendor/meshes/feature/vg-dense",
+    "plugins/vendor/meshes/feature/vg-raster",
+    "plugins/vendor/meshes/feature/vg-shade",
+    "plugins/vendor/meshes/vg/build",
+    "plugins/vendor/meshes/vg/format",
+    "plugins/vendor/meshes/vg/stream",
     "plugins/vendor/meshes/asset-compat",
     "plugins/vendor/meshes/host",
     "plugins/vendor/meshes/snapshot",
@@ -124,7 +151,11 @@ members = [
     "plugins/vendor/materials/editor",
     "plugins/vendor/materials/graph_editor",
     "plugins/vendor/lights/api",
-    "plugins/vendor/lights/feature/*",
+    "plugins/vendor/lights/feature/billboard",
+    "plugins/vendor/lights/feature/cull",
+    "plugins/vendor/lights/feature/deferred",
+    "plugins/vendor/lights/feature/hlfs",
+    "plugins/vendor/lights/feature/shadows",
     "plugins/vendor/lights/host",
     "plugins/vendor/lights/component",
     "plugins/vendor/lights/editor",
@@ -488,7 +519,6 @@ helio-bake-types = { path = "crates/renderer/helio/crates/helio-bake-types" }
 helio-controls = { path = "crates/renderer/helio/crates/helio-controls" }
 helio-pass-fxaa = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-fxaa" }
 helio-pass-hlfs = { path = "plugins/vendor/lights/feature/hlfs" }
-helio-pass-sdf = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sdf" }
 helio-wasm = { path = "crates/renderer/helio/crates/helio-wasm" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 

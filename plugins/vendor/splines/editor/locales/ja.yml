@@ -1,7 +1,0 @@
-# splines plugin, level editor UI - ja
-
-LevelEditor.Spline.PointCount: "ポイント数"
-LevelEditor.SplinePanel.Clear: "スプラインを消去"
-LevelEditor.SplinePanel.Title: "スプライン"
-LevelEditor.ToolMode.Spline: "スプライン"
-LevelEditor.ToolMode.SplineDesc: "クリックでポイントを配置、Shift+クリックでクリア"

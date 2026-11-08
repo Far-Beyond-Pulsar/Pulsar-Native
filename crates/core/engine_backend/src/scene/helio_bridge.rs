@@ -153,7 +153,7 @@ pub fn row_join_keys() -> RowJoinKeys {
         generations,
         hidden,
         transforms,
-        mesh_bounds: object_joins()
+        owner_bounds: object_joins()
             .into_iter()
             .find_map(|registration| registration.owner_bounds)
             .unwrap_or(NO_OWNER_BOUNDS),
