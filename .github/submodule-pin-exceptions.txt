@@ -14,7 +14,7 @@ plugins/vendor/gi 56b821f8fdd2 Plugin_GI#1 (p18, needs Helio#392); re-pin to mai
 plugins/vendor/voxel dc35790cd011 Plugin_Voxel#1 (p18, needs Helio#392); re-pin to main when it merges
 plugins/vendor/water b6ac33a83b3c Plugin_Water#1 (p18, needs Helio#392); re-pin to main when it merges
 plugins/vendor/post ae2c03675064 Plugin_Post#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/blueprint_editor 4c4dd0daa54c Plugin_Blueprints#43 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
+plugins/vendor/blueprint_editor 6829e97ceedf Plugin_Blueprints#43 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
 plugins/vendor/code_editor 910f8d0e255e Plugin_CodeEditor#18 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
-plugins/vendor/matter_editor 391ec3bd8df9 Plugin_Matter#8 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
-plugins/vendor/table_editor aec754ac205d Plugin_DBTable#5 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
+plugins/vendor/matter_editor 5b8187de987e Plugin_Matter#8 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
+plugins/vendor/table_editor fc2b767ef34a Plugin_DBTable#5 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
