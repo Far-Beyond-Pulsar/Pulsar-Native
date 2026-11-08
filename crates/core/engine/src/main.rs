@@ -323,7 +323,7 @@ fn main() {
     // Extract initialized components
     let engine_context = init_ctx
         .engine_context
-        .expect("Engine context should be initialized");
+        .expect_or_log!("Engine context should be initialized", "Failed to initialize engine context");
 
     // Run the main event loop via GPUI's `App::run` API.
     profiling::profile_scope!("Engine::EventLoop");

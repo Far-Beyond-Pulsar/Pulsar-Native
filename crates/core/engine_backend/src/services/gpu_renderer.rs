@@ -424,11 +424,11 @@ mod tests {
 
         // Simulate what viewport/mod.rs's on_mouse_down/on_mouse_up closures
         // do -- push directly onto the shared queue, no gpu_engine lock.
-        queue.lock().unwrap().push(PendingPointerEvent::LeftClick {
+        unwrap_or_warn!(queue.lock()).push(PendingPointerEvent::LeftClick {
             norm_x: 0.25,
             norm_y: 0.75,
         });
-        queue.lock().unwrap().push(PendingPointerEvent::LeftRelease);
+        queue.lock()unwrap_or_warn!(queue.lock()).push(PendingPointerEvent::LeftRelease);
 
         let drained = std::mem::take(&mut *queue.lock().unwrap());
         assert_eq!(drained.len(), 2);

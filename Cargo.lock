@@ -1228,7 +1228,7 @@ dependencies = [
  "arboard",
  "blueprint_compiler",
  "chrono",
- "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73)",
+ "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=3e11097f4ec51e0b4d18ec3148c33ff78cf116fc)",
  "engine_backend",
  "engine_fs",
  "futures",
@@ -3258,7 +3258,7 @@ dependencies = [
 [[package]]
 name = "editor_task_queue"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73#838f6accad39dc4c1bd9016fca7f9867a06cbe73"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=3e11097f4ec51e0b4d18ec3148c33ff78cf116fc#3e11097f4ec51e0b4d18ec3148c33ff78cf116fc"
 dependencies = [
  "parking_lot",
 ]
@@ -3441,6 +3441,7 @@ dependencies = [
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_error",
  "pulsar_events",
  "pulsar_lsp",
  "pulsar_physics",
@@ -12082,6 +12083,7 @@ dependencies = [
  "profiling 0.1.0",
  "profiling 1.0.18",
  "pulsar_auth",
+ "pulsar_error",
  "pulsar_std",
  "rfd",
  "rust-embed",
@@ -12108,6 +12110,14 @@ dependencies = [
  "window_manager",
  "windows 0.62.2",
  "winresource",
+]
+
+[[package]]
+name = "pulsar_error"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]
@@ -15890,6 +15900,10 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "todo_check"
+version = "0.1.0"
 
 [[package]]
 name = "tokio"

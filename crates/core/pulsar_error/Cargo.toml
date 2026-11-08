@@ -1,0 +1,12 @@
+[package]
+name = "pulsar_error"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

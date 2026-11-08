@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::*;
+    use pulsar_error::{unwrap_or_warn, EngineError};
     #[test]
     fn test_engine_error_display() {
         let err = EngineError::Config("bad config".into());

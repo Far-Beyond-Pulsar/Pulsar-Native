@@ -15,7 +15,7 @@ gpui-ce.workspace = true
 smol.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages", "inspector"] }
 thiserror = { workspace = true }
-    pulsar_error = { path = "../pulsar_error" },
+pulsar_error = { path = "../pulsar_error" }
 
 wgpu.workspace = true
 rfd = { workspace = true }
