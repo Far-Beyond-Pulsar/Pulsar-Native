@@ -13,3 +13,9 @@ superseded PR run; docs-only changes and draft PRs skip CI; tests run on Linux
 only; Windows/macOS minutes are spent on `main` and nightly. Tests that need a
 GPU are excluded by `.config/nextest.toml` (`ci` profile). Run a full
 cross-platform pass on a branch with `gh workflow run CI --ref <branch> -f full=true`.
+
+The Linux lane also runs `cargo run -p todo_check`. It scans Git-tracked
+source and configuration files in this repository (not submodules) for TODO
+comment markers without an issue reference, such as `#123` or a GitHub issue
+URL. Existing unreferenced TODOs are reported too; they must be linked to
+issues before this check can pass.

@@ -321,9 +321,10 @@ fn main() {
     gpu_policy::enforce_discrete_gpu_policy_or_exit();
 
     // Extract initialized components
-    let engine_context = init_ctx
-        .engine_context
-        .expect_or_log!("Engine context should be initialized", "Failed to initialize engine context");
+    let engine_context = init_ctx.engine_context.unwrap_or_else(|| {
+        tracing::error!("Failed to initialize engine context");
+        std::process::exit(1);
+    });
 
     // Run the main event loop via GPUI's `App::run` API.
     profiling::profile_scope!("Engine::EventLoop");
