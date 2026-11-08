@@ -47,3 +47,51 @@
 [submodule "plugins/vendor/input_plugin"]
 	path = plugins/vendor/input_plugin
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Input
+[submodule "plugins/vendor/materials"]
+	path = plugins/vendor/materials
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Materials
+[submodule "plugins/vendor/meshes"]
+	path = plugins/vendor/meshes
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Meshes
+[submodule "plugins/vendor/lights"]
+	path = plugins/vendor/lights
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Lights
+[submodule "plugins/vendor/sky"]
+	path = plugins/vendor/sky
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Sky
+[submodule "plugins/vendor/gi"]
+	path = plugins/vendor/gi
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_GI
+[submodule "plugins/vendor/fog"]
+	path = plugins/vendor/fog
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Fog
+[submodule "plugins/vendor/post"]
+	path = plugins/vendor/post
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Post
+[submodule "plugins/vendor/lens"]
+	path = plugins/vendor/lens
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Lens
+[submodule "plugins/vendor/water"]
+	path = plugins/vendor/water
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Water
+[submodule "plugins/vendor/foliage"]
+	path = plugins/vendor/foliage
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Foliage
+[submodule "plugins/vendor/voxel"]
+	path = plugins/vendor/voxel
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Voxel
+[submodule "plugins/vendor/decals"]
+	path = plugins/vendor/decals
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Decals
+[submodule "plugins/vendor/particles"]
+	path = plugins/vendor/particles
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Particles
+[submodule "plugins/vendor/sprites"]
+	path = plugins/vendor/sprites
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Sprites
+[submodule "plugins/vendor/portals"]
+	path = plugins/vendor/portals
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Portals
+[submodule "plugins/vendor/splines"]
+	path = plugins/vendor/splines
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Splines

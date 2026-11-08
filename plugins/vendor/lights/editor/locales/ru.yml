@@ -1,5 +1,0 @@
-# lights plugin, level editor UI - ru
-
-LevelEditor.Create.DirectionalLight: "Направленный свет"
-LevelEditor.Create.PointLight: "Точечный свет"
-LevelEditor.Create.SpotLight: "Прожектор"

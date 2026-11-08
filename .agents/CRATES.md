@@ -229,17 +229,66 @@ pinned here (see "Submodule pins" below). They are not workspace members
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
 | `psgc/` | No | Shader Graph Compiler (has its own workspace) |
 
-## plugins/vendor/ — Editor plugin repos
+## plugins/vendor/ — Plugins
 
-These are the built-in editor plugins, loaded as DLLs at runtime. Each is a
-git submodule compiled as `cdylib`:
+Every plugin that ships with the engine lives at `plugins/vendor/<dir>/` and
+describes itself in a `pulsar-plugin.toml` (its id, what it requires, its
+runtime and editor modules). The installed set (`plugins/installed`, generated
+from those descriptors) links them; a project enables or disables each in its
+`Pulsar.toml` (`.agents/PLUGIN_SYSTEM.md`).
 
-- `blueprint_editor` — Blueprint visual scripting editor
-- `render_bps` (in-tree, `plugins/vendor/render_bps`) — Render graph editor (`.rendergraph`); its own editor on the Graphy canvas, no Blueprint code. See `.agents/RENDER_GRAPH.md`
-- `code_editor` — Script/code editor, a host for Mockaco (`WgpuiEditorView`). Mockaco owns the hover/completion/diagnostic UI and emits requests; `text_editor/lsp.rs` answers them through the shared analyzer
-- `shader_editor` — Shader graph editor (`.material`); edits the Graphy `GraphDescription` on the shared canvas through `ShaderProfile`, with PSGC compilation, WGSL type rules, material preview and texture-preview rows kept in the plugin. See `.agents/GRAPH_CANVAS.md`
-- `table_editor` — Database table editor
-- `matter_editor` — Material editor
+Each object kind is a plugin that owns its SceneDB components and methods,
+its contracts (`api`), the Helio feature that renders it (`feature`), its
+editor module (`editor`) and its demos (`examples`); Helio knows no kind
+(Helio's `docs/architecture/plugin-migration.md`). Since p18 every plugin but
+two editor tools is its own repository, a git submodule at the same path. The
+plugins' crates stay members of this workspace (`workspace = true`
+dependencies; the root `Cargo.toml` names each one by path, never by a glob),
+so they build only inside a
+Pulsar-Native checkout. Clone with `--recursive` (or `just submodule-init`):
+cargo cannot load the workspace without them.
+
+| Path | Repository | Plugin |
+|---|---|---|
+| `materials` | [Plugin_Materials](https://github.com/Far-Beyond-Pulsar/Plugin_Materials) | `pulsar.materials`: material assets and instances, the material table, templates, the graph compiler and graph editor |
+| `meshes` | [Plugin_Meshes](https://github.com/Far-Beyond-Pulsar/Plugin_Meshes) | `pulsar.meshes`: static, skeletal and virtual-geometry meshes, their drawers, culling, import and LOD |
+| `lights` | [Plugin_Lights](https://github.com/Far-Beyond-Pulsar/Plugin_Lights) | `pulsar.lights`: lights and reflection captures, the light list, shadows, the lighting models |
+| `sky` | [Plugin_Sky](https://github.com/Far-Beyond-Pulsar/Plugin_Sky) | `pulsar.sky`: the atmosphere, clouds and the sky's lighting inputs (`.agents/SKY.md`) |
+| `gi` | [Plugin_GI](https://github.com/Far-Beyond-Pulsar/Plugin_GI) | `pulsar.gi`: the GI probe clipmap and its tracers' interface |
+| `fog` | [Plugin_Fog](https://github.com/Far-Beyond-Pulsar/Plugin_Fog) | `pulsar.fog`: global and local fog media, volumetric fog |
+| `post` | [Plugin_Post](https://github.com/Far-Beyond-Pulsar/Plugin_Post) | `pulsar.post`: post-process volumes and camera baselines |
+| `lens` | [Plugin_Lens](https://github.com/Far-Beyond-Pulsar/Plugin_Lens) | `pulsar.lens`: the camera lens and flare (`.agents/LENS.md`) |
+| `water` | [Plugin_Water](https://github.com/Far-Beyond-Pulsar/Plugin_Water) | `pulsar.water`: water volumes, their simulation, caustics |
+| `foliage` | [Plugin_Foliage](https://github.com/Far-Beyond-Pulsar/Plugin_Foliage) | `pulsar.foliage`: foliage and the level's wind |
+| `voxel` | [Plugin_Voxel](https://github.com/Far-Beyond-Pulsar/Plugin_Voxel) | `pulsar.voxel`: destructible voxel worlds (`.agents/VOXEL_STREAMING.md`) |
+| `decals` | [Plugin_Decals](https://github.com/Far-Beyond-Pulsar/Plugin_Decals) | `pulsar.decals`: projected decals |
+| `particles` | [Plugin_Particles](https://github.com/Far-Beyond-Pulsar/Plugin_Particles) | `pulsar.particles`: GPU particle emitters (Corona) |
+| `sprites` | [Plugin_Sprites](https://github.com/Far-Beyond-Pulsar/Plugin_Sprites) | `pulsar.sprites`: 2D sprites over the scene |
+| `portals` | [Plugin_Portals](https://github.com/Far-Beyond-Pulsar/Plugin_Portals) | `pulsar.portals`: portals, their pairing, projection and draws |
+| `splines` | [Plugin_Splines](https://github.com/Far-Beyond-Pulsar/Plugin_Splines) | `pulsar.splines`: authored curves and their editor lines |
+| `physics_plugin` | [Plugin_Physics](https://github.com/Far-Beyond-Pulsar/Plugin_Physics) | Physics components and the Rapier simulation |
+| `skm_editor` | [Plugin_SKM](https://github.com/Far-Beyond-Pulsar/Plugin_SKM) | Animation: skeletal assets, the animator (`animation_component`) and its editors (`.agents/ANIMATION.md`) |
+| `input_plugin` | [Plugin_Input](https://github.com/Far-Beyond-Pulsar/Plugin_Input) | Input actions and mappings, their editors and runtime |
+| `ui_editor` | [Plugin_UI](https://github.com/Far-Beyond-Pulsar/Plugin_UI) | Widget assets and the WYSIWYG widget editor |
+| `blueprint_editor` | [Plugin_Blueprints](https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints) | Blueprint visual scripting, plus its `compiler/` crate |
+| `code_editor` | [Plugin_CodeEditor](https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor) | Script/code editor, a host for Mockaco (`WgpuiEditorView`); `text_editor/lsp.rs` answers Mockaco's requests through the shared analyzer |
+| `table_editor` | [Plugin_DBTable](https://github.com/Far-Beyond-Pulsar/Plugin_DBTable) | Database table editor |
+| `matter_editor` | [Plugin_Matter](https://github.com/Far-Beyond-Pulsar/Plugin_Matter) | Texture painting in the Pulsar Image Format (`.pif`) |
+| `asset_viewer` | in-tree | Viewers for model files, meshes and images |
+| `render_bps` | in-tree | Render graph editor (`.rendergraph`) on the Graphy canvas, no Blueprint code (`.agents/RENDER_GRAPH.md`) |
+
+`plugins/installed` (the generated installed set) and `plugins/trait_editor`
+are in-tree too. Whether the editor tools (asset viewer, render graph editor)
+become modules of other plugins is Pulsar-Native#1605's decision.
+
+A change to a plugin is committed in its repository and pinned here, like any
+submodule (below). Its repository's CI checks it inside a Pulsar-Native
+checkout (rustfmt, clippy, nextest's `ci` profile); Pulsar's CI does not
+format-check submodules (`scripts/fmt-check.sh`) but still lints and tests
+them as workspace members. The rules for the kinds come from Helio's
+`helio-architecture` skill (`AGENTS.md`). The one-owner check
+(`crates/core/one_owner`), the installed set, `absent_plugins` and the
+`scene_inventory` ledger read the checked-out plugins at these paths.
 
 ## Submodule pins
 
