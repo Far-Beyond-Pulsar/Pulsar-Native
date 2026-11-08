@@ -12,7 +12,7 @@ plugins/vendor/meshes 62d3e5dfb240 Plugin_Meshes#1 (p18, needs Helio#392); re-pi
 plugins/vendor/lights a6ecdf4471e2 Plugin_Lights#1 (p18, needs Helio#392); re-pin to main when it merges
 plugins/vendor/gi 56b821f8fdd2 Plugin_GI#1 (p18, needs Helio#392); re-pin to main when it merges
 plugins/vendor/voxel dc35790cd011 Plugin_Voxel#1 (p18, needs Helio#392); re-pin to main when it merges
-plugins/vendor/water b6ac33a83b3c Plugin_Water#1 (p18, needs Helio#392); re-pin to main when it merges
+plugins/vendor/water 8b523e21ee9e Plugin_Water#1 (p18, needs Helio#392); re-pin to main when it merges
 plugins/vendor/post ae2c03675064 Plugin_Post#1 (p18, needs Helio#392); re-pin to main when it merges
 plugins/vendor/blueprint_editor 6829e97ceedf Plugin_Blueprints#43 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
 plugins/vendor/code_editor 910f8d0e255e Plugin_CodeEditor#18 (Pulsar-Native pins after p17: Plugin_Shaders is private); re-pin to main when it merges
