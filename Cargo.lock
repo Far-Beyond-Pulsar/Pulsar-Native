@@ -1228,7 +1228,7 @@ dependencies = [
  "arboard",
  "blueprint_compiler",
  "chrono",
- "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=3e11097f4ec51e0b4d18ec3148c33ff78cf116fc)",
+ "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73)",
  "engine_backend",
  "engine_fs",
  "futures",
@@ -3258,7 +3258,7 @@ dependencies = [
 [[package]]
 name = "editor_task_queue"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=3e11097f4ec51e0b4d18ec3148c33ff78cf116fc#3e11097f4ec51e0b4d18ec3148c33ff78cf116fc"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73#838f6accad39dc4c1bd9016fca7f9867a06cbe73"
 dependencies = [
  "parking_lot",
 ]
