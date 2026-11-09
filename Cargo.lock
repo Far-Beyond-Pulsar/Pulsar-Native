@@ -6247,11 +6247,8 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
  "serde_json",
- "sha2 0.10.9",
  "tracing",
- "ureq 2.12.1",
  "wgpu",
- "zip",
 ]
 
 [[package]]
@@ -14539,6 +14536,7 @@ dependencies = [
  "bytemuck",
  "engine_backend",
  "engine_class_derive",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
@@ -14566,12 +14564,19 @@ dependencies = [
 name = "sky_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
+ "engine_state",
+ "image",
  "inventory",
  "plugin_editor_api",
  "pulsar_plugins",
  "rust-i18n",
+ "sha2 0.10.9",
  "sky_component",
+ "tracing",
  "ui_level_editor",
+ "ureq 2.12.1",
+ "zip",
 ]
 
 [[package]]

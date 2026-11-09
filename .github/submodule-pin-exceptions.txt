@@ -7,3 +7,4 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
+plugins/vendor/sky 84c7336 Plugin_Sky branch backlog/s1-night-sky-assets (#1603)
