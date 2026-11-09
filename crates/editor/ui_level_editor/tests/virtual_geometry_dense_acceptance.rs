@@ -450,11 +450,25 @@ impl Harness {
     }
 }
 
+/// The suite's profile, stated through `VirtualGeometrySettings` (no environment
+/// variables): the stock error threshold (1 px) so the cut follows the crowd's
+/// geometry and its sub-pixel triangles overlap, the stock overdraw valve (a
+/// tile resolved as dense is exempt from it) and prefetch band, and Tier 3 on
+/// (it is opt-in; the engine default is off).
 fn settings(mode: VirtualGeometryMode) -> VirtualGeometrySettings {
+    profile(mode, true)
+}
+
+fn profile(mode: VirtualGeometryMode, tier3: bool) -> VirtualGeometrySettings {
+    let stock = VirtualGeometrySettings::default();
     VirtualGeometrySettings {
         mode,
-        tier3: true,
-        ..Default::default()
+        tier3,
+        tau_pixels: 1.0,
+        tile_density_limit: stock.tile_density_limit,
+        prefetch_factor: stock.prefetch_factor,
+        dense_sensitivity: 1.0,
+        ..stock
     }
 }
 
@@ -893,14 +907,19 @@ impl Frame {
 /// `RENDER_ACCEPTANCE_DUMP_DIR` writes `vg_dense_view_*.png`.
 #[test]
 fn lod_views_and_vg_gpu_timings() {
-    for (name, placements) in [("crowd", placements()), ("normal", normal_placements())] {
+    for (name, tier3, placements) in [
+        ("crowd", true, placements()),
+        ("normal", true, normal_placements()),
+        ("crowd, tier3 off", false, placements()),
+        ("normal, tier3 off", false, normal_placements()),
+    ] {
         let Some(harness) = setup(false) else { return };
         let state = scene_of(placements);
         let mut renderer = HelioRenderer::new(state.scene.shared_scene());
         renderer.set_editor_camera_state(harness.camera);
         installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
             &mut renderer,
-            Some(settings(VirtualGeometryMode::ForceNonRtFallback)),
+            Some(profile(VirtualGeometryMode::ForceNonRtFallback, tier3)),
         );
         harness.until_ready(&mut renderer);
         let runtime =
@@ -942,7 +961,7 @@ fn lod_views_and_vg_gpu_timings() {
         ] {
             mailbox.set_viewport_debug_mode(id);
             let frame = harness.frames(&mut renderer, 6);
-            frame.dump(&format!("view_{name}_{view}"));
+            frame.dump(&format!("view_{}_{view}", name.replace([' ', ','], "_")));
             println!("[{name}] view {view}: {:?}", frame.view_counts());
         }
         mailbox.set_viewport_debug_mode(0);
