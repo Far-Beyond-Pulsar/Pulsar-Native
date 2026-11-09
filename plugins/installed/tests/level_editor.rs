@@ -39,11 +39,24 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         ("sky", &["AtmosphereComponent"]),
         ("wind", &["WindComponent"]),
     ];
+    // Menu entries that run an action instead of adding an object (the sky
+    // plugin's CC0 panorama installer, #1603). They are listed here so a new
+    // one is a deliberate change. They are not run here: the installer starts
+    // a network download.
+    let actions: &[&str] = &["sky_panoramas"];
+    let entries = extend::create_entries();
+    for &kind in actions {
+        assert!(
+            entries.iter().any(|entry| entry.id == kind),
+            "{kind} is registered"
+        );
+    }
     assert_eq!(
-        extend::create_entries()
+        entries
             .into_iter()
             .filter(|entry| entry.menu_label.is_some())
             .map(|entry| entry.id)
+            .filter(|id| !actions.contains(id))
             .collect::<Vec<_>>(),
         expected.iter().map(|(kind, _)| *kind).collect::<Vec<_>>(),
         "the Create menu, in order"
