@@ -142,10 +142,15 @@ pub fn reload_updated_asset(
         (pulsar_events::AssetKind::Blueprint, _) => {
             classes::reload_class_instances(world, event).len()
         }
-        (kind, Some(path)) => helio_component::asset_sources_for_file(kind, path)
-            .iter()
-            .map(|source| world.asset_source_changed(source))
-            .sum(),
+        (kind, Some(path)) => {
+            let reloaded: usize = helio_component::asset_sources_for_file(kind, path)
+                .iter()
+                .map(|source| world.asset_source_changed(source))
+                .sum();
+            // what depends on the file without being the asset it loads
+            // (a running animation graph's sequences)
+            reloaded + game_hooks::notify_asset_changed(world, path)
+        }
         _ => 0,
     }
 }
