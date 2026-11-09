@@ -51,6 +51,12 @@ test-crate name:
 clippy:
     cargo clippy --workspace -- -D warnings
 
+# Layer gate (architecture/layers.toml): core and editor depend on no plugin or
+# tool and name no kind beyond architecture/kind-names.txt. Helio's checker, run
+# from the submodule; `--update` records fixed violations.
+arch *args:
+    python crates/renderer/helio/scripts/architecture/check_layers.py --root . {{args}}
+
 # Pulsar-Native's own crates; submodules format in their own repos (#1375).
 fmt:
     scripts/fmt-check.sh --fix

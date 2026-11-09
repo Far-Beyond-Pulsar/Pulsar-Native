@@ -1,0 +1,99 @@
+# Layer of every workspace crate (Pulsar-Native#1605: core and editor know no
+# kind, subsystem or tool). Checked by Helio's layer gate, run from the
+# submodule over this file: `just arch`
+# (python crates/renderer/helio/scripts/architecture/check_layers.py --root .).
+#
+# A crate's layer is its [crates] entry, else the longest [paths] prefix that
+# contains it. A crate may depend on the layers in `may_use` of its own layer.
+# Dev dependencies are checked too: a kernel crate's tests that need plugins
+# are a host's tests (plugins/installed/tests), never the kernel crate's.
+#
+# Today's violations are recorded in architecture/layer-violations.txt, and
+# what kernel code still names a kind in architecture/kind-names.txt. Both
+# lists may only shrink: a new entry fails the check, a fixed one must be
+# removed (`--update` rewrites the violations list).
+
+[check]
+dev_dependencies = true
+
+[scan]
+# Directories whose .rs/.wgsl files are read for kind names (only crates of
+# layers without `names_kinds` count).
+dirs = ["crates", "tools"]
+
+[layers.foundation]
+about = "UI framework, vendored and external crates, the renderer core (Helio). Knows no engine crate."
+may_use = ["foundation"]
+names_kinds = true
+
+[layers.kernel]
+about = "The engine and editor platform: scene model, SceneDB integration, scripting, files, plugins, the editor shell. Knows no object kind, subsystem or tool: those are plugins (plugins/vendor), reached through registrations."
+may_use = ["kernel", "foundation"]
+
+[layers.tool]
+about = "Optional editor tools (git, flamegraph, log viewer, Fab search, AI agent providers). The kernel never names one; the editor host links them."
+may_use = ["tool", "kernel", "foundation"]
+names_kinds = true
+
+[layers.plugin]
+about = "A plugin (plugins/vendor/<dir>): an object kind, a subsystem (physics, input, animation) or an editor tool. Owns everything about itself and registers it from its root crate."
+may_use = ["plugin", "tool", "kernel", "foundation"]
+names_kinds = true
+
+[layers.host]
+about = "What links plugins: the editor binary, the installed set, tools and tests that need every plugin. Anything goes."
+may_use = ["host", "plugin", "tool", "kernel", "foundation"]
+names_kinds = true
+
+[paths]
+"crates/core" = { layer = "kernel" }
+"crates/editor" = { layer = "kernel" }
+"crates/subsystems" = { layer = "kernel" }
+"crates/profiling" = { layer = "kernel" }
+"crates/agent-providers" = { layer = "tool" }
+"crates/editor/ui_git_manager" = { layer = "tool" }
+"crates/editor/ui_flamegraph" = { layer = "tool" }
+"crates/editor/ui_log_viewer" = { layer = "tool" }
+"crates/editor/ui_fab_search" = { layer = "tool" }
+"crates/ui" = { layer = "foundation" }
+"crates/third-party" = { layer = "foundation" }
+"crates/external" = { layer = "foundation" }
+"crates/renderer" = { layer = "foundation" }
+"plugins/vendor" = { layer = "plugin" }
+"plugins/installed" = { layer = "host" }
+"tools" = { layer = "host" }
+# A crate's test fixtures are kernel crates like it.
+"crates/core/plugin_manager/tests/fixtures" = { layer = "kernel" }
+"crates/core/pulsar_script_vm/tests/fixtures" = { layer = "kernel" }
+"crates/core/pulsar_events/tests/fixtures" = { layer = "kernel" }
+
+[crates]
+# The editor binary: links every installed plugin and the tools.
+pulsar_engine = { layer = "host" }
+
+[kinds]
+# Words (lower case; a multi-word term matches consecutive words of an
+# identifier or key-like string: `StaticMeshComponent` is "static mesh
+# component") naming each plugin's kind, subsystem or tool. Kernel code names
+# none of them: it reaches a plugin through registrations, by the plugin's
+# contribution ids, never by its words.
+meshes = ["mesh", "meshes", "static mesh", "meshlet", "vg", "virtual geometry"]
+animation = ["skeletal", "skeleton asset", "skinned", "skinning", "animator", "anim graph", "animation graph", "animation sequence", "skmesh"]
+lights = ["light component", "lights", "point light", "spot light", "directional light", "light type", "ies profile", "hlfs", "reflection capture"]
+materials = ["material", "materials"]
+sky = ["sky", "atmosphere", "volumetric cloud", "volumetric clouds", "cloud layer", "cloud layers"]
+fog = ["fog"]
+post = ["post process volume", "post process volumes", "pp volume"]
+lens = ["lens flare", "lens profile", "lens element", "lens elements", "lens optics", "flare"]
+water = ["water", "caustic", "caustics", "buoyancy"]
+foliage = ["foliage", "grass"]
+voxel = ["voxel", "voxels", "terrain"]
+decals = ["decal", "decals"]
+particles = ["particle", "particles", "corona"]
+sprites = ["sprite", "sprites"]
+portals = ["portal", "portals"]
+splines = ["spline", "splines"]
+gi = ["gi", "ddgi"]
+physics = ["physics", "rapier", "collider", "colliders", "rigidbody", "rigid body", "ragdoll", "physasset"]
+input = ["player input", "input mapping", "input action", "input actions"]
+baked-lighting = ["lightmap", "lightmaps", "pvs"]

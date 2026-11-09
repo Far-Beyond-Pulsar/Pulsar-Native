@@ -266,18 +266,10 @@ jobs:
             throw "Plugin crates joined the Pulsar workspace without their own [workspace].members entry (exclude them, or name them): $($enrolled -join ', ')"
           }
 
-          $uiCorePackages = @($metadata["packages"] | Where-Object {
-            $_["name"] -eq "ui_core"
-          })
-          if ($uiCorePackages.Count -ne 1) {
-            throw "Expected exactly one ui_core package; found $($uiCorePackages.Count)"
-          }
-          $uiCoreDependencies = @(
-            $uiCorePackages[0]["dependencies"] | ForEach-Object { $_["name"] }
-          )
           # The built-in plugins describe themselves (pulsar-plugin.toml) and
-          # submit their editor providers from their own crates; the installed
-          # set (plugins/installed) links them, and the editor shell names none.
+          # register from their root crates; the installed set
+          # (plugins/installed) links them. That no kernel crate (the editor
+          # shell included) names a plugin is the layer gate's rule (below).
           $builtins = @(
             "asset_viewer_plugin",
             "editor_table_plugin",
@@ -301,26 +293,13 @@ jobs:
           if ($notInstalled.Count -ne 0) {
             throw "the installed set lost built-in plugins: $($notInstalled -join ', ')"
           }
-          $linkedByShell = @($builtins | Where-Object { $uiCoreDependencies -contains $_ })
-          if ($linkedByShell.Count -ne 0) {
-            throw "ui_core links plugins by name: $($linkedByShell -join ', ')"
-          }
 
-          # The material graph editor is the materials plugin's (pulsar.materials,
-          # registered as a plugin editor provider): the shell must not link it.
-          if ($uiCoreDependencies -contains "materials_graph_editor") {
-            throw "ui_core depends on materials_graph_editor; it is the materials plugin's editor"
-          }
-
-          # Scripting languages are plugins on equal footing: the editor shell
-          # must not link any of them. The Blueprint editor is a plugin
-          # (`pulsar.blueprints`): its crate submits its editor provider
-          # (plugin_manager::PluginEditorProvider) and the installed set links it.
-          foreach ($language in @("blueprint_editor_plugin", "blueprint_compiler")) {
-            if ($uiCoreDependencies -contains $language) {
-              throw "ui_core depends on $language; scripting languages must stay plugins"
-            }
-          }
+      # Core and editor know no kind, subsystem or tool (Pulsar-Native#1605):
+      # no kernel crate depends on a plugin or a tool, and kernel code names no
+      # kind beyond architecture/kind-names.txt (shrink-only). Helio's checker,
+      # run over this repository's architecture/layers.toml.
+      - name: Layer gate
+        run: python3 crates/renderer/helio/scripts/architecture/check_layers.py --root .
 
       - name: Graphy stays headless
         shell: pwsh
