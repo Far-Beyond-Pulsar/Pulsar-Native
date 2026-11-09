@@ -1242,6 +1242,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
+ "pulsar_class",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_script_codegen",

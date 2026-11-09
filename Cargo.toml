@@ -706,6 +706,7 @@ pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
 engine_fs         = { path = "crates/core/engine_fs" }
 plugin_manager    = { path = "crates/core/plugin_manager" }
 pulsar_plugins    = { path = "crates/core/pulsar_plugins" }
+pulsar_class      = { path = "crates/core/pulsar_class" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 # The flamegraph reads ONE global profiler. Helio pins `profiling` from this
 # repo by git rev; without this patch helio-core links a second copy with its
