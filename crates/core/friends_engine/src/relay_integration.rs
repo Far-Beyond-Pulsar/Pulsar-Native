@@ -99,3 +99,42 @@ mod hex {
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn room_key_is_order_and_case_insensitive() {
+        let a = generate_room_key("Alice", "bob");
+        assert_eq!(a, generate_room_key("BOB", "alice"));
+        assert_ne!(a, generate_room_key("alice", "carol"));
+    }
+
+    #[test]
+    fn room_key_is_32_lowercase_hex_chars() {
+        let key = generate_room_key("a", "b");
+        assert_eq!(key.len(), 32);
+        assert!(key.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
+    }
+
+    #[test]
+    fn room_key_matches_known_sha256_prefix() {
+        // First 16 bytes of sha256("a_b"), the sorted lowercase join.
+        assert_eq!(
+            generate_room_key("b", "A"),
+            "648fa9b31bc7ff7eb914e7a7180f07e0"
+        );
+    }
+
+    #[test]
+    fn hex_encode_pads_each_byte() {
+        assert_eq!(hex::encode(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+        assert_eq!(hex::encode(&[]), "");
+    }
+
+    #[test]
+    fn broadcast_info_is_currently_unavailable() {
+        assert_eq!(get_broadcast_info("anyone"), None);
+    }
+}

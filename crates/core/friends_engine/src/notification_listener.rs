@@ -91,18 +91,24 @@ fn push_notification(note: serde_json::Value) {
     NOTIFICATIONS.lock().push_back(note);
 }
 
+fn notifications_ws_url(home_server: &str) -> String {
+    let ws_url = format!(
+        "{}/api/v1/notifications/ws",
+        home_server.trim_end_matches('/')
+    );
+    // Convert to ws:// if http://, wss:// if https://
+    ws_url
+        .replace("http://", "ws://")
+        .replace("https://", "wss://")
+}
+
 async fn run_loop(
     home_server: &str,
     token: &str,
     username: &str,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
-    let hs = home_server.to_string();
-    let ws_url = format!("{}/api/v1/notifications/ws", hs.trim_end_matches('/'));
-    // Convert to ws:// if http://, wss:// if https://
-    let ws_url = ws_url
-        .replace("http://", "ws://")
-        .replace("https://", "wss://");
+    let ws_url = notifications_ws_url(home_server);
 
     let mut shutdown_rx = std::pin::pin!(shutdown_rx);
 
@@ -166,4 +172,35 @@ async fn connect_and_listen(ws_url: &str, token: &str, username: &str) -> Result
 
     tracing::info!("[NotificationListener] WebSocket closed");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ws_url_maps_schemes_and_trims_trailing_slash() {
+        assert_eq!(
+            notifications_ws_url("https://relay.test/"),
+            "wss://relay.test/api/v1/notifications/ws"
+        );
+        assert_eq!(
+            notifications_ws_url("http://relay.test:8080"),
+            "ws://relay.test:8080/api/v1/notifications/ws"
+        );
+    }
+
+    #[test]
+    fn take_notifications_drains_in_fifo_order() {
+        // Only test touching the process-wide queue.
+        take_notifications();
+        push_notification(serde_json::json!({"n": 1}));
+        push_notification(serde_json::json!({"n": 2}));
+        let taken = take_notifications();
+        assert_eq!(
+            taken,
+            vec![serde_json::json!({"n": 1}), serde_json::json!({"n": 2})]
+        );
+        assert!(take_notifications().is_empty());
+    }
 }

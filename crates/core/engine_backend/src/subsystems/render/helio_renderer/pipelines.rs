@@ -17,6 +17,8 @@ use helio::{IntoGraph, PipelineFactory, PipelineInfo, PipelineOrigin, RenderPipe
 pub const RENDER_GRAPH_EXTENSION: &str = "rendergraph";
 
 fn registry() -> &'static RwLock<RenderPipelineRegistry> {
+    // Static, not `EngineContext`: read by the standalone game and headless tools,
+    // where no context is set; `RenderPipelineRegistry` has no `Default` either.
     static REGISTRY: OnceLock<RwLock<RenderPipelineRegistry>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
         let mut registry = RenderPipelineRegistry::new();
@@ -119,6 +121,7 @@ pub fn register_project_pipeline(
 }
 
 fn node_registry_cell() -> &'static RwLock<helio_graph_asset::NodeRegistry> {
+    // Static for the same reason as `REGISTRY`: no `EngineContext` outside the editor.
     static NODES: OnceLock<RwLock<helio_graph_asset::NodeRegistry>> = OnceLock::new();
     NODES.get_or_init(|| {
         RwLock::new(helio_presets::graphs::registry_with(
@@ -146,6 +149,7 @@ fn probe_on_headless_device() -> Result<helio_graph_asset::Probe, String> {
 }
 
 /// The editor's own device and queue, if one was offered before the probe ran.
+// Static: a set-once offer with no `Default`, read by a background probe thread.
 static PROBE_DEVICE: OnceLock<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> = OnceLock::new();
 
 /// Offers the editor's shared device for the pin probe, so it does not create a
@@ -218,6 +222,7 @@ fn probe_run() -> Result<helio_graph_asset::Probe, String> {
 /// What the passes declare, found once per process by building the default graph
 /// on a headless device (a second or two; see [`start_graph_pin_probe`]).
 /// `None` when no GPU is available: stage nodes then have flow pins only.
+// Static: set-once result of the process-wide probe below (see `PROBE_DEVICE`).
 static PROBE_ERROR: OnceLock<String> = OnceLock::new();
 
 /// Why [`graph_pin_probe`] found nothing, once it has tried and failed.
@@ -366,6 +371,8 @@ pub fn clear_project_pipelines() {
 }
 
 fn level_pipeline_cell() -> &'static RwLock<Option<String>> {
+    // Static: `set_level_pipeline` is called by the standalone game, which has no
+    // editor `EngineContext` to hang it on.
     static LEVEL: OnceLock<RwLock<Option<String>>> = OnceLock::new();
     LEVEL.get_or_init(Default::default)
 }

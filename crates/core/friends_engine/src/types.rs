@@ -120,3 +120,92 @@ pub enum FriendsError {
     NotFriends(String),
     RateLimited,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relation_status_uses_snake_case_wire_names() {
+        assert_eq!(
+            serde_json::to_string(&RelationStatus::PendingInbound).unwrap(),
+            "\"pending_inbound\""
+        );
+        assert_eq!(
+            serde_json::from_str::<RelationStatus>("\"pending_outbound\"").unwrap(),
+            RelationStatus::PendingOutbound
+        );
+        assert_eq!(
+            serde_json::from_str::<RelationStatus>("\"mutual\"").unwrap(),
+            RelationStatus::Mutual
+        );
+    }
+
+    #[test]
+    fn friends_file_accepts_legacy_string_entries_and_objects() {
+        let file: EngineFriendsFile = serde_json::from_str(
+            r#"{"friends":["old-style",{"username":"new","mutual":true,"home_server":"https://r.test"}],"home_servers":["https://me.test"]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            file.friends,
+            vec![
+                GistFriendEntry {
+                    username: "old-style".into(),
+                    mutual: false,
+                    home_server: None
+                },
+                GistFriendEntry {
+                    username: "new".into(),
+                    mutual: true,
+                    home_server: Some("https://r.test".into())
+                },
+            ]
+        );
+        assert_eq!(file.home_servers, vec!["https://me.test".to_string()]);
+    }
+
+    #[test]
+    fn friends_file_drops_malformed_entries() {
+        let file: EngineFriendsFile =
+            serde_json::from_str(r#"{"friends":[1,null,{"mutual":true},{"username":"ok"}]}"#)
+                .unwrap();
+        assert_eq!(file.friends.len(), 1);
+        assert_eq!(file.friends[0].username, "ok");
+        assert!(file.home_servers.is_empty());
+    }
+
+    #[test]
+    fn friends_file_rejects_non_array_friends_but_defaults_when_absent() {
+        assert!(serde_json::from_str::<EngineFriendsFile>(r#"{"friends":{}}"#).is_err());
+        let file: EngineFriendsFile = serde_json::from_str("{}").unwrap();
+        assert!(file.friends.is_empty());
+    }
+
+    #[test]
+    fn gist_friend_entry_defaults_optional_fields() {
+        let entry: GistFriendEntry = serde_json::from_str(r#"{"username":"x"}"#).unwrap();
+        assert!(!entry.mutual);
+        assert_eq!(entry.home_server, None);
+    }
+
+    #[test]
+    fn friends_list_empty_and_notification_round_trip() {
+        assert!(FriendsList::empty().friends.is_empty());
+
+        let note = FriendNotification {
+            notification_type: FriendsNotificationType::SessionInvite,
+            from_username: "a".into(),
+            from_home_server: None,
+            target_username: "b".into(),
+            target_home_server: "https://r.test".into(),
+        };
+        let back: FriendNotification =
+            serde_json::from_str(&serde_json::to_string(&note).unwrap()).unwrap();
+        assert!(matches!(
+            back.notification_type,
+            FriendsNotificationType::SessionInvite
+        ));
+        assert_eq!(back.target_home_server, "https://r.test");
+    }
+}

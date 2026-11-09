@@ -143,3 +143,27 @@ pub fn kind_label(kind: &FileTypeId) -> String {
         _ => format!("{}s", kind.as_str()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
+    use core::prelude::v1::test;
+
+    #[test]
+    fn known_kinds_get_plural_labels() {
+        for (kind, label) in [
+            ("alias", "Aliases"),
+            ("struct", "Structs"),
+            ("enum", "Enums"),
+            ("trait", "Traits"),
+        ] {
+            assert_eq!(kind_label(&FileTypeId::new(kind)), label);
+        }
+    }
+
+    #[test]
+    fn unknown_kind_label_is_naive_plural() {
+        assert_eq!(kind_label(&FileTypeId::new("widget")), "widgets");
+    }
+}

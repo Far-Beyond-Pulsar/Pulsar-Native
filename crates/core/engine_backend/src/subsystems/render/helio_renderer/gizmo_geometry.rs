@@ -130,6 +130,8 @@ fn build(mode: GizmoType) -> Vec<Mesh> {
     meshes
 }
 pub(super) fn meshes(mode: GizmoType) -> &'static [Mesh] {
+    // Static: built once and returned as `&'static [Mesh]` from the per-frame gizmo
+    // draw; a store would hand back an `Arc` and add a lookup every frame.
     static MOVE: OnceLock<Vec<Mesh>> = OnceLock::new();
     static ROTATE: OnceLock<Vec<Mesh>> = OnceLock::new();
     static SCALE: OnceLock<Vec<Mesh>> = OnceLock::new();

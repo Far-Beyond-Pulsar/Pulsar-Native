@@ -277,6 +277,28 @@ pub fn normalize_relay_url(raw: &str) -> Option<String> {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
+fn parse_friend_entries(values: &[serde_json::Value]) -> Vec<crate::types::GistFriendEntry> {
+    values
+        .iter()
+        .filter_map(|v| {
+            let username = v
+                .get("username")
+                .and_then(|u| u.as_str())
+                .map(String::from)?;
+            let mutual = v.get("mutual").and_then(|m| m.as_bool()).unwrap_or(false);
+            let home_server = v
+                .get("home_server")
+                .and_then(|h| h.as_str())
+                .map(String::from);
+            Some(crate::types::GistFriendEntry {
+                username,
+                mutual,
+                home_server,
+            })
+        })
+        .collect()
+}
+
 /// Read home servers from the gist. Never writes. Safe to call on startup.
 pub(crate) fn read_engine_friends_file_meta(username: &str) -> Result<Vec<String>, FriendsError> {
     let token = github_token()?;
@@ -306,26 +328,7 @@ pub fn read_engine_friend_entries(
         None => return Ok(Vec::new()),
     };
     let content = fetch_gist_content(&token, &gist_id)?;
-    let entries: Vec<crate::types::GistFriendEntry> = content
-        .friends
-        .iter()
-        .filter_map(|v| {
-            let username = v
-                .get("username")
-                .and_then(|u| u.as_str())
-                .map(String::from)?;
-            let mutual = v.get("mutual").and_then(|m| m.as_bool()).unwrap_or(false);
-            let home_server = v
-                .get("home_server")
-                .and_then(|h| h.as_str())
-                .map(String::from);
-            Some(crate::types::GistFriendEntry {
-                username,
-                mutual,
-                home_server,
-            })
-        })
-        .collect();
+    let entries = parse_friend_entries(&content.friends);
     tracing::info!(
         "[gist_storage] read_engine_friend_entries: found {} entries",
         entries.len()
@@ -469,4 +472,100 @@ pub fn get_own_friends() -> Result<Vec<String>, FriendsError> {
 pub fn get_own_friend_entries() -> Result<Vec<crate::types::GistFriendEntry>, FriendsError> {
     let username = github_username()?;
     read_engine_friend_entries(&username)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_adds_https_and_trims_whitespace_and_trailing_slashes() {
+        assert_eq!(
+            normalize_relay_url("  relay.example.com// "),
+            Some("https://relay.example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_keeps_existing_scheme() {
+        assert_eq!(
+            normalize_relay_url("http://relay.example.com/"),
+            Some("http://relay.example.com".to_string())
+        );
+        assert_eq!(
+            normalize_relay_url("https://relay.example.com:8443"),
+            Some("https://relay.example.com:8443".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_rejects_empty_and_local_addresses() {
+        for raw in ["", "   ", "/", "localhost:3000", "127.0.0.1", "0.0.0.0:80"] {
+            assert_eq!(normalize_relay_url(raw), None, "input {raw:?}");
+        }
+    }
+
+    #[test]
+    fn parse_friend_entries_reads_fields_and_defaults() {
+        let values = vec![
+            json!({"username": "alice", "mutual": true, "home_server": "https://a.test"}),
+            json!({"username": "bob"}),
+        ];
+        let entries = parse_friend_entries(&values);
+        assert_eq!(
+            entries,
+            vec![
+                crate::types::GistFriendEntry {
+                    username: "alice".into(),
+                    mutual: true,
+                    home_server: Some("https://a.test".into()),
+                },
+                crate::types::GistFriendEntry {
+                    username: "bob".into(),
+                    mutual: false,
+                    home_server: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_friend_entries_skips_entries_without_string_username() {
+        let values = vec![
+            json!({"mutual": true}),
+            json!({"username": 5}),
+            json!("bare-string"),
+            json!({"username": "carol", "home_server": null}),
+        ];
+        let entries = parse_friend_entries(&values);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].username, "carol");
+        assert_eq!(entries[0].home_server, None);
+    }
+
+    #[test]
+    fn gist_content_tolerates_garbage_and_missing_fields() {
+        let broken = GistContent::from_str("not json");
+        assert!(broken.friends.is_empty() && broken.home_servers.is_empty());
+
+        let partial = GistContent::from_str(r#"{"home_servers":["https://r.test"]}"#);
+        assert!(partial.friends.is_empty());
+        assert_eq!(partial.home_servers, vec!["https://r.test".to_string()]);
+        assert_eq!(partial.updated_at, "");
+    }
+
+    #[test]
+    fn gist_content_round_trips_through_pretty_json() {
+        let content = GistContent {
+            friends: vec![json!({"username": "dave", "mutual": false, "home_server": null})],
+            home_servers: vec!["https://r.test".into()],
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+        let text = content.to_string_pretty().unwrap();
+        let back = GistContent::from_str(&text);
+        assert_eq!(back.friends, content.friends);
+        assert_eq!(back.home_servers, content.home_servers);
+        assert_eq!(back.updated_at, content.updated_at);
+    }
 }

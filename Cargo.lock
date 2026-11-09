@@ -17493,6 +17493,7 @@ dependencies = [
  "rust-i18n",
  "ui",
  "ui_common",
+ "uuid",
  "window_manager",
 ]
 

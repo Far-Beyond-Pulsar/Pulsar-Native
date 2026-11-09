@@ -2,6 +2,8 @@
 //!
 //! 3D scene editing and level design
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 

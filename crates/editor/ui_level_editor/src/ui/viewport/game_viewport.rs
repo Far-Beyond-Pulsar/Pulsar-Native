@@ -409,6 +409,14 @@ impl GameViewport {
             // guest adopts it, so mid-session edits and gameplay mutations
             // meet in one world.
             let shared_world = self.shared_state.read().scene.shared_scene();
+            // SAFETY: `PieHost::load` requires `device`/`queue` to be valid for
+            // the call and the game library to share the editor's `wgpu`
+            // version. Both handles are borrowed from `surface`, which outlives
+            // this call; the game library is the project's own `cdylib`, built
+            // by the editor's play-in-editor build step against this workspace's
+            // `wgpu`. The ABI-version check inside `load` guards the struct
+            // contract. `shared_world` is an owned `SharedScene`, so the count
+            // handed to the guest is ours to transfer.
             let loaded = unsafe {
                 PieHost::load(
                     &req.dylib_path,
@@ -500,6 +508,11 @@ impl GameViewport {
             self.pie_blit = Some(PieBlit::new(surface.device(), format));
         }
         if let (Some(blit), Some(host)) = (self.pie_blit.as_mut(), self.pie_host.as_ref()) {
+            // SAFETY: `out_texture` borrows memory owned by the loaded game
+            // library. `host` is a live `&PieHost` (the library stays mapped
+            // until `stop`/drop, which need `&mut` or ownership), and `tex` is
+            // only used for this blit on the render thread, so it cannot outlive
+            // the host.
             if let Some(tex) = unsafe { host.out_texture() } {
                 blit.blit(surface.device(), surface.queue(), tex, view);
             }
