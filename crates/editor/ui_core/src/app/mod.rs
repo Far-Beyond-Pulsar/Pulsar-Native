@@ -2,6 +2,8 @@
 
 mod agent_chat_panel;
 mod chrome;
+mod command_palette_setup;
+mod construction;
 mod constructors;
 pub mod event_handlers;
 mod layout;

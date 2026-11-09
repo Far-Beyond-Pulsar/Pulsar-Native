@@ -62,13 +62,17 @@ pub(crate) struct PieWorldBridge {
 /// A held exclusive slice. Owns an `Arc` clone so the `'static` guard borrow
 /// is backed by memory this type provably keeps alive (see [`Self::lock`]).
 struct SliceGuard {
-    _keep_alive: crate::scene::SharedScene,
     // Invariant: `_keep_alive`'s heap allocation is stable, so borrowing
     // through its address for `'static` is sound while `_keep_alive` lives.
     // Never read after construction -- the field exists to be DROPPED at
     // unlock (dropping a write guard is what releases the lock).
+    //
+    // Declared BEFORE `_keep_alive` on purpose: fields drop in declaration
+    // order, and the guard must be released while the allocation it borrows
+    // from is still guaranteed alive.
     #[allow(dead_code)]
     guard: RwLockWriteGuard<'static, pulsar_scenedb::SceneDb>,
+    _keep_alive: crate::scene::SharedScene,
 }
 
 impl PieWorldBridge {
@@ -89,13 +93,18 @@ impl PieWorldBridge {
         // allocation address never moves, so borrowing the allocation through
         // its pointer cannot dangle while the guard is stored here.
         let keep_alive = Arc::clone(&self.store);
+        // SAFETY: `keep_alive` is a live `Arc`, so `Arc::as_ptr` is a valid,
+        // aligned pointer to the lock. The `'static` lifetime is made true in
+        // practice by `SliceGuard`: the guard derived from this reference is
+        // stored next to a clone of the `Arc` and dropped before it, so the
+        // allocation outlives every use of the borrow.
         let static_lock: &'static RwLock<pulsar_scenedb::SceneDb> =
             unsafe { &*Arc::as_ptr(&keep_alive) };
         let mut guard = static_lock.write();
         let ptr = &mut *guard as *mut pulsar_scenedb::SceneDb as *mut c_void;
         self.slice = Some(SliceGuard {
-            _keep_alive: keep_alive,
             guard,
+            _keep_alive: keep_alive,
         });
         ptr
     }
@@ -117,6 +126,10 @@ extern "C" fn pie_lock_world(userdata: *mut c_void) -> *mut c_void {
 }
 
 extern "C" fn pie_unlock_world(userdata: *mut c_void) {
+    // SAFETY: as in `pie_lock_world`: `userdata` is the boxed
+    // `*mut PieWorldBridge` handed to the guest at init, alive for the whole
+    // session, and the guest calls the callbacks one at a time on the render
+    // thread, so this exclusive reference is not aliased.
     let bridge = unsafe { &mut *(userdata as *mut PieWorldBridge) };
     bridge.unlock();
 }
@@ -415,6 +428,9 @@ impl PieHost {
     /// Advance and render one game frame.
     pub fn tick(&self, delta_time: f32) {
         if self.started {
+            // SAFETY: `started` means `init` succeeded and `stop` has not run,
+            // so `lib` (which `tick` was resolved from) is still loaded. Called
+            // on the render thread per the module's threading contract.
             unsafe { (self.tick)(delta_time) };
         }
     }
@@ -422,6 +438,8 @@ impl PieHost {
     /// Resize the game's offscreen render target.
     pub fn resize(&mut self, width: u32, height: u32) {
         if self.started {
+            // SAFETY: as in `tick`: the library is still loaded (`started`)
+            // and we are on the render thread.
             unsafe { (self.resize)(width.max(1), height.max(1)) };
             self.ctx.width = width.max(1);
             self.ctx.height = height.max(1);
@@ -445,6 +463,9 @@ impl PieHost {
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
+        // SAFETY: `started` keeps the library loaded. `kind`, `id` and `path`
+        // are owned `String`s that outlive this call, so each pointer/length
+        // pair names readable UTF-8; the game only reads them during the call.
         unsafe {
             asset_updated(
                 kind.as_ptr(),
@@ -467,6 +488,9 @@ impl PieHost {
         let mut buf: Vec<u8> = Vec::new();
         // The snapshot can grow between the sizing call and the copy.
         for _ in 0..3 {
+            // SAFETY: `started` keeps the library loaded. `buf` is a live
+            // `Vec<u8>`, so `as_mut_ptr()`/`len()` describe writable memory of
+            // exactly that size (capacity 0 just asks for the needed length).
             let len = unsafe { snapshot(buf.as_mut_ptr(), buf.len()) };
             if len == 0 {
                 return None;
@@ -484,6 +508,8 @@ impl PieHost {
         let (Some(control), true) = (self.control, self.started) else {
             return None;
         };
+        // SAFETY: `started` keeps the library loaded; the arguments are plain
+        // integers, and unknown commands are defined to return 0.
         Some(unsafe { control(command, arg) })
     }
 
@@ -523,6 +549,9 @@ impl PieHost {
         };
         let mut buf: Vec<u8> = Vec::new();
         for _ in 0..3 {
+            // SAFETY: `started` keeps the library loaded. `buf` is a live
+            // `Vec<u8>`, so the pointer/length describe writable memory of
+            // exactly that size (capacity 0 just asks for the needed length).
             let len = unsafe { take(buf.as_mut_ptr(), buf.len()) };
             if len == 0 {
                 return Vec::new();
@@ -553,6 +582,9 @@ impl PieHost {
     /// Forward one input event to the game.
     pub fn input(&self, ev: &InputEvent) {
         if self.started {
+            // SAFETY: `started` keeps the library loaded; `ev` is a valid
+            // reference, so the pointer is non-null, aligned and readable for
+            // the duration of the call.
             unsafe { (self.input)(ev as *const InputEvent) };
         }
     }
@@ -577,6 +609,9 @@ impl PieHost {
             drop(bus);
         }
         if self.started {
+            // SAFETY: `started` is true, so the library is still loaded and
+            // `shutdown` has not run yet; `started` is cleared right after so
+            // it runs at most once.
             unsafe { (self.shutdown)() };
             self.started = false;
         }
@@ -620,6 +655,9 @@ fn read_utf8(ptr: *const u8, len: usize) -> String {
     if ptr.is_null() || len == 0 {
         return String::new();
     }
+    // SAFETY: non-null and non-empty (checked above). By the `LogFn` contract
+    // the game passes `len` readable bytes at `ptr`, valid for this call; the
+    // bytes are copied out before returning.
     let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
     String::from_utf8_lossy(bytes).into_owned()
 }
@@ -657,24 +695,31 @@ mod tests {
         let first = unsafe { pie_lock_world(userdata) };
         assert!(!first.is_null(), "first slice must be granted");
 
+        // SAFETY (test): same `userdata` as above.
         let second = unsafe { pie_lock_world(userdata) };
         assert!(
             second.is_null(),
             "a second slice while one is open must be REFUSED, not granted"
         );
 
+        // SAFETY (test): same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
+        // SAFETY (test): same `userdata` as above.
         let third = unsafe { pie_lock_world(userdata) };
         assert!(
             !third.is_null(),
             "after unlock a new slice must be grantable"
         );
+        // SAFETY (test): same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
 
         // Idempotent unlock: no panic / no wedge.
+        // SAFETY (test): same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
+        // SAFETY (test): same `userdata` as above.
         let fourth = unsafe { pie_lock_world(userdata) };
         assert!(!fourth.is_null());
+        // SAFETY (test): same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
     }
 
@@ -699,6 +744,8 @@ mod tests {
         assert!(!ptr.is_null());
         // The guest would write here; reading the spawned entity through the
         // raw pointer proves it aliases the host's store.
+        // SAFETY (test): `ptr` is the non-null pointer `lock` just returned; the
+        // slice stays open (and `store` alive) until `unlock` below.
         let name = unsafe {
             (*ptr)
                 .world

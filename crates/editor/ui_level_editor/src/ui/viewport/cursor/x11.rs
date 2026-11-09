@@ -186,6 +186,9 @@ fn with_display<R>(f: impl FnOnce(*mut Display) -> R) -> Option<R> {
     }
     let mut guard = SHARED_DISPLAY.lock().unwrap_or_else(|p| p.into_inner());
     if guard.is_none() {
+        // SAFETY: `XOpenDisplay` accepts a null name (it falls back to `$DISPLAY`) and has no other
+        //         preconditions; a null return is handled below. Runs with the `SHARED_DISPLAY`
+        //         mutex held.
         let display = unsafe { XOpenDisplay(std::ptr::null()) };
         if display.is_null() {
             DISPLAY_UNAVAILABLE.store(true, Ordering::Relaxed);
@@ -210,6 +213,8 @@ fn x11_window(window: &gpui::Window) -> Option<Window> {
 fn focused_window(display: *mut Display) -> Option<Window> {
     let mut window: Window = 0;
     let mut revert: core::ffi::c_int = 0;
+    // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+    //         `window` and `revert` are valid, writable locals for the out-parameters.
     let status = unsafe { XGetInputFocus(display, &mut window, &mut revert) };
     if status == 0 || window == 0 {
         tracing::warn!("[VIEWPORT] X11: no focused window");
@@ -220,6 +225,8 @@ fn focused_window(display: *mut Display) -> Option<Window> {
 }
 
 fn blank_cursor(display: *mut Display) -> Option<Cursor> {
+    // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+    //         The remaining arguments are plain ids and sizes; the X server validates them.
     let pixmap = unsafe { XCreatePixmap(display, XDefaultRootWindow(display), 1, 1, 1) };
     if pixmap == 0 {
         return None;
@@ -232,7 +239,12 @@ fn blank_cursor(display: *mut Display) -> Option<Cursor> {
         flags: 0,
         pad: 0,
     };
+    // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+    //         `pixmap` was just created on this display; `&black` points to a live local
+    //         `#[repr(C)]` `XColor` that is only read during the call.
     let cursor = unsafe { XCreatePixmapCursor(display, pixmap, pixmap, &black, &black, 0, 0) };
+    // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+    //         `pixmap` was created on this display above and is freed exactly once.
     unsafe { XFreePixmap(display, pixmap) };
     if cursor == 0 {
         None
@@ -249,6 +261,10 @@ pub fn hide_cursor() {
             return;
         };
         if let Some(cursor) = blank_cursor(display) {
+            // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+            //         `win` came from `XGetInputFocus` on this display and `cursor` was created on it
+            //         by `blank_cursor`; freeing it after defining is allowed since the server keeps
+            //         its own reference.
             unsafe {
                 XDefineCursor(display, win, cursor);
                 XFreeCursor(display, cursor);
@@ -264,6 +280,8 @@ pub fn show_cursor() {
         let Some(win) = focused_window(display) else {
             return;
         };
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         `win` came from `XGetInputFocus` on this display.
         unsafe {
             XUndefineCursor(display, win);
             XFlush(display);
@@ -279,6 +297,9 @@ pub fn lock_cursor_to_window(window: &gpui::Window) {
         return;
     };
     with_display(|display| {
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         The window and mask arguments are plain values the X server validates
+        //         (a bad id yields an X error / non-zero status, not UB in this process).
         let status = unsafe {
             XGrabPointer(
                 display,
@@ -292,6 +313,7 @@ pub fn lock_cursor_to_window(window: &gpui::Window) {
                 0,
             )
         };
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
         unsafe { XFlush(display) };
         if status == 0 {
             tracing::debug!("[VIEWPORT] 🔒 Cursor locked to X11 window");
@@ -305,9 +327,14 @@ pub fn lock_cursor_to_window(window: &gpui::Window) {
 /// invisible override-redirect window, until [`unlock_cursor`].
 pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
     with_display(|display| {
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
         let root = unsafe { XDefaultRootWindow(display) };
+        // SAFETY: `XSetWindowAttributes` is a `#[repr(C)]` struct of integers, for which the
+        //         all-zero bit pattern is valid.
         let mut attrs: XSetWindowAttributes = unsafe { std::mem::zeroed() };
         attrs.override_redirect = 1;
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         All arguments are plain ids and sizes; the X server validates them.
         let confine_win = unsafe {
             XCreateSimpleWindow(
                 display,
@@ -325,8 +352,14 @@ pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
             tracing::warn!("[VIEWPORT] X11: failed to create confine window");
             return;
         }
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         `confine_win` was just created on this display; `&attrs` points to a live local
+        //         `#[repr(C)]` struct that is only read during the call.
         unsafe { XChangeWindowAttributes(display, confine_win, CW_OVERRIDE_REDIRECT, &attrs) };
 
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         `confine_win` was just created on this display; the other arguments are plain
+        //         values the X server validates.
         let status = unsafe {
             XGrabPointer(
                 display,
@@ -351,8 +384,12 @@ pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
             );
         } else {
             tracing::warn!("[VIEWPORT] X11: XGrabPointer failed (status={status})");
+            // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+            //         `confine_win` was created on this display above and is destroyed exactly once
+            //         (the grab failed, so it was not stored in `CONFINE_WINDOW`).
             unsafe { XDestroyWindow(display, confine_win) };
         }
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
         unsafe { XFlush(display) };
     });
 }
@@ -361,14 +398,20 @@ pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
 /// and destroy the confine window. Safe to call when nothing is locked.
 pub fn unlock_cursor() {
     with_display(|display| {
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         Ungrabbing when no grab is active is harmless.
         unsafe { XUngrabPointer(display, 0) };
         if CONFINE_ACTIVE.swap(false, Ordering::Relaxed) {
             let win = CONFINE_WINDOW.swap(0, Ordering::Relaxed);
             if win != 0 {
+                // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+                //         `win` is the confine window stored by `lock_cursor_to_point` on this same
+                //         shared connection; the `swap` above takes it out, so it is destroyed once.
                 unsafe { XDestroyWindow(display, win) };
             }
             tracing::debug!("[VIEWPORT] 🔓 Cursor unlocked (X11)");
         }
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
         unsafe { XFlush(display) };
     });
 }
@@ -376,6 +419,8 @@ pub fn unlock_cursor() {
 // ── Pointer position (called every input-thread poll) ────────────────────────
 
 pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
+    // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+    //         The arguments are plain ids and coordinates the X server validates.
     with_display(|display| unsafe {
         let root = XDefaultRootWindow(display);
         XWarpPointer(display, 0, root, 0, 0, 0, 0, screen_x, screen_y);
@@ -385,10 +430,14 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
 
 pub fn get_cursor_position() -> Option<(i32, i32)> {
     with_display(|display| {
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
         let root = unsafe { XDefaultRootWindow(display) };
         let (mut root_x, mut root_y, mut win_x, mut win_y) = (0, 0, 0, 0);
         let mut mask: core::ffi::c_uint = 0;
         let (mut root_ret, mut child_ret): (Window, Window) = (0, 0);
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         `root` is the root window of this display; every out-pointer is a distinct,
+        //         writable local that lives across the call.
         let status = unsafe {
             XQueryPointer(
                 display,
@@ -415,9 +464,13 @@ pub fn window_to_screen_position(
 ) -> Option<(i32, i32)> {
     let x11_window = x11_window(window)?;
     with_display(|display| {
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
         let root = unsafe { XDefaultRootWindow(display) };
         let (mut dest_x, mut dest_y): (core::ffi::c_int, core::ffi::c_int) = (0, 0);
         let mut child: XID = 0;
+        // SAFETY: `display` is the live shared connection (see `with_display`); the mutex is held while `f` runs.
+        //         `x11_window` and `root` are plain ids the X server validates; every out-pointer
+        //         is a writable local that lives across the call.
         let ok = unsafe {
             XTranslateCoordinates(
                 display,
