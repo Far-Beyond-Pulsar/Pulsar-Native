@@ -9,7 +9,6 @@ use ui::dock::DockItem;
 use ui::ContextModal;
 use ui_file_manager::FileManagerDrawer;
 use ui_level_editor::LevelEditorPanel;
-use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
@@ -224,7 +223,6 @@ impl PulsarApp {
         };
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
-        let mission_control = cx.new(MissionControlPanel::new);
         tracing::info!("[PulsarApp] drawers: {}ms", t.elapsed().as_millis());
 
         // Register entity-capturing openers so the registry can open these windows
@@ -339,52 +337,6 @@ impl PulsarApp {
             t_plugins.elapsed()
         );
 
-        // Register built-in physics subsystem
-        plugin_manager.register_builtin_subsystem(Box::new(engine_backend::PhysicsEngine::new()));
-
-        // Register physics component definitions (for the component picker)
-        plugin_manager.register_builtin_component_definitions(vec![
-            plugin_editor_api::ComponentDefinition {
-                id: "PhysicsComponent".into(),
-                display_name: "Physics".into(),
-                category: "Physics".into(),
-                description: "Physical body with collision and simulation settings".into(),
-                icon: None,
-            },
-            plugin_editor_api::ComponentDefinition {
-                id: "RigidbodyComponent".into(),
-                display_name: "Rigidbody".into(),
-                category: "Physics".into(),
-                description: "Rigid body dynamics (mass, velocity, forces)".into(),
-                icon: None,
-            },
-        ]);
-
-        // Register physics component factories (for instantiation via EngineClass)
-        plugin_manager.register_builtin_component_factories(vec![
-            (
-                "PhysicsComponent".into(),
-                Box::new(|| {
-                    let c: Box<dyn pulsar_reflection::EngineClass> =
-                        Box::new(pulsar_physics::PhysicsComponent::default());
-                    c
-                }) as plugin_editor_api::ComponentFactory,
-            ),
-            (
-                "RigidbodyComponent".into(),
-                Box::new(|| {
-                    let c: Box<dyn pulsar_reflection::EngineClass> =
-                        Box::new(pulsar_physics::RigidbodyComponent::default());
-                    c
-                }) as plugin_editor_api::ComponentFactory,
-            ),
-        ]);
-
-        tracing::info!(
-            "[PulsarApp] built-in physics registered in {:?}",
-            t_plugins.elapsed()
-        );
-
         let multiuser_refresh_task = cx.spawn(async move |this, cx| {
             let multiuser = engine_state::EngineContext::global()
                 .expect("EngineContext not initialized")
@@ -397,18 +349,6 @@ impl PulsarApp {
             }
         });
 
-        let git_auto_fetch_task = if create_level_editor {
-            project_path.as_ref().map(|project_path| {
-                ui_git_manager::start_auto_fetch_task(
-                    project_path.clone(),
-                    window.window_handle(),
-                    cx,
-                )
-            })
-        } else {
-            None
-        };
-
         let mut app = Self {
             state: crate::app::state::AppState {
                 dock_area,
@@ -417,7 +357,6 @@ impl PulsarApp {
                 chrome: Default::default(),
                 problems_drawer,
                 type_debugger_drawer,
-                mission_control,
                 task_queue_refresh_task: None,
                 center_tabs,
                 preview_tab_panels: Vec::new(),
@@ -448,7 +387,6 @@ impl PulsarApp {
                 nav_overlay,
                 status_bar,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
-                git_auto_fetch_task,
                 layout_persist: false,
                 layout_slot: None,
                 window_bounds: None,

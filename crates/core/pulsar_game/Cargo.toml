@@ -54,11 +54,6 @@ pulsar_settings = { workspace = true }
 pulsar_content  = { workspace = true }
 engine_fs       = { workspace = true }
 
-# The input runtime (actions and mappings in, `input::<Action>` events out) and
-# its `PlayerInputComponent`, without the editor feature: no GPUI. Possession
-# attaches the component to the pawn by class name (`player_input`).
-input_plugin    = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["gamepad"] }
-
 # One-world play-mode scene state (Pulsar-Native#637): RuntimeLevel hydration
 # into SceneDb plus the GPU mirror the renderer reads.
 # Slim feature set on purpose -- a game runtime must not pull editor-ui/gpui,
@@ -74,20 +69,12 @@ helio_component = { workspace = true }
 workspace = true
 
 [dev-dependencies]
-# Every installed plugin's root crate: the tests run a game built for a
-# project with every plugin (they name `installed_plugins::<module>` where
-# they need a plugin's type).
+# Every installed plugin's root crate: a few unit tests run the game with a
+# plugin's component (a light's properties from scripts, the input plugin's
+# possession), naming `installed_plugins::<module>`. The game's tests with
+# every plugin (render parity, plugin pass lists, memory over ticks) are the
+# installed set's own (`plugins/installed/tests`).
 installed_plugins = { workspace = true }
-helio-mats = { workspace = true }
-# The plugin pass lists test (tests/plugin_pass_lists.rs) builds Helio's
-# presets with the linked plugins' features, as the engine does.
-helio-core = { workspace = true }
-helio-presets = { workspace = true }
-# The lighting models registered with the plugins' features (their pipelines).
-helio-frame-api = { workspace = true }
-helio-pass-portal-cull = { workspace = true }
-helio-pass-foliage-place = { workspace = true }
-helio-pass-gi = { workspace = true }
 # Drift guard (#652): the reference actor mirrors the exporter's emitted shape and
 # must keep compiling against the pinned crates; tempfile serves the
 # end-to-end generated-project cargo check (tests/generated_project_compiles).
@@ -96,14 +83,8 @@ tempfile = { workspace = true }
 # Loads pulsar_events' separately compiled test plugin (script events from
 # a plugin library, #924).
 libloading = { workspace = true }
-# The voxel parity test (tests/voxel_render_parity.rs) writes its frames.
-image = { workspace = true }
 # The end-to-end generated-project check exports a class through the real generator.
 pulsar_script_codegen = { workspace = true }
-# The random world example (tests/random_world_blueprint.rs): its saved
-# Blueprint graph compiles through the real compiler and runs on the VM.
-blueprint_compiler = { path = "../../../plugins/vendor/blueprint_editor/compiler" }
-graphy-blueprint = { workspace = true }
 
 [build-dependencies]
 # `build.rs` generates the export probe actor (src/export_probe.rs).

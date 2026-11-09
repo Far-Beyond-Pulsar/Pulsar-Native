@@ -663,45 +663,47 @@ mod voxel_example_tests {
         assert_eq!(camera.position, [0.0, 6_371_631.0, 0.0]);
 
         let terrains: Vec<_> = world
-            .query::<&voxel_plugin::voxel_component::VoxelTerrainComponent>()
+            .query::<&installed_plugins::voxel_plugin::voxel_component::VoxelTerrainComponent>()
             .map(|(entity, terrain)| (entity, terrain.clone()))
             .collect();
         assert_eq!(terrains.len(), 1);
         let (entity, terrain) = &terrains[0];
-        let source =
-            voxel_plugin::voxel_component::world::entity_source(&world, *entity, terrain).unwrap();
+        let source = installed_plugins::voxel_plugin::voxel_component::world::entity_source(
+            &world, *entity, terrain,
+        )
+        .unwrap();
         assert_eq!(source.recipe.terrain.version, 1);
         // The Earth preset (seed 75: foothills at the pole, a range 23 km away).
         let stacks: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            voxel_plugin::voxel_component::VoxelTerrainLayersComponent,
+            installed_plugins::voxel_plugin::voxel_component::VoxelTerrainLayersComponent,
         >(&world)
         .map(|(_, _, c)| c.stack.clone())
         .collect();
         assert_eq!(
             stacks,
-            [voxel_plugin::voxel_component::VoxelTerrainStack::earth()]
+            [installed_plugins::voxel_plugin::voxel_component::VoxelTerrainStack::earth()]
         );
         // Graded like an outdoor scene: one unbound volume tone maps it.
         let volumes: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            post_plugin::post_component::PostProcessVolumeComponent,
+            installed_plugins::post_plugin::post_component::PostProcessVolumeComponent,
         >(&world)
         .map(|(_, _, v)| v.clone())
         .collect();
         // The planet's air, centred on the planet's object.
         let air: Vec<_> = engine_backend::scene::attachments::enabled_components::<
-            sky_plugin::sky_component::AtmosphereComponent,
+            installed_plugins::sky_plugin::sky_component::AtmosphereComponent,
         >(&world)
         .map(|(_, _, a)| a.placement)
         .collect();
         assert_eq!(
             air,
-            [sky_plugin::sky_component::AtmospherePlacement::PlanetAtOwner]
+            [installed_plugins::sky_plugin::sky_component::AtmospherePlacement::PlanetAtOwner]
         );
         assert_eq!(volumes.len(), 1);
         assert!(
             volumes[0].unbound
                 && volumes[0].settings.tonemap_operator
-                    == post_plugin::post_component::TonemapOperator::AgxPunchy
+                    == installed_plugins::post_plugin::post_component::TonemapOperator::AgxPunchy
         );
     }
 }

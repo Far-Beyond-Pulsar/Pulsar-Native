@@ -16,17 +16,13 @@ ui_types_common.workspace = true
 ui_level_editor.workspace = true
 ui_multiplayer.workspace = true
 ui_problems.workspace = true
-ui_flamegraph.workspace = true
 ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
-ui_log_viewer.workspace = true
 ui_settings.workspace = true
-ui_git_manager = { workspace = true }
 ui_about.workspace = true
 ui_documentation.workspace = true
 ui_keybindings.workspace = true
-ui_fab_search.workspace = true
 ui_multiuser_status.workspace = true
 ui_friends.workspace = true
 
@@ -35,7 +31,6 @@ ui_friends.workspace = true
 engine_state.workspace = true
 pulsar_settings.workspace = true
 engine_backend.workspace = true
-pulsar_physics.workspace = true
 pulsar_reflection.workspace = true
 window_manager.workspace = true
 
@@ -62,15 +57,6 @@ agent_chat_core.workspace = true
 directories.workspace = true
 ui_loading_screen.workspace = true
 agent_chat_tools.workspace = true
-agent_provider_demo_random.workspace = true
-agent_provider_github_copilot.workspace = true
-agent_provider_openai.workspace = true
-agent_provider_opencode.workspace = true
-agent_provider_anthropic.workspace = true
-agent_provider_gemini.workspace = true
-agent_provider_docker_model_runner.workspace = true
-agent_provider_aws_bedrock.workspace = true
-agent_provider_vertex_ai.workspace = true
 dirs = { workspace = true }
 rfd = { workspace = true }
 

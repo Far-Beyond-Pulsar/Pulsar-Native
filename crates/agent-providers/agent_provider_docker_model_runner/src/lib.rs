@@ -478,3 +478,13 @@ impl ProviderCrate for DockerModelRunnerProviderCrate {
         Ok(Box::new(DockerModelRunnerProvider::new()))
     }
 }
+
+// The editor's chat offers this provider (`agent_chat_core::provider_crates`).
+pulsar_plugins::inventory::submit! {
+    agent_chat_core::AgentProviderRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "agent.docker_model_runner",
+        order: 80,
+        create: || Box::new(DockerModelRunnerProviderCrate),
+    }
+}

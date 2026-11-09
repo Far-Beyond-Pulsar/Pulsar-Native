@@ -47,6 +47,10 @@ pub const ATTACH_ALREADY_LOCAL: u32 = 1;
 /// version. The `RawBus` is leaked (its functions cannot be trusted).
 pub const ATTACH_ABI_MISMATCH: u32 = 2;
 
+/// [`attach_host_bus`] panicked in the plugin (caught at the FFI boundary,
+/// where an unwind would abort the process); its events stay local.
+pub const ATTACH_PANICKED: u32 = 3;
+
 /// A bus: the host's own, or the host's seen from a plugin.
 pub enum HostBus {
     Local(SyncEventBus),
@@ -202,8 +206,13 @@ macro_rules! export_host_bus_attach {
         /// `raw` must be a fresh `RawBus` export from the host.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn _plugin_attach_event_bus(raw: $crate::gamma::ffi::RawBus) -> u32 {
-            // SAFETY: forwarded from the loader's contract.
-            unsafe { $crate::host::attach_host_bus(raw) }
+            // A panic must not unwind across the FFI boundary (it would
+            // abort the editor): the host reads it as a refusal.
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: forwarded from the loader's contract.
+                unsafe { $crate::host::attach_host_bus(raw) }
+            }))
+            .unwrap_or($crate::host::ATTACH_PANICKED)
         }
     };
 }

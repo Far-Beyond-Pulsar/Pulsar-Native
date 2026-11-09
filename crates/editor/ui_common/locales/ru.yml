@@ -91,8 +91,6 @@ Menu.Project.OpenCargoToml: Открыть Cargo.toml
 Menu.Project.RevealInFileExplorer: Показать в проводнике
 
 Menu.Tools: Инструменты
-Menu.Tools.Profiler: Профайлер
-Menu.Tools.MissionControl: Центр управления
 Menu.Tools.TypeDebugger: Отладчик типов
 Menu.Tools.Multiplayer: Мультиплеер
 

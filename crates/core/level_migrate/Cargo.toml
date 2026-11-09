@@ -14,7 +14,6 @@ pulsar_world_registry = { workspace = true }
 pulsar_scenedb        = { workspace = true }
 # Every installed plugin's classes and record migrations.
 installed_plugins     = { workspace = true }
-pulsar_physics        = { workspace = true }
 pulsar_class          = { workspace = true }
 serde_json            = { workspace = true }
 

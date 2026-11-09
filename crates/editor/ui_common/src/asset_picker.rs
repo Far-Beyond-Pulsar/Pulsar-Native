@@ -13,8 +13,6 @@ struct AssetItem {
     display_name: String,
     /// Full relative asset path shown as the secondary description.
     path: String,
-    /// Rendered thumbnail — `None` while loading or unavailable.
-    thumbnail: Option<Arc<gpui::RenderImage>>,
 }
 
 #[derive(Clone, Debug)]
@@ -57,7 +55,7 @@ impl AssetQuery {
     }
 }
 
-pub struct MeshAssetPicker {
+pub struct AssetPicker {
     searchable_list: Entity<AssetSearchableList<AssetItem>>,
     /// Loaded thumbnails by path. Shared with the list, which reads it per visible row.
     thumbnails:
@@ -77,16 +75,16 @@ pub struct MeshAssetPicker {
     _subscriptions: Vec<Subscription>,
 }
 
-impl EventEmitter<DismissEvent> for MeshAssetPicker {}
-impl EventEmitter<AssetPickedEvent> for MeshAssetPicker {}
+impl EventEmitter<DismissEvent> for AssetPicker {}
+impl EventEmitter<AssetPickedEvent> for AssetPicker {}
 
-impl Focusable for MeshAssetPicker {
+impl Focusable for AssetPicker {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.searchable_list.read(cx).focus_handle(cx)
     }
 }
 
-impl MeshAssetPicker {
+impl AssetPicker {
     pub fn new(
         selected_path: impl Into<String>,
         builtins: Vec<String>,
@@ -115,11 +113,7 @@ impl MeshAssetPicker {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.clone());
-                AssetItem {
-                    display_name,
-                    path,
-                    thumbnail: None,
-                }
+                AssetItem { display_name, path }
             })
             .collect();
 
@@ -301,7 +295,6 @@ impl MeshAssetPicker {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string()),
                 path: path.to_string(),
-                thumbnail: None,
             });
         }
         self.ensure_thumbnail(path.to_string(), cx);
@@ -348,7 +341,8 @@ impl MeshAssetPicker {
 
         crate::asset_thumbnails::register_thumbnail_renderers();
         engine_fs::thumbnails::service().request(abs_path, cache_root, move |rgba| {
-            smol::block_on(tx.send(rgba));
+            // The picker may have closed; its thumbnail is then not wanted.
+            let _ = smol::block_on(tx.send(rgba));
         });
 
         let path_key = path.clone();
@@ -358,7 +352,7 @@ impl MeshAssetPicker {
             };
 
             let render_image = Arc::new(gpui::RenderImage::new(smallvec::smallvec![
-                image::Frame::new((*rgba).clone().into())
+                image::Frame::new((*rgba).clone())
             ]));
 
             let _ = cx.update(|cx| {
@@ -377,7 +371,7 @@ impl MeshAssetPicker {
     }
 }
 
-impl Render for MeshAssetPicker {
+impl Render for AssetPicker {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         self.searchable_list.clone()
     }

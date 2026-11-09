@@ -92,7 +92,7 @@ fn view_target_camera(world: &World, view_target: Entity) -> Option<RenderCamera
 }
 
 /// Whether the view target's own camera is the frame's camera (the free camera
-/// stands down for it, see `player_input::PossessionGate`). `false` for no
+/// stands down for it, see `possession::PossessionGate`). `false` for no
 /// target, or a target with no usable camera: then the world's other cameras,
 /// or the free camera, show the game.
 pub fn view_target_drives_camera(

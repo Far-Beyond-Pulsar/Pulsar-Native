@@ -341,7 +341,7 @@ inventory::submit! {
     crate::asset_component::AssetReloadRegistration {
         origin: pulsar_plugins::engine_origin!(),
         name: "textures",
-        kind: plugin_editor_api::AssetKind::Texture,
+        kind: ui_types_common::AssetKind::Texture,
         sources_for_file: |path| vec![texture_source_for_file(path)],
     }
 }

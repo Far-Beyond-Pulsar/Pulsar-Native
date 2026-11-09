@@ -27,11 +27,10 @@
 //! | [`TimerFired`] | the timer owner's entity (global for unbound scripts) | `timer::set` timers |
 //! | [`Damage`] | the damaged entity | `game::apply_damage` |
 //!
-//! Physics: `pulsar_physics` does not simulate or report contacts yet, so
-//! nothing publishes `Hit` / `BeginOverlap` / `EndOverlap` today.
-//! TODO(Pulsar-Native#924): publish them from the physics step (on the
-//! entity channel of each body involved, one event per body) once
-//! `pulsar_physics` exposes contact and overlap events.
+//! Physics: nothing publishes `Hit` / `BeginOverlap` / `EndOverlap` today;
+//! the physics plugin publishes its own contact events
+//! (`physics::ColliderComponent.collision_enter`, ...). TODO(Pulsar-Native#924):
+//! one set of contact events, on the entity channel of each body involved.
 
 use gamma::{Event, EventDescriptor, pulsar_event};
 

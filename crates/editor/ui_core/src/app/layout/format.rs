@@ -683,7 +683,7 @@ pub(super) mod tests {
         layout.chrome = SavedChrome {
             file_manager_docked: true,
             file_manager_height: 512.0,
-            file_manager_folder: Some("assets/meshes".into()),
+            file_manager_folder: Some("assets/levels".into()),
         };
 
         write_slot(&path, PRIMARY_SLOT, &layout).unwrap();

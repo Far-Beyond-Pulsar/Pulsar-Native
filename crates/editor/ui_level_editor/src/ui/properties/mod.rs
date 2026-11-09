@@ -11,7 +11,6 @@ pub use transform_section::TransformSection;
 
 use gpui::{prelude::*, *};
 use rust_i18n::t;
-use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
     button::Button,
@@ -40,7 +39,6 @@ impl PropertiesPanel {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
-        collapsed_sections: &HashSet<String>,
         object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
         transform_section: &Option<Entity<super::TransformSection>>,
         object_type_fields_section: &Option<Entity<super::ObjectTypeFieldsSection>>,

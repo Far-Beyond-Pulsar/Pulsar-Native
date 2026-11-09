@@ -2,8 +2,8 @@
 
 use gpui::*;
 
+use crate::net::multiuser::ClientMessage;
 use crate::screen::MultiplayerWindow;
-use engine_backend::subsystems::networking::multiuser::ClientMessage;
 
 impl MultiplayerWindow {
     pub(super) fn approve_file_sync(&mut self, cx: &mut Context<Self>) {

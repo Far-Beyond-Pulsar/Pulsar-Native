@@ -64,6 +64,13 @@ it registers what it contributes; hosts reach a plugin only through its root
 table of plugins and their repositories is in `.agents/CRATES.md`
 ("plugins/vendor/ — Plugins").
 
+Core and editor know no kind, subsystem or tool: the layer gate (`just arch`,
+`architecture/layers.toml`) fails when a kernel crate (`crates/core`,
+`crates/editor`, `crates/subsystems`) depends on a plugin or a tool, dev
+dependencies included, or names a plugin's kind beyond the shrink-only
+`architecture/kind-names.txt`. A test that needs plugins belongs to
+`plugins/installed/tests` (`.agents/CRATES.md`, "The layers").
+
 ## Key commands
 
 ```
@@ -71,6 +78,7 @@ just check        cargo check
 just build        cargo build -p pulsar_engine
 just test         cargo test --workspace
 just clippy       cargo clippy --workspace -- -D warnings
+just arch         the layer gate: core and editor depend on no plugin or tool, name no kind
 just submodule-init   git submodule update --init --recursive
 just check-submodule-pins   every submodule pinned to a commit on its upstream main
 ```

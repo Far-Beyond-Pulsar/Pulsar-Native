@@ -75,12 +75,11 @@ impl FileInfo {
 /// Recursively find all files in a directory (plugin system determines if openable)
 pub fn find_openable_files(root: &Path, max_depth: Option<usize>) -> Vec<FileInfo> {
     let mut results = Vec::new();
-    find_files_recursive(root, root, &mut results, 0, max_depth.unwrap_or(10));
+    find_files_recursive(root, &mut results, 0, max_depth.unwrap_or(10));
     results
 }
 
 fn find_files_recursive(
-    root: &Path,
     current: &Path,
     results: &mut Vec<FileInfo>,
     depth: usize,
@@ -115,7 +114,7 @@ fn find_files_recursive(
 
             // Recurse into directories (but not class folders, as they're treated as files)
             if path.is_dir() && !is_class {
-                find_files_recursive(root, &path, results, depth + 1, max_depth);
+                find_files_recursive(&path, results, depth + 1, max_depth);
             }
         }
     }

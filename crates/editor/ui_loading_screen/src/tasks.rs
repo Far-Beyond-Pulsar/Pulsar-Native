@@ -25,9 +25,9 @@ pub(crate) type TaskFn = fn(&Path) -> TaskResult;
 
 // ── Task list ──────────────────────────────────────────────────────────────
 
-/// Sequential loading tasks.  Each entry is `(display_label, task_fn)`.
-/// The background thread executes them in order and reports real elapsed times.
-pub(crate) const TASKS: &[(&str, TaskFn)] = &[
+/// The engine's own loading tasks.  Each entry is `(display_label, task_fn)`.
+/// [`tasks`] adds the enabled tools' steps before the last one.
+const ENGINE_TASKS: &[(&str, TaskFn)] = &[
     ("Preparing editor plugins", task_prepare_plugins),
     ("Verifying project structure", task_verify_project),
     ("Indexing project files", task_index_project_files),
@@ -41,9 +41,63 @@ pub(crate) const TASKS: &[(&str, TaskFn)] = &[
     ("Preloading plugin assets", task_preload_plugin_assets),
     ("Loading engine settings", task_load_settings),
     ("Checking language server", task_check_lsp),
-    ("Synchronizing Git hooks", task_sync_git_hooks),
     ("Finalizing workspace", task_finalize),
 ];
+
+/// One step of a project load: the engine's own, or a tool's
+/// (`ui_common::editor_tools::ProjectOpenedRegistration`: the git tool syncs
+/// the project's hooks).
+#[derive(Clone)]
+pub(crate) struct LoadingTask {
+    pub label: String,
+    run: TaskRun,
+}
+
+#[derive(Clone, Copy)]
+enum TaskRun {
+    Engine(TaskFn),
+    Tool(fn(&Path) -> String),
+}
+
+impl LoadingTask {
+    /// Do the step's work, timed.
+    pub(crate) fn run(&self, project: &Path) -> TaskResult {
+        match self.run {
+            TaskRun::Engine(task) => task(project),
+            TaskRun::Tool(step) => {
+                let t = Instant::now();
+                let detail = step(project);
+                TaskResult {
+                    elapsed: t.elapsed(),
+                    detail: Some(detail),
+                }
+            }
+        }
+    }
+}
+
+/// The steps of a project load, in order: the engine's, with every enabled
+/// tool's step before the last ("Finalizing workspace").
+pub(crate) fn tasks() -> Vec<LoadingTask> {
+    let engine = |&(label, task): &(&str, TaskFn)| LoadingTask {
+        label: label.to_string(),
+        run: TaskRun::Engine(task),
+    };
+    let (last, before) = ENGINE_TASKS
+        .split_last()
+        .expect("the engine has loading tasks");
+    let mut tasks: Vec<LoadingTask> = before.iter().map(engine).collect();
+    tasks.extend(
+        ui_common::editor_tools::project_opened_steps()
+            .into_iter()
+            .map(|step| LoadingTask {
+                label: (step.label)(),
+                run: TaskRun::Tool(step.run),
+            }),
+    );
+    tasks.push(engine(last));
+    tasks
+}
 
 // ── Status / event types ───────────────────────────────────────────────────
 
@@ -238,52 +292,6 @@ fn task_check_lsp(_project: &Path) -> TaskResult {
         } else {
             "not in PATH".to_string()
         }),
-    }
-}
-
-fn task_sync_git_hooks(project: &Path) -> TaskResult {
-    let t = Instant::now();
-    let detail = match ui_git_manager::sync_configured_project_hooks(project) {
-        Ok(report) => {
-            let ui_git_manager::GitHookSyncReport {
-                status,
-                created,
-                preserved,
-            } = report;
-            match status {
-                ui_git_manager::GitHookSyncStatus::Synced => {
-                    if created.is_empty() && preserved.is_empty() {
-                        "no hooks configured".to_string()
-                    } else {
-                        format!("{} installed, {} preserved", created.len(), preserved.len())
-                    }
-                }
-                ui_git_manager::GitHookSyncStatus::Skipped(reason) => match reason {
-                    ui_git_manager::GitHookSyncSkipReason::RemoteProvider { label } => {
-                        format!("skipped: {label} provider")
-                    }
-                    ui_git_manager::GitHookSyncSkipReason::MissingGitDirectory => {
-                        "skipped: no Git repository".to_string()
-                    }
-                    ui_git_manager::GitHookSyncSkipReason::CustomHooksPath { path } => {
-                        format!("skipped: custom hooks path {}", path.display())
-                    }
-                },
-            }
-        }
-        Err(error) => {
-            tracing::warn!(
-                project = %project.display(),
-                error = %error,
-                "Failed to synchronize configured Git hooks; continuing startup"
-            );
-            "skipped: hook sync failed".to_string()
-        }
-    };
-
-    TaskResult {
-        elapsed: t.elapsed(),
-        detail: Some(detail),
     }
 }
 

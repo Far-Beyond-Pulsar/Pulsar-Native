@@ -8,6 +8,8 @@ anyhow = { workspace = true }
 gpui-ce.workspace = true
 window_manager.workspace = true
 inventory.workspace = true
+# Its registrations with the editor shell (`editor_shell`).
+pulsar_plugins = { workspace = true }
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 ui_common = { workspace = true }
 engine_fs.workspace = true

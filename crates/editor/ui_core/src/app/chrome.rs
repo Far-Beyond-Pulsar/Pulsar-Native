@@ -11,12 +11,12 @@
 //! - `drawer_open`: the hover / click overlay form of the drawer. It is a
 //!   momentary peek; restoring it would greet the user with an open overlay.
 //! - `resizing` / `resize_start_*` / `suppress_for_drag`: mid-gesture state.
-//! - `mission_control_open`, `git_manager_open`: these mirror *separate OS
-//!   windows* opened through the window registry; restoring the flag would
-//!   light the status-bar button with no window behind it (and
-//!   `git_manager_open` is never cleared when its window closes, so a saved
-//!   value would be stale after first use). Reopening those windows at startup
-//!   is a behaviour change this layout work does not make.
+//! - `open_tools`: the editor tools whose status-bar buttons are lit. They
+//!   mirror *separate OS windows* opened through the window registry;
+//!   restoring them would light a button with no window behind it (and a lit
+//!   button is not cleared when its window closes, so a saved value would be
+//!   stale after first use). Reopening those windows at startup is a
+//!   behaviour change this layout work does not make.
 //! - The problems and type-debugger drawers have no inline state: they open as
 //!   their own windows through the registry, so there is nothing to save.
 //!
@@ -55,10 +55,9 @@ pub struct ChromeState {
     pub drawer_resize_start_height: f32,
     /// Auto-close the drawer during an asset drag.
     pub suppress_drawer_for_drag: bool,
-    /// The Mission Control window is open.
-    pub mission_control_open: bool,
-    /// The Git Manager window has been opened.
-    pub git_manager_open: bool,
+    /// The editor tools whose windows were opened from the status bar (their
+    /// buttons are lit), by `editor_tools::EditorToolRegistration::id`.
+    pub open_tools: std::collections::BTreeSet<&'static str>,
 }
 
 impl Default for ChromeState {
@@ -72,8 +71,7 @@ impl Default for ChromeState {
             drawer_resize_start_y: 0.0,
             drawer_resize_start_height: DEFAULT_DRAWER_HEIGHT,
             suppress_drawer_for_drag: false,
-            mission_control_open: false,
-            git_manager_open: false,
+            open_tools: Default::default(),
         }
     }
 }
@@ -216,8 +214,7 @@ mod tests {
     fn transient_state_is_not_saved() {
         let mut live = ChromeState::default();
         live.drawer_open = true;
-        live.mission_control_open = true;
-        live.git_manager_open = true;
+        live.open_tools.insert("tool.flamegraph");
         live.suppress_drawer_for_drag = true;
         assert!(live.save().is_empty());
     }

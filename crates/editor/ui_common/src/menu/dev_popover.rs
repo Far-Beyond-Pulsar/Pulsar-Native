@@ -244,8 +244,9 @@ impl Render for DevPopover {
 
             default_level_size = ctx
                 .store
-                .get_or_init::<Option<Vec<u8>>>()
+                .get_or_init::<engine_state::StarterContent>()
                 .read()
+                .level
                 .as_ref()
                 .map(|b| {
                     let n = b.len();

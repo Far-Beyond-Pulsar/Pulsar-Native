@@ -388,8 +388,8 @@ pub struct PulsarApp {
     /// here and delivered at the next tick's after-input flush.
     events: pulsar_events::EventHub,
     /// Set while a possessed pawn owns the player's input: every window's
-    /// free camera stands down (see `player_input::PossessionGate`).
-    possession: crate::player_input::PossessionGate,
+    /// free camera stands down (see `possession::PossessionGate`).
+    possession: crate::possession::PossessionGate,
     /// The entity the local player's view follows (possession sets it to the
     /// pawn); read by the camera selection.
     view_targets: crate::view_target::ViewTargets,

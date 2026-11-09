@@ -386,6 +386,8 @@ pub struct BufferGraph {
     pub producers: BTreeMap<String, BTreeSet<String>>,
     /// buffer key -> packages that look it up with `BufferKey::of("…")`.
     pub consumers: BTreeMap<String, BTreeSet<String>>,
+    /// buffer key -> packages of the types that write it.
+    pub producer_packages: BTreeMap<String, BTreeSet<String>>,
     /// type name -> buffer keys it writes.
     pub buffers_of_type: BTreeMap<String, BTreeSet<String>>,
 }
@@ -424,6 +426,11 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
                     .entry(key.clone())
                     .or_default()
                     .insert(owner.clone());
+                graph
+                    .producer_packages
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(file.package.clone());
                 graph.buffers_of_type.entry(owner).or_default().insert(key);
             }
             for caps in lookup.captures_iter(line) {

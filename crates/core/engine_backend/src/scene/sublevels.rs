@@ -1,7 +1,7 @@
 //! Sublevel placements as spaces.
 //!
 //! A sublevel placement (an object carrying
-//! [`SubLevelActorRow`](helio_mesh_api::SubLevelActorRow)) is one
+//! [`SubLevelActorRow`](pulsar_scene_model::SubLevelActorRow)) is one
 //! of the things that define a **space** (`.agents/FRAMES.md`): the content
 //! placed there is the object's descendants, drawn through one entry of the
 //! coordinate-space table, so moving the placement moves the whole sublevel with
@@ -21,10 +21,9 @@
 //! content several times (today each placement holds its own objects).
 
 use glam::Mat4;
-use helio_mesh_api::SubLevelActorRow;
 use pulsar_scene_model::frames::SpaceDefiner;
 use pulsar_scene_model::hierarchy_transform::{from_matrix, to_matrix};
-use pulsar_scene_model::Transform;
+use pulsar_scene_model::{SubLevelActorRow, Transform};
 use pulsar_scenedb::{Entity, World};
 
 fn placements(world: &World) -> Vec<Entity> {

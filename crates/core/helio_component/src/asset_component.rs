@@ -6,8 +6,8 @@
 use std::any::Any;
 use std::path::{Component, Path, PathBuf};
 
-use plugin_editor_api::AssetKind;
 use pulsar_scenedb::{AssetId, AssetPayload};
+use ui_types_common::AssetKind;
 
 /// The component an asset of a kind becomes when dropped in a level.
 /// Skipped while its plugin is disabled.

@@ -379,3 +379,13 @@ impl ProviderCrate for GeminiProviderCrate {
         Ok(Box::new(GeminiProvider::new(api_key)))
     }
 }
+
+// The editor's chat offers this provider (`agent_chat_core::provider_crates`).
+pulsar_plugins::inventory::submit! {
+    agent_chat_core::AgentProviderRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "agent.gemini",
+        order: 30,
+        create: || Box::new(GeminiProviderCrate),
+    }
+}

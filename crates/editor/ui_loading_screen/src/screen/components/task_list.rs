@@ -1,11 +1,12 @@
 use gpui::*;
 use std::time::Duration;
 
-use crate::tasks::{TaskStatus, TASKS};
+use crate::tasks::{LoadingTask, TaskStatus};
 
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub(crate) fn task_list_widget(
+    tasks: &[LoadingTask],
     anim_tick: u32,
     statuses: &[TaskStatus],
     running_elapsed: Option<Duration>,
@@ -28,7 +29,7 @@ pub(crate) fn task_list_widget(
         .gap(px(6.0))
         .children((window_start..window_end).map(|i| {
             let status = statuses[i];
-            let label = TASKS[i].0;
+            let label = tasks[i].label.clone();
             let dist_above = running.saturating_sub(i);
             let (icon, base_opacity): (&str, f32) = match status {
                 TaskStatus::Done(_) => ("✓", 0.9),

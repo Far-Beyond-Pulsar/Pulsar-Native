@@ -4,10 +4,15 @@
 # join its workspace (CI's vendor-member guard).
 members = [
     "crates/profiling",
-    # The Blueprint plugin's graph -> script module compiler. The plugin
-    # itself is excluded below; its compiler is a member so its tests run
-    # against this workspace's script VM.
+    # The Blueprint plugin's graph -> script module compiler.
     "plugins/vendor/blueprint_editor/compiler",
+    # The editor-tool plugins in their own repositories (Blueprints, the code,
+    # matter and table editors): members like every plugin crate, built
+    # against this workspace's crates (Pulsar-Native#1605).
+    "plugins/vendor/blueprint_editor",
+    "plugins/vendor/code_editor",
+    "plugins/vendor/matter_editor",
+    "plugins/vendor/table_editor",
     # Visual editor for Helio render graphs; reuses the Blueprint editor through
     # its profile API. A plugin DLL: never link it into a binary that embeds the
     # Blueprint editor (they would share one profile).
@@ -28,8 +33,9 @@ members = [
     "plugins/vendor/skm_editor/skeletal_assets",
     "plugins/vendor/skm_editor/component",
     "plugins/vendor/skm_editor/editor",
-    # Physics asset types (materials, collision layers); in-repo cdylib plugin.
+    # Physics (`pulsar.physics`): its root crate, and its api (the .physasset schema).
     "plugins/vendor/physics_plugin",
+    "plugins/vendor/physics_plugin/api",
     # Widget assets (.widget) and the WYSIWYG widget editor; built-in plugin of the editor.
     "plugins/vendor/ui_editor",
     # Input actions (.inputaction), input mappings (.inputmap), and the input
@@ -211,10 +217,6 @@ exclude = [
     # owned and resolved by WGPUI rather than polluting Pulsar's workspace graph.
     "crates/ui/wgpui",
     "crates/renderer/helio",
-    "plugins/vendor/blueprint_editor",
-    "plugins/vendor/code_editor",
-    "plugins/vendor/matter_editor",
-    "plugins/vendor/table_editor",
 ]
 
 default-members = ["crates/core/engine"]
@@ -377,6 +379,7 @@ blueprint_editor_plugin = { path = "plugins/vendor/blueprint_editor", features =
 editor_table_plugin = { path = "plugins/vendor/table_editor" }
 input_plugin = { path = "plugins/vendor/input_plugin", features = ["builtin"] }
 physics_plugin = { path = "plugins/vendor/physics_plugin", features = ["builtin"] }
+physics_api = { path = "plugins/vendor/physics_plugin/api" }
 plugin_matter = { path = "plugins/vendor/matter_editor" }
 render_bps_plugin = { path = "plugins/vendor/render_bps", features = ["builtin"] }
 script_editor_plugin = { path = "plugins/vendor/code_editor", features = ["builtin"] }
@@ -428,7 +431,6 @@ agent_provider_vertex_ai           = { path = "crates/agent-providers/agent_prov
 agent_provider_cohere              = { path = "crates/agent-providers/agent_provider_cohere" }
 
 # ---------- Subsystem Crates ----------
-pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 helio_component       = { path = "crates/core/helio_component" }
 helio-mats            = { path = "plugins/vendor/materials/api" }
 helio-pass-materials  = { path = "plugins/vendor/materials/feature" }

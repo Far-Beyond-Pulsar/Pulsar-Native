@@ -17,27 +17,15 @@ use std::time::Instant;
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
     scene_store: Option<crate::scene::SharedScene>,
-    #[cfg(feature = "physics")]
-    _physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
 
 impl GpuRendererBuilder {
     pub fn new(_width: u32, _height: u32) -> Self {
-        Self {
-            scene_store: None,
-            #[cfg(feature = "physics")]
-            _physics_query: None,
-        }
+        Self { scene_store: None }
     }
 
     pub fn scene_db(mut self, store: crate::scene::SharedScene) -> Self {
         self.scene_store = Some(store);
-        self
-    }
-
-    #[cfg(feature = "physics")]
-    pub fn physics(mut self, pq: Arc<crate::services::PhysicsQueryService>) -> Self {
-        self._physics_query = Some(pq);
         self
     }
 

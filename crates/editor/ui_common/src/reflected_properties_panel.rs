@@ -212,6 +212,7 @@ impl Default for PropertyStateManager {
 /// keystroke would land in whichever card rendered first. Callers typically
 /// pass something like `"{class_name}#{component_index}"`. `class_name`
 /// itself still flows to the editor factory untouched (labels, naming).
+#[allow(clippy::too_many_arguments)]
 pub fn render_property_row_runtime<V: 'static>(
     state: &mut PropertyStateManager,
     id_prefix: &str,

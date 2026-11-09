@@ -6,22 +6,20 @@ use std::sync::Arc;
 use gpui::{
     actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
     Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
-    MouseButton, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window,
+    MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
 };
 use ui::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    h_flex, locale,
+    locale,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
-    v_flex, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme,
-    ThemeMode, TitleBar,
+    ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme, ThemeMode,
+    TitleBar,
 };
 
 use crate::profile_dropdown::ProfileDropdownEvent;
-use ui::themes::ThemeSwitcher;
 
 // Define UI preference actions
 #[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
@@ -48,6 +46,14 @@ pub struct SelectScrollbarShow(pub ScrollbarShow);
 #[action(namespace = menu, no_json)]
 pub struct NewAsset {
     pub file_type_id: String,
+}
+
+/// Open the editor tool `id` (`editor_tools::EditorToolRegistration`): the
+/// Tools menu lists every registered tool; the app shell opens it.
+#[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
+#[action(namespace = menu, no_json)]
+pub struct OpenEditorTool {
+    pub id: String,
 }
 
 // Define actions for the main menu
@@ -92,8 +98,6 @@ actions!(
         // file manager lists, offering importable sources for import.
         ImportAssets,
         // Tools menu
-        ToggleProfiler,
-        ToggleConsole,
         ShowTypeDebugger,
         ToggleNetwork,
         // Window menu
@@ -234,13 +238,22 @@ fn build_app_menus(
         // Tools: engine-wide diagnostics and collaboration
         Menu {
             name: t!("Menu.Tools").into(),
-            items: vec![
-                MenuItem::action(t!("Menu.Tools.Profiler").to_string(), ToggleProfiler),
-                MenuItem::action(t!("Menu.Tools.MissionControl").to_string(), ToggleConsole),
-                MenuItem::action(t!("Menu.Tools.TypeDebugger").to_string(), ShowTypeDebugger),
-                MenuItem::separator(),
-                MenuItem::action(t!("Menu.Tools.Multiplayer").to_string(), ToggleNetwork),
-            ],
+            items: crate::editor_tools::editor_tools()
+                .into_iter()
+                .map(|tool| {
+                    MenuItem::action(
+                        (tool.label)(),
+                        OpenEditorTool {
+                            id: tool.id.to_string(),
+                        },
+                    )
+                })
+                .chain([
+                    MenuItem::action(t!("Menu.Tools.TypeDebugger").to_string(), ShowTypeDebugger),
+                    MenuItem::separator(),
+                    MenuItem::action(t!("Menu.Tools.Multiplayer").to_string(), ToggleNetwork),
+                ])
+                .collect(),
         },
         // Window
         Menu {
@@ -404,15 +417,12 @@ pub fn init_app_menus_with_file_types(
 pub enum AppTitleBarEvent {
     /// User wants to open the multiplayer sessions / friends panel.
     MultiplayerSessionsRequested,
-    /// User wants to edit the global Git settings.
-    GitSettingsRequested,
 }
 
 pub struct AppTitleBar {
     app_menu_bar: Entity<AppMenuBar>,
     locale_picker: Entity<crate::locale_picker::LocalePicker>,
     font_size_selector: Entity<FontSizeSelector>,
-    theme_switcher: Entity<ThemeSwitcher>,
     theme_picker: Entity<crate::theme_dropdown::ThemePicker>,
     title: SharedString,
     asset_file_types: Vec<plugin_editor_api::FileTypeDefinition>,
@@ -448,7 +458,6 @@ impl AppTitleBar {
         let app_menu_bar = new_menu_bar(window, cx);
         let locale_picker = cx.new(|cx| crate::locale_picker::LocalePicker::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
-        let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
         let theme_picker = cx.new(|cx| crate::theme_dropdown::ThemePicker::new(window, cx));
         let profile_dropdown = cx.new(crate::profile_dropdown::ProfileDropdown::new);
 
@@ -527,9 +536,6 @@ impl AppTitleBar {
                         })
                         .detach();
                     }
-                    ProfileDropdownEvent::GitSettingsRequested => {
-                        cx.emit(AppTitleBarEvent::GitSettingsRequested);
-                    }
                     _ => {}
                 }
                 cx.notify();
@@ -540,7 +546,6 @@ impl AppTitleBar {
             app_menu_bar,
             locale_picker,
             font_size_selector,
-            theme_switcher,
             theme_picker,
             title: title_str,
             asset_file_types,

@@ -20,16 +20,11 @@ toml                  = { workspace = true }
 engine_backend = { workspace = true }
 helio_component = { workspace = true }
 pulsar_class = { workspace = true }
-pulsar_physics = { workspace = true }
 pulsar_scene_model = { workspace = true }
-# The editor links the physics plugin as a built-in (ui_core); its components
-# are scene components like any other.
-physics_plugin = { path = "../../../plugins/vendor/physics_plugin", features = ["builtin"] }
-# The input plugin is linked the same way; its PlayerInputComponent is a scene
-# component.
-input_plugin = { path = "../../../plugins/vendor/input_plugin", default-features = false, features = ["builtin"] }
-# Every installed object-kind plugin's root crate (generated from their
-# pulsar-plugin.toml): their components are scene components.
+# Every installed plugin's root crate (generated from their
+# pulsar-plugin.toml): their components are scene components. This crate is a
+# host (architecture/layers.toml): it reaches plugins only through the
+# installed set.
 installed_plugins = { workspace = true }
 
 [lints]

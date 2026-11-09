@@ -13,20 +13,24 @@
 //!
 //! A new registration, buffer, pass or call site therefore fails the test
 //! until someone records where it belongs in the corrective plan.
+//!
+//! Each plugin owns the rows of what it ships, in its own
+//! `plugins/vendor/<dir>/ledger.toml` (Pulsar-Native#1606, [`home`]); the
+//! engine's rows are in this crate's. The test checks the engine's rows and
+//! every installed plugin's, so a plugin repository changes its buffers
+//! without editing Pulsar-Native's ledger.
 
 // Rust only links a dependency that is referenced. These crates are needed
 // solely for their link-time registrations (`inventory` statics), which the
 // code below never names directly.
 extern crate engine_backend;
 extern crate helio_component;
-extern crate input_plugin;
 extern crate installed_plugins;
-extern crate physics_plugin;
 extern crate pulsar_class;
-extern crate pulsar_physics;
 extern crate pulsar_scene_model;
 
 pub mod architecture;
+pub mod home;
 pub mod ledger;
 pub mod linked;
 pub mod source;
@@ -41,7 +45,8 @@ pub fn repo_root() -> PathBuf {
         .expect("repository root exists")
 }
 
-/// Path of the checked-in closure ledger.
+/// Path of the engine's closure ledger (each plugin's is beside its
+/// descriptor: [`home::ledger_files`]).
 pub fn ledger_path() -> PathBuf {
-    repo_root().join("crates/core/scene_inventory/ledger.toml")
+    repo_root().join(home::CORE_LEDGER)
 }

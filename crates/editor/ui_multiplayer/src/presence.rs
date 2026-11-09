@@ -1,8 +1,8 @@
 //! User presence tracking functionality
 
+use crate::net::multiuser::ClientMessage;
 use crate::screen::MultiplayerWindow;
 use crate::utils::types::*;
-use engine_backend::subsystems::networking::multiuser::ClientMessage;
 use gpui::*;
 
 impl MultiplayerWindow {

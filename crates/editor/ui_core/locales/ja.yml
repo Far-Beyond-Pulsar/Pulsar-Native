@@ -7,7 +7,6 @@ StatusBar.Restart: "再起動"
 StatusBar.Start: "開始"
 StatusBar.Multiplayer: "マルチプレイヤーコラボレーション"
 StatusBar.PluginManager: "プラグインマネージャー"
-StatusBar.Flamegraph: "フレームグラフプロファイラ"
 
 Notification.Title.Dev: "開発"
 Notification.Title.BuildInfo: "ビルド情報"

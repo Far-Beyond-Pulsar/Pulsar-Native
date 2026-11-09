@@ -727,13 +727,13 @@ Findings:
    methods inherit their FIELD's category instead of landing ungrouped.
    No code string-matches display names (verified by grep) — labels are
    render-safe to change.
-4. **Golden snapshot**: `pulsar_physics/src/golden_metadata.rs` (unit-test
+4. **Golden snapshot**: `physics_plugin/src/golden_metadata.rs` (unit-test
    module ON PURPOSE — integration binaries linker-GC arbitrary inventory
    statics; observed classes-without-methods) diffs
    `metadata_snapshot_json()` against
    `tests/expected_registry_snapshot.json` (77 properties captured, fully
    sorted/deterministic). Regen: `PULSAR_UPDATE_SNAPSHOT=1 cargo test -p
-   pulsar_physics golden_metadata`. Reusable everywhere: any crate linking
+   physics_plugin golden_metadata`. Reusable everywhere: any crate linking
    real classes can drop the same two tests in.
 5. **Gap recorded, not fixed**: top-level components whose fields are ALL
    `#[sub_props]` (both physics components) expose ZERO reflected METHODS —

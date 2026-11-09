@@ -1046,3 +1046,13 @@ mod template_tests {
         );
     }
 }
+
+// The editor's chat offers this provider (`agent_chat_core::provider_crates`).
+pulsar_plugins::inventory::submit! {
+    agent_chat_core::AgentProviderRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "agent.openai",
+        order: 0,
+        create: || Box::new(OpenAiProviderCrate),
+    }
+}

@@ -1,4 +1,4 @@
-//! Shared, immutable handle meshes for drawing and screen-space picking.
+//! Shared, immutable handle shapes (triangles) for drawing and screen-space picking.
 use crate::scene::GizmoType;
 use glam::Vec3;
 use std::sync::OnceLock;
@@ -9,7 +9,7 @@ pub(super) enum Handle {
     Plane(usize),
     Center,
 }
-pub(super) struct Mesh {
+pub(super) struct Shape {
     pub handle: Handle,
     pub triangles: Vec<[Vec3; 3]>,
 }
@@ -53,9 +53,9 @@ fn cube(tris: &mut Vec<[Vec3; 3]>, c: Vec3, r: f32) {
         }
     }
 }
-fn build(mode: GizmoType) -> Vec<Mesh> {
+fn build(mode: GizmoType) -> Vec<Shape> {
     let axes = [Vec3::X, Vec3::Y, Vec3::Z];
-    let mut meshes = Vec::new();
+    let mut shapes = Vec::new();
     for i in 0..3 {
         let mut triangles = Vec::new();
         let axis = axes[i];
@@ -96,7 +96,7 @@ fn build(mode: GizmoType) -> Vec<Mesh> {
                 cube(&mut triangles, axis * 0.94, 0.065);
             }
         }
-        meshes.push(Mesh {
+        shapes.push(Shape {
             handle: Handle::Axis(i),
             triangles,
         });
@@ -113,7 +113,7 @@ fn build(mode: GizmoType) -> Vec<Mesh> {
                 (u + v) * 0.43,
                 u * 0.23 + v * 0.43,
             );
-            meshes.push(Mesh {
+            shapes.push(Shape {
                 handle: Handle::Plane(i),
                 triangles,
             });
@@ -122,17 +122,17 @@ fn build(mode: GizmoType) -> Vec<Mesh> {
     if mode != GizmoType::Rotate {
         let mut triangles = Vec::new();
         cube(&mut triangles, Vec3::ZERO, 0.055);
-        meshes.push(Mesh {
+        shapes.push(Shape {
             handle: Handle::Center,
             triangles,
         });
     }
-    meshes
+    shapes
 }
-pub(super) fn meshes(mode: GizmoType) -> &'static [Mesh] {
-    static MOVE: OnceLock<Vec<Mesh>> = OnceLock::new();
-    static ROTATE: OnceLock<Vec<Mesh>> = OnceLock::new();
-    static SCALE: OnceLock<Vec<Mesh>> = OnceLock::new();
+pub(super) fn shapes(mode: GizmoType) -> &'static [Shape] {
+    static MOVE: OnceLock<Vec<Shape>> = OnceLock::new();
+    static ROTATE: OnceLock<Vec<Shape>> = OnceLock::new();
+    static SCALE: OnceLock<Vec<Shape>> = OnceLock::new();
     match mode {
         GizmoType::Translate => MOVE.get_or_init(|| build(mode)),
         GizmoType::Rotate => ROTATE.get_or_init(|| build(mode)),

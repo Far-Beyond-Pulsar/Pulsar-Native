@@ -18,8 +18,6 @@ pub enum ProfileDropdownEvent {
     SignedOut,
     /// User clicked "Multiplayer Sessions" — parent should open the friends/invite UI.
     MultiplayerSessionsRequested,
-    /// User clicked "Git Settings"; the parent should open the global Git settings UI.
-    GitSettingsRequested,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -80,7 +78,8 @@ impl ProfileDropdown {
         cx.spawn(async move |this, cx| {
             if let Ok(maybe_image) = rx.recv().await {
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    // The dropdown may have closed; the avatar is then not wanted.
+                    let _ = this.update(cx, |this, cx| {
                         this.avatar_image = maybe_image;
                         cx.notify();
                     });
@@ -305,24 +304,8 @@ impl ProfileDropdown {
                     )),
             )
             .child(div().w_full().h(px(1.)).bg(border))
-            // ── Git Identity section ──────────────────────────────
-            .child(
-                v_flex()
-                    .p_2()
-                    .gap_0p5()
-                    .child(section_label("GIT", muted))
-                    .child(menu_row(
-                        IconName::GitCommit,
-                        "Git Settings",
-                        false,
-                        cx.listener(|this, _: &ClickEvent, _, cx| {
-                            this.is_open = false;
-                            cx.emit(ProfileDropdownEvent::GitSettingsRequested);
-                            cx.notify();
-                        }),
-                    )),
-            )
-            .child(div().w_full().h(px(1.)).bg(border))
+            // ── The tools' entries (`editor_tools::AccountMenuItemRegistration`) ──
+            .children(tool_sections(muted, border, true, cx))
             // ── Collaboration section ─────────────────────────────
             .child(
                 v_flex()
@@ -411,23 +394,8 @@ impl ProfileDropdown {
                     .child(benefit_row("FAB asset marketplace")),
             )
             .child(div().w_full().h(px(1.)).bg(border))
-            // ── Git settings ──────────────────────────────────────
-            .child(
-                v_flex()
-                    .gap_0p5()
-                    .child(section_label("GIT", muted))
-                    .child(menu_row(
-                        IconName::GitCommit,
-                        "Git Settings",
-                        false,
-                        cx.listener(|this, _: &ClickEvent, _, cx| {
-                            this.is_open = false;
-                            cx.emit(ProfileDropdownEvent::GitSettingsRequested);
-                            cx.notify();
-                        }),
-                    )),
-            )
-            .child(div().w_full().h(px(1.)).bg(border))
+            // ── The tools' entries (`editor_tools::AccountMenuItemRegistration`) ──
+            .children(tool_sections(muted, border, false, cx))
             // ── Sign In button ────────────────────────────────────
             .child(
                 Button::new("profile-sign-in")
@@ -477,6 +445,50 @@ impl Render for ProfileDropdown {
 }
 
 // ── Free-standing helpers ─────────────────────────────────────────────────────
+
+/// The tools' account-menu entries, one section per heading, each followed
+/// by a divider. `padded` matches the signed-in card's sections.
+fn tool_sections(
+    muted: gpui::Hsla,
+    border: gpui::Hsla,
+    padded: bool,
+    cx: &mut Context<ProfileDropdown>,
+) -> Vec<AnyElement> {
+    let mut sections: Vec<(
+        String,
+        Vec<&'static crate::editor_tools::AccountMenuItemRegistration>,
+    )> = Vec::new();
+    for item in crate::editor_tools::account_menu_items() {
+        let heading = (item.section)();
+        match sections.iter_mut().find(|(name, _)| *name == heading) {
+            Some((_, items)) => items.push(item),
+            None => sections.push((heading, vec![item])),
+        }
+    }
+    let mut out = Vec::new();
+    for (heading, items) in sections {
+        let mut column = v_flex()
+            .gap_0p5()
+            .when(padded, |column| column.p_2())
+            .child(section_label(&heading, muted));
+        for item in items {
+            let open = item.open;
+            column = column.child(menu_row(
+                item.icon.clone(),
+                &(item.label)(),
+                false,
+                cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    this.is_open = false;
+                    open(window, cx);
+                    cx.notify();
+                }),
+            ));
+        }
+        out.push(column.into_any_element());
+        out.push(div().w_full().h(px(1.)).bg(border).into_any_element());
+    }
+    out
+}
 
 fn section_label(text: &str, color: gpui::Hsla) -> impl IntoElement {
     div()

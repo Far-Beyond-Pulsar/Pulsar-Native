@@ -1,6 +1,6 @@
 //! Headless TypeScript compile: `pulsar build-scripts` compiles every
 //! `class.ts` through `ScriptLanguage::compile_project`, with no editor.
-#![cfg(feature = "typescript")]
+#![cfg(feature = "scripting")]
 
 use pulsar_content::BuildProfile;
 

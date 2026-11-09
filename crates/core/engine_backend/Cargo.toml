@@ -24,23 +24,16 @@ workspace = true
 [dependencies]
 # The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
 pulsar_plugins = { workspace = true }
-# The sublevel actor row the engine's sublevel displays author (a scene
-# row the meshes' api defines: `sublevels.rs`).
-helio-mesh-api = { workspace = true }
 helio-scene-join = { workspace = true, optional = true }
 inventory = { workspace = true }
 helio-core = { workspace = true, optional = true }
 toml.workspace = true
-# Physics bodies on the WaterSim channel derive the water simulation's
-# hitbox source rows (Pulsar-Native#1080).
-pulsar_physics.workspace = true
 engine_subsystems = { workspace = true }
 ui_gen_macros = { workspace = true }
 pebble = { package = "PebbleVault", version = "0.7.0" }
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }
-rapier3d = { workspace = true, optional = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 pulsar_error = { path = "../pulsar_error" }
@@ -67,7 +60,6 @@ pulsar_script_object_model.workspace = true
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true
 helio_component.workspace = true
-helio-mats = { workspace = true, optional = true }
 helio-pass-postprocess = { workspace = true, optional = true }
 engine_fs.workspace = true
 
@@ -102,22 +94,15 @@ wgpu = { workspace = true, optional = true }
 pulsar_pie_abi = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
 crossbeam-channel = { workspace = true, optional = true }
-futures = { workspace = true, optional = true }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }
 # horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
 serde_json = { workspace = true }
-rust-embed = { workspace = true, features = ["interpolate-folder-path", "include-exclude"] }
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"], optional = true }
 
 # Networking dependencies
-async-tungstenite = { version = "0.35", features = ["tokio-runtime"], optional = true }
-git2 = { workspace = true, optional = true }
-sha2 = { workspace = true, optional = true }
-walkdir = { workspace = true, optional = true }
 
 [features]
-default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
+default = ["render", "editor-ui", "pie"]
 # Not a real dependency toggle -- exists solely so `#[cfg(feature = "gpu")]`
 # embedded in `pulsar_scenedb_derive`'s generated code (`#[derive(SceneStore)]`
 # on `Transform`, scene/world_store.rs) evaluates true. That `cfg` checks the
@@ -126,12 +111,9 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-tsr", "dep:helio-mats"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-tsr"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
-networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]
-vcs        = ["dep:git2", "dep:sha2", "dep:walkdir"]
-physics    = ["dep:rapier3d"]
 # Hot-reload `.wgsl` edits into the running renderer (Helio's
 # `shader-hot-reload`). Helio enables it by default, so this only matters when
 # helio is built with `default-features = false`. Set

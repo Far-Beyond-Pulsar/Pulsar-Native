@@ -73,6 +73,7 @@ name = "agent_chat_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "pulsar_plugins",
  "serde",
  "serde_json",
  "tempfile",
@@ -99,6 +100,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde_json",
  "tracing",
@@ -110,6 +112,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
 ]
 
 [[package]]
@@ -118,6 +121,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "serde_json",
 ]
 
@@ -127,6 +131,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -139,6 +144,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde_json",
 ]
@@ -149,6 +155,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -161,6 +168,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde_json",
  "tracing",
@@ -172,6 +180,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde_json",
  "tracing",
@@ -183,6 +192,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
+ "pulsar_plugins",
 ]
 
 [[package]]
@@ -327,7 +337,6 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "glam 0.33.5",
- "gpui-ce",
  "helio_component",
  "pulsar_events",
  "pulsar_reflection",
@@ -561,7 +570,7 @@ name = "asset_import"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "editor_task_queue 0.1.0",
+ "editor_task_queue",
  "engine_fs",
  "inventory",
  "parking_lot",
@@ -1223,7 +1232,7 @@ dependencies = [
  "arboard",
  "blueprint_compiler",
  "chrono",
- "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73)",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "futures",
@@ -2700,7 +2709,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio-feature-api",
  "helio-pass-decal",
  "helio-scene-join",
@@ -3291,14 +3299,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "editor_task_queue"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73#838f6accad39dc4c1bd9016fca7f9867a06cbe73"
-dependencies = [
- "parking_lot",
-]
-
-[[package]]
 name = "ego-tree"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3444,7 +3444,6 @@ dependencies = [
  "PebbleVault",
  "anyhow",
  "ash",
- "async-tungstenite",
  "bitflags 2.13.1",
  "bytemuck",
  "crossbeam-channel",
@@ -3453,16 +3452,12 @@ dependencies = [
  "engine_state",
  "engine_subsystems",
  "flume",
- "futures",
- "git2 0.21.0",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
  "helio-core",
  "helio-feature-api",
  "helio-graph-asset",
- "helio-mats",
- "helio-mesh-api",
  "helio-pass-postprocess",
  "helio-pass-tsr",
  "helio-presets",
@@ -3479,7 +3474,6 @@ dependencies = [
  "pulsar_error",
  "pulsar_events",
  "pulsar_lsp",
- "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -3489,14 +3483,10 @@ dependencies = [
  "pulsar_script_object_model",
  "pulsar_settings",
  "pulsar_world_registry",
- "rapier3d 0.35.3",
- "reqwest 0.13.4",
  "ropey 2.0.0-beta.1",
- "rust-embed",
  "scenedb-inspector-agent",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
@@ -3505,7 +3495,6 @@ dependencies = [
  "ui",
  "ui_gen_macros",
  "uuid",
- "walkdir",
  "wgpu",
  "winapi",
  "windows 0.62.2",
@@ -3537,7 +3526,7 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "dashmap",
- "editor_task_queue 0.1.0",
+ "editor_task_queue",
  "futures",
  "image",
  "notify 8.2.0",
@@ -3574,7 +3563,6 @@ dependencies = [
  "engine_fs",
  "event-listener 5.4.2",
  "futures",
- "gpui-ce",
  "parking_lot",
  "pulsar-config",
  "pulsar-multiplayer-core",
@@ -3589,7 +3577,6 @@ dependencies = [
  "ui_types_common",
  "uuid",
  "wgpu",
- "window_manager",
 ]
 
 [[package]]
@@ -4107,7 +4094,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio-feature-api",
  "helio-pass-volumetric-fog",
  "helio-scene-join",
@@ -4203,7 +4189,6 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "glam 0.33.5",
- "gpui-ce",
  "helio",
  "helio-feature-api",
  "helio-foliage-api",
@@ -6162,6 +6147,7 @@ dependencies = [
  "log",
  "naga",
  "pulsar_reflection",
+ "pulsar_scene_model",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -6873,16 +6859,12 @@ dependencies = [
  "engine_class_derive",
  "engine_state",
  "glam 0.33.5",
- "gpui-ce",
  "helio",
  "helio-core",
- "helio-mats",
- "helio-pass-postprocess",
  "image",
  "intel_tex_2",
  "inventory",
  "naga",
- "plugin_editor_api",
  "pollster 0.4.0",
  "pulsar_events",
  "pulsar_plugins",
@@ -6895,7 +6877,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
- "ui",
+ "ui_types_common",
  "wgpu",
 ]
 
@@ -7395,6 +7377,7 @@ dependencies = [
 name = "input_plugin"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
  "engine_class_derive",
  "gilrs",
  "gpui-ce",
@@ -7433,6 +7416,7 @@ version = "0.1.0"
 dependencies = [
  "asset_import",
  "asset_viewer_plugin",
+ "blueprint_compiler",
  "blueprint_editor_plugin",
  "catalog_fixture_component",
  "catalog_fixture_plugin",
@@ -7444,10 +7428,20 @@ dependencies = [
  "foliage_plugin",
  "gi_plugin",
  "glam 0.33.5",
+ "gpui-ce",
+ "graphy-blueprint",
  "helio",
  "helio-core",
+ "helio-frame-api",
  "helio-mats",
+ "helio-mesh-api",
+ "helio-pass-buffer-view",
+ "helio-pass-foliage-place",
+ "helio-pass-gi",
+ "helio-pass-portal-cull",
+ "helio-pass-water-sim",
  "helio-presets",
+ "helio-vg-format",
  "helio_component",
  "image",
  "input_plugin",
@@ -7465,9 +7459,15 @@ dependencies = [
  "pollster 1.0.1",
  "portals_plugin",
  "post_plugin",
+ "pulsar_class",
+ "pulsar_events",
+ "pulsar_game",
  "pulsar_plugins",
+ "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_script_vm",
  "pulsar_settings",
+ "pulsar_std",
  "pulsar_world_registry",
  "render_bps_plugin",
  "script_editor_plugin",
@@ -7478,7 +7478,10 @@ dependencies = [
  "sprites_plugin",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
  "trait_editor_plugin",
+ "ui_common",
  "ui_editor_plugin",
  "ui_level_editor",
  "voxel_plugin",
@@ -7957,7 +7960,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio-feature-api",
  "helio-pass-flare",
  "helio-pass-lens",
@@ -7991,6 +7993,7 @@ dependencies = [
  "pulsar_plugins",
  "pulsar_scenedb",
  "pulsar_world_registry",
+ "ui_common",
  "wgpu",
 ]
 
@@ -8000,7 +8003,6 @@ version = "0.1.0"
 dependencies = [
  "installed_plugins",
  "pulsar_class",
- "pulsar_physics",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
@@ -8132,7 +8134,6 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "glam 0.33.5",
- "gpui-ce",
  "helio",
  "helio-feature-api",
  "helio-light-api",
@@ -8835,7 +8836,7 @@ version = "0.1.0"
 dependencies = [
  "asset_import",
  "bytemuck",
- "editor_task_queue 0.1.0",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -10822,7 +10823,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio-feature-api",
  "helio-pass-corona",
  "helio-scene-join",
@@ -11177,24 +11177,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "physics_api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "skeletal_assets",
+]
+
+[[package]]
 name = "physics_plugin"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "engine_backend",
  "engine_class_derive",
  "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
+ "helio-water-api",
  "helio_component",
  "inventory",
+ "physics_api",
  "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_events",
- "pulsar_physics",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "pulsar_world_registry",
  "rapier3d 0.35.3",
  "serde",
@@ -11202,6 +11215,7 @@ dependencies = [
  "skeletal_assets",
  "tracing",
  "ui",
+ "wgpu",
 ]
 
 [[package]]
@@ -11536,7 +11550,6 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "glam 0.33.5",
- "gpui-ce",
  "helio",
  "helio-core",
  "helio-feature-api",
@@ -11628,7 +11641,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio-feature-api",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
@@ -12210,6 +12222,15 @@ dependencies = [
 name = "pulsar_engine"
 version = "0.2.42"
 dependencies = [
+ "agent_provider_anthropic",
+ "agent_provider_aws_bedrock",
+ "agent_provider_demo_random",
+ "agent_provider_docker_model_runner",
+ "agent_provider_gemini",
+ "agent_provider_github_copilot",
+ "agent_provider_openai",
+ "agent_provider_opencode",
+ "agent_provider_vertex_ai",
  "anyhow",
  "chrono",
  "core-foundation-sys",
@@ -12246,6 +12267,9 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_core",
+ "ui_fab_search",
+ "ui_flamegraph",
+ "ui_git_manager",
  "ui_loading_screen",
  "ui_log_viewer",
  "urlencoding",
@@ -12280,24 +12304,13 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
- "blueprint_compiler",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
  "engine_state",
  "glam 0.33.5",
- "graphy-blueprint",
  "helio",
- "helio-core",
- "helio-frame-api",
- "helio-mats",
- "helio-pass-foliage-place",
- "helio-pass-gi",
- "helio-pass-portal-cull",
- "helio-presets",
  "helio_component",
- "image",
- "input_plugin",
  "installed_plugins",
  "inventory",
  "libloading 0.9.0",
@@ -12369,14 +12382,12 @@ dependencies = [
 name = "pulsar_package"
 version = "0.1.0"
 dependencies = [
- "blueprint_editor_plugin",
  "clap",
  "engine_backend",
  "engine_state",
  "helio_component",
  "installed_plugins",
  "plugin_editor_api",
- "plugin_typescript",
  "pulsar_class",
  "pulsar_content",
  "pulsar_events",
@@ -12392,24 +12403,6 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "pulsar_physics"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "engine_class_derive",
- "helio-water-api",
- "pulsar_reflection",
- "pulsar_scenedb",
- "pulsar_scenedb_derive",
- "pulsar_world_registry",
- "serde",
- "serde_json",
- "skeletal_assets",
- "tracing",
- "wgpu",
 ]
 
 [[package]]
@@ -12478,6 +12471,7 @@ dependencies = [
 name = "pulsar_scene_model"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "glam 0.33.5",
  "inventory",
  "pulsar_reflection",
@@ -13946,11 +13940,8 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "helio_component",
- "input_plugin",
  "installed_plugins",
- "physics_plugin",
  "pulsar_class",
- "pulsar_physics",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -14063,6 +14054,7 @@ dependencies = [
  "similar 2.7.0",
  "tool_registry",
  "tracing",
+ "tracing-subscriber",
  "ui",
  "ui_common",
  "ui_types_common",
@@ -14590,9 +14582,9 @@ dependencies = [
  "image",
  "log",
  "naga",
+ "physics_api",
  "plugin_editor_api",
  "plugin_manager",
- "pulsar_physics",
  "pulsar_reflection",
  "serde",
  "serde_json",
@@ -14704,7 +14696,6 @@ dependencies = [
  "engine_class_derive",
  "engine_fs",
  "engine_state",
- "gpui-ce",
  "helio",
  "helio-feature-api",
  "helio-pass-sky",
@@ -15026,7 +15017,6 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "glam 0.33.5",
- "gpui-ce",
  "helio",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -15112,7 +15102,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio-feature-api",
  "helio-pass-sprite-batch",
  "helio-scene-join",
@@ -17163,7 +17152,7 @@ dependencies = [
 name = "ui_build"
 version = "0.1.0"
 dependencies = [
- "editor_task_queue 0.1.0",
+ "editor_task_queue",
  "engine_backend",
  "engine_state",
  "gpui-ce",
@@ -17189,6 +17178,7 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "gpui-ce",
+ "helio_component",
  "image",
  "open",
  "parking_lot",
@@ -17202,12 +17192,12 @@ dependencies = [
  "rust-i18n-support",
  "serde",
  "serde_json",
- "skeletal_assets",
  "smallvec",
  "smol",
  "tracing",
  "ui",
  "ui_auth",
+ "ui_types_common",
  "window_manager",
 ]
 
@@ -17217,20 +17207,11 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "agent_chat_tools",
- "agent_provider_anthropic",
- "agent_provider_aws_bedrock",
- "agent_provider_demo_random",
- "agent_provider_docker_model_runner",
- "agent_provider_gemini",
- "agent_provider_github_copilot",
- "agent_provider_openai",
- "agent_provider_opencode",
- "agent_provider_vertex_ai",
  "anyhow",
  "asset_import",
  "directories 6.0.0",
  "dirs 6.0.0",
- "editor_task_queue 0.1.0",
+ "editor_task_queue",
  "engine_backend",
  "engine_state",
  "futures",
@@ -17240,7 +17221,6 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_events",
- "pulsar_physics",
  "pulsar_reflection",
  "pulsar_settings",
  "pulsar_world_registry",
@@ -17258,15 +17238,11 @@ dependencies = [
  "ui_about",
  "ui_common",
  "ui_documentation",
- "ui_fab_search",
  "ui_file_manager",
- "ui_flamegraph",
  "ui_friends",
- "ui_git_manager",
  "ui_keybindings",
  "ui_level_editor",
  "ui_loading_screen",
- "ui_log_viewer",
  "ui_multiplayer",
  "ui_multiuser_status",
  "ui_plugin_manager",
@@ -17372,8 +17348,10 @@ dependencies = [
  "engine_backend",
  "engine_state",
  "gpui-ce",
+ "inventory",
  "parking_lot",
  "profiling 0.1.0",
+ "pulsar_plugins",
  "rand 0.10.2",
  "rfd",
  "rusqlite",
@@ -17433,6 +17411,7 @@ dependencies = [
  "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "parking_lot",
+ "pulsar_plugins",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -17478,55 +17457,34 @@ dependencies = [
  "chrono",
  "core-foundation-sys",
  "core-graphics2 0.6.1",
- "decals_plugin",
  "device_query 4.0.1",
- "editor_task_queue 0.1.0",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
- "fog_plugin",
- "foliage_plugin",
- "gi_plugin",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
- "helio-core",
- "helio-mesh-api",
  "helio-pass-buffer-view",
- "helio-pass-water-sim",
- "helio-presets",
- "helio-vg-format",
  "helio_component",
  "image",
  "installed_plugins",
  "inventory",
- "lens_plugin",
- "lights_plugin",
- "materials_plugin",
- "meshes_plugin",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "parking_lot",
- "particles_plugin",
  "plugin_editor_api",
  "plugin_manager",
  "png",
- "pollster 0.4.0",
- "portals_plugin",
- "post_plugin",
  "profiling 0.1.0",
- "psgc",
  "pulsar_class",
  "pulsar_events",
- "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
- "pulsar_script_vm",
- "pulsar_settings",
  "pulsar_world_registry",
  "raw-window-handle",
  "rfd",
@@ -17534,22 +17492,16 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "sky_plugin",
  "smol",
- "splines_plugin",
- "sprites_plugin",
  "tempfile",
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "tracing-subscriber",
  "ui",
  "ui_build",
  "ui_common",
  "ui_helio_viewport",
  "ui_types_common",
- "voxel_plugin",
- "water_plugin",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -17578,7 +17530,6 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_file_manager",
- "ui_git_manager",
  "window_manager",
 ]
 
@@ -17600,6 +17551,7 @@ dependencies = [
  "notify 8.2.0",
  "once_cell",
  "parking_lot",
+ "pulsar_plugins",
  "pulsar_scenedb",
  "rand 0.10.2",
  "rusqlite",
@@ -17621,6 +17573,8 @@ dependencies = [
 name = "ui_multiplayer"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-tungstenite",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -17628,12 +17582,17 @@ dependencies = [
  "gpui-ce",
  "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "reqwest 0.13.4",
+ "serde",
  "serde_json",
+ "sha2 0.11.0",
  "similar 3.2.0",
  "tokio",
  "tracing",
  "ui",
  "ui_common",
+ "uuid",
+ "walkdir",
  "window_manager",
 ]
 
@@ -17659,6 +17618,7 @@ dependencies = [
  "inventory",
  "plugin_editor_api",
  "plugin_manager",
+ "pulsar_plugins",
  "tracing",
  "ui",
  "ui_common",
@@ -17709,6 +17669,7 @@ name = "ui_types_common"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "inventory",
  "lazy_static",
  "regex",
  "schemars",
@@ -18089,7 +18050,6 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "glam 0.33.5",
- "gpui-ce",
  "helio",
  "helio-feature-api",
  "helio-pass-voxel-planet",
@@ -18364,7 +18324,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "gpui-ce",
  "helio",
  "helio-feature-api",
  "helio-foliage-api",
@@ -18410,8 +18369,9 @@ dependencies = [
  "lights_plugin",
  "meshes_component",
  "meshes_plugin",
+ "physics_plugin",
  "pollster 0.4.0",
- "pulsar_physics",
+ "pulsar_class",
  "pulsar_plugins",
  "pulsar_scene_model",
  "pulsar_scenedb",

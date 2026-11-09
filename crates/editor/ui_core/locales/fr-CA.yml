@@ -7,7 +7,6 @@ StatusBar.Restart: "Redémarrer"
 StatusBar.Start: "Démarrer"
 StatusBar.Multiplayer: "Collaboration multijoueur"
 StatusBar.PluginManager: "Gestionnaire de plugins"
-StatusBar.Flamegraph: "Profileur Flamegraph"
 
 Notification.Title.Dev: "Développement"
 Notification.Title.BuildInfo: "Infos de génération"

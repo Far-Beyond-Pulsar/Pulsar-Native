@@ -1,6 +1,6 @@
 //! Reflected texture asset editor backed by the shared searchable asset picker.
 
-use crate::asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+use crate::asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 use gpui::{prelude::*, *};
 use pulsar_reflection::{
     BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, TextureAssetKind, TextureSrc,
@@ -13,7 +13,7 @@ struct TextureSrcEditor {
     label: String,
     id_prefix: String,
     prop_name: String,
-    picker: Entity<MeshAssetPicker>,
+    picker: Entity<AssetPicker>,
     path: String,
     write_back: pulsar_reflection::PropertyWriteBack,
     _subscriptions: Vec<Subscription>,
@@ -33,14 +33,14 @@ impl TextureSrcEditor {
             .or_else(|| {
                 value.asset_ref().and_then(|reference| {
                     project_root.as_deref().and_then(|root| {
-                        MeshAssetPicker::resolve_asset_ref_path(root, &reference)
+                        AssetPicker::resolve_asset_ref_path(root, &reference)
                             .map(|path| path.to_string_lossy().into_owned())
                     })
                 })
             })
             .unwrap_or_default();
         let picker = cx.new(|cx| {
-            MeshAssetPicker::new(
+            AssetPicker::new(
                 path.clone(),
                 Vec::new(),
                 project_root,
@@ -86,7 +86,7 @@ impl TextureSrcEditor {
             .or_else(|| {
                 let root = engine_state::get_project_path().map(PathBuf::from)?;
                 let reference = value.asset_ref()?;
-                MeshAssetPicker::resolve_asset_ref_path(&root, &reference)
+                AssetPicker::resolve_asset_ref_path(&root, &reference)
                     .map(|path| path.to_string_lossy().into_owned())
             })
             .unwrap_or_default();
@@ -125,7 +125,7 @@ impl Render for TextureSrcEditor {
                     .child(self.label.clone()),
             )
             .child(
-                Popover::<MeshAssetPicker>::new(format!(
+                Popover::<AssetPicker>::new(format!(
                     "texture-asset-picker-{}-{}",
                     self.id_prefix, self.prop_name
                 ))

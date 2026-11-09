@@ -110,5 +110,32 @@ plugin_manager = { workspace = true }
 catalog_fixture_plugin = { path = "tests/fixtures/catalog_plugin", features = ["editor"] }
 catalog_fixture_component = { path = "tests/fixtures/catalog_plugin/component" }
 
+# The editor's and the game's own tests with every plugin, moved from
+# ui_level_editor and pulsar_game (a kernel crate's tests that need plugins are
+# a host's: architecture/layers.toml): render acceptance, virtual geometry,
+# mesh reimport, the skeletal property editors, asset reload, memory over
+# ticks, the plugin pass lists, the random world Blueprint and the render
+# parity tests.
+pulsar_game = { workspace = true }
+pulsar_events = { workspace = true }
+pulsar_reflection = { workspace = true }
+pulsar_script_vm = { workspace = true }
+pulsar_std = { workspace = true }
+pulsar_class = { workspace = true }
+ui_common = { workspace = true }
+gpui-ce = { workspace = true, features = ["test-support"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+helio-frame-api = { workspace = true }
+helio-mesh-api = { workspace = true }
+helio-vg-format = { workspace = true }
+helio-pass-buffer-view = { workspace = true }
+helio-pass-water-sim = { workspace = true }
+helio-pass-portal-cull = { workspace = true }
+helio-pass-gi = { workspace = true }
+helio-pass-foliage-place = { workspace = true }
+blueprint_compiler = { path = "../vendor/blueprint_editor/compiler" }
+graphy-blueprint = { workspace = true }
+
 [lints]
 workspace = true

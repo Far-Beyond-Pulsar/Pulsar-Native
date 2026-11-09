@@ -20,7 +20,7 @@ controller, ...), and the project index answers "who implements this?".
 | Reflection | `pulsar_reflection::trait_registry` (`TRAIT_REGISTRY`) | Published, language-agnostic snapshot per project |
 | Plugin API | `plugin_editor_api::ProjectTraits` | `traits()`, `implementers(trait)`, `traits_of(asset)`, `implements`, `to_json` |
 | Blueprint editor | `plugins/vendor/blueprint_editor/src/features/traits/` | Trait panel, Add-menu trait events, conformance at compile/preflight |
-| Runtime | `pulsar_game` (`roles.rs`, `scripting/driver.rs`, `scripting/traits.rs`) | Spawns the selected role classes as session entities, answers "does this entity's class implement trait X", calls their trait events through the trait; possession routes the player's input to the character (`player_input.rs`) |
+| Runtime | `pulsar_game` (`roles.rs`, `scripting/driver.rs`, `scripting/traits.rs`) | Spawns the selected role classes as session entities, answers "does this entity's class implement trait X", calls their trait events through the trait; possession runs the plugins' session hooks on the pawn (the input plugin routes the player's input to the character) |
 
 ## Identity: ids, not paths
 
@@ -262,15 +262,20 @@ trait's `controller_id`; it was the player id before the controller had an entit
 ### Input and possession
 
 Possession is also what routes the local player's keys, mouse and pad to their
-character (`pulsar_game::player_input` is the seam; the input runtime and its
+character. The game runtime names no plugin: it runs every enabled
+`engine_backend::scene::game_hooks::GameSessionRegistration`, and the input plugin's
+root submits one (`input_plugin::runtime::session`; the input runtime and its
 `PlayerInputComponent` are `plugins/vendor/input_plugin`'s):
 
-1. At the end of `advance_possession`, `route_input` attaches a `PlayerInputComponent`
-   carrying `WorldRoles::input_mapping()` to the **pawn** entity, through the world's
-   component path (`attach_component`, by class name: the runtime names no component
-   type) and stamps the instance so a later session over the same world can replace a
-   leftover instead of doubling it. A level with no mapping possesses without input
-   (a warning, not a failure); a mapping the runtime cannot attach is a failure.
+1. At the end of `advance_possession`, `possession_hooks` calls each hook's `possess`
+   with the pawn and a `PossessionContext` (the project root, the level's `WorldRoles`).
+   The input plugin attaches a `PlayerInputComponent` carrying
+   `WorldRoles::input_mapping()` to the **pawn** entity (`attach_component`, by class
+   name) and returns the instance; the driver stamps it so a later session over the
+   same world can replace a leftover instead of doubling it. A level with no mapping
+   possesses without input (a warning, not a failure); a mapping the runtime cannot
+   attach is a failure, reported once. A game whose project disables the input plugin
+   has no hook and no input.
 2. The input plugin's per-frame `tick` is a native component tick like any other
    (`tick_live_components`, phase 1b of `TickLoop::run_tick`, before the script phase):
    it reads the world's `PlayerInputComponent`s, keeps its mappings in step, reads the
@@ -278,22 +283,23 @@ character (`pulsar_game::player_input` is the seam; the input runtime and its
    and the pad, and publishes `input::<Action>.started | ongoing | triggered |
    completed | canceled` on the **pawn's** entity channel. A `Self`-scoped handler on
    the pawn hears its own player and nobody else. The events are delivered at the
-   flush after physics, so the handler runs in the same frame's script phase.
+   flush after the systems, so the handler runs in the same frame's script phase.
 3. The project's action events (`input::Jump.triggered`, ...) are declared on the hub
-   when the driver attaches to it (`player_input::declare_events`), before any class
-   links; a mapping only registers its own actions once it is active, which is after
-   the pawn's script has subscribed.
+   when the driver attaches to it (each hook's `begin`; the input plugin's
+   `session::begin`), before any class links; a mapping only registers its own actions
+   once it is active, which is after the pawn's script has subscribed.
 4. `end_possession` (possession ends: the pawn is destroyed, the session ends, and
    later a "possess another pawn") calls `on_unpossess` / `on_unpossessed`, detaches
-   the input component and clears the possession gate.
+   what the hooks attached and clears the possession gate; the session's end runs each
+   hook's `end` (the input plugin releases its devices and listeners).
 
-`input_plugin` is linked into the game **without its `editor` feature** (no GPUI): its
-`keys`, `model`, `library`, `runtime` and `preview` modules only. The runtime finds the
+A game links `input_plugin` (when its project enables it) **without its `editor`
+feature**: its `keys`, `model`, `library`, `runtime` and `preview` modules only. The runtime finds the
 project's mappings from `TickLoop`'s project root, set per world
 (`input_plugin::runtime::set_world_project_root`), so Play-in-Editor and standalone
 agree and two sessions in one process do not share a root.
 
-**Free camera arbitration.** `player_input::PossessionGate` is one shared flag owned by
+**Free camera arbitration.** `possession::PossessionGate` is one shared flag owned by
 the `TickLoop` (`possession_gate()`), set by the driver while a pawn is possessed. The
 hosts' built-in `FreeCam` (windowed standalone, `windowed_app.rs`; Play-in-Editor,
 `embed.rs`) is suspended from it each frame: `FreeCam::set_suspended` makes it ignore

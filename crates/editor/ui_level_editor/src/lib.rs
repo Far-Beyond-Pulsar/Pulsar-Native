@@ -5,11 +5,10 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
-// Force-link crates that register engine classes via inventory::submit!.
-// Without an explicit symbol reference the linker can dead-strip these
-// crates before inventory collects their EngineClass registrations.
+// Force-link the crate that registers the engine's own classes via
+// inventory::submit!. Without an explicit symbol reference the linker can
+// dead-strip it before inventory collects its EngineClass registrations.
 use helio_component as _;
-use pulsar_physics as _;
 
 use gpui::AppContext;
 

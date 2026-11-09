@@ -146,7 +146,7 @@ pub struct QueuedComponentEvent {
 }
 
 /// Append a component event to the owner's outbox. Delivery occurs at the
-/// runtime's `AfterPhysics` flush, after the World-mutating call returns.
+/// runtime's `AfterSystems` flush, after the World-mutating call returns.
 pub fn queue_component_event(
     world: &mut World,
     entity: Entity,

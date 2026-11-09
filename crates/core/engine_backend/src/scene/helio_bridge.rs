@@ -187,8 +187,10 @@ pub struct SceneRowsRegistration {
     /// Registers the kind's source-row columns (initial capacities; they
     /// grow).
     pub register_columns: fn(&mut SceneGpuStore, &Arc<wgpu::Device>),
-    /// The kind's derivation over this engine's rows ([`row_join_keys`]).
-    pub derivation: fn(&wgpu::Device, RowJoinKeys) -> Box<dyn SceneDerivation>,
+    /// The kind's derivation over this engine's rows ([`row_join_keys`]),
+    /// or `None` for rows another kind's derivation joins (physics' water
+    /// hitbox rows, which the water plugin's join reads).
+    pub derivation: Option<fn(&wgpu::Device, RowJoinKeys) -> Box<dyn SceneDerivation>>,
 }
 
 impl pulsar_plugins::Contribution for SceneRowsRegistration {
@@ -214,7 +216,8 @@ pub fn environment_join(device: &wgpu::Device) -> Box<DerivationGroup> {
     let keys = row_join_keys();
     let joins: Vec<Box<dyn SceneDerivation>> =
         pulsar_plugins::registered::<SceneRowsRegistration>()
-            .map(|registration| (registration.derivation)(device, keys))
+            .filter_map(|registration| registration.derivation)
+            .map(|derivation| derivation(device, keys))
             .collect();
     Box::new(DerivationGroup::new("EnvironmentJoins", joins))
 }
@@ -275,14 +278,6 @@ pub fn ensure_gpu_mirror(
     // Which objects are rigid frames, and their slot in the coordinate-space table.
     ObjectFrame::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     TransformRow::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    // Bodies that push simulated water (physics derives their rows under
-    // water's api, `helio_water_api::WATER_HITBOX_SOURCES_BUFFER`); the
-    // water plugin's join bounds them by their owners' meshes.
-    pulsar_physics::WaterHitboxSourceRow::register_gpu_columns_growable(
-        &mut gpu_store,
-        64,
-        &device,
-    );
     // Every plugin's kind's source rows.
     for registration in pulsar_plugins::registered::<SceneRowsRegistration>() {
         (registration.register_columns)(&mut gpu_store, &device);
@@ -345,10 +340,12 @@ pub fn ensure_gpu_mirror(
     );
     install_derived_cache();
 
-    let material_texture_limit =
-        helio_mats::MaterialBindingConfig::for_device(&device).max_textures;
+    // The scene's textures are the texture table every reader binds: as many
+    // as each can address on this device.
+    let texture_table_capacity =
+        helio_core::texture_table_capacity(device.features(), &device.limits());
     let texture_store = Arc::new(std::sync::RwLock::new(
-        pulsar_scenedb::gpu::TextureStore::new(material_texture_limit as u32),
+        pulsar_scenedb::gpu::TextureStore::new(texture_table_capacity as u32),
     ));
     let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue)
         .with_texture_store(texture_store)

@@ -30,7 +30,10 @@ pub const STATUSES: &[&str] = &[
 #[derive(Debug, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Ledger {
-    pub meta: Meta,
+    /// The revisions the engine's ledger was reviewed at (a plugin's ledger
+    /// has none: its rows are reviewed with its repository).
+    #[serde(default)]
+    pub meta: Option<Meta>,
     #[serde(default, rename = "class")]
     pub classes: Vec<ClassRow>,
     #[serde(default, rename = "schema")]
@@ -127,6 +130,81 @@ pub struct SiteRow {
 pub fn load(path: &Path) -> Result<Ledger, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Every ledger of the checkout ([`crate::home::ledger_files`]) as one, and
+/// the repository-relative file each row is in (by [`row_key`]). The engine's
+/// has the `[meta]` table; a plugin's has none.
+pub fn load_all(root: &Path) -> Result<(Ledger, BTreeMap<String, String>), String> {
+    let mut all = Ledger::default();
+    let mut placed = BTreeMap::new();
+    for path in crate::home::ledger_files(root) {
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let ledger = load(&path)?;
+        let is_core = rel == crate::home::CORE_LEDGER;
+        match (&ledger.meta, is_core) {
+            (None, true) => return Err(format!("{rel}: the engine's ledger needs its [meta]")),
+            (Some(_), false) => {
+                return Err(format!(
+                    "{rel}: a plugin's ledger has no [meta] (the engine's does)"
+                ))
+            }
+            _ => {}
+        }
+        let mut place = |key: String| {
+            if let Some(other) = placed.insert(key.clone(), rel.clone()) {
+                return Err(format!("{key}: a row in both {other} and {rel}"));
+            }
+            Ok(())
+        };
+        for row in &ledger.classes {
+            place(row_key::class(&row.name))?;
+        }
+        for row in &ledger.schemas {
+            place(row_key::schema(&row.path))?;
+        }
+        for row in &ledger.buffers {
+            place(row_key::buffer(&row.key))?;
+        }
+        for row in &ledger.passes {
+            place(row_key::pass(&row.package))?;
+        }
+        for row in &ledger.sites {
+            place(row_key::site(&row.pattern, &row.file))?;
+        }
+        if is_core {
+            all.meta = ledger.meta;
+        }
+        all.classes.extend(ledger.classes);
+        all.schemas.extend(ledger.schemas);
+        all.buffers.extend(ledger.buffers);
+        all.passes.extend(ledger.passes);
+        all.sites.extend(ledger.sites);
+    }
+    Ok((all, placed))
+}
+
+/// The key a row is placed by: its kind and its identity.
+pub mod row_key {
+    pub fn class(name: &str) -> String {
+        format!("class {name}")
+    }
+    pub fn schema(path: &str) -> String {
+        format!("schema {path}")
+    }
+    pub fn buffer(key: &str) -> String {
+        format!("buffer {key}")
+    }
+    pub fn pass(package: &str) -> String {
+        format!("pass {package}")
+    }
+    pub fn site(pattern: &str, file: &str) -> String {
+        format!("site {pattern} in {file}")
+    }
 }
 
 const TODO: &str = r#"owner = "TODO"

@@ -23,7 +23,7 @@
 //! linear light. A roughness, occlusion or normal map holds numbers, not light:
 //! decoding it as sRGB bends every value, and averaging it as light darkens it.
 //! [`TextureUse`] names which one a texture is, and it picks the GPU format's
-//! colour space and the mip filter ([`helio_mats::texture_mips`]). A normal
+//! colour space and the mip filter ([`helio_core::texture_mips`]). A normal
 //! map's mips keep the length of their mean normal in alpha, which shaders
 //! turn into roughness (specular anti-aliasing).
 //!
@@ -36,7 +36,7 @@
 //! checks every length against what the format and dimensions require, so a
 //! damaged or outdated file is refused instead of uploaded.
 
-use helio_mats::texture_mips::{TexelKind, mip_chain};
+use helio_core::texture_mips::{TexelKind, mip_chain};
 use intel_tex_2::{RgbaSurface, bc7};
 
 const MAGIC: [u8; 4] = *b"PTX2";
@@ -176,7 +176,7 @@ pub fn wgpu_format(format: CookFormat, usage: TextureUse) -> wgpu::TextureFormat
     }
 }
 
-pub use helio_mats::texture_mips::mip_level_count;
+pub use helio_core::texture_mips::mip_level_count;
 
 /// Level `level`'s extent in texels.
 fn level_extent(width: u32, height: u32, level: u32) -> (u32, u32) {
@@ -427,6 +427,8 @@ pub fn cook_as(
 }
 
 #[cfg(test)]
+// Mip sizes are written width * height * bytes per texel, ones included.
+#[allow(clippy::identity_op)]
 mod tests {
     use super::*;
 

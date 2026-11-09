@@ -2,9 +2,12 @@
 
 SceneDB owns all scene state. This page describes the architecture as built
 by the corrective plan (Pulsar-Native#1035; one PR per phase, #1036 to #1084).
-`crates/core/scene_inventory/ledger.toml` has one closed row per component class, GPU schema,
-buffer, render pass and lifecycle call site, and `cargo test -p scene_inventory`
-checks it against the linked registries and the source tree.
+The closure ledger has one closed row per component class, GPU schema, buffer,
+render pass and lifecycle call site: the engine's rows in
+`crates/core/scene_inventory/ledger.toml`, each plugin's in its own
+`plugins/vendor/<dir>/ledger.toml` (Pulsar-Native#1606). `cargo test -p
+scene_inventory` checks them against the linked registries and the source tree,
+and that every row is in its owner's ledger.
 
 ## Data flow
 

@@ -5,6 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# Its registration with the editor shell (`ui_common::editor_tools`).
+pulsar_plugins = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true

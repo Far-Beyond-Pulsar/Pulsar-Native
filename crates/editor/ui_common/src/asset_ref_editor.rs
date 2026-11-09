@@ -1,30 +1,26 @@
-//! Reflected editors for typed asset references (`Option<AssetRef<K>>`):
-//! the Skeletal Mesh and Animation Graph slots of a skeletal mesh component.
-//!
-//! Each editor is the shared searchable picker restricted to the kind's file
-//! extension, plus a clear button. The mesh editor also shows the Skeleton the
-//! mesh is bound to, read from the mesh file's header: the mesh is the only
-//! authority for it, so the row is read-only and the component never stores it.
+//! The reflected editor for a typed asset reference (`Option<AssetRef<K>>`):
+//! the shared searchable picker restricted to the kind's file extension, a
+//! clear button, and what the kind's editor says about the chosen file
+//! ([`Describe`]). Each kind's editor attaches it to its reference types
+//! (the animation plugin's Skeletal Mesh and Animation Graph slots).
 
-use crate::asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+use crate::asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 use gpui::{prelude::*, *};
-use pulsar_reflection::{
-    AnimationGraphAssetKind, AssetKind, AssetRef, BoundPropertyEditor, PropertyEditorArgs,
-    PropertyEditorFactory, SkeletalMeshAssetKind, SkeletonAssetKind,
-};
+use pulsar_reflection::{AssetKind, AssetRef, BoundPropertyEditor, PropertyEditorArgs};
 use std::path::{Path, PathBuf};
 use ui::button::{Button, ButtonVariants as _};
 use ui::{h_flex, popover::Popover, v_flex, ActiveTheme, Sizable};
 
-/// What an editor says about the chosen asset, beyond its name.
-type Describe = fn(&Path, &Path) -> Vec<(&'static str, String)>;
+/// What an editor says about the chosen asset, beyond its name: rows of
+/// (label, value) from the chosen file and the project root.
+pub type Describe = fn(&Path, &Path) -> Vec<(&'static str, String)>;
 
 struct AssetRefEditor<K: AssetKind> {
     label: String,
     id_prefix: String,
     prop_name: String,
     empty_text: &'static str,
-    picker: Entity<MeshAssetPicker>,
+    picker: Entity<AssetPicker>,
     path: String,
     describe: Describe,
     write_back: pulsar_reflection::PropertyWriteBack,
@@ -40,7 +36,7 @@ fn path_of<K: AssetKind>(value: &Option<AssetRef<K>>) -> String {
     let (Some(reference), Some(root)) = (value.as_ref(), project_root()) else {
         return String::new();
     };
-    MeshAssetPicker::resolve_asset_ref_path(&root, reference)
+    AssetPicker::resolve_asset_ref_path(&root, reference)
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
@@ -60,7 +56,7 @@ impl<K: AssetKind> AssetRefEditor<K> {
             .flatten();
         let path = path_of(&value);
         let picker = cx.new(|cx| {
-            MeshAssetPicker::new(
+            AssetPicker::new(
                 path.clone(),
                 Vec::new(),
                 project_root(),
@@ -153,7 +149,7 @@ impl<K: AssetKind> Render for AssetRefEditor<K> {
                             .gap_1()
                             .items_center()
                             .child(
-                                Popover::<MeshAssetPicker>::new(format!("{id}-picker"))
+                                Popover::<AssetPicker>::new(format!("{id}-picker"))
                                     .anchor(Corner::BottomRight)
                                     .trigger(
                                         Button::new(format!("{id}-btn"))
@@ -197,87 +193,27 @@ impl<K: AssetKind> Render for AssetRefEditor<K> {
     }
 }
 
-/// The Skeleton a mesh file is bound to: its file name when the project index
-/// resolves it, a note when the mesh has none or the skeleton is missing.
-fn describe_mesh(mesh_path: &Path, root: &Path) -> Vec<(&'static str, String)> {
-    let text = match skeletal_assets::skmesh::load_skmesh_asset(mesh_path) {
-        Err(_) => "mesh unreadable".to_owned(),
-        Ok(mesh) => match mesh.skeleton {
-            None => "none: pick one in the mesh editor".to_owned(),
-            Some(id) => engine_fs::open_project_file_index(root)
-                .ok()
-                .flatten()
-                .and_then(|index| {
-                    index
-                        .path_for_asset_id_kind(SkeletonAssetKind::KIND, &id.to_string())
-                        .ok()
-                        .flatten()
-                })
-                .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
-                .unwrap_or_else(|| format!("missing ({id})")),
-        },
-    };
-    vec![("Skeleton (from mesh)", text)]
-}
-
-fn no_details(_: &Path, _: &Path) -> Vec<(&'static str, String)> {
+/// No rows beyond the asset's name.
+pub fn no_details(_: &Path, _: &Path) -> Vec<(&'static str, String)> {
     Vec::new()
 }
 
-fn skeletal_mesh_editor(
+/// A property editor for an `Option<AssetRef<K>>` property: the searchable
+/// picker restricted to `K`'s files, a clear button and, below, what
+/// `describe` says about the chosen file. A kind's editor registers it for
+/// its reference types (`pulsar_reflection::UiPropertyEditorHint`).
+pub fn asset_ref_editor<K: AssetKind>(
     args: &PropertyEditorArgs<'_>,
+    empty_text: &'static str,
+    describe: Describe,
     window: &mut Window,
     cx: &mut App,
 ) -> BoundPropertyEditor {
-    let entity = cx.new(|cx| {
-        AssetRefEditor::<SkeletalMeshAssetKind>::new(args, "No mesh", describe_mesh, window, cx)
-    });
+    let entity = cx.new(|cx| AssetRefEditor::<K>::new(args, empty_text, describe, window, cx));
     BoundPropertyEditor::new(
         entity,
-        |editor: &mut AssetRefEditor<SkeletalMeshAssetKind>,
-         value: &Option<AssetRef<SkeletalMeshAssetKind>>,
-         _window,
-         cx| editor.set_value(value, cx),
+        |editor: &mut AssetRefEditor<K>, value: &Option<AssetRef<K>>, _window, cx| {
+            editor.set_value(value, cx)
+        },
     )
-}
-
-fn animation_graph_editor(
-    args: &PropertyEditorArgs<'_>,
-    window: &mut Window,
-    cx: &mut App,
-) -> BoundPropertyEditor {
-    let entity = cx.new(|cx| {
-        AssetRefEditor::<AnimationGraphAssetKind>::new(
-            args,
-            "No animation graph",
-            no_details,
-            window,
-            cx,
-        )
-    });
-    BoundPropertyEditor::new(
-        entity,
-        |editor: &mut AssetRefEditor<AnimationGraphAssetKind>,
-         value: &Option<AssetRef<AnimationGraphAssetKind>>,
-         _window,
-         cx| editor.set_value(value, cx),
-    )
-}
-
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::UiPropertyEditorHint {
-        type_id: std::any::TypeId::of::<Option<AssetRef<SkeletalMeshAssetKind>>>(),
-        fn_ptr: pulsar_reflection::erase_property_editor_fn_ptr(
-            skeletal_mesh_editor as PropertyEditorFactory
-        ),
-    }
-}
-
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::UiPropertyEditorHint {
-        type_id: std::any::TypeId::of::<Option<AssetRef<AnimationGraphAssetKind>>>(),
-        fn_ptr: pulsar_reflection::erase_property_editor_fn_ptr(
-            animation_graph_editor as PropertyEditorFactory
-        ),
-    }
 }

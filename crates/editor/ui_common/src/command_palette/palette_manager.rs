@@ -16,7 +16,6 @@ pub struct PaletteId(usize);
 
 /// Entry in the palette registry
 struct PaletteEntry {
-    id: PaletteId,
     name: String,
     entity: WeakEntity<Palette>,
 }
@@ -102,7 +101,6 @@ impl PaletteManager {
         Self::global_mut(cx).palettes.insert(
             id,
             PaletteEntry {
-                id,
                 name,
                 entity: palette_entity.downgrade(),
             },

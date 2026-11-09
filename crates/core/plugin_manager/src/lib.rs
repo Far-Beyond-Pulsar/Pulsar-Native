@@ -409,10 +409,6 @@ pub struct PluginManager {
     /// Component factories from plugins, collected at load time.
     /// Each entry is (class_name, factory).
     plugin_component_registrations: Vec<(String, plugin_editor_api::ComponentFactory)>,
-
-    /// Component definitions registered directly as built-ins (not from DLL plugins).
-    /// These supplement definitions from `BuiltinEditorRegistry` and DLL plugins.
-    builtin_component_definitions: Vec<ComponentDefinition>,
 }
 
 // SAFETY: PluginManager now contains only safe types:
@@ -459,7 +455,6 @@ impl PluginManager {
             statusbar_buttons: Vec::new(),
             plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
-            builtin_component_definitions: Vec::new(),
         }
     }
 
@@ -507,26 +502,6 @@ impl PluginManager {
     pub fn register_builtin_editors(&mut self) {
         self.builtin_registry
             .register_all(&mut self.file_type_registry, &mut self.editor_registry);
-    }
-
-    /// Register a built-in subsystem that will be drained and injected alongside
-    /// plugin subsystems.
-    pub fn register_builtin_subsystem(&mut self, subsystem: Box<dyn engine_subsystems::Subsystem>) {
-        self.plugin_subsystems.push(subsystem);
-    }
-
-    /// Register built-in component definitions.
-    pub fn register_builtin_component_definitions(&mut self, defs: Vec<ComponentDefinition>) {
-        self.builtin_component_definitions.extend(defs);
-    }
-
-    /// Register built-in component factories that will be drained and injected
-    /// alongside plugin component factories.
-    pub fn register_builtin_component_factories(
-        &mut self,
-        factories: Vec<(String, plugin_editor_api::ComponentFactory)>,
-    ) {
-        self.plugin_component_registrations.extend(factories);
     }
 
     /// Load all plugins from a directory.
@@ -1120,11 +1095,24 @@ impl PluginManager {
                     .collect(),
                 components: Vec::new(),
                 statusbar_buttons: Vec::new(),
-                ai_tools: Vec::new(),
+                ai_tools: provider
+                    .ai_tools()
+                    .into_iter()
+                    .map(|tool| tool.name)
+                    .collect(),
                 subsystems: Vec::new(),
             }
         }));
         details
+    }
+
+    /// Changes whenever the set of plugins [`Self::plugin_details`] reports
+    /// changes: a dynamic plugin installed, a built-in provider registered.
+    /// Plugins are never unloaded, so the count of both is that revision. A
+    /// view of the details (the Plugin Manager window) reloads when it
+    /// differs from the one it drew.
+    pub fn revision(&self) -> usize {
+        self.plugins.len() + self.builtin_registry.providers().len()
     }
 
     /// Fail unless every plugin `manifest` requires is installed in range.
@@ -1497,8 +1485,6 @@ impl PluginManager {
         for (_, def) in self.builtin_registry.get_all_components() {
             all_defs.push(def);
         }
-
-        all_defs.extend(self.builtin_component_definitions.clone());
 
         all_defs
     }
@@ -2106,4 +2092,102 @@ pub fn run_plugin_preloads(
             .map(|(id, worker)| (id, worker.join().ok().flatten()))
             .collect()
     })
+}
+
+#[cfg(test)]
+mod plugin_details_tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use gpui::{App, Window};
+    use plugin_editor_api::{
+        AiToolDefinition, EditorId, EditorMetadata, FileStructure, FileTypeDefinition, FileTypeId,
+        PluginError,
+    };
+
+    use crate::builtin::EditorContext;
+    use ui::dock::PanelView;
+
+    use super::*;
+
+    /// A built-in provider with one file type, one editor and one AI tool.
+    struct Notes;
+
+    impl BuiltinEditorProvider for Notes {
+        fn provider_id(&self) -> &str {
+            "test.notes"
+        }
+        fn file_types(&self) -> Vec<FileTypeDefinition> {
+            vec![FileTypeDefinition {
+                id: FileTypeId::new("notes"),
+                extension: "notes".into(),
+                display_name: "Notes".into(),
+                icon: ui::IconName::Folder,
+                color: gpui::Hsla::default(),
+                structure: FileStructure::Standalone,
+                default_content: serde_json::Value::Null,
+                categories: Vec::new(),
+                creation_directory: None,
+            }]
+        }
+        fn editors(&self) -> Vec<EditorMetadata> {
+            vec![EditorMetadata {
+                id: EditorId::new("notes-editor"),
+                display_name: "Notes Editor".into(),
+                supported_file_types: vec![FileTypeId::new("notes")],
+            }]
+        }
+        fn ai_tools(&self) -> Vec<AiToolDefinition> {
+            vec![AiToolDefinition {
+                name: "notes.append".into(),
+                description: String::new(),
+                parameters_json_schema: serde_json::json!({}),
+                category: None,
+            }]
+        }
+        fn can_handle(&self, _: &EditorId) -> bool {
+            false
+        }
+        fn create_editor(
+            &self,
+            _: PathBuf,
+            _: &EditorContext,
+            _: &mut Window,
+            _: &mut App,
+        ) -> Result<Arc<dyn PanelView>, PluginError> {
+            Err(PluginError::Other {
+                message: "not in a test".into(),
+            })
+        }
+    }
+
+    /// The Plugin Manager window's details page reads this: a built-in
+    /// provider is listed as built in, with what it brings, and registering
+    /// one changes the revision the window watches.
+    #[test]
+    fn plugin_details_list_a_built_in_provider_and_what_it_brings() {
+        let mut manager = PluginManager::new();
+        let before = manager.revision();
+        manager
+            .builtin_registry_mut()
+            .register_provider(Arc::new(Notes));
+        manager.register_builtin_editors();
+        assert_ne!(
+            manager.revision(),
+            before,
+            "a new provider is a new revision"
+        );
+
+        let details = manager.plugin_details();
+        let notes = details
+            .iter()
+            .find(|plugin| plugin.metadata.id.as_str() == "test.notes")
+            .expect("the provider is listed");
+        assert!(notes.builtin);
+        assert_eq!(notes.library_path, None);
+        assert_eq!(notes.file_types, ["Notes (.notes)"]);
+        assert_eq!(notes.editors, ["Notes Editor"]);
+        assert_eq!(notes.ai_tools, ["notes.append"]);
+        assert!(notes.dependencies.is_empty() && notes.required_by.is_empty());
+    }
 }

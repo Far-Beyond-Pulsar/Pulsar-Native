@@ -1,5 +1,5 @@
 use engine_backend::scene::{new_scene, ComponentAttachments, ObjectType, SceneWorldExt};
-use pulsar_physics::PhysicsComponent;
+use installed_plugins::physics_plugin::legacy::PhysicsComponent;
 use serde_json::{json, Value};
 
 use super::super::{components, history, objects, SceneObjectData};
@@ -24,7 +24,7 @@ fn object(name: &str) -> SceneObjectData {
 fn light_intensity(world: &pulsar_scenedb::World, id: &str, index: usize) -> f32 {
     let instance = components::instance_at(world, id, index).unwrap();
     world
-        .get::<lights_plugin::lights_component::LightComponent>(instance)
+        .get::<installed_plugins::lights_plugin::lights_component::LightComponent>(instance)
         .unwrap()
         .intensity
         .intensity
@@ -54,7 +54,7 @@ fn physics_json(collision_enabled: bool) -> Value {
 
 #[test]
 fn light_edits_remain_canonical_through_object_edits_and_history() {
-    use lights_plugin::lights_component::LightComponent;
+    use installed_plugins::lights_plugin::lights_component::LightComponent;
 
     let mut scene = new_scene();
     let world = &mut scene.world;
@@ -88,7 +88,7 @@ fn light_edits_remain_canonical_through_object_edits_and_history() {
 
 #[test]
 fn duplicate_lights_keep_distinct_values_when_the_live_instance_changes() {
-    use lights_plugin::lights_component::LightComponent;
+    use installed_plugins::lights_plugin::lights_component::LightComponent;
 
     let mut scene = new_scene();
     let world = &mut scene.world;
@@ -227,7 +227,7 @@ fn disabling_and_reenabling_physics_preserves_the_canonical_value() {
 /// written back (`update_object`) and a save carry no stale copies.
 #[test]
 fn object_props_carry_no_component_copies() {
-    use lights_plugin::lights_component::LightComponent;
+    use installed_plugins::lights_plugin::lights_component::LightComponent;
 
     let mut scene = new_scene();
     let world = &mut scene.world;
@@ -290,7 +290,7 @@ fn an_unresolved_payload_is_readable() {
 /// restored by history in place, and encoded only by the save record.
 #[test]
 fn rigidbody_add_edit_undo_and_save_are_typed() {
-    use pulsar_physics::RigidbodyComponent;
+    use installed_plugins::physics_plugin::legacy::RigidbodyComponent;
 
     let mut scene = new_scene();
     let world = &mut scene.world;
@@ -345,7 +345,7 @@ fn rigidbody_add_edit_undo_and_save_are_typed() {
 #[test]
 fn every_panel_feed_receives_edits_with_their_values() {
     use engine_backend::scene::{SceneWorldExt, Transform};
-    use lights_plugin::lights_component::LightComponent;
+    use installed_plugins::lights_plugin::lights_component::LightComponent;
     use pulsar_world_registry::{ComponentWatch, ObjectFeed, ObjectUpdate};
 
     let mut scene = new_scene();

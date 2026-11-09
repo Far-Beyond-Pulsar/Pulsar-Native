@@ -25,6 +25,9 @@ pub struct LinkedClass {
     pub world_registered: bool,
     /// The class's own `World` type has `#[gpu]` columns that SceneDB mirrors.
     pub own_gpu_columns: bool,
+    /// Who registers its world component: a plugin's root package, or
+    /// `engine:<package>`.
+    pub origin: Option<String>,
 }
 
 /// One `#[derive(SceneStore)]` type with at least one `#[gpu]` field.
@@ -66,6 +69,13 @@ where
 pub fn collect() -> Linked {
     let world: BTreeSet<&'static str> =
         pulsar_world_registry::registered_world_component_classes().collect();
+    // Every linked registration, whatever its plugin's state (this binary
+    // enables no project): the origin says whose ledger a class's row is in.
+    let origins: std::collections::BTreeMap<&'static str, &'static str> =
+        inventory::iter::<pulsar_world_registry::WorldComponentRegistration>
+            .into_iter()
+            .map(|registration| (registration.class_name, registration.origin))
+            .collect();
     let mirrored = ids::<GpuMirrorRegistration>(|r| (r.component_id)());
     let clears = ids::<GpuClearRegistration>(|r| (r.component_id)());
     let releases = ids::<VarLenReleaseRegistration>(|r| (r.component_id)());
@@ -92,6 +102,7 @@ pub fn collect() -> Linked {
                 category,
                 world_registered: world.contains(name),
                 own_gpu_columns,
+                origin: origins.get(name).map(|origin| origin.to_string()),
             }
         })
         .collect();

@@ -7,12 +7,10 @@ use gpui::*;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::net::multiuser::{ClientMessage, MultiuserClient, ServerMessage};
+use crate::net::simple_sync;
 use crate::screen::MultiplayerWindow;
 use crate::utils::types::*;
-use engine_backend::subsystems::networking::multiuser::{
-    ClientMessage, MultiuserClient, ServerMessage,
-};
-use engine_backend::subsystems::networking::simple_sync;
 use engine_state::{EngineContext, MultiuserParticipant};
 
 impl MultiplayerWindow {

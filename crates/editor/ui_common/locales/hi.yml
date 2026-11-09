@@ -91,8 +91,6 @@ Menu.Project.OpenCargoToml: Cargo.toml
 Menu.Project.RevealInFileExplorer: फ़ाइल एक्सप्लोरर में दिखाएँ
 
 Menu.Tools: टूल
-Menu.Tools.Profiler: प्रोफाइलर
-Menu.Tools.MissionControl: मिशन कंट्रोल
 Menu.Tools.TypeDebugger: टाइप डिबगर
 Menu.Tools.Multiplayer: मल्टीप्लेयर
 

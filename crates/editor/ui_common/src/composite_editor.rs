@@ -445,7 +445,7 @@ impl CompositeEditor {
 }
 
 impl Render for CompositeEditor {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
         let count = match &self.root {
             Value::Array(a) => a.len(),

@@ -17,6 +17,7 @@ pub mod motion;
 pub mod partitions;
 pub mod payload_catalog;
 pub mod runtime;
+pub mod sublevels;
 mod transform_script;
 pub mod world_ext;
 
@@ -37,6 +38,7 @@ pub use partitions::ContentSpace;
 pub use payload_catalog::{
     ContentId, PayloadCatalog, PayloadCatalogError, PayloadMutation, PayloadRef,
 };
+pub use sublevels::{SubLevelActorRow, SubLevelIndex, DEFAULT_SUBLEVEL_INDEX};
 pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 
 /// Same type as [`EditorObjectId`]; the alias the editor spells it as.

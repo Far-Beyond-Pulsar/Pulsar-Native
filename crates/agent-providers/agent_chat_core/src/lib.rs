@@ -55,6 +55,44 @@ pub trait ProviderCrate: Send + Sync {
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>>;
 }
 
+/// A provider crate the editor's chat offers (OpenAI, Anthropic, a local
+/// model runner...): its crate submits one, and the editor binary links the
+/// providers it ships, so the chat panel names none. Listed in `order`.
+pub struct AgentProviderRegistration {
+    /// The submitting package (`pulsar_plugins::engine_origin!()` for the
+    /// engine's providers).
+    pub origin: &'static str,
+    /// Stable id (`agent.openai`).
+    pub id: &'static str,
+    /// Providers are listed in this order, then by id.
+    pub order: i32,
+    pub create: fn() -> Box<dyn ProviderCrate>,
+}
+
+impl pulsar_plugins::Contribution for AgentProviderRegistration {
+    const CATEGORY: &'static str = "editor.agent_provider";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.id.to_string()
+    }
+}
+
+pulsar_plugins::registration!(AgentProviderRegistration);
+
+/// Every enabled provider crate, in order.
+pub fn provider_crates() -> Vec<Box<dyn ProviderCrate>> {
+    let mut providers: Vec<_> = pulsar_plugins::registered::<AgentProviderRegistration>().collect();
+    providers.sort_by_key(|provider| (provider.order, provider.id));
+    providers
+        .into_iter()
+        .map(|provider| (provider.create)())
+        .collect()
+}
+
 // ── Runtime chat interface ──────────────────────────────────────────────────
 
 #[derive(Clone, Debug)]

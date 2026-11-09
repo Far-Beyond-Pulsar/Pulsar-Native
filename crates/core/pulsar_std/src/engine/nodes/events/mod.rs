@@ -90,38 +90,3 @@ pub fn get_delta_time() -> f32 {
     // Resolved at runtime by the blueprint executor via engine context.
     0.0
 }
-
-// =============================================================================
-// Input Events
-// =============================================================================
-
-/// Fires when a keyboard key is pressed or released.
-///
-/// # Inputs
-/// - `key`: The key identifier string (e.g. `"Space"`, `"W"`, `"Escape"`)
-///
-/// # Outputs
-/// - `pressed`: `true` on key-down, `false` on key-up
-///
-/// # On Input Key
-/// Entry point for raw keyboard key press/release events.
-#[blueprint(type: NodeTypes::event, category: "Input")]
-pub fn on_input_key(_key: String, _pressed: bool) {
-    exec_output!("Body");
-}
-
-/// Fires when a named input action is triggered.
-///
-/// Input actions are mapped strings (e.g. `"Jump"`, `"Fire"`) that abstract
-/// over raw keys and controller buttons.
-///
-/// # Inputs
-/// - `action`: The action name string
-/// - `pressed`: `true` on action start, `false` on action end
-///
-/// # On Input Action
-/// Entry point for named input action events.
-#[blueprint(type: NodeTypes::event, category: "Input")]
-pub fn on_input_action(_action: String, _pressed: bool) {
-    exec_output!("Body");
-}

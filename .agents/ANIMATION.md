@@ -353,7 +353,7 @@ graph's toward zero).
 - **Frame order** (`pulsar_game::TickLoop::run_tick`): input flush → **animation
   phase** (`helio_component::run_animation_phase`) → ECS schedule (physics reads
   `bone_world_pose`) → component lifecycle tick → actors → physics-pose writeback
-  → `AfterPhysics` flush → scripts → **notify delivery**
+  → `AfterSystems` flush → scripts → **notify delivery**
   (`flush_animation_notifies`, class-variable targets resolved through
   `ScriptDriver::entity_variable`) → `AfterScripts`/`EndOfFrame` flush. Parameters
   and Montage commands written by scripts or Blueprints (phase 3 of the frame)

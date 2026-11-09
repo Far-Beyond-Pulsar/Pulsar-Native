@@ -2824,8 +2824,8 @@ mod roles {
 
     // ---- player input through possession -------------------------------------
 
-    use input_plugin::model::{ActionAsset, ActionRef, Asset, MappingAsset};
-    use input_plugin::PlayerInputComponent;
+    use installed_plugins::input_plugin::model::{ActionAsset, ActionRef, Asset, MappingAsset};
+    use installed_plugins::input_plugin::PlayerInputComponent;
     use pulsar_world_registry::pulsar_scene_model::attachments::ComponentOwner;
 
     /// `input/Jump.inputaction` and `input/Game.inputmap` (Space -> Jump).
@@ -2845,12 +2845,12 @@ mod roles {
 
     /// The Space key as the event hub numbers it.
     fn space() -> i64 {
-        match input_plugin::keys::catalog()
+        match installed_plugins::input_plugin::keys::catalog()
             .get("Keyboard.Space")
             .unwrap()
             .source
         {
-            input_plugin::keys::Source::Keyboard(code) => code,
+            installed_plugins::input_plugin::keys::Source::Keyboard(code) => code,
             other => panic!("not a keyboard key: {other:?}"),
         }
     }
@@ -2960,8 +2960,10 @@ mod roles {
 
         // The input runtime is linked into the game and ticks this component.
         assert!(
-            pulsar_world_registry::component_id_for_class(input_plugin::PLAYER_INPUT_CLASS_NAME)
-                .is_some(),
+            pulsar_world_registry::component_id_for_class(
+                installed_plugins::input_plugin::PLAYER_INPUT_CLASS_NAME
+            )
+            .is_some(),
             "the input plugin's component is registered in the game runtime"
         );
         assert_eq!(

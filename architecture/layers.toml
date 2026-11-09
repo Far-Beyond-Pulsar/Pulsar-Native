@@ -70,16 +70,29 @@ names_kinds = true
 [crates]
 # The editor binary: links every installed plugin and the tools.
 pulsar_engine = { layer = "host" }
+# Tools that need every plugin by purpose, reaching them through the
+# installed set: the packager (each plugin's record migrations, every script
+# language), the level repair tool (every class and migration) and the
+# SceneDB closure ledger (every scene component).
+pulsar_package = { layer = "host" }
+level_migrate = { layer = "host" }
+scene_inventory = { layer = "host" }
+# The editor's chat itself (its provider interface and tools) is the shell's;
+# the providers are tools.
+agent_chat_core = { layer = "kernel" }
+agent_chat_tools = { layer = "kernel" }
 
 [kinds]
 # Words (lower case; a multi-word term matches consecutive words of an
 # identifier or key-like string: `StaticMeshComponent` is "static mesh
-# component") naming each plugin's kind, subsystem or tool. Kernel code names
+# component") naming each plugin's kind, subsystem or tool. Words the frame
+# owns are not here, as in Helio's list: "directional light" (a lighting
+# input), "post process" (the spine's colour chain). Kernel code names
 # none of them: it reaches a plugin through registrations, by the plugin's
 # contribution ids, never by its words.
 meshes = ["mesh", "meshes", "static mesh", "meshlet", "vg", "virtual geometry"]
 animation = ["skeletal", "skeleton asset", "skinned", "skinning", "animator", "anim graph", "animation graph", "animation sequence", "skmesh"]
-lights = ["light component", "lights", "point light", "spot light", "directional light", "light type", "ies profile", "hlfs", "reflection capture"]
+lights = ["light component", "lights", "point light", "spot light", "light type", "ies profile", "hlfs", "reflection capture"]
 materials = ["material", "materials"]
 sky = ["sky", "atmosphere", "volumetric cloud", "volumetric clouds", "cloud layer", "cloud layers"]
 fog = ["fog"]

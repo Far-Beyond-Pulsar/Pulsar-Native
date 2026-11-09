@@ -387,8 +387,8 @@ impl SceneRenderer {
                     self.ground.clip_range(&mut scene.world, view.eye)
                 };
                 let (near, far) = match certified {
-                    Some((terrain_near, far)) if read.keeps_near_plane => {
-                        (terrain_near.min(near), far)
+                    Some((ground_near, far)) if read.keeps_near_plane => {
+                        (ground_near.min(near), far)
                     }
                     Some(range) => range,
                     None => (near, far),

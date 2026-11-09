@@ -6,7 +6,7 @@ use engine_backend::services::RustAnalyzerManager;
 use gpui::*;
 
 use crate::recent_projects::update_recent_projects;
-use crate::tasks::{LoadingEvent, TaskStatus, TASKS};
+use crate::tasks::{LoadingEvent, LoadingTask, TaskStatus};
 
 mod components;
 use components::*;
@@ -16,6 +16,8 @@ const MIN_DISPLAY_DURATION: Duration = Duration::from_secs(2);
 pub struct LoadingScreen {
     project_name: String,
     project_path: PathBuf,
+    /// This load's steps ([`crate::tasks::tasks`]).
+    tasks: Arc<Vec<LoadingTask>>,
     statuses: Vec<TaskStatus>,
     progress: f32,
     message: String,
@@ -47,15 +49,18 @@ impl LoadingScreen {
             .to_string();
 
         let (tx, rx) = std::sync::mpsc::channel::<LoadingEvent>();
-        let n = TASKS.len();
+        let tasks = Arc::new(crate::tasks::tasks());
+        let n = tasks.len();
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
 
         let project_path_for_thread = project_path.clone();
+        let tasks_for_thread = Arc::clone(&tasks);
         std::thread::spawn(move || {
             let project = project_path_for_thread.as_path();
-            for (idx, (label, task_fn)) in TASKS.iter().enumerate() {
-                let result = task_fn(project);
+            for (idx, task) in tasks_for_thread.iter().enumerate() {
+                let label = &task.label;
+                let result = task.run(project);
                 tracing::info!(
                     "[Loading] {:>3}ms  {}{}",
                     result.elapsed.as_millis(),
@@ -87,7 +92,8 @@ impl LoadingScreen {
             project_path,
             statuses,
             progress: 0.0,
-            message: TASKS[0].0.to_string(),
+            message: tasks[0].label.clone(),
+            tasks,
             all_done: false,
             opened_editor: false,
             anim_tick: 0,
@@ -109,7 +115,7 @@ impl LoadingScreen {
         if next < self.statuses.len() {
             self.statuses[next] = TaskStatus::Running;
             self.running_since = Some(Instant::now());
-            self.message = TASKS[next].0.to_string();
+            self.message = self.tasks[next].label.clone();
         } else {
             self.running_since = None;
             let total_ms: u128 = self
@@ -123,7 +129,7 @@ impl LoadingScreen {
             self.message = format!("Ready! ({total_ms}ms total)");
             self.all_done = true;
         }
-        self.progress = (idx + 1) as f32 / TASKS.len() as f32;
+        self.progress = (idx + 1) as f32 / self.tasks.len() as f32;
     }
 }
 
@@ -221,6 +227,7 @@ impl Render for LoadingScreen {
                                             ),
                                     )
                                     .child(task_list_widget(
+                                        &self.tasks,
                                         self.anim_tick,
                                         &self.statuses,
                                         running_elapsed,

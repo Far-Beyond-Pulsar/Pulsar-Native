@@ -17,7 +17,8 @@
 //! 4. Props a registered scene-props projector manages (copies of component
 //!    values the editor used to fold into `props`, and save) are removed:
 //!    component values live only in their instances.
-//! 5. Fields a class retired ([`RETIRED_FIELDS`]) are removed from its
+//! 5. Fields a class retired (its plugin's migration's
+//!    [`RecordMigrationRegistration::retired_fields`]) are removed from its
 //!    data, so a saved value no longer carries data nothing reads.
 //!
 //! Data that still does not decode after this is invalid for its class; the
@@ -56,6 +57,9 @@ pub struct RecordMigrationRegistration {
     pub from_props: Option<fn(object: &Value) -> Option<Value>>,
     /// Props keys the migration retired: removed from every object's props.
     pub stale_props: &'static [&'static str],
+    /// Fields its classes retired, `(class, field)`: removed from those
+    /// classes' data, so a saved value no longer carries data nothing reads.
+    pub retired_fields: &'static [(&'static str, &'static str)],
 }
 
 impl pulsar_plugins::Contribution for RecordMigrationRegistration {
@@ -75,12 +79,6 @@ impl pulsar_plugins::Contribution for RecordMigrationRegistration {
 }
 
 pulsar_plugins::registration!(RecordMigrationRegistration);
-
-/// Fields classes no longer have: `(class, field)`.
-pub const RETIRED_FIELDS: &[(&str, &str)] = &[
-    // Water takes its sun from the level's directional light (#1065).
-    ("WaterVolumeComponent", "sun_direction"),
-];
 
 /// What the record migrations changed, per object id.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -214,8 +212,8 @@ fn nest_flat_properties(entry: &mut Value) -> Option<String> {
 fn strip_retired_fields(entry: &mut Value) -> Option<(String, Vec<String>)> {
     let class = entry.get("class_name")?.as_str()?.to_string();
     let data = entry.get_mut("data")?.as_object_mut()?;
-    let removed: Vec<String> = RETIRED_FIELDS
-        .iter()
+    let removed: Vec<String> = pulsar_plugins::registered::<RecordMigrationRegistration>()
+        .flat_map(|migration| migration.retired_fields)
         .filter(|(retired_class, field)| *retired_class == class && data.remove(*field).is_some())
         .map(|(_, field)| field.to_string())
         .collect();
@@ -255,12 +253,25 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // A class that retired a field, as a plugin's migration declares it.
+    inventory::submit! {
+        RecordMigrationRegistration {
+            origin: pulsar_plugins::engine_origin!(),
+            name: "test.retired_fields",
+            description: "removed the test class's retired field",
+            entries: None,
+            from_props: None,
+            stale_props: &[],
+            retired_fields: &[("RetiredFieldTestComponent", "old_direction")],
+        }
+    }
+
     #[test]
     fn retired_fields_leave_the_data() {
         let mut root = json!({
             "objects": [{ "id": "a", "props": {}, "component_instances": [
-                { "class_name": "WaterVolumeComponent",
-                  "data": { "size": [1.0, 1.0, 1.0], "sun_direction": [0.5, 1.0, 0.5] } }
+                { "class_name": "RetiredFieldTestComponent",
+                  "data": { "size": [1.0, 1.0, 1.0], "old_direction": [0.5, 1.0, 0.5] } }
             ]}]
         });
         let report = migrate_component_records(&mut root);
@@ -268,8 +279,8 @@ mod tests {
             report.retired_fields,
             [(
                 "a".to_string(),
-                "WaterVolumeComponent".to_string(),
-                vec!["sun_direction".to_string()]
+                "RetiredFieldTestComponent".to_string(),
+                vec!["old_direction".to_string()]
             )]
         );
         assert_eq!(

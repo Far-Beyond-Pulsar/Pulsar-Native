@@ -15,16 +15,33 @@ crates/
   third-party/       Vendored smaller deps (graphy, pulsar-config)
 ```
 
+## The layers (`architecture/layers.toml`, `just arch`)
+
+Core and editor know no kind, subsystem or tool (Pulsar-Native#1605). Every crate
+has a layer by directory: **kernel** (`crates/core`, `crates/editor`,
+`crates/subsystems`, `crates/profiling`, and the chat's `agent_chat_core` /
+`agent_chat_tools`), **tool** (the optional editor tools: `ui_git_manager`,
+`ui_flamegraph`, `ui_log_viewer`, `ui_fab_search`, the agent providers), **plugin**
+(`plugins/vendor`), **host** (the `engine` binary, `plugins/installed`,
+`pulsar_package`, `level_migrate`, `scene_inventory`) and **foundation** (UI,
+vendored, external crates, Helio). A kernel crate depends on kernel and foundation
+crates only, dev dependencies included; a test that needs plugins is a host's
+(`plugins/installed/tests`). Tools register through `ui_common::editor_tools` and
+`agent_chat_core::AgentProviderRegistration`, and the editor binary links them.
+Helio's checker enforces it, with the shrink-only `architecture/layer-violations.txt`
+and `architecture/kind-names.txt` (kernel code naming a plugin's words, each with
+its reason).
+
 ## core/ — Engine platform
 
-The heart of the engine. 26 crates with no UI dependencies.
+The heart of the engine.
 
 | Crate | Responsibility |
 |---|---|
 | `asset_import` | Source-asset import (FBX, OBJ, …): import database, project scan, per-format importers, conversions as editor tasks (see below) |
 | `editor_task_queue` | Background task queue behind the Tasks window: progress, errors, cancellation |
 | `engine` | Binary entry point, startup graph, GPUI `App` creation |
-| `engine_backend` | Window, input, and rendering backend; subsystem lifecycle |
+| `engine_backend` | Window and rendering backend; subsystem lifecycle; the plugins' engine seams (render features, scene rows, game hooks, level rules) |
 | `engine_class_derive` | `#[derive(EngineClass)]` proc macro |
 | `engine_fs` | Virtual filesystem abstraction — local, remote, P2P |
 | `engine_state` | Typed resource system — `StateStore`, `ResourceHandle`, `EngineContext` |
@@ -37,12 +54,12 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_core` | Core types, math, utilities |
 | `pulsar_docs` | Doc generation from reflected types |
 | `pulsar_events` | Event bus |
-| `pulsar_game` | Game mode abstractions |
+| `pulsar_game` | The game runtime: tick loop, scripting, possession (plugins join through `game_hooks::GameSessionRegistration`), cameras and view targets |
 | `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
-| `pulsar_scene_model` | Scene object components (`StableId`, `Name`, `Transform`, `Visibility`, hierarchy) and component-instance entities (`attachments`) |
+| `pulsar_scene_model` | Scene object components (`StableId`, `Name`, `Transform`, `Visibility`, hierarchy), component-instance entities (`attachments`) and sublevel placements (`sublevels`) |
 | `pulsar_world_registry` | Typed component classes in SceneDB's `World`: registration, boundary decode, object feeds, change watches, component lifecycles |
 | `pulsar_settings` | Settings store (wraps `pulsar-config`) |
 | `pulsar_script_vm` | Language-neutral script bytecode: module format, verifier, linker, VM, natives, shared `exec` semantics, `compiled` code contract, `migrate` planner |
@@ -51,11 +68,10 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_script_codegen` | Rust export: generates compiled step functions (and the `Actor` wrapper) from a script module |
 | `pulsar_script_conformance` | Runs modules interpreted and as generated Rust and compares everything observable (`just conformance`) |
 | `pulsar_script_ts` | TypeScript subset compiled to script modules (oxc parser, type checking against the native registry, `.d.ts` generation, field identity) |
-| `pulsar_std` | Blueprint standard library |
-| `pulsar_std_bundle` | Bundled std definitions |
+| `pulsar_std` | Blueprint standard library (kind-neutral domains; a kind's script API is its component methods) |
 | `pulsar-multiplayer-core` | Multiplayer protocol and state |
 | `pulsar-relay` | Relay server client |
-| `scene_inventory` | Scene-data closure ledger and architecture checks (`cargo test -p scene_inventory`) |
+| `scene_inventory` | Scene-data closure ledger (the engine's rows; each plugin's in its `ledger.toml`) and architecture checks (`cargo test -p scene_inventory`); a host |
 | `ui_gen_macros` | Proc macros for UI boilerplate |
 | `window_manager` | Multi-window management, window definitions |
 
@@ -144,20 +160,20 @@ provides a piece of the GPUI-based editor UI shell.
 | Crate | Panel / Feature |
 |---|---|
 | `ui_about` | About / credits dialog |
-| `ui_common` | Shared widgets, i18n, styling primitives |
-| `ui_core` | Editor shell — tab management, plugin wiring, statusbar; layout persistence (`app/layout/`, `app/chrome.rs`, see `LAYOUT.md`) |
+| `ui_common` | Shared widgets, i18n, styling primitives; the generic asset picker and typed asset-reference editor; the editor tools' seams (`editor_tools`) |
+| `ui_core` | Editor shell — tab management, plugin wiring, statusbar (the tools' buttons from `ui_common::editor_tools`); layout persistence (`app/layout/`, `app/chrome.rs`, see `LAYOUT.md`) |
 | `ui_documentation` | In-editor doc viewer |
 | `ui_entry` | Window entry creation and setup |
-| `ui_fab_search` | Floating action button + search |
+| `ui_fab_search` | Fab asset search (a tool) |
 | `ui_file_manager` | File tree and project browser |
-| `ui_flamegraph` | CPU/GPU flamegraph viewer |
+| `ui_flamegraph` | CPU/GPU flamegraph viewer (a tool) |
 | `ui_friends` | Friends list |
-| `ui_git_manager` | Git integration |
+| `ui_git_manager` | Git integration (a tool: status-bar button, title-bar sync state, Git Settings, hook sync on load) |
 | `ui_level_editor` | Level / scene editor |
 | `ui_helio_viewport` | Shared Helio frame pacing and publish-driven repaint pump |
 | `ui_loading_screen` | Splash + loading progress |
-| `ui_log_viewer` | Log output |
-| `ui_multiplayer` | Multiplayer session UI |
+| `ui_log_viewer` | Mission Control (a tool) and the editor's log and memory tracking |
+| `ui_multiplayer` | Multiplayer session UI and its network side (`net`: the relay client, the file sync) |
 | `ui_multiuser_status` | Presence indicators |
 | `ui_plugin_manager` | Plugin browser |
 | `ui_problems` | Errors / warnings panel |
@@ -186,25 +202,24 @@ pulsar_reflection::inventory::submit! {
 
 ## subsystems/ — Integration crates
 
-These bridge the engine with external runtimes: physics (rapier3d), rendering
-(wgpu + helio), and scene management.
+Kernel crates for subsystem lifecycle and scene management. What a kind
+simulates (physics, input, animation) is its plugin's.
 
 | Crate | Responsibility |
 |---|---|
 | `engine_subsystems` | Lifecycle orchestration — the `Subsystem` trait and `SubsystemRegistry` |
-| `pulsar_physics` | Physics — rapier3d integration, colliders, rigid bodies |
-| `pulsar_rendering` | GPU rendering pipeline — mesh cache, scene objects, material system |
 | `pulsar_scene` | Scene graph — transforms, prefab instantiation, object hierarchy |
 
 ## agent-providers/ — AI providers
 
-One crate per LLM backend. Each implements the `ChatProvider` trait from
-`agent_chat_core`. Tool execution is centralized in `agent_chat_tools`.
+One crate per LLM backend (a tool). Each implements `ProviderCrate` from
+`agent_chat_core` and registers itself (`AgentProviderRegistration`); the editor
+binary links the ones it ships and the chat panel names none. Tool execution is
+centralized in `agent_chat_tools`. `agent_chat_core` and `agent_chat_tools` are
+the editor's (kernel).
 
-22 providers: anthropic, aws_bedrock, azure_openai, cohere, deepseek,
-demo_random, docker_model_runner, fireworks, gemini, github_copilot, groq,
-llama_cpp, lmstudio, mistral, ollama, openai, openrouter, perplexity,
-together, vertex_ai, vllm, xai.
+Providers: anthropic, aws_bedrock, demo_random, docker_model_runner, gemini,
+github_copilot, openai, opencode, vertex_ai.
 
 ## ui/ — Vendored UI framework
 
@@ -241,7 +256,8 @@ disables each plugin in its `Pulsar.toml` (`.agents/PLUGIN_SYSTEM.md`).
 Each object kind is a plugin that owns its SceneDB components and methods,
 its contracts (`api`), the Helio feature that renders it (`feature`), its
 editor crate (`editor`, `<kind>_editor`), its root (`<kind>_plugin`) and its
-demos (`examples`); Helio knows no kind
+demos (`examples`), and the rows of the scene-data closure ledger for what it
+ships (`ledger.toml`, checked by `scene_inventory`); Helio knows no kind
 (Helio's `docs/architecture/plugin-migration.md`). Since p18 every plugin but
 two editor tools is its own repository, a git submodule at the same path. The
 plugins' crates stay members of this workspace (`workspace = true`
@@ -268,7 +284,7 @@ cargo cannot load the workspace without them.
 | `sprites` | [Plugin_Sprites](https://github.com/Far-Beyond-Pulsar/Plugin_Sprites) | `pulsar.sprites`: 2D sprites over the scene |
 | `portals` | [Plugin_Portals](https://github.com/Far-Beyond-Pulsar/Plugin_Portals) | `pulsar.portals`: portals, their pairing, projection and draws |
 | `splines` | [Plugin_Splines](https://github.com/Far-Beyond-Pulsar/Plugin_Splines) | `pulsar.splines`: authored curves and their editor lines |
-| `physics_plugin` | [Plugin_Physics](https://github.com/Far-Beyond-Pulsar/Plugin_Physics) | Physics components and the Rapier simulation |
+| `physics_plugin` | [Plugin_Physics](https://github.com/Far-Beyond-Pulsar/Plugin_Physics) | `pulsar.physics`: physics components and the Rapier simulation, the first model's components (`legacy`), the `.physasset` schema (`api`, `physics_api`) |
 | `skm_editor` | [Plugin_SKM](https://github.com/Far-Beyond-Pulsar/Plugin_SKM) | Animation: skeletal assets, the animator (`animation_component`) and its editors (`.agents/ANIMATION.md`) |
 | `input_plugin` | [Plugin_Input](https://github.com/Far-Beyond-Pulsar/Plugin_Input) | Input actions and mappings, their editors and runtime |
 | `ui_editor` | [Plugin_UI](https://github.com/Far-Beyond-Pulsar/Plugin_UI) | Widget assets and the WYSIWYG widget editor |
@@ -281,8 +297,12 @@ cargo cannot load the workspace without them.
 | `trait_editor` | in-tree | `pulsar.trait_editor`: the trait definition editor (`.trait.json`, `.agents/TRAITS.md`) |
 | `typescript` | in-tree | `pulsar.typescript`: TypeScript as a scripting language (`class.ts` compiles to script modules) |
 
-`plugins/installed` (the generated installed set) is in-tree too. Whether the editor tools (asset viewer, render graph editor)
-become modules of other plugins is Pulsar-Native#1605's decision.
+`plugins/installed` (the generated installed set) is in-tree too; its tests are the
+editor's and the game's tests with every plugin. The editor-tool plugins (the
+asset viewer, the render graph, trait and Blueprint editors, the code, matter and
+table editors, TypeScript) stay plugins of their own (Pulsar-Native#1605); the
+optional editor tools in `crates/` (git, flamegraph, Mission Control, Fab search,
+the chat's providers) are tools the editor binary links (above, "The layers").
 
 A change to a plugin is committed in its repository and pinned here, like any
 submodule (below). Its repository's CI checks it inside a Pulsar-Native

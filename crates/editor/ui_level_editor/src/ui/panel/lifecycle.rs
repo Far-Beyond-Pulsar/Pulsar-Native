@@ -36,8 +36,14 @@ impl LevelEditorPanel {
             .join("default.level");
         let scene_db = self.shared_state.read().scene.shared_scene();
         let camera_state = self.current_editor_camera_state();
-        let embedded = engine_state::EngineContext::global()
-            .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
+        let starter = engine_state::EngineContext::global()
+            .map(|ctx| {
+                ctx.store
+                    .get_or_init::<engine_state::StarterContent>()
+                    .read()
+                    .clone()
+            })
+            .unwrap_or_default();
 
         cx.spawn(async move |this, cx| {
             let prepare_path = default_path.clone();
@@ -51,10 +57,12 @@ impl LevelEditorPanel {
                     }
 
                     if !prepare_path.exists() {
+                        // The assets the starter level references first,
+                        // so it loads complete.
                         if let Some(root) = prepare_path.parent().and_then(|p| p.parent()) {
-                            engine_backend::services::ensure_engine_primitives(root);
+                            starter.install_assets(root);
                         }
-                        if let Some(bytes) = embedded {
+                        if let Some(bytes) = starter.level.as_deref() {
                             engine_fs::virtual_fs::write_file(&prepare_path, &bytes).map_err(
                                 |e| format!("Failed to write embedded default level: {e}"),
                             )?;
@@ -253,20 +261,13 @@ impl LevelEditorPanel {
 
         let _max_viewport_fps = settings.advanced.max_viewport_fps;
 
-        // Get the physics query service from the global EngineBackend
-        let physics_query = engine_backend::EngineBackend::global()
-            .and_then(|backend| backend.read().get_physics_query_service());
-
         // Construct editor state first: its scene owns the SceneDB-backed
         // store, and the renderer receives only its shared access handle.
         let state = LevelEditorState::new();
         let scene_store = state.scene.shared_scene();
 
-        // Create GPU render engine sharing the scene store Arc and physics query service
-        let mut renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
-        if let Some(pq) = physics_query {
-            renderer_builder = renderer_builder.physics(pq);
-        }
+        // Create the GPU render engine sharing the scene store Arc.
+        let renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
         let gpu_engine = Arc::new(Mutex::new(renderer_builder.build()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 

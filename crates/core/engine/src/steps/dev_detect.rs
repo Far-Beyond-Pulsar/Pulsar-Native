@@ -23,17 +23,26 @@ pub fn run(ctx: &mut InitContext) -> Result<(), InitError> {
         .get_or_init::<engine_state::DevContext>()
         .set(dev);
 
-    // Stash the embedded default level bytes so the level editor can
-    // seed new projects without depending on the engine crate directly.
-    if let Some(file) = Assets::get("default.level") {
-        tracing::info!("Embedded default.level found ({} bytes)", file.data.len());
-        engine_context
-            .store
-            .get_or_init::<Option<Vec<u8>>>()
-            .set(Some(file.data.into_owned()));
-    } else {
-        tracing::debug!("No embedded default.level — new projects start empty");
+    // Stash what a new project starts with (the embedded default level and
+    // the meshes it references, under `assets/meshes/`) so the level editor
+    // seeds new projects without depending on the engine crate directly.
+    let level: Option<std::sync::Arc<[u8]>> =
+        Assets::get("default.level").map(|file| std::sync::Arc::from(file.data.as_ref()));
+    match &level {
+        Some(level) => tracing::info!("Embedded default.level found ({} bytes)", level.len()),
+        None => tracing::debug!("No embedded default.level — new projects start empty"),
     }
+    let assets = <crate::assets::EngineAssets as rust_embed::RustEmbed>::iter()
+        .filter(|path| path.starts_with("meshes/"))
+        .filter_map(|path| {
+            let file = Assets::get(&path)?;
+            Some((path.into_owned(), std::sync::Arc::from(file.data.as_ref())))
+        })
+        .collect();
+    engine_context
+        .store
+        .get_or_init::<engine_state::StarterContent>()
+        .set(engine_state::StarterContent { level, assets });
 
     Ok(())
 }

@@ -12,6 +12,9 @@ schemars.workspace = true
 thiserror = { workspace = true }
 chrono = { workspace = true }
 
+# Registrations (`TextEditedType`).
+inventory = { workspace = true }
+
 # Validation
 regex = { workspace = true }
 lazy_static = { workspace = true }

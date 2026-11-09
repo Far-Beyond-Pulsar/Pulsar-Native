@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use engine_backend::scene::{new_scene, SceneWorldExt};
-use lights_plugin::lights_component::LightComponent;
+use installed_plugins::lights_plugin::lights_component::LightComponent;
 use pulsar_class::ClassRegistry;
 use pulsar_scenedb::World;
 use serde_json::{json, Value};
@@ -472,7 +472,7 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
                 [1.0, 0.0, 0.0, 1.0],
                 "{object}: live light"
             );
-            let row = lights_plugin::lights_component::LightSourceRow::of(&live);
+            let row = installed_plugins::lights_plugin::lights_component::LightSourceRow::of(&live);
             assert_eq!(
                 row.color_intensity[..3],
                 [1.0, 0.0, 0.0],

@@ -429,7 +429,7 @@ impl EmbeddedGame {
     }
 
     /// The free camera stands down while a possessed pawn owns the player's
-    /// input and its camera is the view (see `player_input::PossessionGate`);
+    /// input and its camera is the view (see `possession::PossessionGate`);
     /// a pawn with no camera leaves the view to the free camera.
     fn sync_freecam(&mut self) {
         let tick_loop = &self.session.tick_loop;

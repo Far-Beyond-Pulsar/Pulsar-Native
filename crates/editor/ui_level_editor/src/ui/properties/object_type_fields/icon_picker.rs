@@ -1,7 +1,7 @@
 //! Object-level icon-asset picker.
 //!
 //! The icon is stored as a plain JSON string in the object's prop map under
-//! [`OBJECT_ICON_PROP_KEY`].  A [`MeshAssetPicker`] entity is created lazily
+//! [`OBJECT_ICON_PROP_KEY`].  A [`AssetPicker`] entity is created lazily
 //! on first render and kept alive in [`ObjectTypeFieldsSection::icon_asset_picker`].
 
 use engine_state;
@@ -10,7 +10,7 @@ use serde_json::Value;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
 use ui::{h_flex, ActiveTheme, Sizable};
-use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+use ui_common::{AssetPickedEvent, AssetPicker, AssetQuery};
 
 use super::ObjectTypeFieldsSection;
 
@@ -44,7 +44,7 @@ impl ObjectTypeFieldsSection {
         crate::scene_edit::objects::update_object(&mut world.world, obj);
     }
 
-    /// Creates the [`MeshAssetPicker`] entity the first time it is needed.
+    /// Creates the [`AssetPicker`] entity the first time it is needed.
     ///
     /// Subsequent calls are no-ops — the picker is kept alive for the lifetime
     /// of this inspector so thumbnails and selection state are preserved.
@@ -67,7 +67,7 @@ impl ObjectTypeFieldsSection {
         ];
 
         let picker = cx.new(|cx| {
-            MeshAssetPicker::new(
+            AssetPicker::new(
                 current.to_string(),
                 vec![],
                 project_root,
@@ -116,7 +116,7 @@ impl ObjectTypeFieldsSection {
 
         let thumb = picker.read(cx).thumbnail_for_path(&object_icon_path);
 
-        let pop = Popover::<MeshAssetPicker>::new(format!("object-icon-picker-{}", self.object_id))
+        let pop = Popover::<AssetPicker>::new(format!("object-icon-picker-{}", self.object_id))
             .anchor(Corner::BottomRight)
             .trigger(
                 ui::button::Button::new(format!("object-icon-btn-{}", self.object_id))

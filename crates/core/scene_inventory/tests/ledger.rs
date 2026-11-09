@@ -1,24 +1,35 @@
 //! Phase 0 closure ledger: every exposed class, GPU schema, buffer key, pass
-//! crate and lifecycle call site has a row, and every row's facts match the
-//! linked binary and the source tree.
+//! crate and lifecycle call site has a row, every row's facts match the
+//! linked binary and the source tree, and every row is in its owner's
+//! ledger (the engine's, or the plugin's that ships it: Pulsar-Native#1606).
 //!
 //! A failure prints the rows to add or correct, with `TODO` placeholders for
 //! the human-owned columns.
 
+use std::collections::BTreeMap;
+
+use scene_inventory::home::{self, Home, Homes};
+use scene_inventory::ledger::row_key;
 use scene_inventory::{ledger, linked, repo_root, source};
 
 fn report(section: &str, problems: Vec<String>) {
+    let files: Vec<String> = home::ledger_files(&repo_root())
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect();
     assert!(
         problems.is_empty(),
-        "{section}: {} problem(s) in {}\n\n{}",
+        "{section}: {} problem(s) in the ledgers ({})\n\n{}",
         problems.len(),
-        scene_inventory::ledger_path().display(),
+        files.join(", "),
         problems.join("\n")
     );
 }
 
 fn load() -> ledger::Ledger {
-    ledger::load(&scene_inventory::ledger_path()).unwrap_or_else(|e| panic!("{e}"))
+    ledger::load_all(&repo_root())
+        .unwrap_or_else(|e| panic!("{e}"))
+        .0
 }
 
 #[test]
@@ -99,4 +110,39 @@ fn every_lifecycle_call_site_has_a_row() {
 #[test]
 fn every_row_has_a_disposition() {
     report("dispositions", ledger::check_dispositions(&load()));
+}
+
+/// A plugin's rows are in its own ledger (`plugins/vendor/<dir>/ledger.toml`),
+/// the engine's in `crates/core/scene_inventory/ledger.toml`: a class in the
+/// ledger of the plugin whose root registers it, a schema in its crate's, a
+/// buffer in its producers', a pass crate and a call site in their
+/// directory's.
+#[test]
+fn every_row_is_in_its_owners_ledger() {
+    let root = repo_root();
+    let (_, placed) = ledger::load_all(&root).unwrap_or_else(|e| panic!("{e}"));
+    let homes = Homes::new(&root);
+    let linked = linked::collect();
+    let graph = source::buffer_graph(&root);
+    let mut owner: BTreeMap<String, Home> = BTreeMap::new();
+    for class in &linked.classes {
+        owner.insert(row_key::class(&class.name), homes.class(class));
+    }
+    for schema in &linked.schemas {
+        owner.insert(row_key::schema(&schema.path), homes.schema(&schema.path));
+    }
+    for key in graph.producers.keys().chain(graph.consumers.keys()) {
+        owner.insert(row_key::buffer(key), homes.buffer(key, &graph));
+    }
+    for pass in source::pass_crates(&root) {
+        owner.insert(row_key::pass(&pass.package), homes.pass(&pass));
+    }
+    for (pattern, file) in source::sites(&root).keys() {
+        owner.insert(row_key::site(pattern, file), homes.of_path(file));
+    }
+    let problems = home::misplaced(&placed, &owner)
+        .into_iter()
+        .map(|(row, file)| format!("{row} belongs in {file} (it is in {})", placed[&row]))
+        .collect();
+    report("homes", problems);
 }

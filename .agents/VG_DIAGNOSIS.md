@@ -16,7 +16,7 @@ file lists causes, evidence and options only.
 So everything below is code-reading inference unless it says "verified". Section 3 gives the
 exact commands that would turn the inference into measurement.
 
-Command to run the suite (the test lives in `crates/editor/ui_level_editor/tests/virtual_geometry_dense_acceptance.rs`,
+Command to run the suite (the test lives in `plugins/installed/tests/virtual_geometry_dense_acceptance.rs`,
 package `ui_level_editor`, binary `virtual_geometry_dense_acceptance`; excluded from CI's `ci`
 profile in `.config/nextest.toml:36`):
 
