@@ -7,7 +7,8 @@ This file is the one plan. When it lands it **replaces**
 "Documents to delete" at the end; they are not deleted by the audit change).
 
 Status: Phase 0 (audit) is this document's sections 1 to 5. Sections 6 and 7 are
-the plan. Every row below is based on code read on `main` at 4327973b2 (SceneDB
+the plan. Phases 1 and 1b are built (p19): section 9 reviews the audit against the
+code, section 10 records the Q1-Q4 decisions, section 11 is what was built. Every row below is based on code read on `main` at 4327973b2 (SceneDB
 at the pinned rev `017252c`, read from the local cargo checkout). Anything not
 read is marked **UNVERIFIED**.
 
@@ -654,3 +655,156 @@ plan), the `#1532` family of issues (closed into #1608).
   `scene_inventory::WORLD_STATE_SITES`); the Phase 4 design for DLLs is not
   audited beyond `PLUGIN_SYSTEM.md`.
 - No `cargo` command was run (per the brief); no claim here is a build result.
+
+## 9. Phase 0 review (p19, 2026-11-09)
+
+The audit above was checked against the code when phase 1 was built on it. What it got
+wrong or left open, fixed here rather than in place so the original reading stays visible:
+
+- **Section 4.2 (the catalog cannot live in `plugin_manager`).** True only if the catalog
+  reads each registry. Phase 1 inverts it: every registration type lists itself as a
+  `pulsar_plugins::ContributionSource` (`registration!`), so the catalog reads one
+  `inventory` list of sources and names no registry type. `plugin_manager::catalog`
+  therefore depends on `pulsar_plugins` alone, with no cycle through `ui_level_editor` and no
+  renderer dependency, and no new host crate is needed. `plugin_manager` keeps the dynamic
+  loader, so phase 4 joins DLL plugins in the same place. A game needs no snapshot (named
+  activation errors are `pulsar_plugins::resolve`'s); if one ever does, the snapshot's join
+  moves into `pulsar_plugins` unchanged, since it needs no dependency.
+- **Section 4.3 (`Contribution: Registration`, owners export `contributions()` functions).**
+  Built the other way round: `Registration: Contribution`, and `registration!(T)` is the
+  only way to declare a registration type, so no type can be registered without being a
+  catalog source. No owner writes a list function.
+- **Surprise 3 and Q1 (macro output).** The only macro output that is a plugin contribution
+  with a gate is `WorldComponentRegistration`. It now comes from the root (below). The rest
+  (reflection `EngineClassRegistration`, method tables, SceneDB GPU-mirror, clear and ledger
+  hooks) are type attachments: metadata of one type, inert while that type's class is not
+  registered. They stay link-time `inventory` with no origin; giving them one needs SceneDB
+  and reflection (external repos) to change and buys no gating.
+- **Surprise 10.** The four pins were not off `main`: each was an ancestor of its repo's
+  main (`submodule-pins.sh check` passes); main had moved on by merge commits.
+- **Section 1.2.** `RenderFeatureRegistration` has 15 plugin submitters (as listed);
+  `ContentGeometryRegistration`'s lights submitter is a test (`lights/component/tests/
+  icon_picking.rs`), not production.
+- **Section 6, phase 1 shape.** Built differently, by decision (#1608 review points 3 and 6):
+  no `PluginBuilder`, no `build_all(&mut Host)`, and `[modules]` removed rather than kept
+  beside `root` (two paths otherwise). All 26 plugins plus the two below moved at once; the
+  pilots' order (post, table_editor first) did not apply.
+- **Section 7.** Done in p19: both `PLUGIN_API_V2*.md` are deleted and their references
+  (`PLUGIN_SYSTEM.md`, the `AGENTS.md` index) point here.
+
+### Changes made to the backlog branches this phase builds on
+
+- `Plugin_Voxel` `backlog/p2-voxel-foliage-tests` (`e751386`) branched before the B0
+  call-site change, so its `feature/tests/presets.rs` still named `Preset::Hlfs`, which
+  B0's Helio no longer has. The p19 voxel branch puts B0's `119f04d` ("Update
+  presets.rs", authorship kept) on top of it.
+- `AssetChangedRegistration` (wave 0's animation dependency reload hook) was a raw
+  `Registration` impl; it is now a `Contribution` (`game.asset_changed`, a `name` id) like
+  every other registration type, and the animation root submits it.
+- B0 (Helio#393 item 3) moved the HLFS pipelines out of `Preset::ALL`; the engine's
+  pass-list test (`pulsar_game/tests/plugin_pass_lists.rs`) now also dumps every
+  registered lighting model's pipelines (`Preset::Model`), so HLFS stays in the snapshot.
+
+## 10. Decisions on Q1-Q4 (p19)
+
+How others do it, and why this shape: Bevy's `Plugin::build(&mut App)` puts every
+registration of a plugin in one function, but registers reflection types explicitly
+(`app.register_type::<T>()`) and runs in one binary. Unreal splits a plugin into modules
+by role (`Runtime`, `Editor`) named in its `.uplugin`; each module's `StartupModule`
+registers its own things, and the descriptor, not code, decides what a packaged game
+links. IntelliJ lists extensions per extension point, each with its plugin descriptor.
+Ours takes Unreal's descriptor and enablement, Bevy's one place per plugin (the root
+crate, its `editor` feature in place of an editor module), and IntelliJ's per-point
+listing for the catalog. It scales with registration types (one source each) and plugins
+(one root each); the catalog snapshot is built on demand (opening the Extensions viewer,
+a test), never per frame.
+
+- **Q1: option (a), sharpened.** Link-time `inventory` stays (no builder before binary
+  plugins, review point 3). Of the macro output, the gated contribution
+  (`WorldComponentRegistration`) is no longer submitted at the type: `#[world_component]`
+  defines the class (an associated `PULSAR_WORLD_COMPONENT`) and the root submits it with
+  `pulsar_world_registry::submit_world_component!`, so its origin is the root and the root
+  lists it. `installed_set::every_world_component_a_plugin_defines_is_registered_by_its_root`
+  is the assertion that the root registers every class its crates define.
+  `#[register_world_component]` (submit at the type) is for engine types and emits an
+  engine origin; a test fails on it in `plugins/vendor`. Type attachments stay as they are
+  (section 9).
+- **Q2: no builder in phase 1.** The root crate is a module of `inventory::submit!` blocks
+  (`src/lib.rs` docs listing everything, `src/runtime.rs`, `src/editor.rs` behind
+  `editor`). Phase 4 turns the same module into one `build(&mut PluginBuilder)`: a
+  dependency-light builder in `pulsar_plugins` with owner extension traits, the editor
+  sections behind the root's `editor` feature, the DLL-facing `plugin_editor_api` builder
+  reduced to an adapter over it. One builder, decided now so phase 4 adds no second path.
+- **Q3: `origin` stays a per-registration field** until that builder stamps it (phase 4).
+  The root is the only submitter, so every origin is a root; `installed_set` fails on an
+  origin from a plugin crate that is not its root, and the catalog reports any other.
+- **Q4: both get descriptors, and unknown origins are an error.**
+  `plugins/vendor/trait_editor` (`pulsar.trait_editor`) and `plugins/vendor/typescript`
+  (`pulsar.typescript`, moved from `crates/editor/plugin_typescript`) are editor-tool
+  plugins in the installed set; the engine stopped linking them by name (and its
+  `typescript` feature went: a project enables TypeScript like Blueprints). The engine's own
+  registrations name `pulsar_plugins::engine_origin!()` (`engine:<package>`;
+  `#[register_world_component]` emits it). Any other origin that is no plugin root is
+  `Owner::Unknown`: a `CatalogProblem::UnknownOrigin`, an error logged when a project
+  opens (`unknown_origins`), and a failing test (`catalog.rs`). It still counts at the gate,
+  so a mistake never silently drops a registration.
+
+## 11. Phase 1 and 1b as built (p19)
+
+Branch `rewrite/p19-plugin-catalog` in Pulsar-Native, Helio and every plugin repo, on
+Tristan's `backlog/wave0-source-branch-pins` / `backlog/b0-lighting-models`.
+
+- **`pulsar_plugins`** (no new dependency): `PluginDescriptor { root, editor_only }`
+  replaced `[modules]`; `owns` and `plugin_of` match the root; `Resolution::runtime_roots`;
+  `descriptor(id)`; `Owner`/`owner_of`, `engine_origin!`, `unknown_origins()`.
+  `contribution.rs`: `Contribution` (`CATEGORY`, `origin`, `id`, `label`, `children`),
+  `Summary`, `ContributionSource`, `contributions()`, `active_contributions()`;
+  `registration!(T)` collects a type, implements `Registration` and submits its source.
+- **Every registration type implements `Contribution`** (38 types, section 1's 1.2 rows plus
+  world classes). Types without a natural key gained a `name`/`id` field.
+  `AssetComponentRegistration`, `ThumbnailRendererRegistration` and `LinkedScriptLanguage`
+  gained an origin and the gate (section 2's "must be gated" rows; `InventoryEntry` AI tools
+  are still ungated: they need a toolbelt change, phase 2 with the viewer). World classes have
+  their own source (their registry gates across plugin libraries).
+- **Root crates.** The 16 object kinds: `<kind>_plugin` at `plugins/vendor/<kind>/` (the
+  editor crates renamed `<kind>_editor`), their integration tests moved to the root's
+  `tests/`. Animation: `skeletal_animation_plugin` is now the thin root, its editor moved to
+  `skm_editor/editor` (`skeletal_animation_editor`). Physics and input: single crates, every
+  registration in `src/registrations.rs`, editor code behind `editor`. Editor tools
+  (`editor_only = true`) are their own root. The api crate `helio-mats` keeps its
+  `MaterialInstanceComponent` ledger and GPU-mirror hooks (surprise 6): they are type
+  attachments, and other kinds create instances (a mesh's slots), so the rows must be
+  written whether or not the materials plugin is enabled. Moving them to the materials
+  root left meshes with no draw rows without it (`meshes` `scene_join_rows`).
+- **Hosts**: `plugins/installed` (generated) depends on the roots, `editor` turning on each
+  root's `editor` feature; generated games link the enabled runtime roots without it; host
+  tests reach a kind's types through its root.
+- **Helio** `helio-feature-api`: `NodeRegistry::{feature_of, feature_nodes}`, recorded by
+  `FeatureRegistrar::node`.
+- **Catalog** `plugin_manager::catalog::PluginCatalog::snapshot()`: plugins (descriptor,
+  enabled, modules, contributions, `feature_nodes()`), `engine`, `unknown`, `problems`
+  (unknown origins, duplicate ids).
+- **Tests**: `installed_set.rs` (generated set; root-only registration; every plugin
+  contribution from its root; every `#[world_component]` registered by its root),
+  `catalog.rs` (static, renderer and disabled-plugin proofs over a fixture plugin; no unknown
+  origin), the `plugin_manager` catalog unit test, `pulsar_plugins`' source and owner tests,
+  Helio's `the_registry_records_which_feature_added_each_node`.
+- **Deleted**: `[modules]` and `installing_module`, every scattered contribution submit in
+  plugin component/editor/api crates, the kind editor crates' unused `<Kind>Plugin`
+  `EditorPlugin` identities, `LinkedEditorProvider` use by the two former descriptor-less
+  plugins, the engine's `typescript` feature and its `--no-default-features` CI step,
+  `PLUGIN_API_V2.md`, `PLUGIN_API_V2_REMAINING.md`. Crates left empty by the move are
+  gone: GI's component and editor crates (its root holds the feature set and its
+  configuration; GI has no SceneDB component), and the decals', particles' and lens's
+  editor crates (no editor UI yet; their roots keep an empty `editor` feature).
+- **Unit tests of a plugin's own crates.** `animation_component`'s, `splines_editor`'s and
+  `voxel_editor`'s unit tests attach components, so they register the class themselves
+  under `#[cfg(test)]`: a test binary of those crates links no root, and a dev-dependency
+  on the root would link the editor crate twice. `installed_set` ignores only that form.
+- **Not done, with the reason.** The `InventoryEntry` AI tools (toolbelt `#[tool]`) stay
+  ungated (a toolbelt change; phase 2). The materials api crate keeps SceneDB's binding
+  `Once` (`helio_mats::instance::register_binding`): moving it needs a SceneDB
+  binding-registration seam. `pulsar_game` links `input_plugin` by name for the game
+  session's input (`player_input.rs`); moving that behind a game hook is phase 3's contracts work.
+  Physics' game build still pulls GPUI through `pulsar_reflection_derive`'s dropdown hints
+  and `engine_fs`'s editor-only project index (core and reflection changes).

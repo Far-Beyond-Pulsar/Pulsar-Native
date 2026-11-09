@@ -367,14 +367,36 @@ use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, World};
 use serde_json::Value;
 
+/// Register plugin component classes (`#[world_component]` types) from the
+/// plugin's root crate, the one place a plugin registers what it
+/// contributes. The registration names the root as its origin, so the
+/// plugin gate skips the classes while the plugin is disabled.
+///
+/// ```ignore
+/// pulsar_world_registry::submit_world_component!(fog_component::FogVolume);
+/// ```
+#[macro_export]
+macro_rules! submit_world_component {
+    ($($ty:ty),* $(,)?) => {$(
+        $crate::inventory::submit! {
+            $crate::WorldComponentRegistration {
+                origin: ::core::env!("CARGO_PKG_NAME"),
+                ..<$ty>::PULSAR_WORLD_COMPONENT
+            }
+        }
+    )*};
+}
+
 /// One registered component class's `World` bridge. Populated by
-/// `#[register_world_component]` (`engine_class_derive`) -- not constructed
+/// `#[register_world_component]` or `#[world_component]` plus
+/// [`submit_world_component!`] (`engine_class_derive`) -- not constructed
 /// by hand.
 pub struct WorldComponentRegistration {
     pub class_name: &'static str,
-    /// The package that declares the class (`env!("CARGO_PKG_NAME")` where
-    /// `#[register_world_component]` expands): while that package's plugin
-    /// is disabled the class is not registered (`pulsar_plugins`), and its
+    /// Who registers the class: the engine (`engine:<package>`, where
+    /// `#[register_world_component]` expands), or the plugin root that
+    /// invokes [`submit_world_component!`]. While that package's plugin is
+    /// disabled the class is not registered (`pulsar_plugins`), and its
     /// stored instances load as `UnresolvedComponent`s, kept verbatim.
     pub origin: &'static str,
     /// This class's `pulsar_scenedb::ComponentId`, as a function pointer
@@ -437,6 +459,46 @@ pub struct WorldComponentRegistration {
 }
 
 inventory::collect!(WorldComponentRegistration);
+
+impl pulsar_plugins::Contribution for WorldComponentRegistration {
+    const CATEGORY: &'static str = "component.class";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.class_name.to_string()
+    }
+}
+
+/// World component classes have their own gate (the registry hands out only
+/// classes whose plugin is enabled, across plugin libraries: `runtime`), so
+/// their catalog source reads the registry instead of
+/// `pulsar_plugins::registered`.
+fn all_class_summaries() -> Vec<pulsar_plugins::Summary> {
+    use pulsar_plugins::Contribution as _;
+    runtime::all_world_components()
+        .iter()
+        .map(|registration| registration.summary())
+        .collect()
+}
+
+fn active_class_summaries() -> Vec<pulsar_plugins::Summary> {
+    use pulsar_plugins::Contribution as _;
+    runtime::world_components()
+        .iter()
+        .map(|registration| registration.summary())
+        .collect()
+}
+
+inventory::submit! {
+    pulsar_plugins::ContributionSource {
+        category: "component.class",
+        all: all_class_summaries,
+        active: active_class_summaries,
+    }
+}
 
 fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
     crate::runtime::world_components()

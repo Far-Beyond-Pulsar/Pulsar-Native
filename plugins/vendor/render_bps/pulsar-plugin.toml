@@ -1,6 +1,6 @@
 # The `pulsar.render_graph` plugin's descriptor. A project enables or disables it in
 # its Pulsar.toml (`[plugins]`); disabled, its editors and file types are
-# absent (see crates/core/pulsar_plugins). Its first module carries this file
+# absent (see crates/core/pulsar_plugins). Its root crate carries this file
 # (`pulsar_plugins::installed!`).
 id = "pulsar.render_graph"
 name = "Render Graph"
@@ -8,8 +8,7 @@ description = "The render graph editor (.rendergraph) over Helio's graph assets"
 enabled_by_default = true
 requires = []
 
-[modules]
-# What a game built for the project links.
-runtime = []
-# What the editor links in addition.
-editor = ["render_bps_plugin"]
+# The plugin's root crate (the package in this directory): the one place it
+# registers everything it contributes. An editor tool: a game never links it.
+root = "render_bps_plugin"
+editor_only = true

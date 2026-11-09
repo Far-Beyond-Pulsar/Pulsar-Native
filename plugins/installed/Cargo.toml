@@ -3,55 +3,40 @@ name = "installed_plugins"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "The installed plugins: every plugin under plugins/vendor that describes itself (pulsar-plugin.toml), its runtime modules and, with `editor`, its editor modules. Generated from the descriptors. The editor links it; a project enables its plugins (pulsar_plugins); a game built for a project links only that project's runtime modules."
+description = "The installed plugins: every plugin under plugins/vendor that describes itself (pulsar-plugin.toml), by its root crate; with `editor`, the roots' editor registrations and the editor tools. Generated from the descriptors. The editor links it; a project enables its plugins (pulsar_plugins); a game built for a project links only that project's roots."
 
 [dependencies]
 pulsar_plugins = { workspace = true }
 # BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
-animation_component = { workspace = true }
-skeletal_animation_plugin = { workspace = true, optional = true }
+skeletal_animation_plugin = { workspace = true }
 asset_viewer_plugin = { workspace = true, optional = true }
 blueprint_editor_plugin = { workspace = true, optional = true }
 script_editor_plugin = { workspace = true, optional = true }
-decals_component = { workspace = true }
-decals_plugin = { workspace = true, optional = true }
-fog_component = { workspace = true }
-fog_plugin = { workspace = true, optional = true }
-foliage_component = { workspace = true }
-foliage_plugin = { workspace = true, optional = true }
-gi_component = { workspace = true }
-gi_plugin = { workspace = true, optional = true }
+decals_plugin = { workspace = true }
+fog_plugin = { workspace = true }
+foliage_plugin = { workspace = true }
+gi_plugin = { workspace = true }
 input_plugin = { workspace = true }
-lens_component = { workspace = true }
-lens_plugin = { workspace = true, optional = true }
-lights_component = { workspace = true }
-lights_plugin = { workspace = true, optional = true }
-materials_component = { workspace = true }
-materials_plugin = { workspace = true, optional = true }
+lens_plugin = { workspace = true }
+lights_plugin = { workspace = true }
+materials_plugin = { workspace = true }
 plugin_matter = { workspace = true, optional = true }
-meshes_component = { workspace = true }
-meshes_plugin = { workspace = true, optional = true }
-particles_component = { workspace = true }
-particles_plugin = { workspace = true, optional = true }
+meshes_plugin = { workspace = true }
+particles_plugin = { workspace = true }
 physics_plugin = { workspace = true }
-portals_component = { workspace = true }
-portals_plugin = { workspace = true, optional = true }
-post_component = { workspace = true }
-post_plugin = { workspace = true, optional = true }
+portals_plugin = { workspace = true }
+post_plugin = { workspace = true }
 render_bps_plugin = { workspace = true, optional = true }
-sky_component = { workspace = true }
-sky_plugin = { workspace = true, optional = true }
-splines_component = { workspace = true }
-splines_plugin = { workspace = true, optional = true }
-sprites_component = { workspace = true }
-sprites_plugin = { workspace = true, optional = true }
+sky_plugin = { workspace = true }
+splines_plugin = { workspace = true }
+sprites_plugin = { workspace = true }
 editor_table_plugin = { workspace = true, optional = true }
+trait_editor_plugin = { workspace = true, optional = true }
+plugin_typescript = { workspace = true, optional = true }
 ui_editor_plugin = { workspace = true, optional = true }
-voxel_component = { workspace = true }
-voxel_plugin = { workspace = true, optional = true }
-water_component = { workspace = true }
-water_plugin = { workspace = true, optional = true }
+voxel_plugin = { workspace = true }
+water_plugin = { workspace = true }
 # END installed plugins
 
 [features]
@@ -60,30 +45,34 @@ default = ["editor"]
 # BEGIN installed plugins: generated from plugins/vendor/*/pulsar-plugin.toml
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
 editor = [
-    "dep:skeletal_animation_plugin",
+    "skeletal_animation_plugin/editor",
     "dep:asset_viewer_plugin",
     "dep:blueprint_editor_plugin",
     "dep:script_editor_plugin",
-    "dep:decals_plugin",
-    "dep:fog_plugin",
-    "dep:foliage_plugin",
-    "dep:gi_plugin",
-    "dep:lens_plugin",
-    "dep:lights_plugin",
-    "dep:materials_plugin",
+    "decals_plugin/editor",
+    "fog_plugin/editor",
+    "foliage_plugin/editor",
+    "gi_plugin/editor",
+    "input_plugin/editor",
+    "lens_plugin/editor",
+    "lights_plugin/editor",
+    "materials_plugin/editor",
     "dep:plugin_matter",
-    "dep:meshes_plugin",
-    "dep:particles_plugin",
-    "dep:portals_plugin",
-    "dep:post_plugin",
+    "meshes_plugin/editor",
+    "particles_plugin/editor",
+    "physics_plugin/editor",
+    "portals_plugin/editor",
+    "post_plugin/editor",
     "dep:render_bps_plugin",
-    "dep:sky_plugin",
-    "dep:splines_plugin",
-    "dep:sprites_plugin",
+    "sky_plugin/editor",
+    "splines_plugin/editor",
+    "sprites_plugin/editor",
     "dep:editor_table_plugin",
+    "dep:trait_editor_plugin",
+    "dep:plugin_typescript",
     "dep:ui_editor_plugin",
-    "dep:voxel_plugin",
-    "dep:water_plugin",
+    "voxel_plugin/editor",
+    "water_plugin/editor",
 ]
 # END installed plugins
 
@@ -111,10 +100,15 @@ serde_json = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
 # The level editor as the editor assembles it (tests/level_editor.rs): the
-# shell with every installed plugin's editor module registering through its
+# shell with every installed plugin's root registering through its
 # extension points.
 ui_level_editor = { workspace = true }
 parking_lot = { workspace = true }
+# The plugin catalog's proofs (tests/catalog.rs): the host catalog and a
+# fixture plugin whose root registers its component and editor crates' code.
+plugin_manager = { workspace = true }
+catalog_fixture_plugin = { path = "tests/fixtures/catalog_plugin", features = ["editor"] }
+catalog_fixture_component = { path = "tests/fixtures/catalog_plugin/component" }
 
 [lints]
 workspace = true

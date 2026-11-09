@@ -9,7 +9,7 @@ use installed_plugins as _;
 use std::path::Path;
 use std::time::Duration;
 
-use installed_plugins::meshes_component::components::StaticMeshComponent;
+use installed_plugins::meshes_plugin::meshes_component::components::StaticMeshComponent;
 use pulsar_game::tick::TickLoop;
 use pulsar_game::TickMode;
 use pulsar_scenedb::{Entity, World};

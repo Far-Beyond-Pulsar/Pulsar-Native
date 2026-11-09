@@ -5,6 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
+# Thumbnail renderers count only while their plugin is enabled.
+pulsar_plugins = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true

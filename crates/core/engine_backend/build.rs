@@ -89,10 +89,10 @@ fn main() {
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", deps_path.display()));
 
     // ── Bake the installed plugins for generated games ────────────────────────
-    // A game links the runtime modules of the plugins its project enables
-    // (`core_project_builder`): the descriptors of the plugins installed with
-    // this engine (plugins/vendor/*/pulsar-plugin.toml) and each runtime
-    // module's dependency spec.
+    // A game links the root crates of the plugins its project enables
+    // (`core_project_builder`), without their `editor` feature: the
+    // descriptors of the plugins installed with this engine
+    // (plugins/vendor/*/pulsar-plugin.toml) and each root's dependency spec.
     let plugins = build_game_plugins(dependencies, &workspace_root);
     let plugins_path = out_dir.join("game_plugins.rs");
     fs::write(&plugins_path, plugins)
@@ -100,7 +100,8 @@ fn main() {
 }
 
 /// `game_plugins.rs`: `DESCRIPTORS` (each installed plugin's descriptor) and
-/// `DEPENDENCIES` (each runtime module's spec, paths absolute).
+/// `DEPENDENCIES` (each runtime plugin's root crate spec, paths absolute;
+/// editor tools have none).
 fn build_game_plugins(dependencies: &toml::Table, workspace_root: &Path) -> String {
     let vendor = workspace_root.join("plugins/vendor");
     println!("cargo:rerun-if-changed={}", vendor.display());
@@ -122,27 +123,31 @@ fn build_game_plugins(dependencies: &toml::Table, workspace_root: &Path) -> Stri
             "    include_str!(r#\"{}\"#),\n",
             absolute_path(workspace_root, &file.to_string_lossy())
         ));
-        let runtime = descriptor
-            .get("modules")
-            .and_then(|modules| modules.get("runtime"))
-            .and_then(toml::Value::as_array)
-            .unwrap_or_else(|| panic!("{}: no `[modules] runtime`", file.display()));
-        for module in runtime.iter().filter_map(toml::Value::as_str) {
-            let spec = dependencies.get(module).unwrap_or_else(|| {
-                panic!(
-                    "{}: runtime module `{module}` is not in [workspace.dependencies]",
-                    file.display()
-                )
-            });
-            let spec = format_toml_inline(&rewrite_paths(spec, workspace_root));
-            specs.push_str(&format!("    (\"{module}\", r#\"{spec}\"#),\n"));
+        let root = descriptor
+            .get("root")
+            .and_then(toml::Value::as_str)
+            .unwrap_or_else(|| panic!("{}: no `root`", file.display()));
+        let editor_only = descriptor
+            .get("editor_only")
+            .and_then(toml::Value::as_bool)
+            .unwrap_or(false);
+        if editor_only {
+            continue;
         }
+        let spec = dependencies.get(root).unwrap_or_else(|| {
+            panic!(
+                "{}: root crate `{root}` is not in [workspace.dependencies]",
+                file.display()
+            )
+        });
+        let spec = format_toml_inline(&rewrite_paths(spec, workspace_root));
+        specs.push_str(&format!("    (\"{root}\", r#\"{spec}\"#),\n"));
     }
     format!(
         "/// The descriptors of the plugins installed with this engine.\n\
          pub const DESCRIPTORS: &[&str] = &[\n{descriptors}];\n\n\
-         /// Each installed plugin's runtime modules, as a generated game's\n\
-         /// dependency specs.\n\
+         /// Each installed runtime plugin's root crate, as a generated\n\
+         /// game's dependency specs.\n\
          pub const DEPENDENCIES: &[(&str, &str)] = &[\n{specs}];\n"
     )
 }

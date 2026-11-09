@@ -1,0 +1,14 @@
+# The `pulsar.trait_editor` plugin's descriptor. A project enables or disables
+# it in its Pulsar.toml (`[plugins]`); disabled, its editor is absent (see
+# crates/core/pulsar_plugins). Its root crate carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.trait_editor"
+name = "Trait Editor"
+description = "The editor of trait definitions (.trait.json)"
+enabled_by_default = true
+requires = []
+
+# The plugin's root crate (the package in this directory): the one place it
+# registers everything it contributes. An editor tool: a game never links it.
+root = "trait_editor_plugin"
+editor_only = true

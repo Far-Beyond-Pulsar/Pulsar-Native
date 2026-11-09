@@ -135,7 +135,7 @@ pub mod scene {
 extern crate self as pulsar_game;
 
 // No object kind's plugin is linked here: a game built for a project links
-// the project's enabled plugins' runtime modules
+// the project's enabled plugins' root crates
 // (`engine_backend::services::core_project_builder`), and their components,
 // scene subsystems, payload publishers, render features and settings register
 // through `inventory`.

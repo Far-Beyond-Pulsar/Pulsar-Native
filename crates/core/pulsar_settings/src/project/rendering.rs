@@ -23,13 +23,23 @@ pub struct SettingsGroupRegistration {
     pub group: &'static helio_settings::Group,
 }
 
-inventory::collect!(SettingsGroupRegistration);
+impl pulsar_plugins::Contribution for SettingsGroupRegistration {
+    const CATEGORY: &'static str = "settings.group";
 
-impl pulsar_plugins::Registration for SettingsGroupRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.group.key.to_string()
+    }
+
+    fn label(&self) -> String {
+        self.group.title.to_string()
+    }
 }
+
+pulsar_plugins::registration!(SettingsGroupRegistration);
 
 /// Every rendering settings group: Helio's, then the plugins'.
 pub fn groups() -> Vec<&'static helio_settings::Group> {

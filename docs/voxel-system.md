@@ -26,7 +26,7 @@ lighting) are documented in `plugins/vendor/voxel/world/README.md` and
 
 | Layer | Where | Owns |
 |---|---|---|
-| Plugin | `plugins/vendor/voxel/` (`pulsar.voxel`): `component` (`voxel_component`, `src/lib.rs`), `editor` (`voxel_plugin`: the plugin's metadata and the generator and stack inspector editors), `api`, `world`, `feature`, `examples` | Links statically (the editor through `ui_core`, which links `voxel_plugin`; the game through `pulsar_game`, which links `voxel_component`) and registers everything with `inventory`: `VoxelFeature` and its settings (`engine_backend`'s `RenderFeatureRegistration`), the `VOXEL_RESIDENCY` settings group (`pulsar_settings`' `SettingsGroupRegistration`), the terrain's material names for ground-material lists (`helio_component::GroundMaterialNames`). |
+| Plugin | `plugins/vendor/voxel/` (`pulsar.voxel`): the root crate `voxel_plugin` (`src/`: every registration, the editor's behind its `editor` feature), `component` (`voxel_component`), `editor` (`voxel_editor`: the generator and stack inspector editors, the sculpt and terrain tools), `api`, `world`, `feature`, `examples` | Links statically through its root (the editor through the installed set with `editor`; a generated game links the root without it), which registers everything with `inventory`: `VoxelFeature` and its settings (`engine_backend`'s `RenderFeatureRegistration`), the `VOXEL_RESIDENCY` settings group (`pulsar_settings`' `SettingsGroupRegistration`), the terrain's material names for ground-material lists (`helio_component::GroundMaterialNames`). |
 | Components | `voxel_component` (`component.rs`, `features.rs`, `component_runtime.rs`) | `VoxelTerrainComponent` (the world's description, air included), generator settings components, `VoxelEditJournal` field, inspector metadata, block events. |
 | World queries | `voxel_component` (`world.rs`, `sculpt.rs`) | Recipe/brush mapping, block API, scripting world methods (ground queries, sculpting), editor framing, journal compaction. |
 | Runtime | `voxel_component` (`runtime.rs`, `sync.rs`) | One world per terrain built off the game thread, the `VoxelWorlds` scene subsystem, the `VOXEL_FRAME` payload; `VoxelWorldSync`: journals and skies follow their world (`sky_for_air`, `haze_for_air`). |
@@ -369,14 +369,15 @@ and gameplay agree on every block. On generated terrain the older
 - The Flamegraph profiler (status bar) records scopes including
   `voxel_brush`, `voxel_altitude`, `voxel_project_entries`; stop recordings
   within ~30 s (it stops saving at 1M events).
-- Tests: `cargo test -p voxel_component --test voxel_block_api` (block API,
+- Tests: `cargo test -p voxel_plugin --test voxel_block_api` (block API,
   set_block, fills and ray casts, legacy sample edits, world cache, origin),
   `--test voxel_component_schema` (inspector properties),
-  `cargo test -p voxel_plugin` (the generator picker and the layer stack
-  editor), `cargo test -p voxel_component --lib` (runtime, sculpting, sync, settings
-  components, unknown generator, paint and single blocks; `presets`: a
-  ready-made world in an empty level is its example, a second one takes over
-  the first), `cargo test -p engine_backend` and
+  `cargo test -p voxel_editor` (the generator picker and the layer stack
+  editor), `cargo test -p voxel_component --lib` (sculpting, settings
+  components, unknown generator, paint and single blocks), `cargo test -p
+  voxel_plugin --test runtime --test sync --test presets` (runtime, sync;
+  `presets`: a ready-made world in an empty level is its example, a second
+  one takes over the first), `cargo test -p engine_backend` and
   `--lib camera_frame_tests` (level horizon, round trips,
   smooth transport over the planet); `ui_level_editor` sculpt stroke tests
   (a stroke is one undo step) and the Create Voxel Terrain command (one undo
@@ -388,13 +389,13 @@ and gameplay agree on every block. On generated terrain the older
   and the feature's `tests/chunks.rs` checks drawn hits against CPU ray
   casts.
 - The editor's own renderer, driven headless:
-  `cargo run --release -p voxel_component --example voxel_editor_harness`
+  `cargo run --release -p voxel_plugin --example voxel_editor_harness`
   (views, flights, drag strokes, stress flights with a per-frame CSV,
   per-pass GPU profiles, project settings with `set:`, a ready-made world
   with `world:<preset>`; its module doc lists the steps). Its `view` prints the eye and sun, and voxel_flight renders
   the same view (`HELIO_VOXEL_FLIGHT_HOLD=eye`, `_EYE`, `_SUN`, `_LAYERS`,
   `_SEED`, `HELIO_VOXEL_CHUNKS_ENGINE=1`) for parity.
-- `cargo test -p voxel_component --test voxel_example_levels`: the example
+- `cargo test -p voxel_plugin --test voxel_example_levels`: the example
   levels (the ready-made worlds) against voxel_flight's worlds
   (`plugins/vendor/voxel/examples/voxel_flight/worlds.rs`, compiled into the test): ground,
   features, air, haze, clouds, meadow, wind, exposure, and a camera over the

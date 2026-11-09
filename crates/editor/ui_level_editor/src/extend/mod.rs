@@ -48,16 +48,29 @@ use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 use crate::tool_modes::ToolMode;
 
-/// Implements [`pulsar_plugins::Registration`] and `inventory::collect!`
-/// for an extension point.
+/// Declares extension points (`pulsar_plugins::registration!`) and their
+/// summaries for the plugin catalog: `Type: "category", |r| id, label;`.
 macro_rules! extension_point {
-    ($($ty:ty),* $(,)?) => {$(
-        inventory::collect!($ty);
-        impl pulsar_plugins::Registration for $ty {
+    ($($ty:ty: $category:literal, |$r:ident| $id:expr, $label:expr;)*) => {$(
+        impl pulsar_plugins::Contribution for $ty {
+            const CATEGORY: &'static str = $category;
+
             fn origin(&self) -> &'static str {
                 self.origin
             }
+
+            fn id(&self) -> String {
+                let $r = self;
+                ($id).to_string()
+            }
+
+            fn label(&self) -> String {
+                let $r = self;
+                ($label).to_string()
+            }
         }
+
+        pulsar_plugins::registration!($ty);
     )*};
 }
 pub(crate) use extension_point;
@@ -76,6 +89,8 @@ fn sorted<T: pulsar_plugins::Registration>(order: impl Fn(&T) -> i32) -> Vec<&'s
 /// has itself.
 pub struct ToolModeRegistration {
     pub origin: &'static str,
+    /// Stable id within the plugin (`"voxel.sculpt"`): what the plugin catalog lists it by.
+    pub id: &'static str,
     /// Place in the mode picker, after Level Edit.
     pub order: i32,
     pub make: fn() -> Box<dyn ToolMode>,
@@ -94,6 +109,8 @@ pub fn tool_modes() -> Vec<&'static ToolModeRegistration> {
 /// first registration (in `order`) that answers wins.
 pub struct ObjectIconRegistration {
     pub origin: &'static str,
+    /// Stable id within the plugin (`"lights"`): what the plugin catalog lists it by.
+    pub id: &'static str,
     pub order: i32,
     /// The icon and colour for `object`, if this kind's components make it.
     pub icon: fn(&World, Entity) -> Option<(ui::IconName, gpui::Hsla)>,
@@ -312,6 +329,8 @@ pub fn level_component(
 /// fold old edits into their journals and keep their drawn chunks).
 pub struct SaveHook {
     pub origin: &'static str,
+    /// Stable id within the plugin (`"voxel.journals"`): what the plugin catalog lists it by.
+    pub id: &'static str,
     pub before_save: fn(&engine_backend::scene::SharedScene),
 }
 
@@ -368,6 +387,8 @@ pub fn save_level_now(state: &SharedState, path: &std::path::Path) -> Result<(),
 /// otherwise, so it becomes one undo step once done.
 pub struct Interaction {
     pub origin: &'static str,
+    /// Stable id within the plugin (`"voxel.stroke"`): what the plugin catalog lists it by.
+    pub id: &'static str,
     pub in_progress: fn(&LevelEditorState) -> bool,
     pub finish: fn(&mut LevelEditorState, bool),
 }
@@ -391,6 +412,8 @@ pub fn finish_interactions(state: &mut LevelEditorState, force: bool) {
 /// assistant tool selected something): the spline tool follows it.
 pub struct SelectionFollowUp {
     pub origin: &'static str,
+    /// Stable id within the plugin (`"splines.follow"`): what the plugin catalog lists it by.
+    pub id: &'static str,
     pub follow: fn(&mut LevelEditorState),
 }
 
@@ -433,6 +456,8 @@ pub fn follow_property_edit(
 /// camera's position and forward (or why it cannot).
 pub struct CameraFraming {
     pub origin: &'static str,
+    /// Stable id within the plugin (`"voxel.ground"`): what the plugin catalog lists it by.
+    pub id: &'static str,
     #[allow(clippy::type_complexity)]
     pub frame: fn(&World, Entity, DVec3, DVec3) -> Option<Result<(DVec3, DVec3), String>>,
 }
@@ -463,19 +488,22 @@ pub fn ai_tool_namespaces() -> impl Iterator<Item = &'static AiToolNamespace> {
 }
 
 extension_point!(
-    ObjectIconRegistration,
-    ToolModeRegistration,
-    CreateEntry,
-    EnvironmentPreset,
-    EnvironmentListing,
-    LevelComponentSection,
-    SaveHook,
-    EditorData,
-    Interaction,
-    SelectionFollowUp,
-    PropertyFollowUp,
-    CameraFraming,
-    AiToolNamespace,
+    ObjectIconRegistration: "editor.object_icon", |r| r.id, r.id;
+    ToolModeRegistration: "editor.tool_mode", |r| r.id, r.id;
+    CreateEntry: "editor.create_entry", |r| r.id, r
+        .menu_label
+        .map_or_else(|| r.environment_label.unwrap_or(r.id).to_string(), |label| label());
+    EnvironmentPreset: "editor.environment_preset", |r| r.id, r.label;
+    EnvironmentListing: "editor.environment_listing", |r| r.class_name, r.label;
+    LevelComponentSection: "editor.level_component_section", |r| r.class_name, r.title;
+    SaveHook: "editor.save_hook", |r| r.id, r.id;
+    EditorData: "editor.level_data", |r| r.key, r.key;
+    Interaction: "editor.interaction", |r| r.id, r.id;
+    SelectionFollowUp: "editor.selection_follow_up", |r| r.id, r.id;
+    PropertyFollowUp: "editor.property_follow_up", |r| format!("{}.{}", r.class_name, r.property),
+        format!("{}.{}", r.class_name, r.property);
+    CameraFraming: "editor.camera_framing", |r| r.id, r.id;
+    AiToolNamespace: "editor.ai_tools", |r| r.namespace, r.namespace;
 );
 
 /// The shared editor state the panels hold.

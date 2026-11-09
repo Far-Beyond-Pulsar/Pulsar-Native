@@ -1,0 +1,15 @@
+# The `pulsar.typescript` plugin's descriptor. A project enables or disables
+# it in its Pulsar.toml (`[plugins]`); disabled, `class.ts` classes are not a
+# scripting language of the project (see crates/core/pulsar_plugins). Its root
+# crate carries this file (`pulsar_plugins::installed!`).
+id = "pulsar.typescript"
+name = "TypeScript"
+description = "TypeScript as a scripting language: classes in src/classes/<Class>/class.ts compile to engine script modules"
+enabled_by_default = true
+requires = []
+
+# The plugin's root crate (the package in this directory): the one place it
+# registers everything it contributes. An editor tool: a game runs the
+# compiled modules and never links it.
+root = "plugin_typescript"
+editor_only = true

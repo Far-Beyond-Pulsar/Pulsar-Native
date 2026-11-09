@@ -176,15 +176,15 @@ fn a_project_without_some_plugins_compiles_without_them() {
     generate_project(project.path(), "absent_probe");
     let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
     for absent in [
-        "voxel_component",
-        "lights_component",
-        "materials_component",
-        "meshes_component",
+        "voxel_plugin",
+        "lights_plugin",
+        "materials_plugin",
+        "meshes_plugin",
     ] {
         assert!(!manifest.contains(absent), "{absent} is linked");
     }
     assert!(
-        manifest.contains("decals_component"),
+        manifest.contains("decals_plugin"),
         "the other plugins are linked"
     );
 
@@ -202,6 +202,10 @@ fn a_project_without_some_plugins_compiles_without_them() {
         .expect("cargo tree");
     let tree = String::from_utf8_lossy(&tree.stdout);
     for absent in [
+        "voxel_plugin ",
+        "lights_plugin ",
+        "materials_plugin ",
+        "meshes_plugin ",
         "voxel_component ",
         "lights_component ",
         "materials_component ",

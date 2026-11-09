@@ -11,7 +11,8 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend, Subsystem lifecycle |
-| `.agents/PLUGIN_SYSTEM.md` | Permanent DLL pattern, plugin SDK, loading, registries |
+| `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
+| `.agents/PLUGIN_API_REFACTOR_PLAN.md` | The plugin API plan (#1608): the phase 0 audit (registration matrix, raw `inventory` paths, plugin-to-plugin edges), its review, the Q1-Q4 decisions, phases, as built |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
@@ -54,7 +55,10 @@ members = ["crates/core/*", "crates/editor/*", "crates/subsystems/*", "crates/ag
 
 The plugins under `plugins/vendor/` (every object kind, physics, animation,
 input, UI, Blueprints, ...) are their own repositories (`Plugin_<Kind>`),
-git submodules whose crates are members of this workspace; Helio is the
+git submodules whose crates are members of this workspace. Each plugin's
+root crate (the package at its directory, `<kind>_plugin`) is the one place
+it registers what it contributes; hosts reach a plugin only through its root
+(`.agents/PLUGIN_SYSTEM.md`); Helio is the
 `crates/renderer/helio` submodule. Clone with `--recursive` (or run
 `just submodule-init`): cargo cannot load the workspace without them. The
 table of plugins and their repositories is in `.agents/CRATES.md`

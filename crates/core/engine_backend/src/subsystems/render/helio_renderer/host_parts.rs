@@ -4,7 +4,7 @@
 //! Some content needs state that lives as long as one renderer and is
 //! updated once a frame, not a component's rows: a streaming runtime that
 //! settings feed and the graph reads, derivations that hold GPU caches. A
-//! plugin's component crate submits a [`RenderHostPartRegistration`]; every
+//! plugin's root crate submits a [`RenderHostPartRegistration`]; every
 //! [`super::SceneRenderer`] makes one part of each enabled registration,
 //! lets it configure the renderer, installs its derivations after the
 //! object joins and before the row joins, and calls it once a frame. The
@@ -71,13 +71,19 @@ pub struct RenderHostPartRegistration {
     pub new: fn() -> Box<dyn RenderHostPart>,
 }
 
-inventory::collect!(RenderHostPartRegistration);
+impl pulsar_plugins::Contribution for RenderHostPartRegistration {
+    const CATEGORY: &'static str = "render.host_part";
 
-impl pulsar_plugins::Registration for RenderHostPartRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(RenderHostPartRegistration);
 
 /// A part of every enabled registration, in name order.
 pub(super) fn new_parts() -> Vec<Box<dyn RenderHostPart>> {

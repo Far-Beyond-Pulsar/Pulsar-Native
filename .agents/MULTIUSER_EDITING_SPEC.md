@@ -624,7 +624,7 @@ semantic adapters for authored graph/table editors. Keep IME composition,
 scroll, and editor chrome local. Map carets and selections through operations.
 
 **Likely files:** WGPUI `InputState`/`CodeEditor` and
-`crates/editor/plugin_typescript/`; relevant vendored `shader_editor`,
+`plugins/vendor/typescript/`; relevant vendored `shader_editor`,
 `blueprint_editor`, `table_editor`, and other authored-data editors. Add an
 optional plugin editor collaboration adapter API in
 `crates/core/plugin_editor_api/`.

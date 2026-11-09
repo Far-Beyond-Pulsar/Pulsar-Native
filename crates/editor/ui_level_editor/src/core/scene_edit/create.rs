@@ -56,7 +56,7 @@ fn shell_object(
 
 inventory::submit! {
     CreateEntry {
-        origin: pulsar_plugins::origin!(),
+        origin: pulsar_plugins::engine_origin!(),
         id: "empty",
         menu_label: Some(|| rust_i18n::t!("LevelEditor.Create.Empty").to_string()),
         environment_label: None,
@@ -69,7 +69,7 @@ inventory::submit! {
 
 inventory::submit! {
     CreateEntry {
-        origin: pulsar_plugins::origin!(),
+        origin: pulsar_plugins::engine_origin!(),
         id: "folder",
         menu_label: Some(|| rust_i18n::t!("LevelEditor.Create.Folder").to_string()),
         environment_label: None,
@@ -82,7 +82,7 @@ inventory::submit! {
 
 inventory::submit! {
     CreateEntry {
-        origin: pulsar_plugins::origin!(),
+        origin: pulsar_plugins::engine_origin!(),
         id: "camera",
         menu_label: Some(|| rust_i18n::t!("LevelEditor.Create.Camera").to_string()),
         environment_label: None,

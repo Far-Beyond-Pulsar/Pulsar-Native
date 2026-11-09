@@ -403,7 +403,7 @@ slots over Montages, sync groups, fixed stepping, scrubbing, hot reload, linked
 graphs and layers, diagnostics, the typed parameter API and instance
 independence), `cargo test -p engine_fs --lib asset_dep`,
 `cargo test -p pulsar_reflection --lib animation_kind`,
-`cargo test -p skeletal_animation_plugin --lib` (registration),
+`cargo test -p skeletal_animation_editor --lib` (registration),
 `cargo test -p helio_component --lib components::skeletal` (component links, the
 notify path, D9 migration, graph components, Montages through the component,
 teardown), `cargo test -p pulsar_game --lib animation_phase_order` (the
@@ -754,7 +754,7 @@ result on the UI thread (`PoseDbModel::finish_build`), writes the derived cache 
 
 ### Tests
 
-`cargo test -p skeletal_animation_plugin --lib`: model tests for every editor, the timeline
+`cargo test -p skeletal_animation_editor --lib`: model tests for every editor, the timeline
 layout/hit tests (dense markers stack and stay selectable), `hierarchy_tests` (the Sequence editor
 adds/moves/resizes/deletes notifies and states and saves/reloads them), `skin_preview` (runtime
 poses, scrub reports nothing, fallback; a GPU test renders the skinned frame and skips with no

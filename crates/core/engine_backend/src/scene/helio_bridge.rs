@@ -59,7 +59,7 @@ pub struct ObjectJoinContext {
 /// render-host parts' derivations (`RenderHostPartRegistration`) and every
 /// row join ([`environment_join`]), so the rows it publishes (the lights'
 /// list and directional light) are there for them in the same frame. The
-/// plugin's component crate submits one with `inventory::submit!`; the
+/// plugin's root crate submits one with `inventory::submit!`; the
 /// engine names no kind.
 pub struct ObjectJoinRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
@@ -80,13 +80,19 @@ pub struct ObjectJoinRegistration {
     pub derivation: fn(&wgpu::Device, &ObjectJoinContext) -> Box<dyn SceneDerivation>,
 }
 
-inventory::collect!(ObjectJoinRegistration);
+impl pulsar_plugins::Contribution for ObjectJoinRegistration {
+    const CATEGORY: &'static str = "scene.object_join";
 
-impl pulsar_plugins::Registration for ObjectJoinRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ObjectJoinRegistration);
 
 /// The meshes' scene join and every plugin's object join over this
 /// engine's rows, for `RendererBuilder::with_scene_derivation`. `editor`
@@ -169,12 +175,15 @@ pub const NO_OWNER_BOUNDS: BufferKey = BufferKey::of("owner_bounds_none");
 /// (SceneDB columns, registered with the GPU mirror by
 /// [`ensure_gpu_mirror`]) and the derivation that turns them into the rows
 /// its passes read ([`environment_join`] runs it). The engine knows
-/// neither: the plugin's component crate submits one with
+/// neither: the plugin's root crate submits one with
 /// `inventory::submit!`.
 pub struct SceneRowsRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"decals.rows"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// Registers the kind's source-row columns (initial capacities; they
     /// grow).
     pub register_columns: fn(&mut SceneGpuStore, &Arc<wgpu::Device>),
@@ -182,13 +191,19 @@ pub struct SceneRowsRegistration {
     pub derivation: fn(&wgpu::Device, RowJoinKeys) -> Box<dyn SceneDerivation>,
 }
 
-inventory::collect!(SceneRowsRegistration);
+impl pulsar_plugins::Contribution for SceneRowsRegistration {
+    const CATEGORY: &'static str = "scene.rows";
 
-impl pulsar_plugins::Registration for SceneRowsRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(SceneRowsRegistration);
 
 /// Every other kind's row join over this engine's rows (each kind's
 /// feature crate's `scene_rows`), for `RendererBuilder::with_scene_derivation`,
@@ -457,13 +472,19 @@ pub struct SpaceProducerRegistration {
     pub new: fn() -> Box<dyn SpaceProducer>,
 }
 
-inventory::collect!(SpaceProducerRegistration);
+impl pulsar_plugins::Contribution for SpaceProducerRegistration {
+    const CATEGORY: &'static str = "scene.space_producer";
 
-impl pulsar_plugins::Registration for SpaceProducerRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(SpaceProducerRegistration);
 
 /// One renderer's space producer ([`SpaceProducerRegistration`]).
 pub trait SpaceProducer: Send + Sync {

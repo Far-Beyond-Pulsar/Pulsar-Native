@@ -16,10 +16,11 @@
 //! class that has both `class.ts` and `graph_save.json`, or whose module was
 //! written by another language, is refused instead of overwritten.
 //!
-//! The plugin registers itself at link time (`plugin_editor_api::
-//! LinkedScriptLanguage` for headless tools, `plugin_manager::
-//! LinkedEditorProvider` for the editor): a build has TypeScript exactly when
-//! it links this crate.
+//! This crate is the root of the `pulsar.typescript` plugin, an editor tool:
+//! it registers the language (`plugin_editor_api::LinkedScriptLanguage`, for
+//! headless tools) and its editor provider (`plugin_manager::
+//! PluginEditorProvider`), both gated by the plugin, so a project that
+//! disables it has no TypeScript.
 
 mod compile;
 mod provider;

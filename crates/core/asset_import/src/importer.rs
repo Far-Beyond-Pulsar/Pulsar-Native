@@ -94,13 +94,19 @@ pub struct ImporterRegistration {
     pub importer: &'static dyn Importer,
 }
 
-inventory::collect!(ImporterRegistration);
+impl pulsar_plugins::Contribution for ImporterRegistration {
+    const CATEGORY: &'static str = "asset.importer";
 
-impl pulsar_plugins::Registration for ImporterRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.importer.id().to_string()
+    }
 }
+
+pulsar_plugins::registration!(ImporterRegistration);
 
 fn importers() -> impl Iterator<Item = &'static dyn Importer> {
     pulsar_plugins::registered::<ImporterRegistration>().map(|registration| registration.importer)
@@ -170,7 +176,7 @@ mod test_importer {
 
     inventory::submit! {
         ImporterRegistration {
-            origin: pulsar_plugins::origin!(),
+            origin: pulsar_plugins::engine_origin!(),
             importer: &TestModelImporter,
         }
     }

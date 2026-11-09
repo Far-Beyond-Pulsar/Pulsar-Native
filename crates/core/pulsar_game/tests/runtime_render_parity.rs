@@ -18,7 +18,7 @@ use engine_backend::subsystems::render::{
     DeviceOwner, EditorCameraState, FrameProjection, FrameView, HelioRenderer, SceneRenderer,
     SceneRendererOptions,
 };
-use installed_plugins::meshes_component::components::StaticMeshComponent;
+use installed_plugins::meshes_plugin::meshes_component::components::StaticMeshComponent;
 use serde_json::json;
 
 const SIZE: u32 = 192;

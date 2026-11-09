@@ -2,8 +2,9 @@
 //! a phase before the game's systems (the skeletal meshes' animation), a
 //! publication after the scripts (the animation notifies they collected),
 //! and a line in the headless run's report (how many meshes bound). The
-//! plugin's component crate submits a [`TickPhaseRegistration`] or a
-//! [`ContentReportRegistration`]; the game loop names no kind.
+//! plugin's root crate submits a [`TickPhaseRegistration`], a
+//! [`ContentReportRegistration`] or an [`AssetChangedRegistration`]; the game
+//! loop names no kind.
 //!
 //! How others do it: Unreal's tick groups (`TG_PrePhysics`, ...) that
 //! components register into; Bevy's schedule labels plugins add systems
@@ -32,13 +33,19 @@ pub struct TickPhaseRegistration {
         Option<fn(world: &mut World, hub: &EventHub, resolve: ScriptVariableResolver)>,
 }
 
-inventory::collect!(TickPhaseRegistration);
+impl pulsar_plugins::Contribution for TickPhaseRegistration {
+    const CATEGORY: &'static str = "game.tick_phase";
 
-impl pulsar_plugins::Registration for TickPhaseRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(TickPhaseRegistration);
 
 /// Every enabled tick phase, in name order.
 pub fn tick_phases() -> Vec<&'static TickPhaseRegistration> {
@@ -56,13 +63,19 @@ pub struct ContentReportRegistration {
     pub report: fn(world: &World) -> serde_json::Value,
 }
 
-inventory::collect!(ContentReportRegistration);
+impl pulsar_plugins::Contribution for ContentReportRegistration {
+    const CATEGORY: &'static str = "game.content_report";
 
-impl pulsar_plugins::Registration for ContentReportRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.key.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ContentReportRegistration);
 
 /// Every enabled content report about `world`, by key.
 pub fn content_reports(world: &World) -> std::collections::BTreeMap<String, serde_json::Value> {
@@ -79,18 +92,26 @@ pub fn content_reports(world: &World) -> std::collections::BTreeMap<String, serd
 pub struct AssetChangedRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`).
     pub origin: &'static str,
+    /// Its stable id in the plugin catalog (`<kind>.<what>`).
+    pub name: &'static str,
     /// The file at the absolute `path` changed; returns how many things the
     /// hook updated.
     pub on_changed: fn(world: &mut World, path: &std::path::Path) -> usize,
 }
 
-inventory::collect!(AssetChangedRegistration);
+impl pulsar_plugins::Contribution for AssetChangedRegistration {
+    const CATEGORY: &'static str = "game.asset_changed";
 
-impl pulsar_plugins::Registration for AssetChangedRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(AssetChangedRegistration);
 
 /// Tell every enabled [`AssetChangedRegistration`] that the file at `path`
 /// changed. Returns the sum of what they updated.

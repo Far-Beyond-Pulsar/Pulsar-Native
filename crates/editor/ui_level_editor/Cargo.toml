@@ -93,29 +93,30 @@ winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
 helio-vg-format = { workspace = true }
-# Every installed plugin's runtime modules: the integration tests draw and
+# Every installed plugin's root crate: the integration tests draw and
 # edit the kinds through their components (`installed_plugins`; with the
 # workspace's `editor` feature it also links the plugins' editor crates,
 # which depend on this crate: fine for integration tests, which link this
-# crate once). The unit tests name the component crates directly: through
-# `installed_plugins` they would link a second copy of this crate.
+# crate once). The unit tests link the plugins' root crates without their
+# `editor` feature (through `installed_plugins` they would link a second copy
+# of this crate) and name each kind's types through its root.
 installed_plugins = { workspace = true }
-decals_component = { workspace = true }
-fog_component = { workspace = true }
-foliage_component = { workspace = true }
-gi_component = { workspace = true }
-lens_component = { workspace = true }
-lights_component = { workspace = true }
-materials_component = { workspace = true }
-meshes_component = { workspace = true }
-particles_component = { workspace = true }
-portals_component = { workspace = true }
-post_component = { workspace = true }
-sky_component = { workspace = true }
-splines_component = { workspace = true }
-sprites_component = { workspace = true }
-voxel_component = { workspace = true }
-water_component = { workspace = true }
+decals_plugin = { workspace = true }
+fog_plugin = { workspace = true }
+foliage_plugin = { workspace = true }
+gi_plugin = { workspace = true }
+lens_plugin = { workspace = true }
+lights_plugin = { workspace = true }
+materials_plugin = { workspace = true }
+meshes_plugin = { workspace = true }
+particles_plugin = { workspace = true }
+portals_plugin = { workspace = true }
+post_plugin = { workspace = true }
+sky_plugin = { workspace = true }
+splines_plugin = { workspace = true }
+sprites_plugin = { workspace = true }
+voxel_plugin = { workspace = true }
+water_plugin = { workspace = true }
 # The HLFS cathedral generator (a test) writes mesh files.
 helio-mesh-api = { workspace = true }
 helio-presets.workspace = true

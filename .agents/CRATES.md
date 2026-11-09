@@ -159,7 +159,6 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_log_viewer` | Log output |
 | `ui_multiplayer` | Multiplayer session UI |
 | `ui_multiuser_status` | Presence indicators |
-| `plugin_typescript` | TypeScript scripting-language plugin (registers at link time; compiles `class.ts`) |
 | `ui_plugin_manager` | Plugin browser |
 | `ui_problems` | Errors / warnings panel |
 | `ui_settings` | Settings editor |
@@ -233,13 +232,16 @@ pinned here (see "Submodule pins" below). They are not workspace members
 
 Every plugin that ships with the engine lives at `plugins/vendor/<dir>/` and
 describes itself in a `pulsar-plugin.toml` (its id, what it requires, its
-runtime and editor modules). The installed set (`plugins/installed`, generated
-from those descriptors) links them; a project enables or disables each in its
-`Pulsar.toml` (`.agents/PLUGIN_SYSTEM.md`).
+root crate). The root crate, the package at the plugin's directory, is the
+one place the plugin registers what it contributes, its editor registrations
+behind its `editor` feature. The installed set (`plugins/installed`,
+generated from those descriptors) links the roots; a project enables or
+disables each plugin in its `Pulsar.toml` (`.agents/PLUGIN_SYSTEM.md`).
 
 Each object kind is a plugin that owns its SceneDB components and methods,
 its contracts (`api`), the Helio feature that renders it (`feature`), its
-editor module (`editor`) and its demos (`examples`); Helio knows no kind
+editor crate (`editor`, `<kind>_editor`), its root (`<kind>_plugin`) and its
+demos (`examples`); Helio knows no kind
 (Helio's `docs/architecture/plugin-migration.md`). Since p18 every plugin but
 two editor tools is its own repository, a git submodule at the same path. The
 plugins' crates stay members of this workspace (`workspace = true`
@@ -276,9 +278,10 @@ cargo cannot load the workspace without them.
 | `matter_editor` | [Plugin_Matter](https://github.com/Far-Beyond-Pulsar/Plugin_Matter) | Texture painting in the Pulsar Image Format (`.pif`) |
 | `asset_viewer` | in-tree | Viewers for model files, meshes and images |
 | `render_bps` | in-tree | Render graph editor (`.rendergraph`) on the Graphy canvas, no Blueprint code (`.agents/RENDER_GRAPH.md`) |
+| `trait_editor` | in-tree | `pulsar.trait_editor`: the trait definition editor (`.trait.json`, `.agents/TRAITS.md`) |
+| `typescript` | in-tree | `pulsar.typescript`: TypeScript as a scripting language (`class.ts` compiles to script modules) |
 
-`plugins/installed` (the generated installed set) and `plugins/trait_editor`
-are in-tree too. Whether the editor tools (asset viewer, render graph editor)
+`plugins/installed` (the generated installed set) is in-tree too. Whether the editor tools (asset viewer, render graph editor)
 become modules of other plugins is Pulsar-Native#1605's decision.
 
 A change to a plugin is committed in its repository and pinned here, like any

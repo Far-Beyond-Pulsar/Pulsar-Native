@@ -255,7 +255,7 @@ mod script_runtime_bindings {
     /// no fallback to the root.
     #[test]
     fn class_slot_handles_are_resolved_once_at_bind() {
-        use installed_plugins::lights_component::LightComponent;
+        use installed_plugins::lights_plugin::lights_component::LightComponent;
 
         let root =
             std::env::temp_dir().join(format!("pulsar_game_slot_bind_{}", std::process::id()));

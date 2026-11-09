@@ -6,7 +6,8 @@
   ROADMAP.md         Project philosophy, core insights, position
   CRATES.md          Crate layout — all 80+ crates organized by category
   ENGINE_LIFECYCLE.md Startup, InitGraph, EngineBackend, subsystems
-  PLUGIN_SYSTEM.md   Plugin architecture — permanent DLL, SDK, registries
+  PLUGIN_SYSTEM.md   Plugins — descriptors, root crates, the gate, the catalog; DLL plugins
+  PLUGIN_API_REFACTOR_PLAN.md  The plugin API plan (#1608): the phase 0 audit, the review, Q1-Q4, what is built
   FILESYSTEM.md      Virtual filesystem — engine_fs, providers, asset index
   REFLECTION.md      Type system — Reflectable, RuntimeTypeInfo, EngineClass
   ECS.md             Archetype ECS — World, Query, Schedule, Actor

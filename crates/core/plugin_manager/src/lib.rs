@@ -181,6 +181,7 @@ impl PanelView for FileTypeDecoratedPanelView {
 }
 
 pub mod builtin;
+pub mod catalog;
 pub mod dependencies;
 mod permanent_library;
 mod registry;
@@ -194,6 +195,7 @@ pub use builtin::{
     BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
     PluginEditorProvider,
 };
+pub use catalog::{CatalogPlugin, CatalogProblem, PluginCatalog};
 pub use dependencies::{plan_load_order, DependencyError, LoadPlan};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeLookup, FileTypeRegistry};
