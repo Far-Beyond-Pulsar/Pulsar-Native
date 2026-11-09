@@ -19,7 +19,7 @@ plugins/vendor/lens e5e72311 Far-Beyond-Pulsar/Plugin_Lens#1 (p19 plugin catalog
 plugins/vendor/lights 8d61daf4 Far-Beyond-Pulsar/Plugin_Lights#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/materials d277fa7e Far-Beyond-Pulsar/Plugin_Materials#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/matter_editor 2f51cd8c Far-Beyond-Pulsar/Plugin_Matter#9 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
-plugins/vendor/meshes f5405a52 Far-Beyond-Pulsar/Plugin_Meshes#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
+plugins/vendor/meshes 639576f4 Far-Beyond-Pulsar/Plugin_Meshes#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/particles ebd36255 Far-Beyond-Pulsar/Plugin_Particles#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/physics_plugin 9b175e26 Far-Beyond-Pulsar/Plugin_Physics#9 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/portals 08e0e787 Far-Beyond-Pulsar/Plugin_Portals#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
