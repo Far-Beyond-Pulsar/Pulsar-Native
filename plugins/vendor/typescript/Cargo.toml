@@ -7,8 +7,9 @@ description = "TypeScript as a scripting language: a ScriptLanguage plugin that 
 [dependencies]
 pulsar_script_ts = { workspace = true }
 plugin_editor_api = { workspace = true }
-# Registers itself at link time (see plugin_manager::LinkedEditorProvider).
+# Its editor provider and language register at link time, gated by the plugin.
 plugin_manager = { workspace = true }
+pulsar_plugins = { workspace = true }
 # The BuiltinEditorProvider trait names GPUI types; this plugin makes no UI.
 gpui-ce = { workspace = true }
 ui = { workspace = true }

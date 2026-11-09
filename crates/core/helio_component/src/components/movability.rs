@@ -62,16 +62,25 @@ pub struct MovabilityRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"lights.movability"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     pub of: fn(&pulsar_scenedb::World, pulsar_scenedb::Entity) -> Option<ObjectMovability>,
 }
 
-inventory::collect!(MovabilityRegistration);
+impl pulsar_plugins::Contribution for MovabilityRegistration {
+    const CATEGORY: &'static str = "scene.movability";
 
-impl pulsar_plugins::Registration for MovabilityRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(MovabilityRegistration);
 
 /// What may change about `object` at runtime: the least mobile of a
 /// `helio::Movability` placed on the object itself and the movability its

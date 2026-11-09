@@ -753,6 +753,9 @@ pub struct ContentGeometryRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"meshes.geometry"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// The box around `object`'s enabled content of this kind, in the
     /// object's local space; `None` without any (or none loaded yet).
     pub local_bounds: fn(world: &World, object: Entity) -> Option<(Vec3, Vec3)>,
@@ -783,13 +786,19 @@ pub fn content_triangles(world: &World, visit: &mut dyn FnMut(Entity, [Vec3; 3])
     }
 }
 
-inventory::collect!(ContentGeometryRegistration);
+impl pulsar_plugins::Contribution for ContentGeometryRegistration {
+    const CATEGORY: &'static str = "render.content_geometry";
 
-impl pulsar_plugins::Registration for ContentGeometryRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ContentGeometryRegistration);
 
 /// Test the ray against the object's content (every [`ContentGeometryRegistration`]).
 /// The AABB above is a broad phase only: treating it as the hit made empty
@@ -961,23 +970,32 @@ fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
 }
 /// A kind's editor icon (the lights' billboards): a camera-facing quad
 /// drawn at a constant size on screen, which picking tests instead of a box.
-/// The kind's component crate submits one; picking names no kind.
+/// The kind's plugin root submits one; picking names no kind.
 pub struct ViewIconRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"lights.icons"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// `object`'s icon, when it has one of this kind: its width and height
     /// in world units per unit of view depth.
     pub icon: fn(world: &World, object: Entity) -> Option<[f32; 2]>,
 }
 
-inventory::collect!(ViewIconRegistration);
+impl pulsar_plugins::Contribution for ViewIconRegistration {
+    const CATEGORY: &'static str = "render.view_icon";
 
-impl pulsar_plugins::Registration for ViewIconRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ViewIconRegistration);
 
 /// `object`'s editor icon size (the first [`ViewIconRegistration`] that has
 /// one).
@@ -1420,7 +1438,8 @@ mod tests {
 
     inventory::submit! {
         ContentGeometryRegistration {
-            origin: "engine_backend",
+            origin: pulsar_plugins::engine_origin!(),
+            name: "test.box",
             local_bounds: |world, object| {
                 world
                     .get::<TestBox>(object)

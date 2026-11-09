@@ -1,12 +1,10 @@
 //! Scripting-language plugins are part of a build exactly when their crates
-//! are linked (the installed set's Blueprints plugin; feature `typescript`),
+//! are linked (the installed set's Blueprints and TypeScript plugins),
 //! through the plugin API alone: the editor shell (`ui_core`) depends on none
 //! of them (#882), and editor and headless tools discover the same languages.
 
-// Linking the crates is what includes them, as `main.rs` does.
+// Linking the installed set is what includes them, as `main.rs` does.
 use installed_plugins as _;
-#[cfg(feature = "typescript")]
-use plugin_typescript as _;
 
 use plugin_editor_api::linked_script_languages;
 use plugin_manager::BuiltinEditorRegistry;
@@ -32,11 +30,7 @@ fn each_language_comes_with_its_crate_and_only_with_it() {
         .map(|l| l.id().to_owned())
         .collect();
     assert!(ids.iter().any(|i| i == "blueprint"), "{ids:?}");
-    assert_eq!(
-        ids.iter().any(|i| i == "typescript"),
-        cfg!(feature = "typescript"),
-        "{ids:?}"
-    );
+    assert!(ids.iter().any(|i| i == "typescript"), "{ids:?}");
 }
 
 #[test]

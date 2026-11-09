@@ -23,17 +23,26 @@ pub struct AnimatedContentRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"foliage.wind"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     pub watch: fn(&World) -> ChangeCursor,
     pub animated: fn(&World) -> bool,
 }
 
-inventory::collect!(AnimatedContentRegistration);
+impl pulsar_plugins::Contribution for AnimatedContentRegistration {
+    const CATEGORY: &'static str = "render.animated_content";
 
-impl pulsar_plugins::Registration for AnimatedContentRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(AnimatedContentRegistration);
 
 /// The last answer, and cursors on the components it was computed from.
 #[derive(Default)]

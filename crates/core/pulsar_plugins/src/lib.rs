@@ -8,11 +8,16 @@
 //!
 //! - A plugin describes itself in `pulsar-plugin.toml` beside its crates
 //!   ([`PluginDescriptor`]: id, default, the plugins it requires, and its
-//!   modules: the crates a game links and the crates the editor links). Its
-//!   first module (a runtime module, or the editor module of a plugin that
-//!   is an editor tool only) carries the descriptor into whatever links it
-//!   ([`installed!`]), so the plugins a binary links are the plugins it has
-//!   installed ([`installed`]).
+//!   **root crate**). The root crate is the package at the plugin's
+//!   directory and the one place the plugin registers everything it
+//!   contributes: it imports the plugin's own crates (`api`, `component`,
+//!   `feature`, `editor`) and submits their registrations, runtime ones
+//!   always and editor ones behind its `editor` feature, so a game links the
+//!   root without editor dependencies. The root also carries the descriptor
+//!   into whatever links it ([`installed!`]), so the plugins a binary links
+//!   are the plugins it has installed ([`installed`]). Other plugins depend
+//!   only on a plugin's `api` crate; no crate depends on a root but the
+//!   installed set (`plugins/installed`) and a generated game.
 //! - A project lists the plugins it enables in its `Pulsar.toml`
 //!   ([`ProjectPlugins`]):
 //!
@@ -32,9 +37,17 @@
 //!   submitted it ([`origin!`]); the registries skip a registration whose
 //!   origin is a disabled plugin's module ([`origin_enabled`]). Nothing
 //!   activated (a game, which links only its project's plugins, or a test)
-//!   means every linked plugin is enabled.
-//! - A generated game links the enabled plugins' runtime modules and nothing
-//!   else (`engine_backend::services::core_project_builder`).
+//!   means every linked plugin is enabled. A plugin's root is its only
+//!   submitter, so a registration's origin is its plugin's root.
+//! - Every registration type summarizes itself ([`Contribution`]: stable id,
+//!   label, category, origin) and declares itself with [`registration!`],
+//!   which also lists it as a [`ContributionSource`]: what a plugin
+//!   contributes is read from its real registrations ([`contributions`]),
+//!   never from a second hand-written list. The host's catalog
+//!   (`plugin_manager::catalog`) joins them with the descriptors.
+//! - A generated game links the enabled plugins' roots, without their
+//!   `editor` feature, and nothing else
+//!   (`engine_backend::services::core_project_builder`).
 //!
 //! How others do it: Unreal's `.uplugin` descriptors (modules by type,
 //! `EnabledByDefault`, plugin dependencies) and the `.uproject`'s `Plugins`
@@ -72,29 +85,22 @@ pub struct PluginDescriptor {
     /// Whether a project that does not name it has it.
     #[serde(default = "enabled_by_default")]
     pub enabled_by_default: bool,
-    /// The plugins it cannot work without (its modules link theirs).
+    /// The plugins it cannot work without (its crates link theirs).
     #[serde(default)]
     pub requires: Vec<String>,
-    /// Its crates, by package name.
-    pub modules: Modules,
+    /// Its root crate, by package name: the package at the plugin's
+    /// directory, which registers everything the plugin contributes and is
+    /// the origin of every registration ([`origin!`]).
+    pub root: String,
+    /// An editor tool (an asset editor): a game never links it, and its root
+    /// has no `editor` feature (it is all editor). Otherwise a game links
+    /// the root without its `editor` feature, and the editor with it.
+    #[serde(default)]
+    pub editor_only: bool,
 }
 
 fn enabled_by_default() -> bool {
     true
-}
-
-/// A plugin's crates, by package name.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Modules {
-    /// What a game links (components, runtime, the Helio feature's
-    /// registration). Empty for an editor tool (an asset editor), which a
-    /// game never links.
-    #[serde(default)]
-    pub runtime: Vec<String>,
-    /// What the editor links in addition (the editor plugin).
-    #[serde(default)]
-    pub editor: Vec<String>,
 }
 
 impl PluginDescriptor {
@@ -104,35 +110,24 @@ impl PluginDescriptor {
         if descriptor.id.trim().is_empty() {
             return Err("a plugin descriptor needs an `id`".into());
         }
-        if descriptor.modules().next().is_none() {
+        if descriptor.root.trim().is_empty() {
             return Err(format!(
-                "plugin `{}` lists no module (`[modules] runtime` or `editor`)",
+                "plugin `{}` names no root crate (`root`)",
                 descriptor.id
             ));
         }
         Ok(descriptor)
     }
 
-    /// The module that carries the descriptor ([`installed!`]): the first
-    /// runtime module, or for an editor tool its first editor module.
-    pub fn installing_module(&self) -> &str {
-        self.modules()
-            .next()
-            .expect("a parsed descriptor lists a module")
-    }
-
-    /// Every module, runtime then editor.
-    pub fn modules(&self) -> impl Iterator<Item = &str> {
-        self.modules
-            .runtime
-            .iter()
-            .chain(&self.modules.editor)
-            .map(String::as_str)
-    }
-
-    /// Whether `package` is one of its modules.
+    /// Whether `package` is its root crate: the package its registrations
+    /// come from.
     pub fn owns(&self, package: &str) -> bool {
-        self.modules().any(|module| same_package(module, package))
+        same_package(&self.root, package)
+    }
+
+    /// Whether a game links it (its root, without the `editor` feature).
+    pub fn runtime(&self) -> bool {
+        !self.editor_only
     }
 }
 
@@ -144,7 +139,7 @@ fn same_package(a: &str, b: &str) -> bool {
             .all(|(x, y)| x == y || (x == b'-' || x == b'_') && (y == b'-' || y == b'_'))
 }
 
-/// A plugin's descriptor, linked with its runtime module ([`installed!`]).
+/// A plugin's descriptor, linked with its root crate ([`installed!`]).
 pub struct InstalledPlugin {
     /// The descriptor's source.
     pub descriptor: &'static str,
@@ -153,11 +148,10 @@ pub struct InstalledPlugin {
 inventory::collect!(InstalledPlugin);
 
 /// Carry this plugin's descriptor (at `path`, relative to the calling
-/// crate's manifest directory) into whatever links the crate: the plugin is
-/// then installed there. Its first module
-/// ([`PluginDescriptor::installing_module`]) calls it once, at its root; the crate then has `PLUGIN_DESCRIPTOR` (the source) and
-/// `plugin_descriptor()` (parsed), which its editor module reads its name
-/// and description from.
+/// crate's manifest directory: `"pulsar-plugin.toml"` from the root crate)
+/// into whatever links the crate: the plugin is then installed there. The
+/// plugin's root crate calls it once, at its root; the crate then has
+/// `PLUGIN_DESCRIPTOR` (the source) and `plugin_descriptor()` (parsed).
 #[macro_export]
 macro_rules! installed {
     ($path:literal) => {
@@ -179,9 +173,9 @@ macro_rules! installed {
     };
 }
 
-/// The origin of a registration: the package that submits it. Every
-/// registration a plugin's crate submits names it, so the registries can
-/// skip a disabled plugin's ([`origin_enabled`]).
+/// The origin of a registration: the package that submits it, a plugin's
+/// root crate. Every registration names it, so the registries can skip a
+/// disabled plugin's ([`origin_enabled`]).
 #[macro_export]
 macro_rules! origin {
     () => {
@@ -189,12 +183,87 @@ macro_rules! origin {
     };
 }
 
-/// A registration a plugin's crate can submit (`inventory`): it names its
-/// origin ([`origin!`]), so its registry can skip it while its plugin is
-/// disabled ([`registered`]).
-pub trait Registration: inventory::Collect {
-    /// The package that submitted it.
-    fn origin(&self) -> &'static str;
+/// The prefix of an engine origin ([`engine_origin!`]).
+pub const ENGINE_ORIGIN_PREFIX: &str = "engine:";
+
+/// The origin of a registration the engine itself submits (one of its own
+/// crates, not a plugin's): `engine:<package>`. It always counts, and the
+/// catalog lists it as the engine's. Any other origin that is no installed
+/// plugin's root is unknown, a reported problem ([`Owner::Unknown`]), never
+/// taken for the engine's.
+#[macro_export]
+macro_rules! engine_origin {
+    () => {
+        concat!("engine:", env!("CARGO_PKG_NAME"))
+    };
+}
+
+/// Who a registration's origin says it belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Owner {
+    /// An installed plugin: the origin is its root crate.
+    Plugin(&'static PluginDescriptor),
+    /// The engine ([`engine_origin!`]): the package after the prefix.
+    Engine(&'static str),
+    /// Neither: a crate registering outside its plugin's root, a plugin not
+    /// installed here, or a typo. The origin is kept as the provenance.
+    Unknown(&'static str),
+}
+
+/// The owner `origin` names: an installed plugin's root, the engine, or
+/// unknown. Never guessed from a name.
+pub fn owner_of(origin: &'static str) -> Owner {
+    if let Some(package) = origin.strip_prefix(ENGINE_ORIGIN_PREFIX) {
+        return Owner::Engine(package);
+    }
+    match plugin_of(origin) {
+        Some(plugin) => Owner::Plugin(plugin),
+        None => Owner::Unknown(origin),
+    }
+}
+
+mod contribution;
+pub use contribution::{
+    active_contributions, active_summaries, all_summaries, contributions, Contribution,
+    ContributionSource, Summary,
+};
+
+/// A registration a plugin's root crate can submit (`inventory`): it names
+/// its origin and summarizes itself ([`Contribution`]), so its registry can
+/// skip it while its plugin is disabled ([`registered`]) and the catalog
+/// can show it under its plugin. Declared with [`registration!`], never
+/// implemented by hand: the macro also lists the type as a
+/// [`ContributionSource`], so no registration type is missing from the
+/// catalog.
+pub trait Registration: Contribution + inventory::Collect {
+    #[doc(hidden)]
+    fn declared_with_the_registration_macro();
+}
+
+/// Declares registration types: collects each (`inventory::collect!`),
+/// implements [`Registration`] for it and lists it as a
+/// [`ContributionSource`]. Each type implements [`Contribution`] itself.
+///
+/// ```ignore
+/// pub struct SettingsGroupRegistration { pub origin: &'static str, .. }
+/// impl pulsar_plugins::Contribution for SettingsGroupRegistration { .. }
+/// pulsar_plugins::registration!(SettingsGroupRegistration);
+/// ```
+#[macro_export]
+macro_rules! registration {
+    ($($ty:ty),* $(,)?) => {$(
+        $crate::inventory::collect!($ty);
+        impl $crate::Registration for $ty {
+            fn declared_with_the_registration_macro() {}
+        }
+        $crate::inventory::submit! {
+            $crate::ContributionSource {
+                category: <$ty as $crate::Contribution>::CATEGORY,
+                all: $crate::all_summaries::<$ty>,
+                active: $crate::active_summaries::<$ty>,
+            }
+        }
+    )*};
 }
 
 /// The linked registrations of type `T` that count: those whose origin's
@@ -289,13 +358,13 @@ impl Resolution {
         self.enabled.contains(id)
     }
 
-    /// The runtime modules of the enabled plugins, in `installed`'s order:
-    /// what a game built for the project links.
-    pub fn runtime_modules<'a>(&self, installed: &'a [PluginDescriptor]) -> Vec<&'a str> {
+    /// The roots of the enabled plugins a game links (not editor tools),
+    /// in `installed`'s order: what a game built for the project links.
+    pub fn runtime_roots<'a>(&self, installed: &'a [PluginDescriptor]) -> Vec<&'a str> {
         installed
             .iter()
-            .filter(|plugin| self.is_enabled(&plugin.id))
-            .flat_map(|plugin| plugin.modules.runtime.iter().map(String::as_str))
+            .filter(|plugin| plugin.runtime() && self.is_enabled(&plugin.id))
+            .map(|plugin| plugin.root.as_str())
             .collect()
     }
 }
@@ -386,11 +455,11 @@ pub fn resolve(installed: &[PluginDescriptor], project: &ProjectPlugins) -> Reso
     Resolution { enabled, problems }
 }
 
-/// The activated set and the module -> plugin map the gate reads.
+/// The activated set and the root -> plugin map the gate reads.
 struct Active {
     enabled: BTreeSet<String>,
-    /// Every installed plugin's modules, to its id.
-    module_plugin: HashMap<String, String>,
+    /// Every installed plugin's root crate, to its id.
+    root_plugin: HashMap<String, String>,
 }
 
 static ACTIVE: RwLock<Option<Active>> = RwLock::new(None);
@@ -403,17 +472,13 @@ fn normalized(package: &str) -> String {
 /// Make `resolution` the process's plugin set: from now on the registries
 /// skip the registrations of every installed plugin it does not enable.
 pub fn activate(resolution: &Resolution) {
-    let module_plugin = installed()
+    let root_plugin = installed()
         .iter()
-        .flat_map(|plugin| {
-            plugin
-                .modules()
-                .map(|module| (normalized(module), plugin.id.clone()))
-        })
+        .map(|plugin| (normalized(&plugin.root), plugin.id.clone()))
         .collect();
     *ACTIVE.write().unwrap_or_else(|poison| poison.into_inner()) = Some(Active {
         enabled: resolution.enabled.clone(),
-        module_plugin,
+        root_plugin,
     });
     GENERATION.fetch_add(1, Ordering::AcqRel);
 }
@@ -442,8 +507,26 @@ pub fn activate_project(project_root: &Path) -> Resolution {
         "plugins of {}",
         project_root.display()
     );
+    for (origin, categories) in unknown_origins() {
+        tracing::error!(
+            "registrations from `{origin}` ({categories:?}) name no installed plugin's root and              are not the engine's (`pulsar_plugins::engine_origin!()`); the plugin gate cannot              skip them"
+        );
+    }
     activate(&resolution);
     resolution
+}
+
+/// Every linked registration's origin that is neither an installed plugin's
+/// root nor the engine's ([`Owner::Unknown`]), with the categories it
+/// registers into: each is an error.
+pub fn unknown_origins() -> BTreeMap<&'static str, BTreeSet<&'static str>> {
+    let mut unknown: BTreeMap<&'static str, BTreeSet<&'static str>> = BTreeMap::new();
+    for summary in contributions() {
+        if let Owner::Unknown(origin) = owner_of(summary.origin) {
+            unknown.entry(origin).or_default().insert(summary.category);
+        }
+    }
+    unknown
 }
 
 /// Changes on every [`activate`]/[`deactivate`]: a registry caching what
@@ -462,21 +545,33 @@ pub fn is_enabled(id: &str) -> bool {
     }
 }
 
-/// Whether a registration from package `origin` ([`origin!`]) counts: its
-/// plugin is enabled, or it belongs to no plugin (the engine's own), or
-/// nothing is activated.
+/// Whether a registration from `origin` ([`origin!`]) counts: its plugin is
+/// enabled, or it is the engine's ([`engine_origin!`]), or nothing is
+/// activated. An unknown origin ([`Owner::Unknown`]) still counts, so a
+/// mistake never silently drops a registration, but it is an error the
+/// editor logs when it opens a project ([`unknown_origins`]) and the
+/// installed set's tests fail on.
 pub fn origin_enabled(origin: &str) -> bool {
     let active = ACTIVE.read().unwrap_or_else(|poison| poison.into_inner());
     let Some(active) = active.as_ref() else {
         return true;
     };
-    match active.module_plugin.get(&normalized(origin)) {
+    match active.root_plugin.get(&normalized(origin)) {
         Some(plugin) => active.enabled.contains(plugin),
         None => true,
     }
 }
 
-/// The plugin package `origin` belongs to, if any.
+/// The installed plugin `id`'s descriptor (a plugin's own crates read its
+/// name and description here: only its root links the descriptor).
+pub fn descriptor(id: &str) -> Option<&'static PluginDescriptor> {
+    installed().iter().find(|plugin| plugin.id == id)
+}
+
+/// The installed plugin whose root crate is `origin` (the package a
+/// registration names), if any. `None`: a registration that is not a
+/// plugin's (the engine's own); [`contributions`] keeps its origin as its
+/// provenance rather than guessing an owner from its name.
 pub fn plugin_of(origin: &str) -> Option<&'static PluginDescriptor> {
     installed().iter().find(|plugin| plugin.owns(origin))
 }

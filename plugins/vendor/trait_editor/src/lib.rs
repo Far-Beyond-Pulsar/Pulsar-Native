@@ -6,7 +6,7 @@
 
 use gpui::{App, AppContext, Window};
 use plugin_editor_api::*;
-use plugin_manager::{BuiltinEditorProvider, EditorContext, LinkedEditorProvider};
+use plugin_manager::{BuiltinEditorProvider, EditorContext, PluginEditorProvider};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use ui::dock::PanelView;
@@ -15,8 +15,8 @@ mod editor;
 
 pub use editor::TraitEditor;
 
-/// Built-in provider registered through the same link-time registry as the
-/// Blueprint editor.
+/// The trait editor's provider (the plugin `pulsar.trait_editor`, an editor
+/// tool: this crate is its root).
 pub struct TraitEditorBuiltinProvider;
 
 impl BuiltinEditorProvider for TraitEditorBuiltinProvider {
@@ -70,8 +70,16 @@ impl BuiltinEditorProvider for TraitEditorBuiltinProvider {
     }
 }
 
+// The plugin's descriptor: linking this crate installs it.
+pulsar_plugins::installed!("pulsar-plugin.toml");
+
+// What the plugin registers: its editor provider.
 plugin_manager::inventory::submit! {
-    LinkedEditorProvider { create: || Arc::new(TraitEditorBuiltinProvider) }
+    PluginEditorProvider {
+        origin: pulsar_plugins::origin!(),
+        id: "com.pulsar.trait-editor",
+        create: || Arc::new(TraitEditorBuiltinProvider),
+    }
 }
 
 /// The type editor is also useful to project validation and plugin callers.

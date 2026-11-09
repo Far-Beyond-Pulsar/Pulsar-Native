@@ -238,7 +238,8 @@ pub const WORLD_RUNTIME_ROOTS: &[&str] = &[
     "crates/core/pulsar_world_registry/src/",
 ];
 
-/// Every `static`, `thread_local!`, `inventory::collect!` and
+/// Every `static`, `thread_local!`, `inventory::collect!` (or
+/// `pulsar_plugins::registration!`, which declares the list) and
 /// `lazy_static!` in the world crates, with why a plugin's copy may keep its
 /// own. Anything else that holds process-wide state belongs in the crate's
 /// `runtime` module, or a plugin's registrations never reach the editor.
@@ -295,7 +296,7 @@ pub const WORLD_STATE_SITES: &[(&str, usize, &str)] = &[
 /// Process-wide state declarations per world-crate file.
 pub fn world_state(root: &Path) -> BTreeMap<String, usize> {
     let state = Regex::new(
-        r"^\s*(pub(\([^)]*\))?\s+)?static\s+(mut\s+)?[A-Z_][A-Z0-9_]*\s*:|thread_local!|inventory::collect!|lazy_static!",
+        r"^\s*(pub(\([^)]*\))?\s+)?static\s+(mut\s+)?[A-Z_][A-Z0-9_]*\s*:|thread_local!|inventory::collect!|pulsar_plugins::registration!|lazy_static!",
     )
     .unwrap();
     let mut out = BTreeMap::new();

@@ -7,10 +7,8 @@ fn plugin(id: &str, requires: &[&str], by_default: bool) -> PluginDescriptor {
         description: String::new(),
         enabled_by_default: by_default,
         requires: requires.iter().map(|r| r.to_string()).collect(),
-        modules: Modules {
-            runtime: vec![format!("{}_component", id.trim_start_matches("p."))],
-            editor: vec![format!("{}_plugin", id.trim_start_matches("p."))],
-        },
+        root: format!("{}_plugin", id.trim_start_matches("p.")),
+        editor_only: false,
     }
 }
 
@@ -25,22 +23,79 @@ fn a_descriptor_parses() {
         id = "pulsar.voxel"
         name = "Voxel worlds"
         requires = ["pulsar.sky"]
-        [modules]
-        runtime = ["voxel_component"]
-        editor = ["voxel_plugin"]
+        root = "voxel_plugin"
         "#,
     )
     .unwrap();
     assert_eq!(descriptor.id, "pulsar.voxel");
     assert!(descriptor.enabled_by_default);
-    assert!(descriptor.owns("voxel_component"));
+    assert!(descriptor.runtime(), "a game links a plugin by default");
+    assert!(descriptor.owns("voxel_plugin"));
     assert!(descriptor.owns("voxel-plugin"));
-    assert!(!descriptor.owns("voxel_world"));
-    assert!(PluginDescriptor::parse("id = \"x\"\nname = \"x\"\n[modules]\nruntime = []").is_err());
-    assert!(PluginDescriptor::parse(
-        "id = \"x\"\nname = \"x\"\nwhat = 1\n[modules]\nruntime = [\"a\"]"
+    assert!(
+        !descriptor.owns("voxel_component"),
+        "only the root registers: the plugin's other crates are not origins"
+    );
+    assert!(PluginDescriptor::parse("id = \"x\"\nname = \"x\"").is_err());
+    assert!(PluginDescriptor::parse("id = \"x\"\nname = \"x\"\nroot = \"a\"\nwhat = 1").is_err());
+    let tool = PluginDescriptor::parse(
+        "id = \"x\"\nname = \"x\"\nroot = \"x_editor\"\neditor_only = true",
     )
-    .is_err());
+    .unwrap();
+    assert!(!tool.runtime(), "a game never links an editor tool");
+}
+
+/// A registration type as an owning crate declares one.
+struct Probe {
+    origin: &'static str,
+    name: &'static str,
+}
+
+impl Contribution for Probe {
+    const CATEGORY: &'static str = "test.probe";
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+crate::registration!(Probe);
+
+inventory::submit! { Probe { origin: engine_origin!(), name: "engine" } }
+inventory::submit! { Probe { origin: "probe_typo_crate", name: "unknown" } }
+
+#[test]
+fn every_declared_registration_type_is_a_contribution_source() {
+    let probes: Vec<Summary> = contributions()
+        .into_iter()
+        .filter(|summary| summary.category == "test.probe")
+        .collect();
+    assert_eq!(
+        probes,
+        [
+            Summary::new("test.probe", "engine", "engine", "engine:pulsar_plugins"),
+            Summary::new("test.probe", "unknown", "unknown", "probe_typo_crate"),
+        ]
+    );
+    assert_eq!(registered::<Probe>().count(), 2);
+}
+
+#[test]
+fn an_origin_is_a_plugin_the_engine_or_unknown() {
+    assert_eq!(owner_of(engine_origin!()), Owner::Engine("pulsar_plugins"));
+    // No plugin is installed in this test binary: a package name is unknown,
+    // not the engine's.
+    assert_eq!(owner_of("voxel_plugin"), Owner::Unknown("voxel_plugin"));
+    let unknown = unknown_origins();
+    assert_eq!(
+        unknown
+            .get("probe_typo_crate")
+            .map(|categories| categories.len()),
+        Some(1)
+    );
+    assert!(!unknown.contains_key("engine:pulsar_plugins"));
 }
 
 #[test]
@@ -121,10 +176,13 @@ fn a_missing_requirement_or_plugin_is_a_problem() {
 }
 
 #[test]
-fn runtime_modules_are_the_enabled_plugins() {
-    let installed = [plugin("p.a", &[], true), plugin("p.b", &[], true)];
+fn runtime_roots_are_the_enabled_plugins_a_game_links() {
+    let mut tool = plugin("p.tool", &[], true);
+    tool.editor_only = true;
+    let installed = [plugin("p.a", &[], true), plugin("p.b", &[], true), tool];
     let resolution = resolve(&installed, &ProjectPlugins::default().with(&["p.a"], false));
-    assert_eq!(resolution.runtime_modules(&installed), ["b_component"]);
+    assert!(resolution.is_enabled("p.tool"));
+    assert_eq!(resolution.runtime_roots(&installed), ["b_plugin"]);
 }
 
 #[test]

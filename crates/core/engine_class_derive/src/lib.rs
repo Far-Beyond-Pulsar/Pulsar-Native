@@ -1440,17 +1440,36 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
     }
 }
 
-/// Opt a component into `pulsar_world_registry`'s `World` bridge
-/// (Pulsar-Native#555/#556, Phase B4/B5): its typed value can be hydrated
-/// from JSON once (a boundary decode) and inserted into `pulsar_scenedb::World`
-/// through SceneDB's erased insert.
+/// Opt an engine component into `pulsar_world_registry`'s `World` bridge
+/// (Pulsar-Native#555/#556, Phase B4/B5) and register it: its typed value
+/// can be hydrated from JSON once (a boundary decode) and inserted into
+/// `pulsar_scenedb::World` through SceneDB's erased insert.
 ///
 /// Applied to an inherent `impl Type {}` block (emitted unchanged); the
 /// class is named after the type. Components reach their consumers through
 /// their data: there is no per-component runtime behavior to register
 /// (Pulsar-Native#1035, Phases 4 and 6).
+///
+/// For the engine's own components. A plugin's component uses
+/// [`macro@world_component`] instead, and its root crate registers it.
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    world_component_class(attr, item, true)
+}
+
+/// Make a plugin's component a `World` class, as
+/// [`macro@register_world_component`] does, without registering it: the
+/// type gets `PULSAR_WORLD_COMPONENT`, its registration, and the plugin's
+/// root crate submits it with `pulsar_world_registry::submit_world_component!`
+/// in the one place the plugin registers everything (the registration then
+/// names the root as its origin, so the plugin gate skips the class while
+/// the plugin is disabled). Same options as `register_world_component`.
+#[proc_macro_attribute]
+pub fn world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    world_component_class(attr, item, false)
+}
+
+fn world_component_class(attr: TokenStream, item: TokenStream, submit: bool) -> TokenStream {
     let args = if attr.is_empty() {
         RegisterWorldComponentArgs {
             decode: None,
@@ -1539,6 +1558,21 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         },
     };
 
+    let submission = if submit {
+        quote! {
+            // The engine's own class: its origin is the engine's
+            // (`pulsar_plugins::engine_origin!()`), always registered.
+            pulsar_world_registry::inventory::submit! {
+                pulsar_world_registry::WorldComponentRegistration {
+                    origin: ::core::concat!("engine:", ::core::env!("CARGO_PKG_NAME")),
+                    ..<#self_ty>::PULSAR_WORLD_COMPONENT
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let output = quote! {
         #remove_fn_def
 
@@ -1603,7 +1637,12 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             pulsar_world_registry::EngineClassMut::of::<#self_ty>(world, entity)
         }
 
-        pulsar_world_registry::inventory::submit! {
+        impl #self_ty {
+            /// This class's `World` registration (`#[world_component]`):
+            /// what `pulsar_world_registry::submit_world_component!`
+            /// submits from the plugin's root crate.
+            #[doc(hidden)]
+            pub const PULSAR_WORLD_COMPONENT: pulsar_world_registry::WorldComponentRegistration =
             pulsar_world_registry::WorldComponentRegistration {
                 origin: ::core::env!("CARGO_PKG_NAME"),
                 class_name: #class_name,
@@ -1618,8 +1657,10 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
                 property_written: #property_written_fn_name,
-            }
+            };
         }
+
+        #submission
 
         #impl_block
     };

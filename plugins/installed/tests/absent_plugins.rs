@@ -388,7 +388,7 @@ fn preset_passes(
 fn material_assets(project: &Path, present: bool) {
     use helio_component::asset_component::{asset_sources_for_file, load_asset_now};
     use helio_mats::asset::{SurfaceMaterialDocument, SurfaceValues, MATERIAL_ASSET_KIND};
-    use installed_plugins::meshes_component::components::{
+    use installed_plugins::meshes_plugin::meshes_component::components::{
         resolve_slot_material, StaticMeshMaterialSlot,
     };
     let red = [1.0, 0.0, 0.0, 1.0];
@@ -614,7 +614,7 @@ fn render_with_stand_ins(scene: &SharedScene) {
         let instance = attachments::instances(&scene.world, cube)[0];
         scene
             .world
-            .get::<installed_plugins::meshes_component::components::StaticMeshComponent>(instance)
+            .get::<installed_plugins::meshes_plugin::meshes_component::components::StaticMeshComponent>(instance)
             .expect("the cube's mesh is registered (the meshes plugin is enabled)")
             .bounds_local[3]
     };

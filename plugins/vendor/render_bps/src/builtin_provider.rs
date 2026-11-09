@@ -55,6 +55,7 @@ impl BuiltinEditorProvider for RenderBpsBuiltinProvider {
 plugin_manager::inventory::submit! {
     PluginEditorProvider {
         origin: pulsar_plugins::origin!(),
+        id: "com.pulsar.render-bps",
         create: || Arc::new(RenderBpsBuiltinProvider),
     }
 }

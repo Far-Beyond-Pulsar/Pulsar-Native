@@ -260,7 +260,8 @@ pub fn check_unfinished(ledger: &Ledger, linked: &Linked) -> Vec<String> {
     problems
 }
 
-/// Every `#[register_world_component]` in source must be linked; otherwise a
+/// Every declared world component (`#[world_component]`,
+/// `#[register_world_component]`) must be linked; otherwise a
 /// class exists in code but is invisible to this binary's registry.
 pub fn check_declared_world_components(
     declared: &BTreeMap<String, String>,

@@ -10,7 +10,7 @@ controller, ...), and the project index answers "who implements this?".
 
 | Piece | Where | What |
 |---|---|---|
-| Trait asset | `ui_types_common::TraitAsset` (`types.rs`); editor in `plugins/trait_editor` | `.trait.json`: `id`, `name`, `methods`, `supertraits`, `meta` |
+| Trait asset | `ui_types_common::TraitAsset` (`types.rs`); editor in `plugins/vendor/trait_editor` (the `pulsar.trait_editor` plugin) | `.trait.json`: `id`, `name`, `methods`, `supertraits`, `meta` |
 | Records | `engine_fs::trait_records` (`TraitRecord`) | Tolerant parse of a trait asset, no `ui_types_common` needed (runtime-safe) |
 | Built-ins | `engine_fs::builtin_traits` | Engine-owned traits: `IntoGraph` and the four role traits |
 | `TraitDb` | `engine_fs::trait_db` | Resolved in-memory model: maps, supertrait closure, effective implementers |

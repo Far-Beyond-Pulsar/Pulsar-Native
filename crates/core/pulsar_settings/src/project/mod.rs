@@ -6,20 +6,29 @@ use pulsar_config::ConfigManager;
 
 /// A plugin's project settings namespace (the meshes' `project.virtual_geometry`):
 /// registered with the rest, while the plugin is enabled. The plugin's
-/// component crate submits one; this crate names no plugin's settings.
+/// root crate submits one; this crate names no plugin's settings.
 pub struct ProjectSettingsRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`).
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"meshes.import"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     pub register: fn(&'static ConfigManager),
 }
 
-inventory::collect!(ProjectSettingsRegistration);
+impl pulsar_plugins::Contribution for ProjectSettingsRegistration {
+    const CATEGORY: &'static str = "settings.project";
 
-impl pulsar_plugins::Registration for ProjectSettingsRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ProjectSettingsRegistration);
 
 pub fn register_all(cfg: &'static ConfigManager) {
     graphics::register(cfg);

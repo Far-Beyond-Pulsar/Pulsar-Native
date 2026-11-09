@@ -12,7 +12,10 @@ members = [
     # its profile API. A plugin DLL: never link it into a binary that embeds the
     # Blueprint editor (they would share one profile).
     "plugins/vendor/render_bps",
-    "plugins/trait_editor",
+    # The trait asset editor (`pulsar.trait_editor`) and TypeScript scripting
+    # (`pulsar.typescript`): in-tree editor-tool plugins.
+    "plugins/vendor/trait_editor",
+    "plugins/vendor/typescript",
     "crates/core/*",
     "crates/editor/*",
     "crates/subsystems/*",
@@ -24,6 +27,7 @@ members = [
     # The skeletal asset formats, shared by that plugin and the asset importer.
     "plugins/vendor/skm_editor/skeletal_assets",
     "plugins/vendor/skm_editor/component",
+    "plugins/vendor/skm_editor/editor",
     # Physics asset types (materials, collision layers); in-repo cdylib plugin.
     "plugins/vendor/physics_plugin",
     # Widget assets (.widget) and the WYSIWYG widget editor; built-in plugin of the editor.
@@ -36,6 +40,7 @@ members = [
     # (components, methods, runtime, file formats), editor (the editor plugin)
     # and examples (its standalone hosts: voxel_craft, voxel_flight,
     # water_world). Built-in plugin of the editor and the game.
+    "plugins/vendor/voxel",
     "plugins/vendor/voxel/api",
     "plugins/vendor/voxel/world",
     "plugins/vendor/voxel/feature",
@@ -47,48 +52,55 @@ members = [
     # feature crates (the Helio passes it brought from the Helio repo), an
     # editor crate (the editor plugin) and, when it has demos, an examples
     # crate. Built-in plugins of the editor and the game.
+    "plugins/vendor/particles",
     "plugins/vendor/particles/component",
     "plugins/vendor/particles/feature",
-    "plugins/vendor/particles/editor",
     "plugins/vendor/particles/examples",
     "tools/todo_check",
+    "plugins/vendor/sprites",
     "plugins/vendor/sprites/component",
     "plugins/vendor/sprites/feature/*",
     "plugins/vendor/sprites/editor",
     "plugins/vendor/sprites/examples",
+    "plugins/vendor/decals",
     "plugins/vendor/decals/component",
     "plugins/vendor/decals/feature",
-    "plugins/vendor/decals/editor",
     "plugins/vendor/decals/examples",
+    "plugins/vendor/lens",
     "plugins/vendor/lens/component",
     "plugins/vendor/lens/feature/flare",
     "plugins/vendor/lens/feature/lens",
     "plugins/vendor/lens/feature/optics",
-    "plugins/vendor/lens/editor",
     "plugins/vendor/lens/examples",
+    "plugins/vendor/portals",
     "plugins/vendor/portals/component",
     "plugins/vendor/portals/feature/cull",
     "plugins/vendor/portals/feature/instances",
     "plugins/vendor/portals/editor",
     "plugins/vendor/portals/examples",
+    "plugins/vendor/splines",
     "plugins/vendor/splines/component",
     "plugins/vendor/splines/editor",
     # The media and placement kinds' plugins (phase B, batch 2), the same
     # way; water and foliage also have an api crate (contracts other
     # plugins read: the terrain seam and hitbox rows, the wind rows).
+    "plugins/vendor/fog",
     "plugins/vendor/fog/component",
     "plugins/vendor/fog/feature",
     "plugins/vendor/fog/editor",
     "plugins/vendor/fog/examples",
+    "plugins/vendor/post",
     "plugins/vendor/post/component",
     "plugins/vendor/post/feature",
     "plugins/vendor/post/editor",
     "plugins/vendor/post/examples",
+    "plugins/vendor/water",
     "plugins/vendor/water/api",
     "plugins/vendor/water/component",
     "plugins/vendor/water/feature",
     "plugins/vendor/water/editor",
     "plugins/vendor/water/examples",
+    "plugins/vendor/foliage",
     "plugins/vendor/foliage/api",
     "plugins/vendor/foliage/component",
     "plugins/vendor/foliage/feature/gbuffer",
@@ -99,11 +111,11 @@ members = [
     # probes' contract the voxel terrain traces; no SceneDB component, its
     # component crate holds its registrations) and the sky (atmosphere and
     # clouds; what others read of it is the frame's).
+    "plugins/vendor/gi",
     "plugins/vendor/gi/api",
-    "plugins/vendor/gi/component",
     "plugins/vendor/gi/feature",
-    "plugins/vendor/gi/editor",
     "plugins/vendor/gi/examples",
+    "plugins/vendor/sky",
     "plugins/vendor/sky/component",
     "plugins/vendor/sky/feature",
     "plugins/vendor/sky/editor",
@@ -113,6 +125,7 @@ members = [
     # asset crates, asset import), the standalone hosts' components and
     # demos, the component crate (the feature's registrations) and the
     # editor crate.
+    "plugins/vendor/meshes",
     "plugins/vendor/meshes/api",
     "plugins/vendor/meshes/feature/forward",
     "plugins/vendor/meshes/feature/gbuffer",
@@ -144,11 +157,13 @@ members = [
     # views, deferred lighting, light-field shading, billboards), the
     # standalone hosts' features and rows, the component crate (Light,
     # ReflectionCapture, the registrations), the editor crate and examples.
+    "plugins/vendor/materials",
     "plugins/vendor/materials/api",
     "plugins/vendor/materials/feature",
     "plugins/vendor/materials/component",
     "plugins/vendor/materials/editor",
     "plugins/vendor/materials/graph_editor",
+    "plugins/vendor/lights",
     "plugins/vendor/lights/api",
     "plugins/vendor/lights/feature/billboard",
     "plugins/vendor/lights/feature/cull",
@@ -164,6 +179,10 @@ members = [
     # descriptors. The editor links it; a project enables its plugins
     # (`pulsar_plugins`); a game links only its project's.
     "plugins/installed",
+    # The plugin catalog's fixture plugin (plugins/installed/tests/catalog.rs).
+    "plugins/installed/tests/fixtures/catalog_plugin",
+    "plugins/installed/tests/fixtures/catalog_plugin/component",
+    "plugins/installed/tests/fixtures/catalog_plugin/editor",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -296,44 +315,58 @@ editor_task_queue                  = { path = "crates/core/editor_task_queue" }
 asset_import                       = { path = "crates/core/asset_import" }
 skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeletal_assets" }
 animation_component                = { path = "plugins/vendor/skm_editor/component" }
-# The voxel plugin (`pulsar.voxel`): hosts link the component crate (the game)
-# or the editor plugin crate (the editor); its other crates are below, with
-# the Helio crates.
+# The object kinds' plugins. Each plugin's root crate (`<kind>_plugin`, the
+# package at the plugin's directory) is the one place it registers what it
+# contributes; hosts reach a plugin only through its root, by the installed
+# set (`plugins/installed`) or a generated game. The voxel plugin
+# (`pulsar.voxel`): its root, component and editor crates here; its other
+# crates are below, with the Helio crates.
 voxel_component                    = { path = "plugins/vendor/voxel/component" }
-voxel_plugin                       = { path = "plugins/vendor/voxel/editor", features = ["builtin"] }
+voxel_plugin                       = { path = "plugins/vendor/voxel" }
+voxel_editor                       = { path = "plugins/vendor/voxel/editor" }
 # The leaf kinds' plugins, the same way (their feature crates are below).
 particles_component                = { path = "plugins/vendor/particles/component" }
-particles_plugin                   = { path = "plugins/vendor/particles/editor", features = ["builtin"] }
+particles_plugin                   = { path = "plugins/vendor/particles" }
 sprites_component                  = { path = "plugins/vendor/sprites/component" }
-sprites_plugin                     = { path = "plugins/vendor/sprites/editor", features = ["builtin"] }
+sprites_plugin                     = { path = "plugins/vendor/sprites" }
+sprites_editor                     = { path = "plugins/vendor/sprites/editor" }
 decals_component                   = { path = "plugins/vendor/decals/component" }
-decals_plugin                      = { path = "plugins/vendor/decals/editor", features = ["builtin"] }
+decals_plugin                      = { path = "plugins/vendor/decals" }
 lens_component                     = { path = "plugins/vendor/lens/component" }
-lens_plugin                        = { path = "plugins/vendor/lens/editor", features = ["builtin"] }
+lens_plugin                        = { path = "plugins/vendor/lens" }
 portals_component                  = { path = "plugins/vendor/portals/component" }
-portals_plugin                     = { path = "plugins/vendor/portals/editor", features = ["builtin"] }
+portals_plugin                     = { path = "plugins/vendor/portals" }
+portals_editor                     = { path = "plugins/vendor/portals/editor" }
 splines_component                  = { path = "plugins/vendor/splines/component" }
-splines_plugin                     = { path = "plugins/vendor/splines/editor", features = ["builtin"] }
+splines_plugin                     = { path = "plugins/vendor/splines" }
+splines_editor                     = { path = "plugins/vendor/splines/editor" }
 # The media and placement kinds' plugins, the same way.
 fog_component                      = { path = "plugins/vendor/fog/component" }
-fog_plugin                         = { path = "plugins/vendor/fog/editor", features = ["builtin"] }
+fog_plugin                         = { path = "plugins/vendor/fog" }
+fog_editor                         = { path = "plugins/vendor/fog/editor" }
 post_component                     = { path = "plugins/vendor/post/component" }
-post_plugin                        = { path = "plugins/vendor/post/editor", features = ["builtin"] }
+post_plugin                        = { path = "plugins/vendor/post" }
+post_editor                        = { path = "plugins/vendor/post/editor" }
 water_component                    = { path = "plugins/vendor/water/component" }
-water_plugin                       = { path = "plugins/vendor/water/editor", features = ["builtin"] }
+water_plugin                       = { path = "plugins/vendor/water" }
+water_editor                       = { path = "plugins/vendor/water/editor" }
 foliage_component                  = { path = "plugins/vendor/foliage/component" }
-foliage_plugin                     = { path = "plugins/vendor/foliage/editor", features = ["builtin"] }
+foliage_plugin                     = { path = "plugins/vendor/foliage" }
+foliage_editor                     = { path = "plugins/vendor/foliage/editor" }
 # The lighting plugins, the same way.
-gi_component                       = { path = "plugins/vendor/gi/component" }
-gi_plugin                          = { path = "plugins/vendor/gi/editor", features = ["builtin"] }
+gi_plugin                          = { path = "plugins/vendor/gi" }
 sky_component                      = { path = "plugins/vendor/sky/component" }
-sky_plugin                         = { path = "plugins/vendor/sky/editor", features = ["builtin"] }
+sky_plugin                         = { path = "plugins/vendor/sky" }
+sky_editor                         = { path = "plugins/vendor/sky/editor" }
 meshes_component                   = { path = "plugins/vendor/meshes/component" }
-meshes_plugin                      = { path = "plugins/vendor/meshes/editor", features = ["builtin"] }
+meshes_plugin                      = { path = "plugins/vendor/meshes" }
+meshes_editor                      = { path = "plugins/vendor/meshes/editor" }
 materials_component                = { path = "plugins/vendor/materials/component" }
-materials_plugin                   = { path = "plugins/vendor/materials/editor", features = ["builtin"] }
+materials_plugin                   = { path = "plugins/vendor/materials" }
+materials_editor                   = { path = "plugins/vendor/materials/editor" }
 lights_component                   = { path = "plugins/vendor/lights/component" }
-lights_plugin                      = { path = "plugins/vendor/lights/editor", features = ["builtin"] }
+lights_plugin                      = { path = "plugins/vendor/lights" }
+lights_editor                      = { path = "plugins/vendor/lights/editor" }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 pulsar_plugins                     = { path = "crates/core/pulsar_plugins" }
 # Plugins whose crate is the plugin (the editor tools and the pre-rewrite
@@ -347,7 +380,8 @@ physics_plugin = { path = "plugins/vendor/physics_plugin", features = ["builtin"
 plugin_matter = { path = "plugins/vendor/matter_editor" }
 render_bps_plugin = { path = "plugins/vendor/render_bps", features = ["builtin"] }
 script_editor_plugin = { path = "plugins/vendor/code_editor", features = ["builtin"] }
-skeletal_animation_plugin = { path = "plugins/vendor/skm_editor", features = ["builtin"] }
+skeletal_animation_plugin = { path = "plugins/vendor/skm_editor" }
+skeletal_animation_editor = { path = "plugins/vendor/skm_editor/editor", features = ["builtin"] }
 ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
 # Every installed plugin's modules (runtime; `editor` adds the editor
 # plugins). Hosts link the set, never a plugin by name.
@@ -616,7 +650,8 @@ pulsar_script_vm = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_math = { path = "crates/core/pulsar_script_math" }
 pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
 pulsar_script_ts = { path = "crates/core/pulsar_script_ts" }
-plugin_typescript = { path = "crates/editor/plugin_typescript" }
+plugin_typescript = { path = "plugins/vendor/typescript" }
+trait_editor_plugin = { path = "plugins/vendor/trait_editor" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"

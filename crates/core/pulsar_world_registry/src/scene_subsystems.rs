@@ -18,13 +18,19 @@ pub struct SceneSubsystemRegistration {
     pub install: fn(&mut SceneDb),
 }
 
-inventory::collect!(SceneSubsystemRegistration);
+impl pulsar_plugins::Contribution for SceneSubsystemRegistration {
+    const CATEGORY: &'static str = "scene.subsystem";
 
-impl pulsar_plugins::Registration for SceneSubsystemRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(SceneSubsystemRegistration);
 
 /// Install every registered scene subsystem `scene` lacks. Cheap when it
 /// has them all; call it before each `SceneDb::step`.

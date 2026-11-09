@@ -33,13 +33,19 @@ pub struct ScenePayloadRegistration {
     pub temporal: bool,
 }
 
-inventory::collect!(ScenePayloadRegistration);
+impl pulsar_plugins::Contribution for ScenePayloadRegistration {
+    const CATEGORY: &'static str = "scene.payload";
 
-impl pulsar_plugins::Registration for ScenePayloadRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.key.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ScenePayloadRegistration);
 
 /// What the scene publishes this frame.
 #[derive(Default)]

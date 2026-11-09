@@ -169,7 +169,8 @@ mod tests {
 
     inventory::submit! {
         crate::components::MovabilityRegistration {
-            origin: pulsar_plugins::origin!(),
+            origin: pulsar_plugins::engine_origin!(),
+            name: "test.authored_movability",
             of: |world, instance| world.get::<AuthoredMovability>(instance).map(|authored| authored.0),
         }
     }

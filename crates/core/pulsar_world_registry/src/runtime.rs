@@ -228,6 +228,14 @@ pub(crate) fn world_components() -> &'static [&'static WorldComponentRegistratio
     (runtime().world_components)()
 }
 
+/// Every world component class this copy collected or was handed, whatever
+/// its plugin's state: in the editor's copy (the owner), every class in the
+/// process. What the plugin catalog lists; registries use
+/// [`world_components`].
+pub(crate) fn all_world_components() -> &'static [&'static WorldComponentRegistration] {
+    WORLD_COMPONENTS.get()
+}
+
 pub(crate) fn ticks() -> &'static [&'static ComponentTickRegistration] {
     (runtime().ticks)()
 }

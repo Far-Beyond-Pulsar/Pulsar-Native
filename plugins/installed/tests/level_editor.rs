@@ -1,5 +1,5 @@
 //! The level editor as the editor assembles it: the shell
-//! (`ui_level_editor`) with every installed plugin's editor module linked,
+//! (`ui_level_editor`) with every installed plugin's editor registrations linked,
 //! each registering its tool modes, create entries, World Settings
 //! sections, undo steps, save hooks and editor data through the shell's
 //! extension points (`ui_level_editor::extend`).
@@ -11,11 +11,13 @@
 use std::sync::Arc;
 
 use engine_backend::scene::SceneWorldExt as _;
-use installed_plugins::foliage_plugin::level_editor::{domain, edit_foliage, foliage_sets};
-use installed_plugins::voxel_component::{
+use installed_plugins::foliage_plugin::foliage_editor::level_editor::{
+    domain, edit_foliage, foliage_sets,
+};
+use installed_plugins::voxel_plugin::voxel_component::{
     presets::VoxelWorldPreset, VoxelTerrainComponent, VoxelTerrainLayersComponent,
 };
-use installed_plugins::voxel_plugin::level_editor::add_world::AddVoxelWorld;
+use installed_plugins::voxel_plugin::voxel_editor::level_editor::add_world::AddVoxelWorld;
 use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::extend;
 use ui_level_editor::scene_edit::{components, level_io, objects, LevelEditorCameraState};
@@ -39,15 +41,24 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         ("sky", &["AtmosphereComponent"]),
         ("wind", &["WindComponent"]),
     ];
+    // Menu entries that add no object: the sky's "Sky Panoramas" adds
+    // assets to the project (a background download, not run here).
+    let no_object = ["sky_panoramas"];
+    let mut menu: Vec<&str> = expected.iter().map(|(kind, _)| *kind).collect();
+    menu.insert(
+        menu.iter().position(|kind| *kind == "sky").unwrap() + 1,
+        "sky_panoramas",
+    );
     assert_eq!(
         extend::create_entries()
             .into_iter()
             .filter(|entry| entry.menu_label.is_some())
             .map(|entry| entry.id)
             .collect::<Vec<_>>(),
-        expected.iter().map(|(kind, _)| *kind).collect::<Vec<_>>(),
+        menu,
         "the Create menu, in order"
     );
+    assert!(no_object.iter().all(|kind| menu.contains(kind)));
     for &(kind, classes) in expected {
         let mut state = LevelEditorState::new();
         let result = extend::create(&mut state, kind);
@@ -124,11 +135,11 @@ fn a_starter_setup_adds_a_sky_and_a_sun() {
     assert!(result.changed, "{}", result.no_op_reason);
     let world = state.scene.world();
     assert_eq!(
-        installed_plugins::sky_component::atmospheres(&world).len(),
+        installed_plugins::sky_plugin::sky_component::atmospheres(&world).len(),
         1
     );
     assert_eq!(
-        installed_plugins::lights_component::directional_lights(&world).len(),
+        installed_plugins::lights_plugin::lights_component::directional_lights(&world).len(),
         2,
         "the sky rig's sun and moon"
     );
@@ -175,12 +186,15 @@ fn a_voxel_world_is_one_undo_step_that_selects_its_terrain_and_moves_the_camera(
     {
         let world = state.scene.world();
         assert_eq!(
-            installed_plugins::sky_component::atmospheres(&world).len(),
+            installed_plugins::sky_plugin::sky_component::atmospheres(&world).len(),
             1
         );
-        assert_eq!(installed_plugins::foliage_component::winds(&world).len(), 1);
         assert_eq!(
-            installed_plugins::lights_component::directional_lights(&world).len(),
+            installed_plugins::foliage_plugin::foliage_component::winds(&world).len(),
+            1
+        );
+        assert_eq!(
+            installed_plugins::lights_plugin::lights_component::directional_lights(&world).len(),
             1
         );
     }
@@ -189,14 +203,14 @@ fn a_voxel_world_is_one_undo_step_that_selects_its_terrain_and_moves_the_camera(
     assert!(terrains(&state).is_empty(), "one undo removes the world");
     assert_eq!(state.scene.world().children_of(None).len(), before);
     assert_eq!(
-        installed_plugins::sky_component::atmospheres(&state.scene.world()).len(),
+        installed_plugins::sky_plugin::sky_component::atmospheres(&state.scene.world()).len(),
         1,
         "the level's sky is back"
     );
     assert!(state.scene.redo());
     assert_eq!(terrains(&state).len(), 1);
     assert_eq!(
-        installed_plugins::sky_component::atmospheres(&state.scene.world()).len(),
+        installed_plugins::sky_plugin::sky_component::atmospheres(&state.scene.world()).len(),
         1
     );
 }
@@ -310,8 +324,10 @@ fn old_levels_default_to_an_empty_foliage_palette() {
 fn a_level_save_keeps_the_renderers_voxel_chunks() {
     use engine_backend::scene::SceneWorldExt as _;
     use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-    use installed_plugins::voxel_component::data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
-    use installed_plugins::voxel_component::world as voxel_world;
+    use installed_plugins::voxel_plugin::voxel_component::data::{
+        VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape,
+    };
+    use installed_plugins::voxel_plugin::voxel_component::world as voxel_world;
     use ui_level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
     const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 

@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use installed_plugins::meshes_component::components::StaticMeshComponent;
+use installed_plugins::meshes_plugin::meshes_component::components::StaticMeshComponent;
 use parking_lot::RwLock;
 use serde_json::json;
 use ui_level_editor::core::asset_updates;

@@ -3,13 +3,14 @@ name = "trait_editor_plugin"
 version = "0.1.0"
 edition = "2021"
 publish = false
+description = "The trait asset editor (pulsar.trait_editor): an editor tool, this crate its root"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["builtin"]
-builtin = ["dep:plugin_manager"]
+# The editor links it statically (the installed set); a DLL build leaves it out.
+builtin = []
 
 [dependencies]
 gpui-ce.workspace = true
@@ -17,7 +18,9 @@ ui.workspace = true
 plugin_editor_api.workspace = true
 engine_fs.workspace = true
 ui_types_common.workspace = true
-plugin_manager = { workspace = true, optional = true }
+plugin_manager = { workspace = true }
+# The plugin's descriptor and its registration's origin.
+pulsar_plugins = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

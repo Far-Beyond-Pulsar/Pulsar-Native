@@ -35,13 +35,19 @@ pub struct ComponentEventsRegistration {
     pub events: fn(root: &Path, assets: &HashSet<String>) -> ComponentEventCatalog,
 }
 
-inventory::collect!(ComponentEventsRegistration);
+impl pulsar_plugins::Contribution for ComponentEventsRegistration {
+    const CATEGORY: &'static str = "script.component_events";
 
-impl pulsar_plugins::Registration for ComponentEventsRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.class_name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ComponentEventsRegistration);
 
 /// The events components of `class_name` raise for `assets` in the project
 /// at `root`; empty when no enabled plugin registers the class's.

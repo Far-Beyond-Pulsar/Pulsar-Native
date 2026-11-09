@@ -710,7 +710,7 @@ fn light_toggling() -> Outcome {
         for entity in entities {
             store.world.insert(
                 entity,
-                installed_plugins::lights_component::LightComponent::default(),
+                installed_plugins::lights_plugin::lights_component::LightComponent::default(),
             );
         }
     }
@@ -727,7 +727,9 @@ fn light_toggling() -> Outcome {
                 .filter_map(|e| {
                     store
                         .world
-                        .get::<installed_plugins::lights_component::LightComponent>(e)
+                        .get::<installed_plugins::lights_plugin::lights_component::LightComponent>(
+                            e,
+                        )
                         .map(|l| l.general.enabled)
                 })
                 .collect();

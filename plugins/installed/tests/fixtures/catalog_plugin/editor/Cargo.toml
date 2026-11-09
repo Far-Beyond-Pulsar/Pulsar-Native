@@ -1,0 +1,12 @@
+[package]
+name = "catalog_fixture_editor"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The plugin catalog's fixture plugin: its editor code (a thumbnail renderer, an assistant tool namespace)"
+
+[dependencies]
+image = { workspace = true }
+
+[lints]
+workspace = true

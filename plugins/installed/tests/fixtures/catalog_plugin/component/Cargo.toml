@@ -1,0 +1,16 @@
+[package]
+name = "catalog_fixture_component"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The plugin catalog's fixture plugin: its runtime code (two render features, a report, a settings namespace)"
+
+[dependencies]
+helio = { workspace = true }
+helio-feature-api = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar-config = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

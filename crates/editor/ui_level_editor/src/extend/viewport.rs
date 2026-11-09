@@ -50,7 +50,7 @@ pub struct DebugOverlay {
     pub hidden: fn(&HelioEditorMailbox),
 }
 
-super::extension_point!(DebugOverlay);
+super::extension_point!(DebugOverlay: "editor.debug_overlay", |r| r.id, r.menu_label;);
 
 /// Every registered debug overlay.
 pub fn debug_overlays() -> impl Iterator<Item = &'static DebugOverlay> {

@@ -4,7 +4,8 @@
 //! kinds (batch 1), the media and placement kinds (batch 2: fog,
 //! post-process volumes, water, foliage), the lighting kinds (batch 3:
 //! GI, the sky), the meshes (batch 4), the lights (batch 5) and the
-//! materials (batch 6) left Helio. Dumps every preset's pass declarations for four
+//! materials (batch 6) left Helio. Dumps every preset's (Helio's and the
+//! lighting models' pipelines) pass declarations for four
 //! configs into `PRESET_SNAPSHOT_OUT` (the format of Helio's preset
 //! snapshot), to diff against a snapshot of the presets from before the
 //! move; skips without the variable. Also checks, always, that the plugins'
@@ -104,9 +105,24 @@ fn the_engines_presets_carry_the_plugins_passes() {
     let cull_stats = uniform_buffer(&device, "Cull Stats Buffer", 64);
     let scene_db = mirror(&device, &queue);
     let features = render_features::plugin_features();
+    // Helio's shipped presets, then the pipelines the plugins' lighting
+    // models bring (the lights' HLFS pipelines among them).
+    let registry = helio_presets::graphs::registry_with(&features);
+    let presets: Vec<Preset> = Preset::ALL
+        .into_iter()
+        .chain(
+            helio_frame_api::lighting::registered_models(&registry)
+                .into_iter()
+                .flat_map(|model| model.pipelines.iter().copied().map(Preset::Model)),
+        )
+        .collect();
+    assert!(
+        presets.len() > Preset::ALL.len(),
+        "the lights bring their HLFS pipelines"
+    );
     let mut text = String::new();
     for (config_name, config) in configs() {
-        for preset in Preset::ALL {
+        for &preset in &presets {
             let graph = preset.with_features(&features).build(PassBuildContext {
                 device: &device,
                 queue: &queue,

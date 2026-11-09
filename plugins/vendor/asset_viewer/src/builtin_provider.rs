@@ -47,6 +47,7 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
 plugin_manager::inventory::submit! {
     plugin_manager::PluginEditorProvider {
         origin: pulsar_plugins::origin!(),
+        id: "com.pulsar.asset-viewer",
         create: || Arc::new(AssetViewerBuiltinProvider),
     }
 }

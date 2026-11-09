@@ -33,8 +33,8 @@ fn has_editors(class: &str, expected: &[&str]) {
 #[test]
 fn skeletal_mesh_and_animator_properties_all_have_editors() {
     // linking the meshes and animation plugins registers the classes
-    let _ = installed_plugins::meshes_component::SkeletalMeshComponent::default();
-    let _ = installed_plugins::animation_component::AnimationComponent::default();
+    let _ = installed_plugins::meshes_plugin::meshes_component::SkeletalMeshComponent::default();
+    let _ = installed_plugins::skeletal_animation_plugin::animation_component::AnimationComponent::default();
     has_editors("SkeletalMeshComponent", &["mesh"]);
     has_editors(
         "AnimationComponent",
@@ -51,7 +51,7 @@ fn skeletal_mesh_and_animator_properties_all_have_editors() {
 #[test]
 fn asset_ref_properties_round_trip_through_the_runtime_registry() {
     use pulsar_reflection::{AnimationGraphAssetKind, AssetRef, RUNTIME_TYPE_REGISTRY};
-    let _ = installed_plugins::animation_component::AnimationComponent::default();
+    let _ = installed_plugins::skeletal_animation_plugin::animation_component::AnimationComponent::default();
     let instance = REGISTRY.create_instance("AnimationComponent").unwrap();
     let props = instance.get_properties();
     let prop = props.iter().find(|p| p.name == "animation_graph").unwrap();

@@ -23,7 +23,7 @@ use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
 use helio_component::components::ObjectMovability;
 use installed_plugins as _;
-use installed_plugins::meshes_component::components::{
+use installed_plugins::meshes_plugin::meshes_component::components::{
     LODLevel, MeshAssetPath, MeshGeometryKey, StaticMeshComponent, StaticMeshMaterialSlot,
     StaticMeshMaterialSlots,
 };
@@ -423,8 +423,9 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
 
 /// The bright, opaque, emissive surface every acceptance mesh draws with, so
 /// it shows against the empty scene without depending on lights.
-fn emissive_surface() -> installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
-    installed_plugins::meshes_component::mesh_cache::ImportedSurfaceMaterial {
+fn emissive_surface(
+) -> installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
+    installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
         base_color: [1.0, 0.5, 0.1, 1.0],
         roughness: 0.7,
         metallic: 0.0,
@@ -437,10 +438,11 @@ fn emissive_surface() -> installed_plugins::meshes_component::mesh_cache::Import
 /// A mesh built in code and inserted as a typed value: the cube's geometry,
 /// sections and bounds, every slot overridden with [`emissive_surface`].
 fn typed_mesh() -> StaticMeshComponent {
-    let upload = installed_plugins::meshes_component::mesh_files::load_mesh_asset_upload(
-        std::path::Path::new(&mesh_asset()),
-    )
-    .expect("SM_Cube.fbx loads");
+    let upload =
+        installed_plugins::meshes_plugin::meshes_component::mesh_files::load_mesh_asset_upload(
+            std::path::Path::new(&mesh_asset()),
+        )
+        .expect("SM_Cube.fbx loads");
     let radius = upload
         .geometry
         .vertices
@@ -959,11 +961,13 @@ fn history_level_replacement_and_viewports_need_no_resync() {
 
 #[test]
 fn environment_components_reach_the_frame() {
-    use installed_plugins::fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
-    use installed_plugins::post_component::{
+    use installed_plugins::fog_plugin::fog_component::{
+        GlobalFogComponent, LocalFogVolumeComponent,
+    };
+    use installed_plugins::post_plugin::post_component::{
         CameraPostProcessComponent, PostProcessVolumeComponent,
     };
-    use installed_plugins::water_component::WaterVolumeComponent;
+    use installed_plugins::water_plugin::water_component::WaterVolumeComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -1085,7 +1089,7 @@ fn environment_components_reach_the_frame() {
 /// camera stands 4 m from the origin, 0.7 m up.
 #[test]
 fn foliage_reaches_the_frame() {
-    use installed_plugins::foliage_component::FoliageComponent;
+    use installed_plugins::foliage_plugin::foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -1260,7 +1264,7 @@ fn transform(
 fn add_light(
     state: &mut LevelEditorState,
     position: [f32; 3],
-    light_type: installed_plugins::lights_component::LightType,
+    light_type: installed_plugins::lights_plugin::lights_component::LightType,
     intensity: f32,
 ) -> String {
     let id = add_object(state, "Light", ObjectType::Empty);
@@ -1475,7 +1479,7 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
 /// inspector open or closed, through the editor's producers to the frame.
 #[test]
 fn mesh_and_light_variations_reach_the_frame() {
-    use installed_plugins::lights_component::LightType as Kind;
+    use installed_plugins::lights_plugin::lights_component::LightType as Kind;
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -1877,7 +1881,7 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     let light = add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        installed_plugins::lights_component::LightType::Point,
+        installed_plugins::lights_plugin::lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -1963,7 +1967,7 @@ fn the_sky_is_the_levels_atmosphere() {
     add_light(
         &mut state,
         [1.0e4, 0.0, 0.0],
-        installed_plugins::lights_component::LightType::Directional,
+        installed_plugins::lights_plugin::lights_component::LightType::Directional,
         SUN,
     );
     let mut renderer = harness.renderer(&state);
@@ -2007,7 +2011,7 @@ const SUN: f32 = 20.0;
 /// `DecalComponent::fade_by` (its method), called as a script calls them.
 #[test]
 fn decals_reach_the_frame_and_scripts_set_their_opacity() {
-    use installed_plugins::decals_component::{DecalComponent, DecalLayers};
+    use installed_plugins::decals_plugin::decals_component::{DecalComponent, DecalLayers};
     use pulsar_script_vm::{Host, NativeRegistry, Value};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2030,7 +2034,7 @@ fn decals_reach_the_frame_and_scripts_set_their_opacity() {
     add_light(
         &mut state,
         [0.0, radius * 1.5, radius * 2.0],
-        installed_plugins::lights_component::LightType::Point,
+        installed_plugins::lights_plugin::lights_component::LightType::Point,
         BRIGHT,
     );
     let mut renderer = harness.renderer(&state);
@@ -2151,7 +2155,9 @@ fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32
 /// restores its side of the frame while the other keeps drawing.
 #[test]
 fn particle_emitters_reach_the_frame_from_one_pool() {
-    use installed_plugins::particles_component::{ParticleEmitterComponent, ParticleEmitterShape};
+    use installed_plugins::particles_plugin::particles_component::{
+        ParticleEmitterComponent, ParticleEmitterShape,
+    };
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2289,14 +2295,16 @@ fn particle_emitters_reach_the_frame_from_one_pool() {
 /// Edit the level's global wind in place, as its World Settings rows do.
 fn set_global_wind(
     state: &mut LevelEditorState,
-    edit: impl FnOnce(&mut installed_plugins::foliage_component::WindComponent),
+    edit: impl FnOnce(&mut installed_plugins::foliage_plugin::foliage_component::WindComponent),
 ) {
     let mut world = state.scene.world_mut();
-    let (instance, _) =
-        installed_plugins::foliage_component::level_wind(&world).expect("the level has a wind");
+    let (instance, _) = installed_plugins::foliage_plugin::foliage_component::level_wind(&world)
+        .expect("the level has a wind");
     edit(
         &mut world
-            .get_mut::<installed_plugins::foliage_component::WindComponent>(instance)
+            .get_mut::<installed_plugins::foliage_plugin::foliage_component::WindComponent>(
+                instance,
+            )
             .unwrap(),
     );
 }
@@ -2311,7 +2319,7 @@ fn set_global_wind(
 /// foliage LOD cross-fade dither), so an unchanged frame is identical.
 #[test]
 fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
-    use installed_plugins::foliage_component::FoliageComponent;
+    use installed_plugins::foliage_plugin::foliage_component::FoliageComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2423,8 +2431,8 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
 /// the viewport goes idle again.
 #[test]
 fn a_realtime_viewport_keeps_rendering_animated_content() {
-    use installed_plugins::foliage_component::FoliageComponent;
-    use installed_plugins::particles_component::ParticleEmitterComponent;
+    use installed_plugins::foliage_plugin::foliage_component::FoliageComponent;
+    use installed_plugins::particles_plugin::particles_component::ParticleEmitterComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -2514,7 +2522,9 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     let water = add(
         &mut state,
         "Lake",
-        TypedComponent::new(installed_plugins::water_component::WaterVolumeComponent::default()),
+        TypedComponent::new(
+            installed_plugins::water_plugin::water_component::WaterVolumeComponent::default(),
+        ),
     );
     assert!(keeps_rendering(&mut renderer), "live water went idle");
     assert!(components::set_component_enabled(
@@ -2640,7 +2650,7 @@ fn roughness(heights: &[f32]) -> f32 {
 /// own wind shows on its surface, not in these layers.
 #[test]
 fn water_volumes_simulate_their_own_disturbances_on_the_frame_clock() {
-    use installed_plugins::water_component::WaterVolumeComponent;
+    use installed_plugins::water_plugin::water_component::WaterVolumeComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2763,7 +2773,7 @@ fn water_volumes_simulate_their_own_disturbances_on_the_frame_clock() {
 /// stays put); moving it displaces the water where it goes.
 #[test]
 fn bodies_on_the_water_sim_channel_push_the_water() {
-    use installed_plugins::water_component::WaterVolumeComponent;
+    use installed_plugins::water_plugin::water_component::WaterVolumeComponent;
     use pulsar_physics::{CollisionChannel, PhysicsComponent};
     use ui_level_editor::commands::TypedComponent;
 
@@ -2926,7 +2936,7 @@ fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
 /// restores the 3D frame.
 #[test]
 fn sprites_draw_in_2d_over_the_3d_scene() {
-    use installed_plugins::sprites_component::SpriteComponent;
+    use installed_plugins::sprites_plugin::sprites_component::SpriteComponent;
     use plugin_kinds::create_sprite;
 
     let _ = tracing_subscriber::fmt()
@@ -3149,7 +3159,7 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
 /// distance blurs, and disabling the lens restores the frame.
 #[test]
 fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
-    use installed_plugins::lens_component::CameraLensComponent;
+    use installed_plugins::lens_plugin::lens_component::CameraLensComponent;
     use ui_level_editor::commands::TypedComponent;
 
     let _ = tracing_subscriber::fmt()
@@ -3229,7 +3239,7 @@ fn a_camera_lens_defocuses_the_frame_and_follows_its_enabled_state() {
 /// inside the frame (the defocus test above) leaves it untouched.
 #[test]
 fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
-    use installed_plugins::lens_component::{
+    use installed_plugins::lens_plugin::lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensProjectionModel,
         LensRegionShape,
     };
@@ -3304,7 +3314,7 @@ fn a_fisheye_lens_widens_the_render_and_the_lens_crops_it_back() {
 /// against the same lens with its effect switched off.
 #[test]
 fn the_bundled_lens_masks_and_prescriptions_reach_the_lens_pass() {
-    use installed_plugins::lens_component::{
+    use installed_plugins::lens_plugin::lens_component::{
         CameraLensComponent, LensElementKind, LensElementProps, LensPrescriptionChoice, LensPreset,
         LensRegionShape,
     };
@@ -3844,7 +3854,7 @@ fn diag_portal_lighting() {
                 add_light(
                     state,
                     [1.0e4, 0.0, 0.0],
-                    installed_plugins::lights_component::LightType::Directional,
+                    installed_plugins::lights_plugin::lights_component::LightType::Directional,
                     SUN,
                 );
             }
@@ -3973,7 +3983,7 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
             let light = add_light(
                 &mut state,
                 [x, radius * 1.5, radius * 4.0],
-                installed_plugins::lights_component::LightType::Point,
+                installed_plugins::lights_plugin::lights_component::LightType::Point,
                 BRIGHT,
             );
             set_light(&mut state, &light, "range", Box::new(1200.0f32));
@@ -4011,15 +4021,15 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
 /// do not link them; `installed_plugins`' `tests/level_editor.rs` tests the
 /// entries themselves).
 mod plugin_kinds {
-    use installed_plugins::foliage_component::WindComponent;
-    use installed_plugins::sprites_component::SpriteComponent;
+    use installed_plugins::foliage_plugin::foliage_component::WindComponent;
+    use installed_plugins::sprites_plugin::sprites_component::SpriteComponent;
     use ui_level_editor::commands::{CommandResult, TypedComponent};
     use ui_level_editor::extend::add_object;
     use ui_level_editor::scene_edit::{ObjectType, Transform};
     use ui_level_editor::LevelEditorState;
 
     pub mod sky {
-        use installed_plugins::sky_component::{level_atmosphere, AtmosphereComponent};
+        use installed_plugins::sky_plugin::sky_component::{level_atmosphere, AtmosphereComponent};
         use ui_level_editor::commands::{CommandResult, TypedComponent};
         use ui_level_editor::extend::{level_component, LevelComponent};
         use ui_level_editor::LevelEditorState;
