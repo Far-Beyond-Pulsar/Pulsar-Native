@@ -8,8 +8,8 @@
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
 crates/renderer/helio 1605b5b7 Far-Beyond-Pulsar/Helio#394 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
-plugins/vendor/blueprint_editor 25aaefff Far-Beyond-Pulsar/Plugin_Blueprints#44 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
-plugins/vendor/code_editor a8df4cb0 Far-Beyond-Pulsar/Plugin_CodeEditor#19 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
+plugins/vendor/blueprint_editor 7c0addcd Far-Beyond-Pulsar/Plugin_Blueprints#44 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
+plugins/vendor/code_editor 748b75c4 Far-Beyond-Pulsar/Plugin_CodeEditor#19 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/decals e6469d10 Far-Beyond-Pulsar/Plugin_Decals#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/fog ccff239e Far-Beyond-Pulsar/Plugin_Fog#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/foliage 8ab8f512 Far-Beyond-Pulsar/Plugin_Foliage#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
@@ -18,7 +18,7 @@ plugins/vendor/input_plugin 6c7fbfa8 Far-Beyond-Pulsar/Plugin_Input#3 (p19 plugi
 plugins/vendor/lens e5e72311 Far-Beyond-Pulsar/Plugin_Lens#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/lights 8d61daf4 Far-Beyond-Pulsar/Plugin_Lights#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/materials d277fa7e Far-Beyond-Pulsar/Plugin_Materials#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
-plugins/vendor/matter_editor 4ab2913f Far-Beyond-Pulsar/Plugin_Matter#9 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
+plugins/vendor/matter_editor 2f51cd8c Far-Beyond-Pulsar/Plugin_Matter#9 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/meshes f5405a52 Far-Beyond-Pulsar/Plugin_Meshes#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/particles ebd36255 Far-Beyond-Pulsar/Plugin_Particles#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/physics_plugin 9b175e26 Far-Beyond-Pulsar/Plugin_Physics#9 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
@@ -28,7 +28,7 @@ plugins/vendor/skm_editor 4cb534ef Far-Beyond-Pulsar/Plugin_SKM#16 (p19 plugin c
 plugins/vendor/sky 93353d30 Far-Beyond-Pulsar/Plugin_Sky#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/splines 3f3f59aa Far-Beyond-Pulsar/Plugin_Splines#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/sprites f293a420 Far-Beyond-Pulsar/Plugin_Sprites#1 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
-plugins/vendor/table_editor b4f838b6 Far-Beyond-Pulsar/Plugin_DBTable#6 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
+plugins/vendor/table_editor 45280c96 Far-Beyond-Pulsar/Plugin_DBTable#6 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/ui_editor e204c66a Far-Beyond-Pulsar/Plugin_UI#4 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/voxel 4a2e5c89 Far-Beyond-Pulsar/Plugin_Voxel#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
 plugins/vendor/water eecb6ee9 Far-Beyond-Pulsar/Plugin_Water#2 (p19 plugin catalog, Pulsar-Native#1608 phase 1)
