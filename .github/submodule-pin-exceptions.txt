@@ -7,3 +7,9 @@
 # upstream default branch, and delete the line. The check reports a line as
 # stale once its pin has landed upstream. Add lines only with an upstream PR
 # (or a note why there is none), never to wave a new PR through.
+crates/renderer/helio 8b5ba498 Far-Beyond-Pulsar/Helio branch backlog/b0-lighting-models (Helio#393 item 3, lighting models register through features)
+plugins/vendor/lights 34d4b25 Far-Beyond-Pulsar/Plugin_Lights branch backlog/b0-lighting-models (Helio#393 item 3)
+plugins/vendor/meshes e0af12d Far-Beyond-Pulsar/Plugin_Meshes branch backlog/b0-lighting-models (Helio#393 item 3 call-site change)
+plugins/vendor/post f5b0bc2 Far-Beyond-Pulsar/Plugin_Post branch backlog/b0-lighting-models (Helio#393 item 3 call-site change)
+plugins/vendor/voxel d8eb9f3 Far-Beyond-Pulsar/Plugin_Voxel branch backlog/b0-lighting-models (Helio#393 item 3 call-site change)
+plugins/vendor/blueprint_editor 2a5a3cc Far-Beyond-Pulsar/Plugin_Blueprints branch backlog/p1-one-prefab-model (Plugin_Blueprints#42)

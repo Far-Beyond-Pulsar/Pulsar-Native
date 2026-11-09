@@ -162,8 +162,30 @@ fn placements() -> Vec<([f64; 3], f32)> {
 }
 
 fn scene() -> LevelEditorState {
+    scene_of(placements())
+}
+
+/// A normal view of the same asset: a few large instances at moderate distance
+/// (VG's usual case: error-driven LOD, no overdraw pressure).
+fn normal_placements() -> Vec<([f64; 3], f32)> {
+    let mut rng = Rng(0x0BAD_5EED_1357_9BDF);
+    (0..8)
+        .map(|_| {
+            (
+                [
+                    rng.range(-70.0, 70.0) as f64,
+                    rng.range(-30.0, 30.0) as f64,
+                    -rng.range(110.0, 260.0) as f64,
+                ],
+                rng.range(0.6, 1.0),
+            )
+        })
+        .collect()
+}
+
+fn scene_of(placements: Vec<([f64; 3], f32)>) -> LevelEditorState {
     let mut state = LevelEditorState::new();
-    for (i, (position, scale)) in placements().into_iter().enumerate() {
+    for (i, (position, scale)) in placements.into_iter().enumerate() {
         let id = execute_command(
             &mut state,
             SceneCommand::AddObject {
@@ -428,11 +450,25 @@ impl Harness {
     }
 }
 
+/// The suite's profile, stated through `VirtualGeometrySettings` (no environment
+/// variables): the stock error threshold (1 px) so the cut follows the crowd's
+/// geometry and its sub-pixel triangles overlap, the stock overdraw valve (a
+/// tile resolved as dense is exempt from it) and prefetch band, and Tier 3 on
+/// (it is opt-in; the engine default is off).
 fn settings(mode: VirtualGeometryMode) -> VirtualGeometrySettings {
+    profile(mode, true)
+}
+
+fn profile(mode: VirtualGeometryMode, tier3: bool) -> VirtualGeometrySettings {
+    let stock = VirtualGeometrySettings::default();
     VirtualGeometrySettings {
         mode,
-        tier3: true,
-        ..Default::default()
+        tier3,
+        tau_pixels: 1.0,
+        tile_density_limit: stock.tile_density_limit,
+        prefetch_factor: stock.prefetch_factor,
+        dense_sensitivity: 1.0,
+        ..stock
     }
 }
 
@@ -827,4 +863,108 @@ fn tier_view_paints_resolved_dense_tiles() {
         orange > 0,
         "the tier view never shows the resolved dense tiles"
     );
+}
+
+/// Pixel classes of the VG debug views (colours from `vg_debug.wgsl`).
+#[derive(Debug, Default)]
+struct ViewCounts {
+    covered: usize,
+    /// View 107: finest (leaf) clusters, refined clusters, fallback parents.
+    leaf: usize,
+    refined: usize,
+    fallback: usize,
+    /// View 109: drawn clusters whose own error exceeds tau (magenta).
+    over_tau: usize,
+}
+
+impl Frame {
+    fn view_counts(&self) -> ViewCounts {
+        let mut c = ViewCounts::default();
+        let background = &self.color[..4];
+        for p in self.color.chunks_exact(4) {
+            if p == background {
+                continue;
+            }
+            c.covered += 1;
+            let (r, g, b) = (p[0] as i32, p[1] as i32, p[2] as i32);
+            if r > 200 && g < 60 && b > 200 {
+                c.over_tau += 1;
+            } else if (r - 26).abs() < 40 && g > 150 && b > 150 {
+                c.leaf += 1;
+            } else if g > 170 && r < 110 && b < 110 {
+                c.refined += 1;
+            } else if r > 100 && g < 50 && b < 50 {
+                c.fallback += 1;
+            }
+        }
+        c
+    }
+}
+
+/// Measurement harness (prints, asserts nothing about LOD quality): the page
+/// residency (107) and error/tau (109) views of the crowd and of a normal view
+/// once streaming has settled, and the mean GPU milliseconds of the VG passes.
+/// `RENDER_ACCEPTANCE_DUMP_DIR` writes `vg_dense_view_*.png`.
+#[test]
+fn lod_views_and_vg_gpu_timings() {
+    for (name, tier3, placements) in [
+        ("crowd", true, placements()),
+        ("normal", true, normal_placements()),
+        ("crowd, tier3 off", false, placements()),
+        ("normal, tier3 off", false, normal_placements()),
+    ] {
+        let Some(harness) = setup(false) else { return };
+        let state = scene_of(placements);
+        let mut renderer = HelioRenderer::new(state.scene.shared_scene());
+        renderer.set_editor_camera_state(harness.camera);
+        installed_plugins::meshes_component::host_part::set_virtual_geometry_settings(
+            &mut renderer,
+            Some(profile(VirtualGeometryMode::ForceNonRtFallback, tier3)),
+        );
+        harness.until_ready(&mut renderer);
+        let runtime =
+            installed_plugins::meshes_component::host_part::virtual_geometry_runtime(&renderer)
+                .expect("the viewport renderer is built")
+                .clone();
+        let _ = harness.frames(&mut renderer, 240);
+
+        // Mean GPU ms over 60 pipelined frames (the readback lags a few frames).
+        let mut sums: std::collections::BTreeMap<&'static str, (f64, u32)> = Default::default();
+        for _ in 0..60 {
+            let _ = harness.frames(&mut renderer, 1);
+            if let Some((total, passes)) = renderer.gpu_timings() {
+                let e = sums.entry("TOTAL").or_default();
+                e.0 += f64::from(total);
+                e.1 += 1;
+                for (pass, ms) in passes.into_iter().filter(|(p, _)| p.starts_with("Vg")) {
+                    let e = sums.entry(pass).or_default();
+                    e.0 += f64::from(ms);
+                    e.1 += 1;
+                }
+            }
+        }
+        let vg_total: f64 = sums
+            .iter()
+            .filter(|(k, _)| **k != "TOTAL")
+            .map(|(_, (s, n))| s / f64::from((*n).max(1)))
+            .sum();
+        let per_pass: Vec<String> = sums
+            .iter()
+            .map(|(k, (s, n))| format!("{k}={:.3}", s / f64::from((*n).max(1))))
+            .collect();
+        println!("[{name}] gpu ms: VG passes {vg_total:.3} | {}", per_pass.join(" "));
+
+        let mailbox = renderer.editor_mailbox();
+        for (view, id) in [
+            ("residency", helio_vg_format::debug_view::VgDebugView::PageResidency.id()),
+            ("error", helio_vg_format::debug_view::VgDebugView::ErrorVsTau.id()),
+        ] {
+            mailbox.set_viewport_debug_mode(id);
+            let frame = harness.frames(&mut renderer, 6);
+            frame.dump(&format!("view_{}_{view}", name.replace([' ', ','], "_")));
+            println!("[{name}] view {view}: {:?}", frame.view_counts());
+        }
+        mailbox.set_viewport_debug_mode(0);
+        println!("[{name}] tier3: {:?}", runtime.tier3_stats());
+    }
 }

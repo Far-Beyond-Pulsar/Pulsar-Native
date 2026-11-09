@@ -27,25 +27,44 @@ jobs:
               body = `Hi @${author}, thanks for submitting this pull request!\n\n` +
                 `We manage our ongoing work balancing, task assignments, and technical collaboration directly in our community server. ` +
                 `Please join our Discord to coordinate with the team and discuss your PR:\n` +
-                `👉 https://discord.gg/BXyZDMeUJc`;
+                `👉 https://discord.gg/BXyZDMeUJc\n\n` +
+                `### PR checklist\n` +
+                `This comment is posted by a bot, so you can't tick the boxes here. Before requesting review, copy the checklist below into a new comment on this PR and check off each item:\n\n` +
+                `\`\`\`markdown\n` +
+                `### PR checklist\n` +
+                `- [ ] **AI-assisted code is reviewed:** if any code was written with AI tools, I have read and understand every line and can explain and defend it.\n` +
+                `- [ ] **Tests pass:** \`just test\` passes locally, and new or changed behavior has tests.\n` +
+                `- [ ] **Builds and lints clean:** \`just check\` and \`just clippy\` pass with no new warnings, and code is formatted (\`cargo fmt\`).\n` +
+                `- [ ] **Focused scope:** the PR does one thing; unrelated changes, stray debug code, and commented-out code are removed.\n` +
+                `- [ ] **Description is clear:** explains what changed and why, and links related issues.\n` +
+                `- [ ] **Docs updated:** relevant \`.agents/\` docs or README files reflect my changes.\n` +
+                `- [ ] **Submodules:** if I touched a submodule, its PR is merged first and this PR re-pins to a commit on its upstream \`main\` (\`just check-submodule-pins\`).\n` +
+                `- [ ] **No secrets or large binaries** are committed, and new dependencies and assets have compatible licenses.\n` +
+                `- [ ] **Rendering changes:** if I touched Helio or rendering code, I followed the \`helio-architecture\` skill.\n` +
+                `\`\`\`\n\n` +
+                `Sanity reminders: re-read your own diff on GitHub first, check CI results, and respond to review comments promptly. Unreviewed AI output will be sent back. Thank you!`;
             } else {
               body = `Hi @${author}, thanks for opening this issue!\n\n` +
                 `For faster response times and to speak directly with our core contributors, feel free to join our Discord community:\n` +
-                `👉 https://discord.gg/BXyZDMeUJc`;
+                `👉 https://discord.gg/BXyZDMeUJc\n\n` +
+                `### Before we triage\n` +
+                `Please make sure the issue includes the following. Edit your issue, or reply with anything missing:\n\n` +
+                `\`\`\`markdown\n` +
+                `- [ ] I searched existing open and closed issues and this isn't a duplicate\n` +
+                `- [ ] One problem or request per issue\n` +
+                `- [ ] Pulsar version / commit hash, OS, and GPU + driver version\n` +
+                `- [ ] Steps to reproduce, expected behavior, and actual behavior\n` +
+                `- [ ] Logs, crash output, or screenshots/video (trim to what's relevant)\n` +
+                `- [ ] Which crate, plugin, or panel is affected, if known\n` +
+                `- [ ] Whether it reproduces on the latest main\n` +
+                `- [ ] For feature requests: the use case and the problem it solves, not just the solution\n` +
+                `\`\`\`\n\n` +
+                `Sanity reminders: don't paste secrets, tokens, or private project files. Report security vulnerabilities privately rather than in a public issue. If you used AI to write this report, please verify it reflects what you actually observed.`;
             }
 
-            if (isPR) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: body
-              });
-            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: body
+            });

@@ -70,3 +70,32 @@ pub fn content_reports(world: &World) -> std::collections::BTreeMap<String, serd
         .map(|registration| (registration.key.to_string(), (registration.report)(world)))
         .collect()
 }
+
+/// A plugin's reaction to a changed asset file that is not itself a world
+/// asset: the animation plugin recompiles every running graph that depends on
+/// the file (a sequence, Blend Space, rig or Montage the graph names), which no
+/// per-file world asset reload reaches. `reload_updated_asset` runs every
+/// enabled hook after the world assets the file is or feeds were queued.
+pub struct AssetChangedRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    /// The file at the absolute `path` changed; returns how many things the
+    /// hook updated.
+    pub on_changed: fn(world: &mut World, path: &std::path::Path) -> usize,
+}
+
+inventory::collect!(AssetChangedRegistration);
+
+impl pulsar_plugins::Registration for AssetChangedRegistration {
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+}
+
+/// Tell every enabled [`AssetChangedRegistration`] that the file at `path`
+/// changed. Returns the sum of what they updated.
+pub fn notify_asset_changed(world: &mut World, path: &std::path::Path) -> usize {
+    pulsar_plugins::registered::<AssetChangedRegistration>()
+        .map(|registration| (registration.on_changed)(world, path))
+        .sum()
+}
