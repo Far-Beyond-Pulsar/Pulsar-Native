@@ -11,12 +11,10 @@ use gpui::*;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::net::multiuser::{ClientMessage, MultiuserClient, PeerProfile};
 use crate::screen::MultiplayerWindow;
 use crate::session_logic;
 use crate::utils::types::*;
-use engine_backend::subsystems::networking::multiuser::{
-    ClientMessage, MultiuserClient, PeerProfile,
-};
 use engine_state::EngineContext;
 
 /// Contents of the server's `Joined` reply that both session flows need.

@@ -60,6 +60,22 @@ window_manager.workspace = true
 # editors among them): the editor has
 # every one, the project it opens enables some (`pulsar_plugins`).
 installed_plugins = { workspace = true, features = ["editor"] }
+# The optional editor tools this editor ships (architecture/layers.toml's
+# `tool` layer): each registers its status-bar button, title-bar item,
+# loading step or chat provider (`ui_common::editor_tools`,
+# `agent_chat_core::AgentProviderRegistration`); the shell names none.
+ui_git_manager = { workspace = true }
+ui_flamegraph = { workspace = true }
+ui_fab_search = { workspace = true }
+agent_provider_demo_random = { workspace = true }
+agent_provider_github_copilot = { workspace = true }
+agent_provider_openai = { workspace = true }
+agent_provider_opencode = { workspace = true }
+agent_provider_anthropic = { workspace = true }
+agent_provider_gemini = { workspace = true }
+agent_provider_docker_model_runner = { workspace = true }
+agent_provider_aws_bedrock = { workspace = true }
+agent_provider_vertex_ai = { workspace = true }
 pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"
 

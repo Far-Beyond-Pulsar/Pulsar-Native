@@ -18,7 +18,7 @@
 //! elsewhere +Y), and faster the higher it is above the ground.
 //!
 //! While a possessed pawn owns the player's input ([`FreeCam::set_suspended`],
-//! driven by the runtime's [`PossessionGate`](crate::player_input::PossessionGate))
+//! driven by the runtime's [`PossessionGate`](crate::possession::PossessionGate))
 //! it neither moves nor looks, so it does not fly on the keys the pawn hears.
 //!
 //! This is a *placeholder* — it is automatically superseded per-window as soon
@@ -103,7 +103,7 @@ impl FreeCam {
     /// Stand down (or take the input back). A suspended camera ignores keys
     /// and mouse motion and does not move; keys held at the moment it is
     /// suspended are forgotten. The hosts call it every frame with
-    /// [`PossessionGate::is_possessed`](crate::player_input::PossessionGate::is_possessed):
+    /// [`PossessionGate::is_possessed`](crate::possession::PossessionGate::is_possessed):
     /// the pawn that is possessed hears those keys, so the camera must not
     /// fly on them too.
     pub fn set_suspended(&mut self, suspended: bool) {

@@ -41,18 +41,27 @@ impl PulsarApp {
         WindowRegistry::update_global(cx, |reg, cx| reg.open("TypeDebuggerWindow", cx));
     }
 
-    pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if !self.state.chrome.mission_control_open {
-            self.state.chrome.mission_control_open = true;
-            WindowRegistry::update_global(cx, |reg, cx| reg.open("MissionControlPanel", cx));
-        } else {
-            self.state.chrome.mission_control_open = false;
+    /// Open the editor tool `id` (`ui_common::editor_tools`) and light its
+    /// status-bar button; a second click on a lit button only unlights it
+    /// (the tool's window is its own).
+    pub(super) fn toggle_editor_tool(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tool) = ui_common::editor_tools::editor_tools()
+            .into_iter()
+            .find(|tool| tool.id == id)
+        else {
+            tracing::warn!("No editor tool '{id}' is registered");
+            return;
+        };
+        if !self.state.chrome.open_tools.remove(tool.id) {
+            self.state.chrome.open_tools.insert(tool.id);
+            (tool.open)(window, cx);
         }
-    }
-
-    pub(super) fn open_git_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        self.state.chrome.git_manager_open = true;
-        WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
+        cx.notify();
     }
 
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -68,10 +77,6 @@ impl PulsarApp {
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         WindowRegistry::update_global(cx, |reg, cx| reg.open("PluginManagerWindow", cx));
-    }
-
-    pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        WindowRegistry::update_global(cx, |reg, cx| reg.open("FlamegraphWindow", cx));
     }
 
     pub(super) fn toggle_project_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {

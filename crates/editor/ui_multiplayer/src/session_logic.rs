@@ -11,7 +11,7 @@
 use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 
-use engine_backend::subsystems::networking::multiuser::PeerProfile;
+use crate::net::multiuser::PeerProfile;
 use engine_fs::events::FsChangeKind;
 use engine_state::MultiuserParticipant;
 

@@ -32,3 +32,24 @@ pub use utils::tracking_allocator::{
 pub use utils::type_tracking::{AllocationSite, TYPE_TRACKER};
 
 pub use screen::LogViewerWindow;
+
+// Mission Control's status-bar button and Tools menu entry
+// (`ui_common::editor_tools`): the editor binary links this crate (it is also
+// the editor's log and memory tracking), the shell names none of it.
+inventory::submit! {
+    ui_common::editor_tools::EditorToolRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "tool.mission_control",
+        label: || rust_i18n::t!("MissionControl.Title").to_string(),
+        icon: ui::IconName::Page,
+        order: 20,
+        open: |_, cx| {
+            use gpui::UpdateGlobal as _;
+            window_manager::WindowRegistry::update_global(cx, |registry, cx| {
+                registry.open("MissionControlPanel", cx)
+            })
+        },
+        is_open: None,
+        init: None,
+    }
+}

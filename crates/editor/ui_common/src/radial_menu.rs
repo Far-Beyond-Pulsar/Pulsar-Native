@@ -12,7 +12,7 @@ use std::f32::consts::{PI, TAU};
 use gpui::{
     anchored, canvas, deferred, div, point, prelude::FluentBuilder as _, px, Action, App, Bounds,
     Hsla, InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement, PathBuilder, Pixels,
-    Point, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
+    Point, ScrollWheelEvent, SharedString, Styled, Window,
 };
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
 

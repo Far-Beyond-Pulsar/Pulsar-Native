@@ -15,6 +15,14 @@ engine_state.workspace = true
 engine_fs.workspace = true
 serde_json = { workspace = true }
 futures = { workspace = true }
+# The relay client (`net::multiuser`) and the file sync (`net::simple_sync`).
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
+async-tungstenite = { version = "0.35", features = ["tokio-runtime"] }
+sha2 = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+walkdir = { workspace = true }
 tracing.workspace = true
 tokio = { workspace = true, features = ["full"] }
 similar = { workspace = true }

@@ -195,8 +195,9 @@ impl DevSnapshot {
 
         let default_level_size = ctx
             .store
-            .get_or_init::<Option<Vec<u8>>>()
+            .get_or_init::<engine_state::NewProjectContent>()
             .read()
+            .level
             .as_ref()
             .map(|b| format_byte_size(b.len()))
             .unwrap_or_else(|| NONE.into());

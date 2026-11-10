@@ -157,6 +157,7 @@ impl Palette {
     /// Add an item with keywords for better search matching
     ///
     /// Keywords are additional search terms beyond name and description
+    #[allow(clippy::too_many_arguments)]
     pub fn add_item_with_keywords<F>(
         &mut self,
         name: impl Into<String>,

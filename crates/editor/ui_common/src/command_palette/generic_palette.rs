@@ -7,7 +7,6 @@ use gpui::{
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use ui::scroll::Scrollable;
 use ui::{
     h_flex,
     input::{Escape, InputEvent, InputState, TextInput},
@@ -628,7 +627,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             };
             let image = image.map(|rgba| {
                 Arc::new(gpui::RenderImage::new(smallvec::smallvec![
-                    image::Frame::new((*rgba).clone().into(),)
+                    image::Frame::new((*rgba).clone(),)
                 ]))
             });
             let _ = cx.update(|cx| {

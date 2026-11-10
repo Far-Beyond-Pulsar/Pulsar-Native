@@ -141,7 +141,7 @@ fn plugin_events_reach_host_subscribers_through_the_engine_hub() {
     );
     assert!(hits.lock().unwrap().is_empty(), "deferred until the flush");
 
-    hub.flush(FlushPoint::AfterPhysics);
+    hub.flush(FlushPoint::AfterSystems);
     assert_eq!(
         *hits.lock().unwrap(),
         vec![Hit {

@@ -47,8 +47,19 @@ pub struct PluginManagerWindow {
     view: RegistryView,
     render_features: Vec<String>,
     selected_feature: Option<String>,
+    /// What the shown data was loaded from: the plugin manager's revision
+    /// and the project's enabled set (`pulsar_plugins::generation`). The
+    /// window reloads when either changes ([`PluginManagerWindow::reload_if_changed`]).
+    loaded_from: (usize, u64),
     _search_subscription: Subscription,
     pub(crate) focus_handle: FocusHandle,
+}
+
+/// The revision of what the window shows: the plugin manager's plugin set
+/// and the project's enabled plugins.
+fn current_revision() -> (usize, u64) {
+    let installed = plugin_manager::global().map_or(0, |pm| pm.read().revision());
+    (installed, pulsar_plugins::generation())
 }
 
 fn load_plugins() -> Vec<PluginDetails> {
@@ -89,6 +100,7 @@ impl PluginManagerWindow {
                     cx.notify();
                 }
             });
+        let loaded_from = current_revision();
         let plugins = load_plugins();
         let render_features = load_renderer_features();
         let selected = plugins.first().map(|plugin| plugin.metadata.id.clone());
@@ -104,6 +116,7 @@ impl PluginManagerWindow {
             view: RegistryView::Extensions,
             render_features,
             selected_feature,
+            loaded_from,
             _search_subscription: search_subscription,
             focus_handle: cx.focus_handle(),
         };
@@ -193,6 +206,22 @@ impl PluginManagerWindow {
     }
 
     pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.reload();
+        cx.notify();
+    }
+
+    /// Reload when the plugins changed since the data was loaded: a plugin
+    /// library finished installing after the window opened, or another
+    /// project (with other plugins enabled) was opened. Checked each time the
+    /// window draws; both counters are atomic reads.
+    fn reload_if_changed(&mut self) {
+        if current_revision() != self.loaded_from {
+            self.reload();
+        }
+    }
+
+    fn reload(&mut self) {
+        self.loaded_from = current_revision();
         self.plugins = load_plugins();
         self.render_features = load_renderer_features();
         if !self
@@ -202,8 +231,17 @@ impl PluginManagerWindow {
         {
             self.selected_feature = self.render_features.first().cloned();
         }
+        if !self
+            .plugins
+            .iter()
+            .any(|plugin| Some(&plugin.metadata.id) == self.selected.as_ref())
+        {
+            self.selected = self
+                .plugins
+                .first()
+                .map(|plugin| plugin.metadata.id.clone());
+        }
         self.rebuild_visible_plugins();
-        cx.notify();
     }
 }
 
@@ -215,6 +253,7 @@ impl Focusable for PluginManagerWindow {
 
 impl Render for PluginManagerWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.reload_if_changed();
         let plugin_count = self.plugins.len();
         let attention_count = self
             .plugins

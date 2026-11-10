@@ -20,9 +20,9 @@ gpu = []
 # The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
 pulsar_plugins = { workspace = true }
 engine_class_derive = { workspace = true }
-# `prims-gpui`: this crate defines GPUI property editors (the reflected
-# list editor) via `#[pulsar_reflection::pulsar_type(editor = ...)]`.
-pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
+# No `prims-gpui`: this crate is the kernel's and defines no GPUI code; its data
+# types' inspector editors are ui_common's.
+pulsar_reflection = { workspace = true }
 pulsar_scenedb = { workspace = true }
 pulsar_scenedb_derive = { workspace = true }
 pulsar_world_registry = { workspace = true }
@@ -36,16 +36,13 @@ tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio.workspace = true
 helio-core.workspace = true
-helio-mats.workspace = true
 image.workspace = true
 # BC7 encoder (Intel ISPC Texture Compressor, prebuilt kernels) for cooked
 # textures; see src/cooked_texture.rs.
 intel_tex_2 = "0.5"
-helio-pass-postprocess = { workspace = true }
 wgpu.workspace = true
-gpui-ce.workspace = true
-ui.workspace = true
-plugin_editor_api.workspace = true
+# The asset-kind vocabulary (GPUI-free; the editor SDK re-exports it).
+ui_types_common = { workspace = true }
 engine_state.workspace = true
 
 [dev-dependencies]

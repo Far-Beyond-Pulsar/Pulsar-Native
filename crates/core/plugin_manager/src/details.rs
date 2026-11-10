@@ -124,11 +124,24 @@ impl PluginManager {
                     .collect(),
                 components: Vec::new(),
                 statusbar_buttons: Vec::new(),
-                ai_tools: Vec::new(),
+                ai_tools: provider
+                    .ai_tools()
+                    .into_iter()
+                    .map(|tool| tool.name)
+                    .collect(),
                 subsystems: Vec::new(),
             }
         }));
         details
+    }
+
+    /// Changes whenever the set of plugins [`Self::plugin_details`] reports
+    /// changes: a dynamic plugin installed, a built-in provider registered.
+    /// Plugins are never unloaded, so the count of both is that revision. A
+    /// view of the details (the Plugin Manager window) reloads when it
+    /// differs from the one it drew.
+    pub fn revision(&self) -> usize {
+        self.plugins.len() + self.builtin_registry.providers().len()
     }
 
     /// Get all loaded plugins.
@@ -179,5 +192,103 @@ impl PluginManager {
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use gpui::{App, Window};
+    use plugin_editor_api::{
+        AiToolDefinition, EditorId, EditorMetadata, FileStructure, FileTypeDefinition, FileTypeId,
+        PluginError,
+    };
+
+    use crate::builtin::EditorContext;
+    use ui::dock::PanelView;
+
+    use crate::{BuiltinEditorProvider, PluginManager};
+
+    /// A built-in provider with one file type, one editor and one AI tool.
+    struct Notes;
+
+    impl BuiltinEditorProvider for Notes {
+        fn provider_id(&self) -> &str {
+            "test.notes"
+        }
+        fn file_types(&self) -> Vec<FileTypeDefinition> {
+            vec![FileTypeDefinition {
+                id: FileTypeId::new("notes"),
+                extension: "notes".into(),
+                display_name: "Notes".into(),
+                icon: ui::IconName::Folder,
+                color: gpui::Hsla::default(),
+                structure: FileStructure::Standalone,
+                default_content: serde_json::Value::Null,
+                categories: Vec::new(),
+                creation_directory: None,
+            }]
+        }
+        fn editors(&self) -> Vec<EditorMetadata> {
+            vec![EditorMetadata {
+                id: EditorId::new("notes-editor"),
+                display_name: "Notes Editor".into(),
+                supported_file_types: vec![FileTypeId::new("notes")],
+            }]
+        }
+        fn ai_tools(&self) -> Vec<AiToolDefinition> {
+            vec![AiToolDefinition {
+                name: "notes.append".into(),
+                description: String::new(),
+                parameters_json_schema: serde_json::json!({}),
+                category: None,
+            }]
+        }
+        fn can_handle(&self, _: &EditorId) -> bool {
+            false
+        }
+        fn create_editor(
+            &self,
+            _: PathBuf,
+            _: &EditorContext,
+            _: &mut Window,
+            _: &mut App,
+        ) -> Result<Arc<dyn PanelView>, PluginError> {
+            Err(PluginError::Other {
+                message: "not in a test".into(),
+            })
+        }
+    }
+
+    /// The Plugin Manager window's details page reads this: a built-in
+    /// provider is listed as built in, with what it brings, and registering
+    /// one changes the revision the window watches.
+    #[test]
+    fn plugin_details_list_a_built_in_provider_and_what_it_brings() {
+        let mut manager = PluginManager::new();
+        let before = manager.revision();
+        manager
+            .builtin_registry_mut()
+            .register_provider(Arc::new(Notes));
+        manager.register_builtin_editors();
+        assert_ne!(
+            manager.revision(),
+            before,
+            "a new provider is a new revision"
+        );
+
+        let details = manager.plugin_details();
+        let notes = details
+            .iter()
+            .find(|plugin| plugin.metadata.id.as_str() == "test.notes")
+            .expect("the provider is listed");
+        assert!(notes.builtin);
+        assert_eq!(notes.library_path, None);
+        assert_eq!(notes.file_types, ["Notes (.notes)"]);
+        assert_eq!(notes.editors, ["Notes Editor"]);
+        assert_eq!(notes.ai_tools, ["notes.append"]);
+        assert!(notes.dependencies.is_empty() && notes.required_by.is_empty());
     }
 }

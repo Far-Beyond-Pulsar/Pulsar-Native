@@ -7,7 +7,6 @@ StatusBar.Restart: "Перезапустити"
 StatusBar.Start: "Запустити"
 StatusBar.Multiplayer: "Багатокористувацька співпраця"
 StatusBar.PluginManager: "Менеджер плагінів"
-StatusBar.Flamegraph: "Профілювальник Flamegraph"
 
 Notification.Title.Dev: "Розробка"
 Notification.Title.BuildInfo: "Інформація про збірку"

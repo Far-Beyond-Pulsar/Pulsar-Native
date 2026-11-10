@@ -91,8 +91,6 @@ Menu.Project.OpenCargoToml: Cargo.toml
 Menu.Project.RevealInFileExplorer: ファイルエクスプローラーで表示
 
 Menu.Tools: ツール
-Menu.Tools.Profiler: プロファイラ
-Menu.Tools.MissionControl: ミッションコントロール
 Menu.Tools.TypeDebugger: 型デバッガ
 Menu.Tools.Multiplayer: マルチプレイヤー
 

@@ -254,12 +254,7 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) -> Option<(Entity<ViewportPanelWrapper>, ExtraViewport)> {
         let scene_store = self.shared_state.read().scene.shared_scene();
-        let mut builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store);
-        if let Some(physics) = engine_backend::EngineBackend::global()
-            .and_then(|backend| backend.read().get_physics_query_service())
-        {
-            builder = builder.physics(physics);
-        }
+        let builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store);
         let gpu = Arc::new(Mutex::new(builder.build()));
         let mailbox = gpu.lock().ok().and_then(|engine| engine.editor_mailbox())?;
 

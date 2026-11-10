@@ -91,8 +91,6 @@ Menu.Project.OpenCargoToml: Cargo.toml
 Menu.Project.RevealInFileExplorer: Showz in File Explorr
 
 Menu.Tools: Toolz
-Menu.Tools.Profiler: Profilr
-Menu.Tools.MissionControl: Mishun Kontrol
 Menu.Tools.TypeDebugger: Type Bug Findr
 Menu.Tools.Multiplayer: Multiplayah
 

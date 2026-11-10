@@ -117,3 +117,13 @@ impl ProviderCrate for AwsBedrockProviderCrate {
         Ok(Box::new(AwsBedrockProvider::new()))
     }
 }
+
+// The editor's chat offers this provider (`agent_chat_core::provider_crates`).
+pulsar_plugins::inventory::submit! {
+    agent_chat_core::AgentProviderRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "agent.aws_bedrock",
+        order: 50,
+        create: || Box::new(AwsBedrockProviderCrate),
+    }
+}

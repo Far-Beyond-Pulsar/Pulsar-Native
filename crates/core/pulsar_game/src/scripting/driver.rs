@@ -153,7 +153,7 @@ pub struct ScriptDriver {
     /// The pawn the local controller possesses, once possession completed.
     possessed: Option<Possessed>,
     /// Set while `possessed`; read by the hosts' free cameras.
-    possession_gate: crate::player_input::PossessionGate,
+    possession_gate: crate::possession::PossessionGate,
     /// The entity each player's view follows; shared with the hosts.
     view_targets: crate::view_target::ViewTargets,
     /// Seconds the running frame advances by, for `on_input`.
@@ -217,7 +217,7 @@ impl ScriptDriver {
             role_entities: Vec::new(),
             pending_possession: None,
             possessed: None,
-            possession_gate: crate::player_input::PossessionGate::new(),
+            possession_gate: crate::possession::PossessionGate::new(),
             view_targets: crate::view_target::ViewTargets::new(),
             frame_delta: 0.0,
             traits: RuntimeTraits::default(),

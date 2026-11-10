@@ -14,7 +14,6 @@ plugin_manager.workspace = true
 plugin_editor_api.workspace = true
 engine_fs = { workspace = true, features = ["editor"] }
 ui_file_manager.workspace = true
-ui_git_manager.workspace = true
 directories.workspace = true
 tracing.workspace = true
 chrono = { workspace = true }

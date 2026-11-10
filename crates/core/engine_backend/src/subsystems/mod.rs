@@ -1,7 +1,8 @@
 //! Module containing all engine subsystems.
 //!
 //! Each subsystem is responsible for a specific aspect of the engine's functionality,
-//! such as rendering, audio, physics, input handling, and more.
+//! such as rendering and the world. What an object kind simulates (physics,
+//! input...) is its plugin's.
 //!
 //! This modular design allows for better organization, maintainability,
 //! and scalability of the engine's codebase.
@@ -15,23 +16,12 @@
 //!
 //! ## Migrated Subsystems
 //!
-//! The following subsystems have been migrated to use the Subsystem trait:
-//! - ✅ **PhysicsEngine** - Rapier3D physics simulation with async task spawning
-//! - ❌ **World** - Cannot implement Subsystem due to PebbleVault not being Send+Sync
-//!
-//! ## Pending Subsystems
-//!
-//! These subsystems are planned for future migration:
-//! - ⏳ Audio, Input, Networking, Scripting, UI
-//! - All new subsystems should implement the Subsystem trait from the start
+//! `World` cannot implement Subsystem (PebbleVault is not Send+Sync). A
+//! plugin library may provide subsystems (`plugin_manager` collects them);
+//! new subsystems implement the trait from the start.
 
 // Subsystem framework
 pub mod framework;
-pub mod game_network;
-#[cfg(any(feature = "networking", feature = "vcs"))]
-pub mod networking;
-#[cfg(feature = "physics")]
-pub mod physics;
 #[cfg(feature = "render")]
 pub mod render;
 pub mod world;

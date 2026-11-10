@@ -8,7 +8,8 @@ This file is the one plan. When it lands it **replaces**
 
 Status: Phase 0 (audit) is this document's sections 1 to 5. Sections 6 and 7 are
 the plan. Phases 1 and 1b are built (p19): section 9 reviews the audit against the
-code, section 10 records the Q1-Q4 decisions, section 11 is what was built. Every row below is based on code read on `main` at 4327973b2 (SceneDB
+code, section 10 records the Q1-Q4 decisions, section 11 is what was built. A3, the
+kernel (#1605, p20), is section 12. Every row below is based on code read on `main` at 4327973b2 (SceneDB
 at the pinned rev `017252c`, read from the local cargo checkout). Anything not
 read is marked **UNVERIFIED**.
 
@@ -804,7 +805,136 @@ Tristan's `backlog/wave0-source-branch-pins` / `backlog/b0-lighting-models`.
 - **Not done, with the reason.** The `InventoryEntry` AI tools (toolbelt `#[tool]`) stay
   ungated (a toolbelt change; phase 2). The materials api crate keeps SceneDB's binding
   `Once` (`helio_mats::instance::register_binding`): moving it needs a SceneDB
-  binding-registration seam. `pulsar_game` links `input_plugin` by name for the game
-  session's input (`player_input.rs`); moving that behind a game hook is phase 3's contracts work.
-  Physics' game build still pulls GPUI through `pulsar_reflection_derive`'s dropdown hints
-  and `engine_fs`'s editor-only project index (core and reflection changes).
+  binding-registration seam. `pulsar_game` linked `input_plugin` by name for the game
+  session's input (`player_input.rs`): done in p20 (section 12, a game-session hook).
+  Physics' game build pulled GPUI through `pulsar_reflection_derive`'s dropdown hints: gone in
+  p20 (section 12, "A game build without the editor's GPUI").
+
+## 12. A3 as built: the kernel (#1605, p20)
+
+Branch `rewrite/p20-kernel` in Pulsar-Native, Helio and every plugin repository it changed,
+cut from `rewrite/p19-plugin-catalog` (merged to main by Pulsar-Native#1613). The rule,
+Helio's one level up: core and editor know no kind, subsystem or tool. Section 11's two
+leftovers (`pulsar_game` naming `input_plugin`, and physics' game build) are below.
+
+**The layer gate** (built first, so it measures the rest): `architecture/layers.toml` puts each
+crate in a layer by directory (`[paths]`): `kernel` (crates/core, crates/editor,
+crates/subsystems, profiling), `tool` (git, flamegraph, Mission Control, Fab search, the chat's
+providers), `plugin` (plugins/vendor), `host` (the editor binary, plugins/installed, and three
+tools that need every plugin: `pulsar_package`, `level_migrate`, `scene_inventory`),
+`foundation` (UI, vendored, external, Helio). A kernel crate may use only kernel and foundation
+crates, dev dependencies included. `[kinds]` lists every plugin's words (Helio's list plus
+physics, animation, input; the frame's words, "directional light" and "post process", left
+out). Helio's checker runs it (`just arch`, which is `python
+crates/renderer/helio/scripts/architecture/check_layers.py --root .`, and a CI step that
+replaced the hand-written "ui_core links plugins by name" checks); the checker gained `--root`,
+`[paths]`, `[scan]`, dev-dependency checking and `#[path]` test modules, with Helio's own run
+unchanged. Baseline: 56 dependency violations, 132 (file, kind) names. Now: **2** violations and
+**32** names, each name with its reason (`architecture/layer-violations.txt`,
+`architecture/kind-names.txt`, both shrink-only; `--update` only removes).
+
+**Items** (the issue's checkboxes and its folded issues):
+- **(a) Physics** is wholly Plugin_Physics'. `crates/subsystems/pulsar_physics` is gone: its
+  `.physasset` schema is the new api crate `physics_api` (data only; the animation plugin's
+  editor reads it), its two first-model components (`PhysicsComponent`, `RigidbodyComponent`)
+  are the plugin's gated classes (`physics_plugin::legacy`, registered by the root), its
+  unused water-query API is deleted, and its material defaults are the `.physmat` model's
+  constants. The physics root registers the water hitbox rows through `SceneRowsRegistration`
+  with `derivation: None` (rows another kind's join reads). `engine_backend`'s `physics`
+  feature (a Rapier thread stepping a test ball, and a query service nothing fed) is deleted
+  with its ui_core/ui_level_editor plumbing, and so are
+  `PluginManager::register_builtin_{subsystem,component_definitions,component_factories}`.
+- **(b) No core crate names a plugin crate.** `pulsar_game` runs the plugins'
+  `engine_backend::scene::game_hooks::GameSessionRegistration` (session begin and end,
+  possession); the input plugin's root submits it (`runtime::session`), so a game links input
+  only when its project enables it. `pulsar_package`, `level_migrate` and `scene_inventory` are
+  hosts reaching plugins through `installed_plugins` (the packager's languages behind its
+  `scripting` feature, which is `installed_plugins/editor`). `engine_backend` lost
+  `helio-mesh-api` (sublevel placements are `pulsar_scene_model::sublevels`, which the portals'
+  resolver reads) and `helio-mats` (the texture table's per-device capacity is Helio core's
+  `texture_table_capacity`); `helio_component` lost `helio-mats` (`texture_mips` is Helio
+  core's) and the lens flare properties (the post plugin's); `ui_common` lost
+  `skeletal_assets` (the skeletal reference editors are the animation plugin's, over the
+  generic `ui_common::asset_ref_editor::asset_ref_editor`); `pulsar_class`'s table of a
+  water field it retired is the water plugin's record migration (`retired_fields`). The
+  kernel's tests that are hosts' (render acceptance, virtual geometry, mesh reimport, the
+  skeletal property editors, render parity, plugin pass lists, memory over ticks, the random
+  world) moved to `plugins/installed/tests`.
+- **The four editors** (`blueprint_editor`, `code_editor`, `matter_editor`, `table_editor`) are
+  workspace members with `workspace = true` dependencies; their own `[patch]` and `[profile]`
+  sections and lock files are gone, and with them the second, git-pinned copies of Pulsar
+  crates (the lock had `editor_task_queue` from git).
+- **`catch_unwind`**: every `extern "C"` plugin entry catches a panic at the boundary
+  (unwinding out of `extern "C"` aborts since Rust 1.81): `_plugin_create` and
+  `_plugin_manifest` (already), `_plugin_init_globals` (logged), `_plugin_attach_event_bus`
+  (`ATTACH_PANICKED`), `_plugin_attach_world_runtime` and `_plugin_attach_profiler` (a
+  refusal). `_plugin_version` builds a constant and needs none.
+- **Plugin Manager window**: reloads when `PluginManager::revision()` or the project's enabled
+  set (`pulsar_plugins::generation()`) changes; built-in providers' AI tools are listed; a unit
+  test covers `plugin_details`.
+- **Networking**: the multiuser client and the file sync moved to their one user
+  (`ui_multiplayer::net`); the unused git sync, P2P and game network modules are deleted;
+  `engine_backend`'s `networking` and `vcs` features are gone.
+- **Blueprint nodes per domain**: `pulsar_std` has no kind domains; its two input stubs
+  (`on_input_key`, `on_input_action`, which nothing fired) are deleted with the compiler's
+  entries. A kind's script API reaches scripts through its component methods.
+- **`pulsar_game` freecam, camera selection, view targets**: decided, they stay. Views and
+  cameras are frame contracts (the architecture's owner table), as Unreal's view target
+  (`APlayerController::SetViewTarget`) and spectator pawn are Engine's.
+- **Default project content** is the host's: the editor binary hands over the default level
+  and the meshes it references (`engine_state::NewProjectContent`); `engine_backend` no longer
+  embeds or copies mesh files, and the starter `Spinner` script names no class.
+- **`helio-bake`**: decided, baked lighting is a kind of its own (Helio's gate already lists
+  it): its own plugin, like GI. Not moved here (see "Left").
+- **Optional editor tools** are crates the editor binary links (`tool` layer) and register
+  through `ui_common::editor_tools`: `EditorToolRegistration` (status-bar button and Tools menu
+  entry, `menu::OpenEditorTool { id }`), `TitleBarItemRegistration` (git's sync state, with
+  auto-fetch), `AccountMenuItemRegistration` (Git Settings), `ProjectOpenedRegistration` (git's
+  hook sync on the loading screen, whose step list is now built per load); the chat's
+  providers through `agent_chat_core::AgentProviderRegistration`. `ui_core` and the loading
+  screen name no tool.
+- **`ui_level_editor` as a shell**: it depends on no plugin (its plugin tests moved; the
+  default-level generator reaches plugins through the installed set); what still names a kind
+  is in the budget with its seam (World Settings' roles: T3; the Materials view toggle; the
+  properties' default-collapsed sections).
+- **#1606 ledger rows per plugin**: each plugin owns `plugins/vendor/<dir>/ledger.toml`; the
+  test checks the engine's ledger and every installed plugin's, and
+  `every_row_is_in_its_owners_ledger` puts each row in its owner's file by the facts (a
+  class's registering root, a schema's crate, a buffer's producers, a pass crate's and a
+  site's directory). 19 plugins hold rows.
+- **Pre-existing breaks fixed**: `water-examples` (`coastal_showcase`, and `muskoka_showcase`
+  and `oil_rig_night`, which had the same break) use `sky_texture::file_source`;
+  `LightComponent`'s emitter disk flag is `disk_enabled`, so the light has one `enabled`.
+- **A game build without the editor's GPUI**: the kernel's data crates define no GPUI code.
+  `#[derive(Reflectable)]` no longer submits a GPUI-typed dropdown hint per enum: the editor's
+  property-editor registry (`ui_common::PROPERTY_EDITOR_REGISTRY`) gives any enum whose type
+  info lists its variants the enum dropdown, and any type registered as text-edited
+  (`ui_types_common::TextEditedType`, GPUI-free) its line editor, so a data type's crate names
+  no editor (as Unreal's details panel picks a widget from the property's reflected type).
+  `helio_component` lost `gpui-ce`, `ui`, `prims-gpui` and `plugin_editor_api`
+  (`AssetKind` is `ui_types_common`'s): the reflected list editor is
+  `ui_common::reflected_list` (the item contract `ReflectedListItem` stays), registered by the
+  lens and voxel roots' `editor` registrations, and ground-material lists edit through the
+  line editor. `engine_state` lost `gpui-ce` and `window_manager` (`create_window` had no
+  caller). The fourteen plugin component crates and physics' root dropped `prims-gpui`
+  (physics' is its `editor` feature's).
+
+**Left, with the reason** (nothing is half-moved):
+- **#1602 asset categories registered by plugins and #1601 one asset-reference resolver**: a
+  design of its own over five asset-kind vocabularies and about fourteen resolvers, which also
+  decides how GUID references resolve in a packaged game (today only the editor's file index
+  resolves them). It is most of the 32 budget lines.
+- **`engine_fs`'s editor half, handed to p21**: the game library's last GPUI path is
+  `engine_fs`'s `editor` feature (on by default; `engine_state` and the other kernel crates
+  use it), which links `plugin_editor_api`, `plugin_manager` and `pulsar_lsp` for the
+  editor-only project index, file-type registry and user-type registry. p21 rebuilds
+  `engine_fs` (read-only VFS mounts, engine_fs-only IO), so that split is its design, not a
+  p20 patch over code p21 replaces; `cargo tree -p pulsar_game -e normal -i gpui-ce` shows
+  only that path.
+- **The two dev violations** (`pulsar_game` and `ui_level_editor` -> `installed_plugins`):
+  unit tests that drive a plugin's component through crate internals (possession with the
+  input plugin, light property edits, level rules over the sky and wind singletons); they need
+  kernel fixtures or public seams to move.
+- **The baked-lighting plugin**: a new plugin repository, and the G-buffer's lightmap-UV target
+  leaving the frame through a `GBufferContributor` (a Helio frame change with render
+  acceptance). No engine path bakes today; only Helio's cathedral examples do.

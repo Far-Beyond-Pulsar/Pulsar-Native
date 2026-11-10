@@ -7,7 +7,6 @@ StatusBar.Restart: "إعادة تشغيل"
 StatusBar.Start: "بدء"
 StatusBar.Multiplayer: "تعاون متعدد الأشخاص"
 StatusBar.PluginManager: "مدير الإضافات"
-StatusBar.Flamegraph: "مُحلّل مخطط اللهب"
 
 Notification.Title.Dev: "تطوير"
 Notification.Title.BuildInfo: "معلومات البناء"

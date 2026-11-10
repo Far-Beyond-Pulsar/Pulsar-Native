@@ -129,15 +129,6 @@ impl PulsarApp {
         self.toggle_type_debugger(window, cx);
     }
 
-    fn on_toggle_log_viewer(
-        &mut self,
-        _: &ToggleLogViewer,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.toggle_log_viewer(window, cx);
-    }
-
     fn on_toggle_multiplayer(
         &mut self,
         _: &ToggleMultiplayer,
@@ -145,15 +136,6 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_multiplayer(window, cx);
-    }
-
-    fn on_toggle_flamegraph(
-        &mut self,
-        _: &ToggleFlamegraph,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.toggle_flamegraph(window, cx);
     }
 
     fn on_toggle_agent_chat(

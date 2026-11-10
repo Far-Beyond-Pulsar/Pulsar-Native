@@ -2,16 +2,8 @@ use std::path::{Path, PathBuf};
 
 use engine_fs::virtual_fs;
 use engine_state::{register_default_settings, ProjectSettings};
-use rust_embed::RustEmbed;
 
 use super::native_scripts::{discover_script_crates, ScriptCrate};
-
-/// Engine meshes compiled into the editor so project bootstrapping works from
-/// a standalone distribution with no source checkout beside it.
-#[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../../assets"]
-#[include = "meshes/**"]
-struct EmbeddedEngineMeshes;
 
 /// Helio revision selected by the Pulsar workspace.
 ///
@@ -679,11 +671,6 @@ pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
     // ── Pulsar/level.json — default level configuration ───────────────────────
     ensure_level_json(project_root)?;
 
-    // ── Engine primitive assets ───────────────────────────────────────────────
-    // Copy engine-bundled primitives (SM_Cube.fbx etc.) into the game project's
-    // assets directory so they're available at runtime without the source tree.
-    ensure_engine_primitives(project_root);
-
     Ok(())
 }
 
@@ -731,50 +718,6 @@ fn write_if_changed(path: &Path, content: &[u8]) -> anyhow::Result<()> {
         return Ok(());
     }
     virtual_fs::write_file(path, content)
-}
-
-/// Materialize engine meshes into `<project>/assets/meshes/`.
-///
-/// The default level is saved to `<project>/scene/default.level` and references
-/// its cathedral meshes as `meshes/cathedral/*.mesh`, which resolve beneath the
-/// project's `assets` directory. Missing files are written from the bytes
-/// embedded in the engine binary; existing files are left untouched.
-pub fn ensure_engine_primitives(project_root: &Path) {
-    for asset_path in EmbeddedEngineMeshes::iter() {
-        let asset_path = asset_path.as_ref();
-        let dst = project_root.join("assets").join(asset_path);
-        if dst.exists() {
-            continue;
-        }
-
-        let Some(parent) = dst.parent() else {
-            tracing::warn!("Embedded engine mesh has no parent path: {asset_path}");
-            continue;
-        };
-        if let Err(e) = virtual_fs::create_dir_all(parent) {
-            tracing::warn!(
-                "Could not create engine mesh directory {}: {e}",
-                parent.display()
-            );
-            continue;
-        }
-
-        match EmbeddedEngineMeshes::get(asset_path) {
-            Some(asset) => {
-                if let Err(e) = virtual_fs::write_file(&dst, &asset.data) {
-                    tracing::warn!(
-                        "Failed to write embedded engine mesh {}: {e}",
-                        dst.display()
-                    );
-                } else {
-                    tracing::debug!("Materialized embedded engine mesh → {}", dst.display());
-                }
-            }
-            None => {
-                tracing::warn!("Embedded engine mesh disappeared during iteration: {asset_path}");
-            }
-        }
-    }
 }
 
 // ── scripts/ — user gameplay script crates (#653) ────────────────────────────
@@ -902,7 +845,7 @@ fn ensure_scripts_crate(project_root: &Path) -> Result<(), String> {
 }
 
 /// Resolve a path relative to the ENGINE checkout this editor binary was built
-/// from (same compile-time anchor as `ensure_engine_primitives`). Used for the
+/// from (its `CARGO_MANIFEST_DIR`, a compile-time anchor). Used for the
 /// script crate's `pulsar_game` path dep; forward slashes keep the emitted
 /// manifest portable across Windows/Unix checkouts.
 fn engine_checkout_path(rel: &str) -> String {
@@ -942,32 +885,25 @@ fn starter_lib_rs() -> String {
 //! game runs and your actors re-bind to their existing entities instead of
 //! spawning duplicates.
 
-use pulsar_game::scene::{attach_class, has_component, Transform};
+use pulsar_game::scene::Transform;
 use pulsar_game::tick::TickLoop;
 // Re-exports: script crates need no direct scenedb dependency — everything
 // gameplay-facing rides on `pulsar_game`.
 use pulsar_game::{Actor, Entity, World};
 
-/// Rotates a cube forever. Spawned at the world origin on Play.
+/// Turns its object forever. Spawned at the world origin on Play; give it
+/// something to show (a mesh from the Add menu) in the level, or attach a
+/// component by class name in `begin_play`
+/// (`pulsar_game::scene::attach_class`).
 ///
-/// `begin_play` gives the entity something visible (absent-only: scene-provided
-/// components always win; components attach to an object as instances), and `tick` mutates the LIVE `Transform` component —
-/// the same row the renderer reads, so edits show next frame and survive reload.
+/// `tick` mutates the LIVE `Transform` component, the same row the renderer
+/// reads, so edits show next frame and survive reload.
 pub struct Spinner {
     degrees_per_second: f32,
 }
 
 impl Actor for Spinner {
     fn begin_play(&mut self, entity: Entity, world: &mut World) {
-        // Components attach by class name and take their properties by
-        // name (the meshes plugin's component), so the script links no
-        // plugin.
-        if !has_component(world, entity, "StaticMeshComponent") {
-            let cube = [("mesh_asset", "\"meshes/primitives/SM_Cube.fbx\"")];
-            if let Err(error) = attach_class(world, entity, "StaticMeshComponent", &cube) {
-                eprintln!("Spinner: could not attach its cube mesh: {error}");
-            }
-        }
         if world.get::<Transform>(entity).is_none() {
             world.insert(entity, Transform::default());
         }
@@ -1343,8 +1279,8 @@ fn ensure_level_json(project_root: &Path) -> Result<(), String> {
 mod tests {
     use super::super::native_scripts::{discover_script_actors, discover_script_crates};
     use super::{
-        cargo_safe_name, ensure_core_cargo_toml, ensure_engine_primitives, ensure_scripts_crate,
-        splice_script_dependencies, workspace_block, HELIO_GIT_REVISION,
+        cargo_safe_name, ensure_core_cargo_toml, ensure_scripts_crate, splice_script_dependencies,
+        workspace_block, HELIO_GIT_REVISION,
     };
 
     /// #922: the generated `setup()` turns on the world-following script
@@ -1605,26 +1541,5 @@ mod tests {
         assert!(merged.contains(entry.trim()));
         assert!(merged.contains("mine = { path = \"x\" }"));
         assert_eq!(super::merge_baked_patches(&merged), merged);
-    }
-
-    #[test]
-    fn embedded_meshes_are_materialized_without_overwriting_user_assets() {
-        let project = tempfile::tempdir().unwrap();
-        let limestone = project
-            .path()
-            .join("assets/meshes/cathedral/limestone.mesh");
-
-        ensure_engine_primitives(project.path());
-
-        let embedded = include_bytes!("../../../../../assets/meshes/cathedral/limestone.mesh");
-        assert_eq!(std::fs::read(&limestone).unwrap(), embedded);
-        assert!(project
-            .path()
-            .join("assets/meshes/primitives/SM_Cube.fbx")
-            .exists());
-
-        std::fs::write(&limestone, b"user override").unwrap();
-        ensure_engine_primitives(project.path());
-        assert_eq!(std::fs::read(&limestone).unwrap(), b"user override");
     }
 }

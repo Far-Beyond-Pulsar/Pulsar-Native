@@ -9,8 +9,8 @@
 //!
 //! 1. [`FlushPoint::AfterInput`]: input received since the last frame
 //!    (key and mouse events) and anything queued between frames;
-//! 2. [`FlushPoint::AfterPhysics`]: after the ECS schedule and native actor
-//!    phases, where physics runs (hits and overlaps);
+//! 2. [`FlushPoint::AfterSystems`]: after the ECS schedule and native actor
+//!    phases, where the component systems run (a physics plugin's contacts);
 //! 3. [`FlushPoint::AfterScripts`]: what scripts sent during the script
 //!    phase (`event::emit` / `event::send` / `event::emit_to_class`,
 //!    `BeginPlay`, `EntitySpawned`, ...);
@@ -54,7 +54,7 @@ use crate::tap::{Pending, Tap, TapRecord, summarize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FlushPoint {
     AfterInput,
-    AfterPhysics,
+    AfterSystems,
     AfterScripts,
     EndOfFrame,
     /// A flush outside the tick loop (tools, tests, shutdown).
@@ -65,7 +65,7 @@ impl fmt::Display for FlushPoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::AfterInput => "after input",
-            Self::AfterPhysics => "after physics",
+            Self::AfterSystems => "after systems",
             Self::AfterScripts => "after scripts",
             Self::EndOfFrame => "end of frame",
             Self::Manual => "manual",
@@ -485,7 +485,7 @@ mod tests {
             },
         );
         assert!(got.lock().unwrap().is_empty(), "nothing before the flush");
-        let report = hub.flush(FlushPoint::AfterPhysics);
+        let report = hub.flush(FlushPoint::AfterSystems);
         assert_eq!(report.delivered, 2);
         assert_eq!(*got.lock().unwrap(), vec![1], "only entity 7's subscriber");
     }

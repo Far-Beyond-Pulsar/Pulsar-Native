@@ -411,8 +411,13 @@ macro_rules! export_world_runtime_attach {
         pub unsafe extern "C" fn _plugin_attach_world_runtime(
             host: *const ::std::ffi::c_void,
         ) -> bool {
-            // SAFETY: the caller's contract.
-            unsafe { $crate::runtime::attach_exported(host) }
+            // A panic must not unwind across the FFI boundary (it would
+            // abort the editor): the host reads it as a refusal.
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: the caller's contract.
+                unsafe { $crate::runtime::attach_exported(host) }
+            }))
+            .unwrap_or(false)
         }
     };
 }

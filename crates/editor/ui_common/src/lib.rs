@@ -30,6 +30,7 @@ pub mod close_hooks;
 pub mod command_palette;
 pub mod composite_editor;
 pub mod composite_model;
+pub mod editor_tools;
 pub mod file_utils;
 pub mod generic_window;
 pub mod inspector;
@@ -43,13 +44,15 @@ pub mod profile_dropdown;
 pub mod properties_inspector;
 pub mod property_editor_registry;
 pub mod radial_menu;
+pub mod reflected_list;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
+pub mod text_line_editor;
 mod texture_asset_editor;
 pub mod theme_dropdown;
 
-pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+pub use asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 pub use inspector::{Inspector, InspectorCarry, InspectorRow};
 pub use open_window::PulsarWindowExt;
 pub use property_editor_registry::{
@@ -57,6 +60,13 @@ pub use property_editor_registry::{
 };
 
 pub use shared_state::SharedState;
+
+/// Paths [`register_reflected_list_editor!`] expands to, so a plugin root
+/// registering a list editor needs no GPUI-feature dependency of its own.
+#[doc(hidden)]
+pub mod reexports {
+    pub use pulsar_reflection;
+}
 
 // Re-export commonly used types
 pub use file_utils::{find_openable_files, FileInfo, FileType};

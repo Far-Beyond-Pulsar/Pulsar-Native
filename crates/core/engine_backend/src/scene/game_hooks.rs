@@ -1,10 +1,11 @@
-//! What a plugin's runtime adds to the game's tick and its headless report:
-//! a phase before the game's systems (the skeletal meshes' animation), a
-//! publication after the scripts (the animation notifies they collected),
+//! What a plugin's runtime adds to the game's tick, its session and its
+//! headless report: a phase before the game's systems (the skeletal meshes'
+//! animation), a publication after the scripts (the animation notifies they
+//! collected), its part in a session and a possession (the player's input),
 //! and a line in the headless run's report (how many meshes bound). The
 //! plugin's root crate submits a [`TickPhaseRegistration`], a
-//! [`ContentReportRegistration`] or an [`AssetChangedRegistration`]; the game
-//! loop names no kind.
+//! [`GameSessionRegistration`], a [`ContentReportRegistration`] or an
+//! [`AssetChangedRegistration`]; the game loop names no kind.
 //!
 //! How others do it: Unreal's tick groups (`TG_PrePhysics`, ...) that
 //! components register into; Bevy's schedule labels plugins add systems
@@ -119,4 +120,69 @@ pub fn notify_asset_changed(world: &mut World, path: &std::path::Path) -> usize 
     pulsar_plugins::registered::<AssetChangedRegistration>()
         .map(|registration| (registration.on_changed)(world, path))
         .sum()
+}
+
+/// What a game session needs to know about a possession: the project it
+/// plays and the roles its level chose.
+pub struct PossessionContext<'a> {
+    /// The project's root directory.
+    pub project_root: &'a std::path::Path,
+    /// The level's gameplay roles (`engine_fs::world_roles`).
+    pub roles: &'a engine_fs::world_roles::WorldRoles,
+}
+
+/// A plugin's part in a game session and in the local player's possession of
+/// a pawn: the input plugin declares the project's action events when the
+/// session starts, puts the player's mapping to work on the possessed pawn
+/// and releases its devices when the session ends. The game loop
+/// (`pulsar_game`'s script driver) runs every enabled one and names none.
+///
+/// How others do it: Unreal's `APlayerController::SetupInputComponent`, which
+/// the Enhanced Input plugin implements; Bevy's `OnEnter`/`OnExit` state
+/// schedules plugins add systems to.
+pub struct GameSessionRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// Its stable id in the plugin catalog (`<kind>.<what>`); hooks run in
+    /// name order.
+    pub name: &'static str,
+    /// The session's scripts go on `hub` for the project at the path, before
+    /// any class links: declare the events scripts may handle.
+    pub begin: Option<fn(hub: &EventHub, project_root: &std::path::Path)>,
+    /// The local player's controller possessed `pawn`. Returns the component
+    /// instance the plugin attached to the pawn for the possession, if any;
+    /// the driver detaches it when the possession ends (or, left by a session
+    /// that never shut down, when the next one possesses the pawn). An error
+    /// is reported once and the possession carries on without it.
+    pub possess: Option<
+        fn(
+            world: &mut World,
+            pawn: Entity,
+            context: &PossessionContext<'_>,
+        ) -> Result<Option<Entity>, String>,
+    >,
+    /// The session over `world` ended: release what it held.
+    pub end: Option<fn(world: &World)>,
+}
+
+impl pulsar_plugins::Contribution for GameSessionRegistration {
+    const CATEGORY: &'static str = "game.session";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(GameSessionRegistration);
+
+/// Every enabled game session hook, in name order.
+pub fn game_sessions() -> Vec<&'static GameSessionRegistration> {
+    let mut hooks: Vec<_> = pulsar_plugins::registered::<GameSessionRegistration>().collect();
+    hooks.sort_by_key(|hook| hook.name);
+    hooks
 }

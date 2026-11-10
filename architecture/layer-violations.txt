@@ -1,0 +1,4 @@
+# Layer violations that exist today (scripts/architecture/check_layers.py).
+# This list may only shrink. Do not add to it: fix the dependency.
+pulsar_game -> installed_plugins  (kernel -> dev host)
+ui_level_editor -> installed_plugins  (kernel -> dev host)

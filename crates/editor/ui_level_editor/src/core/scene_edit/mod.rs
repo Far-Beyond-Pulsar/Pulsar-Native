@@ -33,7 +33,7 @@ pub mod level_io;
 pub mod objects;
 
 #[cfg(test)]
-mod hlfs_cathedral;
+mod default_level;
 #[cfg(test)]
 mod tests;
 
@@ -169,23 +169,6 @@ pub struct LevelEditorCameraState {
 }
 
 // ── Blueprint helpers ──────────────────────────────────────────────────────
-
-/// A `StaticMeshComponent` data payload carrying every texture slot the
-/// current class requires (Helio#237), for the HLFS demo scene builder.
-/// Empty paths mean "slot unassigned".
-#[cfg(test)]
-fn static_mesh_component_json(mesh_asset: &str) -> Value {
-    serde_json::json!({
-        "mesh_asset": mesh_asset,
-        "base_color_asset": "",
-        "normal_asset": "",
-        "roughness_metallic_asset": "",
-        "emissive_asset": "",
-        "occlusion_asset": "",
-        "specular_color_asset": "",
-        "specular_weight_asset": ""
-    })
-}
 
 /// Extract the legacy script asset path for a Blueprint object (a class
 /// directory, which `objects::add_object` turns into a `ClassInstance`).

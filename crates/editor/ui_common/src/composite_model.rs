@@ -161,7 +161,7 @@ fn push_children(
     rows: &mut Vec<TreeRow>,
 ) {
     let in_seq = matches!(shape, Shape::Seq(_));
-    let mut visit = |seg: Seg, child: &Value, rows: &mut Vec<TreeRow>| {
+    let visit = |seg: Seg, child: &Value, rows: &mut Vec<TreeRow>| {
         let Some(ty) = child_type(shape, &seg) else {
             return;
         };

@@ -38,8 +38,14 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let embedded = engine_state::EngineContext::global()
-            .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
+        let embedded = engine_state::EngineContext::global().and_then(|ctx| {
+            ctx.store
+                .get_or_init::<engine_state::NewProjectContent>()
+                .read()
+                .level
+                .as_ref()
+                .map(|level| level.to_vec())
+        });
         self.begin_scene_load_from(None, embedded, cx);
     }
 

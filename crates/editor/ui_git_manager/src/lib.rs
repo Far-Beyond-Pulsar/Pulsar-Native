@@ -15,6 +15,7 @@ mod auto_fetch;
 mod avatar_loader;
 mod components;
 mod diff_pane;
+mod editor_shell;
 mod git_hooks;
 mod git_operations;
 mod handlers;

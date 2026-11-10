@@ -95,8 +95,6 @@ Menu.Project.OpenCargoToml: Cargo.toml
 Menu.Project.RevealInFileExplorer: Reveal in File Explorer
 
 Menu.Tools: Tools
-Menu.Tools.Profiler: Profiler
-Menu.Tools.MissionControl: Mission Control
 Menu.Tools.TypeDebugger: Type Debugger
 Menu.Tools.Multiplayer: Multiplayer
 

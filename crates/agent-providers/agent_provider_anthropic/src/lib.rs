@@ -709,3 +709,13 @@ impl ProviderCrate for AnthropicProviderCrate {
         Ok(Box::new(AnthropicProvider::new(api_key)))
     }
 }
+
+// The editor's chat offers this provider (`agent_chat_core::provider_crates`).
+pulsar_plugins::inventory::submit! {
+    agent_chat_core::AgentProviderRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "agent.anthropic",
+        order: 20,
+        create: || Box::new(AnthropicProviderCrate),
+    }
+}

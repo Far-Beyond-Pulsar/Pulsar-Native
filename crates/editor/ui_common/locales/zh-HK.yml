@@ -92,8 +92,6 @@ Menu.Project.OpenCargoToml: "Cargo.toml"
 Menu.Project.RevealInFileExplorer: "在檔案總管中顯示"
 
 Menu.Tools: "工具"
-Menu.Tools.Profiler: "性能分析器"
-Menu.Tools.MissionControl: "任務控制中心"
 Menu.Tools.TypeDebugger: "類型調試器"
 Menu.Tools.Multiplayer: "多人遊戲"
 

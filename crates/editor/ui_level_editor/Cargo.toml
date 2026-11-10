@@ -50,7 +50,6 @@ helio.workspace = true
 # No plugin's crate: every kind's editor UI is its plugin's editor crate,
 # registered through `extend` (Phase C step 3).
 helio-pass-buffer-view.workspace = true
-pulsar_physics.workspace = true
 engine_fs.workspace = true
 profiling.workspace = true
 ui_helio_viewport.workspace = true
@@ -96,53 +95,18 @@ wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
-helio-vg-format = { workspace = true }
-# Every installed plugin's root crate: the integration tests draw and
-# edit the kinds through their components (`installed_plugins`; with the
-# workspace's `editor` feature it also links the plugins' editor crates,
-# which depend on this crate: fine for integration tests, which link this
-# crate once). The unit tests link the plugins' root crates without their
-# `editor` feature (through `installed_plugins` they would link a second copy
-# of this crate) and name each kind's types through its root.
+# Every installed plugin's root crate (`installed_plugins`, without its
+# `editor` feature unless the build enables it): a few unit tests edit kinds
+# through their components (the commands, the scene edits, the properties
+# panel's budget, the default level's generator), reaching each kind's types
+# through the installed set. The editor's tests with every plugin (render
+# acceptance, virtual geometry, mesh reimport) are the installed set's own
+# (`plugins/installed/tests`).
 installed_plugins = { workspace = true }
-decals_plugin = { workspace = true }
-fog_plugin = { workspace = true }
-foliage_plugin = { workspace = true }
-gi_plugin = { workspace = true }
-lens_plugin = { workspace = true }
-lights_plugin = { workspace = true }
-materials_plugin = { workspace = true }
-meshes_plugin = { workspace = true }
-particles_plugin = { workspace = true }
-portals_plugin = { workspace = true }
-post_plugin = { workspace = true }
-sky_plugin = { workspace = true }
-splines_plugin = { workspace = true }
-sprites_plugin = { workspace = true }
-voxel_plugin = { workspace = true }
-water_plugin = { workspace = true }
-# The HLFS cathedral generator (a test) writes mesh files.
-helio-mesh-api = { workspace = true }
-helio-presets.workspace = true
 tempfile = { workspace = true }
 # Headless `TestAppContext` window for the properties-panel layout budget test
 # (`workspace/panels/properties_perf_tests.rs`). Test binaries only.
 gpui-ce = { workspace = true, features = ["test-support"] }
-# Blocks on wgpu adapter/device requests in the headless render baseline
-# (`tests/phase0_render_baseline.rs`); same pin engine_backend uses.
-pollster = "=0.4.0"
-# Surfaces renderer and asset warnings in that test's output.
-tracing-subscriber = { workspace = true }
-# Calls a component's script natives in render acceptance (decal opacity).
-pulsar_script_vm = { workspace = true }
-# Virtual-geometry settings types and the helio-core vertex type used by the
-# virtual-geometry acceptance test.
-pulsar_settings = { workspace = true }
-helio-core = { workspace = true }
-# Reads the water simulation back (its pass, through `debug_pass`).
-helio-pass-water-sim = { workspace = true }
-# Writes the VG museum's textured material graphs (vg_museum generator test).
-psgc = { workspace = true }
 
 [lints]
 workspace = true

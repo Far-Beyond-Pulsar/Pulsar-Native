@@ -3,7 +3,6 @@
 use crate::state::LevelEditorState;
 use crate::ui::{ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection};
 use gpui::*;
-use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
     dock::{Panel, PanelEvent},
@@ -41,8 +40,6 @@ pub struct PropertiesPanelWrapper {
     // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
     property_input: Entity<InputState>,
-    /// Tracks which sections are collapsed (by section name)
-    collapsed_sections: HashSet<String>,
 }
 
 /// Scene data shown by the panel (transform, header, component values) only
@@ -57,19 +54,6 @@ impl PropertiesPanelWrapper {
         cx: &mut Context<Self>,
     ) -> Self {
         let property_input = cx.new(|cx| InputState::new(window, cx));
-        // Default all sections to collapsed except Transform (the top section)
-        let mut collapsed_sections = HashSet::new();
-        collapsed_sections.insert("Camera Settings".to_string());
-        collapsed_sections.insert("Light Settings".to_string());
-        collapsed_sections.insert("Mesh Settings".to_string());
-        collapsed_sections.insert("Folder Settings".to_string());
-        collapsed_sections.insert("Empty Object".to_string());
-        collapsed_sections.insert("Particle System".to_string());
-        collapsed_sections.insert("Audio Source".to_string());
-        collapsed_sections.insert("Tags & Layers".to_string());
-        collapsed_sections.insert("Components".to_string());
-        collapsed_sections.insert("Rendering".to_string());
-        collapsed_sections.insert("Physics".to_string());
 
         let mut panel = Self {
             properties: PropertiesPanel::new(),
@@ -85,7 +69,6 @@ impl PropertiesPanelWrapper {
             selection_pump_started: false,
             editing_property: None,
             property_input,
-            collapsed_sections,
         };
         panel.last_selected_object_id = panel.selected_object_id();
         // Build the initial selection once. Selection changes are explicit
@@ -117,19 +100,6 @@ impl PropertiesPanelWrapper {
                 cx.notify();
             }
         });
-    }
-
-    pub fn toggle_section(&mut self, section: String, cx: &mut Context<Self>) {
-        if self.collapsed_sections.contains(&section) {
-            self.collapsed_sections.remove(&section);
-        } else {
-            self.collapsed_sections.insert(section);
-        }
-        cx.notify();
-    }
-
-    pub fn is_section_collapsed(&self, section: &str) -> bool {
-        self.collapsed_sections.contains(section)
     }
 
     /// Bring the section entities in line with the current scene state.
@@ -424,7 +394,6 @@ impl Render for PropertiesPanelWrapper {
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
-                &self.collapsed_sections.clone(),
                 &self.object_header_section,
                 &self.transform_section,
                 &self.object_type_fields_section,

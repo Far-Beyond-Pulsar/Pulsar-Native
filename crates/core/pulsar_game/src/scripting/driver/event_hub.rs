@@ -21,9 +21,14 @@ impl ScriptDriver {
         if let Some(mut old) = self.events.take() {
             old.clear();
         }
-        // Before any class links: a Blueprint can handle `input::Jump.triggered`
-        // whichever loads first (see `player_input`).
-        crate::player_input::declare_events(&hub, &self.project_root);
+        // Before any class links: each plugin's session hook declares the
+        // events scripts may handle (the input plugin's `input::<Action>`),
+        // so a Blueprint can handle one whichever loads first.
+        for hook in engine_backend::scene::game_hooks::game_sessions() {
+            if let Some(begin) = hook.begin {
+                begin(&hub, &self.project_root);
+            }
+        }
         let events = ScriptEvents::new(hub);
         for registration in pulsar_world_registry::component_event_registrations() {
             let declaration = (registration.declaration)();

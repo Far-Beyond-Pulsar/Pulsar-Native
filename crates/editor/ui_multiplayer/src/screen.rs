@@ -9,11 +9,9 @@ use ui::{
 };
 
 use crate::diff_viewer::{DiffFileEntry, DiffViewer};
+use crate::net::multiuser::{ClientMessage, MultiuserClient, PeerIdentity, PeerProfile};
+use crate::net::simple_sync::SyncDiff;
 use crate::utils::types::*;
-use engine_backend::subsystems::networking::multiuser::{
-    ClientMessage, MultiuserClient, PeerIdentity, PeerProfile,
-};
-use engine_backend::subsystems::networking::simple_sync::SyncDiff;
 use engine_fs::{
     events::{FsChangeKind, FsEventSource},
     subscribe,

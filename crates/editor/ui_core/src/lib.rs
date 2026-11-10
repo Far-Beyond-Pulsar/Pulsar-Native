@@ -2,13 +2,13 @@
 //!
 //! Core application components including PulsarApp and PulsarRoot
 
-// Force-link window crates so their `inventory::submit!` registrants
-// are included in the binary and discovered by `register_all_windows`.
+// Force-link the shell's own window crates so their `inventory::submit!`
+// registrants are included in the binary and discovered by
+// `register_all_windows`. The optional tools (git, the flamegraph, Mission
+// Control, Fab search, the chat's providers) are not the shell's: the editor
+// binary links them and they register themselves (`ui_common::editor_tools`).
 use ui_about as _;
 use ui_documentation as _;
-use ui_fab_search as _;
-use ui_flamegraph as _;
-use ui_git_manager as _;
 use ui_keybindings as _;
 use ui_multiplayer as _;
 use ui_plugin_manager as _;
@@ -104,7 +104,9 @@ pub fn init(cx: &mut gpui::App) {
     // `#[register_window]` macro — register their name-openers so
     // `WindowRegistry::open("…")` keeps working for menus and embedders.
     ui_settings::SettingsWindow::init(cx);
-    ui_git_manager::GitManagerWindow::init(cx);
+    // The optional tools the editor binary links (git, the flamegraph, ...):
+    // their windows and background work (`ui_common::editor_tools`).
+    ui_common::editor_tools::init_editor_tools(cx);
 
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");

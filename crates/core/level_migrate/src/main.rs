@@ -28,11 +28,6 @@
 // Every installed plugin's root crate: their classes and record
 // migrations.
 use installed_plugins as _;
-#[allow(unused_imports)]
-use pulsar_physics::{
-    PhysicsComponent as _ForceLink_PhysicsComponent,
-    RigidbodyComponent as _ForceLink_RigidbodyComponent,
-};
 
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;

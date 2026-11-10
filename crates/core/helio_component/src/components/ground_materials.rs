@@ -4,12 +4,8 @@
 //!
 //! The names belong to whatever draws the ground: a plugin whose ground has
 //! materials registers them ([`GroundMaterialNames`]); without one, a list
-//! shows and reads ids only.
-
-use gpui::{Entity, Subscription, Window, prelude::*, px};
-use pulsar_reflection::{BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack};
-use ui::Sizable as _;
-use ui::input::{Input, InputEvent, InputState};
+//! shows and reads ids only. The inspector edits a list as its line
+//! ([`ui_types_common::TextEditedType`]).
 
 /// Names of ground materials, registered by the plugin whose ground has
 /// them (`inventory::submit!`).
@@ -99,105 +95,21 @@ fn deserialize_material_list_json(
 
 #[pulsar_reflection::pulsar_type(
     serialize_json_with = serialize_material_list_json,
-    deserialize_json_with = deserialize_material_list_json,
-    editor = material_list_editor
+    deserialize_json_with = deserialize_material_list_json
 )]
 #[allow(dead_code)]
 type RegisteredGroundMaterialList = GroundMaterialList;
 
-/// Property editor for [`GroundMaterialList`]: a line of material names and
-/// ids. A line naming an unknown material is kept unapplied until it
-/// parses.
-pub struct GroundMaterialListEditor {
-    label: String,
-    value: GroundMaterialList,
-    input: Entity<InputState>,
-    write_back: PropertyWriteBack,
-    _subs: Vec<Subscription>,
-}
-
-impl GroundMaterialListEditor {
-    fn new(
-        args: &PropertyEditorArgs<'_>,
-        window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) -> Self {
-        let value = args
-            .current_value
-            .downcast_ref::<GroundMaterialList>()
-            .cloned()
-            .unwrap_or_default();
-        let input = cx.new(|cx| InputState::new(window, cx));
-        input.update(cx, |state, cx| state.set_value(value.text(), window, cx));
-        let subs = vec![cx.subscribe_in(
-            &input,
-            window,
-            |this: &mut Self, input, event: &InputEvent, window, cx| {
-                if !matches!(event, InputEvent::Change | InputEvent::Blur) {
-                    return;
-                }
-                let Ok(parsed) = GroundMaterialList::parse(&input.read(cx).text().to_string())
-                else {
-                    return;
-                };
-                if parsed == this.value {
-                    return;
-                }
-                this.value = parsed.clone();
-                (this.write_back)(Box::new(parsed), window, cx);
-            },
-        )];
-        Self {
-            label: args.display_name.to_string(),
-            value,
-            input,
-            write_back: args.write_back.clone(),
-            _subs: subs,
-        }
-    }
-
-    /// Accept a value that changed elsewhere (undo, a preset).
-    fn set_value(
-        &mut self,
-        value: &GroundMaterialList,
-        window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) {
-        if self.value == *value {
-            return;
-        }
-        self.value = value.clone();
-        self.input
-            .update(cx, |state, cx| state.set_value(value.text(), window, cx));
-    }
-}
-
-impl gpui::Render for GroundMaterialListEditor {
-    fn render(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut gpui::Context<Self>,
-    ) -> impl gpui::IntoElement {
-        pulsar_reflection::prims::editor_row(
-            &self.label,
-            Input::new(&self.input).xsmall().w(px(180.0)),
-            cx,
-        )
-    }
-}
-
-fn material_list_editor(
-    args: &PropertyEditorArgs<'_>,
-    window: &mut Window,
-    cx: &mut gpui::App,
-) -> BoundPropertyEditor {
-    let entity = cx.new(|cx| GroundMaterialListEditor::new(args, window, cx));
-    BoundPropertyEditor::new(
-        entity,
-        |editor: &mut GroundMaterialListEditor, value: &GroundMaterialList, window, cx| {
-            editor.set_value(value, window, cx)
+// The inspector edits a list as its line of names and ids.
+inventory::submit! {
+    ui_types_common::TextEditedType {
+        type_id: std::any::TypeId::of::<GroundMaterialList>(),
+        to_text: |value| value.downcast_ref::<GroundMaterialList>().map(GroundMaterialList::text),
+        from_text: |text| {
+            GroundMaterialList::parse(text)
+                .map(|list| Box::new(list) as Box<dyn std::any::Any + Send>)
         },
-    )
+    }
 }
 
 #[cfg(test)]

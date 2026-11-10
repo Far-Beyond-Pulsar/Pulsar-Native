@@ -12,7 +12,6 @@ use std::sync::Arc;
 use ui::dock::{DockArea, DockItem, TabPanel};
 use ui_file_manager::FileManagerDrawer;
 use ui_level_editor::LevelEditorPanel;
-use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
@@ -28,7 +27,6 @@ pub(super) struct Drawers {
     pub status_bar: Entity<super::status_bar::StatusBar>,
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
-    pub mission_control: Entity<MissionControlPanel>,
 }
 
 /// Publishes the component-event catalog as a global. Depends on nothing.
@@ -173,8 +171,8 @@ pub(super) fn install_docks(
     );
 }
 
-/// Creates the file manager, sidebar, footer, problems, type-debugger and
-/// mission-control entities. Depends on nothing but the app entity itself
+/// Creates the file manager, sidebar, footer, problems and type-debugger
+/// entities. Depends on nothing but the app entity itself
 /// (the sidebar and footer hold a weak handle back to it).
 pub(super) fn build_drawers(
     project_path: Option<&PathBuf>,
@@ -204,7 +202,6 @@ pub(super) fn build_drawers(
     };
     let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
     let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
-    let mission_control = cx.new(MissionControlPanel::new);
     tracing::info!("[PulsarApp] drawers: {}ms", t.elapsed().as_millis());
     Drawers {
         file_manager_drawer,
@@ -213,7 +210,6 @@ pub(super) fn build_drawers(
         status_bar,
         problems_drawer,
         type_debugger_drawer,
-        mission_control,
     }
 }
 
@@ -350,59 +346,6 @@ pub(super) fn create_plugin_manager(
     (plugin_manager, plugins_staged)
 }
 
-/// Registers the physics subsystem, component definitions and factories as
-/// built-ins on `plugin_manager`. Depends on [`create_plugin_manager`].
-pub(super) fn register_builtin_physics(
-    plugin_manager: &mut PluginManager,
-    t_plugins: std::time::Instant,
-) {
-    // Register built-in physics subsystem
-    plugin_manager.register_builtin_subsystem(Box::new(engine_backend::PhysicsEngine::new()));
-
-    // Register physics component definitions (for the component picker)
-    plugin_manager.register_builtin_component_definitions(vec![
-        plugin_editor_api::ComponentDefinition {
-            id: "PhysicsComponent".into(),
-            display_name: "Physics".into(),
-            category: "Physics".into(),
-            description: "Physical body with collision and simulation settings".into(),
-            icon: None,
-        },
-        plugin_editor_api::ComponentDefinition {
-            id: "RigidbodyComponent".into(),
-            display_name: "Rigidbody".into(),
-            category: "Physics".into(),
-            description: "Rigid body dynamics (mass, velocity, forces)".into(),
-            icon: None,
-        },
-    ]);
-
-    // Register physics component factories (for instantiation via EngineClass)
-    plugin_manager.register_builtin_component_factories(vec![
-        (
-            "PhysicsComponent".into(),
-            Box::new(|| {
-                let c: Box<dyn pulsar_reflection::EngineClass> =
-                    Box::new(pulsar_physics::PhysicsComponent::default());
-                c
-            }) as plugin_editor_api::ComponentFactory,
-        ),
-        (
-            "RigidbodyComponent".into(),
-            Box::new(|| {
-                let c: Box<dyn pulsar_reflection::EngineClass> =
-                    Box::new(pulsar_physics::RigidbodyComponent::default());
-                c
-            }) as plugin_editor_api::ComponentFactory,
-        ),
-    ]);
-
-    tracing::info!(
-        "[PulsarApp] built-in physics registered in {:?}",
-        t_plugins.elapsed()
-    );
-}
-
 /// Starts the task that repaints the footer when the multiuser session
 /// changes. Depends on the global `EngineContext` existing (checked when the
 /// task first runs).
@@ -418,23 +361,6 @@ pub(super) fn spawn_multiuser_refresh(cx: &mut Context<PulsarApp>) -> Task<()> {
             _ = this.update(cx, |app, cx| app.notify_status_bar(cx));
         }
     })
-}
-
-/// Starts git auto-fetch for the primary project window only (the one that
-/// creates the level editor). Depends on nothing.
-pub(super) fn start_git_auto_fetch(
-    create_level_editor: bool,
-    project_path: Option<&PathBuf>,
-    window: &Window,
-    cx: &mut Context<PulsarApp>,
-) -> Option<Task<()>> {
-    if create_level_editor {
-        project_path.map(|project_path| {
-            ui_git_manager::start_auto_fetch_task(project_path.clone(), window.window_handle(), cx)
-        })
-    } else {
-        None
-    }
 }
 
 /// Starts the task that repaints the task button when queue state changes.

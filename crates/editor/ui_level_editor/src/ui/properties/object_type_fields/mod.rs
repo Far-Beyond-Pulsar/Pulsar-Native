@@ -24,7 +24,7 @@ use ui::dropdown::{SearchableList, SearchableListEvent};
 use ui::popover::Popover;
 use ui::{v_flex, ActiveTheme, IconName, Sizable as _};
 use ui_common::inspector::{Inspector, InspectorCarry, InspectorRow};
-use ui_common::{MeshAssetPicker, PropertyStateManager};
+use ui_common::{AssetPicker, PropertyStateManager};
 
 use crate::state::LevelEditorState;
 
@@ -63,7 +63,7 @@ pub struct ObjectTypeFieldsSection {
     /// Shared property widget state (numeric inputs, colour pickers, asset pickers).
     pub(super) property_state: PropertyStateManager,
     /// Asset picker for the object-level icon prop.
-    pub(super) icon_asset_picker: Option<Entity<MeshAssetPicker>>,
+    pub(super) icon_asset_picker: Option<Entity<AssetPicker>>,
     // ── Virtualized list ───────────────────────────────────────────────────
     //
     // The shared inspector owns search, collapse and the `gpui::list`; this

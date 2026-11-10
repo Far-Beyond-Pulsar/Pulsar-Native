@@ -44,9 +44,10 @@ pub mod tick;
 // The Blueprints a level assigns to the engine roles, resolved for the spawn step.
 pub mod roles;
 
-// Player input through possession: the input component on the pawn, and the
-// gate that keeps the free camera off the pawn's keys.
-pub mod player_input;
+// Whether the local player possesses a pawn: the gate that keeps the free
+// camera off the keys the pawn listens to. What a possession attaches to the
+// pawn is the plugins' (`engine_backend::scene::game_hooks`).
+pub mod possession;
 
 // The entity the local player's view follows (set by possession, read by the
 // hosts' camera selection).

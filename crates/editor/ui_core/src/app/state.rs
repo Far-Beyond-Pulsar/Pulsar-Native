@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use ui::dock::{DockArea, TabPanel};
 use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use ui_file_manager::FileManagerDrawer;
-use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
@@ -27,7 +26,6 @@ pub struct AppState {
     pub chrome: super::chrome::ChromeState,
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
-    pub mission_control: Entity<MissionControlPanel>,
     pub task_queue_refresh_task: Option<Task<()>>,
 
     // Tab management
@@ -66,7 +64,6 @@ pub struct AppState {
     pub multiuser_refresh_task: Option<Task<()>>,
 
     // Git auto-fetch listener for the primary project window
-    pub git_auto_fetch_task: Option<Task<()>>,
 
     // Dock layout persistence (see `layout`)
     /// This window saves and restores the project layout.

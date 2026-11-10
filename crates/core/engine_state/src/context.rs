@@ -13,8 +13,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 
-use window_manager::WindowManager;
-
 /// Context for a specific window
 #[derive(Clone)]
 pub struct WindowContext {
@@ -110,6 +108,43 @@ impl ProjectContext {
     }
 }
 
+/// What a new project starts with, given by the host that embeds it (the
+/// editor binary): the default level, and the project assets it references
+/// (paths relative to the project's `assets/` directory). The editor writes
+/// it into a project that has no level yet; it names nothing of what is in
+/// it, so the content (its kinds' components and files) is the host's.
+#[derive(Clone, Debug, Default)]
+pub struct NewProjectContent {
+    /// The default level's bytes; `None` starts new projects empty.
+    pub level: Option<std::sync::Arc<[u8]>>,
+    /// `(path under assets/, bytes)` for every asset the level references.
+    pub assets: Vec<(String, std::sync::Arc<[u8]>)>,
+}
+
+impl NewProjectContent {
+    /// Write the assets into `<project_root>/assets/`, leaving any file the
+    /// project already has untouched. A file that cannot be written is
+    /// logged and skipped.
+    pub fn install_assets(&self, project_root: &std::path::Path) {
+        for (path, bytes) in &self.assets {
+            let dst = project_root.join("assets").join(path);
+            if dst.exists() {
+                continue;
+            }
+            if let Some(parent) = dst.parent() {
+                if let Err(error) = engine_fs::virtual_fs::create_dir_all(parent) {
+                    tracing::warn!("Could not create {}: {error}", parent.display());
+                    continue;
+                }
+            }
+            match engine_fs::virtual_fs::write_file(&dst, bytes) {
+                Ok(()) => tracing::debug!("Starter asset written: {}", dst.display()),
+                Err(error) => tracing::warn!("Could not write {}: {error}", dst.display()),
+            }
+        }
+    }
+}
+
 /// Context for engine launch (command-line args, URI launches, etc.)
 #[derive(Clone, Debug)]
 pub struct LaunchContext {
@@ -198,27 +233,6 @@ impl EngineContext {
     /// Unregister a window
     pub fn unregister_window(&self, window_id: &WindowId) -> Option<WindowContext> {
         self.windows.remove(window_id).map(|(_, ctx)| ctx)
-    }
-
-    /// Convenience wrapper that either routes through the WindowManager
-    /// Create a window through the window manager using a generic content builder.
-    /// This is the preferred method as it preserves the view type and allows Root
-    /// to be the actual window root.
-    pub fn create_window<V, F>(
-        &self,
-        window_type: WindowRequest,
-        options: gpui::WindowOptions,
-        content_builder: F,
-        cx: &mut gpui::App,
-    ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
-    where
-        V: gpui::Render + 'static,
-        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::Entity<V> + Send + 'static,
-    {
-        use gpui::UpdateGlobal;
-        WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(window_type, options, content_builder, cx)
-        })
     }
 
     /// Get window count
@@ -386,9 +400,14 @@ impl EngineContext {
         self.multiuser.update(|_| {});
     }
 
-    /// Set as global instance (for GPUI views that need global access)
+    /// Set as global instance (for GPUI views that need global access). The
+    /// first context set stays the global one; a later call is reported.
     pub fn set_global(self) {
-        GLOBAL_CONTEXT.set(self);
+        if GLOBAL_CONTEXT.set(self).is_err() {
+            tracing::warn!(
+                "EngineContext::set_global called again; the first context stays global"
+            );
+        }
     }
 
     /// Get global instance

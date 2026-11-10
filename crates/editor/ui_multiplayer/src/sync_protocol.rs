@@ -13,14 +13,14 @@ use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::RwLock;
 
+use crate::net::multiuser::{
+    ClientMessage, MultiuserClient, PeerIdentity, PeerProfile, ServerMessage,
+};
+use crate::net::simple_sync;
 use crate::screen::MultiplayerWindow;
 use crate::session_events::JoinedReply;
 use crate::session_logic;
 use crate::utils::types::*;
-use engine_backend::subsystems::networking::multiuser::{
-    ClientMessage, MultiuserClient, PeerIdentity, PeerProfile, ServerMessage,
-};
-use engine_backend::subsystems::networking::simple_sync;
 
 /// Log prefix used by every message in the host flow.
 const TAG: &str = "CREATE_SESSION";

@@ -73,7 +73,7 @@ pub struct TickLoop {
     /// Whether a possessed pawn owns the local player's input; set by the
     /// script driver, read by the hosts' free cameras (see
     /// [`possession_gate`](Self::possession_gate)).
-    possession: crate::player_input::PossessionGate,
+    possession: crate::possession::PossessionGate,
     /// The entity each local player's view follows; set by the script driver
     /// (possession), read by the hosts' camera selection (see
     /// [`view_targets`](Self::view_targets)).
@@ -223,7 +223,7 @@ impl TickLoop {
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
             world_roles: engine_fs::world_roles::WorldRoles::default(),
-            possession: crate::player_input::PossessionGate::new(),
+            possession: crate::possession::PossessionGate::new(),
             view_targets: crate::view_target::ViewTargets::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
@@ -273,7 +273,7 @@ impl TickLoop {
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
             world_roles: engine_fs::world_roles::WorldRoles::default(),
-            possession: crate::player_input::PossessionGate::new(),
+            possession: crate::possession::PossessionGate::new(),
             view_targets: crate::view_target::ViewTargets::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
@@ -391,7 +391,7 @@ impl TickLoop {
     /// Whether a possessed pawn owns the local player's input. Clone it
     /// before the loop moves to its thread: the built-in free camera stands
     /// down while it is set.
-    pub fn possession_gate(&self) -> crate::player_input::PossessionGate {
+    pub fn possession_gate(&self) -> crate::possession::PossessionGate {
         self.possession.clone()
     }
 
@@ -494,11 +494,12 @@ impl TickLoop {
             );
         }
 
-        // Flush 2 (after physics): physics runs in the ECS schedule; its
+        // Flush 2 (after the systems): the component systems (a physics
+        // plugin among them) run in the ECS schedule; their
         // hits and overlaps (and whatever systems and actors published)
         // are delivered before the script phase, which runs the script
         // handlers they queued.
-        self.events.flush(pulsar_events::FlushPoint::AfterPhysics);
+        self.events.flush(pulsar_events::FlushPoint::AfterSystems);
 
         // Phase 3: the script phase, AFTER ECS + actor updates: the driver
         // starts/stops script instances to match the world's class

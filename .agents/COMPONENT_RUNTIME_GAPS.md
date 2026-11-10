@@ -250,12 +250,12 @@ The exact TickLoop sequence is: input and `AfterInput` event flush; ECS
 schedule; registered component callbacks in type-name order, with `begin_play`
 on first activation, queued native event handlers in arrival order, then
 `tick`; actor and rebinding callbacks; component outbox transfer;
-`AfterPhysics` event flush; script begin/tick/command phase; component-removal
+`AfterSystems` event flush; script begin/tick/command phase; component-removal
 cleanup for script mutations; `AfterScripts` and `EndOfFrame` event flushes;
 SceneDB change-window closure. Gamma delivery is queued, so subscribers do
 not re-enter a World borrow. Blueprint handlers for component events therefore
 run in the script phase after component emission in the earlier
-`AfterPhysics` flush. Native Rust handlers queued by a flush are invoked in
+`AfterSystems` flush. Native Rust handlers queued by a flush are invoked in
 the next component callback phase.
 
 `ComponentContext` exposes the component owner and a named event writer but

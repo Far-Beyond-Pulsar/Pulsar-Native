@@ -303,64 +303,8 @@ impl PulsarApp {
                                         app.toggle_plugin_manager(window, cx);
                                     })),
                             )
-                            .child(
-                                Button::new("toggle-flamegraph")
-                                    .ghost()
-                                    .icon(
-                                        Icon::new(IconName::Activity)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .tooltip(t!("StatusBar.Flamegraph").to_string())
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_flamegraph(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("toggle-log-viewer")
-                                    .ghost()
-                                    .icon(Icon::new(IconName::Page).size(px(16.)).text_color(
-                                        if self.state.chrome.mission_control_open {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        },
-                                    ))
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .when(self.state.chrome.mission_control_open, |s| {
-                                        s.bg(cx.theme().primary.opacity(0.15))
-                                    })
-                                    .tooltip("Mission Control")
-                                    .on_click(cx.listener(|app, _, _window, cx| {
-                                        app.toggle_log_viewer(_window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("open-git-manager")
-                                    .ghost()
-                                    .icon(Icon::new(IconName::GitBranch).size(px(16.)).text_color(
-                                        if self.state.chrome.git_manager_open {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        },
-                                    ))
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .when(self.state.chrome.git_manager_open, |s| {
-                                        s.bg(cx.theme().primary.opacity(0.15))
-                                    })
-                                    .tooltip("Git Manager")
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.open_git_manager(window, cx);
-                                    })),
-                            )
+                            // The editor tools' buttons (`ui_common::editor_tools`).
+                            .children(self.render_editor_tool_buttons(cx))
                             // Render plugin statusbar buttons for left position
                             .children(
                                 self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx),
@@ -510,6 +454,40 @@ impl PulsarApp {
                             ),
                     ),
             )
+    }
+
+    /// The editor tools' status-bar buttons
+    /// (`ui_common::editor_tools::EditorToolRegistration`), lit while their
+    /// window was opened from here.
+    fn render_editor_tool_buttons(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        ui_common::editor_tools::editor_tools()
+            .into_iter()
+            .map(|tool| {
+                let lit = self.state.chrome.open_tools.contains(tool.id)
+                    || tool.is_open.is_some_and(|is_open| is_open(cx));
+                let id = tool.id;
+                Button::new(gpui::SharedString::from(format!("editor-tool-{id}")))
+                    .ghost()
+                    .icon(
+                        Icon::new(tool.icon.clone())
+                            .size(px(16.))
+                            .text_color(if lit {
+                                cx.theme().primary
+                            } else {
+                                cx.theme().muted_foreground
+                            }),
+                    )
+                    .px_2()
+                    .py_1()
+                    .rounded(px(4.))
+                    .when(lit, |s| s.bg(cx.theme().primary.opacity(0.15)))
+                    .tooltip((tool.label)())
+                    .on_click(cx.listener(move |app, _, window, cx| {
+                        app.toggle_editor_tool(id, window, cx);
+                    }))
+                    .into_any_element()
+            })
+            .collect()
     }
 
     /// Render statusbar buttons registered by plugins
@@ -718,8 +696,6 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
-            .on_action(cx.listener(Self::on_toggle_log_viewer))
-            .on_action(cx.listener(Self::on_toggle_flamegraph))
             .on_action(cx.listener(Self::on_toggle_agent_chat))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_toggle_unified_sidebar))

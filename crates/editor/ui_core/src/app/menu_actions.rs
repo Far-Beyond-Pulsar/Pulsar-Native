@@ -95,12 +95,11 @@ impl PulsarApp {
                 this.import_assets(window, cx)
             }))
             // Tools
-            .on_action(cx.listener(|this, _: &menu::ToggleProfiler, window, cx| {
-                this.toggle_flamegraph(window, cx)
-            }))
-            .on_action(cx.listener(|this, _: &menu::ToggleConsole, window, cx| {
-                this.toggle_log_viewer(window, cx)
-            }))
+            .on_action(
+                cx.listener(|this, action: &menu::OpenEditorTool, window, cx| {
+                    this.toggle_editor_tool(&action.id, window, cx)
+                }),
+            )
             .on_action(cx.listener(|this, _: &menu::ShowTypeDebugger, window, cx| {
                 this.toggle_type_debugger(window, cx)
             }))

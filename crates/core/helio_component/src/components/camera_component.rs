@@ -343,8 +343,7 @@ mod tests {
         assert!(
             pulsar_reflection::REGISTRY
                 .get_class_names()
-                .iter()
-                .any(|name| *name == CAMERA_CLASS_NAME),
+                .contains(&CAMERA_CLASS_NAME),
             "{CAMERA_CLASS_NAME} must be in the class registry (Add component list)"
         );
     }

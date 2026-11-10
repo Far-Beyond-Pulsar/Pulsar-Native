@@ -101,9 +101,14 @@ macro_rules! export_profiler_attach {
         /// `host` is the host's `profiling::scope::HostProfiler`.
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_attach_profiler(host: *const ::std::ffi::c_void) -> bool {
-            // SAFETY: the plugin manager passes the host's `HostProfiler`, as
-            // documented above.
-            unsafe { $crate::scope::attach_host(host.cast()) }
+            // A panic must not unwind across the FFI boundary (it would
+            // abort the editor): the host reads it as a refusal.
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: the plugin manager passes the host's `HostProfiler`,
+                // as documented above.
+                unsafe { $crate::scope::attach_host(host.cast()) }
+            }))
+            .unwrap_or(false)
         }
     };
 }

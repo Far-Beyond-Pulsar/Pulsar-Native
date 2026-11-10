@@ -258,10 +258,6 @@ pub struct PluginManager {
     /// Component factories from plugins, collected at load time.
     /// Each entry is (class_name, factory).
     plugin_component_registrations: Vec<(String, plugin_editor_api::ComponentFactory)>,
-
-    /// Component definitions registered directly as built-ins (not from DLL plugins).
-    /// These supplement definitions from `BuiltinEditorRegistry` and DLL plugins.
-    builtin_component_definitions: Vec<ComponentDefinition>,
 }
 
 // SAFETY: PluginManager now contains only safe types:
@@ -291,7 +287,6 @@ impl PluginManager {
             statusbar_buttons: Vec::new(),
             plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
-            builtin_component_definitions: Vec::new(),
         }
     }
 

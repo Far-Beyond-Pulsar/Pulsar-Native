@@ -6,7 +6,7 @@
 //! override, so a mesh can ship with its materials already applied.
 
 use gpui::*;
-use ui_common::asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+use ui_common::asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 
 use super::panel::AssetViewerPanel;
 
@@ -14,13 +14,13 @@ use super::panel::AssetViewerPanel;
 pub struct MaterialSlotRow {
     pub name: String,
     pub material: String,
-    pub picker: Entity<MeshAssetPicker>,
+    pub picker: Entity<AssetPicker>,
 }
 
 /// Material-assignment state of the open `.mesh`.
 pub struct MeshMaterials {
     pub rows: Vec<MaterialSlotRow>,
-    pub apply_all: Entity<MeshAssetPicker>,
+    pub apply_all: Entity<AssetPicker>,
 }
 
 fn material_queries() -> Vec<AssetQuery> {
@@ -34,10 +34,10 @@ fn new_picker(
     selected: String,
     window: &mut Window,
     cx: &mut Context<AssetViewerPanel>,
-) -> Entity<MeshAssetPicker> {
+) -> Entity<AssetPicker> {
     let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
     cx.new(|cx| {
-        MeshAssetPicker::new(
+        AssetPicker::new(
             selected,
             Vec::new(),
             project_root,
@@ -309,10 +309,10 @@ impl AssetViewerPanel {
     }
 }
 
-fn picker_button(id: String, label: String, picker: Entity<MeshAssetPicker>) -> impl IntoElement {
+fn picker_button(id: String, label: String, picker: Entity<AssetPicker>) -> impl IntoElement {
     use ui::button::{Button, ButtonVariants as _};
     use ui::{popover::Popover, Sizable};
-    Popover::<MeshAssetPicker>::new(format!("{id}-popover"))
+    Popover::<AssetPicker>::new(format!("{id}-popover"))
         .anchor(Corner::BottomRight)
         .trigger(
             Button::new(format!("{id}-btn"))

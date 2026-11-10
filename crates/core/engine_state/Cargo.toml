@@ -7,8 +7,6 @@ publish = false
 [dependencies]
 # The project's plugins, activated when a project is set.
 pulsar_plugins = { workspace = true }
-gpui-ce.workspace = true
-window_manager.workspace = true
 
 # Thread-safe data structures
 dashmap = { workspace = true }

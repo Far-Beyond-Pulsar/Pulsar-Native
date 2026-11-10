@@ -12,10 +12,9 @@ use super::command_palette_setup::register_command_palette;
 use super::construction::{
     build_center_dock, build_drawers, connect_rust_analyzer, create_dock_area,
     create_plugin_manager, finish_construction, install_docks, persistent_center_tabs,
-    publish_component_event_catalog, publish_project_path, register_builtin_physics,
-    register_drawer_windows, spawn_multiuser_refresh, spawn_task_queue_refresh,
-    start_git_auto_fetch, subscribe_drawer_events, sync_file_types_into_drawer,
-    sync_project_into_drawers,
+    publish_component_event_catalog, publish_project_path, register_drawer_windows,
+    spawn_multiuser_refresh, spawn_task_queue_refresh, subscribe_drawer_events,
+    sync_file_types_into_drawer, sync_project_into_drawers,
 };
 use super::PulsarApp;
 
@@ -138,11 +137,8 @@ impl PulsarApp {
 
         let t_plugins = std::time::Instant::now();
         let (mut plugin_manager, plugins_staged) = create_plugin_manager(&rust_analyzer, t_plugins);
-        register_builtin_physics(&mut plugin_manager, t_plugins);
 
         let multiuser_refresh_task = spawn_multiuser_refresh(cx);
-        let git_auto_fetch_task =
-            start_git_auto_fetch(create_level_editor, project_path.as_ref(), window, cx);
 
         let mut app = Self {
             state: crate::app::state::AppState {
@@ -152,7 +148,6 @@ impl PulsarApp {
                 chrome: Default::default(),
                 problems_drawer: drawers.problems_drawer,
                 type_debugger_drawer: drawers.type_debugger_drawer,
-                mission_control: drawers.mission_control,
                 task_queue_refresh_task: None,
                 center_tabs,
                 preview_tab_panels: Vec::new(),
@@ -175,7 +170,6 @@ impl PulsarApp {
                 nav_overlay: drawers.nav_overlay,
                 status_bar: drawers.status_bar,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
-                git_auto_fetch_task,
                 layout_persist: false,
                 layout_slot: None,
                 window_bounds: None,

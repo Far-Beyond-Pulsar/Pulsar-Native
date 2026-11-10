@@ -2,8 +2,8 @@
 //! sky (#1057) and one global wind (#1123); directional lights are not
 //! limited (a sky rig holds a sun and a moon).
 
-use lights_plugin::lights_component::{LightComponent, LightType};
-use sky_plugin::sky_component::AtmosphereComponent;
+use installed_plugins::lights_plugin::lights_component::{LightComponent, LightType};
+use installed_plugins::sky_plugin::sky_component::AtmosphereComponent;
 
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{components, objects, ObjectType, SceneObjectData, Transform};
@@ -17,7 +17,7 @@ mod sky {
     use crate::extend::{add_object, level_component, LevelComponent};
     use crate::scene_edit::{ObjectType, Transform};
     use crate::state::LevelEditorState;
-    use sky_plugin::sky_component::{level_atmosphere, AtmosphereComponent};
+    use installed_plugins::sky_plugin::sky_component::{level_atmosphere, AtmosphereComponent};
 
     pub const SKY_OBJECT_NAME: &str = "Sky";
 
@@ -41,7 +41,7 @@ mod wind {
     use crate::extend::{add_object, level_component, LevelComponent};
     use crate::scene_edit::{ObjectType, Transform};
     use crate::state::LevelEditorState;
-    use foliage_plugin::foliage_component::{level_wind as find, WindComponent};
+    use installed_plugins::foliage_plugin::foliage_component::{level_wind as find, WindComponent};
 
     pub const WIND_OBJECT_NAME: &str = "Wind";
 
@@ -89,7 +89,7 @@ fn add_object(state: &mut LevelEditorState, name: &str) -> String {
 }
 
 fn atmosphere_count(state: &LevelEditorState) -> usize {
-    sky_plugin::sky_component::atmospheres(&state.scene.world()).len()
+    installed_plugins::sky_plugin::sky_component::atmospheres(&state.scene.world()).len()
 }
 
 #[test]
@@ -145,7 +145,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
     assert!(!again.changed);
     assert_eq!(
         again.no_op_reason,
-        sky_plugin::sky_component::ONE_ATMOSPHERE
+        installed_plugins::sky_plugin::sky_component::ONE_ATMOSPHERE
     );
 
     // Add Component on another object (class default and a typed value).
@@ -164,7 +164,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
         assert!(!result.changed);
         assert_eq!(
             result.no_op_reason,
-            sky_plugin::sky_component::ONE_ATMOSPHERE
+            installed_plugins::sky_plugin::sky_component::ONE_ATMOSPHERE
         );
     }
 
@@ -180,7 +180,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
     assert!(!result.changed);
     assert_eq!(
         result.no_op_reason,
-        sky_plugin::sky_component::ONE_ATMOSPHERE
+        installed_plugins::sky_plugin::sky_component::ONE_ATMOSPHERE
     );
 
     // Duplicating the sky component, or its object.
@@ -195,7 +195,7 @@ fn a_second_atmosphere_is_refused_with_a_message() {
     assert!(!result.changed);
     assert_eq!(
         result.no_op_reason,
-        sky_plugin::sky_component::ONE_ATMOSPHERE
+        installed_plugins::sky_plugin::sky_component::ONE_ATMOSPHERE
     );
     let copy = objects::duplicate_object(&mut state.scene.world_mut(), &sky_object)
         .expect("the object is copied");
@@ -267,7 +267,7 @@ fn a_level_file_with_two_skies_loads_with_the_first_one_enabled() {
 
     let mut loaded = engine_backend::scene::new_scene();
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
-    let skies = sky_plugin::sky_component::atmospheres(&loaded.world);
+    let skies = installed_plugins::sky_plugin::sky_component::atmospheres(&loaded.world);
     assert_eq!(skies.len(), 2, "both are kept");
     let enabled: Vec<bool> = skies
         .iter()
@@ -283,7 +283,7 @@ fn a_level_file_with_two_skies_loads_with_the_first_one_enabled() {
 /// level file with two loads with the first one enabled.
 #[test]
 fn a_level_has_one_global_wind() {
-    use foliage_plugin::foliage_component::WindComponent;
+    use installed_plugins::foliage_plugin::foliage_component::WindComponent;
     let mut state = LevelEditorState::new();
     assert_eq!(wind::level_wind(&state.scene.world()), None);
     let created = wind::create_wind(&mut state);
@@ -318,7 +318,7 @@ fn a_level_has_one_global_wind() {
     assert!(!again.changed);
     assert_eq!(
         again.no_op_reason,
-        foliage_plugin::foliage_component::ONE_WIND
+        installed_plugins::foliage_plugin::foliage_component::ONE_WIND
     );
     let other = add_object(&mut state, "Other");
     let result = execute_command(
@@ -331,7 +331,7 @@ fn a_level_has_one_global_wind() {
     );
     assert_eq!(
         result.no_op_reason,
-        foliage_plugin::foliage_component::ONE_WIND
+        installed_plugins::foliage_plugin::foliage_component::ONE_WIND
     );
     let result = execute_command(
         &mut state,
@@ -342,7 +342,7 @@ fn a_level_has_one_global_wind() {
     );
     assert_eq!(
         result.no_op_reason,
-        foliage_plugin::foliage_component::ONE_WIND
+        installed_plugins::foliage_plugin::foliage_component::ONE_WIND
     );
 
     // Only a file can hold two: write the second past the rules.
@@ -356,10 +356,13 @@ fn a_level_has_one_global_wind() {
     crate::scene_edit::level_io::save_to_file(&state.scene.world(), &path).unwrap();
     let mut loaded = engine_backend::scene::new_scene();
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
-    let enabled: Vec<bool> = foliage_plugin::foliage_component::winds(&loaded.world)
-        .iter()
-        .map(|instance| engine_backend::scene::attachments::is_enabled(&loaded.world, *instance))
-        .collect();
+    let enabled: Vec<bool> =
+        installed_plugins::foliage_plugin::foliage_component::winds(&loaded.world)
+            .iter()
+            .map(|instance| {
+                engine_backend::scene::attachments::is_enabled(&loaded.world, *instance)
+            })
+            .collect();
     assert_eq!(enabled, [true, false]);
     let found = wind::level_wind(&loaded.world).unwrap();
     assert_eq!(found.object_name, wind::WIND_OBJECT_NAME);
@@ -416,7 +419,8 @@ fn set_light(
 }
 
 fn sun_count(state: &LevelEditorState) -> usize {
-    lights_plugin::lights_component::directional_lights(&state.scene.world()).len()
+    installed_plugins::lights_plugin::lights_component::directional_lights(&state.scene.world())
+        .len()
 }
 
 #[test]
@@ -506,7 +510,7 @@ fn a_level_file_with_two_directional_lights_loads_with_both_casting() {
     let mut loaded = engine_backend::scene::new_scene();
     crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
     let world = &loaded.world;
-    let suns = lights_plugin::lights_component::directional_lights(world);
+    let suns = installed_plugins::lights_plugin::lights_component::directional_lights(world);
     assert_eq!(suns.len(), 2);
     assert!(suns.contains(&components::instance_at(world, &first, 0).unwrap()));
     let other = components::instance_at(world, &second, 0).unwrap();

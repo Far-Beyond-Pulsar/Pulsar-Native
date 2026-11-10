@@ -16,9 +16,10 @@ pub enum RelayConnectionMode {
 }
 
 /// Connection status for multiuser session
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum MultiuserStatus {
     /// Not connected to any session
+    #[default]
     Disconnected,
     /// Currently connecting to a session
     Connecting,
@@ -34,12 +35,6 @@ pub enum MultiuserStatus {
     },
     /// Connection error occurred
     Error(String),
-}
-
-impl Default for MultiuserStatus {
-    fn default() -> Self {
-        MultiuserStatus::Disconnected
-    }
 }
 
 /// Top-level collaboration mode.

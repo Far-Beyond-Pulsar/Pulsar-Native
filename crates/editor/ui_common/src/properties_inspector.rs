@@ -2,10 +2,7 @@ use gpui::{
     prelude::FluentBuilder as _, px, Context, FontWeight, IntoElement, ParentElement, Styled,
 };
 
-use ui::{
-    button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
-};
+use ui::{button::Button, h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 pub fn render_header<V>(
     title: impl Into<String>,

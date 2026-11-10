@@ -91,8 +91,6 @@ Menu.Project.OpenCargoToml: Cargo.toml
 Menu.Project.RevealInFileExplorer: 파일 탐색기에서 표시
 
 Menu.Tools: 도구
-Menu.Tools.Profiler: 프로파일러
-Menu.Tools.MissionControl: 미션 컨트롤
 Menu.Tools.TypeDebugger: 타입 디버거
 Menu.Tools.Multiplayer: 멀티플레이어
 

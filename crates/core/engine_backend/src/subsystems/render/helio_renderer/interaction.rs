@@ -1,5 +1,5 @@
 //! Transform handles with shared solid geometry for drawing and picking.
-use super::gizmo_geometry::{meshes, rotation_grid, Handle};
+use super::gizmo_geometry::{rotation_grid, shapes, Handle};
 use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
 use crate::scene::{GizmoType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{DVec3, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
@@ -328,12 +328,12 @@ impl SceneInteraction {
         let length = self.view.length(pivot)?;
         let basis = rotation_matrix(t);
         let mut best: Option<(f32, f32, Handle)> = None;
-        for mesh in meshes(self.mode) {
-            if !self.handle_visible(mesh.handle, pivot, basis, length) {
+        for shape in shapes(self.mode) {
+            if !self.handle_visible(shape.handle, pivot, basis, length) {
                 continue;
             }
-            for tri in &mesh.triangles {
-                if !self.triangle_visible(mesh.handle, tri, pivot, basis) {
+            for tri in &shape.triangles {
+                if !self.triangle_visible(shape.handle, tri, pivot, basis) {
                     continue;
                 }
                 let points = tri.map(|p| pivot + basis * p * length);
@@ -352,7 +352,7 @@ impl SceneInteraction {
                 if best.is_none_or(|(d, z, _)| {
                     distance < d - 0.01 || ((distance - d).abs() < 0.01 && depth < z)
                 }) {
-                    best = Some((distance, depth, mesh.handle));
+                    best = Some((distance, depth, shape.handle));
                 }
             }
         }
@@ -659,36 +659,36 @@ impl SceneInteraction {
                     }
                 }
             }
-            for mesh in meshes(self.mode) {
+            for shape in shapes(self.mode) {
                 // Before a drag the three handles are quarter arcs. Once one
                 // is captured, expose its entire 360-degree ring and remove
                 // the other rings so the active rotation range is unambiguous.
                 if let Some(axis) = active_rotation_axis {
-                    if mesh.handle != Handle::Axis(axis) {
+                    if shape.handle != Handle::Axis(axis) {
                         continue;
                     }
                 }
-                if !self.handle_visible(mesh.handle, pivot, basis, length) {
+                if !self.handle_visible(shape.handle, pivot, basis, length) {
                     continue;
                 }
                 let base = if self.mode == GizmoType::Rotate {
-                    let Handle::Axis(axis) = mesh.handle else {
+                    let Handle::Axis(axis) = shape.handle else {
                         continue;
                     };
                     rotation_axis_color(axis)
-                } else if active == Some(mesh.handle) {
+                } else if active == Some(shape.handle) {
                     [1.0, 0.8, 0.12, 1.0]
                 } else {
-                    match mesh.handle {
+                    match shape.handle {
                         Handle::Axis(0) | Handle::Plane(0) => [0.95, 0.12, 0.09, 1.0],
                         Handle::Axis(1) | Handle::Plane(1) => [0.2, 0.85, 0.12, 1.0],
                         Handle::Axis(_) | Handle::Plane(_) => [0.12, 0.4, 1.0, 1.0],
                         Handle::Center => [0.88, 0.9, 0.94, 1.0],
                     }
                 };
-                for tri in &mesh.triangles {
+                for tri in &shape.triangles {
                     if active_rotation_axis.is_none()
-                        && !self.triangle_visible(mesh.handle, tri, pivot, basis)
+                        && !self.triangle_visible(shape.handle, tri, pivot, basis)
                     {
                         continue;
                     }
@@ -1370,21 +1370,21 @@ mod tests {
                         interaction.quadrant_signs(Vec3::ZERO, Mat3::IDENTITY),
                         signs
                     );
-                    for mesh in meshes(GizmoType::Rotate) {
-                        let visible = mesh
+                    for shape in shapes(GizmoType::Rotate) {
+                        let visible = shape
                             .triangles
                             .iter()
                             .filter(|tri| {
                                 interaction.triangle_visible(
-                                    mesh.handle,
+                                    shape.handle,
                                     tri,
                                     Vec3::ZERO,
                                     Mat3::IDENTITY,
                                 )
                             })
                             .count();
-                        assert_eq!(visible * 4, mesh.triangles.len());
-                        let Handle::Axis(axis) = mesh.handle else {
+                        assert_eq!(visible * 4, shape.triangles.len());
+                        let Handle::Axis(axis) = shape.handle else {
                             unreachable!()
                         };
                         let grid = rotation_grid(axis, signs);

@@ -43,7 +43,11 @@ pub struct RuntimeTypeInfo {
 - `Enum { variants: &'static [&'static str] }`. `#[derive(Reflectable)]` also
   registers each variant's `///` doc as `EnumVariantDocs` (look up with
   `enum_variant_docs(type_id)`); the enum dropdown shows the selected
-  variant's doc as its tooltip.
+  variant's doc as its tooltip. The derive registers no editor: the editor's
+  `ui_common::PROPERTY_EDITOR_REGISTRY` gives every enum with listed variants
+  the dropdown (and every `ui_types_common::TextEditedType` its line editor)
+  when no `#[pulsar_type(editor = ...)]` hint names one, so a data type's
+  crate links no GPUI.
 - `Wildcard` — type-erased placeholder
 
 `FieldInfo`: `{ name: &'static str, type_info: &'static RuntimeTypeInfo, offset: usize }`

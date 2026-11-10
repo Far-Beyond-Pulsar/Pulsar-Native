@@ -361,7 +361,9 @@ macro_rules! export_plugin {
         // `profiling` scopes land in the editor's flamegraph.
         $crate::profiling::export_profiler_attach!();
 
-        /// Get the plugin's version information.
+        /// Get the plugin's version information. It builds a constant and
+        /// cannot panic, so unlike the other entry points it needs no
+        /// `catch_unwind`.
         #[no_mangle]
         pub extern "C" fn _plugin_version() -> $crate::version::VersionInfo {
             $crate::version::VersionInfo::current()
@@ -370,13 +372,21 @@ macro_rules! export_plugin {
         /// Initialize the plugin's globals from the main app.
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_init_globals(theme_ptr: *const std::ffi::c_void) {
-            if theme_ptr.is_null() {
-                tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
-                return;
-            }
+            // A panic must not unwind across the FFI boundary (it would
+            // abort the editor): it is logged, and the plugin keeps the
+            // theme it had.
+            let initialized = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if theme_ptr.is_null() {
+                    tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
+                    return;
+                }
 
-            if SYNCED_THEME.get().is_none() {
-                SYNCED_THEME.set(theme_ptr as usize);
+                if SYNCED_THEME.get().is_none() {
+                    let _ = SYNCED_THEME.set(theme_ptr as usize);
+                }
+            }));
+            if initialized.is_err() {
+                tracing::error!("[Plugin] The plugin panicked while initializing its globals");
             }
         }
     };

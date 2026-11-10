@@ -7,7 +7,6 @@ StatusBar.Restart: "पुनः प्रारंभ करें"
 StatusBar.Start: "प्रारंभ करें"
 StatusBar.Multiplayer: "मल्टीप्लेयर सहयोग"
 StatusBar.PluginManager: "प्लगइन मैनेजर"
-StatusBar.Flamegraph: "फ्लेमग्राफ़ प्रोफाइलर"
 
 Notification.Title.Dev: "डेव"
 Notification.Title.BuildInfo: "बिल्ड जानकारी"

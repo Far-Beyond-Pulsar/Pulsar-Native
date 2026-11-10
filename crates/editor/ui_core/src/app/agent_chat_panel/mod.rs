@@ -31,15 +31,6 @@ use agent_chat_core::{
     ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
 };
 use agent_chat_tools::ToolRegistry;
-use agent_provider_anthropic::AnthropicProviderCrate;
-use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
-use agent_provider_demo_random::DemoRandomProviderCrate;
-use agent_provider_docker_model_runner::DockerModelRunnerProviderCrate;
-use agent_provider_gemini::GeminiProviderCrate;
-use agent_provider_github_copilot::GithubCopilotProviderCrate;
-use agent_provider_openai::OpenAiProviderCrate;
-use agent_provider_opencode::OpenCodeProviderCrate;
-use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
     cell::RefCell,

@@ -10,8 +10,7 @@ use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{
     h_flex,
     input::{InputState, TextInput},
-    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, Theme, ThemeConfig,
-    ThemeRegistry,
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, Theme, ThemeConfig, ThemeRegistry,
 };
 
 // ── ThemePicker ───────────────────────────────────────────────────────────────

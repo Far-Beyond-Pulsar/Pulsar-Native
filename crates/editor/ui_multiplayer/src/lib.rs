@@ -10,6 +10,7 @@ mod diff_viewer;
 mod file_sync;
 mod file_sync_ui;
 mod handlers;
+pub mod net;
 mod peer_state;
 mod presence;
 pub mod screen;

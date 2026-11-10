@@ -1,6 +1,6 @@
 //! What plugins and built-ins contribute to the host, and how it is collected.
 //!
-//! Registration of built-ins (editors, subsystems, components), queries over
+//! Registration of built-in editors, queries over
 //! statusbar buttons, script languages and component definitions, and the
 //! one-shot `drain_*` calls the engine backend makes at startup.
 
@@ -23,26 +23,6 @@ impl PluginManager {
     pub fn register_builtin_editors(&mut self) {
         self.builtin_registry
             .register_all(&mut self.file_type_registry, &mut self.editor_registry);
-    }
-
-    /// Register a built-in subsystem that will be drained and injected alongside
-    /// plugin subsystems.
-    pub fn register_builtin_subsystem(&mut self, subsystem: Box<dyn engine_subsystems::Subsystem>) {
-        self.plugin_subsystems.push(subsystem);
-    }
-
-    /// Register built-in component definitions.
-    pub fn register_builtin_component_definitions(&mut self, defs: Vec<ComponentDefinition>) {
-        self.builtin_component_definitions.extend(defs);
-    }
-
-    /// Register built-in component factories that will be drained and injected
-    /// alongside plugin component factories.
-    pub fn register_builtin_component_factories(
-        &mut self,
-        factories: Vec<(String, plugin_editor_api::ComponentFactory)>,
-    ) {
-        self.plugin_component_registrations.extend(factories);
     }
 
     /// Get all registered statusbar buttons from all plugins.
@@ -118,8 +98,6 @@ impl PluginManager {
         for (_, def) in self.builtin_registry.get_all_components() {
             all_defs.push(def);
         }
-
-        all_defs.extend(self.builtin_component_definitions.clone());
 
         all_defs
     }

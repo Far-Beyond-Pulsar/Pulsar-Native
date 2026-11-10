@@ -56,7 +56,7 @@ published and the base static mesh draws.
 
 ## Verification
 
-`crates/editor/ui_level_editor/tests/render_acceptance.rs` verifies that the
+`plugins/installed/tests/render_acceptance.rs` verifies that the
 rendered mesh changes across a distance threshold, positive bias selects the
 coarser asset sooner, and disabling `LODComponent` restores the base mesh.
 The `LODComponent` is no longer registered as unfinished.

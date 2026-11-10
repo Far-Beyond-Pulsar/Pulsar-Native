@@ -67,21 +67,21 @@ impl CompileOutput {
 pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOutput {
     let mut output = CompileOutput::default();
     let natives_runtime = pulsar_game::scripting::new_runtime();
-    #[cfg(any(feature = "blueprint", feature = "typescript"))]
+    #[cfg(feature = "scripting")]
     let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
         .map(|registration| plugin_editor_api::ComponentEventMetadata {
             component_class: registration.class_name.to_owned(),
             event: (registration.declaration)(),
         })
         .collect();
-    #[cfg(any(feature = "blueprint", feature = "typescript"))]
+    #[cfg(feature = "scripting")]
     run_languages(
         project,
         natives_runtime.natives(),
         &component_events,
         &mut output,
     );
-    #[cfg(not(any(feature = "blueprint", feature = "typescript")))]
+    #[cfg(not(feature = "scripting"))]
     run_languages(project, natives_runtime.natives(), &mut output);
 
     let registry = ClassRegistry::scan(project);
@@ -213,15 +213,11 @@ fn is_older(a: &Path, b: &Path) -> bool {
     matches!((modified(a), modified(b)), (Some(a), Some(b)) if a < b)
 }
 
-// The languages linked into this tool: the features link the crates, and each
-// registers itself (`plugin_editor_api::LinkedScriptLanguage`), so this names
-// none of them and finds exactly the ids and compilers the editor uses.
-#[cfg(feature = "blueprint")]
-use blueprint_editor_plugin as _;
-#[cfg(feature = "typescript")]
-use plugin_typescript as _;
-
-#[cfg(any(feature = "blueprint", feature = "typescript"))]
+// The languages linked into this tool: `scripting` links the installed set's
+// editor tools (`lib.rs` links the set), and each language registers itself
+// (`plugin_editor_api::LinkedScriptLanguage`), so this names none of them and
+// finds exactly the ids and compilers the editor uses.
+#[cfg(feature = "scripting")]
 fn run_languages(
     project: &Path,
     natives: &pulsar_script_vm::NativeRegistry,
@@ -247,7 +243,7 @@ fn run_languages(
     }
 }
 
-#[cfg(not(any(feature = "blueprint", feature = "typescript")))]
+#[cfg(not(feature = "scripting"))]
 fn run_languages(
     _project: &Path,
     _natives: &pulsar_script_vm::NativeRegistry,

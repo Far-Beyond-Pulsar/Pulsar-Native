@@ -194,3 +194,13 @@ impl ProviderCrate for DemoRandomProviderCrate {
         Ok(Box::new(DemoRandomProvider::new()))
     }
 }
+
+// The editor's chat offers this provider (`agent_chat_core::provider_crates`).
+pulsar_plugins::inventory::submit! {
+    agent_chat_core::AgentProviderRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "agent.demo_random",
+        order: 70,
+        create: || Box::new(DemoRandomProviderCrate),
+    }
+}

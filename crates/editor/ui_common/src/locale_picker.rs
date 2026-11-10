@@ -7,7 +7,7 @@ use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{
     h_flex,
     input::{InputState, TextInput},
-    set_locale, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _,
+    set_locale, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
 };
 
 const ALL_LOCALES: &[(&str, &str)] = &[

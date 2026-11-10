@@ -208,6 +208,24 @@ inventory::submit! {
 The kind's integration tests (`<kind>/tests/`) are the root's: they test the plugin as a
 game links it (`use fog_plugin as _;` links its registrations).
 
+### Where a plugin meets the kernel
+
+Core and editor know no kind, subsystem or tool (`just arch`, `.agents/CRATES.md`, "The
+layers"), so everything a plugin adds goes through a registration its root submits. Besides
+the render, scene and editor ones above, the kernel's seams for what used to be named in it:
+
+| Seam | Owner | For |
+|---|---|---|
+| `GameSessionRegistration` | `engine_backend::scene::game_hooks` | a plugin's part in a game session (`begin` before classes link, `end`) and in the local player's possession (`possess` returns the instance it attached; the driver detaches it): the input plugin's mapping |
+| `SceneRowsRegistration { derivation: None }` | `engine_backend::scene` | source rows another kind's join reads (physics' water hitboxes) |
+| `RecordMigrationRegistration::retired_fields` | `pulsar_class::records` | fields a plugin's classes retired, removed from saved data |
+| `EditorToolRegistration`, `TitleBarItemRegistration`, `AccountMenuItemRegistration`, `ProjectOpenedRegistration` | `ui_common::editor_tools` | an optional editor tool's status-bar button and Tools menu entry, title-bar item, account-menu entry and loading-screen step (the engine's tools use them with `engine_origin!()`) |
+| `AgentProviderRegistration` | `agent_chat_core` | a chat provider |
+| `engine_state::NewProjectContent` | the host | what a new project starts with (the editor binary's default level and its assets) |
+
+A plugin owns the closure-ledger rows of what it ships (`plugins/vendor/<dir>/ledger.toml`);
+`cargo test -p scene_inventory` checks every installed plugin's ledger with the engine's.
+
 ### Starter content
 
 A plugin that offers downloadable content (a pack of assets) registers a
@@ -552,10 +570,12 @@ each required plugin is installed, so a dependency that was ordered first but
 failed to install still blocks its dependents. A library built before
 manifests (no `_plugin_manifest`) installs first and cannot be depended on.
 
-`_plugin_create` returns `Option<&'static mut dyn EditorPluginFull>` and
-`_plugin_manifest` an `Option`: a panic in a plugin constructor is caught
-(`catch_unwind`) and reported as a failed load instead of unwinding across
-`extern "C"`.
+Every `extern "C"` entry point a plugin exports catches a panic at the boundary
+(`catch_unwind`; unwinding out of `extern "C"` aborts the process): `_plugin_create`
+(`Option<&'static mut dyn EditorPluginFull>`) and `_plugin_manifest` (an `Option`)
+report it as a failed load, `_plugin_attach_event_bus` as `ATTACH_PANICKED`,
+`_plugin_attach_world_runtime` and `_plugin_attach_profiler` as a refusal, and
+`_plugin_init_globals` logs it. `_plugin_version` builds a constant and needs none.
 
 A plugin declares dependencies by overriding `EditorPlugin::manifest`, or
 writes against the registrar API (`plugin_editor_api::registrar`: `Plugin`,

@@ -50,6 +50,21 @@ use ui_log_viewer::TrackingAllocator;
 // enables some of them (`pulsar_plugins`).
 use installed_plugins as _;
 
+// The optional editor tools this editor ships: linking one installs its
+// registrations (`ui_common::editor_tools`, the chat's providers).
+use agent_provider_anthropic as _;
+use agent_provider_aws_bedrock as _;
+use agent_provider_demo_random as _;
+use agent_provider_docker_model_runner as _;
+use agent_provider_gemini as _;
+use agent_provider_github_copilot as _;
+use agent_provider_openai as _;
+use agent_provider_opencode as _;
+use agent_provider_vertex_ai as _;
+use ui_fab_search as _;
+use ui_flamegraph as _;
+use ui_git_manager as _;
+
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
@@ -74,9 +89,9 @@ pub mod args; // Command-line argument parsing
 pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
 mod dev_bootstrap;
+pub mod discord; // Discord Rich Presence integration
 #[cfg(all(windows, target_arch = "aarch64"))]
 mod dxc; // Install and select DXC: Windows on ARM has no static DXC and FXC rejects our shaders
-pub mod discord; // Discord Rich Presence integration
 pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
 pub mod init; // Initialization dependency graph

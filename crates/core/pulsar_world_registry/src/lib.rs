@@ -36,8 +36,8 @@
 //! itself does or doesn't have day to day (that pin has moved several times
 //! without incident since this crate was first written; the constraint here
 //! was always about the dependency direction, not about pin friction).
-//! Every actual consumer of this crate (`helio_component`, `pulsar_physics`,
-//! `engine_backend`, `ui_level_editor`) already depends on both
+//! Every actual consumer of this crate (`helio_component`, the plugins'
+//! component crates, `engine_backend`, `ui_level_editor`) already depends on both
 //! `pulsar_scenedb` and `pulsar_reflection` directly, so a small
 //! Pulsar-Native-internal crate sitting alongside them -- itself depending
 //! on both -- is a clean fit with no cross-repo coordination needed at all.
@@ -148,7 +148,7 @@ pub struct QueuedComponentEvent {
 }
 
 /// Append a component event to the owner's outbox. Delivery occurs at the
-/// runtime's `AfterPhysics` flush, after the World-mutating call returns.
+/// runtime's `AfterSystems` flush, after the World-mutating call returns.
 pub fn queue_component_event(
     world: &mut World,
     entity: Entity,

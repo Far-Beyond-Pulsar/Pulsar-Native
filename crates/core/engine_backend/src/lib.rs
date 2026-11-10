@@ -29,8 +29,6 @@ pub use services::GpuRenderer;
 pub use services::RustAnalyzerManager;
 use std::sync::{Arc, OnceLock};
 pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
-#[cfg(feature = "physics")]
-pub use subsystems::physics::PhysicsEngine;
 #[cfg(feature = "render")]
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
 pub use subsystems::world::World;
@@ -48,16 +46,6 @@ pub use scene::{ComponentInstance, EditorObjectId};
 /// Global instance handle, set once during engine init.
 static GLOBAL_BACKEND: OnceLock<engine_state::ResourceHandle<EngineBackend>> = OnceLock::new();
 
-pub const ENGINE_THREADS: [&str; 7] = [
-    "RenderThread",
-    "AssetLoaderThread",
-    "PhysicsThread",
-    "AIThread",
-    "AudioThread",
-    "NetworkThread",
-    "InputThread",
-];
-
 pub struct EngineBackend {
     subsystems: SubsystemRegistry,
     plugin_components: component_registry::PluginComponentRegistry,
@@ -66,7 +54,7 @@ pub struct EngineBackend {
 impl EngineBackend {
     /// Initialize engine backend with empty subsystem registry.
     ///
-    /// All subsystems (including built-in ones like PhysicsEngine) are
+    /// All subsystems are
     /// registered later via the plugin pipeline so that everything — built-in
     /// and DLL-provided — goes through the same injection and initialization
     /// path. See `inject_plugin_subsystems()` and `inject_plugin_components()`.
@@ -157,21 +145,6 @@ impl EngineBackend {
     /// Get the plugin component registry.
     pub fn plugin_components(&self) -> &component_registry::PluginComponentRegistry {
         &self.plugin_components
-    }
-
-    /// Get the physics query service for raycasting
-    #[cfg(feature = "physics")]
-    pub fn get_physics_query_service(&self) -> Option<Arc<crate::services::PhysicsQueryService>> {
-        use engine_subsystems::SubsystemId;
-
-        const PHYSICS: SubsystemId = SubsystemId::new("physics");
-
-        self.subsystems.get(PHYSICS).and_then(|subsystem| {
-            // Downcast to PhysicsEngine
-            (subsystem as &dyn std::any::Any)
-                .downcast_ref::<PhysicsEngine>()
-                .map(|physics| physics.query_service())
-        })
     }
 
     /// Get a reference to the subsystem registry

@@ -73,7 +73,11 @@ impl ScriptDriver {
             // No handler runs after end_play.
             events.clear();
         }
-        crate::player_input::end_session(world);
+        for hook in engine_backend::scene::game_hooks::game_sessions() {
+            if let Some(end) = hook.end {
+                end(world);
+            }
+        }
         let mut errors = std::mem::take(&mut report.script_errors);
         errors.extend(self.runtime.end_play_all(world));
         discard_commands(world, scope.finish());

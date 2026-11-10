@@ -59,16 +59,16 @@ pub(super) struct Possession {
 pub(super) struct Possessed {
     controller: Option<Entity>,
     pawn: Entity,
-    /// The `PlayerInputComponent` instance on the pawn, when the level names
-    /// a mapping and it could be attached.
-    input: Option<Entity>,
+    /// The component instances the plugins' session hooks attached to the
+    /// pawn for the possession (the input plugin's mapping).
+    attached: Vec<Entity>,
 }
 
-/// Stamps the input component instance a possession attached to its pawn, so
-/// the next session over the same world can tell it from one the pawn's class
-/// placed itself.
+/// Stamps a component instance a possession attached to its pawn, so the next
+/// session over the same world can tell it from one the pawn's class placed
+/// itself.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct RoutedInput;
+pub(super) struct PossessionAttachment;
 
 /// The id of the one local player the session starts.
 pub(super) const LOCAL_PLAYER: i64 = crate::view_target::LOCAL_PLAYER;
@@ -82,7 +82,7 @@ impl ScriptDriver {
 
     /// Share the flag this driver sets while a pawn is possessed (the tick
     /// loop hands it out as `TickLoop::possession_gate`).
-    pub fn set_possession_gate(&mut self, gate: crate::player_input::PossessionGate) {
+    pub fn set_possession_gate(&mut self, gate: crate::possession::PossessionGate) {
         gate.set(self.possessed.is_some());
         self.possession_gate = gate;
     }
@@ -561,8 +561,9 @@ impl ScriptDriver {
     }
 
     /// End the local player's possession: the controller hears
-    /// `on_unpossess`, the pawn (when it still exists) `on_unpossessed`, the
-    /// input component leaves the pawn and the free camera may fly again.
+    /// `on_unpossess`, the pawn (when it still exists) `on_unpossessed`, what
+    /// the plugins attached for the possession leaves the pawn and the free
+    /// camera may fly again.
     /// Nothing is possessed afterwards. The seam for a later "possess another
     /// pawn".
     pub(crate) fn end_possession(&mut self, world: &mut World, report: &mut DriverReport) {
@@ -591,63 +592,64 @@ impl ScriptDriver {
                 report,
             );
         }
-        if let Some(input) = possessed.input {
-            crate::player_input::detach(world, input);
+        for instance in possessed.attached {
+            attachments::detach(world, instance);
         }
         self.possession_gate.set(false);
         self.view_targets.clear(LOCAL_PLAYER);
         tracing::info!("The player controller no longer possesses its pawn");
     }
 
-    /// Put the controller's input mapping to work on `pawn`: attach a
-    /// `PlayerInputComponent` for it (see [`crate::player_input`]). `None`
-    /// when the level names no mapping or the component cannot be attached;
-    /// possession carries on without input, and says why.
-    pub(super) fn route_input(
+    /// Run every plugin's possession hook on `pawn`
+    /// (`engine_backend::scene::game_hooks::GameSessionRegistration`): the
+    /// input plugin puts the level's mapping to work on it. Returns what they
+    /// attached; a hook that fails is reported once and the possession
+    /// carries on without it.
+    pub(super) fn possession_hooks(
         &mut self,
         world: &mut World,
         pawn: Entity,
         report: &mut DriverReport,
-    ) -> Option<Entity> {
+    ) -> Vec<Entity> {
         // Left by a previous session over this world that never shut down.
         for stale in attachments::instances(world, pawn) {
-            if world.get::<RoutedInput>(stale).is_some() {
-                crate::player_input::detach(world, stale);
+            if world.get::<PossessionAttachment>(stale).is_some() {
+                attachments::detach(world, stale);
             }
         }
-        let Some(mapping) = self.world_roles.input_mapping().map(str::to_owned) else {
-            // Not a failure: a level may possess a pawn nothing steers.
-            let message = "No Player Input Mapping is set for this level: the player character \
-                           receives no input (World Settings, Gameplay Roles)"
-                .to_owned();
-            if self.noted.insert(message.clone()) {
-                tracing::warn!("{message}");
-            }
-            return None;
+        let context = engine_backend::scene::game_hooks::PossessionContext {
+            project_root: &self.project_root,
+            roles: &self.world_roles,
         };
-        match crate::player_input::attach(world, pawn, &self.project_root, &mapping) {
-            Ok(instance) => {
-                world.insert(instance, RoutedInput);
-                tracing::info!(%mapping, "Player input routed to the possessed pawn");
-                Some(instance)
-            }
-            Err(error) => {
-                let message = format!(
-                    "Player input mapping '{mapping}' could not be put to work on the pawn: {error}"
-                );
-                self.note_once(report, message);
-                None
+        let mut attached = Vec::new();
+        let mut failures = Vec::new();
+        for hook in engine_backend::scene::game_hooks::game_sessions() {
+            let Some(possess) = hook.possess else {
+                continue;
+            };
+            match possess(world, pawn, &context) {
+                Ok(Some(instance)) => {
+                    world.insert(instance, PossessionAttachment);
+                    attached.push(instance);
+                }
+                Ok(None) => {}
+                Err(message) => failures.push(message),
             }
         }
+        for message in failures {
+            self.note_once(report, message);
+        }
+        attached
     }
 
     /// The character is spawned by a world command at the end of the frame
     /// the roles started, so it runs one frame later. Then the pawn is
     /// checked against the `PlayerCharacter` trait, the character hears it
     /// was spawned, the controller possesses it, the character learns of
-    /// its controller and the controller's input mapping is attached to the
-    /// pawn (`route_input`), so the character's Blueprint hears
-    /// `input::<Action>` on its own channel. Last, the player's view target
+    /// its controller and the plugins' possession hooks run on the pawn
+    /// (`possession_hooks`: the input plugin attaches the level's mapping,
+    /// so the character's Blueprint hears `input::<Action>` on its own
+    /// channel). Last, the player's view target
     /// becomes the pawn (`follow_pawn_view`).
     pub(super) fn advance_possession(&mut self, world: &mut World, report: &mut DriverReport) {
         let Some(character) = self.pending_possession.as_ref().map(|p| p.character) else {
@@ -703,11 +705,11 @@ impl ScriptDriver {
             &[controller_id],
             report,
         );
-        let input = self.route_input(world, character, report);
+        let attached = self.possession_hooks(world, character, report);
         self.possessed = Some(Possessed {
             controller: pending.controller,
             pawn: character,
-            input,
+            attached,
         });
         self.possession_gate.set(true);
         self.follow_pawn_view(world, character);
