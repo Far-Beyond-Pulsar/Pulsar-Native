@@ -105,6 +105,7 @@ impl AgentChatPanel {
 
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
+
         // ── Left: Provider / Model ──
         let provider_popover =
             Popover::<SearchableList<ProviderDefinition>>::new("agent-chat-provider-popover")
@@ -139,13 +140,12 @@ impl AgentChatPanel {
             .gap_1()
             .child(provider_popover)
             .child(div().text_color(cx.theme().border).text_sm().child("/"))
-            .child(model_popover);
+            .child(model_popover)
     }
 
     /// The chat history popover, labelled with the current chat's title.
     fn render_chat_history_popover(&self) -> impl IntoElement {
         let chat_history_list = self.chat_history_list.clone();
-        let current_title = Self::inferred_chat_title(&self.messages);
         let current_title = Self::inferred_chat_title(&self.messages);
         let chat_label = chat_history_label(current_title);
         Popover::<SearchableList<ChatHistoryEntry>>::new("agent-chat-history-popover")
@@ -159,7 +159,7 @@ impl AgentChatPanel {
                     .label(chat_label)
                     .dropdown_caret(true),
             )
-            .content(move |_window, _cx| chat_history_list.clone());
+            .content(move |_window, _cx| chat_history_list.clone())
     }
 
     /// The three-dots menu: import/export, model refresh, add provider and,
