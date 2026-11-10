@@ -17,7 +17,9 @@ use pulsar_scenedb::ComponentId;
 pub struct LinkedClass {
     pub name: String,
     pub category: Option<String>,
-    /// Has a `#[register_world_component]` registration: adding it hydrates a
+    /// Has a world-component registration (a plugin root's
+    /// `submit_world_component!`, the engine's `#[register_world_component]`):
+    /// adding it hydrates a
     /// typed `World` value. Without one, an attached instance exists only as
     /// a JSON attachment record.
     pub world_registered: bool,

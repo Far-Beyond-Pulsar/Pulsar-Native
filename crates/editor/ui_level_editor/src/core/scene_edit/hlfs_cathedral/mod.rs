@@ -113,10 +113,14 @@ fn build_batches() -> Vec<Batch> {
     batches
 }
 
-fn light(color: [f32; 3], intensity: f32, range: f32) -> lights_component::LightComponent {
-    let mut light = lights_component::LightComponent::default();
+fn light(
+    color: [f32; 3],
+    intensity: f32,
+    range: f32,
+) -> lights_plugin::lights_component::LightComponent {
+    let mut light = lights_plugin::lights_component::LightComponent::default();
     light.general.enabled = true;
-    light.general.light_type = lights_component::LightType::Point;
+    light.general.light_type = lights_plugin::lights_component::LightType::Point;
     light.color.color = [color[0], color[1], color[2], 1.0];
     light.intensity.intensity = intensity;
     light.attenuation.range = range;
@@ -263,8 +267,12 @@ fn generate() {
     for batch in &batches {
         let path = root.join("assets").join(&batch.file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let id = meshes_component::mesh_cache::content_id_for_bytes(&batch.mesh);
-        std::fs::write(&path, meshes_component::mesh_cache::encode(&batch.mesh, id)).unwrap();
+        let id = meshes_plugin::meshes_component::mesh_cache::content_id_for_bytes(&batch.mesh);
+        std::fs::write(
+            &path,
+            meshes_plugin::meshes_component::mesh_cache::encode(&batch.mesh, id),
+        )
+        .unwrap();
     }
     let world = build_world(&batches);
     level_io::save_to_file_with_editor_camera(
@@ -331,7 +339,8 @@ fn committed_meshes_match_generator() {
     for batch in build_batches() {
         let bytes = std::fs::read(root.join("assets").join(&batch.file))
             .unwrap_or_else(|e| panic!("{} missing: {e}", batch.file));
-        let (decoded, _) = meshes_component::mesh_cache::decode(&bytes).expect("valid PMSH");
+        let (decoded, _) =
+            meshes_plugin::meshes_component::mesh_cache::decode(&bytes).expect("valid PMSH");
         assert_eq!(decoded.indices, batch.mesh.indices, "{}", batch.file);
         assert_eq!(
             decoded.vertices.len(),

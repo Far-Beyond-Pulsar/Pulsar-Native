@@ -236,7 +236,7 @@ mod tests {
 
     inventory::submit! {
         asset_import::ImporterRegistration {
-            origin: "ui_file_manager",
+            origin: concat!("engine:", env!("CARGO_PKG_NAME")),
             importer: &ModelFormats,
         }
     }

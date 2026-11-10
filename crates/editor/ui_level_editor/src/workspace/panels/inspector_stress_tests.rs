@@ -11,7 +11,7 @@
 //! ```
 
 // The voxel inspectors' tests (the features list, the layers stack) are
-// the voxel plugin's (`voxel_plugin`'s `tests/inspector.rs`).
+// the voxel plugin's editor crate's (`voxel_editor`'s `tests/inspector_editors.rs`).
 use super::perf_tests::RENDER_LOCK;
 use gpui::{
     div, px, size, AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement,

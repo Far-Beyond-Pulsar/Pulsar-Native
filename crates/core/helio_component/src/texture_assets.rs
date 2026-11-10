@@ -261,16 +261,25 @@ pub struct TextureBindingRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"sprites.textures"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     pub register: fn(),
 }
 
-inventory::collect!(TextureBindingRegistration);
+impl pulsar_plugins::Contribution for TextureBindingRegistration {
+    const CATEGORY: &'static str = "asset.texture_binding";
 
-impl pulsar_plugins::Registration for TextureBindingRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(TextureBindingRegistration);
 
 /// Registers the texture asset kind with SceneDB: its loader and payload
 /// size, and how the registered components take in a loaded image
@@ -332,7 +341,8 @@ pub fn texture_source_for_file(abs: &std::path::Path) -> String {
 // A changed image reloads its texture asset.
 inventory::submit! {
     crate::asset_component::AssetReloadRegistration {
-        origin: pulsar_plugins::origin!(),
+        origin: pulsar_plugins::engine_origin!(),
+        name: "textures",
         kind: plugin_editor_api::AssetKind::Texture,
         sources_for_file: |path| vec![texture_source_for_file(path)],
     }

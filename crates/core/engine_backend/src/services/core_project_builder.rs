@@ -33,7 +33,7 @@ pub const HELIO_GIT_REVISION: &str = env!("PULSAR_HELIO_GIT_REVISION");
 const GAME_MANIFEST_DEPS: &str = include_str!(concat!(env!("OUT_DIR"), "/game_manifest_deps.toml"));
 
 /// The plugins installed with this engine, as games are built from them:
-/// their descriptors (`DESCRIPTORS`) and their runtime modules' dependency
+/// their descriptors (`DESCRIPTORS`) and their root crates' dependency
 /// specs (`DEPENDENCIES`), baked by `build.rs` from
 /// `plugins/vendor/*/pulsar-plugin.toml`.
 mod installed {
@@ -44,7 +44,7 @@ mod installed {
 /// `[dependencies]`), regenerated on every build from the project's
 /// `Pulsar.toml`.
 const PLUGINS_BEGIN: &str =
-    "# BEGIN project plugins: the runtime modules of the plugins Pulsar.toml enables";
+    "# BEGIN project plugins: the root crates of the plugins Pulsar.toml enables";
 const PLUGINS_END: &str = "# END project plugins";
 
 /// The plugins installed with this engine (what a project can enable).
@@ -64,12 +64,12 @@ pub fn installed_plugins() -> &'static [pulsar_plugins::PluginDescriptor] {
     })
 }
 
-/// The runtime modules a game built for the project at `project_root`
-/// links: those of the plugins its `Pulsar.toml` enables among the
-/// installed ones (`pulsar_plugins::resolve`; problems are logged). Nothing
-/// else of a plugin is linked, so a disabled plugin's kind is absent from
-/// the game.
-pub fn project_runtime_modules(project_root: &Path) -> Vec<&'static str> {
+/// The plugin root crates a game built for the project at `project_root`
+/// links (without their `editor` feature): those of the plugins its
+/// `Pulsar.toml` enables among the installed ones, editor tools excepted
+/// (`pulsar_plugins::resolve`; problems are logged). Nothing else of a
+/// plugin is linked, so a disabled plugin's kind is absent from the game.
+pub fn project_plugin_roots(project_root: &Path) -> Vec<&'static str> {
     let project = pulsar_plugins::ProjectPlugins::read(project_root).unwrap_or_else(|error| {
         tracing::error!("the project's plugin list: {error}; using every plugin's default");
         pulsar_plugins::ProjectPlugins::default()
@@ -78,7 +78,7 @@ pub fn project_runtime_modules(project_root: &Path) -> Vec<&'static str> {
     for problem in &resolution.problems {
         tracing::warn!("{problem}");
     }
-    resolution.runtime_modules(installed_plugins())
+    resolution.runtime_roots(installed_plugins())
 }
 
 /// `manifest` with its plugin block (between [`PLUGINS_BEGIN`] and
@@ -110,7 +110,7 @@ fn with_plugin_block(manifest: &str, modules: &[&str]) -> String {
             .iter()
             .find(|(name, _)| name == module)
             .map(|(_, spec)| *spec)
-            .expect("every installed runtime module has a baked spec");
+            .expect("every installed runtime plugin's root has a baked spec");
         block.push(format!("{module} = {spec}"));
     }
     block.push(PLUGINS_END.to_string());
@@ -140,10 +140,10 @@ fn with_plugin_block(manifest: &str, modules: &[&str]) -> String {
 }
 
 /// The generated `src/plugins.rs`: links each of `modules` (the enabled
-/// plugins' runtime modules) for its registrations.
+/// plugins' root crates) for its registrations.
 fn generated_plugins_rs(modules: &[&str]) -> String {
     let mut out = String::from(
-        "//! The project's plugins: the runtime modules of the plugins its\n\
+        "//! The project's plugins: the root crates of the plugins its\n\
          //! Pulsar.toml enables (`[plugins]`), linked for their registrations\n\
          //! (components, scene subsystems, render features, settings). A\n\
          //! disabled plugin is not linked: its kind is absent from the game.\n\
@@ -511,9 +511,9 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         })
         .unwrap_or(true);
 
-    // The enabled plugins' runtime modules: the only plugin crates the game
-    // links (a disabled plugin's kind is absent from it).
-    let plugin_modules = project_runtime_modules(project_root);
+    // The enabled plugins' roots: the only plugin crates the game links (a
+    // disabled plugin's kind is absent from it).
+    let plugin_modules = project_plugin_roots(project_root);
 
     if !should_write_cargo {
         let existing = existing_manifest.as_deref().unwrap_or_default();
@@ -661,12 +661,12 @@ pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
             .map_err(|e| format!("Failed to write src/main.rs: {e}"))?;
     }
 
-    // ── plugins.rs — the enabled plugins' runtime modules, linked ─────────────
+    // ── plugins.rs — the enabled plugins' root crates, linked ─────────────────
     // Always regenerated: Pulsar.toml's `[plugins]` is the source of truth
     // (the manifest's plugin block lists the same modules).
     write_if_changed(
         &src_dir.join("plugins.rs"),
-        generated_plugins_rs(&project_runtime_modules(project_root)).as_bytes(),
+        generated_plugins_rs(&project_plugin_roots(project_root)).as_bytes(),
     )
     .map_err(|e| format!("Failed to write src/plugins.rs: {e}"))?;
 
@@ -1396,7 +1396,7 @@ mod tests {
 
     /// A game built for a project links only the plugins its Pulsar.toml
     /// enables (Phase C step 2): the manifest's plugin block and
-    /// `src/plugins.rs` name every enabled plugin's runtime module and no
+    /// `src/plugins.rs` name every enabled plugin's root crate and no
     /// disabled one's, follow the list when it changes, and leave a module the
     /// user's own manifest names to that line.
     #[test]
@@ -1422,7 +1422,8 @@ mod tests {
         };
         let installed: Vec<&str> = super::installed_plugins()
             .iter()
-            .flat_map(|plugin| plugin.modules.runtime.iter().map(String::as_str))
+            .filter(|plugin| plugin.runtime())
+            .map(|plugin| plugin.root.as_str())
             .collect();
         assert!(
             installed.len() >= 16,
@@ -1433,17 +1434,17 @@ mod tests {
         super::ensure_core_bootstrap(project.path()).unwrap();
         let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
         let linked = block(&manifest);
-        for disabled in ["voxel_component", "lights_component", "materials_component"] {
+        for disabled in ["voxel_plugin", "lights_plugin", "materials_plugin"] {
             assert!(
                 !manifest.contains(disabled),
                 "{disabled} is in the manifest"
             );
         }
         assert_eq!(linked.len(), installed.len() - 3, "{linked:?}");
-        assert!(linked.iter().any(|m| m == "decals_component"));
+        assert!(linked.iter().any(|m| m == "decals_plugin"));
         let plugins_rs = std::fs::read_to_string(project.path().join("src/plugins.rs")).unwrap();
-        assert!(plugins_rs.contains("use decals_component as _;"));
-        assert!(!plugins_rs.contains("voxel_component"));
+        assert!(plugins_rs.contains("use decals_plugin as _;"));
+        assert!(!plugins_rs.contains("voxel_plugin"));
         for file in ["src/main.rs", "src/lib.rs"] {
             let text = std::fs::read_to_string(project.path().join(file)).unwrap();
             assert!(
@@ -1462,10 +1463,10 @@ mod tests {
 
         // A user-owned manifest keeps its own line for a module.
         let own = "[package]\nname = \"mine\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
-                   decals_component = { path = \"elsewhere\" }\n";
-        let updated = super::with_plugin_block(own, &["decals_component", "fog_component"]);
-        assert_eq!(block(&updated), ["fog_component"]);
-        assert!(updated.contains("decals_component = { path = \"elsewhere\" }"));
+                   decals_plugin = { path = \"elsewhere\" }\n";
+        let updated = super::with_plugin_block(own, &["decals_plugin", "fog_plugin"]);
+        assert_eq!(block(&updated), ["fog_plugin"]);
+        assert!(updated.contains("decals_plugin = { path = \"elsewhere\" }"));
         toml::from_str::<toml::Table>(&updated).expect("the manifest parses");
     }
 

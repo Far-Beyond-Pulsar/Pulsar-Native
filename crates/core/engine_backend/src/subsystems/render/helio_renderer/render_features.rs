@@ -19,15 +19,56 @@ pub struct RenderFeatureRegistration {
     pub configure: fn(helio::RendererConfig) -> helio::RendererConfig,
 }
 
-inventory::collect!(RenderFeatureRegistration);
+/// The features' ids and, under each, the node kinds it registers (each
+/// feature registers into a registry of its own here, so a node shows under
+/// the feature that added it: `NodeRegistry::feature_nodes`).
+impl pulsar_plugins::Contribution for RenderFeatureRegistration {
+    const CATEGORY: &'static str = "render.features";
 
-impl pulsar_plugins::Registration for RenderFeatureRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        (self.features)().ids().join("+")
+    }
+
+    fn label(&self) -> String {
+        "Render features".into()
+    }
+
+    fn children(&self) -> Vec<pulsar_plugins::Summary> {
+        let features = (self.features)();
+        let mut registry = helio_feature_api::NodeRegistry::new();
+        features.register_into(&mut registry);
+        let nodes = registry.feature_nodes();
+        features
+            .ids()
+            .into_iter()
+            .map(|feature| pulsar_plugins::Summary {
+                children: nodes
+                    .get(feature)
+                    .into_iter()
+                    .flatten()
+                    .map(|kind| {
+                        let title = registry
+                            .get(kind)
+                            .map_or_else(|| kind.to_string(), |node| node.title.clone());
+                        pulsar_plugins::Summary::new("render.node", *kind, title, self.origin)
+                    })
+                    .collect(),
+                ..pulsar_plugins::Summary::new("render.feature", feature, feature, self.origin)
+            })
+            .collect()
+    }
 }
 
-/// Every registered plugin's features.
+pulsar_plugins::registration!(RenderFeatureRegistration);
+
+/// Every registered plugin's features: the aggregate the engine builds its
+/// graphs over. It keeps no ownership; the plugin catalog
+/// (`plugin_manager::catalog`) reads which plugin and feature brought each
+/// node from the registrations themselves.
 pub fn plugin_features() -> FeatureSet {
     pulsar_plugins::registered::<RenderFeatureRegistration>()
         .fold(FeatureSet::new(), |set, registration| {
@@ -50,18 +91,27 @@ pub struct ViewOverscanRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"lens.overscan"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// The overscan of view `view_id` (1: none) in `world`, for a frame of
     /// `aspect` (width over height).
     pub overscan: fn(&pulsar_scenedb::World, u32, f32) -> f32,
 }
 
-inventory::collect!(ViewOverscanRegistration);
+impl pulsar_plugins::Contribution for ViewOverscanRegistration {
+    const CATEGORY: &'static str = "render.view_overscan";
 
-impl pulsar_plugins::Registration for ViewOverscanRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(ViewOverscanRegistration);
 
 /// The largest overscan any registration asks of view `view_id` (1: none).
 pub fn view_overscan(world: &pulsar_scenedb::World, view_id: u32, aspect: f32) -> f32 {
@@ -79,7 +129,7 @@ pub trait EditorLines: Send {
 }
 
 /// A plugin's editor line set: `name` is its debug-line group, `new` makes
-/// one watching `world`. Submitted by the plugin's component crate.
+/// one watching `world`. Submitted by the plugin's root crate.
 pub struct EditorLinesRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
@@ -88,13 +138,19 @@ pub struct EditorLinesRegistration {
     pub new: fn(&pulsar_scenedb::World) -> Box<dyn EditorLines>,
 }
 
-inventory::collect!(EditorLinesRegistration);
+impl pulsar_plugins::Contribution for EditorLinesRegistration {
+    const CATEGORY: &'static str = "render.editor_lines";
 
-impl pulsar_plugins::Registration for EditorLinesRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(EditorLinesRegistration);
 
 /// Every registered line set, watching `world`.
 pub fn editor_lines(world: &pulsar_scenedb::World) -> Vec<(&'static str, Box<dyn EditorLines>)> {

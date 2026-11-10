@@ -29,6 +29,9 @@ pub struct SkinBinding {
 pub struct SkinnedMeshAccess {
     /// The package that submitted it: skipped while its plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"meshes.skinned"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// `owner`'s `ordinal`-th skinned mesh instance (or `owner` itself when
     /// it holds the mesh), the one the owner's `ordinal`-th animator drives.
     pub instance: fn(world: &World, owner: Entity, ordinal: u32) -> Option<Entity>,
@@ -46,13 +49,19 @@ pub struct SkinnedMeshAccess {
     ) -> bool,
 }
 
-inventory::collect!(SkinnedMeshAccess);
+impl pulsar_plugins::Contribution for SkinnedMeshAccess {
+    const CATEGORY: &'static str = "animation.skinned_mesh_access";
 
-impl pulsar_plugins::Registration for SkinnedMeshAccess {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(SkinnedMeshAccess);
 
 /// The enabled skinned mesh access, if the meshes plugin is enabled.
 pub fn skinned_mesh_access() -> Option<&'static SkinnedMeshAccess> {
@@ -74,6 +83,9 @@ pub struct SkeletalPose {
 pub struct SkeletalPoseAccess {
     /// The package that submitted it: skipped while its plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"animation.pose"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// The animator component's id (its rows' change journal).
     pub component: fn() -> ComponentId,
     /// The pose of animator instance `instance`.
@@ -88,13 +100,19 @@ pub struct SkeletalPoseAccess {
     pub release_bones: fn(world: &mut World, instance: Entity),
 }
 
-inventory::collect!(SkeletalPoseAccess);
+impl pulsar_plugins::Contribution for SkeletalPoseAccess {
+    const CATEGORY: &'static str = "animation.skeletal_pose_access";
 
-impl pulsar_plugins::Registration for SkeletalPoseAccess {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(SkeletalPoseAccess);
 
 /// The enabled skeletal pose access, if the animation plugin is enabled.
 pub fn skeletal_pose_access() -> Option<&'static SkeletalPoseAccess> {

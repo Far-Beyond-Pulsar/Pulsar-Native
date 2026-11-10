@@ -3,21 +3,40 @@
 use std::path::Path;
 
 /// A thumbnail renderer for one extension, contributed by another crate at
-/// link time (`pulsar_reflection::inventory::submit!`). `ui_common` cannot
-/// depend on the crates that know these formats, so they register here.
+/// link time (a plugin's root crate). `ui_common` cannot depend on the crates
+/// that know these formats, so they register here. Skipped while its plugin
+/// is disabled.
 pub struct ThumbnailRendererRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
     /// Extension without the dot, lower-case.
     pub extension: &'static str,
     pub render: fn(&Path) -> Option<image::RgbaImage>,
 }
 
-pulsar_reflection::inventory::collect!(ThumbnailRendererRegistration);
+impl pulsar_plugins::Contribution for ThumbnailRendererRegistration {
+    const CATEGORY: &'static str = "editor.thumbnail";
 
-/// Register every linked-in extension renderer (the meshes' models and
-/// `.mesh` files, ...) with the shared engine thumbnail service. Call this
-/// before requesting any asset thumbnail.
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.extension.to_string()
+    }
+
+    fn label(&self) -> String {
+        format!(".{} thumbnails", self.extension)
+    }
+}
+
+pulsar_plugins::registration!(ThumbnailRendererRegistration);
+
+/// Register every enabled plugin's extension renderer (the meshes' models
+/// and `.mesh` files, ...) with the shared engine thumbnail service. Call
+/// this before requesting any asset thumbnail.
 pub fn register_thumbnail_renderers() {
-    for registration in pulsar_reflection::inventory::iter::<ThumbnailRendererRegistration> {
+    for registration in pulsar_plugins::registered::<ThumbnailRendererRegistration>() {
         engine_fs::thumbnails::register_thumbnail_renderer(
             registration.extension,
             registration.render,

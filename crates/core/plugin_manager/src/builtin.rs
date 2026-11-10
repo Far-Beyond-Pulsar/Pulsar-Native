@@ -127,20 +127,30 @@ inventory::collect!(LinkedEditorProvider);
 /// A plugin's linked editor provider: a [`LinkedEditorProvider`] that counts
 /// only while the plugin that submitted it is enabled for the project
 /// (`pulsar_plugins::origin!()`), as every plugin registration does. A
-/// plugin's editor module submits this one.
+/// plugin's root crate submits this one.
 pub struct PluginEditorProvider {
     /// The package that submitted it (`pulsar_plugins::origin!()`).
     pub origin: &'static str,
+    /// The provider's id ([`BuiltinEditorProvider::provider_id`] of what
+    /// `create` makes; registering checks they match), so the catalog
+    /// names it without creating the provider.
+    pub id: &'static str,
     pub create: fn() -> Arc<dyn BuiltinEditorProvider>,
 }
 
-inventory::collect!(PluginEditorProvider);
+impl pulsar_plugins::Contribution for PluginEditorProvider {
+    const CATEGORY: &'static str = "editor.provider";
 
-impl pulsar_plugins::Registration for PluginEditorProvider {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.id.to_string()
+    }
 }
+
+pulsar_plugins::registration!(PluginEditorProvider);
 
 /// Registry for all built-in editors.
 pub struct BuiltinEditorRegistry {
@@ -169,7 +179,17 @@ impl BuiltinEditorRegistry {
             inventory::iter::<LinkedEditorProvider>
                 .into_iter()
                 .map(|l| (l.create)())
-                .chain(pulsar_plugins::registered::<PluginEditorProvider>().map(|l| (l.create)()))
+                .chain(
+                    pulsar_plugins::registered::<PluginEditorProvider>().map(|registration| {
+                        let provider = (registration.create)();
+                        debug_assert_eq!(
+                            provider.provider_id(),
+                            registration.id,
+                            "a plugin editor provider registration names its provider's id"
+                        );
+                        provider
+                    }),
+                )
                 .collect();
         linked.sort_by(|a, b| a.provider_id().cmp(b.provider_id()));
         for provider in linked {

@@ -20,7 +20,7 @@
 //! suite: it asserts element/Taffy node counts and cache behaviour, which are
 //! deterministic, rather than wall-clock time, which is not.
 
-// Every installed plugin, editor modules included, as the editor links them.
+// Every installed plugin, editor registrations included, as the editor links them.
 use super::{LevelEditorState, PropertiesPanelWrapper};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use gpui::{
@@ -29,27 +29,27 @@ use gpui::{
     StyleRefinement, Styled as _, TestAppContext, VisualTestContext, Window,
 };
 // Every installed plugin's components, registered as the editor has them
-// (their runtime crates; not `installed_plugins`, whose editor modules
+// (their root crates without `editor`; not `installed_plugins`, whose editor crates
 // would link a second copy of this crate into its unit tests).
-use decals_component as _;
-use fog_component as _;
-use foliage_component as _;
-use gi_component as _;
-use lens_component as _;
-use lights_component as _;
-use materials_component as _;
-use meshes_component as _;
-use particles_component as _;
-use portals_component as _;
-use post_component as _;
+use decals_plugin::decals_component as _;
+use fog_plugin::fog_component as _;
+use foliage_plugin::foliage_component as _;
+use gi_plugin as _;
+use lens_plugin::lens_component as _;
+use lights_plugin::lights_component as _;
+use materials_plugin::materials_component as _;
+use meshes_plugin::meshes_component as _;
+use particles_plugin::particles_component as _;
+use portals_plugin::portals_component as _;
+use post_plugin::post_component as _;
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
-use sky_component as _;
-use splines_component as _;
-use sprites_component as _;
+use sky_plugin::sky_component as _;
+use splines_plugin::splines_component as _;
+use sprites_plugin::sprites_component as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use voxel_component as _;
-use water_component as _;
+use voxel_plugin::voxel_component as _;
+use water_plugin::water_component as _;
 
 /// Hosts the panel the way the dock does: behind `.cached(...)`, so a notify
 /// on the panel (or an entity it reads) rebuilds it through the cached-view
@@ -668,7 +668,7 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
 #[gpui::test]
 fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) {
     let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    use voxel_component::VoxelTerrainComponent;
+    use voxel_plugin::voxel_component::VoxelTerrainComponent;
 
     cx.update(|cx| ui::init(cx));
     // A selected terrain with its layer stack (the heaviest card), built
@@ -685,8 +685,10 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
             ),
             (
                 "VoxelTerrainLayersComponent",
-                serde_json::to_value(voxel_component::VoxelTerrainLayersComponent::earth())
-                    .unwrap(),
+                serde_json::to_value(
+                    voxel_plugin::voxel_component::VoxelTerrainLayersComponent::earth(),
+                )
+                .unwrap(),
             ),
         ] {
             crate::scene_edit::components::add_component(&mut world, &id, class.into(), value);
@@ -738,14 +740,16 @@ fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) 
     render_stats::reset();
     for x in 0..5 {
         edit_terrain(&|terrain| {
-            terrain.edits.push(voxel_component::data::VoxelBrushEdit {
-                center: [f64::from(x), 0.0, 0.0],
-                radius: 1.0,
-                shape: voxel_component::data::VoxelBrushShape::Sphere,
-                op: voxel_component::data::VoxelBrushOp::Remove,
-                material: 0,
-                height: Default::default(),
-            });
+            terrain
+                .edits
+                .push(voxel_plugin::voxel_component::data::VoxelBrushEdit {
+                    center: [f64::from(x), 0.0, 0.0],
+                    radius: 1.0,
+                    shape: voxel_plugin::voxel_component::data::VoxelBrushShape::Sphere,
+                    op: voxel_plugin::voxel_component::data::VoxelBrushOp::Remove,
+                    material: 0,
+                    height: Default::default(),
+                });
             terrain.source_revision += 1;
         });
     }

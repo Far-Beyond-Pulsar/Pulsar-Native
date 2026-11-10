@@ -2855,7 +2855,7 @@ status = "verified"
 pattern = "add-component"
 file = "plugins/vendor/lights/editor/src/level_editor.rs"
 count = 1
-owner = "lights_plugin::level_editor (the sky rig)"
+owner = "lights_editor::level_editor (the sky rig)"
 disposition = "keep: the sky rig adds its sun and moon lights through the editor's undoable AddComponent command when missing"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "crates/editor/ui_level_editor/tests/level_editor.rs"
@@ -2893,20 +2893,20 @@ status = "unverified"
 
 [[site]]
 pattern = "change-cursor"
-file = "plugins/vendor/foliage/component/src/lib.rs"
+file = "plugins/vendor/foliage/src/runtime.rs"
 count = 2
-owner = "plugins/vendor/foliage/component/src/lib.rs"
-disposition = "keep: the kind's own, moved with it into its plugin (plugin-migration.md Phases B and C)"
+owner = "plugins/vendor/foliage/src/runtime.rs (the plugin root's AnimatedContent watches)"
+disposition = "keep: the kind's own, moved with it into its plugin (plugin-migration.md Phases B and C); registered from its root crate since p19"
 target_contract = "Phase C; plugin-migration.md"
 test = "none: no test names this row; the owning plugin's suites cover its behaviour"
 status = "unverified"
 
 [[site]]
 pattern = "change-cursor"
-file = "plugins/vendor/meshes/component/src/lib.rs"
+file = "plugins/vendor/meshes/src/runtime.rs"
 count = 2
-owner = "plugins/vendor/meshes/component/src/lib.rs"
-disposition = "keep: the kind's own, moved with it into its plugin (plugin-migration.md Phases B and C)"
+owner = "plugins/vendor/meshes/src/runtime.rs (the plugin root's AnimatedContent watches)"
+disposition = "keep: the kind's own, moved with it into its plugin (plugin-migration.md Phases B and C); registered from its root crate since p19"
 target_contract = "Phase C; plugin-migration.md"
 test = "none: no test names this row; the owning plugin's suites cover its behaviour"
 status = "unverified"

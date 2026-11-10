@@ -353,18 +353,20 @@ pub fn sites(root: &Path) -> BTreeMap<(String, String), usize> {
     out
 }
 
-/// Classes declared with `#[register_world_component]` in production source:
+/// Classes declared in production source: a plugin's `#[world_component]`
+/// (its root registers it) or the engine's `#[register_world_component]`.
 /// `class name -> file`.
 pub fn declared_world_components(root: &Path) -> BTreeMap<String, String> {
     let target = Regex::new(r"^\s*impl\s+(\w+)\s*\{").unwrap();
+    let attribute = Regex::new(r"^\s*#\[(register_)?world_component\b").unwrap();
     let mut out = BTreeMap::new();
     for file in production_files(root) {
         let mut pending = false;
         for (_, line) in &file.lines {
-            if !pending && !line.contains("#[register_world_component") {
+            if !pending && !line.contains("world_component") {
                 continue;
             }
-            if line.trim_start().starts_with("#[register_world_component") {
+            if attribute.is_match(line) {
                 pending = true;
             } else if pending {
                 if let Some(caps) = target.captures(line) {

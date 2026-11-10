@@ -74,7 +74,7 @@ helio_component = { workspace = true }
 workspace = true
 
 [dev-dependencies]
-# Every installed plugin's runtime modules: the tests run a game built for a
+# Every installed plugin's root crate: the tests run a game built for a
 # project with every plugin (they name `installed_plugins::<module>` where
 # they need a plugin's type).
 installed_plugins = { workspace = true }
@@ -83,6 +83,8 @@ helio-mats = { workspace = true }
 # presets with the linked plugins' features, as the engine does.
 helio-core = { workspace = true }
 helio-presets = { workspace = true }
+# The lighting models registered with the plugins' features (their pipelines).
+helio-frame-api = { workspace = true }
 helio-pass-portal-cull = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 helio-pass-gi = { workspace = true }

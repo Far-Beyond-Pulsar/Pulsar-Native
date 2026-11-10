@@ -23,13 +23,20 @@ pub struct GroundMaterialNames {
     pub id: fn(&str) -> Option<u32>,
 }
 
-inventory::collect!(GroundMaterialNames);
+impl pulsar_plugins::Contribution for GroundMaterialNames {
+    const CATEGORY: &'static str = "scene.ground_material_names";
 
-impl pulsar_plugins::Registration for GroundMaterialNames {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    /// One naming per plugin (a second is a catalog problem).
+    fn id(&self) -> String {
+        "ground_material_names".into()
+    }
 }
+
+pulsar_plugins::registration!(GroundMaterialNames);
 
 /// The registered name of ground material `id`.
 pub fn ground_material_name(id: u32) -> Option<&'static str> {

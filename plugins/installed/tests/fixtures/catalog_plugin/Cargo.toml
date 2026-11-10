@@ -1,0 +1,22 @@
+[package]
+name = "catalog_fixture_plugin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The plugin catalog's fixture plugin: its root crate (plugins/installed/tests/catalog.rs)"
+
+[features]
+editor = ["dep:catalog_fixture_editor", "dep:ui_level_editor", "dep:ui_common"]
+
+[dependencies]
+pulsar_plugins = { workspace = true }
+inventory = { workspace = true }
+catalog_fixture_component = { path = "component" }
+catalog_fixture_editor = { path = "editor", optional = true }
+engine_backend = { path = "../../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+pulsar_settings = { workspace = true }
+ui_level_editor = { workspace = true, optional = true }
+ui_common = { workspace = true, optional = true }
+
+[lints]
+workspace = true

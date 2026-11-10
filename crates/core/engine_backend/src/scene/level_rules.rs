@@ -22,7 +22,7 @@ use pulsar_scene_model::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 
 /// Something a level holds at most one of (the sky plugin's atmosphere, the
-/// foliage plugin's global wind). Submitted by the plugin's component crate.
+/// foliage plugin's global wind). Submitted by the plugin's root crate.
 pub struct LevelSingletonRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
@@ -50,13 +50,19 @@ pub struct LevelSingletonRegistration {
     pub edits_checked: bool,
 }
 
-inventory::collect!(LevelSingletonRegistration);
+impl pulsar_plugins::Contribution for LevelSingletonRegistration {
+    const CATEGORY: &'static str = "level.singleton";
 
-impl pulsar_plugins::Registration for LevelSingletonRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.class_name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(LevelSingletonRegistration);
 
 fn singletons() -> impl Iterator<Item = &'static LevelSingletonRegistration> {
     pulsar_plugins::registered::<LevelSingletonRegistration>()

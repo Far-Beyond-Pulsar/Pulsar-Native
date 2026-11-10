@@ -42,6 +42,9 @@ pub struct RecordMigrationRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
     /// while that package's plugin is disabled.
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"meshes.mesh_slots"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     /// What it does, for reports ("folded MaterialOverrideComponent into
     /// the mesh").
     pub description: &'static str,
@@ -55,13 +58,23 @@ pub struct RecordMigrationRegistration {
     pub stale_props: &'static [&'static str],
 }
 
-inventory::collect!(RecordMigrationRegistration);
+impl pulsar_plugins::Contribution for RecordMigrationRegistration {
+    const CATEGORY: &'static str = "records.migration";
 
-impl pulsar_plugins::Registration for RecordMigrationRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+
+    fn label(&self) -> String {
+        self.description.to_string()
+    }
 }
+
+pulsar_plugins::registration!(RecordMigrationRegistration);
 
 /// Fields classes no longer have: `(class, field)`.
 pub const RETIRED_FIELDS: &[(&str, &str)] = &[

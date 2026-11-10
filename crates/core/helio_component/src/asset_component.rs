@@ -9,7 +9,11 @@ use std::path::{Component, Path, PathBuf};
 use plugin_editor_api::AssetKind;
 use pulsar_scenedb::{AssetId, AssetPayload};
 
+/// The component an asset of a kind becomes when dropped in a level.
+/// Skipped while its plugin is disabled.
 pub struct AssetComponentRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
     pub asset_kind: AssetKind,
     pub class_name: &'static str,
     /// The class's value for the project-relative asset `path`, complete
@@ -17,18 +21,33 @@ pub struct AssetComponentRegistration {
     pub value_for: fn(path: &str) -> Box<dyn Any + Send + Sync>,
 }
 
-pulsar_reflection::inventory::collect!(AssetComponentRegistration);
+impl pulsar_plugins::Contribution for AssetComponentRegistration {
+    const CATEGORY: &'static str = "asset.component";
 
-/// The component registration for assets of `kind`.
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        format!("{:?}", self.asset_kind)
+    }
+
+    fn label(&self) -> String {
+        format!("{:?} assets become {}", self.asset_kind, self.class_name)
+    }
+}
+
+pulsar_plugins::registration!(AssetComponentRegistration);
+
+/// The component registration for assets of `kind`, from an enabled plugin.
 pub fn component_for_asset(kind: &AssetKind) -> Option<&'static AssetComponentRegistration> {
-    pulsar_reflection::inventory::iter::<AssetComponentRegistration>
-        .into_iter()
+    pulsar_plugins::registered::<AssetComponentRegistration>()
         .find(|registration| registration.asset_kind == *kind)
 }
 
 /// The owner of a SceneDB asset kind: how its assets load (on a SceneDB
 /// worker thread) and how much a loaded one holds for the cache budget. The
-/// owning plugin's component crate submits one with `inventory::submit!`;
+/// owning plugin's root crate submits one with `inventory::submit!`;
 /// a component naming assets of the kind declares them with
 /// [`declared_asset_id`] and binds the payload the loader produced, without
 /// linking the owner. While the owner's plugin is disabled its assets fail
@@ -43,13 +62,19 @@ pub struct AssetLoaderRegistration {
     pub size: Option<pulsar_scenedb::SizeFn>,
 }
 
-inventory::collect!(AssetLoaderRegistration);
+impl pulsar_plugins::Contribution for AssetLoaderRegistration {
+    const CATEGORY: &'static str = "asset.loader";
 
-impl pulsar_plugins::Registration for AssetLoaderRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.kind.to_string()
+    }
 }
+
+pulsar_plugins::registration!(AssetLoaderRegistration);
 
 /// Install every linked asset kind's loader with SceneDB. Once per
 /// process; whether a kind's plugin is enabled is checked on every load, so
@@ -103,19 +128,28 @@ pub fn load_asset_now(kind: &str, source: &str) -> Result<AssetPayload, String> 
 pub struct AssetReloadRegistration {
     /// The package that submitted it (`pulsar_plugins::origin!()`).
     pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"materials.reload"`): what
+    /// the plugin catalog lists it by.
+    pub name: &'static str,
     pub kind: AssetKind,
     /// The sources of the world assets the file at the absolute `path` is,
     /// or feeds.
     pub sources_for_file: fn(path: &Path) -> Vec<String>,
 }
 
-inventory::collect!(AssetReloadRegistration);
+impl pulsar_plugins::Contribution for AssetReloadRegistration {
+    const CATEGORY: &'static str = "asset.reload";
 
-impl pulsar_plugins::Registration for AssetReloadRegistration {
     fn origin(&self) -> &'static str {
         self.origin
     }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
 }
+
+pulsar_plugins::registration!(AssetReloadRegistration);
 
 /// The sources of every world asset a change to the file at `path` (a file
 /// of `kind`) reloads, sorted, without duplicates.

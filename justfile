@@ -124,10 +124,6 @@ exe := if os() == "windows" { ".exe" } else { "" }
 inspect: build
     cargo run --release --manifest-path {{scenedb_dir}}/crates/scenedb_inspector/Cargo.toml -- target/debug/{{project}}{{exe}}
 
-# The editor without the Blueprint plugin (a plugin like any other)
-check-no-blueprint:
-    cargo check -p pulsar_engine --no-default-features
-
 # Run tsc over the generated TypeScript declarations and sample classes (needs Node)
 check-typescript-declarations:
     cargo test -p pulsar_script_ts --test tsc -- --ignored

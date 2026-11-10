@@ -25,7 +25,7 @@
 // registries -- so without a live symbol reference the linker is free to
 // drop their `#[used]` inventory-registration statics entirely (same
 // reasoning as `pulsar_scene::loader`'s forced re-exports).
-// Every installed plugin's runtime module: their classes and record
+// Every installed plugin's root crate: their classes and record
 // migrations.
 use installed_plugins as _;
 #[allow(unused_imports)]

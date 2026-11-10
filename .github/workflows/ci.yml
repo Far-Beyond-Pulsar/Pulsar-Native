@@ -147,11 +147,6 @@ jobs:
         run: |
           cargo run -p todo_check
 
-      # The Blueprint editor is a plugin: the editor must still build, and its
-      # shell must not have grown a dependency back, without it.
-      - name: Editor builds without the Blueprint plugin
-        run: cargo check -p pulsar_engine --no-default-features
-
       - name: Validate workspace dependency modes
         shell: pwsh
         run: |

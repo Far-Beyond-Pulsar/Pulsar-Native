@@ -143,26 +143,44 @@ pub trait EditorPluginScripting: EditorPlugin {
 /// A scripting language that registers itself at link time.
 ///
 /// A language crate submits one
-/// (`plugin_editor_api::inventory::submit! { LinkedScriptLanguage { create } }`)
-/// and both the editor and headless tools (`pulsar package`, CI) find it with
+/// (`plugin_editor_api::inventory::submit! { LinkedScriptLanguage { origin, id, create } }`,
+/// from a plugin's root crate when a plugin brings it) and both the editor
+/// and headless tools (`pulsar package`, CI) find it with
 /// [`linked_script_languages`] without naming the crate. Which languages a
-/// build has is then exactly which language crates it links, and the editor
-/// and the packager cannot disagree about a language's id or compiler.
+/// build has is then exactly which language crates it links (and, for a
+/// plugin's, whether the project enables the plugin), and the editor and
+/// the packager cannot disagree about a language's id or compiler.
 pub struct LinkedScriptLanguage {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    /// The language's id ([`ScriptLanguage::id`] of what `create` makes).
+    pub id: &'static str,
     pub create: fn() -> Arc<dyn ScriptLanguage>,
 }
 
-inventory::collect!(LinkedScriptLanguage);
+impl pulsar_plugins::Contribution for LinkedScriptLanguage {
+    const CATEGORY: &'static str = "script.language";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.id.to_string()
+    }
+}
+
+pulsar_plugins::registration!(LinkedScriptLanguage);
 
 pub use inventory;
 
-/// Every linked scripting language, by id (a language linked twice counts
-/// once).
+/// Every linked scripting language whose plugin is enabled, by id (a
+/// language linked twice counts once).
 pub fn linked_script_languages() -> Vec<Arc<dyn ScriptLanguage>> {
-    let mut languages: Vec<Arc<dyn ScriptLanguage>> = inventory::iter::<LinkedScriptLanguage>
-        .into_iter()
-        .map(|l| (l.create)())
-        .collect();
+    let mut languages: Vec<Arc<dyn ScriptLanguage>> =
+        pulsar_plugins::registered::<LinkedScriptLanguage>()
+            .map(|l| (l.create)())
+            .collect();
     languages.sort_by(|a, b| a.id().cmp(b.id()));
     languages.dedup_by(|a, b| a.id() == b.id());
     languages

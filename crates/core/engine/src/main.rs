@@ -43,12 +43,7 @@ static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
 #[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
-// Force-link the built-in Trait Editor so its `LinkedEditorProvider` inventory
-// registration is retained in the final binary, as with the Blueprint editor.
-#[cfg(feature = "typescript")]
-use plugin_typescript as _;
-use trait_editor_plugin as _;
-// The installed plugins (every object kind's runtime and editor modules,
+// The installed plugins (every plugin's root crate with its editor registrations,
 // generated from their pulsar-plugin.toml); the project the editor opens
 // enables some of them (`pulsar_plugins`).
 use installed_plugins as _;

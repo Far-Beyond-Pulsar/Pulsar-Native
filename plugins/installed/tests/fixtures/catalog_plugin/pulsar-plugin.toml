@@ -1,0 +1,8 @@
+# A test plugin for the plugin catalog's proofs (plugins/installed/tests/catalog.rs):
+# a root crate registering what a component crate and an editor crate hold.
+id = "pulsar.test_catalog"
+name = "Catalog fixture"
+description = "Two render features with two nodes each, a content report and a settings namespace; in the editor, a thumbnail renderer and assistant tools"
+enabled_by_default = true
+requires = []
+root = "catalog_fixture_plugin"

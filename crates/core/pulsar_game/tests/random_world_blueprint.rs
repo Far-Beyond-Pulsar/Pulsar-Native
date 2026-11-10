@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use blueprint_compiler::{authored::expand_graph, compile, ClassSource, VariableSource};
 use graphy_blueprint::codec::deserialize_blueprint;
-use installed_plugins::voxel_component::world::terrain_world;
-use installed_plugins::voxel_component::{
+use installed_plugins::voxel_plugin::voxel_component::world::terrain_world;
+use installed_plugins::voxel_plugin::voxel_component::{
     VoxelAir, VoxelLayerKind, VoxelMaterialStyle, VoxelTerrainComponent,
     VoxelTerrainLayersComponent, VoxelTerrainStack,
 };
@@ -89,7 +89,7 @@ fn build(program: &Program, seed: i64) -> (VoxelTerrainStack, VoxelAir) {
     // The generator accepts it: the planet builds (off the thread, as the
     // scene's steps build it).
     assert!(
-        installed_plugins::voxel_component::runtime::wait_for_voxel_worlds(
+        installed_plugins::voxel_plugin::voxel_component::runtime::wait_for_voxel_worlds(
             &mut world,
             std::time::Duration::from_secs(300)
         )

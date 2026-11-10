@@ -18,6 +18,7 @@
 //! | `loading` | prepare / install / order plugin libraries |
 //! | `attach` | sharing host runtimes with a library through its exported symbols |
 //! | `details` | plugin listings for the plugin manager window |
+//! | `catalog` | installed plugins and their linked contributions |
 //! | `contributions` | built-in registration, statusbar, scripts, components, `drain_*` |
 //! | `editors` | creating editors and new files |
 //! | `ai_tools` | AI tool bridges and tool execution |
@@ -79,6 +80,7 @@ use std::path::PathBuf;
 mod ai_tools;
 mod attach;
 pub mod builtin;
+pub mod catalog;
 mod contributions;
 pub mod dependencies;
 mod details;
@@ -101,6 +103,7 @@ pub use builtin::{
     BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
     PluginEditorProvider,
 };
+pub use catalog::{CatalogPlugin, CatalogProblem, PluginCatalog};
 pub use dependencies::{plan_load_order, DependencyError, LoadPlan};
 pub use error::PluginManagerError;
 pub use global::{file_type_for_path, global, initialize_global};
