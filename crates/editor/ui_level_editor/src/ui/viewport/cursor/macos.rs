@@ -28,6 +28,11 @@ fn is_accessibility_trusted(prompt_if_missing: bool) -> bool {
     };
     use core_foundation_sys::string::{kCFStringEncodingUTF8, CFStringCreateWithCString};
 
+    // SAFETY: The C string is a NUL-terminated literal that outlives the call, and a null
+    //         result is handled. `keys`/`values` are live arrays of the length passed (1); the
+    //         CF boolean constants and `kCFType*CallBacks` are CoreFoundation statics valid for
+    //         the process. `key` and `options` follow the Create rule and are each released
+    //         exactly once; `options` is only used before its release.
     unsafe {
         let key = CFStringCreateWithCString(
             kCFAllocatorDefault,
@@ -110,6 +115,7 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
     use core_graphics2::event_source::CGEventSource;
     use core_graphics2::event_types::CGEventSourceStateID;
 
+    // SAFETY: The calls take plain numeric values by value; nothing borrowed outlives them.
     unsafe {
         // warp the cursor using the geometry type from the new crate
         let _ = CGDisplay::main().warp_mouse_cursor_position(core_graphics2::geometry::CGPoint {
@@ -139,6 +145,7 @@ pub fn begin_relative_mouse_mode() {
     use core_graphics2::event_types::CGEventSourceStateID;
     use core_graphics2::remote_operation::CGAssociateMouseAndMouseCursorPosition;
 
+    // SAFETY: `CGAssociateMouseAndMouseCursorPosition` takes a plain boolean and no pointers.
     unsafe {
         let _ = CGAssociateMouseAndMouseCursorPosition(0);
     }
@@ -151,6 +158,8 @@ pub fn begin_relative_mouse_mode() {
 
     let mut delta_x = 0;
     let mut delta_y = 0;
+    // SAFETY: `delta_x` and `delta_y` are writable locals that live across the call, as
+    //         `CGGetLastMouseDelta` requires for its out-parameters.
     unsafe {
         let _ = CGGetLastMouseDelta(&mut delta_x, &mut delta_y);
     }
@@ -165,6 +174,7 @@ pub fn end_relative_mouse_mode() {
     use core_graphics2::display::CGDisplay;
     use core_graphics2::remote_operation::CGAssociateMouseAndMouseCursorPosition;
 
+    // SAFETY: `CGAssociateMouseAndMouseCursorPosition` takes a plain boolean and no pointers.
     unsafe {
         let _ = CGAssociateMouseAndMouseCursorPosition(1);
     }
@@ -182,6 +192,8 @@ pub fn take_mouse_delta() -> (f32, f32) {
 
     let mut delta_x = 0;
     let mut delta_y = 0;
+    // SAFETY: `delta_x` and `delta_y` are writable locals that live across the call, as
+    //         `CGGetLastMouseDelta` requires for its out-parameters.
     unsafe {
         let _ = CGGetLastMouseDelta(&mut delta_x, &mut delta_y);
     }
@@ -207,6 +219,10 @@ pub fn window_to_screen_position(
 
     match HasWindowHandle::window_handle(window) {
         Ok(handle) => match handle.as_raw() {
+            // SAFETY: `ns_view` comes from the raw window handle of `window`, which is borrowed (so
+            //         alive) for this call, and is null-checked before use; so is the `NSWindow` the
+            //         `window` message returns. `convertPointToScreen:` takes and returns an `NSPoint`
+            //         by value, matching `NSWindow`'s signature.
             RawWindowHandle::AppKit(appkit_handle) => unsafe {
                 // `RawWindowHandle::AppKit` exposes an `ns_view` pointer but not
                 // the window directly. Query the view's window object at runtime.

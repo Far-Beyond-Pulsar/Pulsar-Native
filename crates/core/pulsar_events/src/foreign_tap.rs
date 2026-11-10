@@ -71,6 +71,8 @@ unsafe extern "C" fn tap_release(ctx: *const c_void) {
 unsafe extern "C" fn tap_downgrade(ctx: *const c_void) -> *const c_void {
     // SAFETY: live ctx; forwarded.
     let tap = unsafe { tap_ctx(ctx) };
+    // SAFETY: `tap.inner` is the real export this wrapper owns a strong
+    // reference to, so `tap.inner.ctx` is live for the call.
     unsafe { (tap.inner.downgrade)(tap.inner.ctx) }
 }
 
@@ -83,12 +85,16 @@ unsafe extern "C" fn tap_subscribe(
 ) -> u64 {
     // SAFETY: live ctx; forwarded.
     let tap = unsafe { tap_ctx(ctx) };
+    // SAFETY: `tap.inner.ctx` is live (see above); the remaining arguments are
+    // passed through unchanged, so the caller's validity guarantees carry over.
     unsafe { (tap.inner.subscribe)(tap.inner.ctx, id, channel, priority, handler) }
 }
 
 unsafe extern "C" fn tap_publish(ctx: *const c_void, event: *const RawEventRef) -> i32 {
     // SAFETY: live ctx; `event` is valid for the call.
     let tap = unsafe { tap_ctx(ctx) };
+    // SAFETY: `tap.inner.ctx` is live and `event` is forwarded unchanged, so
+    // it is valid for the call as the caller guarantees.
     let status = unsafe { (tap.inner.publish)(tap.inner.ctx, event) };
     if status == STATUS_OK {
         // SAFETY: valid for the call.
@@ -105,7 +111,11 @@ unsafe extern "C" fn tap_publish_deferred(
     // SAFETY: live ctx; `event` is valid for the call. Noted before the
     // forward: a typed event's value is moved into the bus by it.
     let tap = unsafe { tap_ctx(ctx) };
+    // SAFETY: `event` is valid for the call (caller's contract), which is all
+    // `pending` requires.
     let noted = unsafe { pending(tap, event, "plugin") };
+    // SAFETY: `tap.inner.ctx` is live; `event` and `drop_fn` are forwarded
+    // unchanged, so the caller's guarantees about them carry over.
     let status = unsafe { (tap.inner.publish_deferred)(tap.inner.ctx, event, drop_fn) };
     if status == STATUS_OK {
         if let (Some(pending), Some(hub)) = (noted, tap.hub.upgrade()) {
@@ -122,6 +132,8 @@ unsafe extern "C" fn tap_register_descriptor(
 ) -> i32 {
     // SAFETY: live ctx; forwarded.
     let tap = unsafe { tap_ctx(ctx) };
+    // SAFETY: `tap.inner.ctx` is live; `data`/`len` are forwarded unchanged, so
+    // the caller's guarantee that they describe a readable buffer carries over.
     unsafe { (tap.inner.register_descriptor)(tap.inner.ctx, data, len) }
 }
 

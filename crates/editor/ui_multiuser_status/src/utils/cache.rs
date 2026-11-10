@@ -67,3 +67,42 @@ pub fn fetch_avatar_image(url: &str) -> Result<Arc<RenderImage>, String> {
     let frame = image::Frame::new(rgba);
     Ok(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn image() -> Arc<RenderImage> {
+        let frame = image::Frame::new(image::RgbaImage::new(1, 1));
+        Arc::new(RenderImage::new(smallvec::smallvec![frame]))
+    }
+
+    #[test]
+    fn cache_returns_inserted_image_and_none_for_unknown_url() {
+        let cache = AvatarCache::new();
+        assert!(cache.get("https://a.test/1.png").is_none());
+        let img = image();
+        cache.insert("https://a.test/1.png".into(), Arc::clone(&img));
+        assert!(Arc::ptr_eq(
+            &cache.get("https://a.test/1.png").unwrap(),
+            &img
+        ));
+        assert!(cache.get("https://a.test/2.png").is_none());
+    }
+
+    #[test]
+    fn is_fetching_is_true_only_for_cached_urls() {
+        let cache = AvatarCache::default();
+        assert!(!cache.is_fetching("https://a.test/1.png"));
+        cache.insert("https://a.test/1.png".into(), image());
+        assert!(cache.is_fetching("https://a.test/1.png"));
+    }
+
+    #[test]
+    fn clones_share_the_same_storage() {
+        let cache = AvatarCache::new();
+        let clone = cache.clone();
+        clone.insert("https://a.test/1.png".into(), image());
+        assert!(cache.get("https://a.test/1.png").is_some());
+    }
+}

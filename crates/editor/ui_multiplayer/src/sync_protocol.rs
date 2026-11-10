@@ -1,27 +1,37 @@
-//! Session creation - host connection flow
+//! Host connection flow: creating a new multiplayer session.
+//!
+//! Owns `MultiplayerWindow::create_session` (the entry point, called from the
+//! create form) and the named steps it is built from: validate input, create the
+//! session over HTTP, connect, wait for the `Joined` reply, apply it to UI state
+//! and run the event loop that dispatches each `ServerMessage` to a
+//! `handle_host_*` function. Pure logic lives in `session_logic`; handlers
+//! shared with the guest flow live in `session_events`.
 
-//! Session creation (host path) for multiplayer sessions
-
-use futures::StreamExt;
 use gpui::*;
+use std::ops::ControlFlow;
 use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::RwLock;
 
 use crate::screen::MultiplayerWindow;
+use crate::session_events::JoinedReply;
+use crate::session_logic;
 use crate::utils::types::*;
 use engine_backend::subsystems::networking::multiuser::{
-    ClientMessage, MultiuserClient, ServerMessage,
+    ClientMessage, MultiuserClient, PeerIdentity, PeerProfile, ServerMessage,
 };
 use engine_backend::subsystems::networking::simple_sync;
-use engine_state::{EngineContext, MultiuserParticipant};
+
+/// Log prefix used by every message in the host flow.
+const TAG: &str = "CREATE_SESSION";
 
 impl MultiplayerWindow {
+    /// Validates the form, creates the client and spawns the session-creation task.
     pub(super) fn create_session(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let server_address = self.server_address_input.read(cx).text().to_string();
 
-        if server_address.is_empty() {
-            self.connection_status =
-                ConnectionStatus::Error("Server address is required".to_string());
+        if let Err(message) = session_logic::validate_server_address(&server_address) {
+            self.connection_status = ConnectionStatus::Error(message.to_string());
             cx.notify();
             return;
         }
@@ -33,624 +43,540 @@ impl MultiplayerWindow {
         let client = Arc::new(RwLock::new(MultiuserClient::new(server_address.clone())));
         self.client = Some(client.clone());
 
-        let _session_id_input = self.session_id_input.clone();
-        let _session_password_input = self.session_password_input.clone();
         let identity = self.current_peer_identity();
 
         cx.spawn(async move |this, cx| {
-            // Call create_session on the client
-            let result = {
-                let client_guard = client.read().await;
-                client_guard.create_session().await
-            };
+            Self::run_host_flow(&this, cx, client, server_address, identity).await;
+        })
+        .detach();
+    }
 
-            match result {
-                Ok((session_id, join_token)) => {
-                    // Store credentials for later display
-                    let session_id_for_display = session_id.clone();
-                    let join_token_for_display = join_token.clone();
+    /// Creates the session on the server, then connects to it as the host.
+    async fn run_host_flow(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: Arc<RwLock<MultiuserClient>>,
+        server_address: String,
+        identity: Option<PeerIdentity>,
+    ) {
+        // Call create_session on the client
+        let result = {
+            let client_guard = client.read().await;
+            client_guard.create_session().await
+        };
 
-                    // Update UI state - still connecting, not yet fully connected
-                    cx.update(|cx| {
-                        this.update(cx, |this, cx| {
-                            this.connection_status = ConnectionStatus::Connecting;
-                            this.active_session = Some(ActiveSession {
-                                session_id: session_id_for_display.clone(),
-                                join_token: join_token_for_display.clone(),
-                                server_address: server_address.clone(),
-                                connected_users: vec!["You (Host)".to_string()],
-                            });
-                            this.sync_engine_multiuser_connecting(
-                                &server_address,
-                                &session_id_for_display,
-                            );
-                            cx.notify();
-                        });
+        let (session_id, join_token) = match result {
+            Ok(credentials) => credentials,
+            Err(e) => {
+                Self::report_host_error(
+                    this,
+                    cx,
+                    format!("Failed to create session: {}", e),
+                    false,
+                );
+                return;
+            }
+        };
+
+        // Update UI state - still connecting, not yet fully connected
+        cx.update(|cx| {
+            this.update(cx, |this, cx| {
+                this.apply_host_session_created(&server_address, &session_id, &join_token, cx);
+            });
+        });
+
+        // Now connect via WebSocket
+        let event_rx_result = {
+            let mut client_guard = client.write().await;
+            client_guard
+                .connect(session_id.clone(), join_token, identity)
+                .await
+        }; // client_guard dropped here, releasing the lock
+
+        let mut event_rx = match event_rx_result {
+            Ok(event_rx) => event_rx,
+            Err(e) => {
+                Self::report_host_error(this, cx, session_logic::connection_failed_text(e), false);
+                return;
+            }
+        };
+
+        // Wait for the initial response (Joined or Error)
+        match event_rx.recv().await {
+            Some(ServerMessage::Joined {
+                peer_id,
+                participants,
+                join_token,
+                participant_profiles,
+                ..
+            }) => {
+                let joined = JoinedReply {
+                    peer_id,
+                    participants,
+                    server_join_token: join_token,
+                    participant_profiles,
+                };
+                Self::run_hosted_session(
+                    this,
+                    cx,
+                    &client,
+                    &mut event_rx,
+                    &server_address,
+                    &session_id,
+                    &joined,
+                )
+                .await;
+            }
+            Some(ServerMessage::Error { message }) => {
+                let text = session_logic::server_error_text(&message);
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.set_connection_error(text);
+                        this.active_session = None;
+                        cx.notify();
                     });
+                });
+            }
+            Some(_) => {
+                Self::report_host_error(this, cx, "Unexpected server response".to_string(), true);
+            }
+            None => {
+                Self::report_host_error(
+                    this,
+                    cx,
+                    "Connection closed before response".to_string(),
+                    true,
+                );
+            }
+        }
+    }
 
-                    // Now connect via WebSocket
-                    let event_rx_result = {
-                        let mut client_guard = client.write().await;
-                        client_guard
-                            .connect(session_id.clone(), join_token, identity)
-                            .await
-                    }; // client_guard dropped here, releasing the lock
+    /// Shows a host-flow failure; `clear_session` also stops the fs forwarder and drops the session.
+    fn report_host_error(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        text: String,
+        clear_session: bool,
+    ) {
+        cx.update(|cx| {
+            this.update(cx, |this, cx| {
+                this.set_connection_error(text);
+                if clear_session {
+                    this.fs_event_forwarder = None;
+                    this.active_session = None;
+                }
+                cx.notify();
+            });
+        });
+    }
 
-                    match event_rx_result {
-                        Ok(mut event_rx) => {
-                            // Wait for the initial response (Joined or Error)
-                            match event_rx.recv().await {
-                                Some(ServerMessage::Joined {
-                                    peer_id,
-                                    participants,
-                                    join_token,
-                                    participant_profiles,
-                                    ..
-                                }) => {
-                                    cx.update(|cx| {
-                                        this.update(cx, |this, cx| {
-                                            // Store our peer_id first
-                                            this.current_peer_id = Some(peer_id.clone());
+    /// Records the freshly created session (still connecting) in UI and engine state.
+    fn apply_host_session_created(
+        &mut self,
+        server_address: &str,
+        session_id: &str,
+        join_token: &str,
+        cx: &mut Context<Self>,
+    ) {
+        self.connection_status = ConnectionStatus::Connecting;
+        self.active_session = Some(ActiveSession {
+            session_id: session_id.to_string(),
+            join_token: join_token.to_string(),
+            server_address: server_address.to_string(),
+            connected_users: vec!["You (Host)".to_string()],
+        });
+        self.sync_engine_multiuser_connecting(server_address, session_id);
+        cx.notify();
+    }
 
-                                            tracing::debug!(
-                                                "CREATE_SESSION: Received Joined - our peer_id: {}, participants: {:?}",
-                                                peer_id,
-                                                participants
-                                            );
+    /// Applies the `Joined` reply, then pumps events until the session ends.
+    async fn run_hosted_session(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: &Arc<RwLock<MultiuserClient>>,
+        event_rx: &mut UnboundedReceiver<ServerMessage>,
+        server_address: &str,
+        session_id: &str,
+        joined: &JoinedReply,
+    ) {
+        cx.update(|cx| {
+            this.update(cx, |this, cx| {
+                this.apply_host_joined(client, server_address, session_id, joined, cx);
+            });
+        });
 
-                                            if let Some(session) = &mut this.active_session {
-                                                // Store raw participant list
-                                                session.connected_users = participants.clone();
-                                                if let Some(join_token) = join_token.clone() {
-                                                    session.join_token = join_token;
-                                                }
-                                            }
+        // Continue listening for PeerJoined/PeerLeft events
+        Self::run_host_event_loop(this, cx, client, event_rx).await;
+    }
 
-                                            // Initialize presence for all participants
-                                            this.update_presence_from_participants(cx);
+    /// Stores our peer id and participants, then finishes setup (presence, replication, engine sync).
+    fn apply_host_joined(
+        &mut self,
+        client: &Arc<RwLock<MultiuserClient>>,
+        server_address: &str,
+        session_id: &str,
+        joined: &JoinedReply,
+        cx: &mut Context<Self>,
+    ) {
+        // Store our peer_id first
+        self.current_peer_id = Some(joined.peer_id.clone());
 
-                                            // Log project root for host
-                                            if let Some(project_root) = &this.project_root {
-                                                tracing::debug!("CREATE_SESSION: Project root at {:?}", project_root);
-                                            }
+        tracing::debug!(
+            "{}: Received Joined - our peer_id: {}, participants: {:?}",
+            TAG,
+            joined.peer_id,
+            joined.participants
+        );
 
-                                            // Initialize UI replication system
-                                            ui::replication::init(cx);
+        if let Some(session) = &mut self.active_session {
+            // Store raw participant list
+            session.connected_users = joined.participants.clone();
+            if let Some(join_token) = joined.server_join_token.clone() {
+                session.join_token = join_token;
+            }
+        }
 
-                                            // Set up replication bridge
-                                            let integration = ui::replication::MultiuserIntegration::new(cx);
-                                            let host_peer_id = participants.first().cloned().unwrap_or_else(|| peer_id.clone());
+        self.finish_joined_setup(TAG, client, server_address, session_id, joined, cx);
+    }
 
-                                            // Set up message sender
-                                            let client_clone = client.clone();
-                                            let session_id_clone = session_id.clone();
-                                            let peer_id_clone = peer_id.clone();
-                                            integration.start_session(
-                                                peer_id.clone(),
-                                                host_peer_id,
-                                                move |replication_msg| {
-                                                    let client = client_clone.clone();
-                                                    let session_id = session_id_clone.clone();
-                                                    let peer_id = peer_id_clone.clone();
-                                                    if let Ok(data) = serde_json::to_string(&replication_msg) {
-                                                        tokio::spawn(async move {
-                                                            let client_guard = client.read().await;
-                                                            let _ = client_guard.send(ClientMessage::ReplicationUpdate {
-                                                                session_id,
-                                                                peer_id,
-                                                                data,
-                                                            }).await;
-                                                        });
-                                                    }
-                                                },
-                                                cx,
-                                            );
+    /// Handles server messages until the session ends, we are kicked or the channel closes.
+    async fn run_host_event_loop(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: &Arc<RwLock<MultiuserClient>>,
+        event_rx: &mut UnboundedReceiver<ServerMessage>,
+    ) {
+        while let Some(msg) = event_rx.recv().await {
+            // Check if we're still connected - break if disconnected
+            if !Self::session_still_active(this, cx) {
+                tracing::debug!("{}: Session disconnected, stopping event loop", TAG);
+                break;
+            }
 
-                                            // Add user presence for all participants
-                                            for (i, participant_id) in participants.iter().enumerate() {
-                                                let color = Self::generate_user_color(participant_id);
-                                                integration.add_user(
-                                                    participant_id.clone(),
-                                                    format!("User {}", i + 1),
-                                                    color,
-                                                    cx,
-                                                );
-                                            }
+            if Self::handle_host_message(this, cx, client, msg)
+                .await
+                .is_break()
+            {
+                break;
+            }
 
-                                            tracing::debug!("CREATE_SESSION: Initialized replication bridge");
-                                            this.sync_engine_multiuser_connected(
-                                                &server_address,
-                                                &session_id,
-                                                &peer_id,
-                                                &participants,
-                                            );
-                                            this.start_fs_event_forwarder(
-                                                client.clone(),
-                                                session_id.clone(),
-                                                peer_id.clone(),
-                                                cx,
-                                            );
-                                            if let Some(profiles) = participant_profiles {
-                                                this.sync_engine_multiuser_profiles(profiles);
-                                            }
+            Self::report_latency(this, cx, client).await;
+        }
+    }
 
-                                            cx.notify();
-                                        });
-                                    });
+    /// Dispatches one server message; `Break` ends the event loop.
+    async fn handle_host_message(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: &Arc<RwLock<MultiuserClient>>,
+        msg: ServerMessage,
+    ) -> ControlFlow<()> {
+        match msg {
+            ServerMessage::PeerJoined {
+                peer_id: joined_peer_id,
+                profile,
+                ..
+            } => {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.apply_host_peer_joined(joined_peer_id, profile, cx);
+                    });
+                });
+            }
+            ServerMessage::PeerLeft {
+                peer_id: left_peer_id,
+                ..
+            } => {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.apply_peer_left(&left_peer_id, cx);
+                    });
+                });
+            }
+            ServerMessage::Kicked { reason, .. } => {
+                tracing::warn!("{}: You were kicked from the session: {}", TAG, reason);
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.handle_kicked(format!("Kicked from session: {}", reason), cx);
+                    });
+                });
+                return ControlFlow::Break(()); // Exit the message loop
+            }
+            ServerMessage::ChatMessage {
+                peer_id: sender_peer_id,
+                message,
+                timestamp,
+                ..
+            } => {
+                tracing::debug!(
+                    "{}: Received ChatMessage from {} at {}: {}",
+                    TAG,
+                    sender_peer_id,
+                    timestamp,
+                    message
+                );
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.apply_chat_message(TAG, sender_peer_id, message, timestamp, cx);
+                    });
+                });
+            }
+            ServerMessage::Error { message } => {
+                let text = session_logic::server_error_text(&message);
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.set_connection_error(text);
+                        this.fs_event_forwarder = None;
+                        cx.notify();
+                    });
+                });
+            }
+            ServerMessage::FileChanged { path, kind, .. } => {
+                Self::emit_remote_file_change(path, &kind);
+            }
+            ServerMessage::RequestFileManifest {
+                from_peer_id,
+                session_id: req_session_id,
+                ..
+            } => {
+                tracing::debug!(
+                    "{}: Received RequestFileManifest from {}",
+                    TAG,
+                    from_peer_id
+                );
+                Self::host_serve_manifest(this, cx, client, req_session_id);
+            }
+            ServerMessage::RequestFiles {
+                from_peer_id,
+                file_paths,
+                session_id: req_session_id,
+                ..
+            } => {
+                tracing::debug!(
+                    "{}: Received RequestFiles for {} files from {}",
+                    TAG,
+                    file_paths.len(),
+                    from_peer_id
+                );
+                Self::host_serve_files(this, cx, client, req_session_id, file_paths);
+            }
+            ServerMessage::RequestFile {
+                from_peer_id,
+                file_path,
+                session_id: req_session_id,
+                ..
+            } => {
+                tracing::debug!(
+                    "{}: Received RequestFile for {} from {}",
+                    TAG,
+                    file_path,
+                    from_peer_id
+                );
+                Self::host_serve_file(this, cx, client, req_session_id, file_path).await;
+            }
+            ServerMessage::ReplicationUpdate {
+                from_peer_id, data, ..
+            } => {
+                tracing::debug!("{}: Received ReplicationUpdate from {}", TAG, from_peer_id);
+                Self::forward_replication_update(this, cx, client, &data).await;
+            }
+            _ => {}
+        }
+        ControlFlow::Continue(())
+    }
 
-                                    // Continue listening for PeerJoined/PeerLeft events
-                                    while let Some(msg) = event_rx.recv().await {
-                                        // Check if we're still connected - break if disconnected
-                                        let still_connected = cx.update(|cx| {
-                                            this.update(cx, |this, _cx| {
-                                                this.active_session.is_some()
-                                            })
-                                        }).unwrap_or(false);
+    /// Adds a newly joined peer to the session, presence, replication system and engine state.
+    fn apply_host_peer_joined(
+        &mut self,
+        joined_peer_id: String,
+        profile: Option<PeerProfile>,
+        cx: &mut Context<Self>,
+    ) {
+        tracing::debug!(
+            "{}: Received PeerJoined - joined_peer_id: {}, our peer_id: {:?}",
+            TAG,
+            joined_peer_id,
+            self.current_peer_id
+        );
 
-                                        if !still_connected {
-                                            tracing::debug!("CREATE_SESSION: Session disconnected, stopping event loop");
-                                            break;
-                                        }
+        // Ignore PeerJoined about ourselves
+        if session_logic::is_self_peer(self.current_peer_id.as_deref(), &joined_peer_id) {
+            tracing::debug!("{}: Ignoring PeerJoined about ourselves", TAG);
+            return;
+        }
 
-                                        match msg {
-                                            ServerMessage::PeerJoined {
-                                                peer_id: joined_peer_id,
-                                                profile,
-                                                ..
-                                            } => {
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        tracing::debug!(
-                                                            "CREATE_SESSION: Received PeerJoined - joined_peer_id: {}, our peer_id: {:?}",
-                                                            joined_peer_id,
-                                                            this.current_peer_id
-                                                        );
+        if let Some(session) = &mut self.active_session {
+            // Add raw peer_id if not already present
+            if session_logic::add_peer(&mut session.connected_users, &joined_peer_id) {
+                tracing::debug!(
+                    "{}: Added peer {} to list. List now: {:?}",
+                    TAG,
+                    joined_peer_id,
+                    session.connected_users
+                );
+            }
+            let user_index = session.connected_users.len();
 
-                                                        // Ignore PeerJoined about ourselves
-                                                        if this.current_peer_id.as_ref() == Some(&joined_peer_id) {
-                                                            tracing::debug!("CREATE_SESSION: Ignoring PeerJoined about ourselves");
-                                                            return;
-                                                        }
+            // Update presence
+            self.update_presence_from_participants(cx);
+            // Add to replication system
+            let integration = ui::replication::MultiuserIntegration::new(cx);
+            let color = Self::generate_user_color(&joined_peer_id);
+            integration.add_user(
+                joined_peer_id.clone(),
+                session_logic::user_label(user_index),
+                color,
+                cx,
+            );
+            cx.notify();
+        } else {
+            tracing::debug!("{}: Peer {} already in list", TAG, joined_peer_id);
+        }
 
-                                                        if let Some(session) = &mut this.active_session {
-                                                            // Add raw peer_id if not already present
-                                                            if !session.connected_users.contains(&joined_peer_id) {
-                                                                tracing::debug!(
-                                                                    "CREATE_SESSION: Adding peer {} to list. List before: {:?}",
-                                                                    joined_peer_id,
-                                                                    session.connected_users
-                                                                );
-                                                                session.connected_users.push(joined_peer_id.clone());
-                                                            }
-                                                            let user_index = session.connected_users.len();
-                                                            // Session borrow dropped here
+        self.resync_engine_participants();
+        if let Some(profile) = profile {
+            Self::merge_engine_peer_profile(&profile);
+        }
+    }
 
-                                                            if !this.active_session.as_ref().is_none_or(|s| s.connected_users.contains(&joined_peer_id)) {
-                                                                return;
-                                                            }
+    /// Builds the project manifest on a background thread and sends it to the requester.
+    fn host_serve_manifest(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: &Arc<RwLock<MultiuserClient>>,
+        req_session_id: String,
+    ) {
+        // Create and send file manifest
+        let Some(project_root) = Self::read_project_root(this, cx) else {
+            tracing::error!("{}: No project_root available", TAG);
+            return;
+        };
+        tracing::debug!("{}: Project root is {:?}", TAG, project_root.display());
 
-                                                            // Update presence
-                                                                this.update_presence_from_participants(cx);
-                                                                // Add to replication system
-                                                                let integration = ui::replication::MultiuserIntegration::new(cx);
-                                                                let color = Self::generate_user_color(&joined_peer_id);
-                                                                integration.add_user(
-                                                                    joined_peer_id.clone(),
-                                                                    format!("User {}", user_index),
-                                                                    color,
-                                                                    cx,
-                                                                );
-                                                                cx.notify();
-                                                        } else {
-                                                            tracing::debug!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
-                                                        }
+        let Some(our_peer_id) = Self::read_own_peer_id(this, cx) else {
+            tracing::error!("{}: No peer_id available", TAG);
+            return;
+        };
 
-                                                        let session_snapshot = this
-                                                            .active_session
-                                                            .as_ref()
-                                                            .map(|s| {
-                                                                (
-                                                                    s.server_address.clone(),
-                                                                    s.session_id.clone(),
-                                                                    s.connected_users.clone(),
-                                                                )
-                                                            });
-                                                        if let (Some(peer_id), Some((server_address, session_id, participants))) =
-                                                            (this.current_peer_id.as_ref(), session_snapshot)
-                                                        {
-                                                            this.sync_engine_multiuser_connected(
-                                                                &server_address,
-                                                                &session_id,
-                                                                peer_id,
-                                                                &participants,
-                                                            );
-                                                        }
-                                                        if let Some(profile) = profile {
-                                                            if let Some(engine) = EngineContext::global() {
-                                                                let _ = engine.update_multiuser(|mu| {
-                                                                    if let Some(existing) = mu
-                                                                        .participant_profiles
-                                                                        .iter_mut()
-                                                                        .find(|p| p.peer_id == profile.peer_id)
-                                                                    {
-                                                                        existing.display_name = profile.display_name.clone();
-                                                                        existing.avatar_url = profile.avatar_url.clone();
-                                                                        existing.github_login = profile.github_login.clone();
-                                                                    } else {
-                                                                        mu.participant_profiles.push(MultiuserParticipant {
-                                                                            peer_id: profile.peer_id.clone(),
-                                                                            display_name: profile.display_name.clone(),
-                                                                            avatar_url: profile.avatar_url.clone(),
-                                                                            github_login: profile.github_login.clone(),
-                                                                            ping_ms: None,
-                                                                        });
-                                                                    }
-                                                                });
-                                                                engine.notify_multiuser_changed();
-                                                            }
-                                                        }
-                                                    });
-                                                });
-                                            }
-                                            ServerMessage::PeerLeft { peer_id: left_peer_id, .. } => {
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        if let Some(session) = &mut this.active_session {
-                                                            session.connected_users.retain(|p| p != &left_peer_id);
-                                                            this.user_presences.retain(|p| p.peer_id != left_peer_id);
-                                                            // Remove from replication system
-                                                            let integration = ui::replication::MultiuserIntegration::new(cx);
-                                                            integration.remove_user(&left_peer_id, cx);
-                                                            cx.notify();
-                                                        }
-
-                                                        let session_snapshot = this
-                                                            .active_session
-                                                            .as_ref()
-                                                            .map(|s| {
-                                                                (
-                                                                    s.server_address.clone(),
-                                                                    s.session_id.clone(),
-                                                                    s.connected_users.clone(),
-                                                                )
-                                                            });
-                                                        if let (Some(peer_id), Some((server_address, session_id, participants))) =
-                                                            (this.current_peer_id.as_ref(), session_snapshot)
-                                                        {
-                                                            this.sync_engine_multiuser_connected(
-                                                                &server_address,
-                                                                &session_id,
-                                                                peer_id,
-                                                                &participants,
-                                                            );
-                                                        }
-                                                        if let Some(engine) = EngineContext::global() {
-                                                            let _ = engine.update_multiuser(|mu| {
-                                                                mu.participant_profiles
-                                                                    .retain(|p| p.peer_id != left_peer_id);
-                                                            });
-                                                            engine.notify_multiuser_changed();
-                                                        }
-                                                    });
-                                                });
-                                            }
-                                            ServerMessage::Kicked { reason, .. } => {
-                                                tracing::warn!("CREATE_SESSION: You were kicked from the session: {}", reason);
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        this.handle_kicked(
-                                                            format!("Kicked from session: {}", reason),
-                                                            cx,
-                                                        );
-                                                    });
-                                                });
-                                                break; // Exit the message loop
-                                            }
-                                            ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
-                                                tracing::debug!(
-                                                    "CREATE_SESSION: Received ChatMessage from {} at {}: {}",
-                                                    sender_peer_id, timestamp, message
-                                                );
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        let is_self = this.current_peer_id.as_ref() == Some(&sender_peer_id);
-                                                        tracing::debug!(
-                                                            "CREATE_SESSION: Adding chat message. is_self: {}, current chat count: {}",
-                                                            is_self, this.chat_messages.len()
-                                                        );
-                                                        this.chat_messages.push(ChatMessage {
-                                                            peer_id: sender_peer_id,
-                                                            message,
-                                                            timestamp,
-                                                            is_self,
-                                                        });
-                                                        tracing::debug!("CREATE_SESSION: Chat messages now: {}", this.chat_messages.len());
-                                                        cx.notify();
-                                                    });
-                                                });
-                                            }
-                                            ServerMessage::Error { message } => {
-                                                cx.update(|cx| {
-                                                    this.update(cx, |this, cx| {
-                                                        this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
-                                                        this.sync_engine_multiuser_error(format!(
-                                                            "Server error: {}",
-                                                            message
-                                                        ));
-                                                        this.fs_event_forwarder = None;
-                                                        cx.notify();
-                                                    });
-                                                });
-                                            }
-                                            ServerMessage::FileChanged { path, kind, .. } => {
-                                                let change_kind = match kind.as_str() {
-                                                    "created" => engine_fs::events::FsChangeKind::Created,
-                                                    "deleted" => engine_fs::events::FsChangeKind::Deleted,
-                                                    _ => engine_fs::events::FsChangeKind::Modified,
-                                                };
-                                                engine_fs::events::emit_remote(path, change_kind);
-                                            }
-                                            ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
-                                                tracing::debug!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
-
-                                                // Create and send file manifest
-                                                let project_root = cx.update(|cx| {
-                                                    this.update(cx, |this, _cx| {
-                                                        this.project_root.clone()
-                                                    })
-                                                }).ok().flatten();
-
-                                                if let Some(project_root) = project_root {
-                                                    tracing::debug!("CREATE_SESSION: Project root is {:?}", project_root.display());
-
-                                                    let our_peer_id = cx.update(|cx| {
-                                                        this.update(cx, |this, _cx| {
-                                                            this.current_peer_id.clone()
-                                                        })
-                                                    }).ok().flatten();
-
-                                                    if let Some(our_peer_id) = our_peer_id {
-                                                        // Create manifest in background thread
-                                                        let client_clone = client.clone();
-                                                        let session_id_clone = req_session_id.clone();
-                                                        std::thread::spawn(move || {
-                                                            tracing::debug!("HOST: Creating file manifest for {:?}", project_root);
-                                                            match simple_sync::create_manifest(&project_root) {
-                                                                Ok(manifest) => {
-                                                                    tracing::debug!("HOST: Created manifest with {} files", manifest.files.len());
-                                                                    match serde_json::to_string(&manifest) {
-                                                                        Ok(manifest_json) => {
-                                                                            tracing::debug!("HOST: Serialized manifest to {} bytes", manifest_json.len());
-                                                                            tokio::runtime::Runtime::new().unwrap().block_on(async {
-                                                                                let client_guard = client_clone.read().await;
-                                                                                let _ = client_guard.send(ClientMessage::FileManifest {
-                                                                                    session_id: session_id_clone,
-                                                                                    peer_id: our_peer_id,
-                                                                                    manifest_json,
-                                                                                }).await;
-                                                                                tracing::debug!("HOST: Sent file manifest");
-                                                                            });
-                                                                        }
-                                                                        Err(e) => tracing::error!("HOST: Failed to serialize manifest: {}", e),
-                                                                    }
-                                                                }
-                                                                Err(e) => tracing::error!("HOST: Failed to create manifest: {}", e),
-                                                            }
-                                                        });
-                                                    } else {
-                                                        tracing::error!("CREATE_SESSION: No peer_id available");
-                                                    }
-                                                } else {
-                                                    tracing::error!("CREATE_SESSION: No project_root available");
-                                                }
-                                            }
-                                            ServerMessage::RequestFiles { from_peer_id, file_paths, session_id: req_session_id, .. } => {
-                                                tracing::debug!("CREATE_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
-
-                                                // Read and send requested files
-                                                let project_root = cx.update(|cx| {
-                                                    this.update(cx, |this, _cx| {
-                                                        this.project_root.clone()
-                                                    })
-                                                }).ok().flatten();
-
-                                                if let Some(project_root) = project_root {
-                                                    let our_peer_id = cx.update(|cx| {
-                                                        this.update(cx, |this, _cx| {
-                                                            this.current_peer_id.clone()
-                                                        })
-                                                    }).ok().flatten();
-
-                                                    if let Some(our_peer_id) = our_peer_id {
-                                                        // Read files in background thread
-                                                        let client_clone = client.clone();
-                                                        let session_id_clone = req_session_id.clone();
-                                                        std::thread::spawn(move || {
-                                                            tracing::debug!("HOST: Reading {} files", file_paths.len());
-                                                            match simple_sync::read_files(&project_root, file_paths.clone()) {
-                                                                Ok(files_data) => {
-                                                                    // Serialize files data
-                                                                    match serde_json::to_string(&files_data) {
-                                                                        Ok(files_json) => {
-                                                                            tokio::runtime::Runtime::new().unwrap().block_on(async {
-                                                                                let client_guard = client_clone.read().await;
-                                                                                let _ = client_guard.send(ClientMessage::FilesChunk {
-                                                                                    session_id: session_id_clone,
-                                                                                    peer_id: our_peer_id,
-                                                                                    files_json,
-                                                                                    chunk_index: 0,
-                                                                                    total_chunks: 1,
-                                                                                }).await;
-                                                                                tracing::debug!("HOST: Sent {} files", file_paths.len());
-                                                                            });
-                                                                        }
-                                                                        Err(e) => tracing::error!("HOST: Failed to serialize files: {}", e),
-                                                                    }
-                                                                }
-                                                                Err(e) => tracing::error!("HOST: Failed to read files: {}", e),
-                                                            }
-                                                        });
-                                                    }
-                                                }
-                                            }
-                                            ServerMessage::RequestFile { from_peer_id, file_path, session_id: req_session_id, .. } => {
-                                                tracing::debug!("CREATE_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
-
-                                                // Read and send file in chunks
-                                                let project_root = cx.update(|cx| {
-                                                    this.update(cx, |this, _cx| {
-                                                        this.project_root.clone()
-                                                    })
-                                                }).ok().flatten();
-
-                                                if let Some(project_root) = project_root {
-                                                    let full_path = project_root.join(&file_path);
-
-                                                    if let Ok(data) = std::fs::read(&full_path) {
-                                                        const CHUNK_SIZE: usize = 8192; // 8KB chunks
-
-                                                        let our_peer_id = cx.update(|cx| {
-                                                            this.update(cx, |this, _cx| {
-                                                                this.current_peer_id.clone()
-                                                            })
-                                                        }).ok().flatten();
-
-                                                        if let Some(our_peer_id) = our_peer_id {
-                                                            for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
-                                                                let offset = i * CHUNK_SIZE;
-                                                                let is_last = offset + chunk.len() >= data.len();
-
-                                                                let client_guard = client.read().await;
-                                                                let _ = client_guard.send(ClientMessage::FileChunk {
-                                                                    session_id: req_session_id.clone(),
-                                                                    peer_id: our_peer_id.clone(),
-                                                                    file_path: file_path.clone(),
-                                                                    offset: offset as u64,
-                                                                    data: chunk.to_vec(),
-                                                                    is_last,
-                                                                }).await;
-                                                            }
-                                                            tracing::debug!("CREATE_SESSION: Sent file {}", file_path);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            ServerMessage::ReplicationUpdate { from_peer_id, data, .. } => {
-                                                tracing::debug!("CREATE_SESSION: Received ReplicationUpdate from {}", from_peer_id);
-                                                // Handle replication message and get response
-                                                let response = if let Ok(rep_msg) = serde_json::from_str(&data) {
-                                                    cx.update(|cx| {
-                                                        let integration = ui::replication::MultiuserIntegration::new(cx);
-                                                        integration.handle_incoming_message(rep_msg, cx)
-                                                    })
-                                                } else {
-                                                    None
-                                                };
-
-                                                // Send response if we got one
-                                                if let Some(response) = response {
-                                                    let (session_id_result, our_peer_id_result) = cx.update(|cx| {
-                                                        this.update(cx, |this, _cx| {
-                                                            let session_id = this.active_session.as_ref().map(|s| s.session_id.clone());
-                                                            let peer_id = this.current_peer_id.clone();
-                                                            (session_id, peer_id)
-                                                        })
-                                                    }).unwrap_or((None, None));
-
-                                                    if let (Some(session_id), Some(our_peer_id)) = (session_id_result, our_peer_id_result) {
-                                                        if let Ok(response_data) = serde_json::to_string(&response) {
-                                                            let client_guard = client.read().await;
-                                                            let _ = client_guard.send(ClientMessage::ReplicationUpdate {
-                                                                session_id,
-                                                                peer_id: our_peer_id,
-                                                                data: response_data,
-                                                            }).await;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-
-                                        let latency_ms = {
-                                            let client_guard = client.read().await;
-                                            client_guard.latency_ms().await
-                                        };
-                                        cx.update(|cx| {
-                                            this.update(cx, |this, _| {
-                                                this.sync_engine_multiuser_latency(latency_ms);
-                                            });
-                                        });
-                                    }
-                                }
-                                Some(ServerMessage::Error { message }) => {
-                                    cx.update(|cx| {
-                                        this.update(cx, |this, cx| {
-                                            this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
-                                            this.sync_engine_multiuser_error(format!(
-                                                "Server error: {}",
-                                                message
-                                            ));
-                                            this.active_session = None;
-                                            cx.notify();
-                                        });
-                                    });
-                                }
-                                Some(_) => {
-                                    cx.update(|cx| {
-                                        this.update(cx, |this, cx| {
-                                            this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
-                                            this.sync_engine_multiuser_error(
-                                                "Unexpected server response".to_string(),
-                                            );
-                                            this.fs_event_forwarder = None;
-                                            this.active_session = None;
-                                            cx.notify();
-                                        });
-                                    });
-                                }
-                                None => {
-                                    cx.update(|cx| {
-                                        this.update(cx, |this, cx| {
-                                            this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
-                                            this.sync_engine_multiuser_error(
-                                                "Connection closed before response".to_string(),
-                                            );
-                                            this.fs_event_forwarder = None;
-                                            this.active_session = None;
-                                            cx.notify();
-                                        });
-                                    });
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            cx.update(|cx| {
-                                this.update(cx, |this, cx| {
-                                    this.connection_status = ConnectionStatus::Error(format!("Connection failed: {}", e));
-                                    this.sync_engine_multiuser_error(format!(
-                                        "Connection failed: {}",
-                                        e
-                                    ));
-                                    cx.notify();
-                                });
+        // Create manifest in background thread
+        let client_clone = client.clone();
+        let session_id_clone = req_session_id.clone();
+        std::thread::spawn(move || {
+            tracing::debug!("HOST: Creating file manifest for {:?}", project_root);
+            match simple_sync::create_manifest(&project_root) {
+                Ok(manifest) => {
+                    tracing::debug!("HOST: Created manifest with {} files", manifest.files.len());
+                    match serde_json::to_string(&manifest) {
+                        Ok(manifest_json) => {
+                            tracing::debug!(
+                                "HOST: Serialized manifest to {} bytes",
+                                manifest_json.len()
+                            );
+                            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                let client_guard = client_clone.read().await;
+                                let _ = client_guard
+                                    .send(ClientMessage::FileManifest {
+                                        session_id: session_id_clone,
+                                        peer_id: our_peer_id,
+                                        manifest_json,
+                                    })
+                                    .await;
+                                tracing::debug!("HOST: Sent file manifest");
                             });
                         }
+                        Err(e) => tracing::error!("HOST: Failed to serialize manifest: {}", e),
                     }
                 }
-                Err(e) => {
-                    cx.update(|cx| {
-                        this.update(cx, |this, cx| {
-                            this.connection_status = ConnectionStatus::Error(format!("Failed to create session: {}", e));
-                            this.sync_engine_multiuser_error(format!(
-                                "Failed to create session: {}",
-                                e
-                            ));
-                            cx.notify();
-                        });
-                    });
-                }
+                Err(e) => tracing::error!("HOST: Failed to create manifest: {}", e),
             }
-        }).detach();
+        });
+    }
+
+    /// Reads the requested files on a background thread and sends them as one `FilesChunk`.
+    fn host_serve_files(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: &Arc<RwLock<MultiuserClient>>,
+        req_session_id: String,
+        file_paths: Vec<String>,
+    ) {
+        // Read and send requested files
+        let Some(project_root) = Self::read_project_root(this, cx) else {
+            return;
+        };
+        let Some(our_peer_id) = Self::read_own_peer_id(this, cx) else {
+            return;
+        };
+
+        // Read files in background thread
+        let client_clone = client.clone();
+        let session_id_clone = req_session_id.clone();
+        std::thread::spawn(move || {
+            tracing::debug!("HOST: Reading {} files", file_paths.len());
+            match simple_sync::read_files(&project_root, file_paths.clone()) {
+                Ok(files_data) => {
+                    // Serialize files data
+                    match serde_json::to_string(&files_data) {
+                        Ok(files_json) => {
+                            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                let client_guard = client_clone.read().await;
+                                let _ = client_guard
+                                    .send(ClientMessage::FilesChunk {
+                                        session_id: session_id_clone,
+                                        peer_id: our_peer_id,
+                                        files_json,
+                                        chunk_index: 0,
+                                        total_chunks: 1,
+                                    })
+                                    .await;
+                                tracing::debug!("HOST: Sent {} files", file_paths.len());
+                            });
+                        }
+                        Err(e) => tracing::error!("HOST: Failed to serialize files: {}", e),
+                    }
+                }
+                Err(e) => tracing::error!("HOST: Failed to read files: {}", e),
+            }
+        });
+    }
+
+    /// Reads one file and sends it to the requester in `FILE_CHUNK_SIZE` chunks.
+    async fn host_serve_file(
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+        client: &Arc<RwLock<MultiuserClient>>,
+        req_session_id: String,
+        file_path: String,
+    ) {
+        // Read and send file in chunks
+        let Some(project_root) = Self::read_project_root(this, cx) else {
+            return;
+        };
+        let full_path = project_root.join(&file_path);
+
+        let Ok(data) = std::fs::read(&full_path) else {
+            return;
+        };
+        let Some(our_peer_id) = Self::read_own_peer_id(this, cx) else {
+            return;
+        };
+
+        for (i, chunk) in data.chunks(session_logic::FILE_CHUNK_SIZE).enumerate() {
+            let offset = i * session_logic::FILE_CHUNK_SIZE;
+            let is_last = session_logic::is_last_chunk(offset, chunk.len(), data.len());
+
+            let client_guard = client.read().await;
+            let _ = client_guard
+                .send(ClientMessage::FileChunk {
+                    session_id: req_session_id.clone(),
+                    peer_id: our_peer_id.clone(),
+                    file_path: file_path.clone(),
+                    offset: offset as u64,
+                    data: chunk.to_vec(),
+                    is_last,
+                })
+                .await;
+        }
+        tracing::debug!("{}: Sent file {}", TAG, file_path);
     }
 }

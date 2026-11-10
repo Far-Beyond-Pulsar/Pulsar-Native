@@ -1380,3 +1380,273 @@ fn extract_number_value(attr_str: &str, key: &str) -> Option<usize> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use syn::visit_mut::VisitMut;
+
+    fn ty(src: &str) -> syn::Type {
+        syn::parse_str(src).unwrap()
+    }
+
+    fn func(src: &str) -> ItemFn {
+        syn::parse_str(src).unwrap()
+    }
+
+    fn ty_string(ty: &syn::Type) -> String {
+        quote!(#ty).to_string().replace(' ', "")
+    }
+
+    #[test]
+    fn pascal_case_conversion_follows_documented_convention() {
+        assert_eq!(filename_to_pascal("arrow-up.svg"), "ArrowUp");
+        assert_eq!(filename_to_pascal("ARROW-UP-RIGHT.svg"), "ArrowUpRight");
+        assert_eq!(filename_to_pascal("android_dark.svg"), "Android_dark");
+        assert_eq!(filename_to_pascal("plain"), "Plain");
+        assert_eq!(filename_to_pascal(".svg"), "");
+    }
+
+    #[test]
+    fn string_values_are_read_after_their_key() {
+        let attrs = r##"type: NodeTypes::pure, category: "Math", color: "#fff""##;
+        assert_eq!(
+            extract_string_value(attrs, "category").as_deref(),
+            Some("Math")
+        );
+        assert_eq!(
+            extract_string_value(attrs, "color").as_deref(),
+            Some("#fff")
+        );
+        assert_eq!(extract_string_value(attrs, "missing"), None);
+        assert_eq!(
+            extract_string_value(r#"category: "unterminated"#, "category"),
+            None
+        );
+    }
+
+    #[test]
+    fn number_values_take_first_digit_run_after_colon() {
+        assert_eq!(
+            extract_number_value("params: 3, other: 9", "params"),
+            Some(3)
+        );
+        assert_eq!(extract_number_value("params:12", "params"), Some(12));
+        assert_eq!(extract_number_value("params: none", "params"), None);
+        assert_eq!(extract_number_value("other: 1", "params"), None);
+    }
+
+    #[test]
+    fn explicit_capability_overrides_category_and_empty_means_none() {
+        assert_eq!(
+            native_capability(r#"capability: "custom""#, "Math").as_deref(),
+            Some("custom")
+        );
+        assert_eq!(native_capability(r#"capability: """#, "File I/O"), None);
+    }
+
+    #[test]
+    fn capability_is_implied_by_category() {
+        for (category, expected) in [
+            ("File I/O", Some("fs")),
+            ("Process", Some("process")),
+            ("Shell", Some("process")),
+            ("HTTP", Some("net")),
+            ("Network", Some("net")),
+            ("Env", Some("env")),
+            ("Math", None),
+        ] {
+            assert_eq!(
+                native_capability("", category).as_deref(),
+                expected,
+                "{category}"
+            );
+        }
+    }
+
+    #[test]
+    fn capability_call_emits_builder_only_when_present() {
+        assert_eq!(capability_call(None).to_string(), "");
+        assert_eq!(
+            capability_call(Some("fs")).to_string().replace(' ', ""),
+            ".capability(\"fs\")"
+        );
+    }
+
+    #[test]
+    fn import_paths_split_into_crate_and_items() {
+        assert_eq!(
+            parse_import_path("reqwest::{Client, Error}"),
+            (
+                "reqwest".to_string(),
+                vec!["Client".to_string(), "Error".to_string()]
+            )
+        );
+        assert_eq!(
+            parse_import_path("  serde::Serialize "),
+            ("serde".to_string(), vec!["Serialize".to_string()])
+        );
+        assert_eq!(
+            parse_import_path("regex"),
+            ("regex".to_string(), Vec::new())
+        );
+        assert_eq!(
+            parse_import_path("a::{ , B ,}"),
+            ("a".to_string(), vec!["B".to_string()])
+        );
+    }
+
+    #[test]
+    fn exec_output_labels_are_found_in_nested_blocks_deduplicated_in_order() {
+        let f = func(
+            r#"fn branch(c: bool) {
+                if c { exec_output!("True"); } else { exec_output!("False"); }
+                match 1 { 0 => { exec_output!("Zero"); } _ => { exec_output!("True"); } }
+                for _ in 0..2 { exec_output!("Body"); }
+            }"#,
+        );
+        assert_eq!(
+            find_exec_output_labels(&f),
+            vec!["True", "False", "Zero", "Body"]
+        );
+    }
+
+    #[test]
+    fn function_without_exec_outputs_has_no_labels() {
+        let f = func("fn add(a: i32, b: i32) -> i32 { a + b }");
+        assert!(find_exec_output_labels(&f).is_empty());
+    }
+
+    #[test]
+    fn script_native_types_accept_scalars_and_containers_of_them() {
+        for ok in [
+            "i32",
+            "f64",
+            "bool",
+            "String",
+            "()",
+            "Vec<i32>",
+            "Option<String>",
+            "[u8; 4]",
+            "(i32, f32)",
+            "HashMap<String, Vec<f64>>",
+            "BTreeMap<i64, bool>",
+            "HashSet<u8>",
+            "Vec<Option<Vec<bool>>>",
+        ] {
+            assert!(
+                is_script_native_type(&ty(ok)),
+                "{ok} should be a script type"
+            );
+        }
+    }
+
+    #[test]
+    fn script_native_types_reject_unsupported_shapes() {
+        for bad in [
+            "Foo",
+            "Vec<Foo>",
+            "HashMap<f64, i32>",
+            "HashMap<String, Foo>",
+            "HashSet<f32>",
+            "&str",
+            "*const i32",
+            "(i32, i32, i32, i32, i32, i32, i32)",
+            "Box<i32>",
+        ] {
+            assert!(
+                !is_script_native_type(&ty(bad)),
+                "{bad} should not be a script type"
+            );
+        }
+    }
+
+    #[test]
+    fn native_slot_owns_borrowed_parameters_and_flags_borrow() {
+        let (slot, borrowed) = native_slot(&ty("&str")).unwrap();
+        assert_eq!(ty_string(&slot), "::std::string::String");
+        assert!(borrowed);
+
+        let (slot, borrowed) = native_slot(&ty("&[i32]")).unwrap();
+        assert_eq!(ty_string(&slot), "::std::vec::Vec<i32>");
+        assert!(borrowed);
+
+        let (slot, borrowed) = native_slot(&ty("&Vec<f32>")).unwrap();
+        assert_eq!(ty_string(&slot), "Vec<f32>");
+        assert!(borrowed);
+
+        let (slot, borrowed) = native_slot(&ty("u8")).unwrap();
+        assert_eq!(ty_string(&slot), "u8");
+        assert!(!borrowed);
+    }
+
+    #[test]
+    fn native_slot_rejects_mutable_refs_and_unknown_types() {
+        assert!(native_slot(&ty("&mut String")).is_none());
+        assert!(native_slot(&ty("&Foo")).is_none());
+        assert!(native_slot(&ty("&[Foo]")).is_none());
+        assert!(native_slot(&ty("Foo")).is_none());
+    }
+
+    #[test]
+    fn generic_params_are_replaced_by_unit_recursively() {
+        let params: HashSet<String> = ["T".to_string()].into();
+        for (input, expected) in [
+            ("T", "()"),
+            ("Vec<T>", "Vec<()>"),
+            ("(T, i32)", "((),i32)"),
+            ("&T", "&()"),
+            ("HashMap<String, Vec<T>>", "HashMap<String,Vec<()>>"),
+            ("U", "U"),
+            ("[T; 2]", "[T;2]"),
+        ] {
+            assert_eq!(
+                ty_string(&substitute_generics_with_unit(&ty(input), &params)),
+                expected,
+                "{input}"
+            );
+        }
+    }
+
+    fn rewrite(src: &str) -> (ExecOutputRewriter, ItemFn) {
+        let mut f = func(src);
+        let mut rewriter = ExecOutputRewriter {
+            labels: Vec::new(),
+            loop_depth: 0,
+            in_loop: false,
+        };
+        rewriter.visit_item_fn_mut(&mut f);
+        (rewriter, f)
+    }
+
+    #[test]
+    fn rewriter_assigns_stable_indices_per_label_and_removes_the_macro() {
+        let (rewriter, f) = rewrite(
+            r#"fn node(c: bool) {
+                if c { exec_output!("A"); } else { exec_output!("B"); }
+                exec_output!("A");
+            }"#,
+        );
+        assert_eq!(rewriter.labels, vec!["A", "B"]);
+        assert!(!rewriter.in_loop);
+        let body = quote!(#f).to_string();
+        assert!(!body.contains("exec_output"), "{body}");
+        assert_eq!(body.matches("__bp_fire_count").count(), 3);
+    }
+
+    #[test]
+    fn rewriter_flags_exec_output_inside_loops() {
+        let (rewriter, _) = rewrite(r#"fn node() { for _ in 0..3 { exec_output!("Body"); } }"#);
+        assert!(rewriter.in_loop);
+        let (rewriter, _) = rewrite(r#"fn node() { loop { while true { exec_output!("X"); } } }"#);
+        assert!(rewriter.in_loop);
+    }
+
+    #[test]
+    fn rewriter_ignores_other_macros() {
+        let (rewriter, f) = rewrite(r#"fn node() { println!("hi"); }"#);
+        assert!(rewriter.labels.is_empty());
+        assert!(quote!(#f).to_string().contains("println"));
+    }
+}

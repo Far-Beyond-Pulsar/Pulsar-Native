@@ -38,6 +38,9 @@ fn held_camera_keys(device_state: Option<&DeviceState>) -> Vec<Keycode> {
         let mut held = Vec::with_capacity(4);
         for (vk, keycode) in CAMERA_KEYS {
             // High bit set == key is down.
+            // SAFETY: `GetAsyncKeyState` takes a plain virtual-key code by value,
+            // reads global input state and has no pointer or lifetime
+            // requirements, so it is sound to call from any thread.
             if unsafe { GetAsyncKeyState(vk) } as u16 & 0x8000 != 0 {
                 held.push(keycode);
             }
@@ -289,6 +292,9 @@ impl ViewportPanel {
                                 use winapi::shared::windef::POINT;
                                 use winapi::um::winuser::GetCursorPos;
 
+                                // SAFETY: `GetCursorPos` writes one `POINT` through the
+                                // pointer we pass; `point` is a live, initialized local that
+                                // outlives the call. The call has no thread affinity.
                                 unsafe {
                                     let mut point = POINT { x: 0, y: 0 };
                                     GetCursorPos(&mut point);

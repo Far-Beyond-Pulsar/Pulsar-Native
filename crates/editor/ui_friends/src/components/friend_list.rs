@@ -11,10 +11,15 @@ use crate::screen::FriendsScreen;
 use crate::utils::types::{FriendEntry, FriendTab};
 
 pub fn filtered_friends(screen: &FriendsScreen) -> Vec<&FriendEntry> {
-    screen
-        .friends
+    filter_by_tab(&screen.friends, screen.view)
+}
+
+/// Friends visible in `tab`: online mutual friends, pending requests (either
+/// direction), or everyone.
+fn filter_by_tab(friends: &[FriendEntry], tab: FriendTab) -> Vec<&FriendEntry> {
+    friends
         .iter()
-        .filter(|f| match screen.view {
+        .filter(|f| match tab {
             FriendTab::Online => f.online && f.relation_status == RelationStatus::Mutual,
             FriendTab::Pending => {
                 f.relation_status == RelationStatus::PendingInbound
@@ -415,4 +420,62 @@ pub fn render_empty_state(
                 .text_color(theme.muted_foreground.opacity(0.6))
                 .child(subtitle),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
+    use core::prelude::v1::test;
+
+    fn entry(name: &str, status: RelationStatus, online: bool) -> FriendEntry {
+        FriendEntry {
+            username: name.into(),
+            pfp_url: String::new(),
+            relation_status: status,
+            current_project: None,
+            current_project_version: None,
+            online,
+            last_seen: None,
+            is_self: false,
+        }
+    }
+
+    fn names(entries: Vec<&FriendEntry>) -> Vec<&str> {
+        entries.into_iter().map(|e| e.username.as_str()).collect()
+    }
+
+    fn sample() -> Vec<FriendEntry> {
+        vec![
+            entry("on-mutual", RelationStatus::Mutual, true),
+            entry("off-mutual", RelationStatus::Mutual, false),
+            entry("inbound", RelationStatus::PendingInbound, false),
+            entry("outbound", RelationStatus::PendingOutbound, true),
+        ]
+    }
+
+    #[test]
+    fn online_tab_requires_online_and_mutual() {
+        // An online pending-outbound friend must not appear as online.
+        assert_eq!(
+            names(filter_by_tab(&sample(), FriendTab::Online)),
+            vec!["on-mutual"]
+        );
+    }
+
+    #[test]
+    fn pending_tab_includes_both_directions() {
+        assert_eq!(
+            names(filter_by_tab(&sample(), FriendTab::Pending)),
+            vec!["inbound", "outbound"]
+        );
+    }
+
+    #[test]
+    fn all_tab_keeps_everyone_in_order() {
+        assert_eq!(
+            names(filter_by_tab(&sample(), FriendTab::All)),
+            vec!["on-mutual", "off-mutual", "inbound", "outbound"]
+        );
+    }
 }

@@ -207,38 +207,13 @@ impl ProjectDocsState {
     }
 
     pub fn rebuild_visible_list(&mut self) {
-        self.flat_visible_items.clear();
-        let query = self.search_query.to_lowercase();
-        let is_searching = !query.is_empty();
+        self.flat_visible_items = visible_nodes(
+            &self.tree_items,
+            &mut self.expanded_paths,
+            &self.search_query,
+        );
 
-        for (idx, node) in self.tree_items.iter().enumerate() {
-            match node {
-                ProjectTreeNode::Category { name, .. } => {
-                    let matches = name.to_lowercase().contains(&query);
-                    if !is_searching || matches {
-                        self.flat_visible_items.push(idx);
-                    }
-                }
-                ProjectTreeNode::Item {
-                    category,
-                    item_name,
-                    ..
-                } => {
-                    let matches = item_name.to_lowercase().contains(&query);
-                    let parent_expanded = self.expanded_paths.contains(category);
-
-                    if is_searching && matches {
-                        self.expanded_paths.insert(category.clone());
-                    }
-
-                    if parent_expanded || (is_searching && matches) {
-                        self.flat_visible_items.push(idx);
-                    }
-                }
-            }
-        }
-
-        if is_searching && self.flat_visible_items.is_empty() {
+        if !self.search_query.is_empty() && self.flat_visible_items.is_empty() {
             self.markdown_content = format!(
                 "# No Results\n\nNo documentation found matching \"{}\".\n\nTry a different search term.",
                 self.search_query
@@ -247,9 +222,7 @@ impl ProjectDocsState {
     }
 
     pub fn toggle_expansion(&mut self, path: String) {
-        if self.expanded_paths.contains(&path) {
-            self.expanded_paths.remove(&path);
-        } else {
+        if !self.expanded_paths.remove(&path) {
             self.expanded_paths.insert(path);
         }
         self.rebuild_visible_list();
@@ -417,5 +390,102 @@ impl ProjectDocsState {
         if let Some(project_path) = &self.project_root.clone() {
             self.load_project_docs(project_path);
         }
+    }
+}
+
+/// Indices of the nodes to show. While searching, matching items are shown and
+/// their category is added to `expanded`.
+fn visible_nodes(
+    tree_items: &[ProjectTreeNode],
+    expanded: &mut HashSet<String>,
+    search_query: &str,
+) -> Vec<usize> {
+    let mut visible = Vec::new();
+    let query = search_query.to_lowercase();
+    let is_searching = !query.is_empty();
+
+    for (idx, node) in tree_items.iter().enumerate() {
+        match node {
+            ProjectTreeNode::Category { name, .. } => {
+                let matches = name.to_lowercase().contains(&query);
+                if !is_searching || matches {
+                    visible.push(idx);
+                }
+            }
+            ProjectTreeNode::Item {
+                category,
+                item_name,
+                ..
+            } => {
+                let matches = item_name.to_lowercase().contains(&query);
+                let parent_expanded = expanded.contains(category);
+
+                if is_searching && matches {
+                    expanded.insert(category.clone());
+                }
+
+                if parent_expanded || (is_searching && matches) {
+                    visible.push(idx);
+                }
+            }
+        }
+    }
+    visible
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
+    use core::prelude::v1::test;
+
+    fn tree() -> Vec<ProjectTreeNode> {
+        let item = |category: &str, name: &str| ProjectTreeNode::Item {
+            category: category.into(),
+            item_name: name.into(),
+            path: format!("m::{name}"),
+            depth: 1,
+        };
+        vec![
+            ProjectTreeNode::Category {
+                name: "Structs".into(),
+                count: 2,
+                depth: 0,
+            },
+            item("Structs", "Player"),
+            item("Structs", "Enemy"),
+            ProjectTreeNode::Category {
+                name: "Enums".into(),
+                count: 1,
+                depth: 0,
+            },
+            item("Enums", "State"),
+        ]
+    }
+
+    #[test]
+    fn collapsed_shows_only_categories() {
+        let mut expanded = HashSet::new();
+        assert_eq!(visible_nodes(&tree(), &mut expanded, ""), vec![0, 3]);
+    }
+
+    #[test]
+    fn expanded_category_shows_its_items_only() {
+        let mut expanded: HashSet<String> = ["Structs".to_string()].into();
+        assert_eq!(visible_nodes(&tree(), &mut expanded, ""), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn search_reveals_matching_items_and_expands_their_category() {
+        let mut expanded = HashSet::new();
+        assert_eq!(visible_nodes(&tree(), &mut expanded, "ENEMY"), vec![2]);
+        assert!(expanded.contains("Structs"));
+        assert!(!expanded.contains("Enums"));
+    }
+
+    #[test]
+    fn search_matching_category_name_shows_category_row() {
+        let mut expanded = HashSet::new();
+        assert_eq!(visible_nodes(&tree(), &mut expanded, "enums"), vec![3]);
     }
 }

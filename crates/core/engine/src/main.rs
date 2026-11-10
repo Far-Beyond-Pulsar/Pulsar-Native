@@ -97,8 +97,12 @@ use init::{init_task, task_ids::*, InitContext, InitGraph};
 /// artifacts. An explicit path is useful for hosts that coordinate several
 /// processes (the play-mode runner does this) and always takes precedence.
 ///
-/// The Helio graph builder reads this before creating its device pipeline
-/// cache, so configure it before initialization can start any renderer work.
+/// The Helio graph builder (the `crates/renderer/helio` submodule, which cannot
+/// depend on `engine_state`) reads this variable directly, as do child
+/// processes such as the play-mode runner. That is why the hand-off is still an
+/// environment variable: configure it before initialization can start any
+/// renderer work. This is the only place the variable is read or written on the
+/// engine side.
 fn configure_pipeline_cache_path() {
     if std::env::var_os("PULSAR_PIPELINE_CACHE").is_some() {
         return;
@@ -140,32 +144,6 @@ pub static NvOptimusEnablement: u32 = 0x0000_0001;
 #[unsafe(no_mangle)]
 pub static AmdPowerXpressRequestHighPerformance: u32 = 0x0000_0001;
 
-/// Anti-debugging check for Windows builds.
-/// Detects if a debugger is attached and warns the user.
-/// This is a basic deterrent — a skilled reverser can bypass it,
-/// but it stops casual debugging and automated analysis.
-#[cfg(target_os = "windows")]
-fn check_debugger_attached() {
-    use windows::Win32::System::Diagnostics::Debug::IsDebuggerPresent;
-    unsafe {
-        if IsDebuggerPresent().as_bool() {
-            tracing::warn!(
-                "⚠️  Debugger detected! This is a release build — attach only for legitimate debugging."
-            );
-            // Optionally, the engine could refuse to run under a debugger:
-            // std::process::exit(1);
-            // For now we just warn, since legitimate debugging should still work.
-        }
-    }
-}
-
-/// Anti-debugging stub for non-Windows platforms.
-#[cfg(not(target_os = "windows"))]
-fn check_debugger_attached() {
-    // On Linux/macOS, ptrace-based detection can be added here.
-    // For now, this is a no-op placeholder.
-}
-
 /// Main entry point for the Pulsar Engine binary.
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
@@ -179,9 +157,6 @@ fn main() {
     // reproducing a leak. Only active with `--features dhat-heap`.
     #[cfg(feature = "dhat-heap")]
     let _dhat_profiler = dhat::Profiler::new_heap();
-
-    // Anti-debugging check — runs before any other initialization.
-    check_debugger_attached();
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 

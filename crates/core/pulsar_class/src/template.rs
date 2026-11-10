@@ -291,6 +291,8 @@ fn locate(shape: &Map<String, Value>, name: &str, value: Option<&Value>) -> Vec<
 
 /// The cached [`PropertyLayout`] of `class`.
 pub fn layout(class: &str) -> Arc<PropertyLayout> {
+    // Static: `pulsar_class` is GPUI-free and shared with the game runtime, so it
+    // must not depend on `engine_state` (which pulls in gpui-ce).
     static LAYOUTS: OnceLock<Mutex<HashMap<String, Arc<PropertyLayout>>>> = OnceLock::new();
     let mut layouts = LAYOUTS
         .get_or_init(Default::default)
@@ -310,6 +312,7 @@ pub fn layout(class: &str) -> Arc<PropertyLayout> {
 /// definition (an edited prefab) replaces it.
 pub fn template(def: &ClassDefinition) -> Arc<ClassTemplate> {
     type Cache = HashMap<(ClassId, std::path::PathBuf), (u64, Arc<ClassTemplate>)>;
+    // Static: same reason as `LAYOUTS`.
     static TEMPLATES: OnceLock<Mutex<Cache>> = OnceLock::new();
     let fingerprint = fingerprint(def);
     let key = (def.id.clone(), def.dir.clone());

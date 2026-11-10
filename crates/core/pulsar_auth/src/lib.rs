@@ -1,3 +1,19 @@
+//! GitHub device-flow authentication and local credential/profile caching.
+//!
+//! Owns: the GitHub OAuth device flow (`start_device_flow`, `poll_device_flow`,
+//! `wait_for_device_flow_token`), fetching the signed-in user's profile
+//! (`fetch_profile`), and persisting the access token (OS keyring with a
+//! plain-file fallback) and the cached `AuthProfile` in the Pulsar data dir.
+//!
+//! Entry points: `restore_session_from_storage` at startup, the device-flow
+//! functions to sign in, `sign_out` to clear all stored state, and the
+//! `github_client_*_from_env` helpers for configuration.
+//!
+//! Must not depend on: any UI crate, `engine_state`, or the friends/relay
+//! crates. Higher layers (`friends_engine`, `ui_*`) depend on this crate, never
+//! the reverse. Pure response parsing lives in private helpers so it can be
+//! tested without network access.
+
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use reqwest::blocking::Client;
@@ -114,6 +130,10 @@ pub fn poll_device_flow(client_id: &str, device_code: &str) -> Result<DevicePoll
         .json::<AccessTokenResponse>()
         .context("Failed to parse GitHub token polling response")?;
 
+    interpret_poll_response(parsed)
+}
+
+fn interpret_poll_response(parsed: AccessTokenResponse) -> Result<DevicePollState> {
     if let Some(token) = parsed.access_token {
         return Ok(DevicePollState::Authorized(token));
     }
@@ -140,12 +160,16 @@ pub fn wait_for_device_flow_token(client_id: &str, flow: &DeviceCodeResponse) ->
             DevicePollState::Authorized(token) => return Ok(token),
             DevicePollState::Pending => {}
             DevicePollState::SlowDown => {
-                current_interval = (current_interval + 5).min(30);
+                current_interval = slowed_interval(current_interval);
             }
         }
     }
 
     anyhow::bail!("GitHub device flow timed out")
+}
+
+fn slowed_interval(current_secs: u64) -> u64 {
+    (current_secs + 5).min(30)
 }
 
 pub fn fetch_profile(access_token: &str) -> Result<AuthProfile> {
@@ -165,12 +189,16 @@ pub fn fetch_profile(access_token: &str) -> Result<AuthProfile> {
         .json::<GitHubUserResponse>()
         .context("Failed to parse GitHub profile payload")?;
 
-    Ok(AuthProfile {
+    Ok(profile_from_user(user))
+}
+
+fn profile_from_user(user: GitHubUserResponse) -> AuthProfile {
+    AuthProfile {
         github_user_id: user.id,
         login: user.login,
         display_name: user.name,
         avatar_url: user.avatar_url,
-    })
+    }
 }
 
 pub fn store_access_token(access_token: &str) -> Result<()> {
@@ -307,4 +335,109 @@ fn load_dotenv_once() {
     ENV_LOADED.call_once(|| {
         let _ = dotenvy::dotenv();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn response(token: Option<&str>, error: Option<&str>) -> AccessTokenResponse {
+        AccessTokenResponse {
+            access_token: token.map(str::to_string),
+            error: error.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn poll_token_wins_over_error() {
+        let state = interpret_poll_response(response(Some("tok"), Some("slow_down"))).unwrap();
+        assert!(matches!(state, DevicePollState::Authorized(t) if t == "tok"));
+    }
+
+    #[test]
+    fn poll_pending_and_slow_down_are_not_errors() {
+        let pending = interpret_poll_response(response(None, Some("authorization_pending")));
+        assert!(matches!(pending.unwrap(), DevicePollState::Pending));
+        let slow = interpret_poll_response(response(None, Some("slow_down")));
+        assert!(matches!(slow.unwrap(), DevicePollState::SlowDown));
+    }
+
+    #[test]
+    fn poll_terminal_errors_carry_distinct_messages() {
+        let msg = |e: Option<&str>| {
+            interpret_poll_response(response(None, e))
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(msg(Some("expired_token")), "GitHub device code expired");
+        assert_eq!(msg(Some("access_denied")), "GitHub device flow denied");
+        assert_eq!(msg(Some("weird")), "GitHub auth error: weird");
+        assert_eq!(msg(None), "Missing access token in GitHub response");
+    }
+
+    #[test]
+    fn slow_down_backoff_adds_five_seconds_and_caps_at_thirty() {
+        assert_eq!(slowed_interval(5), 10);
+        assert_eq!(slowed_interval(26), 30);
+        assert_eq!(slowed_interval(30), 30);
+        assert_eq!(slowed_interval(100), 30);
+    }
+
+    #[test]
+    fn device_code_response_defaults_missing_timing_fields() {
+        let parsed: DeviceCodeResponse = serde_json::from_str(
+            r#"{"device_code":"dc","user_code":"ABCD-1234","verification_uri":"https://example.test/device"}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.device_code, "dc");
+        assert_eq!(parsed.user_code, "ABCD-1234");
+        assert_eq!(parsed.expires_in, 0);
+        assert_eq!(parsed.interval, 0);
+    }
+
+    #[test]
+    fn access_token_response_parses_error_payload() {
+        let parsed: AccessTokenResponse =
+            serde_json::from_str(r#"{"error":"authorization_pending","error_description":"x"}"#)
+                .unwrap();
+        assert_eq!(parsed.access_token, None);
+        assert_eq!(parsed.error.as_deref(), Some("authorization_pending"));
+    }
+
+    #[test]
+    fn github_user_payload_maps_to_profile_ignoring_extra_fields() {
+        let user: GitHubUserResponse = serde_json::from_str(
+            r#"{"id":42,"login":"octo","name":null,"avatar_url":"https://a.test/x.png","bio":"ignored"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            profile_from_user(user),
+            AuthProfile {
+                github_user_id: 42,
+                login: "octo".into(),
+                display_name: None,
+                avatar_url: Some("https://a.test/x.png".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn auth_profile_json_round_trips() {
+        let profile = AuthProfile {
+            github_user_id: 7,
+            login: "someone".into(),
+            display_name: Some("Some One".into()),
+            avatar_url: None,
+        };
+        let json = serde_json::to_string_pretty(&profile).unwrap();
+        assert_eq!(serde_json::from_str::<AuthProfile>(&json).unwrap(), profile);
+    }
+
+    #[test]
+    fn cache_paths_are_distinct_files_in_one_directory() {
+        let profile = profile_cache_path().unwrap();
+        let token = token_cache_path().unwrap();
+        assert_eq!(profile.parent(), token.parent());
+        assert_ne!(profile.file_name(), token.file_name());
+    }
 }

@@ -120,3 +120,21 @@ pub fn create_about_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
     let about = cx.new(|cx| AboutWindow::new(window, cx));
     cx.new(|cx| Root::new(about.into(), window, cx))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
+    use core::prelude::v1::test;
+
+    #[test]
+    fn bundled_logo_decodes() {
+        assert!(decode_png(LOGO_PNG).is_some());
+    }
+
+    #[test]
+    fn invalid_image_bytes_yield_none() {
+        assert!(decode_png(b"definitely not a png").is_none());
+        assert!(decode_png(&[]).is_none());
+    }
+}

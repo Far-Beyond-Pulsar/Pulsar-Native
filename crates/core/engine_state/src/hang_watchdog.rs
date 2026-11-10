@@ -59,6 +59,9 @@ static FROZEN: AtomicBool = AtomicBool::new(false);
 
 // ---------------- monotonic clock ----------------
 static EPOCH: Once = Once::new();
+// The statics in this file are plain statics on purpose: the watchdog must work
+// before `EngineContext` exists and must not take a store lock, since it exists to
+// diagnose lock hangs. Beats are hot-path and allocation-free.
 static EPOCH_NOW: OnceLock<Instant> = OnceLock::new();
 
 fn epoch_now() -> Instant {

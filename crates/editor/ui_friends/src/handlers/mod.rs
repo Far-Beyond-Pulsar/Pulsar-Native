@@ -337,3 +337,41 @@ fn ensure_avatar_loaded(this: &mut FriendsScreen, url: &str, cx: &mut Context<Fr
     })
     .detach();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
+    use core::prelude::v1::test;
+
+    fn info(name: &str) -> FriendInfo {
+        FriendInfo {
+            username: name.into(),
+            pfp: format!("https://github.com/{name}.png"),
+            relation_status: RelationStatus::PendingInbound,
+            current_project: Some("proj".into()),
+            last_seen: Some("yesterday".into()),
+            home_server: Some("https://relay.test".into()),
+        }
+    }
+
+    #[test]
+    fn friend_info_maps_fields_and_starts_offline() {
+        let entry = friend_info_to_entry(info("alice"), Some("bob"));
+        assert_eq!(entry.username, "alice");
+        assert_eq!(entry.pfp_url, "https://github.com/alice.png");
+        assert_eq!(entry.relation_status, RelationStatus::PendingInbound);
+        assert_eq!(entry.current_project.as_deref(), Some("proj"));
+        assert_eq!(entry.last_seen.as_deref(), Some("yesterday"));
+        assert!(!entry.online);
+        assert!(!entry.is_self);
+        assert_eq!(entry.current_project_version, None);
+    }
+
+    #[test]
+    fn friend_info_flags_self_only_on_exact_username_match() {
+        assert!(friend_info_to_entry(info("alice"), Some("alice")).is_self);
+        assert!(!friend_info_to_entry(info("alice"), Some("Alice")).is_self);
+        assert!(!friend_info_to_entry(info("alice"), None).is_self);
+    }
+}

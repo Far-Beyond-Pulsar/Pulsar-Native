@@ -47,3 +47,50 @@ pub fn participant_avatar_url(participant: &MultiuserParticipant) -> Option<Stri
             .map(|login| format!("https://github.com/{login}.png?size=64"))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn participant(
+        display: Option<&str>,
+        login: Option<&str>,
+        avatar: Option<&str>,
+    ) -> MultiuserParticipant {
+        MultiuserParticipant {
+            peer_id: "peer-1".into(),
+            display_name: display.map(String::from),
+            avatar_url: avatar.map(String::from),
+            github_login: login.map(String::from),
+            ping_ms: None,
+        }
+    }
+
+    #[test]
+    fn label_prefers_display_name_then_login_then_peer_id() {
+        assert_eq!(
+            participant_label(&participant(Some("Ann"), Some("ann"), None)),
+            "Ann"
+        );
+        assert_eq!(
+            participant_label(&participant(None, Some("ann"), None)),
+            "ann"
+        );
+        assert_eq!(participant_label(&participant(None, None, None)), "peer-1");
+    }
+
+    #[test]
+    fn avatar_url_prefers_explicit_url_then_github_login() {
+        let explicit = participant(None, Some("ann"), Some("https://img.test/a.png"));
+        assert_eq!(
+            participant_avatar_url(&explicit).as_deref(),
+            Some("https://img.test/a.png")
+        );
+        let from_login = participant(None, Some("ann"), None);
+        assert_eq!(
+            participant_avatar_url(&from_login).as_deref(),
+            Some("https://github.com/ann.png?size=64")
+        );
+        assert_eq!(participant_avatar_url(&participant(None, None, None)), None);
+    }
+}

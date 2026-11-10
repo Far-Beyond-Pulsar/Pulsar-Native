@@ -52,6 +52,8 @@
 //! derivations); `#[register_world_component]` names the class after the
 //! type.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 // Re-exported so `#[register_world_component]` (`engine_class_derive`) can
 // emit `pulsar_world_registry::inventory::submit! { .. }` in the calling
 // crate without that crate needing its own direct `inventory` dependency --
@@ -774,6 +776,8 @@ impl<T: Copy> From<T> for GpuRepr<T> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NoGpuMirror;
 
+// SAFETY: `NoGpuMirror` is a zero-sized unit struct: it has no bytes, so there
+// is no padding and every (empty) bit pattern is a valid value.
 unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
 
 // `SceneGpuStore::register_gpu_buffer` keys shared buffers on an element type

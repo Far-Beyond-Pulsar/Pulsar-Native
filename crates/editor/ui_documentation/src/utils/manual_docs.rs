@@ -109,42 +109,7 @@ impl ManualDocsState {
     }
 
     fn scan_directory(&mut self, path: &Path, depth: usize) {
-        let Ok(entries) = fs::read_dir(path) else {
-            return;
-        };
-
-        let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-        entries.sort_by_key(|e| e.file_name());
-
-        for entry in entries {
-            let Ok(metadata) = entry.metadata() else {
-                continue;
-            };
-
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-
-            if name.starts_with('.') {
-                continue;
-            }
-
-            let is_directory = metadata.is_dir();
-
-            if !is_directory && !name.ends_with(".md") {
-                continue;
-            }
-
-            self.file_tree.push(FileEntry {
-                name,
-                path: path.clone(),
-                is_directory,
-                depth,
-            });
-
-            if is_directory && self.expanded_folders.contains(&path) {
-                self.scan_directory(&path, depth + 1);
-            }
-        }
+        scan_docs_dir(path, depth, &self.expanded_folders, &mut self.file_tree);
     }
 
     pub fn rebuild_visible_list(&mut self) {
@@ -185,43 +150,7 @@ impl ManualDocsState {
     }
 
     fn resolve_image_urls(&self, markdown: &str) -> String {
-        let Some(selected_file) = &self.selected_file else {
-            return markdown.to_string();
-        };
-
-        let Some(base_dir) = selected_file.parent() else {
-            return markdown.to_string();
-        };
-
-        let re = Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
-
-        re.replace_all(markdown, |caps: &regex::Captures| {
-            let alt = &caps[1];
-            let url = &caps[2];
-
-            if url.starts_with("http://")
-                || url.starts_with("https://")
-                || url.starts_with("file://")
-            {
-                return caps[0].to_string();
-            }
-
-            let image_path = base_dir.join(url);
-            if let Ok(absolute_path) = image_path.canonicalize() {
-                #[cfg(target_os = "windows")]
-                let file_url = format!(
-                    "file:///{}",
-                    absolute_path.display().to_string().replace("\\", "/")
-                );
-                #[cfg(not(target_os = "windows"))]
-                let file_url = format!("file://{}", absolute_path.display());
-
-                format!("![{}]({})", alt, file_url)
-            } else {
-                caps[0].to_string()
-            }
-        })
-        .to_string()
+        rewrite_image_urls(self.selected_file.as_deref(), markdown)
     }
 
     pub fn save_current_file(
@@ -254,11 +183,7 @@ impl ManualDocsState {
             return Ok(());
         };
 
-        let file_name = if name.ends_with(".md") {
-            name.clone()
-        } else {
-            format!("{}.md", name)
-        };
+        let file_name = markdown_file_name(&name);
 
         let file_path = docs_folder.join(&file_name);
 
@@ -305,5 +230,188 @@ impl ManualDocsState {
     /// The open file has edits that are not on disk.
     pub fn is_dirty(&self) -> bool {
         self.selected_file.is_some() && self.current_markdown != self.saved_markdown
+    }
+}
+
+/// Collect markdown files and directories under `path` (sorted by name, hidden
+/// entries skipped); descend only into directories listed in `expanded`.
+fn scan_docs_dir(path: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut Vec<FileEntry>) {
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+
+    let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let is_directory = metadata.is_dir();
+
+        if !is_directory && !name.ends_with(".md") {
+            continue;
+        }
+
+        out.push(FileEntry {
+            name,
+            path: path.clone(),
+            is_directory,
+            depth,
+        });
+
+        if is_directory && expanded.contains(&path) {
+            scan_docs_dir(&path, depth + 1, expanded, out);
+        }
+    }
+}
+
+/// Name for a new guide: `name` with a `.md` extension appended if missing.
+fn markdown_file_name(name: &str) -> String {
+    if name.ends_with(".md") {
+        name.to_string()
+    } else {
+        format!("{}.md", name)
+    }
+}
+
+/// Rewrite relative markdown image links to absolute `file://` URLs (relative
+/// to the open file's directory) so the preview can load them. Remote links,
+/// existing `file://` links and images that do not exist are left untouched.
+fn rewrite_image_urls(selected_file: Option<&Path>, markdown: &str) -> String {
+    let Some(selected_file) = selected_file else {
+        return markdown.to_string();
+    };
+
+    let Some(base_dir) = selected_file.parent() else {
+        return markdown.to_string();
+    };
+
+    let re = Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
+
+    re.replace_all(markdown, |caps: &regex::Captures| {
+        let alt = &caps[1];
+        let url = &caps[2];
+
+        if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("file://") {
+            return caps[0].to_string();
+        }
+
+        let image_path = base_dir.join(url);
+        if let Ok(absolute_path) = image_path.canonicalize() {
+            #[cfg(target_os = "windows")]
+            let file_url = format!(
+                "file:///{}",
+                absolute_path.display().to_string().replace("\\", "/")
+            );
+            #[cfg(not(target_os = "windows"))]
+            let file_url = format!("file://{}", absolute_path.display());
+
+            format!("![{}]({})", alt, file_url)
+        } else {
+            caps[0].to_string()
+        }
+    })
+    .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
+    use core::prelude::v1::test;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("ui_documentation_{tag}_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn markdown_file_name_appends_extension_once() {
+        assert_eq!(markdown_file_name("guide"), "guide.md");
+        assert_eq!(markdown_file_name("guide.md"), "guide.md");
+    }
+
+    #[test]
+    fn scan_lists_sorted_markdown_and_dirs_skipping_hidden_and_other_files() {
+        let root = temp_dir("scan");
+        fs::write(root.join("b.md"), "").unwrap();
+        fs::write(root.join("a.md"), "").unwrap();
+        fs::write(root.join("notes.txt"), "").unwrap();
+        fs::write(root.join(".hidden.md"), "").unwrap();
+        fs::create_dir(root.join("sub")).unwrap();
+        fs::write(root.join("sub").join("inner.md"), "").unwrap();
+
+        let mut out = Vec::new();
+        scan_docs_dir(&root, 0, &HashSet::new(), &mut out);
+        let names: Vec<_> = out
+            .iter()
+            .map(|e| (e.name.as_str(), e.is_directory, e.depth))
+            .collect();
+        assert_eq!(
+            names,
+            vec![("a.md", false, 0), ("b.md", false, 0), ("sub", true, 0)]
+        );
+
+        let expanded: HashSet<PathBuf> = [root.join("sub")].into();
+        let mut out = Vec::new();
+        scan_docs_dir(&root, 0, &expanded, &mut out);
+        let names: Vec<_> = out.iter().map(|e| (e.name.as_str(), e.depth)).collect();
+        assert_eq!(
+            names,
+            vec![("a.md", 0), ("b.md", 0), ("sub", 0), ("inner.md", 1)]
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn scan_of_missing_directory_yields_nothing() {
+        let mut out = Vec::new();
+        scan_docs_dir(
+            Path::new("definitely/not/here"),
+            0,
+            &HashSet::new(),
+            &mut out,
+        );
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn image_rewrite_without_open_file_is_identity() {
+        let md = "![x](a.png)";
+        assert_eq!(rewrite_image_urls(None, md), md);
+    }
+
+    #[test]
+    fn image_rewrite_leaves_remote_and_missing_images_alone() {
+        let root = temp_dir("img_missing");
+        let file = root.join("doc.md");
+        let md = "![a](https://x.test/a.png) ![b](http://x.test/b.png) ![c](file:///c.png) ![d](missing.png)";
+        assert_eq!(rewrite_image_urls(Some(&file), md), md);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn image_rewrite_makes_existing_relative_images_file_urls() {
+        let root = temp_dir("img_exists");
+        fs::write(root.join("pic.png"), b"x").unwrap();
+        let file = root.join("doc.md");
+        let out = rewrite_image_urls(Some(&file), "before ![alt text](pic.png) after");
+        assert!(out.starts_with("before ![alt text](file://"), "{out}");
+        assert!(out.ends_with("pic.png) after"), "{out}");
+        assert!(!out.contains('\\'), "{out}");
+        let _ = fs::remove_dir_all(&root);
     }
 }

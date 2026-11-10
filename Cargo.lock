@@ -1223,7 +1223,7 @@ dependencies = [
  "arboard",
  "blueprint_compiler",
  "chrono",
- "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73)",
+ "editor_task_queue 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=380707ef2a6b6d0e3e7ff3cfc827b10c0a093e6b)",
  "engine_backend",
  "engine_fs",
  "futures",
@@ -3293,7 +3293,7 @@ dependencies = [
 [[package]]
 name = "editor_task_queue"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=838f6accad39dc4c1bd9016fca7f9867a06cbe73#838f6accad39dc4c1bd9016fca7f9867a06cbe73"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=380707ef2a6b6d0e3e7ff3cfc827b10c0a093e6b#380707ef2a6b6d0e3e7ff3cfc827b10c0a093e6b"
 dependencies = [
  "parking_lot",
 ]
@@ -6743,6 +6743,7 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-frame-api",
  "helio-light-api",
  "helio-light-host",
  "helio-mats",
@@ -17701,6 +17702,7 @@ dependencies = [
  "rust-i18n",
  "ui",
  "ui_common",
+ "uuid",
  "window_manager",
 ]
 

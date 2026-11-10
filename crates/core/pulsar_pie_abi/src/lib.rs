@@ -90,6 +90,7 @@
 //!   alongside this one, not replace it.
 
 #![no_std]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 use core::ffi::c_void;
 
