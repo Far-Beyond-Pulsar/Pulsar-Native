@@ -82,3 +82,22 @@ pub(super) fn read_module_bytes(path: &Path) -> Option<std::io::Result<Vec<u8>>>
     }
     Some(engine_fs::virtual_fs::read_file(path).map_err(|e| std::io::Error::other(e.to_string())))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instance_ids_name_the_object_or_mark_a_global() {
+        let class = ClassId::from("guid-1");
+        assert_eq!(instance_id_for("obj-7", &class), "obj-7::guid-1");
+        assert_eq!(global_instance_id(&class), "global::guid-1");
+    }
+
+    #[test]
+    fn config_path_sits_under_the_project_pulsar_folder() {
+        let path = scripting_config_path(Path::new("proj"));
+        assert!(path.ends_with(SCRIPTING_CONFIG_FILE));
+        assert!(path.starts_with("proj"));
+    }
+}

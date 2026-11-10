@@ -384,3 +384,16 @@ pub(crate) fn generate_property_method_items(
 
     method_items
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_names_are_title_cased_word_by_word() {
+        assert_eq!(capitalize_first(""), "");
+        assert_eq!(capitalize_first("mass"), "Mass");
+        assert_eq!(title_case("set linear damping"), "Set Linear Damping");
+        assert_eq!(title_case("  add   charges "), "Add Charges");
+    }
+}

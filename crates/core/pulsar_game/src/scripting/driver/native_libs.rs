@@ -233,3 +233,23 @@ impl ScriptDriver {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_and_release_artifacts_of_one_crate_share_a_key() {
+        let root = Path::new("native");
+        let debug = root.join("crate_a/target/debug/crate_a.dll");
+        let release = root.join("crate_a/target/release/crate_a.dll");
+        assert_eq!(
+            native_library_key(root, &debug),
+            native_library_key(root, &release)
+        );
+        assert_ne!(
+            native_library_key(root, &debug),
+            native_library_key(root, &root.join("crate_b/target/debug/crate_b.dll"))
+        );
+    }
+}

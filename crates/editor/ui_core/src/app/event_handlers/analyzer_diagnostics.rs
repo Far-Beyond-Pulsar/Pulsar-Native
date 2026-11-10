@@ -525,3 +525,99 @@ pub(super) fn compute_before_after(
 
     (before_content, after_content)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn diagnostic(
+        file: &str,
+        line: usize,
+        severity: ui_common::DiagnosticSeverity,
+    ) -> ui_common::Diagnostic {
+        ui_common::Diagnostic {
+            file_path: file.to_string(),
+            line,
+            column: 1,
+            end_line: None,
+            end_column: None,
+            message: format!("{file}:{line}"),
+            severity,
+            code: None,
+            source: None,
+            code_actions: Vec::new(),
+            raw_lsp_diagnostic: None,
+        }
+    }
+
+    #[test]
+    fn hints_are_split_from_errors_and_warnings() {
+        use ui_common::DiagnosticSeverity::*;
+        let all = vec![
+            diagnostic("a.rs", 1, Error),
+            diagnostic("a.rs", 2, Hint),
+            diagnostic("a.rs", 3, Warning),
+        ];
+        let (errors_warnings, hints) = split_hints(&all);
+        assert_eq!(errors_warnings.len(), 2);
+        assert_eq!(hints.len(), 1);
+    }
+
+    #[test]
+    fn a_hint_attaches_to_the_closest_parent_in_the_same_file() {
+        use ui_common::DiagnosticSeverity::*;
+        let all = vec![
+            diagnostic("a.rs", 10, Error),
+            diagnostic("a.rs", 40, Warning),
+            diagnostic("b.rs", 41, Error),
+            diagnostic("a.rs", 38, Hint),
+        ];
+        let (errors_warnings, hints) = split_hints(&all);
+        let mut problems = to_problems(&errors_warnings);
+        attach_hints(&mut problems, hints);
+        assert_eq!(problems.len(), 3);
+        assert_eq!(problems[1].hints.len(), 1);
+        assert!(problems[0].hints.is_empty());
+        assert!(problems[2].hints.is_empty());
+    }
+
+    #[test]
+    fn a_hint_without_a_parent_becomes_a_standalone_diagnostic() {
+        use ui_common::DiagnosticSeverity::*;
+        let all = vec![diagnostic("a.rs", 1, Error), diagnostic("c.rs", 5, Hint)];
+        let (errors_warnings, hints) = split_hints(&all);
+        let mut problems = to_problems(&errors_warnings);
+        attach_hints(&mut problems, hints);
+        assert_eq!(problems.len(), 2);
+        assert_eq!(problems[1].file_path, "c.rs");
+        assert!(!problems[1].loading_actions);
+    }
+
+    #[test]
+    fn fix_requests_are_indexed_and_default_the_range_end() {
+        use ui_common::DiagnosticSeverity::*;
+        let all = vec![diagnostic("a.rs", 7, Error)];
+        let (errors_warnings, _) = split_hints(&all);
+        let requests = code_action_requests(&errors_warnings);
+        assert_eq!(requests[0].index, 0);
+        assert_eq!((requests[0].end_line, requests[0].end_column), (7, 2));
+        assert!(!requests[0].has_embedded_actions);
+    }
+
+    #[test]
+    fn edits_with_no_file_still_yield_the_replacement_text() {
+        let edit = ui_common::TextEdit {
+            file_path: "definitely/not/a/file.rs".into(),
+            start_line: 1,
+            start_column: 1,
+            end_line: 1,
+            end_column: 2,
+            new_text: "fixed".into(),
+        };
+        assert_eq!(
+            compute_before_after(&edit.file_path, &[edit.clone()]),
+            (None, Some("fixed".to_string()))
+        );
+        assert_eq!(compute_before_after("x", &[]), (None, None));
+    }
+}

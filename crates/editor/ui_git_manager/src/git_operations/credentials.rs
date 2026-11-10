@@ -70,3 +70,21 @@ pub(super) fn make_callbacks(
     });
     callbacks
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authentication_failures_are_recognised_by_message_or_class() {
+        assert!(is_auth_error(&git2::Error::from_str(
+            "Authentication required"
+        )));
+        assert!(is_auth_error(&git2::Error::from_str(
+            "unexpected HTTP status: 401"
+        )));
+        assert!(!is_auth_error(&git2::Error::from_str(
+            "reference not found"
+        )));
+    }
+}

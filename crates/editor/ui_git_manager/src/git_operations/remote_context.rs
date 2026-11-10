@@ -180,3 +180,28 @@ pub(super) fn same_credential_scope(configured_url: &str, requested_url: &str) -
             .is_some_and(|(left, right)| left.eq_ignore_ascii_case(right))
         && configured.port_or_known_default() == requested.port_or_known_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credentials_apply_to_the_same_scheme_host_and_port_only() {
+        let url = "https://github.com/org/repo.git";
+        assert!(same_credential_scope(url, url));
+        assert!(same_credential_scope(
+            url,
+            "https://GitHub.com/other/repo.git"
+        ));
+        assert!(same_credential_scope(url, "https://github.com:443/x.git"));
+        assert!(!same_credential_scope(
+            url,
+            "http://github.com/org/repo.git"
+        ));
+        assert!(!same_credential_scope(
+            url,
+            "https://evil.example/org/repo.git"
+        ));
+        assert!(!same_credential_scope(url, "not a url"));
+    }
+}

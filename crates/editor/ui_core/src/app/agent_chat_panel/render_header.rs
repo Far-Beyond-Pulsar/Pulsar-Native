@@ -1,3 +1,9 @@
+//! The agent chat panel header: provider / model pickers, the chat history
+//! picker, the "more" menu and the context-usage meter.
+//! [`AgentChatPanel::render_header`] lays out two rows from the named
+//! `render_*` helpers below; [`chat_history_label`] and
+//! [`context_window_label`] are the pure text rules, unit tested.
+
 use gpui::{prelude::FluentBuilder as _, Corner, *};
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -12,8 +18,82 @@ use super::chat_storage;
 use super::panel::AgentChatPanel;
 use super::types::*;
 
+/// Longest chat title shown in the history trigger before it is cut with `...`.
+const CHAT_TITLE_MAX_CHARS: usize = 40;
+
+/// Label of the chat history trigger: the title cut to fit, or a fallback
+/// when the chat has no title yet.
+fn chat_history_label(title: String) -> String {
+    if title.len() > CHAT_TITLE_MAX_CHARS {
+        format!("{}...", &title[..CHAT_TITLE_MAX_CHARS - 3])
+    } else if title.is_empty() {
+        "Chat History".to_string()
+    } else {
+        title
+    }
+}
+
+/// Context window size as shown next to the meter: `128k ctx`, `1M ctx`.
+fn context_window_label(model_ctx: u32) -> String {
+    if model_ctx >= 1_000_000 {
+        format!("{}M ctx", model_ctx / 1_000_000)
+    } else if model_ctx >= 1_000 {
+        format!("{}k ctx", model_ctx / 1_000)
+    } else {
+        format!("{} ctx", model_ctx)
+    }
+}
+
 impl AgentChatPanel {
+    /// Two rows: pickers and history on top, context meter and menu below.
     pub(crate) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let provider_model_row = self.render_provider_model_row(cx);
+        let chat_history_popover = self.render_chat_history_popover();
+        let more_menu = self.render_more_menu(cx);
+
+        v_flex()
+            .w_full()
+            .gap(px(2.0))
+            .px_3()
+            .py(px(4.0))
+            // ── Row 1: Provider/Model left · Chat History + New right ──
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .child(provider_model_row)
+                    .child(div().flex_1())
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_1()
+                            .child(chat_history_popover)
+                            .child(
+                                Button::new("agent-chat-new-chat")
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Plus)
+                                    .tooltip("Start a new conversation")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_new_chat(cx);
+                                    })),
+                            ),
+                    ),
+            )
+            // ── Row 2: Context meter · three-dots menu ──
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(self.render_context_meter(cx))
+                    .flex_1()
+                    .child(more_menu),
+            )
+    }
+
+    /// Left side of row 1: the provider and model popovers.
+    fn render_provider_model_row(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let provider_label = self
             .active_provider()
             .map(|p| p.label.to_string())
@@ -25,7 +105,6 @@ impl AgentChatPanel {
 
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
-
         // ── Left: Provider / Model ──
         let provider_popover =
             Popover::<SearchableList<ProviderDefinition>>::new("agent-chat-provider-popover")
@@ -55,38 +134,37 @@ impl AgentChatPanel {
                 )
                 .content(move |_window, _cx| model_list.clone());
 
-        let provider_model_row = h_flex()
+        h_flex()
             .items_center()
             .gap_1()
             .child(provider_popover)
             .child(div().text_color(cx.theme().border).text_sm().child("/"))
             .child(model_popover);
+    }
 
-        // ── Right: Chat History dropdown ──
+    /// The chat history popover, labelled with the current chat's title.
+    fn render_chat_history_popover(&self) -> impl IntoElement {
         let chat_history_list = self.chat_history_list.clone();
         let current_title = Self::inferred_chat_title(&self.messages);
-        let chat_label = if current_title.len() > 40 {
-            format!("{}...", &current_title[..37])
-        } else if current_title.is_empty() {
-            "Chat History".to_string()
-        } else {
-            current_title
-        };
-        let chat_history_popover =
-            Popover::<SearchableList<ChatHistoryEntry>>::new("agent-chat-history-popover")
-                .anchor(Corner::TopRight)
-                .trigger(
-                    Button::new("agent-chat-history-trigger")
-                        .small()
-                        .ghost()
-                        .justify_start()
-                        .tooltip("Browse and switch between conversations")
-                        .label(chat_label)
-                        .dropdown_caret(true),
-                )
-                .content(move |_window, _cx| chat_history_list.clone());
+        let current_title = Self::inferred_chat_title(&self.messages);
+        let chat_label = chat_history_label(current_title);
+        Popover::<SearchableList<ChatHistoryEntry>>::new("agent-chat-history-popover")
+            .anchor(Corner::TopRight)
+            .trigger(
+                Button::new("agent-chat-history-trigger")
+                    .small()
+                    .ghost()
+                    .justify_start()
+                    .tooltip("Browse and switch between conversations")
+                    .label(chat_label)
+                    .dropdown_caret(true),
+            )
+            .content(move |_window, _cx| chat_history_list.clone());
+    }
 
-        // ── Three-dots menu ──
+    /// The three-dots menu: import/export, model refresh, add provider and,
+    /// while sub-agent results are queued, the queue controls.
+    fn render_more_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let panel = cx.entity().clone();
         let has_subagents =
             self.pending_subagent_events.len() > 0 || self.is_processing_subagent_event;
@@ -94,7 +172,7 @@ impl AgentChatPanel {
         let is_processing = self.is_processing_subagent_event;
         let is_in_flight = self.is_request_in_flight;
 
-        let more_menu = Button::new("agent-chat-more-trigger")
+        Button::new("agent-chat-more-trigger")
             .small()
             .ghost()
             .icon(IconName::Ellipsis)
@@ -171,49 +249,10 @@ impl AgentChatPanel {
                         menu
                     }
                 }
-            });
-
-        v_flex()
-            .w_full()
-            .gap(px(2.0))
-            .px_3()
-            .py(px(4.0))
-            // ── Row 1: Provider/Model left · Chat History + New right ──
-            .child(
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .child(provider_model_row)
-                    .child(div().flex_1())
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_1()
-                            .child(chat_history_popover)
-                            .child(
-                                Button::new("agent-chat-new-chat")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::Plus)
-                                    .tooltip("Start a new conversation")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.start_new_chat(cx);
-                                    })),
-                            ),
-                    ),
-            )
-            // ── Row 2: Context meter · three-dots menu ──
-            .child(
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_2()
-                    .child(self.render_context_meter(cx))
-                    .flex_1()
-                    .child(more_menu),
-            )
+            })
     }
 
+    /// Context-usage bar (filled / reserved summary sliver) with its percentage label.
     fn render_context_meter(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let total_chars = self.active_context_chars();
         let sliver_chars = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
@@ -241,13 +280,7 @@ impl AgentChatPanel {
             })
             .unwrap_or(6_000);
 
-        let ctx_label = if model_ctx >= 1_000_000 {
-            format!("{}M ctx", model_ctx / 1_000_000)
-        } else if model_ctx >= 1_000 {
-            format!("{}k ctx", model_ctx / 1_000)
-        } else {
-            format!("{} ctx", model_ctx)
-        };
+        let ctx_label = context_window_label(model_ctx);
 
         h_flex()
             .w_full()
