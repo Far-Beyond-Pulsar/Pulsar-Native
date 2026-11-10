@@ -13,9 +13,12 @@ struct HostAllocator;
 // SAFETY: forwards every call to the system allocator unchanged.
 unsafe impl GlobalAlloc for HostAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: the caller upholds `GlobalAlloc::alloc`'s contract for `layout`.
         unsafe { System.alloc(layout) }
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: the caller guarantees `ptr` came from this allocator (which is
+        // `System`) with `layout`.
         unsafe { System.dealloc(ptr, layout) }
     }
 }
@@ -33,17 +36,25 @@ fn main() {
     // the editor's plugin manager does.
     let library = unsafe { libloading::Library::new(&path) }
         .unwrap_or_else(|error| panic!("loading {path}: {error}"));
+    // SAFETY (the calls below): the fixture plugin exports each name with the
+    // signature it is transmuted to (`extern "C" fn() -> bool`/`-> u64`, and the
+    // world-runtime `AttachFn`), and the library stays loaded for the whole run.
+    // SAFETY: looking up a symbol as a plain address; no call happens here.
     let symbol = |name: &str| unsafe {
         library
             .get::<*const ()>(name.as_bytes())
             .map(|s| *s)
             .unwrap()
     };
+    // SAFETY: see above; the named export is an `extern "C" fn() -> bool`.
     let call_bool =
         |name: &str| unsafe { std::mem::transmute::<_, extern "C" fn() -> bool>(symbol(name))() };
+    // SAFETY: see above; the named export is an `extern "C" fn() -> u64`.
     let call_u64 =
         |name: &str| unsafe { std::mem::transmute::<_, extern "C" fn() -> u64>(symbol(name))() };
     // The plugin manager's call: the library's exported attach entry point.
+    // SAFETY: the export is `AttachFn`; the runtime passed is the host's own
+    // (or a leaked copy with a flipped ABI field), which lives for the process.
     let attach = |runtime: *const pulsar_world_registry::runtime::WorldRuntimes| unsafe {
         std::mem::transmute::<_, pulsar_world_registry::runtime::AttachFn>(symbol(
             pulsar_world_registry::runtime::ATTACH_SYMBOL,

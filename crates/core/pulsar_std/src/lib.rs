@@ -5,6 +5,8 @@
 //! All nodes are defined as Rust functions with the `#[blueprint]` attribute macro.
 //!
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Runtime flag for allowing unsafe shell process execution.

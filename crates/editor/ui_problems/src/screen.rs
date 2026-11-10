@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use gpui::{prelude::*, *};
 use rust_i18n::t;
@@ -13,6 +13,15 @@ use ui::{
 };
 
 use crate::utils::types::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic};
+
+/// Lock policy: recover from poisoning. The diagnostics list is always replaced or
+/// mutated element-wise, so a panicking holder cannot leave it inconsistent.
+pub(crate) fn lock_diagnostics(m: &Mutex<Vec<Diagnostic>>) -> MutexGuard<'_, Vec<Diagnostic>> {
+    m.lock().unwrap_or_else(|poisoned| {
+        tracing::error!("problems diagnostics mutex was poisoned by a panic; recovering");
+        poisoned.into_inner()
+    })
+}
 
 pub struct ProblemsDrawer {
     pub(crate) focus_handle: FocusHandle,
@@ -60,12 +69,12 @@ impl ProblemsDrawer {
     }
 
     pub fn add_diagnostic(&mut self, diagnostic: Diagnostic, cx: &mut Context<Self>) {
-        self.diagnostics.lock().unwrap().push(diagnostic);
+        lock_diagnostics(&self.diagnostics).push(diagnostic);
         cx.notify();
     }
 
     pub fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
-        self.diagnostics.lock().unwrap().clear();
+        lock_diagnostics(&self.diagnostics).clear();
         self.last_published.clear();
         self.external.clear();
         self.selected_index = None;
@@ -93,7 +102,7 @@ impl ProblemsDrawer {
         self.last_published = diagnostics.clone();
         let mut all = diagnostics;
         all.extend(self.external.values().flatten().cloned());
-        *self.diagnostics.lock().unwrap() = all;
+        *lock_diagnostics(&self.diagnostics) = all;
         self.selected_index = None;
         self.preview_inputs.clear();
         self.diff_editors.clear();
@@ -123,7 +132,7 @@ impl ProblemsDrawer {
             self.external.insert(source.to_owned(), diagnostics);
         }
         {
-            let mut all = self.diagnostics.lock().unwrap();
+            let mut all = lock_diagnostics(&self.diagnostics);
             // The language server's entries (with their fetched hints) stay
             // first; the external ones follow.
             all.truncate(self.last_published.len());
@@ -146,7 +155,7 @@ impl ProblemsDrawer {
         // used to notify anyway (~27 times a second across a publish).
         let mut changed = false;
         {
-            let mut diagnostics = self.diagnostics.lock().unwrap();
+            let mut diagnostics = lock_diagnostics(&self.diagnostics);
             if let Some(diag) = diagnostics.get_mut(diagnostic_index) {
                 if !new_hints.is_empty() {
                     for hint in new_hints {
@@ -177,7 +186,7 @@ impl ProblemsDrawer {
         loading: bool,
         cx: &mut Context<Self>,
     ) {
-        if let Some(diag) = self.diagnostics.lock().unwrap().get_mut(diagnostic_index) {
+        if let Some(diag) = lock_diagnostics(&self.diagnostics).get_mut(diagnostic_index) {
             diag.loading_actions = loading;
         }
         cx.notify();
@@ -187,7 +196,7 @@ impl ProblemsDrawer {
         &self,
         index: usize,
     ) -> Option<(String, usize, usize, usize, usize)> {
-        self.diagnostics.lock().unwrap().get(index).map(|d| {
+        lock_diagnostics(&self.diagnostics).get(index).map(|d| {
             (
                 d.file_path.clone(),
                 d.line,
@@ -279,5 +288,26 @@ impl Render for ProblemsDrawer {
                 cx,
             ))
             .child(div().flex_1().overflow_hidden().child(content))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{lock_diagnostics, Diagnostic};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn lock_diagnostics_recovers_from_a_poisoned_mutex() {
+        let diagnostics = Arc::new(Mutex::new(Vec::<Diagnostic>::new()));
+        let poisoner = Arc::clone(&diagnostics);
+        let result = std::thread::spawn(move || {
+            let _guard = poisoner.lock().unwrap();
+            panic!("poison the diagnostics");
+        })
+        .join();
+        assert!(result.is_err());
+        assert!(diagnostics.is_poisoned());
+
+        assert!(lock_diagnostics(&diagnostics).is_empty());
     }
 }

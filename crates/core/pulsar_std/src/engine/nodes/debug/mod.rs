@@ -26,10 +26,14 @@ use crate::blueprint;
 /// with a proper empty `String::new()` (non-null dangling pointer, len=0).
 #[inline]
 fn sanitize_string(s: String) -> String {
-    // Safety: We read the first pointer-sized word of `s` without dereferencing
-    // it.  `String` is repr(transparent) over `Vec<u8>`; the first field is the
-    // data pointer.  When cap == 0 (as it is for a zero-init'd value) the Vec
-    // destructor performs no deallocation, so `forget` is safe to call here.
+    // SAFETY: `s` is a live `String`, which is at least one `usize` wide and
+    // aligned for it, so reading its first word is in bounds and does not
+    // dereference anything. The word is only compared with zero: a zero first
+    // word means a zero-initialised value (null data pointer or zero capacity,
+    // whichever `Vec` stores first), which owns no allocation, so `forget`
+    // leaks nothing and skips a destructor that must not run on it. `String`'s
+    // field layout is not guaranteed; if the first word is not one of those two
+    // fields the check merely fails to detect the zeroed value.
     unsafe {
         let first_word = *(&s as *const String).cast::<usize>();
         if first_word == 0 {

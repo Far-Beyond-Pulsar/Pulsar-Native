@@ -93,6 +93,11 @@ impl ProfilingAlloc {
     }
 }
 
+// SAFETY: every method forwards the caller's layout and pointer unchanged to
+// `System`, which upholds the `GlobalAlloc` contract. The bookkeeping around
+// the calls touches only thread-locals, atomics and a mutex-guarded table, and
+// the `BUSY` flag makes its own allocations pass through without re-entering
+// it, so it neither recurses nor changes what the allocator returns.
 unsafe impl GlobalAlloc for ProfilingAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);

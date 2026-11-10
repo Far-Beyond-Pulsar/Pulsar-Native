@@ -373,7 +373,18 @@ impl GpuRenderer {
     }
 }
 
+// SAFETY: the compiler cannot prove this; it holds by how the renderer is used.
+// The non-`Send` parts (the plugins' render-host parts and scene derivations as
+// `dyn` objects, the legacy command `Receiver`) are reached only through
+// `&mut self` methods, so the owner has exclusive access to them, and the
+// renderer is always held as `Arc<Mutex<GpuRenderer>>` by its owners (the
+// level editor), which serialises those calls. The renderer is moved between
+// threads whole and its trait objects are thread-agnostic (they hold no
+// thread-local or thread-affine state).
 unsafe impl Send for GpuRenderer {}
+// SAFETY: the `&self` methods touch only `Arc<Mutex<_>>`/atomic mailbox state
+// and the command `Sender`, which are `Sync`; everything else needs `&mut self`
+// (see `Send` above), so shared references cannot reach the non-`Sync` parts.
 unsafe impl Sync for GpuRenderer {}
 
 #[cfg(test)]

@@ -144,6 +144,13 @@ impl Default for ForwardingAllocator {
     }
 }
 
+// SAFETY: every method forwards the caller's `Layout` and pointer unchanged to
+// an allocator that upholds the `GlobalAlloc` contract: either the host's
+// `HostAllocator` (its entries wrap the host binary's own global allocator,
+// see `HostAllocator::global`) or `System`. The host pointer is installed
+// before the library runs anything else, so blocks the library allocates and
+// frees are handled by the same allocator, except for allocations made by
+// initializers that run before `install`; those come from `System`.
 unsafe impl GlobalAlloc for ForwardingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         match self.host() {

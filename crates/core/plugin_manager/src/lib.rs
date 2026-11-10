@@ -72,6 +72,8 @@
 //! The only concern is **Arc cycles**, which can cause memory leaks.
 //! See `PLUGIN_ARCHITECTURE.md` for guidelines on preventing cycles with `Weak<T>`.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use parking_lot::RwLock;
 use plugin_editor_api::*;
 use std::collections::HashMap;
@@ -269,6 +271,9 @@ pub struct PluginManager {
 //
 // The RwLock wrapper in the global instance provides thread safety.
 unsafe impl Send for PluginManager {}
+// SAFETY: as for `Send`: shared access goes through `&self` methods over the
+// same plain collections, and the plugin objects are only reached under the
+// global instance's `RwLock`.
 unsafe impl Sync for PluginManager {}
 
 impl PluginManager {
