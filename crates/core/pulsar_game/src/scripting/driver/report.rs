@@ -1,6 +1,7 @@
 //! What a frame or reconcile did: [`DriverReport`] and the scene-lock
 //! timings ([`LockTimes`]) a shared-world frame adds to it.
 
+use std::fmt::Debug;
 use pulsar_scenedb::Entity;
 use pulsar_script_runtime::RuntimeError;
 
