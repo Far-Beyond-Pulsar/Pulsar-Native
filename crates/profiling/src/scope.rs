@@ -67,6 +67,8 @@ pub fn host_handle() -> HostProfiler {
 /// `host` must point to a [`host_handle`] of a copy of this crate built by
 /// the same compiler from the same sources, in this process.
 pub unsafe fn attach_host(host: *const HostProfiler) -> bool {
+    // SAFETY: the caller guarantees `host` points to a live, same-layout
+    // `HostProfiler` (the function's `# Safety` contract); it is `Copy`.
     let host = unsafe { *host };
     if host.profiler_size != std::mem::size_of::<Profiler>() || host.profiler.is_null() {
         return false;
@@ -101,8 +103,10 @@ macro_rules! export_profiler_attach {
         pub unsafe extern "C" fn _plugin_attach_profiler(host: *const ::std::ffi::c_void) -> bool {
             // A panic must not unwind across the FFI boundary (it would
             // abort the editor): the host reads it as a refusal.
-            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| unsafe {
-                $crate::scope::attach_host(host.cast())
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: the plugin manager passes the host's `HostProfiler`,
+                // as documented above.
+                unsafe { $crate::scope::attach_host(host.cast()) }
             }))
             .unwrap_or(false)
         }
@@ -410,9 +414,12 @@ mod attach_tests {
     fn a_handle_of_this_layout_attaches_and_a_wrong_one_is_refused() {
         let mut handle = host_handle();
         // Attaching a copy's own handle is a no-op round trip.
+        // SAFETY: `handle` is this copy's own `host_handle()`, live on the stack.
         assert!(unsafe { attach_host(&handle) });
+        // SAFETY: `handle.profiler` is the process-lifetime profiler from `init_profiler`.
         assert!(std::ptr::eq(init_profiler(), unsafe { &*handle.profiler }));
         handle.profiler_size += 1;
+        // SAFETY: as above; the size mismatch is rejected before anything is stored.
         assert!(!unsafe { attach_host(&handle) });
         let id = allocate_scope_id();
         assert!(allocate_scope_id() > id);

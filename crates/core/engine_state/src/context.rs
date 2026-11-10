@@ -114,14 +114,14 @@ impl ProjectContext {
 /// it into a project that has no level yet; it names nothing of what is in
 /// it, so the content (its kinds' components and files) is the host's.
 #[derive(Clone, Debug, Default)]
-pub struct StarterContent {
+pub struct NewProjectContent {
     /// The default level's bytes; `None` starts new projects empty.
     pub level: Option<std::sync::Arc<[u8]>>,
     /// `(path under assets/, bytes)` for every asset the level references.
     pub assets: Vec<(String, std::sync::Arc<[u8]>)>,
 }
 
-impl StarterContent {
+impl NewProjectContent {
     /// Write the assets into `<project_root>/assets/`, leaving any file the
     /// project already has untouched. A file that cannot be written is
     /// logged and skipped.

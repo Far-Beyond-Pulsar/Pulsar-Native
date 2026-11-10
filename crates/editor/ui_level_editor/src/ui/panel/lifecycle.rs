@@ -39,7 +39,7 @@ impl LevelEditorPanel {
         let starter = engine_state::EngineContext::global()
             .map(|ctx| {
                 ctx.store
-                    .get_or_init::<engine_state::StarterContent>()
+                    .get_or_init::<engine_state::NewProjectContent>()
                     .read()
                     .clone()
             })

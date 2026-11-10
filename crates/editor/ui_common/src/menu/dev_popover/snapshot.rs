@@ -195,7 +195,7 @@ impl DevSnapshot {
 
         let default_level_size = ctx
             .store
-            .get_or_init::<engine_state::StarterContent>()
+            .get_or_init::<engine_state::NewProjectContent>()
             .read()
             .level
             .as_ref()

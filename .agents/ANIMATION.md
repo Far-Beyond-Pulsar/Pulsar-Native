@@ -366,6 +366,17 @@ graph's toward zero).
   `clear_physics_pose` returns ownership; the animation is already where it should be.
   The component is the only writer of its GPU palettes (current + previous in
   `gpu_bone_palettes`), written under the scene write lock.
+- **Meshes an animator drives** (`component/src/notifies.rs`, `assign_meshes` and
+  `driven_meshes`): one animator drives every skinned mesh of its owner that is bound to
+  its skeleton, so a modular character (body, head, gear on one skeleton) needs one
+  animator. The leader is the owner's n-th skinned mesh, n being the animator's ordinal
+  among the owner's animators (the first skinned mesh when that ordinal has none); its
+  skeleton is the one the animator plays. Every other mesh on that skeleton shows the
+  pose too, except a mesh at another animator's ordinal, which stays with that animator.
+  Meshes no animator's ordinal reaches go to the lowest animator on their skeleton, so no
+  mesh has two animators. When the driven set changes, `note_driven_meshes` makes the
+  current pose show again, so a mesh added later gets the pose being shown rather than its
+  bind pose. An animator with no owner drives the mesh on itself.
 - Time: pause is `playing = false` (or a zero delta); `playback_rate` scales;
   `AnimInstance::advance` supports `TimeStep::Fixed { step, max_substeps }` (the
   remainder carries, excess time is dropped) and `UpdateMode::Scrub`, which
@@ -613,7 +624,9 @@ the id of the graph the component plays, and `machine` names it.
 
 ### Hot reload
 
-`AssetUpdated(Custom("animation"))` is published by the file watcher for
+`AssetUpdated(Custom("animation"))` is published by the file watcher
+(`engine_fs::watchers::publish_asset_update`, on any create or modify of an existing file; the
+editor's own saves publish nothing, so the watcher is the only publisher and a save reloads once) for
 `.skeleton .animseq .blendspace .montage .animgraph .ikrig .ikretarget .animretarget
 .posedb`. `engine_backend::scene::reload_updated_asset` reloads the graph/sequence a
 component holds directly through SceneDB and calls
@@ -625,6 +638,16 @@ states end with `reload`. A graph that no longer compiles keeps running as it wa
 reports diagnostics. Montage compiles are cached per component and dropped on any
 animation change; an instance already playing finishes with the version it started
 with.
+
+A changed file reaches more than the world assets it is. `engine_backend::scene::game_hooks`
+has `AssetChangedRegistration { origin, on_changed(world, path) -> usize }` (an `inventory`
+registration, enabled per plugin) and `notify_asset_changed(world, path)`, which runs every
+enabled hook and sums what they updated. `reload_updated_asset` calls it after queueing the
+world assets the file is or feeds. The animation plugin (`skm_editor/component`) submits a
+hook, `animation_asset_changed`, which ignores any file that is not an animation asset
+(textures, meshes) and otherwise calls `reload_animation_dependencies`, so a graph that names
+a changed sequence, Blend Space, rig or Montage recompiles even though no world asset is
+that file.
 
 ### Not covered / limits
 
@@ -680,6 +703,12 @@ notify model with the Montage editor.
   - The inspector edits name, time (start/end for a state), target, tick interval and enabled
     flag of a state, and the payload fields of both. Everything is saved with the sequence
     (`notifies`, `notify_states`, `notify_schemas`; a sequence with states is a v4 file).
+  - It follows the files it shows (`editor/file_events.rs`): the panel subscribes to
+    `engine_fs` file events and, when one concerns its linked skeleton or preview mesh (or,
+    while a link is unresolved, any file of that kind), rescans the project and re-resolves
+    both links, refreshing the banner state, the pose and the preview mesh (a changed preview
+    mesh file is loaded again). Its own asset's saves and unrelated files do nothing; a lagged
+    event channel rescans too. `WatchedFiles::react` is the pure decision the tests drive.
 - **Montage** (`.montage`): multi-track timeline (segments on Slot tracks: drag, trim, split,
   retarget to another track), sections with next-links, notify and state lanes (same
   `lane_layout`), blend in/out, group, priority, interrupt policy, root-motion mode, payload

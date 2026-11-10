@@ -109,8 +109,7 @@ impl NotificationStore {
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |d| d.as_secs());
 
         self.verified_users.insert(
             user.login.clone(),
@@ -126,8 +125,7 @@ impl NotificationStore {
     pub fn is_user_verified(&self, username: &str) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |d| d.as_secs());
         self.verified_users
             .get(username)
             .map(|v| now - v.verified_at < 3600)
@@ -266,8 +264,7 @@ impl NotificationStore {
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |d| d.as_secs());
         let body = serde_json::json!({
             "id": format!("relay-{}-{}-{}", req.from_username, req.target_username, now),
             "notification_type": req.notification_type,

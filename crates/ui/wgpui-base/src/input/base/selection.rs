@@ -78,9 +78,7 @@ impl TextSelector {
     /// Returns the start and end offsets of the selected word.
     pub(crate) fn word_range(text: &Rope, offset: usize) -> Option<Range<usize>> {
         let offset = text.clip_offset(offset, Bias::Left);
-        let Some(char) = text.char_at(offset) else {
-            return None;
-        };
+        let char = text.char_at(offset)?;
 
         let end = offset + char.len_utf8();
         let prev_chars = text.chars_at(offset).reversed().take(128);

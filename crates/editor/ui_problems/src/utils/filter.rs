@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use gpui::*;
 
 use crate::components::ProblemsDrawer;
+use crate::screen::lock_diagnostics;
 use crate::utils::types::{Diagnostic, DiagnosticSeverity, DiffLineType};
 
 pub fn compute_aligned_diff(
@@ -45,7 +46,7 @@ pub fn compute_aligned_diff(
 
 impl ProblemsDrawer {
     pub(crate) fn get_filtered_diagnostics(&self) -> Vec<Diagnostic> {
-        let diagnostics = self.diagnostics.lock().unwrap();
+        let diagnostics = lock_diagnostics(&self.diagnostics);
         filter_diagnostics(
             &diagnostics,
             self.filtered_severity.as_ref(),
@@ -58,16 +59,14 @@ impl ProblemsDrawer {
     }
 
     pub fn count_by_severity(&self, severity: DiagnosticSeverity) -> usize {
-        self.diagnostics
-            .lock()
-            .unwrap()
+        lock_diagnostics(&self.diagnostics)
             .iter()
             .filter(|d| d.severity == severity)
             .count()
     }
 
     pub fn total_count(&self) -> usize {
-        self.diagnostics.lock().unwrap().len()
+        lock_diagnostics(&self.diagnostics).len()
     }
 
     pub(crate) fn set_filter(

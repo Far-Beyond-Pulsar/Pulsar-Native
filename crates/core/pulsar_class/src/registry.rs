@@ -23,9 +23,16 @@ pub struct ClassEntry {
 impl ClassEntry {
     /// Load the class's current definition from disk.
     pub fn load_definition(&self) -> Result<ClassDefinition, String> {
-        // Prefab first: loading it may replace readable slot ids and record
-        // the replacements in class.json, which is read after.
-        let prefab = PrefabAsset::load_from_dir(&self.dir)?;
+        // Prefab first: a level placing the class needs stable slot ids, so
+        // this repairs on load (replaced readable ids are recorded in
+        // class.json, which is read after). A failed save is reported.
+        let (prefab, outcome) = PrefabAsset::load_and_repair(&self.dir)?;
+        if let crate::prefab::RepairOutcome::Failed(error) = outcome {
+            tracing::warn!(
+                class = %self.name,
+                "Class prefab slot ids are not saved and will change next load: {error}"
+            );
+        }
         let slot_aliases = crate::id::ClassMeta::read(&self.dir)
             .map(|meta| meta.slot_aliases)
             .unwrap_or_default();

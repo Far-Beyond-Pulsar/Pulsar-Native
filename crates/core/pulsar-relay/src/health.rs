@@ -42,8 +42,7 @@ impl HealthChecker {
         let start = SystemTime::now();
         let timestamp = start
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |d| d.as_secs());
 
         let mut checks = Vec::new();
 
@@ -185,8 +184,7 @@ impl HealthChecker {
     pub async fn liveness_check(&self) -> HealthStatus {
         let timestamp = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |d| d.as_secs());
 
         HealthStatus {
             status: "healthy".to_string(),

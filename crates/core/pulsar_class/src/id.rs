@@ -85,7 +85,19 @@ impl ClassMeta {
     pub fn write(&self, dir: &Path) -> std::io::Result<()> {
         let text = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(dir.join(CLASS_META_FILE), text)
+        engine_fs::virtual_fs::write_file(&dir.join(CLASS_META_FILE), text.as_bytes())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+    }
+
+    /// Merge replaced slot ids into `<dir>/class.json` and write it.
+    pub fn record_slot_aliases(
+        dir: &Path,
+        aliases: std::collections::BTreeMap<String, String>,
+    ) -> Result<(), String> {
+        let mut meta = Self::read(dir).unwrap_or_default();
+        meta.slot_aliases.extend(aliases);
+        meta.write(dir)
+            .map_err(|e| format!("failed to record replaced slot ids in {CLASS_META_FILE}: {e}"))
     }
 }
 

@@ -5678,12 +5678,15 @@ dependencies = [
  "helio",
  "helio-core",
  "helio-feature-api",
+ "helio-frame-api",
  "helio-light-api",
  "helio-pass-billboard",
  "helio-pass-deferred-light",
+ "helio-pass-fxaa",
  "helio-pass-hlfs",
  "helio-pass-light-cull",
  "helio-pass-shadow-matrix",
+ "helio-pass-tsr",
  "helio-presets",
  "pollster 0.4.0",
  "pulsar_scenedb",
@@ -6028,6 +6031,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-mesh-api",
+ "naga",
  "wgpu",
 ]
 
@@ -6116,6 +6120,7 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-hiz",
  "helio-pass-indirect-dispatch",
+ "naga",
  "pollster 0.4.0",
  "wgpu",
 ]
@@ -6618,6 +6623,7 @@ dependencies = [
  "helio-pass-tsr",
  "helio-spine",
  "image",
+ "log",
  "serde_json",
  "wgpu",
 ]
@@ -12247,6 +12253,7 @@ dependencies = [
  "core-foundation-sys",
  "dhat",
  "directories 6.0.0",
+ "dirs 6.0.0",
  "dotenv",
  "engine_backend",
  "engine_state",
@@ -12261,11 +12268,13 @@ dependencies = [
  "pulsar_auth",
  "pulsar_error",
  "pulsar_std",
+ "reqwest 0.13.4",
  "rfd",
  "rust-embed",
  "rustls",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "smol",
  "sysuri",
  "tempfile",
@@ -12288,6 +12297,7 @@ dependencies = [
  "window_manager",
  "windows 0.62.2",
  "winresource",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -14616,18 +14626,24 @@ version = "0.1.0"
 dependencies = [
  "animation_component",
  "engine_backend",
+ "engine_fs",
+ "engine_state",
  "helio_component",
  "inventory",
+ "meshes_component",
+ "meshes_plugin",
  "plugin_manager",
  "pulsar_class",
  "pulsar_events",
  "pulsar_game",
  "pulsar_plugins",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde_json",
  "skeletal_animation_editor",
  "skeletal_assets",
+ "tempfile",
 ]
 
 [[package]]
@@ -14728,14 +14744,10 @@ name = "sky_editor"
 version = "0.1.0"
 dependencies = [
  "engine_fs",
- "engine_state",
  "image",
  "rust-i18n",
- "sha2 0.10.9",
  "sky_component",
- "tracing",
  "ui_level_editor",
- "ureq 2.12.1",
  "zip 9.5.0",
 ]
 
@@ -14745,11 +14757,14 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_backend",
+ "engine_fs",
+ "engine_state",
  "glam 0.33.5",
  "helio",
  "helio-core",
  "helio-pass-sky",
  "helio-scene-join",
+ "image",
  "inventory",
  "pollster 0.4.0",
  "pulsar_plugins",
@@ -14759,8 +14774,11 @@ dependencies = [
  "serde_json",
  "sky_component",
  "sky_editor",
+ "tempfile",
+ "tracing",
  "ui_level_editor",
  "wgpu",
+ "zip 9.5.0",
 ]
 
 [[package]]
@@ -17509,6 +17527,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "smol",
  "tempfile",
  "tool_registry",
@@ -17519,6 +17538,7 @@ dependencies = [
  "ui_common",
  "ui_helio_viewport",
  "ui_types_common",
+ "ureq 2.12.1",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",

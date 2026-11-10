@@ -259,7 +259,8 @@ fn hex_encode(data: &[u8]) -> String {
     use std::fmt::Write;
     let mut result = String::new();
     for byte in data {
-        write!(&mut result, "{:02x}", byte).unwrap();
+        // Writing to a String never fails.
+        let _ = write!(&mut result, "{:02x}", byte);
     }
     result
 }

@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use crate::events::{FsChangeKind, FsEventSource};
 use crate::providers::ManifestEntry;
@@ -108,7 +108,9 @@ impl Default for FileIndexSort {
 /// thread/read-only pool can be introduced if measured contention warrants it.
 pub struct ProjectFileIndex {
     project_root: PathBuf,
-    connection: Mutex<Connection>,
+    /// `parking_lot` mutex: it cannot poison. A panic mid-operation drops any open
+    /// `rusqlite::Transaction`, which rolls back, so the connection stays consistent.
+    connection: parking_lot::Mutex<Connection>,
 }
 
 impl std::fmt::Debug for ProjectFileIndex {
@@ -136,7 +138,7 @@ impl ProjectFileIndex {
         Self::initialize_schema(&connection)?;
         Ok(Self {
             project_root,
-            connection: Mutex::new(connection),
+            connection: parking_lot::Mutex::new(connection),
         })
     }
 
@@ -241,7 +243,7 @@ impl ProjectFileIndex {
     /// is unchanged are not rewritten; entries absent from the manifest are
     /// removed in the same transaction.
     pub fn reconcile(&self, manifest: &[ManifestEntry]) -> Result<()> {
-        let mut connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut connection = self.connection.lock();
         let tx = connection.transaction()?;
         tx.execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS incoming_files (
@@ -325,7 +327,7 @@ impl ProjectFileIndex {
         if relative.is_empty() {
             return Ok(());
         }
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         connection.execute(
             "DELETE FROM files WHERE path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || '/'",
             [&relative],
@@ -351,7 +353,7 @@ impl ProjectFileIndex {
             anyhow::bail!("cannot move a directory into its own subtree");
         }
 
-        let mut connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut connection = self.connection.lock();
         let tx = connection.transaction()?;
         let moved = {
             let mut statement = tx.prepare(
@@ -521,7 +523,7 @@ impl ProjectFileIndex {
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         connection.execute(
             "DELETE FROM asset_ids WHERE path = ?1 AND kind = ''",
             [&relative],
@@ -544,7 +546,7 @@ impl ProjectFileIndex {
         if kind.is_empty() {
             anyhow::bail!("typed asset kind cannot be empty");
         }
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         connection.execute(
             "DELETE FROM asset_ids WHERE path = ?1 AND kind = ?2",
             params![relative, kind],
@@ -670,7 +672,7 @@ impl ProjectFileIndex {
         let Some(relative) = self.relative_path(path) else {
             return Ok(());
         };
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         connection.execute("DELETE FROM asset_ids WHERE path = ?1", [&relative])?;
         Ok(())
     }
@@ -701,7 +703,7 @@ impl ProjectFileIndex {
                 bad.source_id
             );
         }
-        let mut connection = self.connection.lock().expect("file-index mutex poisoned");
+        let mut connection = self.connection.lock();
         let tx = connection.transaction()?;
         tx.execute(
             "DELETE FROM asset_deps WHERE source_path = ?1 AND source_kind = ?2",
@@ -733,14 +735,14 @@ impl ProjectFileIndex {
         let Some(relative) = self.relative_path(path) else {
             return Ok(());
         };
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         connection.execute("DELETE FROM asset_deps WHERE source_path = ?1", [&relative])?;
         Ok(())
     }
 
     /// What an asset depends on, ordered for stable output.
     pub fn asset_deps_of(&self, source_kind: &str, source_id: &str) -> Result<Vec<AssetDep>> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT source_kind, source_id, target_kind, target_id, role, via, expect
              FROM asset_deps WHERE source_kind = ?1 AND source_id = ?2
@@ -765,7 +767,7 @@ impl ProjectFileIndex {
     /// the asset `target_id` of `target_kind`, with the project path of the
     /// asset holding the reference. Computed, never stored on the target.
     pub fn asset_used_by(&self, target_kind: &str, target_id: &str) -> Result<Vec<AssetDependent>> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT source_path, source_kind, source_id, target_kind, target_id, role, via, expect
              FROM asset_deps WHERE target_kind = ?1 AND target_id = ?2
@@ -805,7 +807,7 @@ impl ProjectFileIndex {
     /// Return every path claiming `id`. More than one result indicates a
     /// copied asset whose stable id must be repaired by its owning plugin.
     pub fn paths_for_asset_id(&self, id: &str) -> Result<Vec<PathBuf>> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement =
             connection.prepare("SELECT path FROM asset_ids WHERE asset_id = ?1 ORDER BY path")?;
         let rows = statement.query_map([id], |row| row.get::<_, String>(0))?;
@@ -821,7 +823,7 @@ impl ProjectFileIndex {
 
     /// Return the first project path carrying `id` for `kind`, if indexed.
     pub fn path_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Option<PathBuf>> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path LIMIT 2",
         )?;
@@ -840,7 +842,7 @@ impl ProjectFileIndex {
 
     /// Return every project path carrying `id` for `kind`.
     pub fn paths_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Vec<PathBuf>> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path",
         )?;
@@ -858,7 +860,7 @@ impl ProjectFileIndex {
     /// Every indexed `(asset id, path)` of `kind`: the candidate list an asset
     /// picker filters. Ambiguous ids appear once per claiming path.
     pub fn assets_of_kind(&self, kind: &str) -> Result<Vec<(String, PathBuf)>> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT asset_id, path FROM asset_ids WHERE kind = ?1 ORDER BY path, asset_id",
         )?;
@@ -883,7 +885,7 @@ impl ProjectFileIndex {
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection
             .prepare("SELECT asset_id FROM asset_ids WHERE path = ?1 ORDER BY asset_id")?;
         let rows = statement.query_map([relative], |row| row.get::<_, String>(0))?;
@@ -896,7 +898,7 @@ impl ProjectFileIndex {
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT asset_id FROM asset_ids WHERE path = ?1 AND kind = ?2 ORDER BY asset_id",
         )?;
@@ -1010,7 +1012,7 @@ impl ProjectFileIndex {
         } else {
             registered_file_type(&full_path)
         };
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         connection.execute(
             "INSERT INTO files(path, name, extension, file_type_id, is_dir, size, created, modified)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)
@@ -1127,7 +1129,7 @@ impl ProjectFileIndex {
             values.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
         }
 
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let mut statement = connection.prepare(&sql)?;
         let rows = statement.query_map(params_from_iter(values.iter()), |row| {
             Ok(IndexedFile {
@@ -1179,7 +1181,7 @@ impl ProjectFileIndex {
 
     #[cfg(test)]
     fn file_count(&self) -> Result<usize> {
-        let connection = self.connection.lock().expect("file-index mutex poisoned");
+        let connection = self.connection.lock();
         let count: i64 =
             connection.query_row("SELECT count(*) FROM files", [], |row| row.get(0))?;
         Ok(usize::try_from(count).unwrap_or_default())

@@ -200,9 +200,13 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         );
         let prefab_path = entry.dir.join(pulsar_class::PREFAB_FILE);
         if prefab_path.is_file() {
-            // Slot ids are assigned (and saved to the project) by the load.
-            let prefab =
-                pulsar_class::PrefabAsset::load_from_dir(&entry.dir).map_err(PackageError::Cook)?;
+            // Slot ids are assigned by the load; cooking repairs the project's
+            // prefab so the cooked ids match the project's.
+            let (prefab, outcome) = pulsar_class::PrefabAsset::load_and_repair(&entry.dir)
+                .map_err(PackageError::Cook)?;
+            if let pulsar_class::prefab::RepairOutcome::Failed(e) = outcome {
+                tracing::warn!(class = %entry.name, "slot ids not saved: {e}");
+            }
             let mut value =
                 serde_json::to_value(&prefab).map_err(|e| PackageError::Cook(e.to_string()))?;
             if let Some(class_ref) = value

@@ -83,6 +83,12 @@ impl TrackingAllocator {
         let limit = if large { large_allocs::MAX_FRAMES } else { 8 };
         let mut frames = [0usize; large_allocs::MAX_FRAMES];
         let mut count = 0usize;
+        // SAFETY: `trace_unsynchronized` skips the backtrace crate's lock (taking
+        // it would allocate), so it must not run concurrently with another
+        // backtrace call; its documented requirement. Here it relies on the
+        // platform unwinder (`RtlVirtualUnwind` on 64-bit Windows, `libunwind` on
+        // Unix) being reentrant, and the callback only writes into the local
+        // `frames` array, so it neither allocates nor recurses.
         unsafe {
             backtrace::trace_unsynchronized(|frame| {
                 if count < limit {
@@ -133,6 +139,11 @@ impl TrackingAllocator {
     }
 }
 
+// SAFETY: every method forwards the caller's layout and pointer unchanged to
+// `System`, which upholds the `GlobalAlloc` contract. The tracking around the
+// calls runs behind a thread-local re-entrancy guard and never changes the
+// returned pointer; `realloc` rebuilds a layout from the original alignment
+// (already valid) and `new_size` that the caller must have made valid.
 unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);

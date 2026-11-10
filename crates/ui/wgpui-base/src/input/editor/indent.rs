@@ -27,6 +27,8 @@ impl Default for TabSize {
 }
 
 impl TabSize {
+    // Inherent `to_string` kept for upstream API compatibility (`TabSize` is not `Display`).
+    #[allow(clippy::wrong_self_convention)]
     pub(super) fn to_string(&self) -> SharedString {
         if self.hard_tabs {
             "\t".into()
@@ -145,7 +147,7 @@ impl<M: InputModeKind> TextElement<M> {
                     builder.line_to(point(pos.x, pos.y + line_height));
                     current_indents.push(pos.x);
                 }
-            } else if last_indents.len() > 0 {
+            } else if !last_indents.is_empty() {
                 for x in &last_indents {
                     let pos = point(*x, offset_y);
                     builder.move_to(pos);
@@ -393,10 +395,10 @@ impl<M: InputModeKind> InputBaseState<M> {
         let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
         let mut last_end: Option<usize> = None;
         for range in ranges {
-            if let Some(last_end) = last_end {
-                if range.start < last_end {
-                    continue;
-                }
+            if let Some(last_end) = last_end
+                && range.start < last_end
+            {
+                continue;
             }
             last_end = Some(range.end);
             let text = match direction {
@@ -440,6 +442,29 @@ impl<M: InputModeKind> InputBaseState<M> {
 enum IndentDirection {
     Indent,
     Outdent,
+}
+
+/// Tab size only means something where there is more than one line to indent.
+impl<M: crate::input::MultiLineMode> InputBaseState<M> {
+    /// Set the tab size for the input.
+    #[doc(hidden)]
+    pub fn tab_size(mut self, tab: TabSize) -> Self {
+        match &mut self.mode {
+            LayoutMode::PlainText { tab: t, .. } => *t = tab,
+            LayoutMode::CodeEditor { tab: t, .. } => *t = tab,
+            _ => {}
+        }
+        self
+    }
+
+    pub fn set_tab_size(&mut self, tab: TabSize, cx: &mut Context<Self>) {
+        match &mut self.mode {
+            LayoutMode::PlainText { tab: value, .. }
+            | LayoutMode::CodeEditor { tab: value, .. } => *value = tab,
+            _ => {}
+        }
+        cx.notify();
+    }
 }
 
 #[cfg(test)]
@@ -486,28 +511,5 @@ mod tests {
         assert_eq!(tab.indent_count(&RopeSlice::from("  \tabc")), 6);
         assert_eq!(tab.indent_count(&RopeSlice::from(" \t abc  ")), 6);
         assert_eq!(tab.indent_count(&RopeSlice::from("abc")), 0);
-    }
-}
-
-/// Tab size only means something where there is more than one line to indent.
-impl<M: crate::input::MultiLineMode> InputBaseState<M> {
-    /// Set the tab size for the input.
-    #[doc(hidden)]
-    pub fn tab_size(mut self, tab: TabSize) -> Self {
-        match &mut self.mode {
-            LayoutMode::PlainText { tab: t, .. } => *t = tab,
-            LayoutMode::CodeEditor { tab: t, .. } => *t = tab,
-            _ => {}
-        }
-        self
-    }
-
-    pub fn set_tab_size(&mut self, tab: TabSize, cx: &mut Context<Self>) {
-        match &mut self.mode {
-            LayoutMode::PlainText { tab: value, .. }
-            | LayoutMode::CodeEditor { tab: value, .. } => *value = tab,
-            _ => {}
-        }
-        cx.notify();
     }
 }

@@ -882,7 +882,7 @@ unchanged. Baseline: 56 dependency violations, 132 (file, kind) names. Now: **2*
   cameras are frame contracts (the architecture's owner table), as Unreal's view target
   (`APlayerController::SetViewTarget`) and spectator pawn are Engine's.
 - **Default project content** is the host's: the editor binary hands over the default level
-  and the meshes it references (`engine_state::StarterContent`); `engine_backend` no longer
+  and the meshes it references (`engine_state::NewProjectContent`); `engine_backend` no longer
   embeds or copies mesh files, and the starter `Spinner` script names no class.
 - **`helio-bake`**: decided, baked lighting is a kind of its own (Helio's gate already lists
   it): its own plugin, like GI. Not moved here (see "Left").

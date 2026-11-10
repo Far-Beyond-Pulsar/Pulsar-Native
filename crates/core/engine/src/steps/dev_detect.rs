@@ -41,8 +41,8 @@ pub fn run(ctx: &mut InitContext) -> Result<(), InitError> {
         .collect();
     engine_context
         .store
-        .get_or_init::<engine_state::StarterContent>()
-        .set(engine_state::StarterContent { level, assets });
+        .get_or_init::<engine_state::NewProjectContent>()
+        .set(engine_state::NewProjectContent { level, assets });
 
     Ok(())
 }

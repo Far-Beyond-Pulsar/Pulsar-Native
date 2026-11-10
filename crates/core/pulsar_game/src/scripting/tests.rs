@@ -1533,6 +1533,9 @@ mod script_events {
                 .join("release")
                 .join(libloading::library_filename("pulsar_events_test_plugin"));
             std::sync::Mutex::new(
+                // SAFETY: loading runs the fixture's initializers; it is a test
+                // plugin built just above from this repository, and the
+                // library is kept for the process (never unloaded).
                 unsafe { libloading::Library::new(&path) }.expect("load the test plugin"),
             )
         })
@@ -1548,10 +1551,16 @@ mod script_events {
         let (mut game, _log) = standalone(project.path(), &level);
         game.tick_once();
         let lib = plugin().lock().unwrap();
+        // SAFETY: the fixture exports `fixture_attach_hub` with this signature
+        // (`pulsar_events/tests/fixtures/plugin`).
         let attach: libloading::Symbol<
             unsafe extern "C" fn(pulsar_events::gamma::ffi::RawBus) -> u32,
         > = unsafe { lib.get(b"fixture_attach_hub") }.unwrap();
+        // SAFETY: `attach`'s contract is a fresh `EventHub::export_raw()`, which
+        // this is; the hub outlives the plugin's use of it (`fixture_shutdown`
+        // below drops it first).
         assert_eq!(unsafe { attach(game.events.export_raw()) }, 0);
+        // SAFETY: the fixture exports `fixture_publish_hit` with this signature.
         let publish_hit: libloading::Symbol<extern "C" fn(u64, u64, f64) -> u32> =
             unsafe { lib.get(b"fixture_publish_hit") }.unwrap();
         let (a, b) = (entity(&game, "a"), entity(&game, "b"));
@@ -1568,6 +1577,7 @@ mod script_events {
                 Some(&Value::Entity(a))
             );
         }
+        // SAFETY: the fixture exports `fixture_shutdown` as `extern "C" fn()`.
         unsafe { lib.get::<extern "C" fn()>(b"fixture_shutdown").unwrap()() };
     }
 }

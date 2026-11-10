@@ -41,14 +41,7 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         ("sky", &["AtmosphereComponent"]),
         ("wind", &["WindComponent"]),
     ];
-    // Menu entries that add no object: the sky's "Sky Panoramas" adds
-    // assets to the project (a background download, not run here).
-    let no_object = ["sky_panoramas"];
-    let mut menu: Vec<&str> = expected.iter().map(|(kind, _)| *kind).collect();
-    menu.insert(
-        menu.iter().position(|kind| *kind == "sky").unwrap() + 1,
-        "sky_panoramas",
-    );
+    let menu: Vec<&str> = expected.iter().map(|(kind, _)| *kind).collect();
     assert_eq!(
         extend::create_entries()
             .into_iter()
@@ -58,7 +51,6 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         menu,
         "the Create menu, in order"
     );
-    assert!(no_object.iter().all(|kind| menu.contains(kind)));
     for &(kind, classes) in expected {
         let mut state = LevelEditorState::new();
         let result = extend::create(&mut state, kind);
@@ -77,6 +69,29 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
             "{kind}"
         );
     }
+}
+
+/// Content packs are their own seam, not Create entries (#1629): the sky's
+/// panoramas register as `StarterContent`, which the plugin catalog lists, and
+/// the Create menu holds only entries that add an object.
+#[test]
+fn starter_content_is_registered_through_its_own_seam() {
+    let packs: Vec<_> = extend::starter_contents()
+        .into_iter()
+        .map(|pack| pack.id)
+        .collect();
+    assert_eq!(packs, ["sky.deep_space_panoramas"]);
+    let pack = extend::starter_contents()[0];
+    assert_eq!(pack.sha256.len(), 64);
+    assert_eq!(pack.license, "CC0 1.0");
+    assert!(pack.archive_url.starts_with("https://"));
+    assert!(extend::create_entry("sky_panoramas").is_none());
+    assert!(
+        pulsar_plugins::contributions()
+            .iter()
+            .any(|c| c.category == "editor.starter_content" && c.id == "sky.deep_space_panoramas"),
+        "the plugin catalog lists the pack"
+    );
 }
 
 /// The plugins' tool modes follow Level Edit in the mode picker, and the

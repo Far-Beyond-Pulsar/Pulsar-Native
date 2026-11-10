@@ -206,10 +206,14 @@ impl<M: InputModeKind> Element for EditorScrollbar<M> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style::default();
-        style.position = Position::Absolute;
-        style.size.width = relative(1.).into();
-        style.size.height = relative(1.).into();
+        let style = Style {
+            position: Position::Absolute,
+            size: gpui::Size {
+                width: relative(1.).into(),
+                height: relative(1.).into(),
+            },
+            ..Style::default()
+        };
 
         (window.request_layout(style, [], cx), ())
     }
@@ -224,9 +228,7 @@ impl<M: InputModeKind> Element for EditorScrollbar<M> {
         cx: &mut App,
     ) -> Self::PrepaintState {
         let state = self.state.read(cx);
-        let Some(snapshot) = state.editor_scrollbar_snapshot.get() else {
-            return None;
-        };
+        let snapshot = state.editor_scrollbar_snapshot.get()?;
         let scroll_handle = state.scroll_handle.clone();
 
         if scroll_handle.offset() != snapshot.cursor_scroll_offset {
@@ -539,11 +541,9 @@ impl<M: InputModeKind> TextElement<M> {
 
             let mut selected_range = *selection;
             let mut cursor = selection.cursor_offset();
-            if is_active {
-                if let Some(ime_marked_range) = &state.ime_marked_range {
-                    selected_range = (ime_marked_range.end..ime_marked_range.end).into();
-                    cursor = ime_marked_range.end;
-                }
+            if is_active && let Some(ime_marked_range) = &state.ime_marked_range {
+                selected_range = (ime_marked_range.end..ime_marked_range.end).into();
+                cursor = ime_marked_range.end;
             }
             let is_selected_all = selected_range.len() == state.text.len();
 
@@ -678,7 +678,7 @@ impl<M: InputModeKind> TextElement<M> {
             bounds.size.height,
         );
 
-        bounds.origin = bounds.origin + scroll_offset;
+        bounds.origin += scroll_offset;
 
         (cursor_infos, scroll_offset, current_row)
     }
@@ -812,17 +812,17 @@ impl<M: InputModeKind> TextElement<M> {
         let mut rev_line_corners = line_corners.iter().rev().peekable();
         while let Some(corners) = rev_line_corners.next() {
             points.push(corners.top_left);
-            if let Some(next) = rev_line_corners.peek() {
-                if next.top_left.x != corners.top_left.x {
-                    points.push(point(next.top_left.x, corners.top_left.y));
-                }
+            if let Some(next) = rev_line_corners.peek()
+                && next.top_left.x != corners.top_left.x
+            {
+                points.push(point(next.top_left.x, corners.top_left.y));
             }
         }
 
         // print_points_as_svg_path(&line_corners, &points);
 
         let path_origin = bounds.origin + point(line_number_width, px(0.));
-        let first_p = *points.get(0).unwrap();
+        let first_p = *points.first().unwrap();
         let mut builder = gpui::PathBuilder::fill();
         builder.move_to(path_origin + first_p);
         for p in points.iter().skip(1) {
@@ -862,9 +862,7 @@ impl<M: InputModeKind> TextElement<M> {
         cx: &mut App,
     ) -> Option<Path<Pixels>> {
         let state = self.state.read(cx);
-        let Some(symbol_range) = state.extras.hover_symbol_range() else {
-            return None;
-        };
+        let symbol_range = state.extras.hover_symbol_range()?;
 
         Self::layout_match_range(symbol_range, last_layout, bounds)
     }
@@ -907,12 +905,11 @@ impl<M: InputModeKind> TextElement<M> {
 
             // IME composition replaces the active selection with a collapsed
             // caret, so it never paints a selection highlight.
-            if is_active {
-                if let Some(ime_marked_range) = &state.ime_marked_range {
-                    if !ime_marked_range.is_empty() {
-                        selected_range = (ime_marked_range.end..ime_marked_range.end).into();
-                    }
-                }
+            if is_active
+                && let Some(ime_marked_range) = &state.ime_marked_range
+                && !ime_marked_range.is_empty()
+            {
+                selected_range = (ime_marked_range.end..ime_marked_range.end).into();
             }
             if selected_range.is_empty() {
                 continue;
@@ -1451,7 +1448,7 @@ impl<M: InputModeKind> TextElement<M> {
             let mut line_has_background = false;
 
             for range in &line_item.wrapped_lines {
-                let line_runs = runs_for_range(runs, run_offset, &range);
+                let line_runs = runs_for_range(runs, run_offset, range);
                 let line_runs = if bg_segments.is_empty() {
                     line_runs
                 } else {
@@ -1522,7 +1519,7 @@ impl<M: InputModeKind> TextElement<M> {
                     .then(|| {
                         compose_decoration_collections(
                             Vec::new(),
-                            state.extras.decoration_layers().into_iter(),
+                            state.extras.decoration_layers(),
                             visible_byte_range,
                         )
                     })
@@ -1534,7 +1531,7 @@ impl<M: InputModeKind> TextElement<M> {
                 .then(|| {
                     compose_decoration_collections(
                         Vec::new(),
-                        state.extras.decoration_layers().into_iter(),
+                        state.extras.decoration_layers(),
                         visible_byte_range,
                     )
                 })
@@ -1634,7 +1631,7 @@ impl<M: InputModeKind> TextElement<M> {
         if !state.masked {
             styles = compose_decoration_collections(
                 styles,
-                state.extras.decoration_layers().into_iter(),
+                state.extras.decoration_layers(),
                 visible_byte_range.clone(),
             )
             .unwrap_or_default();
@@ -1719,10 +1716,7 @@ impl<M: InputModeKind> IntoElement for TextElement<M> {
 
 /// A debug function to print points as SVG path.
 #[allow(unused)]
-fn print_points_as_svg_path(
-    line_corners: &Vec<gpui::Corners<Pixels>>,
-    points: &Vec<Point<Pixels>>,
-) {
+fn print_points_as_svg_path(line_corners: &[gpui::Corners<Pixels>], points: &[Point<Pixels>]) {
     for corners in line_corners {
         println!(
             "tl: ({}, {}), tr: ({}, {}), bl: ({}, {}), br: ({}, {})",
@@ -1737,7 +1731,7 @@ fn print_points_as_svg_path(
         );
     }
 
-    if points.len() > 0 {
+    if !points.is_empty() {
         println!(
             "M{},{}",
             points[0].x.to_f32() as i32,
@@ -1853,7 +1847,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
         // Calculate the width of the line numbers
         let (line_number_width, line_number_len) =
-            Self::layout_line_numbers(&state, &text, text_size, &text_style, window);
+            Self::layout_line_numbers(state, &text, text_size, &text_style, window);
 
         let mut bounds = bounds;
         let wrap_width = if multi_line && state.soft_wrap {
@@ -1886,7 +1880,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let line_height = window.line_height();
 
         let (visible_range, visible_buffer_lines, visible_top) =
-            self.calculate_visible_range(&state, line_height, bounds.size.height);
+            self.calculate_visible_range(state, line_height, bounds.size.height);
         let visible_start_offset = state.text.line_start_offset(visible_range.start);
         let visible_end_offset = state
             .text
@@ -2002,11 +1996,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
         // Create shaped lines for whitespace indicators before layout
         let whitespace_indicators =
-            Self::layout_whitespace_indicators(&state, text_size, &text_style, window, cx);
+            Self::layout_whitespace_indicators(state, text_size, &text_style, window, cx);
 
         let lines = Self::layout_lines(
-            &state,
-            &display_text,
+            state,
+            display_text,
             &last_layout,
             text_size,
             &runs,
@@ -2124,9 +2118,9 @@ impl<M: InputModeKind> Element for TextElement<M> {
             .find(|info| info.is_active)
             .map(|info| info.bounds);
 
-        let search_match_paths = self.layout_search_matches(&last_layout, &mut bounds, cx);
+        let search_match_paths = self.layout_search_matches(&last_layout, &bounds, cx);
         let selection_paths = self.layout_selections(&last_layout, &mut bounds, window, cx);
-        let hover_highlight_path = self.layout_hover_highlight(&last_layout, &mut bounds, cx);
+        let hover_highlight_path = self.layout_hover_highlight(&last_layout, &bounds, cx);
         let document_color_paths =
             self.layout_document_colors(&document_colors, &last_layout, &bounds, cx);
 
@@ -2171,7 +2165,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 sub_lines.push(
                     window
                         .text_system()
-                        .shape_line(line_no, text_size, &runs, None),
+                        .shape_line(line_no, text_size, runs, None),
                 );
                 for _ in 0..line.wrapped_lines.len().saturating_sub(1) {
                     sub_lines.push(ShapedLine::default());
@@ -2280,13 +2274,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 let p = point(input_bounds.origin.x, origin.y + offset_y);
                 let height = line_height * lines.len() as f32;
                 // Paint the current line background
-                if is_active {
-                    if let Some(bg_color) = active_line_color {
-                        window.paint_quad(fill(
-                            Bounds::new(p, size(bounds.size.width, height)),
-                            bg_color,
-                        ));
-                    }
+                if is_active && let Some(bg_color) = active_line_color {
+                    window.paint_quad(fill(
+                        Bounds::new(p, size(bounds.size.width, height)),
+                        bg_color,
+                    ));
                 }
                 offset_y += height;
             }
@@ -2394,7 +2386,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             );
 
             // Paint the actual line
-            _ = line.paint(
+            line.paint(
                 p,
                 line_height,
                 text_align,
@@ -2469,16 +2461,14 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
                 let height = line_height * lines.len() as f32;
                 // paint active line number background
-                if is_active {
-                    if let Some(bg_color) = active_line_color {
-                        window.paint_quad(fill(
-                            Bounds::new(
-                                point(gutter_bounds.origin.x, p.y),
-                                size(gutter_bounds.size.width, height),
-                            ),
-                            bg_color,
-                        ));
-                    }
+                if is_active && let Some(bg_color) = active_line_color {
+                    window.paint_quad(fill(
+                        Bounds::new(
+                            point(gutter_bounds.origin.x, p.y),
+                            size(gutter_bounds.size.width, height),
+                        ),
+                        bg_color,
+                    ));
                 }
 
                 for line in lines {
@@ -2528,28 +2518,26 @@ impl<M: InputModeKind> Element for TextElement<M> {
         if let Some(hitbox) = prepaint.hover_definition_hitbox.as_ref()
             && !window.modifiers().alt
         {
-            window.set_cursor_style(gpui::CursorStyle::PointingHand, &hitbox);
+            window.set_cursor_style(gpui::CursorStyle::PointingHand, hitbox);
         }
 
         // Paint inline completion first line suffix (after cursor on same line)
-        if focused {
-            if let Some(first_line) = &prepaint.ghost_first_line {
-                let active_cursor = prepaint
-                    .cursor_infos_with_scroll()
-                    .into_iter()
-                    .find(|info| info.is_active);
-                if let (Some(cursor_info), Some(cursor_row_y)) = (active_cursor, cursor_row_y) {
-                    let cursor_bounds = cursor_info.bounds;
-                    let first_line_x = cursor_bounds.origin.x + cursor_bounds.size.width;
-                    let p = point(first_line_x, cursor_row_y);
+        if focused && let Some(first_line) = &prepaint.ghost_first_line {
+            let active_cursor = prepaint
+                .cursor_infos_with_scroll()
+                .into_iter()
+                .find(|info| info.is_active);
+            if let (Some(cursor_info), Some(cursor_row_y)) = (active_cursor, cursor_row_y) {
+                let cursor_bounds = cursor_info.bounds;
+                let first_line_x = cursor_bounds.origin.x + cursor_bounds.size.width;
+                let p = point(first_line_x, cursor_row_y);
 
-                    // Paint background to cover any existing text
-                    let bg_bounds = Bounds::new(p, size(first_line.width + px(4.), line_height));
-                    window.paint_quad(fill(bg_bounds, editor_background));
+                // Paint background to cover any existing text
+                let bg_bounds = Bounds::new(p, size(first_line.width + px(4.), line_height));
+                window.paint_quad(fill(bg_bounds, editor_background));
 
-                    // Paint first line completion text
-                    _ = first_line.paint(p, line_height, window, cx);
-                }
+                // Paint first line completion text
+                _ = first_line.paint(p, line_height, window, cx);
             }
         }
 
@@ -3181,6 +3169,7 @@ mod tests {
         );
 
         // Styles fully inside the ranges are unchanged.
+        #[allow(clippy::single_range_in_vec_init)] // a one-range slice is the value under test
         let clipped = clip_styles_to_ranges(styles.clone(), &[0..20]);
         assert_eq!(
             clipped

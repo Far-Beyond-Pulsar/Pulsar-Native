@@ -2,7 +2,8 @@ use anyhow::Result;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
-use std::sync::{Mutex, OnceLock};
+use parking_lot::Mutex; // cannot poison: a panic while holding the slot never wedges shutdown
+use std::sync::OnceLock;
 
 use crate::config::Config;
 
@@ -37,7 +38,7 @@ pub fn init_telemetry(config: &Config) -> Result<()> {
             .build();
 
         global::set_tracer_provider(provider.clone());
-        *tracer_provider_slot().lock().unwrap() = Some(provider);
+        *tracer_provider_slot().lock() = Some(provider);
 
         tracing::debug!("OpenTelemetry initialized successfully");
     } else {
@@ -50,7 +51,7 @@ pub fn init_telemetry(config: &Config) -> Result<()> {
 /// Shutdown telemetry gracefully
 pub async fn shutdown() {
     tracing::debug!("Shutting down telemetry");
-    if let Some(provider) = tracer_provider_slot().lock().unwrap().take() {
+    if let Some(provider) = tracer_provider_slot().lock().take() {
         if let Err(error) = provider.shutdown() {
             tracing::warn!(%error, "Failed to shut down OpenTelemetry tracer provider cleanly");
         }

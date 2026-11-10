@@ -643,7 +643,9 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     // DAG at the error ladder's nearest level, so edges and noisy detail differ).
     let d = rt_frame_2.difference(&nonrt);
     println!("RT vs NonRT: {d:?}");
-    let covered_rt = rt_frame_2.difference(&rt_frame_2).covered;
+    // `covered` counts the receiver's non-background pixels, so `d.covered` is
+    // the RT frame's coverage (`covered` above is the non-RT frame's).
+    let covered_rt = d.covered;
     assert!(
         covered_rt * 100 >= covered * 85 && covered_rt * 100 <= covered * 115,
         "coverage {covered_rt} vs {covered}"

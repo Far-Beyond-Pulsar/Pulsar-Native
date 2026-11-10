@@ -215,6 +215,20 @@ surface lifecycle, and preview status remain local to this panel. The level edit
 keeps its more involved surface lifecycle and frame pump policy local because they
 coordinate level loading, thumbnails, and viewport input (issue 1419).
 
+## Lighting models and the unlit stand-in
+
+A built-in preset chooses a lighting model by id (`Preset::Deferred` is
+`deferred`, `Preset::Forward` is `forward`, a model's own pipeline is
+`Preset::Model(..)`, e.g. HLFS as `helio_light_host::HLFS`). The lights plugin
+registers those models. When no installed plugin registered the chosen id (the
+lights plugin is disabled), `resolve_model` falls back to the spine's `unlit`
+model: its `UnlitPass` draws albedo + emissive over the background, so Forward
+and Deferred show their surfaces unlit instead of black or broken. Forward
+without the lights is an unlit G-buffer pipeline. The fallback is not silent:
+`Preset::model` logs one warning per missing id the first time a graph build
+takes it. Helio `docs/architecture/plugin-migration.md` (lighting models) has
+the design; `graph_parity` pins it.
+
 ## Known gaps
 
 - The engine default stays the legacy `helio.deferred`. `helio.deferred_graph` differs:

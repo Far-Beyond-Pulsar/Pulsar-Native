@@ -23,7 +23,7 @@
 //!
 //! This crate is GPUI-free so the game runtime can use it; editor plugins
 //! reach it through `plugin_editor_api`, which re-exports the asset API.
-
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 #![warn(clippy::undocumented_unsafe_blocks)]
 
 pub use gamma;

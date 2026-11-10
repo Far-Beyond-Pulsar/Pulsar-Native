@@ -90,12 +90,6 @@ impl GlobalState {
         self.selection_document_order = 1;
     }
 
-    pub(crate) fn next_selection_document_order(&mut self) -> u64 {
-        let order = self.selection_document_order;
-        self.selection_document_order = self.selection_document_order.wrapping_add(1);
-        order
-    }
-
     /// Returns the application menus.
     pub fn app_menus(&self) -> &[OwnedMenu] {
         &self.app_menus

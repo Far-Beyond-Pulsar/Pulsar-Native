@@ -48,7 +48,10 @@ mod windows_impl {
         counter: PDH_HCOUNTER,
     }
 
-    // Safety: PDH handles are accessed only from the single background metrics thread.
+    // SAFETY: the PDH query/counter handles are opaque tokens owned by this
+    // state (never closed once stored) and carry no thread affinity; every use
+    // of them happens while holding the `PDH` mutex, so they are never used
+    // from two threads at once.
     unsafe impl Send for PdhState {}
 
     static PDH: Mutex<Option<PdhState>> = Mutex::new(None);
@@ -59,6 +62,10 @@ mod windows_impl {
             return true;
         }
 
+        // SAFETY: plain PDH FFI calls under the `PDH` lock; `query` and
+        // `counter` are valid out-pointers to locals, the counter path is a
+        // NUL-terminated wide literal, and `query` is only used after
+        // `PdhOpenQueryW` succeeded (closed again if adding the counter fails).
         unsafe {
             let mut query = PDH_HQUERY::default();
             if PdhOpenQueryW(None, 0, &mut query) != 0 {
@@ -91,6 +98,11 @@ mod windows_impl {
             None => return HashMap::new(),
         };
 
+        // SAFETY: `state` holds the handles `ensure_init` created, valid while
+        // the `PDH` lock is held (it is, via `guard`). `buf` is `buf_size` bytes
+        // (8-aligned, see below), `item_count` is the count PDH wrote for it, and
+        // each `PDH_FMT_COUNTERVALUE_ITEM_W` and the `szName` string it points to
+        // live inside `buf`, which outlives every read.
         unsafe {
             // Second sample
             PdhCollectQueryData(state.query);
@@ -111,7 +123,9 @@ mod windows_impl {
                 return HashMap::new();
             }
 
-            let mut buf = vec![0u8; buf_size as usize];
+            // The items start with pointers and doubles, so the buffer must be
+            // 8-aligned, which a `Vec<u8>` does not promise.
+            let mut buf = vec![0u64; (buf_size as usize).div_ceil(8)];
             let status = PdhGetFormattedCounterArrayW(
                 state.counter,
                 PDH_FMT_DOUBLE,

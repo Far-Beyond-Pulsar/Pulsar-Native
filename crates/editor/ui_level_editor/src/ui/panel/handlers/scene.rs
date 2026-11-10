@@ -40,7 +40,7 @@ impl LevelEditorPanel {
     ) {
         let embedded = engine_state::EngineContext::global().and_then(|ctx| {
             ctx.store
-                .get_or_init::<engine_state::StarterContent>()
+                .get_or_init::<engine_state::NewProjectContent>()
                 .read()
                 .level
                 .as_ref()

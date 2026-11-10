@@ -100,6 +100,8 @@ pub fn query_vram_shared_mb() -> Option<u64> {
             CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,
             DXGI_QUERY_VIDEO_MEMORY_INFO,
         };
+        // SAFETY: DXGI COM calls on interfaces created just above and owned by
+        // this scope; `info` is a valid out-pointer for `QueryVideoMemoryInfo`.
         unsafe {
             let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
             let adapter3: IDXGIAdapter3 = factory.EnumAdapters1(0).ok()?.cast().ok()?;
@@ -158,6 +160,8 @@ fn platform_driver_version(_gpu_name: &str) -> Option<String> {
 #[cfg(target_os = "windows")]
 fn query_vram_total_mb() -> Option<u64> {
     use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1};
+    // SAFETY: DXGI COM calls on interfaces created just above and owned by
+    // this scope; the returned descriptor is plain data.
     unsafe {
         let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
         let adapter: IDXGIAdapter1 = factory.EnumAdapters1(0).ok()?;
@@ -178,6 +182,8 @@ fn platform_vram_used_mb() -> Option<u64> {
         CreateDXGIFactory1, IDXGIAdapter3, IDXGIFactory1, DXGI_MEMORY_SEGMENT_GROUP_LOCAL,
         DXGI_QUERY_VIDEO_MEMORY_INFO,
     };
+    // SAFETY: DXGI COM calls on interfaces created just above and owned by
+    // this scope; `info` is a valid out-pointer for `QueryVideoMemoryInfo`.
     unsafe {
         let factory: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
         let adapter3: IDXGIAdapter3 = factory.EnumAdapters1(0).ok()?.cast().ok()?;
