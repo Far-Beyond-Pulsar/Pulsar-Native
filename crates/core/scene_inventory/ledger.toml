@@ -217,9 +217,9 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/core/pulsar_game/src/scripting/driver.rs"
+file = "crates/core/pulsar_game/src/scripting/driver/reconcile.rs"
 count = 4
-owner = "core::pulsar_game::scripting::driver"
+owner = "core::pulsar_game::scripting::driver::reconcile"
 disposition = "keep: independent ClassInstance and ComponentOwner cursors (a placement changed, or its ClassInstance enabled/disabled); reference pattern for Phase 5"
 target_contract = "Phase 5; 04-state-notifications.md"
 test = "crates/core/pulsar_game/src/scripting/tests.rs (an_overflowed_class_instance_journal_rescans, a_replaced_world_is_rescanned, disabling_a_class_instance_stops_its_script_and_enabling_restarts_it)"

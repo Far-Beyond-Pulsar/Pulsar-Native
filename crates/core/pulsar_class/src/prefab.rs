@@ -398,6 +398,7 @@ mod tests {
             entries: Some(rename_w6_legacy),
             from_props: None,
             stale_props: &[],
+            retired_fields: &[],
         }
     }
 
