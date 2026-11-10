@@ -89,9 +89,9 @@ pub mod args; // Command-line argument parsing
 pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
 mod dev_bootstrap;
+pub mod discord; // Discord Rich Presence integration
 #[cfg(all(windows, target_arch = "aarch64"))]
 mod dxc; // Install and select DXC: Windows on ARM has no static DXC and FXC rejects our shaders
-pub mod discord; // Discord Rich Presence integration
 pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
 pub mod init; // Initialization dependency graph
