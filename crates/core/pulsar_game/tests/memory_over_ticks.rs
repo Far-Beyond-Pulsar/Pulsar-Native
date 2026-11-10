@@ -1,3 +1,4 @@
+#![deny(clippy::undocumented_unsafe_blocks)]
 //! Heap usage must not grow over ticks.
 //!
 //! This test binary installs a counting global allocator: every live heap

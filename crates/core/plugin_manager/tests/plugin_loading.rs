@@ -1,3 +1,4 @@
+#![deny(clippy::undocumented_unsafe_blocks)]
 //! Integration test: load a compiled plugin DLL through the real engine loader.
 //!
 //! Loads a purpose-built dynamic library fixture and verifies the real loader
@@ -46,9 +47,12 @@ fn plugin_path() -> PathBuf {
 fn loads_version_matches_engine() {
     let lib = PermanentLibrary::new(plugin_path()).expect("failed to load plugin fixture");
 
+    // SAFETY: `_plugin_version` is exported by `export_plugin!` as
+    // `extern "C" fn() -> VersionInfo`; the library is never unloaded.
     let version_fn: libloading::Symbol<unsafe extern "C" fn() -> VersionInfo> =
         unsafe { lib.get(b"_plugin_version") }.expect("_plugin_version symbol");
 
+    // SAFETY: the function takes no arguments and only builds a value.
     let plugin_version = unsafe { version_fn() };
     let engine_version = VersionInfo::current();
 
@@ -70,10 +74,13 @@ fn exports_required_symbols() {
     let lib = PermanentLibrary::new(plugin_path()).expect("failed to load plugin fixture");
 
     // _plugin_version
+    // SAFETY: the symbol is only looked up and never called; the declared type
+    // is the one `export_plugin!` generates.
     let _: libloading::Symbol<unsafe extern "C" fn() -> VersionInfo> =
         unsafe { lib.get(b"_plugin_version") }.expect("_plugin_version symbol");
 
     // _plugin_create
+    // SAFETY: as above: looked up, never called.
     let _: libloading::Symbol<
         unsafe extern "C" fn(
             *const std::ffi::c_void,
@@ -82,6 +89,7 @@ fn exports_required_symbols() {
     > = unsafe { lib.get(b"_plugin_create") }.expect("_plugin_create symbol");
 
     // _plugin_init_globals
+    // SAFETY: as above: looked up, never called.
     let _: libloading::Symbol<unsafe extern "C" fn(*const std::ffi::c_void)> =
         unsafe { lib.get(b"_plugin_init_globals") }.expect("_plugin_init_globals symbol");
 

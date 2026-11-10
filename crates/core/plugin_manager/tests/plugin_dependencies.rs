@@ -1,3 +1,4 @@
+#![deny(clippy::undocumented_unsafe_blocks)]
 //! Plugin dependencies across the real DLL boundary: manifests read from
 //! libraries built with `export_plugin_v2!`, load order, rejection, and a
 //! constructor that fails without unwinding into the host.
@@ -135,9 +136,13 @@ fn prepared_plugins_come_back_dependencies_first() {
 #[test]
 fn a_plugin_whose_constructor_fails_returns_none_instead_of_unwinding() {
     let library = PermanentLibrary::new(fixture("fixture_dep_base")).expect("load base");
+    // SAFETY: `_plugin_create` is exported by `export_plugin_v2!` with the
+    // `PluginCreate` signature; the library is never unloaded.
     let create: libloading::Symbol<plugin_editor_api::PluginCreate> =
         unsafe { library.get(b"_plugin_create") }.expect("_plugin_create symbol");
     // A null theme pointer used to panic across the FFI boundary.
+    // SAFETY: a null theme pointer is the case under test; the constructor
+    // checks for it and returns `None` before touching it.
     let created = unsafe { create(std::ptr::null()) };
     assert!(created.is_none());
 }
