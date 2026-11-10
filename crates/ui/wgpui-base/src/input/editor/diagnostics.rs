@@ -241,11 +241,11 @@ impl DiagnosticSet {
         let mut cursor = self.diagnostics.cursor::<DiagnosticSummary>(&());
         cursor.seek(&range.start, Bias::Left);
         std::iter::from_fn(move || {
-            if let Some(entry) = cursor.item() {
-                if entry.range.start < range.end {
-                    cursor.next();
-                    return Some(entry);
-                }
+            if let Some(entry) = cursor.item()
+                && entry.range.start < range.end
+            {
+                cursor.next();
+                return Some(entry);
             }
             None
         })

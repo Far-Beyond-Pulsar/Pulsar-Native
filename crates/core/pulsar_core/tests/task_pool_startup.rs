@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 static BYTES: AtomicIsize = AtomicIsize::new(0);
 static BLOCKS: AtomicIsize = AtomicIsize::new(0);
 struct Counting;
+// SAFETY: every method forwards the caller's layout and pointer unchanged to
+// `System`, which upholds the `GlobalAlloc` contract; the counters are atomics
+// and never allocate.
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = System.alloc(layout);

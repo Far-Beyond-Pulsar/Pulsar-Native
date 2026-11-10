@@ -73,7 +73,9 @@ pub fn render_grouped_view(
     let mut file_groups: Vec<Div> = Vec::new();
 
     for file_path in files {
-        let diagnostics = grouped.get(&file_path).unwrap();
+        let Some(diagnostics) = grouped.get(&file_path) else {
+            continue;
+        };
         let file_error_count = diagnostics
             .iter()
             .filter(|d| matches!(d.severity, DiagnosticSeverity::Error))

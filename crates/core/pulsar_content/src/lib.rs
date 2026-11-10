@@ -29,6 +29,7 @@
 //! | [`provider`] | [`ContentFsProvider`]: serves a pak through `engine_fs::virtual_fs`, so path-based loaders read it |
 //! | [`settings`] | [`ProjectSettings`]: `Pulsar/project.json` |
 //! | [`registry`] | [`AssetRegistry`]: `Pulsar/asset_registry.json` |
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 pub mod pak;
 pub mod provider;

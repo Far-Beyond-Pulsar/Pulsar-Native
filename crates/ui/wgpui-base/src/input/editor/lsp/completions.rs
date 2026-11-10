@@ -208,7 +208,7 @@ impl InputBaseState<EditorMode> {
             provider.completions(&self.text, new_offset, completion_context, window, cx);
         self.extras.context_menu_task = cx.spawn_in(window, async move |editor, cx| {
             let mut completions: Vec<CompletionItem> = vec![];
-            if let Some(provider_responses) = provider_responses.await.ok() {
+            if let Ok(provider_responses) = provider_responses.await {
                 match provider_responses {
                     CompletionResponse::Array(items) => completions.extend(items),
                     CompletionResponse::List(list) => completions.extend(list.items),

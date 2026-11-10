@@ -273,40 +273,38 @@ impl LayoutMode {
         window: &mut Window,
         cx: &mut Context<crate::input::InputBaseState<M>>,
     ) {
-        match &self {
-            LayoutMode::CodeEditor {
-                language,
-                highlighter,
-                highlighter_factory,
-                folding,
-                ..
-            } => {
-                if !update.force && highlighter.borrow().is_some() {
-                    return;
-                }
-
-                let mut highlighter_ref = highlighter.borrow_mut();
-                if highlighter_ref.is_none() {
-                    let Some(factory) = highlighter_factory else {
-                        return;
-                    };
-                    *highlighter_ref = factory(&language.name());
-                }
-
-                if highlighter_ref.is_none() {
-                    return;
-                }
-                drop(highlighter_ref);
-
-                let edit = replacement_input_edit(
-                    update.old_text,
-                    update.new_text,
-                    update.selected_range,
-                    update.change_text,
-                );
-                M::drive_highlighter(highlighter, edit, update.new_text, *folding, window, cx);
+        if let LayoutMode::CodeEditor {
+            language,
+            highlighter,
+            highlighter_factory,
+            folding,
+            ..
+        } = &self
+        {
+            if !update.force && highlighter.borrow().is_some() {
+                return;
             }
-            _ => {}
+
+            let mut highlighter_ref = highlighter.borrow_mut();
+            if highlighter_ref.is_none() {
+                let Some(factory) = highlighter_factory else {
+                    return;
+                };
+                *highlighter_ref = factory(&language.name());
+            }
+
+            if highlighter_ref.is_none() {
+                return;
+            }
+            drop(highlighter_ref);
+
+            let edit = replacement_input_edit(
+                update.old_text,
+                update.new_text,
+                update.selected_range,
+                update.change_text,
+            );
+            M::drive_highlighter(highlighter, edit, update.new_text, *folding, window, cx);
         }
     }
 
@@ -326,6 +324,7 @@ impl LayoutMode {
     }
 
     /// Get a reference to the highlighter (if available)
+    #[allow(clippy::type_complexity)] // callback signature; an alias would not clarify it
     pub(super) fn highlighter(&self) -> Option<&Rc<RefCell<Option<Box<dyn InputHighlighter>>>>> {
         match self {
             LayoutMode::CodeEditor { highlighter, .. } => Some(highlighter),
@@ -350,10 +349,9 @@ impl LayoutMode {
             highlighter_factory,
             ..
         } = self
+            && highlighter_factory.is_none()
         {
-            if highlighter_factory.is_none() {
-                *highlighter_factory = Some(factory);
-            }
+            *highlighter_factory = Some(factory);
         }
     }
 }
@@ -406,11 +404,11 @@ mod tests {
     #[test]
     fn test_code_editor() {
         let mode = LayoutMode::code_editor(Default::default());
-        assert_eq!(mode.line_number(), true);
-        assert_eq!(mode.has_indent_guides(), true);
+        assert!(mode.line_number());
+        assert!(mode.has_indent_guides());
         assert_eq!(mode.max_rows(), usize::MAX);
         assert_eq!(mode.min_rows(), 1);
-        assert_eq!(mode.is_folding(), true);
+        assert!(mode.is_folding());
 
         let mode = LayoutMode::CodeEditor {
             line_number: false,
@@ -426,12 +424,12 @@ mod tests {
             auto_close: false,
             smart_indent: false,
         };
-        assert_eq!(mode.line_number(), false);
-        assert_eq!(mode.has_indent_guides(), false);
+        assert!(!mode.line_number());
+        assert!(!mode.has_indent_guides());
         assert_eq!(mode.min_rows(), 1);
-        assert_eq!(mode.is_folding(), false);
-        assert_eq!(mode.is_auto_close(), false);
-        assert_eq!(mode.is_smart_indent(), false);
+        assert!(!mode.is_folding());
+        assert!(!mode.is_auto_close());
+        assert!(!mode.is_smart_indent());
     }
 
     #[test]
@@ -440,13 +438,13 @@ mod tests {
             tab: TabSize::default(),
             rows: 5,
         };
-        assert_eq!(mode.line_number(), false);
+        assert!(!mode.line_number());
         assert_eq!(mode.rows(), 5);
         assert_eq!(mode.max_rows(), usize::MAX);
         assert_eq!(mode.min_rows(), 1);
 
         let mode = LayoutMode::plain_text();
-        assert_eq!(mode.line_number(), false);
+        assert!(!mode.line_number());
         assert_eq!(mode.rows(), 1);
         assert_eq!(mode.min_rows(), 1);
     }
@@ -454,7 +452,7 @@ mod tests {
     #[test]
     fn test_auto_grow() {
         let mut mode = LayoutMode::auto_grow(2, 5);
-        assert_eq!(mode.line_number(), false);
+        assert!(!mode.line_number());
         assert_eq!(mode.rows(), 2);
         assert_eq!(mode.max_rows(), 5);
         assert_eq!(mode.min_rows(), 2);

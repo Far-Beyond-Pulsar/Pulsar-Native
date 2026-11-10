@@ -7,6 +7,8 @@
 ///
 /// The goal is to provide a clean, unified API where Editor only needs to know
 /// about `BufferPoint ↔ DisplayPoint` mapping, without worrying about internal wrap/fold complexity.
+// The facade keeps the upstream module name.
+#[allow(clippy::module_inception)]
 mod display_map;
 mod fold_map;
 mod folding;

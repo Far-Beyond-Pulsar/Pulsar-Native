@@ -116,6 +116,9 @@ fn set_safe_dll_search_path() {
     extern "system" {
         fn SetDefaultDllDirectories(directory_flags: u32) -> i32;
     }
+    // SAFETY: `SetDefaultDllDirectories` takes only a flag word and no
+    // pointers; the flags are valid `LOAD_LIBRARY_SEARCH_*` values. The result
+    // is ignored on purpose: failure only leaves the default search order.
     unsafe {
         SetDefaultDllDirectories(
             LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
@@ -260,16 +263,17 @@ impl PermanentLibrary {
         #[cfg(not(target_os = "linux"))]
         drop(file);
 
-        // SAFETY: We load the library normally using libloading::Library.
-        // The library must be a valid dynamic library for the current platform
-        // and architecture. libloading will return an error if it's not.
-        //
         // On Linux we load from /proc/self/fd/N so the kernel uses the same
         // inode that we hashed, preventing TOCTOU.
         let load_path: &std::path::Path = path;
         #[cfg(target_os = "linux")]
         let load_path: &std::path::Path = &fd_path;
 
+        // SAFETY: loading runs the library's initializers, which is the point:
+        // plugins are trusted engine extensions (the file was hashed and checked
+        // above, and on Linux is loaded through the same inode). A file that is
+        // not a valid dynamic library for this platform makes `Library::new`
+        // return an error instead.
         let library = unsafe { Library::new(load_path) }.map_err(|source| {
             PermanentLibraryLoadError::Load {
                 path: path.to_path_buf(),

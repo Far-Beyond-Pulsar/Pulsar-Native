@@ -54,6 +54,8 @@ pub fn collect(system: &sysinfo::System) -> MemorySnapshot {
 fn windows_collect(snap: &mut MemorySnapshot) {
     use windows::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
 
+    // SAFETY: `pi` is a valid out-buffer and `cb` is its exact size, as
+    // `GetPerformanceInfo` requires.
     unsafe {
         let mut pi = PERFORMANCE_INFORMATION::default();
         let cb = std::mem::size_of::<PERFORMANCE_INFORMATION>() as u32;

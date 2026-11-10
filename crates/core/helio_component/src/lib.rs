@@ -6,6 +6,7 @@
 //!
 //! No object kind's component lives here: every kind is its plugin's
 //! (meshes: `meshes_component`, materials: `materials_component`, ...).
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 pub mod asset_component;
 pub mod components;

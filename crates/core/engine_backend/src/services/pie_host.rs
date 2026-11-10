@@ -691,35 +691,35 @@ mod tests {
         let bridge = PieWorldBridge::new(Arc::new(RwLock::new(crate::scene::new_scene())));
         let userdata = &bridge as *const PieWorldBridge as *mut c_void;
 
-        // SAFETY (test): userdata points at `bridge`, alive for this scope.
+        // SAFETY: (test) userdata points at `bridge`, alive for this scope.
         let first = unsafe { pie_lock_world(userdata) };
         assert!(!first.is_null(), "first slice must be granted");
 
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         let second = unsafe { pie_lock_world(userdata) };
         assert!(
             second.is_null(),
             "a second slice while one is open must be REFUSED, not granted"
         );
 
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         let third = unsafe { pie_lock_world(userdata) };
         assert!(
             !third.is_null(),
             "after unlock a new slice must be grantable"
         );
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
 
         // Idempotent unlock: no panic / no wedge.
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         let fourth = unsafe { pie_lock_world(userdata) };
         assert!(!fourth.is_null());
-        // SAFETY (test): same `userdata` as above.
+        // SAFETY: (test) same `userdata` as above.
         unsafe { pie_unlock_world(userdata) };
     }
 
@@ -744,7 +744,7 @@ mod tests {
         assert!(!ptr.is_null());
         // The guest would write here; reading the spawned entity through the
         // raw pointer proves it aliases the host's store.
-        // SAFETY (test): `ptr` is the non-null pointer `lock` just returned; the
+        // SAFETY: (test) `ptr` is the non-null pointer `lock` just returned; the
         // slice stays open (and `store` alive) until `unlock` below.
         let name = unsafe {
             (*ptr)

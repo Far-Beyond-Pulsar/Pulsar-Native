@@ -32,6 +32,8 @@ mod element;
 mod highlighting;
 #[path = "editor/indent.rs"]
 mod indent;
+// The state module keeps the upstream module name.
+#[allow(clippy::module_inception)]
 mod input;
 #[path = "base/kind.rs"]
 mod kind;

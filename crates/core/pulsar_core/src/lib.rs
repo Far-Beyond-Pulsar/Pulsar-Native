@@ -1,3 +1,6 @@
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 pub mod event;
 pub mod task;
 pub mod tick;
