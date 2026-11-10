@@ -1,4 +1,6 @@
 //! Multi-user status bar indicator with profile picture display
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+
 
 mod components;
 mod screen;

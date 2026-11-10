@@ -274,9 +274,13 @@ struct Region {
     ring_capacity: u64,
 }
 
-// SAFETY: the region is only accessed through atomics in the header and
-// through the SPSC protocol for the ring (disjoint byte ranges per side).
+// SAFETY: `ptr` points into a mapping that outlives the `Region` (the owner
+// keeps the map alongside it), and the region is only accessed through
+// atomics in the header and through the SPSC protocol for the ring (disjoint
+// byte ranges per side), so moving it to another thread is sound.
 unsafe impl Send for Region {}
+// SAFETY: as for `Send`: concurrent `&Region` use touches shared bytes only
+// through the header atomics, and the ring through the SPSC protocol.
 unsafe impl Sync for Region {}
 
 impl Region {
@@ -868,18 +872,24 @@ mod tests {
             .unwrap();
         let cap = 4096u64;
         file.set_len(HEADER_SIZE as u64 + cap).unwrap();
+        // SAFETY: the file is private to this test; the other mappings of it are
+        // below and reach it only through the header atomics and the SPSC ring.
         let mut producer_map = unsafe { MmapMut::map_mut(&file).unwrap() };
         let producer = Region {
             ptr: producer_map.as_mut_ptr(),
             ring_capacity: cap,
         };
+        // SAFETY: the mapping is `HEADER_SIZE + cap` bytes, page aligned, and no
+        // other thread is using it yet.
         unsafe { &mut *(producer_map.as_mut_ptr() as *mut Header) }.ring_capacity = cap;
+        // SAFETY: as for `producer_map`.
         let mut consumer_map = unsafe { MmapMut::map_mut(&file).unwrap() };
         let consumer = TargetConnection {
             region: Region {
                 ptr: consumer_map.as_mut_ptr(),
                 ring_capacity: cap,
             },
+            // SAFETY: as for `producer_map`.
             _map: unsafe { MmapMut::map_mut(&file).unwrap() },
             pid: 0,
             token: 0,

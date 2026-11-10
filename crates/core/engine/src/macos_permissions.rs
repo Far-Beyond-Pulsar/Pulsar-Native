@@ -7,6 +7,8 @@ use std::{fs, path::PathBuf};
 
 #[cfg(target_os = "macos")]
 #[link(name = "ApplicationServices", kind = "framework")]
+// SAFETY: the declaration matches `AXUIElementCreateApplication(pid_t)` returning
+// an `AXUIElementRef`, which the framework exports.
 unsafe extern "C" {
     fn AXUIElementCreateApplication(pid: i32) -> *mut core::ffi::c_void;
 }
@@ -15,6 +17,11 @@ unsafe extern "C" {
 fn ax_is_process_trusted(_prompt: bool) -> bool {
     use std::process;
 
+    // SAFETY: `AXUIElementCreateApplication` is a plain ApplicationServices call
+    // taking this process's own pid. A non-null result is an owned (+1) Core
+    // Foundation reference, released exactly once with `CFRelease`; a null
+    // result is never dereferenced or released. (macOS only; not compiled on
+    // this machine.)
     unsafe {
         let pid = process::id() as i32;
         let app_ref = AXUIElementCreateApplication(pid);

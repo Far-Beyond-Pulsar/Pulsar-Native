@@ -10,7 +10,10 @@
 //! - **Event channels** — `EventWriter<T>` / `EventReader<T>`.
 //! - **Game time** — `GameTime` and `DeltaTime`.
 
+#![deny(clippy::undocumented_unsafe_blocks)]
+
 pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool, TickMode};
+
 // Generated actors address the live world through `pulsar_world_registry`'s
 // dispatcher.
 pub use pulsar_scenedb::{

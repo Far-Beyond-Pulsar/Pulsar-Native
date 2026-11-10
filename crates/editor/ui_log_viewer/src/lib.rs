@@ -1,5 +1,7 @@
 //! Mission Control - Engine monitoring and logging interface
 
+#![deny(clippy::undocumented_unsafe_blocks)]
+
 rust_i18n::i18n!("locales", fallback = "en");
 
 mod components;

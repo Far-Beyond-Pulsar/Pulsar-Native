@@ -2,7 +2,16 @@
 
 use gpui::RenderImage;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+/// Lock policy: recover from poisoning. This is a plain URL -> image cache; a
+/// panicking holder cannot leave it inconsistent, so keep serving it.
+fn lock<K, V>(m: &Mutex<HashMap<K, V>>) -> MutexGuard<'_, HashMap<K, V>> {
+    m.lock().unwrap_or_else(|poisoned| {
+        tracing::error!("avatar cache mutex was poisoned by a panic; recovering");
+        poisoned.into_inner()
+    })
+}
 
 /// Global avatar cache - stores fetched and decoded profile pictures
 pub struct AvatarCache {
@@ -18,17 +27,17 @@ impl AvatarCache {
 
     /// Get a cached avatar image by URL
     pub fn get(&self, url: &str) -> Option<Arc<RenderImage>> {
-        self.cache.lock().unwrap().get(url).cloned()
+        lock(&self.cache).get(url).cloned()
     }
 
     /// Store a fetched avatar image
     pub fn insert(&self, url: String, image: Arc<RenderImage>) {
-        self.cache.lock().unwrap().insert(url, image);
+        lock(&self.cache).insert(url, image);
     }
 
     /// Check if URL is currently being fetched (to avoid duplicate requests)
     pub fn is_fetching(&self, url: &str) -> bool {
-        self.cache.lock().unwrap().contains_key(url)
+        lock(&self.cache).contains_key(url)
     }
 }
 
@@ -104,5 +113,22 @@ mod tests {
         let clone = cache.clone();
         clone.insert("https://a.test/1.png".into(), image());
         assert!(cache.get("https://a.test/1.png").is_some());
+    }
+
+    #[test]
+    fn cache_survives_a_panic_while_the_lock_is_held() {
+        let cache = AvatarCache::new();
+        let poisoner = Arc::clone(&cache.cache);
+        let result = std::thread::spawn(move || {
+            let _guard = poisoner.lock().unwrap();
+            panic!("poison the cache");
+        })
+        .join();
+        assert!(result.is_err());
+        assert!(cache.cache.is_poisoned());
+
+        cache.insert("https://a.test/1.png".into(), image());
+        assert!(cache.get("https://a.test/1.png").is_some());
+        assert!(cache.is_fetching("https://a.test/1.png"));
     }
 }

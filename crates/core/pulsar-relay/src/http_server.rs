@@ -333,7 +333,14 @@ async fn get_session(
             message: "Session not found".to_string(),
         })?;
 
-    Ok(Json(serde_json::to_value(session).unwrap()))
+    let value = serde_json::to_value(session).map_err(|error| {
+        tracing::error!(%error, "Failed to serialize session");
+        ErrorResponse {
+            error: "internal_error".to_string(),
+            message: "Failed to serialize session".to_string(),
+        }
+    })?;
+    Ok(Json(value))
 }
 
 async fn websocket_handler(

@@ -77,6 +77,8 @@
 //! }
 //! ```
 
+#![deny(clippy::undocumented_unsafe_blocks)]
+
 // ── Modules ──────────────────────────────────────────────────────────────────
 
 pub mod actions;

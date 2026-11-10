@@ -337,6 +337,10 @@ impl EmbeddedGame {
                 "PiE: v2 context carries no shared_world token (host too old?)".to_string(),
             );
         } else {
+            // SAFETY: `shared_world` is non-null (checked above) and, per the
+            // ABI v2 contract, a token the host made with `Arc::into_raw` on a
+            // clone of an `Arc<RwLock<SceneDb>>` of this same type, handing over
+            // one strong count that this `from_raw` reclaims exactly once.
             let host_store = unsafe {
                 Arc::from_raw(ctx.shared_world as *const RwLock<pulsar_scenedb::SceneDb>)
             };

@@ -14,6 +14,8 @@
 //! }
 //! ```
 
+#![deny(clippy::undocumented_unsafe_blocks)]
+
 pub mod database;
 pub mod events;
 pub mod macros;

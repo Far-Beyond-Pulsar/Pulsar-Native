@@ -493,8 +493,7 @@ impl RendezvousCoordinator {
 
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+            .map_or(0, |d| d.as_secs());
 
         let msg = ServerMessage::ChatMessage {
             session_id: sid.to_string(),

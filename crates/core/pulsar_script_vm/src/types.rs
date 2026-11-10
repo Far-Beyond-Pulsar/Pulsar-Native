@@ -198,12 +198,16 @@ impl TypeBinding {
                     .map(|v| Box::new(v) as Box<dyn Any>)
                     .ok_or_else(|| format!("expected {}, got {}", T::script_type(), value.kind()))
             },
-            // SAFETY (both): upheld by the callers of `TypeBinding::load`/`store`.
+            // SAFETY: upheld by the callers of `TypeBinding::load`, which must
+            // pass a live, aligned `T` (see its `# Safety`).
             load: |ptr| unsafe { (*ptr.cast::<T>()).clone().into_value() },
             store: |ptr, value| {
                 let value = T::from_value(value).ok_or_else(|| {
                     format!("expected {}, got {}", T::script_type(), value.kind())
                 })?;
+                // SAFETY: upheld by the callers of `TypeBinding::store`, which
+                // must pass a live, aligned, uniquely borrowed `T`; the old
+                // value is dropped by the assignment.
                 unsafe { *ptr.cast::<T>() = value };
                 Ok(())
             },
@@ -782,13 +786,17 @@ impl TypeBinding {
             script: script::<T>,
             to_value: to_value::<T>,
             from_value: from_value::<T>,
-            // SAFETY (both): upheld by the callers of `TypeBinding::load`/`store`.
+            // SAFETY: upheld by the callers of `TypeBinding::load`, which must
+            // pass a live, aligned `T` (see its `# Safety`).
             load: |ptr| to_value::<T>(unsafe { &*ptr.cast::<T>() }),
             store: |ptr, value| {
                 let boxed = from_value::<T>(value)?;
                 let value = *boxed
                     .downcast::<T>()
                     .expect("from_value returns its own type");
+                // SAFETY: upheld by the callers of `TypeBinding::store`, which
+                // must pass a live, aligned, uniquely borrowed `T`; the old
+                // value is dropped by the assignment.
                 unsafe { *ptr.cast::<T>() = value };
                 Ok(())
             },
