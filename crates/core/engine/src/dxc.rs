@@ -89,6 +89,9 @@ fn ensure() -> Result<PathBuf> {
     if has_dlls(&cache) && cache.join(MARKER).is_file() {
         return Ok(cache);
     }
+    if !confirm_download() {
+        bail!("The download was declined, and Pulsar will not run on the legacy shader compiler.");
+    }
     println!(
         "Installing DirectX Shader Compiler {DXC_TAG} (one time, {} MB)...",
         DXC_ZIP_BYTES / 1_000_000
@@ -96,6 +99,23 @@ fn ensure() -> Result<PathBuf> {
     install(&cache).with_context(|| format!("installing DXC {DXC_TAG}"))?;
     println!("DirectX Shader Compiler installed to {}", cache.display());
     Ok(cache)
+}
+
+/// Ask before downloading anything. One time: afterwards the cache is used.
+fn confirm_download() -> bool {
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Info)
+        .set_title("Pulsar Engine: one-time setup")
+        .set_description(format!(
+            "Pulsar needs Microsoft's DirectX Shader Compiler ({DXC_TAG}) to run on this PC.\n\n\
+             It will be downloaded once (about {} MB) from github.com/microsoft/DirectXShaderCompiler, \
+             checked against its published SHA-256 and kept in your local app data folder.\n\n\
+             Download it now?",
+            DXC_ZIP_BYTES / 1_000_000
+        ))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::Yes
 }
 
 fn has_dlls(dir: &Path) -> bool {
