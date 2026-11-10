@@ -32,6 +32,7 @@ pub mod composite_editor;
 pub mod composite_model;
 pub mod editor_tools;
 pub mod file_utils;
+pub mod thumbnails;
 pub mod generic_window;
 pub mod inspector;
 pub mod inspector_model;

@@ -127,8 +127,9 @@ pub fn notify_asset_changed(world: &mut World, path: &std::path::Path) -> usize 
 pub struct PossessionContext<'a> {
     /// The project's root directory.
     pub project_root: &'a std::path::Path,
-    /// The level's gameplay roles (`engine_fs::world_roles`).
-    pub roles: &'a engine_fs::world_roles::WorldRoles,
+    /// The level's roles and its `world_settings` (`pulsar_traits::WorldRoles`),
+    /// where a plugin reads its own settings (`WorldRoles::setting`).
+    pub roles: &'a pulsar_traits::WorldRoles,
 }
 
 /// A plugin's part in a game session and in the local player's possession of

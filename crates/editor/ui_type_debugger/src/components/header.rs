@@ -1,4 +1,4 @@
-use engine_fs::UserTypeInfo as TypeInfo;
+use crate::utils::types::TypeInfo;
 use gpui::{prelude::*, *};
 use plugin_editor_api::FileTypeId;
 use rust_i18n::t;

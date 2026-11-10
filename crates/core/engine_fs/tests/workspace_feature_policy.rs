@@ -110,22 +110,23 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
     );
 
     let expected = BTreeMap::from([
-        ("agent_chat_tools".to_owned(), features(&["editor"])),
+        ("agent_chat_tools".to_owned(), features(&[])),
         ("asset_import".to_owned(), features(&[])),
         ("engine_backend".to_owned(), features(&[])),
-        ("engine_state".to_owned(), features(&["editor"])),
+        ("engine_state".to_owned(), features(&[])),
         ("pulsar_class".to_owned(), features(&[])),
         ("pulsar_content".to_owned(), features(&[])),
         ("pulsar_game".to_owned(), features(&[])),
         ("pulsar_scene".to_owned(), features(&[])),
         ("pulsar_std".to_owned(), features(&[])),
-        ("ui_common".to_owned(), features(&["editor"])),
-        ("ui_file_manager".to_owned(), features(&["editor"])),
+        ("pulsar_traits".to_owned(), features(&[])),
+        ("ui_common".to_owned(), features(&[])),
+        ("ui_file_manager".to_owned(), features(&[])),
         ("ui_git_manager".to_owned(), features(&[])),
         ("ui_level_editor".to_owned(), features(&[])),
-        ("ui_loading_screen".to_owned(), features(&["editor"])),
+        ("ui_loading_screen".to_owned(), features(&[])),
         ("ui_multiplayer".to_owned(), features(&[])),
-        ("ui_type_debugger".to_owned(), features(&["editor"])),
+        ("ui_type_debugger".to_owned(), features(&[])),
     ]);
 
     let mut actual = BTreeMap::new();

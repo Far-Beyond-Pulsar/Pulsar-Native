@@ -103,7 +103,6 @@ pub(super) struct DevSnapshot {
     pub uri_project_path: String,
     pub window_count: usize,
     pub renderer_count: usize,
-    pub has_user_types: bool,
     pub verbose_launch: bool,
     pub default_level_size: String,
     pub has_discord: bool,
@@ -139,7 +138,6 @@ impl DevSnapshot {
             uri_project_path: NONE.into(),
             window_count: 0,
             renderer_count: 0,
-            has_user_types: false,
             verbose_launch: false,
             default_level_size: NONE.into(),
             has_discord: false,
@@ -212,11 +210,6 @@ impl DevSnapshot {
             .get_or_init::<Option<window_manager::WindowManager>>()
             .read()
             .is_some();
-        let has_user_types = ctx
-            .store
-            .get_or_init::<Option<Arc<engine_fs::UserTypeRegistry>>>()
-            .read()
-            .is_some();
 
         let mut window_rows: Vec<String> = ctx
             .windows
@@ -244,7 +237,6 @@ impl DevSnapshot {
             uri_project_path,
             window_count: ctx.windows.len(),
             renderer_count: ctx.renderers.window_ids().len(),
-            has_user_types,
             verbose_launch,
             default_level_size,
             has_discord,

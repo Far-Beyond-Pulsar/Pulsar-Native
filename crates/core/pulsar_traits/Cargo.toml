@@ -1,0 +1,25 @@
+[package]
+name = "pulsar_traits"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Files, the read-only mounts the engine's and plugins' traits are served from.
+engine_fs = { workspace = true }
+# Roles, implementer sources and native implementers are origin-gated contributions.
+pulsar_plugins = { workspace = true }
+inventory = { workspace = true }
+# The published trait snapshot, and the component methods native implementers bind onto.
+pulsar_reflection = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

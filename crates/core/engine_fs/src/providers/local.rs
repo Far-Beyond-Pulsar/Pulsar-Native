@@ -444,6 +444,42 @@ impl FsProvider for LocalFsProvider {
         self.create_executable_file_exclusive(path, content)
     }
 
+    fn append_file(&self, path: &Path, content: &[u8]) -> Result<()> {
+        self.check_write_allowed(path)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        file.write_all(content)?;
+        events::emit(path.to_path_buf(), FsChangeKind::Modified);
+        Ok(())
+    }
+
+    fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+        self.check_read_allowed(from)?;
+        self.check_write_allowed(to)?;
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(from, to)?;
+        events::emit(to.to_path_buf(), FsChangeKind::Modified);
+        Ok(())
+    }
+
+    fn open_read(&self, path: &Path) -> Result<Box<dyn super::ReadSeek>> {
+        self.check_read_allowed(path)?;
+        Ok(Box::new(std::fs::File::open(path)?))
+    }
+
+    fn open_write_stream(&self, path: &Path) -> Result<Option<Box<dyn Write + Send>>> {
+        self.check_write_allowed(path)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let file = std::fs::File::create(path)?;
+        Ok(Some(Box::new(std::io::BufWriter::new(file))))
+    }
+
     fn delete_path(&self, path: &Path) -> Result<()> {
         self.check_write_allowed(path)?;
         if path.is_dir() {

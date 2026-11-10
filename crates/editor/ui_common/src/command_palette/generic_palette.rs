@@ -609,7 +609,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         crate::asset_thumbnails::register_thumbnail_renderers();
         if self.thumbnails.contains_key(&path)
             || self.thumbnail_requested.contains(&path)
-            || !engine_fs::thumbnails::supports_thumbnail(&path)
+            || !crate::thumbnails::supports_thumbnail(&path)
         {
             return;
         }
@@ -618,7 +618,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         let cache_root = self.thumbnail_cache_root.clone();
         let request_path = path.clone();
         let (tx, rx) = smol::channel::bounded(1);
-        engine_fs::thumbnails::service().request(path.clone(), cache_root, move |image| {
+        crate::thumbnails::service().request(path.clone(), cache_root, move |image| {
             let _ = smol::block_on(tx.send(image));
         });
         cx.spawn(async move |this, cx| {

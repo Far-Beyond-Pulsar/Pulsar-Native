@@ -340,7 +340,7 @@ impl AssetPicker {
         let (tx, rx) = smol::channel::bounded::<Option<Arc<image::RgbaImage>>>(1);
 
         crate::asset_thumbnails::register_thumbnail_renderers();
-        engine_fs::thumbnails::service().request(abs_path, cache_root, move |rgba| {
+        crate::thumbnails::service().request(abs_path, cache_root, move |rgba| {
             // The picker may have closed; its thumbnail is then not wanted.
             let _ = smol::block_on(tx.send(rgba));
         });

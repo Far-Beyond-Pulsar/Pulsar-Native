@@ -141,8 +141,10 @@ pub struct ScriptDriver {
     globals_started: bool,
     /// The Blueprints the level assigned to the engine roles; started with
     /// the globals (see `start_roles`).
-    world_roles: engine_fs::world_roles::WorldRoles,
+    world_roles: pulsar_traits::WorldRoles,
     roles_started: bool,
+    /// `GameBegan` is announced after the start hooks queued with the roles.
+    game_began_pending: bool,
     /// Trait hooks of role entities, run after `begin_play`.
     role_hooks: Vec<RoleHook>,
     /// The entities this session spawned for the roles; despawned when it
@@ -211,8 +213,9 @@ impl ScriptDriver {
             templates: HashMap::new(),
             globals: Vec::new(),
             globals_started: false,
-            world_roles: engine_fs::world_roles::WorldRoles::default(),
+            world_roles: pulsar_traits::WorldRoles::default(),
             roles_started: false,
+            game_began_pending: false,
             role_hooks: Vec::new(),
             role_entities: Vec::new(),
             pending_possession: None,

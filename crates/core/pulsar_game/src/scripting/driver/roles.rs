@@ -1,25 +1,26 @@
-//! Engine roles (game mode, game state, player controller, character), local
-//! player possession and trait hooks. Entry points: `start_roles`,
-//! `run_role_hooks`, `advance_possession`.
+//! Roles (every registered role: the engine's game mode, game state, player
+//! controller and character, and any plugin's), local player possession and
+//! trait hooks. Entry points: `start_roles`, `run_role_hooks`,
+//! `advance_possession`.
 
 use engine_backend::scene::SceneWorldExt;
-use pulsar_class::ClassInstance;
 use pulsar_scenedb::{Entity, World};
 use pulsar_world_registry::pulsar_scene_model::attachments;
-use serde_json::Value;
 
 use super::{DriverReport, ScriptDriver};
 use crate::roles::RoleEntity;
 use crate::scripting::commands::WorldCommand;
-use crate::scripting::traits::{HookOutcome, TraitCheck};
+use crate::scripting::traits::{DispatchTarget, HookOutcome, ScriptTarget, TraitCheck};
 
-// ---- engine roles ---------------------------------------------------------------
+// ---- roles ----------------------------------------------------------------------
 //
-// A level assigns Blueprints to the engine roles (`engine_fs::world_roles`):
-// game mode, game state, player controller, player character. Each role is a
-// trait (`GameMode`, ...) whose methods are event nodes the Blueprint places.
+// A level assigns implementers to the registered roles
+// (`pulsar_traits::roles`): the engine's game mode, game state, player
+// controller and player character, and any plugin's. Each role is a trait
+// (`GameMode`, ...) whose methods its implementer provides.
 //
-// At the session's first script phase every usable role is spawned as an
+// At the session's first script phase every usable role is spawned, in the
+// registry's order, as an
 // **entity of its class** through the world-command path `world::spawn` uses
 // (`apply_spawn`), so a role has what any bound object has: an entity, a
 // `ClassInstance`, `Self`-scoped subscriptions on its own channel. The entities
@@ -27,24 +28,33 @@ use crate::scripting::traits::{HookOutcome, TraitCheck};
 // despawns them in `end_play_all`, and a `RoleEntity` stamp lets a later
 // session over the same world re-bind a leftover instead of duplicating it.
 //
-// The game mode, game state and controller are spawned (and their scripts
-// started, in that order) within the phase; the character's spawn is queued
-// like a script's, so it runs a frame later and possession follows then. The
-// trait methods are called through the trait, see [`super::traits`].
+// A role that starts `Now` (the game mode, game state and controller) is
+// spawned and its script started within the phase; one that starts at the
+// `EndOfFrame` (the character) is queued like a script's spawn, so it runs a
+// frame later and possession follows then. Every spawn is announced on the
+// hub (`RoleSpawned`), and `GameBegan` follows the engine's start hooks, so a
+// plugin's role reacts to play wherever the engine's do. The engine's four
+// get their session behaviour here (hooks, possession); the trait methods are
+// called through the one dispatcher, see [`super::super::traits`].
 
-use engine_fs::world_roles::EngineRole;
+use pulsar_traits::builtin::{
+    GAME_MODE_ROLE, GAME_MODE_TRAIT_ID, GAME_STATE_ROLE, GAME_STATE_TRAIT_ID,
+    PLAYER_CHARACTER_ROLE, PLAYER_CHARACTER_TRAIT_ID, PLAYER_CONTROLLER_ROLE,
+    PLAYER_CONTROLLER_TRAIT_ID,
+};
+use pulsar_traits::roles::RoleStart;
 
 /// A trait method to call on a role entity once its script has begun.
 pub(super) struct RoleHook {
     entity: Entity,
-    role: EngineRole,
+    trait_id: &'static str,
     method: &'static str,
     args: Vec<pulsar_script_vm::Value>,
 }
 
 /// An entity this session spawned for a role.
 pub(super) struct SessionRole {
-    role: EngineRole,
+    role: &'static str,
     entity: Entity,
 }
 
@@ -74,9 +84,9 @@ pub(super) struct PossessionAttachment;
 pub(super) const LOCAL_PLAYER: i64 = crate::view_target::LOCAL_PLAYER;
 
 impl ScriptDriver {
-    /// The Blueprints the level assigned to the engine roles. Takes effect
-    /// when the session's first script phase runs.
-    pub fn set_world_roles(&mut self, roles: engine_fs::world_roles::WorldRoles) {
+    /// The implementers the level assigned to the roles. Takes effect when
+    /// the session's first script phase runs.
+    pub fn set_world_roles(&mut self, roles: pulsar_traits::WorldRoles) {
         self.world_roles = roles;
     }
 
@@ -125,16 +135,16 @@ impl ScriptDriver {
         self.possessed.as_ref().map(|possessed| possessed.pawn)
     }
 
-    /// The entities this session spawned for the engine roles.
-    pub fn role_entities(&self) -> Vec<(EngineRole, Entity)> {
+    /// The entities this session spawned for the roles, by role id.
+    pub fn role_entities(&self) -> Vec<(&'static str, Entity)> {
         self.role_entities
             .iter()
             .map(|owned| (owned.role, owned.entity))
             .collect()
     }
 
-    /// The entity of `role`, if the session spawned one.
-    pub fn role_entity(&self, role: EngineRole) -> Option<Entity> {
+    /// The entity of the role `role` (its id), if the session spawned one.
+    pub fn role_entity(&self, role: &str) -> Option<Entity> {
         self.role_entities
             .iter()
             .find(|owned| owned.role == role)
@@ -176,32 +186,51 @@ impl ScriptDriver {
         self.traits.check(&self.project_root, &entry, trait_ref)
     }
 
-    /// Spawn the role entities: game mode, game state, then the local
-    /// player's controller and character. An unset role is skipped with a
-    /// log line.
+    /// Spawn the role entities, in the registry's order: the game mode, game
+    /// state and the local player's controller now, their character at the
+    /// end of the frame, then any plugin's. An unset role is skipped with a
+    /// log line. Each spawn is announced on the hub, then the engine's start
+    /// hooks are queued and `GameBegan` follows them.
     pub(super) fn start_roles(&mut self, world: &mut World, report: &mut DriverReport) {
         let roles = self.world_roles.clone();
         // Even with no roles: an entity a previous session left must not linger.
         self.adopt_leftover_roles(world, &roles);
         if roles.is_empty() {
-            tracing::info!(
-                "No engine roles are set for this level (game mode, game state, player controller, \
-                 player character); nothing was instantiated"
-            );
-            return;
+            tracing::info!("No roles are set for this level; nothing was instantiated");
         }
         for message in roles.diagnostics() {
             tracing::warn!("{message}");
         }
 
-        let mode = self.spawn_role(&roles, EngineRole::GameMode, world, true, report);
-        let state = self.spawn_role(&roles, EngineRole::GameState, world, true, report);
-        let controller = self.spawn_role(&roles, EngineRole::PlayerController, world, true, report);
+        let mut spawned: Vec<(&'static str, Entity)> = Vec::new();
+        for role in pulsar_traits::roles::roles() {
+            let now = role.start == RoleStart::Now;
+            if let Some(entity) = self.spawn_role(&roles, role.id, world, now, report) {
+                spawned.push((role.id, entity));
+                self.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    pulsar_events::builtin::RoleSpawned {
+                        role: role.id.to_owned(),
+                        entity: entity.bits(),
+                    },
+                );
+            }
+        }
+        let entity_of = |id: &str| {
+            spawned
+                .iter()
+                .find(|(role, _)| *role == id)
+                .map(|(_, entity)| *entity)
+        };
+        let mode = entity_of(GAME_MODE_ROLE);
+        let state = entity_of(GAME_STATE_ROLE);
+        let controller = entity_of(PLAYER_CONTROLLER_ROLE);
+        let character = entity_of(PLAYER_CHARACTER_ROLE);
         if let Some(entity) = mode {
-            self.queue_hook(entity, EngineRole::GameMode, "on_game_start", vec![]);
+            self.queue_hook(entity, GAME_MODE_TRAIT_ID, "on_game_start", vec![]);
         }
         if let Some(entity) = state {
-            self.queue_hook(entity, EngineRole::GameState, "on_init", vec![]);
+            self.queue_hook(entity, GAME_STATE_TRAIT_ID, "on_init", vec![]);
         }
         // The local player joins: the game mode hears of them, then the game
         // state; their controller is already up and their character spawns.
@@ -209,29 +238,23 @@ impl ScriptDriver {
         if let Some(entity) = mode {
             self.queue_hook(
                 entity,
-                EngineRole::GameMode,
+                GAME_MODE_TRAIT_ID,
                 "on_player_joined",
                 vec![player.clone()],
             );
         }
         if let Some(entity) = state {
-            self.queue_hook(
-                entity,
-                EngineRole::GameState,
-                "on_player_added",
-                vec![player],
-            );
+            self.queue_hook(entity, GAME_STATE_TRAIT_ID, "on_player_added", vec![player]);
         }
         // Queued like a script's `world::spawn`, applied at the end of this
         // frame: the character runs next frame and possession follows.
-        if let Some(character) =
-            self.spawn_role(&roles, EngineRole::PlayerCharacter, world, false, report)
-        {
+        if let Some(character) = character {
             self.pending_possession = Some(Possession {
                 character,
                 controller,
             });
         }
+        self.game_began_pending = true;
     }
 
     /// Spawn the entity of `role` from its class. With `now` the spawn
@@ -241,13 +264,13 @@ impl ScriptDriver {
     /// is used instead of a new one.
     pub(super) fn spawn_role(
         &mut self,
-        roles: &engine_fs::world_roles::WorldRoles,
-        role: EngineRole,
+        roles: &pulsar_traits::WorldRoles,
+        role: &'static str,
         world: &mut World,
         now: bool,
         report: &mut DriverReport,
     ) -> Option<Entity> {
-        let label = role.spec().label;
+        let label = pulsar_traits::roles::role(role).map_or(role, |r| r.label);
         let Some(binding) = roles.usable(role) else {
             if roles.get(role).is_none() {
                 tracing::info!("{label} is not set for this level; skipped");
@@ -255,10 +278,7 @@ impl ScriptDriver {
             return None;
         };
         let Some(class_ref) = binding.class_name() else {
-            tracing::warn!(
-                "{label} Blueprint '{}' has no class name",
-                binding.blueprint
-            );
+            tracing::warn!("{label} '{}' has no class name", binding.asset);
             return None;
         };
         let Some(entry) = self.resolve_class_ref(class_ref) else {
@@ -322,9 +342,9 @@ impl ScriptDriver {
     pub(super) fn adopt_leftover_roles(
         &mut self,
         world: &mut World,
-        roles: &engine_fs::world_roles::WorldRoles,
+        roles: &pulsar_traits::WorldRoles,
     ) {
-        let leftovers: Vec<(Entity, EngineRole)> = world
+        let leftovers: Vec<(Entity, &'static str)> = world
             .query::<&RoleEntity>()
             .map(|(entity, marker)| (entity, marker.role))
             .collect();
@@ -394,13 +414,13 @@ impl ScriptDriver {
     pub(super) fn queue_hook(
         &mut self,
         entity: Entity,
-        role: EngineRole,
+        trait_id: &'static str,
         method: &'static str,
         args: Vec<pulsar_script_vm::Value>,
     ) {
         self.role_hooks.push(RoleHook {
             entity,
-            role,
+            trait_id,
             method,
             args,
         });
@@ -414,16 +434,11 @@ impl ScriptDriver {
         }
     }
 
-    /// Call the method `method` of the trait `trait_ref` names on `entity`.
-    ///
-    /// The method is found through the trait's id, supertraits included, and
-    /// its handler is the class's event for it (`<Class>.<method>`), so a
-    /// renamed trait or a method inherited from a supertrait resolve the same
-    /// way. What a missing handler means depends on the contract
-    /// ([`HookOutcome`]): an optional method (with a default body) that the
-    /// class places no node for is no reaction; a required one is a violation,
-    /// reported once.
-    pub(crate) fn call_trait_hook(
+    /// Call the method `method` of the trait `trait_ref` names on `entity`,
+    /// through the one dispatcher (`RuntimeTraits::dispatch`): the entity's
+    /// script class's handler and its implementing components' bound methods.
+    /// Problems are reported once per session.
+    pub(crate) fn call_trait(
         &mut self,
         world: &mut World,
         entity: Entity,
@@ -432,81 +447,33 @@ impl ScriptDriver {
         args: &[pulsar_script_vm::Value],
         report: &mut DriverReport,
     ) -> HookOutcome {
-        let Some(tracked) = self.tracked.get(&entity).cloned() else {
-            return HookOutcome::NotRunning;
-        };
-        let Some(instance) = tracked.instance else {
-            return HookOutcome::NotRunning;
-        };
-        let Some(class) = self.runtime.class_of(&instance).map(str::to_owned) else {
-            return HookOutcome::NotRunning;
-        };
-        let Some(entry) = self.registry.by_id(&tracked.class).cloned() else {
-            return HookOutcome::NotRunning;
-        };
-        let Some(trait_id) = self.traits.trait_id(&self.project_root, trait_ref) else {
-            let message = format!(
-                "trait '{trait_ref}' is not known to this project; `{method}` of '{}' was not called",
-                entry.name
-            );
-            self.note_once(report, message);
-            return HookOutcome::Violation;
-        };
-
-        let runtime = &self.runtime;
-        let contract = self
-            .traits
-            .contract(&self.project_root, &entry, &trait_id, &class, || {
-                runtime
-                    .subscriptions(&class)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|sub| Some((sub.event_name.clone()?, sub.params)))
-                    .collect()
-            });
-        let check = contract.check;
-        let required_unhandled = contract.violation(method).is_some();
-        for message in contract.violations() {
+        let script = self.tracked.get(&entity).cloned().and_then(|tracked| {
+            let instance = tracked.instance?;
+            let runtime_class = self.runtime.class_of(&instance)?.to_owned();
+            let entry = self.registry.by_id(&tracked.class).cloned()?;
+            Some(ScriptTarget {
+                entry,
+                instance,
+                runtime_class,
+            })
+        });
+        let target = DispatchTarget { entity, script };
+        let mut problems = Vec::new();
+        let outcome = self.traits.dispatch(
+            &self.project_root,
+            &mut self.runtime,
+            world,
+            &target,
+            trait_ref,
+            method,
+            args,
+            report,
+            &mut problems,
+        );
+        for message in problems {
             self.note_once(report, message);
         }
-        if check == TraitCheck::DoesNot {
-            let message = format!(
-                "class '{}' does not implement trait {trait_ref}; its `{method}` was not called",
-                entry.name
-            );
-            self.note_once(report, message);
-            return HookOutcome::Violation;
-        }
-        let Some(declared) = self.traits.method(&self.project_root, &trait_id, method) else {
-            let message = format!("trait {trait_ref} has no method `{method}`");
-            self.note_once(report, message);
-            return HookOutcome::Violation;
-        };
-
-        let qualified = format!("{class}.{}", declared.name);
-        let handlers: Vec<(pulsar_script_vm::FuncId, usize)> = self
-            .runtime
-            .subscriptions(&class)
-            .into_iter()
-            .flatten()
-            .filter(|sub| sub.event_name.as_deref() == Some(qualified.as_str()))
-            .map(|sub| (sub.handler, sub.params))
-            .collect();
-        if handlers.is_empty() {
-            if required_unhandled && !declared.has_default {
-                return HookOutcome::Violation;
-            }
-            tracing::debug!(%qualified, "optional trait method has no event node in the Blueprint");
-            return HookOutcome::NotHandled;
-        }
-        for (handler, params) in handlers {
-            let args = &args[..params.min(args.len())];
-            if let Err(error) = self.runtime.call_function(&instance, handler, args, world) {
-                tracing::warn!("{error}");
-                report.script_errors.push(error);
-            }
-        }
-        HookOutcome::Called
+        outcome
     }
 
     /// Run the hooks of role entities that began this frame, then finish
@@ -516,14 +483,21 @@ impl ScriptDriver {
     pub(super) fn run_role_hooks(&mut self, world: &mut World, report: &mut DriverReport) {
         self.mark_role_entities(world);
         for hook in std::mem::take(&mut self.role_hooks) {
-            let trait_id = hook.role.spec().trait_id;
-            self.call_trait_hook(
+            self.call_trait(
                 world,
                 hook.entity,
-                trait_id,
+                hook.trait_id,
                 hook.method,
                 &hook.args,
                 report,
+            );
+        }
+        if std::mem::take(&mut self.game_began_pending) {
+            self.publish(
+                pulsar_events::gamma::Channel::Global,
+                pulsar_events::builtin::GameBegan {
+                    level: self.level.clone(),
+                },
             );
         }
         self.drop_lost_pawn(world, report);
@@ -536,12 +510,11 @@ impl ScriptDriver {
         let Some(controller) = self.possessed.as_ref().and_then(|p| p.controller) else {
             return;
         };
-        let controller_trait = EngineRole::PlayerController.spec().trait_id;
         let delta = pulsar_script_vm::Value::Float(self.frame_delta);
-        self.call_trait_hook(
+        self.call_trait(
             world,
             controller,
-            controller_trait,
+            PLAYER_CONTROLLER_TRAIT_ID,
             "on_input",
             &[delta],
             report,
@@ -570,23 +543,21 @@ impl ScriptDriver {
         let Some(possessed) = self.possessed.take() else {
             return;
         };
-        let controller_trait = EngineRole::PlayerController.spec().trait_id;
-        let character_trait = EngineRole::PlayerCharacter.spec().trait_id;
         if let Some(controller) = possessed.controller {
-            self.call_trait_hook(
+            self.call_trait(
                 world,
                 controller,
-                controller_trait,
+                PLAYER_CONTROLLER_TRAIT_ID,
                 "on_unpossess",
                 &[],
                 report,
             );
         }
         if world.is_alive(possessed.pawn) {
-            self.call_trait_hook(
+            self.call_trait(
                 world,
                 possessed.pawn,
-                character_trait,
+                PLAYER_CHARACTER_TRAIT_ID,
                 "on_unpossessed",
                 &[],
                 report,
@@ -597,6 +568,14 @@ impl ScriptDriver {
         }
         self.possession_gate.set(false);
         self.view_targets.clear(LOCAL_PLAYER);
+        self.publish(
+            pulsar_events::gamma::Channel::Global,
+            pulsar_events::builtin::PossessionChanged {
+                controller: possessed.controller.map_or(0, Entity::bits),
+                pawn: possessed.pawn.bits(),
+                possessed: false,
+            },
+        );
         tracing::info!("The player controller no longer possesses its pawn");
     }
 
@@ -671,7 +650,7 @@ impl ScriptDriver {
         let Some(pending) = self.pending_possession.take() else {
             return;
         };
-        let character_trait = EngineRole::PlayerCharacter.spec().trait_id;
+        let character_trait = PLAYER_CHARACTER_TRAIT_ID;
         if self.entity_trait_check(world, character, character_trait) == TraitCheck::DoesNot {
             let message = format!(
                 "The possessed entity does not implement {character_trait}; possession skipped"
@@ -679,14 +658,13 @@ impl ScriptDriver {
             self.note_once(report, message);
             return;
         }
-        let controller_trait = EngineRole::PlayerController.spec().trait_id;
-        self.call_trait_hook(world, character, character_trait, "on_spawned", &[], report);
+        self.call_trait(world, character, character_trait, "on_spawned", &[], report);
         if let Some(controller) = pending.controller {
             let pawn = pulsar_script_vm::Value::Int(character.bits() as i64);
-            self.call_trait_hook(
+            self.call_trait(
                 world,
                 controller,
-                controller_trait,
+                PLAYER_CONTROLLER_TRAIT_ID,
                 "on_possess",
                 &[pawn],
                 report,
@@ -697,7 +675,7 @@ impl ScriptDriver {
                 .controller
                 .map_or(0, |controller| controller.bits() as i64),
         );
-        self.call_trait_hook(
+        self.call_trait(
             world,
             character,
             character_trait,
@@ -712,6 +690,14 @@ impl ScriptDriver {
             attached,
         });
         self.possession_gate.set(true);
+        self.publish(
+            pulsar_events::gamma::Channel::Global,
+            pulsar_events::builtin::PossessionChanged {
+                controller: pending.controller.map_or(0, Entity::bits),
+                pawn: character.bits(),
+                possessed: true,
+            },
+        );
         self.follow_pawn_view(world, character);
     }
 

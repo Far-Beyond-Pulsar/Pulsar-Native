@@ -1,3 +1,7 @@
+/// The workspace file tools (`cd`, `list_files`, `tree`, ...): the chat's view of
+/// the project through `engine_fs::virtual_fs`.
+pub mod fs_tools;
+
 use anyhow::{anyhow, Context};
 use serde_json::{json, Value};
 use std::time::Instant;
@@ -537,7 +541,7 @@ pub fn make_tool_context(
         ctx = ctx.with_current_file(file);
     }
     if let Some(root) = ctx.workspace_root.clone() {
-        engine_fs::tooling::insert_tooling_state(&mut ctx, root);
+        crate::fs_tools::insert_tooling_state(&mut ctx, root);
     }
     ctx.insert_extra(EXTRAS_KEY, extras);
     ctx
@@ -545,7 +549,7 @@ pub fn make_tool_context(
 
 pub fn build_default_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
-    engine_fs::tooling::register_tools(&mut registry);
+    crate::fs_tools::register_tools(&mut registry);
     register_pulsar_tools(&mut registry);
     tool_registry_builtin::register_builtins(&mut registry);
     registry

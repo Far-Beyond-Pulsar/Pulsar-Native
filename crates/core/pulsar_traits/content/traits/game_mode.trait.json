@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "trait",
+  "id": "pulsar.GameMode",
+  "name": "GameMode",
+  "displayName": "Game Mode",
+  "description": "The rules of a level: the one object that decides how play starts, who joins and when it ends. A level selects its game mode in World Settings.",
+  "methods": [
+    {
+      "name": "on_game_start",
+      "signature": {
+        "params": [],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "doc": "Called once when play begins, before any actor's begin_play."
+    },
+    {
+      "name": "on_player_joined",
+      "signature": {
+        "params": [
+          {
+            "name": "player_id",
+            "type": {
+              "kind": "Primitive",
+              "name": "u32"
+            }
+          }
+        ],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "doc": "Called when a player enters the game, before their controller and character are spawned."
+    },
+    {
+      "name": "on_game_end",
+      "signature": {
+        "params": [],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "doc": "Called once when play ends."
+    }
+  ],
+  "meta": {
+    "builtin": true,
+    "contractVersion": 1
+  }
+}

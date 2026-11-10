@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "trait",
+  "id": "pulsar.IntoGraph",
+  "name": "IntoGraph",
+  "displayName": "Into Graph",
+  "description": "Describes a render pipeline: builds a Helio render graph from the renderer's construction context. Render graph assets (.rendergraph) implement it implicitly.",
+  "methods": [
+    {
+      "name": "into_graph",
+      "signature": {
+        "params": [],
+        "return": {
+          "kind": "Path",
+          "path": "helio::RenderGraph"
+        }
+      },
+      "doc": "Builds the render graph. Called when the renderer is created and again whenever it is rebuilt (resize, shader reload)."
+    }
+  ],
+  "meta": {
+    "builtin": true,
+    "contractVersion": 1
+  }
+}

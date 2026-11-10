@@ -313,6 +313,7 @@ arc-swap                           = "1.9"
 # wgpui as well.
 profiling-v1                       = { package = "profiling", version = "1", default-features = false }
 engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
+pulsar_traits                      = { path = "crates/core/pulsar_traits" }
 editor_task_queue                  = { path = "crates/core/editor_task_queue" }
 asset_import                       = { path = "crates/core/asset_import" }
 skeletal_assets                    = { path = "plugins/vendor/skm_editor/skeletal_assets" }

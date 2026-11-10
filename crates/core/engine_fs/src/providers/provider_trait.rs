@@ -40,6 +40,75 @@ pub struct ManifestEntry {
     pub modified: Option<u64>,
 }
 
+/// A readable, seekable stream over one file ([`FsProvider::open_read`]).
+pub trait ReadSeek: std::io::Read + std::io::Seek + Send {}
+
+impl<T: std::io::Read + std::io::Seek + Send> ReadSeek for T {}
+
+/// A stream that writes one file ([`crate::virtual_fs::open_write`]). What
+/// was written becomes the file when [`finish`](Self::finish) returns `Ok`; a
+/// writer dropped without it may leave nothing (a buffering provider) or a
+/// partial file (a local one), so callers finish every writer they open.
+pub struct FsWriter {
+    inner: WriterInner,
+}
+
+enum WriterInner {
+    /// Writes straight to an open file.
+    Direct(Box<dyn std::io::Write + Send>),
+    /// Collects the bytes and hands them to `commit` at the end.
+    Buffered {
+        bytes: Vec<u8>,
+        commit: Box<dyn FnOnce(Vec<u8>) -> Result<()> + Send>,
+    },
+}
+
+impl FsWriter {
+    /// A writer over an open stream (a local file).
+    pub fn direct(stream: Box<dyn std::io::Write + Send>) -> Self {
+        Self {
+            inner: WriterInner::Direct(stream),
+        }
+    }
+
+    /// A writer that collects the bytes and stores them with `commit`.
+    pub fn buffered(commit: impl FnOnce(Vec<u8>) -> Result<()> + Send + 'static) -> Self {
+        Self {
+            inner: WriterInner::Buffered {
+                bytes: Vec::new(),
+                commit: Box::new(commit),
+            },
+        }
+    }
+
+    /// Flush and store the file.
+    pub fn finish(self) -> Result<()> {
+        match self.inner {
+            WriterInner::Direct(mut stream) => Ok(stream.flush()?),
+            WriterInner::Buffered { bytes, commit } => commit(bytes),
+        }
+    }
+}
+
+impl std::io::Write for FsWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match &mut self.inner {
+            WriterInner::Direct(stream) => stream.write(buf),
+            WriterInner::Buffered { bytes, .. } => {
+                bytes.extend_from_slice(buf);
+                Ok(buf.len())
+            }
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match &mut self.inner {
+            WriterInner::Direct(stream) => stream.flush(),
+            WriterInner::Buffered { .. } => Ok(()),
+        }
+    }
+}
+
 // ── Trait ──────────────────────────────────────────────────────────────────────
 
 /// Backend-agnostic filesystem interface.
@@ -96,6 +165,40 @@ pub trait FsProvider: Send + Sync + 'static {
             self.label(),
             path.display()
         )
+    }
+
+    /// Add `content` to the end of a file, creating it if needed.
+    ///
+    /// The fallback reads and rewrites the whole file; local providers append
+    /// in place.
+    fn append_file(&self, path: &Path, content: &[u8]) -> Result<()> {
+        let mut bytes = if self.exists(path)? {
+            self.read_file(path)?
+        } else {
+            Vec::new()
+        };
+        bytes.extend_from_slice(content);
+        self.write_file(path, &bytes)
+    }
+
+    /// Copy the file `from` to `to`, replacing `to`.
+    fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+        let bytes = self.read_file(from)?;
+        self.write_file(to, &bytes)
+    }
+
+    /// Open a file for streamed reading (large assets, archives).
+    ///
+    /// The fallback reads the whole file into memory.
+    fn open_read(&self, path: &Path) -> Result<Box<dyn ReadSeek>> {
+        Ok(Box::new(std::io::Cursor::new(self.read_file(path)?)))
+    }
+
+    /// Open `path` (created or truncated) as a stream when the provider can
+    /// write in place, else `None`, and [`crate::virtual_fs::open_write`]
+    /// buffers and writes the file when it is finished.
+    fn open_write_stream(&self, _path: &Path) -> Result<Option<Box<dyn std::io::Write + Send>>> {
+        Ok(None)
     }
 
     /// Delete a file, or recursively remove a directory.

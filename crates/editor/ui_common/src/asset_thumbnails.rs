@@ -37,7 +37,7 @@ pulsar_plugins::registration!(ThumbnailRendererRegistration);
 /// this before requesting any asset thumbnail.
 pub fn register_thumbnail_renderers() {
     for registration in pulsar_plugins::registered::<ThumbnailRendererRegistration>() {
-        engine_fs::thumbnails::register_thumbnail_renderer(
+        crate::thumbnails::register_thumbnail_renderer(
             registration.extension,
             registration.render,
         );

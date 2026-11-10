@@ -42,6 +42,16 @@ pub fn file_type_for_path(path: &std::path::Path) -> Option<plugin_editor_api::F
         .file_type_for_path(path)
 }
 
+// The project file index (`engine_fs`) records each file's registered type
+// through this lock-free lookup.
+inventory::submit! {
+    engine_fs::FileTypeClassifier {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "editor.file_types",
+        classify: |path| file_type_for_path(path).map(|file_type| file_type.as_str().to_owned()),
+    }
+}
+
 /// Get a handle to the global plugin manager.
 ///
 /// `parking_lot`-backed — `.read()` / `.write()` return guards directly,
