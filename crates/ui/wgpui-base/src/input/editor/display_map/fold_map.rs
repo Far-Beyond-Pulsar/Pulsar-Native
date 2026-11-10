@@ -311,7 +311,7 @@ impl FoldMap {
 
         // Scan all wrap rows and filter out hidden ones
         let mut display_row = 0;
-        let mut hidden_iter = merged_hidden.chunks_exact(2);
+        let mut hidden_iter = merged_hidden.as_chunks::<2>().0.iter();
         let mut current_hidden = hidden_iter.next();
 
         for wrap_row in 0..wrap_row_count {

@@ -34,18 +34,12 @@ impl Display for Placement {
 impl Placement {
     #[inline]
     pub fn is_horizontal(&self) -> bool {
-        match self {
-            Placement::Left | Placement::Right => true,
-            _ => false,
-        }
+        matches!(self, Placement::Left | Placement::Right)
     }
 
     #[inline]
     pub fn is_vertical(&self) -> bool {
-        match self {
-            Placement::Top | Placement::Bottom => true,
-            _ => false,
-        }
+        matches!(self, Placement::Top | Placement::Bottom)
     }
 
     #[inline]
@@ -85,6 +79,8 @@ impl Side {
 }
 
 /// A trait to extend the [`Axis`] enum with utility methods.
+// `Axis` is `Copy`, so by-value `self` is the intended convention here.
+#[allow(clippy::wrong_self_convention)]
 pub trait AxisExt {
     fn is_horizontal(self) -> bool;
     fn is_vertical(self) -> bool;
