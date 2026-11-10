@@ -67,21 +67,25 @@ presets used to add, and builds work offline.
 
 The presets are **Deep-Space Skybox by Toolbench**, CC0 1.0
 (https://toolbenchdev.com/gamedev/cc0-game-assets/deep-space-skybox/), galaxy
-and nebula layers, starless. They are offered at editor time: Create menu,
-"Sky Panoramas (CC0 Deep-Space)" (`plugins/vendor/sky/editor/src/panoramas.rs`)
-downloads the pinned archive on a worker thread, verifies its SHA-256 and
-writes into the project's `assets/sky/deep-space/`: the two layers unchanged,
+and nebula layers, starless. They are offered at editor time as **starter content** (`ui_level_editor::extend::StarterContent`,
+registered by `sky_plugin`'s `editor.rs`; Tools menu, "Starter Content",
+"Sky Panoramas (CC0 Deep-Space)"). The shell downloads the pinned archive on a
+worker thread with progress and cancel and checks its SHA-256 against the
+registration; `plugins/vendor/sky/editor/src/panoramas.rs` (`install`) then
+writes into the project's `assets/sky/deep-space/`, through
+`engine_fs::virtual_fs`: the two layers unchanged,
 `deep_space_galaxy_nebula_4k.hdr` (galaxy plus nebula x6, the former default
 look), and `CREDITS.md` / `LICENSE-CC0-1.0.txt`. The file index lists them as
 texture assets; pick one in Sky Texture. A game carries only the file it uses.
-The entry adds no object, so it reports as a no-op with a message; it is the
-only editor seam that fits until the asset browser has a "starter content"
-registration.
+The menu shows the licence, checksum and destination before install; the
+outcome (done, failed with the reason, cancelled) is a notification and the
+menu's last-attempt line. See "Starter content" in `PLUGIN_SYSTEM.md`.
 
 ## Known limits
 
-- The Create entry needs the network and a local project; it logs the outcome
-  rather than showing progress.
+- The installer needs the network and a local project. Not yet exercised in a
+  real editor session: the menu, notifications and picker (the flow below them
+  is covered headlessly by `plugins/vendor/sky/tests/starter_content.rs`).
 - The sky pass keeps its own single resident panorama; it is not part of the
   SceneDB texture-asset/streaming system.
 - The panorama does not rotate with the sun; orient it by hand.

@@ -45,7 +45,8 @@ pub use plan::{
     migrate_slot_keys, plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent,
 };
 pub use prefab::{
-    is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
+    is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PrefabLoad,
+    RepairOutcome, PREFAB_FILE,
 };
 pub use registry::{
     class_name_of_dir, find_class_dirs, project_root_of_class_dir, strip_class_ext,
