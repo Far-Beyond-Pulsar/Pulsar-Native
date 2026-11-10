@@ -76,8 +76,8 @@ mod roles;
 mod world_commands;
 
 pub use config::{
-    global_instance_id, instance_id_for, module_file, scripting_config_path, ScriptingConfig,
-    MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE,
+    MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE, ScriptingConfig,
+    global_instance_id, instance_id_for, module_file, scripting_config_path,
 };
 pub use report::{DriverReport, LockTimes};
 
@@ -91,15 +91,13 @@ use pulsar_script_runtime::{InstanceRuntimeStats, ScriptRuntime};
 use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
 
 use super::events::ScriptEvents;
-use pulsar_script_runtime::RuntimeError;
 use super::traits::RuntimeTraits;
+use pulsar_script_runtime::RuntimeError;
 use roles::{Possessed, Possession, RoleHook, SessionRole};
 
 /// Rounds of queued world commands applied per frame: `end_play` of a
 /// destroyed object may queue more, but a chain never runs forever.
 const MAX_COMMAND_ROUNDS: usize = 16;
-
-
 
 /// One class instance the driver follows.
 #[derive(Clone, Debug)]
@@ -232,7 +230,6 @@ impl ScriptDriver {
             native_libraries: HashMap::new(),
         }
     }
-
 
     pub fn runtime(&self) -> &ScriptRuntime {
         &self.runtime

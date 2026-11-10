@@ -2,15 +2,13 @@
 //! reconcile, begin_play, events, tick, world commands). Entry points:
 //! [`ScriptDriver::run_frame`] and `run_frame_shared`.
 
-
 use pulsar_scenedb::World;
 
 use super::world_commands::discard_commands;
-use super::{DriverReport, LockTimes, ScriptDriver, MAX_COMMAND_ROUNDS};
+use super::{DriverReport, LockTimes, MAX_COMMAND_ROUNDS, ScriptDriver};
 use crate::scripting::commands::CommandScope;
 use pulsar_events::builtin::BeginPlay;
 use pulsar_events::entity_channel;
-
 
 impl ScriptDriver {
     /// Run one script phase against `world`. See the module doc.
@@ -86,7 +84,11 @@ impl ScriptDriver {
     /// libraries, reconcile instances with the world, run `begin_play`
     /// and queued event handlers. Returns the scope that collects the
     /// commands scripts queue for [`frame_finish`](Self::frame_finish).
-    pub(super) fn frame_start(&mut self, world: &mut World, report: &mut DriverReport) -> CommandScope {
+    pub(super) fn frame_start(
+        &mut self,
+        world: &mut World,
+        report: &mut DriverReport,
+    ) -> CommandScope {
         self.reload_changed_native_libraries();
         let scope = CommandScope::begin();
         if let Some(events) = &self.events {

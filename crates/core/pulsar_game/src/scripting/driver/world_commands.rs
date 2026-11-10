@@ -12,7 +12,6 @@ use super::{DriverReport, ScriptDriver};
 use crate::scripting::commands::WorldCommand;
 use pulsar_events::builtin::{EntityDestroyed, EntitySpawned};
 
-
 /// Release what dropped commands reserved.
 pub(super) fn discard_commands(world: &mut World, commands: Vec<WorldCommand>) {
     for command in commands {
@@ -137,7 +136,12 @@ impl ScriptDriver {
         }
     }
 
-    pub(super) fn apply_destroy(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
+    pub(super) fn apply_destroy(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        report: &mut DriverReport,
+    ) {
         if !world.is_alive(entity) {
             return;
         }

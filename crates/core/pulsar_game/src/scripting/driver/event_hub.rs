@@ -2,14 +2,12 @@
 //! events and (re)subscribing script instances to them. Entry point:
 //! [`ScriptDriver::attach_events`].
 
-
 use pulsar_scenedb::{Entity, World};
 
 use super::config::{module_file, read_module_bytes};
 use super::{DriverReport, ScriptDriver};
 use crate::scripting::events::ScriptEvents;
 use pulsar_events::EventHub;
-
 
 impl ScriptDriver {
     /// Put the scripts on `hub` (the session's event hub): declared events

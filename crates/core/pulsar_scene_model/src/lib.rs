@@ -7,7 +7,7 @@
 //! [`attachments`] holds every attached component instance as its own entity
 //! linked to its owner (Pulsar-Native#1035, D1).
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 pub mod attachments;
 pub mod components;

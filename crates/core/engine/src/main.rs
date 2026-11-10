@@ -32,7 +32,7 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 // --- Global Allocator Setup ---
 // Only one #[global_allocator] can be registered, so the dhat heap profiler

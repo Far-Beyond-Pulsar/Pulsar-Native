@@ -6,7 +6,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-
 use super::ScriptDriver;
 
 /// Dynamic libraries in each native crate's direct Cargo profile directory.

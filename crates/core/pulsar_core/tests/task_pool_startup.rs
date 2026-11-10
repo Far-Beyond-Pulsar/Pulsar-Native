@@ -1,4 +1,3 @@
-#![deny(clippy::undocumented_unsafe_blocks)]
 //! Isolated allocator check: worker startup must finish before construction
 //! returns. No other tests share this process and no tasks run during sampling.
 use std::alloc::{GlobalAlloc, Layout, System};

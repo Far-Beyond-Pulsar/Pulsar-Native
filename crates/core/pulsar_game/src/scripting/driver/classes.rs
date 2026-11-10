@@ -14,7 +14,6 @@ use super::reconcile::{depth, sort_roots};
 use super::{DriverReport, ReloadRequests, ScriptDriver};
 use crate::scripting::bind_class_slots;
 
-
 impl ScriptDriver {
     pub(super) fn refresh_registry(&mut self) {
         if self.rescan_registry {

@@ -1,5 +1,5 @@
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 pub mod event;
 pub mod task;

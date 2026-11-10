@@ -11,12 +11,12 @@ use pulsar_script_runtime::RuntimeError;
 use pulsar_world_registry::pulsar_scene_model::attachments;
 use serde_json::Value;
 
-use engine_fs::world_roles::EngineRole;
-use super::world_commands::discard_commands;
 use super::config::{global_instance_id, instance_id_for};
+use super::world_commands::discard_commands;
 use super::{DriverReport, ScriptDriver, Tracked};
 use crate::scripting::bind_class_slots;
 use crate::scripting::commands::CommandScope;
+use engine_fs::world_roles::EngineRole;
 use pulsar_events::builtin::{EndPlay, EntityDestroyed};
 use pulsar_events::entity_channel;
 
@@ -40,7 +40,6 @@ pub(super) fn depth(world: &World, entity: Entity) -> usize {
     depth
 }
 impl ScriptDriver {
-
     /// Bring the script instances in line with the world's
     /// `ClassInstance`s without running any event. World commands queued by
     /// `end_play` of stopped instances are applied.
@@ -199,7 +198,12 @@ impl ScriptDriver {
         }
     }
 
-    pub(super) fn sync_entity(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
+    pub(super) fn sync_entity(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        report: &mut DriverReport,
+    ) {
         let holder = world
             .is_alive(entity)
             .then(|| pulsar_class::world::class_instance_entity(world, entity))

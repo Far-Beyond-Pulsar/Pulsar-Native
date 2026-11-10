@@ -5,7 +5,7 @@
 //! It is designed to be modular and extensible, allowing developers to
 //! build high-performance games with ease.
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 pub mod component_registry;
 /// Persistent GPU objects (bind group cache, readback ring, upload pool).

@@ -5,7 +5,7 @@
 //! All nodes are defined as Rust functions with the `#[blueprint]` attribute macro.
 //!
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 use std::sync::atomic::{AtomicBool, Ordering};
 

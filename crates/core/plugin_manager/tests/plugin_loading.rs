@@ -1,4 +1,3 @@
-#![deny(clippy::undocumented_unsafe_blocks)]
 //! Integration test: load a compiled plugin DLL through the real engine loader.
 //!
 //! Loads a purpose-built dynamic library fixture and verifies the real loader

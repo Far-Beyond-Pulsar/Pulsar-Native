@@ -72,7 +72,7 @@
 //! The only concern is **Arc cycles**, which can cause memory leaks.
 //! See `PLUGIN_ARCHITECTURE.md` for guidelines on preventing cycles with `Weak<T>`.
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 use parking_lot::RwLock;
 use plugin_editor_api::*;

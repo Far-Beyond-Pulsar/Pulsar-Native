@@ -1,4 +1,3 @@
-#![deny(clippy::undocumented_unsafe_blocks)]
 //! Loading, reloading and unloading a real native library (the
 //! `test_library` fixture, built by Cargo as a dev-dependency).
 

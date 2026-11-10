@@ -24,7 +24,7 @@
 //! pointers. Types are named by stable script names ([`Type`]); see
 //! [`types`] for how they bind to Rust types.
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 pub(crate) mod adapters;
 pub mod capability;

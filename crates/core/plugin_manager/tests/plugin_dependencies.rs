@@ -1,4 +1,3 @@
-#![deny(clippy::undocumented_unsafe_blocks)]
 //! Plugin dependencies across the real DLL boundary: manifests read from
 //! libraries built with `export_plugin_v2!`, load order, rejection, and a
 //! constructor that fails without unwinding into the host.

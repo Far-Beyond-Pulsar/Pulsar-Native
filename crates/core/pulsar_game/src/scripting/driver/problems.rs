@@ -1,11 +1,9 @@
 //! Converting runtime errors and dropped calls into editor problems.
 //! Entry point: [`ScriptDriver::problems`].
 
-
 use pulsar_script_runtime::RuntimeError;
 
 use super::{DriverReport, ScriptDriver};
-
 
 impl ScriptDriver {
     /// The frame's errors and dropped calls as editor problems (#854,
@@ -58,7 +56,11 @@ impl ScriptDriver {
     }
 
     /// Fill the class GUID and source path from the registry.
-    pub(super) fn fill_class(&self, problem: &mut pulsar_events::ScriptProblem, file: Option<&str>) {
+    pub(super) fn fill_class(
+        &self,
+        problem: &mut pulsar_events::ScriptProblem,
+        file: Option<&str>,
+    ) {
         let Some(entry) = problem.class.as_deref().and_then(|name| {
             let guid = self
                 .loaded

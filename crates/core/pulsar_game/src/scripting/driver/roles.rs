@@ -2,7 +2,6 @@
 //! player possession and trait hooks. Entry points: `start_roles`,
 //! `run_role_hooks`, `advance_possession`.
 
-
 use engine_backend::scene::SceneWorldExt;
 use pulsar_class::ClassInstance;
 use pulsar_scenedb::{Entity, World};
@@ -10,9 +9,9 @@ use pulsar_world_registry::pulsar_scene_model::attachments;
 use serde_json::Value;
 
 use super::{DriverReport, ScriptDriver};
+use crate::roles::RoleEntity;
 use crate::scripting::commands::WorldCommand;
 use crate::scripting::traits::{HookOutcome, TraitCheck};
-use crate::roles::RoleEntity;
 
 // ---- engine roles ---------------------------------------------------------------
 //
