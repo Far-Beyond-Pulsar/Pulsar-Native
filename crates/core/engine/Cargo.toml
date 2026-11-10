@@ -93,7 +93,7 @@ windows = { workspace = true, features = ["Win32_System_Diagnostics_Debug", "Win
 # Windows on ARM has no static DXC, so the engine installs and loads Microsoft's (dxc.rs).
 [target.'cfg(all(windows, target_arch = "aarch64"))'.dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider", "system-proxy"] }
-zip = { version = "2.4", default-features = false, features = ["deflate"] }
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 sha2 = { workspace = true }
 dirs = { workspace = true }
 
