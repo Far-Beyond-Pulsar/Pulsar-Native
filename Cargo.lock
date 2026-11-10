@@ -6046,6 +6046,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-mesh-api",
+ "naga",
  "wgpu",
 ]
 
@@ -6134,6 +6135,7 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-hiz",
  "helio-pass-indirect-dispatch",
+ "naga",
  "pollster 0.4.0",
  "wgpu",
 ]
