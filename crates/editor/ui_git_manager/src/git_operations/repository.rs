@@ -2,10 +2,10 @@
 //! ahead/behind counts. Entry points: `open_repo`, `probe_repository`,
 //! `load_repository_state`.
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
+use crate::models::*;
+use engine_fs::FsProvider as _;
+use git2::{BranchType, ErrorCode, Repository, StatusOptions};
+use std::path::Path;
 
 pub(crate) fn open_repo(path: &Path) -> Result<Repository, git2::Error> {
     if path.as_os_str().is_empty() {

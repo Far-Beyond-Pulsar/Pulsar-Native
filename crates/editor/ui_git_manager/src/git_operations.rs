@@ -22,15 +22,14 @@ pub use remote_ops::*;
 pub use repository::*;
 pub use worktree::*;
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::*;
+    use engine_fs::FsProvider as _;
+    use git2::{Oid, Repository, build::CheckoutBuilder};
     use git2::{RepositoryInitOptions, Signature};
+    use std::path::Path;
 
     fn init_repository(path: &Path) -> Repository {
         let mut options = RepositoryInitOptions::new();

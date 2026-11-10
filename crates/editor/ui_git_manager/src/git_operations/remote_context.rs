@@ -2,11 +2,11 @@
 //! and the repository state it was resolved from, so a credential retry can
 //! tell the repository changed underneath it.
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
 use super::credentials::*;
+use crate::models::*;
+use engine_fs::{FsProvider as _, LocalFsProvider};
+use git2::{ErrorCode, Oid, Repository};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteOperationKind {
@@ -55,7 +55,6 @@ pub(super) fn find_remote_name(repo: &Repository) -> Result<String, git2::Error>
         .map(|name| name.map(|name| name.to_string()))?
         .ok_or_else(|| git2::Error::from_str("No remotes configured"))
 }
-
 
 pub(super) fn remote_operation_url(
     remote: &git2::Remote<'_>,

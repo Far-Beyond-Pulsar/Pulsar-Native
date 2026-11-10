@@ -1,11 +1,11 @@
 //! Working-tree operations: stage, unstage, discard, `.gitignore` edits and
 //! revealing a path in the OS file manager.
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
 use super::repository::open_repo;
+use crate::models::*;
+use engine_fs::FsProvider as _;
+use git2::{StatusOptions, build::CheckoutBuilder};
+use std::path::Path;
 
 /// Stage a file (blocking — run on background executor)
 pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> {

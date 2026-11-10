@@ -1,10 +1,10 @@
 //! Committing the staged changes. Entry point: `commit_staged_changes`.
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
 use super::repository::open_repo;
+use crate::{auto_fetch::RemoteOperationGuard, models::*};
+use engine_fs::FsProvider as _;
+use git2::{ErrorCode, Oid};
+use std::path::Path;
 
 /// Commit staged changes (blocking — run on background executor)
 pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2::Error> {

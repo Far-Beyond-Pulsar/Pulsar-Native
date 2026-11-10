@@ -1,10 +1,10 @@
 //! Switching branches. Entry point: `switch_branch`.
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
 use super::repository::open_repo;
+use crate::{auto_fetch::RemoteOperationGuard, models::*};
+use engine_fs::FsProvider as _;
+use git2::{BranchType, StatusOptions, build::CheckoutBuilder};
+use std::path::Path;
 
 /// Switch to a different branch, carrying uncommitted changes via auto-stash (blocking — run on background executor)
 pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Error> {

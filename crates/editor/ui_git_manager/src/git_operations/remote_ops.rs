@@ -2,13 +2,13 @@
 //! credential-retry transaction. Entry points: `fetch_from_remote`,
 //! `push_to_remote`, `pull_from_remote`.
 
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
-use std::path::{Path, PathBuf};
-use super::remote_context::*;
 use super::credentials::*;
+use super::remote_context::*;
 use super::repository::open_repo;
+use crate::{auto_fetch::RemoteOperationGuard, models::*};
+use engine_fs::FsProvider as _;
+use git2::{BranchType, Oid, Repository, build::CheckoutBuilder};
+use std::path::Path;
 
 pub(super) fn fetch_remote(
     repo: &Repository,
