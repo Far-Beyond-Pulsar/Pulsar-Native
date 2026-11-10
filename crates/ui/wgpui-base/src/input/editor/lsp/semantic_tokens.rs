@@ -134,16 +134,16 @@ impl Lsp {
                 .update(|window, cx| provider.semantic_tokens(&text, range, window, cx))
                 .ok();
 
-            if let Some(task) = task_result {
-                if let Ok(tokens) = task.await {
-                    let decoded = decode_semantic_tokens(&tokens, &legend);
-                    let _ = input_state.update(cx, |input_state, cx| {
-                        if decoded != input_state.extras.lsp.semantic_tokens {
-                            input_state.extras.lsp.semantic_tokens = decoded;
-                            cx.notify();
-                        }
-                    });
-                }
+            if let Some(task) = task_result
+                && let Ok(tokens) = task.await
+            {
+                let decoded = decode_semantic_tokens(&tokens, &legend);
+                input_state.update(cx, |input_state, cx| {
+                    if decoded != input_state.extras.lsp.semantic_tokens {
+                        input_state.extras.lsp.semantic_tokens = decoded;
+                        cx.notify();
+                    }
+                });
             }
         });
     }
@@ -271,24 +271,26 @@ mod tests {
         let text = Rope::from("SELECT * FROM users\n-- a comment line\n");
         let theme = TestTheme;
 
-        let mut lsp = Lsp::default();
         // "SELECT" (line 0, 0..6) as keyword; comment on line 1.
-        lsp.semantic_tokens = vec![
-            (
-                lsp_types::Range {
-                    start: Position::new(0, 0),
-                    end: Position::new(0, 6),
-                },
-                SharedString::from("keyword"),
-            ),
-            (
-                lsp_types::Range {
-                    start: Position::new(1, 0),
-                    end: Position::new(1, 17),
-                },
-                SharedString::from("comment"),
-            ),
-        ];
+        let lsp = Lsp {
+            semantic_tokens: vec![
+                (
+                    lsp_types::Range {
+                        start: Position::new(0, 0),
+                        end: Position::new(0, 6),
+                    },
+                    SharedString::from("keyword"),
+                ),
+                (
+                    lsp_types::Range {
+                        start: Position::new(1, 0),
+                        end: Position::new(1, 17),
+                    },
+                    SharedString::from("comment"),
+                ),
+            ],
+            ..Lsp::default()
+        };
 
         // Visible range covering only line 0 (bytes 0..19).
         let styles = lsp.semantic_tokens_for_range(&text, &(0..19), &theme);
@@ -311,18 +313,20 @@ mod tests {
         let text = Rope::from("foo bar\n".repeat(100).as_str());
         let theme = TestTheme;
 
-        let mut lsp = Lsp::default();
-        lsp.semantic_tokens = (0..100u32)
-            .map(|line| {
-                (
-                    lsp_types::Range {
-                        start: Position::new(line, 0),
-                        end: Position::new(line, 3),
-                    },
-                    SharedString::from("keyword"),
-                )
-            })
-            .collect();
+        let lsp = Lsp {
+            semantic_tokens: (0..100u32)
+                .map(|line| {
+                    (
+                        lsp_types::Range {
+                            start: Position::new(line, 0),
+                            end: Position::new(line, 3),
+                        },
+                        SharedString::from("keyword"),
+                    )
+                })
+                .collect(),
+            ..Lsp::default()
+        };
 
         // Only line 50 visible ("foo" at bytes 400..403). The binary-search
         // window must return exactly that one token out of 100.

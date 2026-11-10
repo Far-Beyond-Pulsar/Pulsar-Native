@@ -435,6 +435,7 @@ jobs:
 
       # A prebuilt binary: compiling nextest from source cost minutes per run.
       - name: Install nextest
+        if: ${{ !cancelled() }}
         uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: nextest
@@ -442,6 +443,7 @@ jobs:
       # Hard cap: testing never runs longer than an hour. Per-test limits live in
       # .config/nextest.toml; this bounds the whole step.
       - name: Run tests
+        if: ${{ !cancelled() }}
         timeout-minutes: 60
         # Line tables were not enough: on #1587 and #1588 the linker died with
         # a bus error and the runner ran out of disk, with ~93 GB free at the

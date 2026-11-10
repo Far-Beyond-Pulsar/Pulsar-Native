@@ -1,4 +1,5 @@
 //! Registers native elements without accepting a second description of their state.
+#[cfg(feature = "test-support")]
 use gpui::{Element, Hitbox, InteractiveElement};
 
 #[doc(hidden)]
@@ -51,7 +52,7 @@ impl<E> TestSupportExt for E {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::div;
+    use gpui::{Element, InteractiveElement, div};
 
     #[test]
     fn observation_preserves_identity_and_native_type_in_normal_builds() {

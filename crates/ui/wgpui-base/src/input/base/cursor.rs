@@ -213,21 +213,21 @@ impl Selections {
 
         let mut merged: Vec<CursorSelection> = Vec::with_capacity(self.selections.len());
         for selection in &self.selections {
-            if let Some(last) = merged.last_mut() {
-                if selection.start <= last.end {
-                    // Overlapping or adjacent, extend the last one.
-                    let did_merge = selection.start != last.start || selection.end != last.end;
-                    last.end = last.end.max(selection.end);
-                    if selection.id == active_id {
-                        last.id = active_id;
-                        last.reversed = selection.reversed;
-                    }
-                    // Reset the column anchor on a real merge.
-                    if did_merge {
-                        last.column_anchor = None;
-                    }
-                    continue;
+            if let Some(last) = merged.last_mut()
+                && selection.start <= last.end
+            {
+                // Overlapping or adjacent, extend the last one.
+                let did_merge = selection.start != last.start || selection.end != last.end;
+                last.end = last.end.max(selection.end);
+                if selection.id == active_id {
+                    last.id = active_id;
+                    last.reversed = selection.reversed;
                 }
+                // Reset the column anchor on a real merge.
+                if did_merge {
+                    last.column_anchor = None;
+                }
+                continue;
             }
             merged.push(*selection);
         }
