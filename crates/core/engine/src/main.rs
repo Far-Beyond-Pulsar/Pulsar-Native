@@ -74,6 +74,8 @@ pub mod args; // Command-line argument parsing
 pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
 mod dev_bootstrap;
+#[cfg(all(windows, target_arch = "aarch64"))]
+mod dxc; // Install and select DXC: Windows on ARM has no static DXC and FXC rejects our shaders
 pub mod discord; // Discord Rich Presence integration
 pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
@@ -161,6 +163,10 @@ fn main() {
     let _dhat_profiler = dhat::Profiler::new_heap();
 
     let _ = rustls::crypto::ring::default_provider().install_default();
+
+    // Before any wgpu instance: never run on FXC.
+    #[cfg(all(windows, target_arch = "aarch64"))]
+    dxc::require_or_exit();
 
     macos_permissions::ensure_accessibility_permission_blocking();
 
