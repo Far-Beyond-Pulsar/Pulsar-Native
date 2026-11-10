@@ -70,7 +70,7 @@ impl InputBaseState<EditorMode> {
 
             let mut code_actions: Vec<CodeActionItem> = vec![];
             for (provider_id, provider_responses) in provider_responses {
-                if let Some(responses) = provider_responses.await.ok() {
+                if let Ok(responses) = provider_responses.await {
                     code_actions.extend(responses.into_iter().map(|action| CodeActionItem {
                         provider_id: provider_id.clone(),
                         action,

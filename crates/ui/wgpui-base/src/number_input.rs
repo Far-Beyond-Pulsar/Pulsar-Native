@@ -3,9 +3,8 @@ use std::rc::Rc;
 
 use gpui::Focusable;
 use gpui::{
-    AnyElement, App, Entity, EventEmitter, InteractiveElement as _, IntoElement, KeyBinding,
-    ParentElement, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, actions, div, prelude::FluentBuilder as _,
+    AnyElement, App, Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement,
+    RenderOnce, Role, StyleRefinement, Styled, Window, actions, div, prelude::FluentBuilder as _,
 };
 
 use crate::{Button, InputBase, StyledExt as _};
@@ -13,13 +12,6 @@ use crate::{Button, InputBase, StyledExt as _};
 actions!(number_input, [Increment, Decrement]);
 
 const CONTEXT: &str = "NumberInput";
-
-pub(crate) fn init(cx: &mut App) {
-    cx.bind_keys([
-        KeyBinding::new("up", Increment, Some(CONTEXT)),
-        KeyBinding::new("down", Decrement, Some(CONTEXT)),
-    ]);
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StepAction {
@@ -31,6 +23,7 @@ pub enum StepAction {
 #[derive(Clone)]
 pub enum NumberStep {
     Fixed(f64),
+    #[allow(clippy::type_complexity)] // callback signature; an alias would not clarify it
     ByValue(Rc<dyn Fn(f64, StepAction, &mut gpui::App) -> f64>),
 }
 
@@ -233,7 +226,6 @@ impl RenderOnce for NumberInput {
             })
         });
         self.state.update(cx, |state, _| state.ensure_number_mask());
-        let value = self.state.read(cx).value().parse::<f64>().ok();
         let decrement_button = self.decrement_button.map_or_else(
             || Button::new("decrement"),
             |decorate| decorate(Button::new("decrement")),

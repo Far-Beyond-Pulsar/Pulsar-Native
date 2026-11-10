@@ -180,26 +180,38 @@ fn is_animation_extension(extension: &str) -> bool {
     .any(|known| extension.eq_ignore_ascii_case(known))
 }
 
-/// An image or material written on disk is an asset update: every world
-/// showing it reloads it (SceneDB#84). A shader graph folder's save is its
-/// material's update. Other kinds publish their own updates when they are
-/// written (a re-imported mesh, a saved class).
-fn publish_asset_update(path: &std::path::Path) {
+/// The asset kind a file's update publishes under, if any.
+fn asset_update_kind(path: &std::path::Path) -> Option<ui_types_common::AssetKind> {
     use ui_types_common::AssetKind;
     let extension = path.extension().and_then(|ext| ext.to_str());
     // Surface materials are saved as `.mat` (mesh slots' extracted
     // materials), which the file-type table does not list.
-    let kind = if path
+    if path
         .file_name()
         .is_some_and(|name| name == "shader_graph_save.json")
         || extension.is_some_and(|ext| ext.eq_ignore_ascii_case("mat"))
     {
-        AssetKind::Material
-    } else {
-        match extension.map(AssetKind::from_extension) {
-            Some(kind @ (AssetKind::Texture | AssetKind::Material)) => kind,
-            _ => return,
-        }
+        return Some(AssetKind::Material);
+    }
+    if extension.is_some_and(is_animation_extension) {
+        return Some(AssetKind::Custom(ANIMATION_ASSET_KIND.to_string()));
+    }
+    match extension.map(AssetKind::from_extension) {
+        Some(kind @ (AssetKind::Texture | AssetKind::Material)) => Some(kind),
+        _ => None,
+    }
+}
+
+/// An image, material or animation file written on disk is an asset update:
+/// every world showing it reloads it (SceneDB#84; animation files run the
+/// asset-changed hooks, `reload_animation_dependencies`). A shader graph
+/// folder's save is its material's update. Other kinds publish their own
+/// updates when they are written (a re-imported mesh, a saved class). The
+/// editor's animation saves publish nothing themselves, so this is the one
+/// publisher and nothing reloads twice.
+fn publish_asset_update(path: &std::path::Path) {
+    let Some(kind) = asset_update_kind(path) else {
+        return;
     };
     if path.is_file() {
         let mut update = plugin_editor_api::AssetUpdated::new(kind);
@@ -210,7 +222,9 @@ fn publish_asset_update(path: &std::path::Path) {
 
 #[cfg(test)]
 mod animation_update_tests {
-    use super::is_animation_extension;
+    use super::{asset_update_kind, is_animation_extension, ANIMATION_ASSET_KIND};
+    use std::path::Path;
+    use ui_types_common::AssetKind;
 
     #[test]
     fn the_animation_family_is_recognised_by_extension_only() {
@@ -231,5 +245,31 @@ mod animation_update_tests {
         for extension in ["png", "mat", "json", "animmontage", "anim_graph", ""] {
             assert!(!is_animation_extension(extension), "{extension}");
         }
+    }
+
+    #[test]
+    fn animation_files_publish_under_the_animation_kind_and_textures_keep_theirs() {
+        let animation = AssetKind::Custom(ANIMATION_ASSET_KIND.to_string());
+        assert_eq!(
+            asset_update_kind(Path::new("a/walk.animseq")),
+            Some(animation.clone())
+        );
+        assert_eq!(
+            asset_update_kind(Path::new("a/body.SKELETON")),
+            Some(animation)
+        );
+        assert_eq!(
+            asset_update_kind(Path::new("a/rock.png")),
+            Some(AssetKind::Texture)
+        );
+        assert_eq!(
+            asset_update_kind(Path::new("a/skin.mat")),
+            Some(AssetKind::Material)
+        );
+        assert_eq!(
+            asset_update_kind(Path::new("a/shader_graph_save.json")),
+            Some(AssetKind::Material)
+        );
+        assert_eq!(asset_update_kind(Path::new("a/notes.txt")), None);
     }
 }

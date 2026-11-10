@@ -304,6 +304,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::type_complexity)] // test harness returns the observed handles
     fn harness(
         cx: &mut TestAppContext,
         disabled: bool,

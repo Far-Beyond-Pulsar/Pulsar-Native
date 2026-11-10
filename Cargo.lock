@@ -14614,18 +14614,24 @@ version = "0.1.0"
 dependencies = [
  "animation_component",
  "engine_backend",
+ "engine_fs",
+ "engine_state",
  "helio_component",
  "inventory",
+ "meshes_component",
+ "meshes_plugin",
  "plugin_manager",
  "pulsar_class",
  "pulsar_events",
  "pulsar_game",
  "pulsar_plugins",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde_json",
  "skeletal_animation_editor",
  "skeletal_assets",
+ "tempfile",
 ]
 
 [[package]]

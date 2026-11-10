@@ -613,7 +613,9 @@ the id of the graph the component plays, and `machine` names it.
 
 ### Hot reload
 
-`AssetUpdated(Custom("animation"))` is published by the file watcher for
+`AssetUpdated(Custom("animation"))` is published by the file watcher
+(`engine_fs::watchers::publish_asset_update`, on any create or modify of an existing file; the
+editor's own saves publish nothing, so the watcher is the only publisher and a save reloads once) for
 `.skeleton .animseq .blendspace .montage .animgraph .ikrig .ikretarget .animretarget
 .posedb`. `engine_backend::scene::reload_updated_asset` reloads the graph/sequence a
 component holds directly through SceneDB and calls

@@ -401,7 +401,7 @@ impl TextWrapper {
     ///
     /// If the `text` is the same as the current text, do nothing.
     fn update_all(&mut self, text: &Rope, cx: &mut App) {
-        self.update(text, &(0..text.len()), &text, cx);
+        self.update(text, &(0..text.len()), text, cx);
     }
 
     /// Return display point (with soft wrap) from the given byte offset in the text.
@@ -451,7 +451,7 @@ impl TextWrapper {
         // Otherwise return the eof of the line.
         let last_range = line.wrapped_lines.last().unwrap_or(&(0..0));
         let ix = line.lines_len().saturating_sub(1);
-        return WrapDisplayPoint::new(wrapped_row + ix, ix, last_range.len());
+        WrapDisplayPoint::new(wrapped_row + ix, ix, last_range.len())
     }
 
     /// Return byte offset in the text from the given display point (with soft wrap).
@@ -795,8 +795,8 @@ impl LineLayout {
         &self,
         pos: Point<Pixels>,
         line_height: Pixels,
-        text_align: TextAlign,
-        align_width: Option<Pixels>,
+        _text_align: TextAlign,
+        _align_width: Option<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -820,8 +820,8 @@ impl LineLayout {
         &self,
         pos: Point<Pixels>,
         line_height: Pixels,
-        text_align: TextAlign,
-        align_width: Option<Pixels>,
+        _text_align: TextAlign,
+        _align_width: Option<Pixels>,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -862,6 +862,7 @@ mod tests {
     use gpui::{Boundary, FontFeatures, FontStyle, FontWeight, px};
 
     #[test]
+    #[allow(clippy::single_range_in_vec_init)] // a one-range slice is the value under test
     fn test_update() {
         let font = gpui::Font {
             family: "Arial".into(),
@@ -1089,6 +1090,7 @@ mod tests {
 
     /// Editing the last line and deleting everything must keep the tree consistent.
     #[test]
+    #[allow(clippy::single_range_in_vec_init)] // a one-range slice is the value under test
     fn test_edit_last_line_and_full_delete() {
         let mut wrapper = TextWrapper::new(test_font(), px(14.), None);
         let mut text = Rope::from("one\ntwo\nthree");
