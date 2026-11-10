@@ -1,3 +1,19 @@
+# Suites that create a wgpu device per test crash with STATUS_ACCESS_VIOLATION
+# on some Windows drivers when two run at once (Pulsar-Native#1647). The suites
+# take an in-process lock for plain `cargo test`; nextest runs each test in its
+# own process, so this group (one test at a time across all of them) is what
+# serializes them here. A new suite that creates its own device joins the
+# filter below. (Helio is its own workspace and has its own .config/nextest.toml.)
+[test-groups]
+gpu-device = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = """
+(package(helio-pass-sky) & binary(sky_gpu))
+| (package(helio-pass-voxel-planet) & binary(voxel_pass_graph))
+"""
+test-group = "gpu-device"
+
 # Hosted CI runners have no GPU: wgpu falls back to lavapipe (Mesa's CPU
 # Vulkan). The `ci` profile leaves out, by name, the test binaries that render
 # real frames or need a real adapter, rather than letting them count as passed:

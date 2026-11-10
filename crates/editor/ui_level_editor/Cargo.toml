@@ -63,6 +63,10 @@ serde_json = { workspace = true }
 rfd = { workspace = true }
 parking_lot = { workspace = true }
 tracing.workspace = true
+# Starter content (`extend::StarterContent`): the shell downloads a plugin's pinned
+# archive and verifies its SHA-256.
+sha2 = { workspace = true }
+ureq = "2.12"
 chrono = { workspace = true, features = ["serde"] }
 schemars = { workspace = true }
 device_query = "4.0.1"

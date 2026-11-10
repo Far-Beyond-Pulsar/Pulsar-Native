@@ -2030,6 +2030,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "constant_time_eq"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4000,6 +4009,7 @@ dependencies = [
  "crc32fast",
  "libz-sys",
  "miniz_oxide",
+ "zlib-rs",
 ]
 
 [[package]]
@@ -5683,12 +5693,15 @@ dependencies = [
  "helio",
  "helio-core",
  "helio-feature-api",
+ "helio-frame-api",
  "helio-light-api",
  "helio-pass-billboard",
  "helio-pass-deferred-light",
+ "helio-pass-fxaa",
  "helio-pass-hlfs",
  "helio-pass-light-cull",
  "helio-pass-shadow-matrix",
+ "helio-pass-tsr",
  "helio-presets",
  "pollster 0.4.0",
  "pulsar_scenedb",
@@ -6033,6 +6046,7 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-mesh-api",
+ "naga",
  "wgpu",
 ]
 
@@ -6121,6 +6135,7 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-hiz",
  "helio-pass-indirect-dispatch",
+ "naga",
  "pollster 0.4.0",
  "wgpu",
 ]
@@ -6622,6 +6637,7 @@ dependencies = [
  "helio-pass-tsr",
  "helio-spine",
  "image",
+ "log",
  "serde_json",
  "wgpu",
 ]
@@ -12338,7 +12354,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
- "zip",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -14733,15 +14749,11 @@ name = "sky_editor"
 version = "0.1.0"
 dependencies = [
  "engine_fs",
- "engine_state",
  "image",
  "rust-i18n",
- "sha2 0.10.9",
  "sky_component",
- "tracing",
  "ui_level_editor",
- "ureq 2.12.1",
- "zip",
+ "zip 9.5.0",
 ]
 
 [[package]]
@@ -14750,11 +14762,14 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_backend",
+ "engine_fs",
+ "engine_state",
  "glam 0.33.5",
  "helio",
  "helio-core",
  "helio-pass-sky",
  "helio-scene-join",
+ "image",
  "inventory",
  "pollster 0.4.0",
  "pulsar_plugins",
@@ -14764,8 +14779,11 @@ dependencies = [
  "serde_json",
  "sky_component",
  "sky_editor",
+ "tempfile",
+ "tracing",
  "ui_level_editor",
  "wgpu",
+ "zip 9.5.0",
 ]
 
 [[package]]
@@ -14974,7 +14992,7 @@ dependencies = [
  "lz4_flex",
  "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
  "thiserror 2.0.20",
- "zip",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -17008,6 +17026,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
+
+[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -17541,6 +17565,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sky_plugin",
  "smol",
  "splines_plugin",
@@ -17555,6 +17580,7 @@ dependencies = [
  "ui_common",
  "ui_helio_viewport",
  "ui_types_common",
+ "ureq 2.12.1",
  "voxel_plugin",
  "water_plugin",
  "wayland-backend",
@@ -20138,6 +20164,32 @@ dependencies = [
  "thiserror 2.0.20",
  "zopfli",
 ]
+
+[[package]]
+name = "zip"
+version = "9.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0700e6c427aff64acdbf02e85fbfd946c2ee12319d1af013092f3a2178914ff8"
+dependencies = [
+ "constant_time_eq",
+ "crc32fast",
+ "flate2",
+ "getrandom 0.4.3",
+ "indexmap",
+ "libc",
+ "memchr",
+ "nix 0.31.3",
+ "typed-path",
+ "windows-sys 0.61.2",
+ "zeroize",
+ "zopfli",
+]
+
+[[package]]
+name = "zlib-rs"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
 
 [[package]]
 name = "zmij"

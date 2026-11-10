@@ -33,6 +33,7 @@
 mod commands;
 pub mod panel_kit;
 mod plugin_state;
+mod starter_content;
 pub mod viewport;
 
 use std::sync::Arc;
@@ -42,6 +43,7 @@ use pulsar_scenedb::{Entity, World};
 
 pub use commands::{ExtensionCommand, ExtensionUndo};
 pub use plugin_state::{PluginState, PluginStates};
+pub use starter_content::*;
 
 use crate::commands::{execute_command, CommandResult, SceneCommand, TypedComponent};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
