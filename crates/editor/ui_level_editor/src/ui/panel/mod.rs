@@ -270,6 +270,8 @@ impl Render for LevelEditorPanel {
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))
+            .on_action(cx.listener(crate::extend::on_install_starter_content::<Self>))
+            .on_action(cx.listener(crate::extend::on_cancel_starter_content::<Self>))
             .on_action(cx.listener(Self::on_delete_object))
             .on_action(cx.listener(Self::on_duplicate_object))
             .on_action(cx.listener(Self::on_undo))

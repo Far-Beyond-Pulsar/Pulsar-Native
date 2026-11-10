@@ -8,9 +8,10 @@
 //! real component (see `crate::world::ClassPlacement`).
 //!
 //! A prefab without slot ids, or with ids that are not UUIDs (the readable
-//! `<Class>_<n>` ids of early #921 builds), gets fresh UUIDs on load, and
-//! the file is rewritten once so the ids stay stable
-//! ([`PrefabAsset::load_from_dir`]).
+//! `<Class>_<n>` ids of early #921 builds), gets fresh UUIDs on load.
+//! [`PrefabAsset::load_from_dir`] migrates in memory and never writes (read
+//! paths); [`PrefabAsset::load_and_repair`] and [`PrefabLoad::repair`] save
+//! the migrated form so the ids stay stable, and report a failed save.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -82,17 +83,79 @@ pub struct SlotReassignment {
     pub aliases: std::collections::BTreeMap<String, String>,
 }
 
+/// A prefab read with its migrations applied in memory, plus what changed.
+#[derive(Debug)]
+pub struct PrefabLoad {
+    pub prefab: PrefabAsset,
+    /// Replaced readable slot id -> the UUID that replaced it.
+    pub aliases: std::collections::BTreeMap<String, String>,
+    /// What each record migration that ran did.
+    pub migrated: Vec<&'static str>,
+    /// Whether any slot id was assigned or replaced.
+    pub slots_changed: bool,
+}
+
+impl From<PrefabAsset> for PrefabLoad {
+    fn from(prefab: PrefabAsset) -> Self {
+        Self {
+            prefab,
+            aliases: Default::default(),
+            migrated: Vec::new(),
+            slots_changed: false,
+        }
+    }
+}
+
+impl PrefabLoad {
+    /// Whether the file on disk differs from the migrated form.
+    pub fn needs_repair(&self) -> bool {
+        self.slots_changed || !self.migrated.is_empty()
+    }
+
+    /// Save the migrated form: record replaced slot ids in `class.json`
+    /// first (so a level keyed by the old ids can still find its slots,
+    /// #933), then write `prefab.json`. Both writes go through `engine_fs`;
+    /// a failure of either is returned.
+    pub fn repair(&self, dir: &Path) -> Result<(), String> {
+        if !self.aliases.is_empty() {
+            crate::id::ClassMeta::record_slot_aliases(dir, self.aliases.clone())?;
+        }
+        self.prefab.save_to_dir(dir)
+    }
+}
+
+/// What [`PrefabAsset::load_and_repair`] did to the file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepairOutcome {
+    /// Already in migrated form; nothing written.
+    Unchanged,
+    /// The migrated form was saved.
+    Saved,
+    /// The migrated form is only in memory: the save failed.
+    Failed(String),
+}
+
 impl PrefabAsset {
-    /// Read `<dir>/prefab.json`. A class without one has no components.
+    /// Read `<dir>/prefab.json` and migrate it **in memory**; nothing is
+    /// written. A class without a prefab has no components.
     ///
-    /// Components that get a slot id assigned here (missing, duplicate, or
-    /// not a UUID) are written back to the file once, so every later reader
-    /// (the Blueprint editor, other levels) sees the same ids. If the file
-    /// is read-only the ids still work for this session, with a warning.
+    /// This is the form for read paths (palettes, previews, anything that
+    /// only looks): it succeeds on a read-only checkout and leaves the file
+    /// byte-for-byte as it was. Components that need a slot id get fresh
+    /// UUIDs, which are *not* stable until saved: use
+    /// [`Self::load_and_repair`] where they must persist, or keep the
+    /// [`PrefabLoad`] from [`Self::read_migrated`] and save it explicitly.
     pub fn load_from_dir(dir: &Path) -> Result<Self, String> {
+        Self::read_migrated(dir).map(|load| load.prefab)
+    }
+
+    /// [`Self::load_from_dir`], also reporting what the migration changed
+    /// (and the replaced slot ids) so the caller can save it explicitly with
+    /// [`PrefabLoad::repair`]. Never writes.
+    pub fn read_migrated(dir: &Path) -> Result<PrefabLoad, String> {
         let path = dir.join(PREFAB_FILE);
         if !engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
-            return Ok(Self::default());
+            return Ok(PrefabLoad::from(Self::default()));
         }
         let bytes = engine_fs::virtual_fs::read_file(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
@@ -100,35 +163,46 @@ impl PrefabAsset {
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let mut prefab: Self = serde_json::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
-        // The plugins' record migrations, as a level's objects get them: a
-        // migrated prefab is written back once, with the slot ids below.
+        // The plugins' record migrations, as a level's objects get them.
         let migrated = prefab.migrate_records();
         for what in &migrated {
-            tracing::info!(path = %path.display(), "{what}");
+            tracing::debug!(path = %path.display(), "{what}");
         }
         let renamed = prefab.reassign_slot_ids();
-        if renamed.changed || !migrated.is_empty() {
-            // Record old → new before rewriting the prefab, so a level keyed
-            // by the old ids can still find its slots (#933).
-            if !renamed.aliases.is_empty() {
-                let mut meta = crate::id::ClassMeta::read(dir).unwrap_or_default();
-                meta.slot_aliases.extend(renamed.aliases);
-                if let Err(error) = meta.write(dir) {
+        Ok(PrefabLoad {
+            prefab,
+            aliases: renamed.aliases,
+            migrated,
+            slots_changed: renamed.changed,
+        })
+    }
+
+    /// Read `<dir>/prefab.json` and, when migrating changed anything (a slot
+    /// id assigned, a record migrated), save the migrated form back so every
+    /// later reader sees the same ids. For callers that must have stable
+    /// slot ids (placing a class in a level, cooking). A failed save does not
+    /// fail the load (the ids work for this session) but is returned in
+    /// [`RepairOutcome::Failed`] for the caller to report.
+    pub fn load_and_repair(dir: &Path) -> Result<(Self, RepairOutcome), String> {
+        let load = Self::read_migrated(dir)?;
+        let outcome = if load.needs_repair() {
+            match load.repair(dir) {
+                Ok(()) => {
+                    tracing::info!(dir = %dir.display(), "Saved migrated prefab");
+                    RepairOutcome::Saved
+                }
+                Err(error) => {
                     tracing::warn!(
                         dir = %dir.display(),
-                        "Could not record replaced slot ids in class.json: {error}"
+                        "Migrated the prefab in memory but could not save it: {error}"
                     );
+                    RepairOutcome::Failed(error)
                 }
             }
-            match prefab.save_to_dir(dir) {
-                Ok(()) => tracing::info!(path = %path.display(), "Assigned component slot UUIDs"),
-                Err(error) => tracing::warn!(
-                    path = %path.display(),
-                    "Assigned component slot UUIDs but could not save them: {error}"
-                ),
-            }
-        }
-        Ok(prefab)
+        } else {
+            RepairOutcome::Unchanged
+        };
+        Ok((load.prefab, outcome))
     }
 
     /// Run the plugins' record migrations
@@ -160,7 +234,9 @@ impl PrefabAsset {
     /// Write `<dir>/prefab.json`.
     pub fn save_to_dir(&self, dir: &Path) -> Result<(), String> {
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(dir.join(PREFAB_FILE), text).map_err(|e| e.to_string())
+        let path = dir.join(PREFAB_FILE);
+        engine_fs::virtual_fs::write_file(&path, text.as_bytes())
+            .map_err(|e| format!("failed to write {}: {e}", path.display()))
     }
 
     /// Give every component whose slot id is missing, duplicated or not a
@@ -224,7 +300,8 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let first = PrefabAsset::load_from_dir(dir.path()).unwrap();
+        let (first, outcome) = PrefabAsset::load_and_repair(dir.path()).unwrap();
+        assert_eq!(outcome, RepairOutcome::Saved);
         let ids: Vec<&str> = first
             .components
             .iter()
@@ -238,7 +315,8 @@ mod tests {
         assert_ne!(ids[0], ids[1]);
 
         // Saved once: a second load sees the same ids and unknown sections.
-        let second = PrefabAsset::load_from_dir(dir.path()).unwrap();
+        let (second, outcome) = PrefabAsset::load_and_repair(dir.path()).unwrap();
+        assert_eq!(outcome, RepairOutcome::Unchanged);
         assert_eq!(
             second
                 .components
@@ -292,10 +370,143 @@ mod tests {
             ] }"#,
         )
         .unwrap();
-        let prefab = PrefabAsset::load_from_dir(dir.path()).unwrap();
+        let (prefab, _) = PrefabAsset::load_and_repair(dir.path()).unwrap();
         let aliases = crate::id::ClassMeta::read(dir.path()).unwrap().slot_aliases;
         // Only the readable id is an alias; a missing id had nothing to map.
         assert_eq!(aliases.len(), 1);
         assert_eq!(aliases["LightComponent_1"], prefab.components[0].slot_id);
+    }
+
+    // A migration only this test module's records trigger: a retired class
+    // name becomes its current name.
+    fn rename_w6_legacy(entries: &mut Vec<Value>) -> bool {
+        let mut changed = false;
+        for entry in entries {
+            if entry["class_name"] == "W6LegacyComponent" {
+                entry["class_name"] = Value::String("W6Component".into());
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    inventory::submit! {
+        crate::records::RecordMigrationRegistration {
+            origin: pulsar_plugins::origin!(),
+            name: "pulsar_class.tests.w6_rename",
+            description: "renamed W6LegacyComponent",
+            entries: Some(rename_w6_legacy),
+            from_props: None,
+            stale_props: &[],
+        }
+    }
+
+    const LEGACY: &str = r#"{
+        "prefab_version": 1, "name": "Lamp",
+        "components": [
+            { "class_name": "W6LegacyComponent", "data": {} },
+            { "slot_id": "W6Component_1", "class_name": "W6Component", "data": {} }
+        ],
+        "script_graph": { "nodes": [] }
+    }"#;
+
+    /// A class dir whose prefab (and, on unix, the dir) cannot be written.
+    fn read_only_class_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(PREFAB_FILE);
+        std::fs::write(&path, LEGACY).unwrap();
+        set_read_only(dir.path(), &path, true);
+        dir
+    }
+
+    fn set_read_only(dir: &Path, file: &Path, on: bool) {
+        let mut perms = std::fs::metadata(file).unwrap().permissions();
+        perms.set_readonly(on);
+        std::fs::set_permissions(file, perms).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = if on { 0o555 } else { 0o755 };
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode)).unwrap();
+        }
+        let _ = dir;
+    }
+
+    fn entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn pure_load_of_a_read_only_class_migrates_in_memory_and_writes_nothing() {
+        let dir = read_only_class_dir();
+        let path = dir.path().join(PREFAB_FILE);
+        let before = std::fs::read(&path).unwrap();
+        let listing = entries(dir.path());
+
+        let prefab = PrefabAsset::load_from_dir(dir.path()).unwrap();
+        assert!(prefab.components.iter().all(|c| is_slot_uuid(&c.slot_id)));
+        assert!(
+            prefab
+                .components
+                .iter()
+                .all(|c| c.class_name == "W6Component"),
+            "the record migration ran in memory"
+        );
+        assert!(prefab.extra.contains_key("script_graph"));
+
+        assert_eq!(std::fs::read(&path).unwrap(), before, "file byte-for-byte");
+        assert_eq!(entries(dir.path()), listing, "no class.json or temp file");
+        set_read_only(dir.path(), &path, false);
+    }
+
+    #[test]
+    fn load_and_repair_reports_a_failed_save_and_still_loads() {
+        let dir = read_only_class_dir();
+        let path = dir.path().join(PREFAB_FILE);
+        let before = std::fs::read(&path).unwrap();
+
+        let (prefab, outcome) = PrefabAsset::load_and_repair(dir.path()).unwrap();
+        assert!(prefab.components.iter().all(|c| is_slot_uuid(&c.slot_id)));
+        assert!(matches!(outcome, RepairOutcome::Failed(_)), "{outcome:?}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        set_read_only(dir.path(), &path, false);
+    }
+
+    #[test]
+    fn explicit_repair_writes_the_migrated_form_and_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(PREFAB_FILE);
+        std::fs::write(&path, LEGACY).unwrap();
+
+        // Reading changes nothing; saving is a separate, explicit step.
+        let load = PrefabAsset::read_migrated(dir.path()).unwrap();
+        assert!(load.needs_repair());
+        assert_eq!(load.migrated, vec!["renamed W6LegacyComponent"]);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), LEGACY);
+        load.repair(dir.path()).unwrap();
+
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved["components"][0]["class_name"], "W6Component");
+        assert_eq!(
+            saved["components"][0]["slot_id"],
+            load.prefab.components[0].slot_id.as_str()
+        );
+        assert!(saved["script_graph"].is_object());
+        let aliases = crate::id::ClassMeta::read(dir.path()).unwrap().slot_aliases;
+        assert_eq!(aliases["W6Component_1"], load.prefab.components[1].slot_id);
+
+        // Migrated once: reading again changes nothing, byte for byte.
+        let again = PrefabAsset::read_migrated(dir.path()).unwrap();
+        assert!(!again.needs_repair());
+        assert_eq!(again.prefab.components, load.prefab.components);
+        let bytes = std::fs::read(&path).unwrap();
+        let (_, outcome) = PrefabAsset::load_and_repair(dir.path()).unwrap();
+        assert_eq!(outcome, RepairOutcome::Unchanged);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
 }

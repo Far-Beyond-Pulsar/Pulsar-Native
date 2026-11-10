@@ -35,7 +35,7 @@ impl LevelEditorMenus {
                     .action_if(t!("LevelEditor.Menu.Delete"), DeleteObject, selected),
             )
             .menu(Self::create_menu())
-            .menu(
+            .menu(crate::extend::extend_tools_menu(
                 EditorMenu::new(t!("LevelEditor.Menu.Tools"))
                     .action(
                         t!("LevelEditor.Menu.EnvironmentConfig"),
@@ -45,7 +45,7 @@ impl LevelEditorMenus {
                         t!("LevelEditor.Menu.HighResScreenshot"),
                         OpenHighResScreenshot,
                     ),
-            )
+            ))
             .menu(
                 EditorMenu::new(t!("LevelEditor.Menu.View"))
                     .action(t!("LevelEditor.Menu.ToggleGrid"), ToggleGrid)

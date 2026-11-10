@@ -208,6 +208,23 @@ inventory::submit! {
 The kind's integration tests (`<kind>/tests/`) are the root's: they test the plugin as a
 game links it (`use fog_plugin as _;` links its registrations).
 
+### Starter content
+
+A plugin that offers downloadable content (a pack of assets) registers a
+`ui_level_editor::extend::StarterContent` from its root's `editor.rs`, not a
+Create entry (Create adds one object to the level). It declares the pinned
+archive (`archive_url`, `sha256`, `max_bytes`), the licence shown to the author
+(`license`, `license_url`), the project-relative `destination`, and `install`:
+a function from the verified archive to files written under the destination
+(through `engine_fs::virtual_fs`). The shell owns the rest: download on a
+worker thread with progress and cancel, the checksum, the phase
+(`Downloading`/`Verifying`/`Installing`/`Done`/`Failed`/`Cancelled`) the Tools >
+Starter Content menu and the end notification read, and failure reporting. It is
+listed in the catalog as `editor.starter_content`. The shell knows no pack: the
+first consumer is the sky's CC0 panoramas (`.agents/SKY.md`). Tests:
+`extend/starter_content.rs` (checksum, cancel, limit, failure, success against a
+loopback server) and `plugins/vendor/sky/tests/starter_content.rs`.
+
 ### What a plugin contributes: the catalog
 
 Every registration type summarizes itself (`pulsar_plugins::Contribution`: a category such
