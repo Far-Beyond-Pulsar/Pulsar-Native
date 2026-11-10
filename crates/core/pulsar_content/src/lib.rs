@@ -31,7 +31,6 @@
 //! | [`registry`] | [`AssetRegistry`]: `Pulsar/asset_registry.json` |
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
-
 pub mod pak;
 pub mod provider;
 pub mod registry;

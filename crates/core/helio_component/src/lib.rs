@@ -8,7 +8,6 @@
 //! (meshes: `meshes_component`, materials: `materials_component`, ...).
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
-
 pub mod asset_component;
 pub mod components;
 pub mod cooked_texture;

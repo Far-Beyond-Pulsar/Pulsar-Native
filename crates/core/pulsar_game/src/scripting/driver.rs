@@ -76,8 +76,8 @@ mod roles;
 mod world_commands;
 
 pub use config::{
-    MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE, ScriptingConfig,
-    global_instance_id, instance_id_for, module_file, scripting_config_path,
+    global_instance_id, instance_id_for, module_file, scripting_config_path, ScriptingConfig,
+    MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE,
 };
 pub use report::{DriverReport, LockTimes};
 

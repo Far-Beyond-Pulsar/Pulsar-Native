@@ -5,7 +5,7 @@
 use pulsar_scenedb::World;
 
 use super::world_commands::discard_commands;
-use super::{DriverReport, LockTimes, MAX_COMMAND_ROUNDS, ScriptDriver};
+use super::{DriverReport, LockTimes, ScriptDriver, MAX_COMMAND_ROUNDS};
 use crate::scripting::commands::CommandScope;
 use pulsar_events::builtin::BeginPlay;
 use pulsar_events::entity_channel;
