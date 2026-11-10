@@ -62,8 +62,8 @@ pulsar_reflection = { workspace = true }
 # struct needs SOME impl, not just ones with real fields to mirror). Needed
 # here for the same reason `pulsar_scenedb`/`pulsar_reflection` are: this
 # crate's own test binaries compile that generated code and need the path to
-# resolve, exactly like every real consumer (`helio_component`,
-# `pulsar_physics`) already does.
+# resolve, exactly like every real consumer (`helio_component`, the
+# plugins' component crates) already does.
 pulsar_world_registry = { workspace = true }
 # `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
 # every real consumer of this macro already has `tracing` in scope for that

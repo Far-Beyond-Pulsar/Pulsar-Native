@@ -1,14 +1,12 @@
 //! Application state structure
 
+use engine_backend::services::RustAnalyzerManager;
 use gpui::{Entity, FocusHandle, Task};
 use std::path::PathBuf;
 use ui::dock::{DockArea, TabPanel};
+use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
-// use ui_level_editor::LevelEditorPanel;
-// use ui_daw_editor::DawEditorPanel;
-use engine_backend::services::RustAnalyzerManager;
-use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use ui_type_debugger::TypeDebuggerDrawer;
 
 /// Core application state
@@ -29,14 +27,6 @@ pub struct AppState {
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
     pub task_queue_refresh_task: Option<Task<()>>,
-
-    // Editor tracking - commented out as these editors have been migrated to plugins
-    // pub daw_editors: Vec<Entity<DawEditorPanel>>,
-    // pub database_editors: Vec<Entity<ui_editor_table::DataTableEditor>>,
-    // pub struct_editors: Vec<Entity<ui_struct_editor::StructEditor>>,
-    // pub enum_editors: Vec<Entity<ui_enum_editor::EnumEditor>>,
-    // pub trait_editors: Vec<Entity<ui_trait_editor::TraitEditor>>,
-    // pub alias_editors: Vec<Entity<ui_alias_editor::AliasEditor>>,
 
     // Tab management
     pub next_tab_id: usize,
@@ -66,9 +56,6 @@ pub struct AppState {
     // Project Switcher
     pub project_switcher_open: bool,
     pub project_switcher_view: Option<Entity<crate::project_switcher::ProjectSwitcherView>>,
-
-    // Type picker tracking - commented out as ui_alias_editor has been migrated to plugins
-    // pub active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,
 
     // Focus management
     pub focus_handle: FocusHandle,

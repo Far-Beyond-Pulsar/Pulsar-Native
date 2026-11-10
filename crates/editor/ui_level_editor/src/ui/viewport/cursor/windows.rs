@@ -15,6 +15,10 @@ static RAW_MOUSE_DELTA_Y: AtomicI64 = AtomicI64::new(0);
 pub fn prepare_relative_mouse_mode() -> bool {
     let _ = RAW_MOUSE_READY.get_or_init(|| {
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        // SAFETY: Plain Win32 FFI on the thread spawned here. Every pointer passed is to a
+        //         `'static` (`CLASS_NAME`) or to a local that lives across the call (`class`,
+        //         `device`, `message`). The window class and message-only window are created and
+        //         pumped on this same thread, as Win32 requires for a window's message loop.
         std::thread::spawn(move || unsafe {
             use std::mem::{size_of, zeroed};
             use std::ptr::{null, null_mut};
@@ -176,6 +180,9 @@ pub fn maintain_relative_mouse_mode(screen_x: i32, screen_y: i32, button_vk: i32
 
     let hwnd =
         CAPTURE_WINDOW.load(Ordering::Acquire) as isize as *mut winapi::shared::windef::HWND__;
+    // SAFETY: `hwnd` is only compared with `GetForegroundWindow()` and never dereferenced;
+    //         `rect` and `point` are live locals passed as pointers for the duration of each
+    //         call. The Win32 functions have no other preconditions.
     unsafe {
         if hwnd.is_null()
             || GetForegroundWindow() != hwnd
@@ -279,6 +286,10 @@ pub fn lock_cursor_to_window(window: &Window) -> bool {
 
     match HasWindowHandle::window_handle(window) {
         Ok(handle) => match handle.as_raw() {
+            // SAFETY: `hwnd` comes from the raw window handle of `window`, which is borrowed (so
+            //         alive) for this call, and Win32 validates window handles. `client_rect`,
+            //         `top_left`, `bottom_right` and `screen_rect` are live locals passed as pointers
+            //         only for the duration of each call.
             RawWindowHandle::Win32(win32_handle) => unsafe {
                 let hwnd = win32_handle.hwnd.get() as *mut winapi::shared::windef::HWND__;
 
@@ -342,6 +353,7 @@ pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) -> bool {
     // RECT's right and bottom edges are exclusive. A zero radius still needs
     // a 1x1 rectangle so ClipCursor anchors the pointer at this exact pixel.
     let radius = radius.max(0);
+    // SAFETY: `screen_rect` is a live local; `ClipCursor` only reads it during the call.
     unsafe {
         let screen_rect = RECT {
             left: screen_x - radius,
@@ -366,6 +378,7 @@ pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) -> bool {
 pub fn unlock_cursor() {
     use winapi::um::winuser::ClipCursor;
 
+    // SAFETY: `ClipCursor(null)` is the documented way to remove the clip; no pointer is read.
     unsafe {
         ClipCursor(std::ptr::null());
         tracing::debug!("[VIEWPORT] 🔓 Cursor unlocked");
@@ -380,6 +393,7 @@ pub fn hide_cursor() {
     use winapi::shared::minwindef::FALSE;
     use winapi::um::winuser::ShowCursor;
 
+    // SAFETY: `ShowCursor` takes a plain `BOOL` and has no pointer arguments.
     unsafe {
         while ShowCursor(FALSE) >= 0 {}
         tracing::debug!("[VIEWPORT] 👻 Cursor hidden (Win32 ShowCursor)");
@@ -393,6 +407,7 @@ pub fn hide_cursor() {
 pub fn show_cursor() {
     use winapi::um::winuser::ShowCursor;
 
+    // SAFETY: `ShowCursor` takes a plain `BOOL` and has no pointer arguments.
     unsafe {
         while ShowCursor(1) < 0 {}
         tracing::debug!("[VIEWPORT] 👁️ Cursor shown (Win32 ShowCursor)");
@@ -404,6 +419,7 @@ pub fn show_cursor() {
 pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
     use winapi::um::winuser::SetCursorPos;
 
+    // SAFETY: `SetCursorPos` takes plain integers; it has no pointer arguments.
     unsafe {
         SetCursorPos(screen_x, screen_y);
     }
@@ -414,6 +430,7 @@ pub fn get_cursor_position() -> Option<(i32, i32)> {
     use winapi::shared::windef::POINT;
     use winapi::um::winuser::GetCursorPos;
 
+    // SAFETY: `&mut point` is a valid, writable local for the duration of the call.
     unsafe {
         let mut point = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut point) != 0 {
@@ -440,6 +457,9 @@ pub fn window_to_screen_position(
 
     match HasWindowHandle::window_handle(window) {
         Ok(handle) => match handle.as_raw() {
+            // SAFETY: `hwnd` comes from the raw window handle of `window`, which is borrowed (so
+            //         alive) for this call, and Win32 validates window handles. `&mut point` is a
+            //         valid, writable local for the duration of the call.
             RawWindowHandle::Win32(win32_handle) => unsafe {
                 let hwnd = win32_handle.hwnd.get() as *mut winapi::shared::windef::HWND__;
                 let mut point = POINT {

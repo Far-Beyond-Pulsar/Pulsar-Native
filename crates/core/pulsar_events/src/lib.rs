@@ -24,6 +24,8 @@
 //! This crate is GPUI-free so the game runtime can use it; editor plugins
 //! reach it through `plugin_editor_api`, which re-exports the asset API.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 pub use gamma;
 
 /// Profiler scope when the `profiling` feature is on; nothing otherwise.

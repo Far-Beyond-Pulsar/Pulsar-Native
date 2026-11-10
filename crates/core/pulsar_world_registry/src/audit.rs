@@ -2,7 +2,7 @@
 //! a deterministic snapshot of every class's method/property surface.
 //!
 //! Two consumers:
-//! - **CI golden test** (`pulsar_physics/tests/golden_metadata.rs` and any
+//! - **CI golden test** (a plugin root's `golden_metadata` unit test, and any
 //!   other crate that links real component classes):
 //!   [`metadata_snapshot_json`] is diffed against a checked-in file, so a
 //!   metadata regression -- renamed parameter, flipped `flags`, lost

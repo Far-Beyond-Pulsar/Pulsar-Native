@@ -10,6 +10,7 @@ mod export;
 mod flamegraph_view;
 mod format;
 mod panels;
+mod sample_data;
 mod trace_data;
 pub mod window;
 

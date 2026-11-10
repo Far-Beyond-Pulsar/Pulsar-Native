@@ -15,6 +15,8 @@ mod peer_state;
 mod presence;
 pub mod screen;
 mod session;
+mod session_events;
+mod session_logic;
 mod sync_protocol;
 mod utils;
 

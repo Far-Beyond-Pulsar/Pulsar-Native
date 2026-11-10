@@ -6729,6 +6729,7 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-frame-api",
  "helio-light-api",
  "helio-light-host",
  "helio-mats",
@@ -17661,6 +17662,7 @@ dependencies = [
  "rust-i18n",
  "ui",
  "ui_common",
+ "uuid",
  "window_manager",
 ]
 

@@ -1,20 +1,22 @@
 //! Constructor methods for PulsarApp
+//!
+//! The public `new*` constructors all funnel into [`PulsarApp::new_internal`],
+//! which is a short list of named steps defined in `construction.rs` (and
+//! `command_palette_setup.rs` for the palette).
 
 use engine_backend::services::RustAnalyzerManager;
-use gpui::{AppContext, Context, Entity, Window};
-use plugin_manager::PluginManager;
-use rust_i18n::t;
-use std::{collections::VecDeque, path::PathBuf, sync::Arc};
-use ui::dock::DockItem;
-use ui::ContextModal;
-use ui_file_manager::FileManagerDrawer;
-use ui_level_editor::LevelEditorPanel;
-use ui_problems::ProblemsDrawer;
-use ui_type_debugger::TypeDebuggerDrawer;
+use gpui::{Context, Entity, Window};
+use std::path::PathBuf;
 
-use super::{
-    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
+use super::command_palette_setup::register_command_palette;
+use super::construction::{
+    build_center_dock, build_drawers, connect_rust_analyzer, create_dock_area,
+    create_plugin_manager, finish_construction, install_docks, persistent_center_tabs,
+    publish_component_event_catalog, publish_project_path, register_drawer_windows,
+    spawn_multiuser_refresh, spawn_task_queue_refresh, subscribe_drawer_events,
+    sync_file_types_into_drawer, sync_project_into_drawers,
 };
+use super::PulsarApp;
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -86,6 +88,8 @@ impl PulsarApp {
         Self::new_internal(project_path, Some(rust_analyzer), None, false, window, cx)
     }
 
+    /// Builds the app by running the steps in `construction.rs` in order; the
+    /// order matters (each step's doc names what it depends on).
     pub(super) fn new_internal(
         project_path: Option<PathBuf>,
         shared_rust_analyzer: Option<Entity<RustAnalyzerManager>>,
@@ -97,276 +101,56 @@ impl PulsarApp {
         let t_total = std::time::Instant::now();
         tracing::info!("[PulsarApp] new_internal start");
 
-        // Component events are registered in the host executable. Publish
-        // their declarations through the shared editor API so Blueprint and
-        // other dynamically loaded editors do not need their own inventory
-        // copy (which cannot see host registrations across a DLL boundary).
-        let mut component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
-            .map(|registration| plugin_editor_api::ComponentEventMetadata {
-                component_class: registration.class_name.to_owned(),
-                event: (registration.declaration)(),
-            })
-            .collect();
-        component_events.sort_by(|a, b| {
-            (&a.component_class, &a.event.name).cmp(&(&b.component_class, &b.event.name))
-        });
-        component_events.dedup_by(|a, b| {
-            a.component_class == b.component_class && a.event.name == b.event.name
-        });
-        cx.set_global(plugin_editor_api::ComponentEventCatalog {
-            events: component_events,
-        });
+        publish_component_event_catalog(cx);
 
-        // ── Dock area ──────────────────────────────────────────────────────────
-        let t = std::time::Instant::now();
-        let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));
+        // Dock area, then the project path BEFORE the level editor is built.
+        let dock_area = create_dock_area(window, cx);
         let weak_dock = dock_area.downgrade();
-        tracing::info!("[PulsarApp] dock area: {}ms", t.elapsed().as_millis());
+        publish_project_path(project_path.as_deref());
 
-        // Propagate project path into EngineContext BEFORE constructing the level editor
-        // so that ensure_default_level_file() can resolve the project root correctly.
-        if let Some(ref path) = project_path {
-            engine_state::set_project_path(path.to_string_lossy().into_owned());
-            tracing::info!("Set engine project path to {:?}", path);
-            // Let other editors' profilers list and record this one (cheap
-            // until a viewer starts recording; once per process).
-            profiling::remote::publish_process(profiling::remote::TargetDescription {
-                kind: "editor".into(),
-                name: "Pulsar Editor".into(),
-                project: path.display().to_string(),
-            });
-        }
-
-        // ── Level editor ───────────────────────────────────────────────────────
-        let t = std::time::Instant::now();
-        let center_dock_item = if create_level_editor {
-            let level_editor = if let Some(wid) = window_id {
-                cx.new(|cx| LevelEditorPanel::new_with_window_id(wid, window, cx))
-            } else {
-                cx.new(|cx| LevelEditorPanel::new(window, cx))
-            };
-            DockItem::tabs(
-                vec![Arc::new(level_editor.clone())],
-                Some(0),
-                &weak_dock,
-                window,
-                cx,
-            )
-        } else {
-            DockItem::tabs(vec![], None, &weak_dock, window, cx)
-        };
-        tracing::info!(
-            "[PulsarApp] level editor panel: {}ms",
-            t.elapsed().as_millis()
-        );
-
-        let center_tabs = match &center_dock_item {
-            DockItem::Tabs { view, .. } => view.clone(),
-            _ => {
-                tracing::error!("Expected Tabs dock item for center, got different type");
-                panic!("Invalid dock configuration: center must be Tabs type");
-            }
-        };
-        // The editor keeps its tab strip with a single tab, and the last tab stays open.
-        center_tabs.update(cx, |tabs, cx| tabs.set_persistent_tabs(true, cx));
-
-        // ── Left-dock side panels ──────────────────────────────────────────────
-        let t = std::time::Instant::now();
-        let agent_chat_panel =
-            cx.new(|cx| AgentChatPanel::new(dock_area.clone(), center_tabs.clone(), window, cx));
-        let manual_tool_panel =
-            cx.new(|cx| ManualToolPanel::new(dock_area.clone(), center_tabs.clone(), window, cx));
-        let left_dock = DockItem::tabs(
-            vec![
-                Arc::new(agent_chat_panel) as Arc<dyn ui::dock::PanelView>,
-                Arc::new(manual_tool_panel) as Arc<dyn ui::dock::PanelView>,
-            ],
-            Some(0),
-            &weak_dock,
-            window,
-            cx,
-        );
-
-        dock_area.update(cx, |dock, cx| {
-            dock.set_center(center_dock_item, window, cx);
-            dock.set_left_dock(left_dock, Some(gpui::px(420.0)), false, window, cx);
-        });
-        tracing::info!(
-            "[PulsarApp] left dock + layout: {}ms",
-            t.elapsed().as_millis()
-        );
+        let center_dock_item =
+            build_center_dock(create_level_editor, window_id, &weak_dock, window, cx);
+        let center_tabs = persistent_center_tabs(&center_dock_item, cx);
+        install_docks(&dock_area, center_dock_item, &center_tabs, window, cx);
 
         // Store project_path before moving it
         let has_project = project_path.is_some();
 
-        // ── Drawers ────────────────────────────────────────────────────────────
-        let t = std::time::Instant::now();
-        let file_manager_drawer =
-            cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
-        let nav_sidebar = {
-            let app = cx.weak_entity();
-            let drawer = file_manager_drawer.clone();
-            cx.new(|cx| {
-                let mut sidebar =
-                    super::nav_sidebar::NavSidebar::new(app, drawer, project_path.clone());
-                sidebar.observe_drawer(cx);
-                sidebar
-            })
-        };
-        let nav_overlay = {
-            let sidebar = nav_sidebar.clone();
-            cx.new(|_| super::nav_sidebar::NavSidebarOverlay::new(sidebar))
-        };
-        let status_bar = {
-            let app = cx.weak_entity();
-            cx.new(|_| super::status_bar::StatusBar::new(app))
-        };
-        let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
-        let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
-        tracing::info!("[PulsarApp] drawers: {}ms", t.elapsed().as_millis());
-
-        // Register entity-capturing openers so the registry can open these windows
-        // without callers knowing the concrete types or holding the entities.
-        {
-            use gpui::UpdateGlobal as _;
-            use ui_common::PulsarWindowExt as _;
-
-            let pd = problems_drawer.clone();
-            window_manager::WindowRegistry::update_global(cx, move |reg, _| {
-                reg.register("ProblemsWindow", move |cx| {
-                    ui_problems::ProblemsWindow::open(pd.clone(), cx);
-                });
-            });
-
-            let td = type_debugger_drawer.clone();
-            window_manager::WindowRegistry::update_global(cx, move |reg, _| {
-                reg.register("TypeDebuggerWindow", move |cx| {
-                    ui_type_debugger::TypeDebuggerWindow::open(td.clone(), cx);
-                });
-            });
-        }
+        let drawers = build_drawers(project_path.as_ref(), window, cx);
+        register_drawer_windows(&drawers, cx);
 
         // Script problems from Play-in-Editor (#854, #868) join the
         // language server's in the problems panel.
-        super::script_problems::watch(problems_drawer.clone(), cx);
+        super::script_problems::watch(drawers.problems_drawer.clone(), cx);
 
-        // Subscribe to drawer events
-        cx.subscribe_in(
-            &file_manager_drawer,
+        subscribe_drawer_events(
+            &drawers.file_manager_drawer,
+            &drawers.problems_drawer,
             window,
-            event_handlers::on_file_selected,
-        )
-        .detach();
-        cx.subscribe_in(
-            &file_manager_drawer,
-            window,
-            event_handlers::on_popout_file_manager,
-        )
-        .detach();
-        cx.subscribe_in(
-            &file_manager_drawer,
-            window,
-            event_handlers::on_dock_file_manager,
-        )
-        .detach();
-        cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_drag_event)
-            .detach();
-        // Keep the folder the drawer shows, so the layout remembers it.
-        cx.observe(&file_manager_drawer, |app, drawer, cx| {
-            let folder = drawer
-                .read(cx)
-                .selected_folder()
-                .map(std::path::Path::to_path_buf);
-            if app.state.chrome.file_manager_folder != folder {
-                app.state.chrome.file_manager_folder = folder;
-                app.chrome_changed(cx);
-            }
-        })
-        .detach();
-        cx.subscribe_in(
-            &problems_drawer,
-            window,
-            event_handlers::on_navigate_to_diagnostic,
-        )
-        .detach();
-
-        // Create rust analyzer manager or use shared one
-        let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
-            shared_analyzer
-        } else {
-            let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
-
-            // Start rust analyzer if we have a project
-            if let Some(ref project) = project_path {
-                analyzer.update(cx, |analyzer, cx| {
-                    analyzer.start(project.clone(), window, cx);
-                });
-            }
-
-            analyzer
-        };
-
-        // Subscribe to analyzer events
-        cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
-            .detach();
+            cx,
+        );
+        let rust_analyzer =
+            connect_rust_analyzer(shared_rust_analyzer, project_path.as_ref(), window, cx);
 
         // Initialize palette manager global
         ui_common::command_palette::PaletteManager::init(cx);
 
-        // Initialize plugin manager
         let t_plugins = std::time::Instant::now();
-        tracing::info!("[PulsarApp] plugin init start");
-        // The splash screen normally installed the plugins already; without it
-        // (compat path) they load in the background below.
-        let staged_manager = plugin_manager::take_staged_manager();
-        let plugins_staged = staged_manager.is_some();
-        let mut plugin_manager = staged_manager.unwrap_or_else(PluginManager::new);
-        // Every editor -- built-in or a plugin library -- is created with a handle
-        // to the engine's one language server and its one set of undo
-        // histories (one per document, Pulsar-Native#931).
-        plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
-            language_server: Some(rust_analyzer.clone()),
-            undo: plugin_editor_api::UndoService::new(),
-        });
+        let (mut plugin_manager, plugins_staged) = create_plugin_manager(&rust_analyzer, t_plugins);
 
-        // Register built-in editors
-        crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
-        plugin_manager.register_builtin_editors();
-        tracing::info!(
-            "[PulsarApp] built-in editors registered in {:?}",
-            t_plugins.elapsed()
-        );
-
-        let multiuser_refresh_task = cx.spawn(async move |this, cx| {
-            let multiuser = engine_state::EngineContext::global()
-                .expect("EngineContext not initialized")
-                .multiuser
-                .clone();
-            loop {
-                multiuser.changed().await;
-                // Only the footer shows the session.
-                _ = this.update(cx, |app, cx| app.notify_status_bar(cx));
-            }
-        });
+        let multiuser_refresh_task = spawn_multiuser_refresh(cx);
 
         let mut app = Self {
             state: crate::app::state::AppState {
                 dock_area,
                 project_path,
-                file_manager_drawer,
+                file_manager_drawer: drawers.file_manager_drawer,
                 chrome: Default::default(),
-                problems_drawer,
-                type_debugger_drawer,
+                problems_drawer: drawers.problems_drawer,
+                type_debugger_drawer: drawers.type_debugger_drawer,
                 task_queue_refresh_task: None,
                 center_tabs,
                 preview_tab_panels: Vec::new(),
-                // script_editor: None, // Migrated to plugins
-                // daw_editors: Vec::new(),
-                // database_editors: Vec::new(),
-                // struct_editors: Vec::new(),
-                // enum_editors: Vec::new(),
-                // trait_editors: Vec::new(),
-                // alias_editors: Vec::new(),
                 next_tab_id: 1,
                 rust_analyzer,
                 analyzer_status_text: "Idle".to_string(),
@@ -380,12 +164,11 @@ impl PulsarApp {
                 command_palette_view: None,
                 project_switcher_open: false,
                 project_switcher_view: None,
-                // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 navigation: Default::default(),
-                nav_sidebar,
-                nav_overlay,
-                status_bar,
+                nav_sidebar: drawers.nav_sidebar,
+                nav_overlay: drawers.nav_overlay,
+                status_bar: drawers.status_bar,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 layout_persist: false,
                 layout_slot: None,
@@ -402,63 +185,10 @@ impl PulsarApp {
             },
         };
 
-        // Repaint the task button when queue state changes. The task window owns
-        // its own refresh task while it is open.
-        // The queue is editor-only; game/runtime work is never routed through it.
-        let task_queue = editor_task_queue::global().clone();
-        let task_queue_refresh_task = cx.spawn(async move |this, cx| {
-            let mut revision = task_queue.revision();
-            loop {
-                smol::Timer::after(std::time::Duration::from_millis(250)).await;
-                let next_revision = task_queue.revision();
-                if next_revision != revision {
-                    revision = next_revision;
-                    _ = this.update(cx, |app, cx| app.notify_status_bar(cx));
-                }
-            }
-        });
-        app.state.task_queue_refresh_task = Some(task_queue_refresh_task);
-
-        // Update file manager drawer with registered file types from plugin manager
-        let file_types: Vec<plugin_editor_api::FileTypeDefinition> =
-            if let Some(pm_lock) = plugin_manager::global() {
-                pm_lock
-                    .read()
-                    .file_type_registry()
-                    .get_all_file_types()
-                    .into_iter()
-                    .cloned()
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-        app.state.file_manager_drawer.update(cx, |drawer, cx| {
-            drawer.update_file_types(file_types);
-            cx.notify();
-        });
-
-        // Sync UserTypeRegistry to UI if we have a project
+        app.state.task_queue_refresh_task = Some(spawn_task_queue_refresh(cx));
+        sync_file_types_into_drawer(&mut app, cx);
         if has_project {
-            if let Some(engine_state) = engine_state::EngineContext::global() {
-                if let Some(user_types) = engine_state.user_types() {
-                    let types = user_types.all();
-                    tracing::debug!("📊 Syncing {} types to TypeDebuggerDrawer", types.len());
-                    app.state.type_debugger_drawer.update(cx, |drawer, cx| {
-                        drawer.set_types(types, cx);
-                    });
-                }
-            }
-
-            // Set project root for problems drawer to display relative paths
-            app.state.problems_drawer.update(cx, |drawer, cx| {
-                drawer.set_project_root(app.state.project_path.clone(), cx);
-            });
-
-            // Set project root for type debugger drawer to display relative paths
-            app.state.type_debugger_drawer.update(cx, |drawer, cx| {
-                drawer.set_project_root(app.state.project_path.clone(), cx);
-            });
+            sync_project_into_drawers(&mut app, cx);
         }
 
         // Update Discord presence with initial tab if project is loaded
@@ -466,307 +196,21 @@ impl PulsarApp {
             app.update_discord_presence(cx);
         }
 
-        // Register command palette
-        {
-            use crate::actions::*;
-            use ui::IconName;
-            use ui_common::command_palette::PaletteManager;
-
-            // Drain the file list pre-scanned by the loading-screen background
-            // thread.  When the normal loading-screen path is used this is
-            // already populated; the vec is empty only when the editor is opened
-            // without a loading screen (e.g. first launch / entry-screen path).
-            let preloaded_files = ui_loading_screen::take_preloaded_files();
-            let had_preloaded_files = !preloaded_files.is_empty();
-
-            let mut registered_actions: Vec<_> =
-                gpui::generate_list_of_all_registered_actions().collect();
-            registered_actions.sort_by(|a, b| a.name.cmp(b.name));
-            let registered_windows = {
-                use gpui::UpdateGlobal as _;
-                let mut names = window_manager::WindowRegistry::update_global(cx, |registry, _| {
-                    registry.registered_names()
-                });
-                names.sort_unstable();
-                names
-            };
-
-            let (palette_id, palette_ref) =
-                PaletteManager::register_palette("commands", window, cx);
-
-            // Populate with command items
-            palette_ref.update(cx, |palette, cx| {
-                palette.add_item(
-                    "Toggle File Manager",
-                    "Show or hide the file manager panel",
-                    IconName::Folder,
-                    "View",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(ToggleFileManager), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Toggle Unified Sidebar",
-                    "Switch between the tab bar and the left sidebar of editors and folders",
-                    IconName::PanelLeft,
-                    "View",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(crate::actions::ToggleUnifiedSidebar), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Open Settings",
-                    "Open application settings",
-                    IconName::Settings,
-                    "Application",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(ui::OpenSettings), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Toggle Multiplayer",
-                    "Enable or disable multiplayer collaboration",
-                    IconName::User,
-                    "Application",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(ToggleMultiplayer), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Toggle Agent Chat",
-                    "Show or hide the global agent chat side panel",
-                    IconName::PanelRight,
-                    "View",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(ToggleAgentChat), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Toggle Problems",
-                    "Show or hide the problems panel",
-                    IconName::TriangleAlert,
-                    "View",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(ToggleProblems), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Build Project",
-                    "Build the current project",
-                    IconName::Hammer,
-                    "Project",
-                    |window, cx| {
-                        window.push_notification(
-                            ui::notification::Notification::info(
-                                t!("Notification.Title.Build").to_string(),
-                            )
-                            .message(t!("Notification.Message.BuildingProject").to_string()),
-                            cx,
-                        );
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Run Project",
-                    "Run the current project",
-                    IconName::Play,
-                    "Project",
-                    |window, cx| {
-                        window.push_notification(
-                            ui::notification::Notification::info(
-                                t!("Notification.Title.Run").to_string(),
-                            )
-                            .message(t!("Notification.Message.RunningProject").to_string()),
-                            cx,
-                        );
-                    },
-                    cx,
-                );
-
-                // GPUI's inventory-backed action registry is the source of
-                // commandable actions. Only documented, zero-argument actions
-                // are promoted automatically; required-parameter actions stay
-                // with the workflows that know how to supply those values.
-                let manually_named = [
-                    "ToggleFileManager",
-                    "ToggleUnifiedSidebar",
-                    "ToggleProblems",
-                    "ToggleMultiplayer",
-                    "ToggleAgentChat",
-                ];
-                for action in registered_actions {
-                    let Some(description) = action.documentation else {
-                        continue;
-                    };
-                    let short_name = action.name.rsplit("::").next().unwrap_or(action.name);
-                    if manually_named
-                        .iter()
-                        .any(|manual| short_name.ends_with(manual))
-                        || (action.build)(serde_json::json!({})).is_err()
-                    {
-                        continue;
-                    }
-                    let action_name = action.name.to_string();
-                    let display_name = humanize_action_name(short_name);
-                    let build_action = action.build;
-                    palette.add_item_with_keywords(
-                        display_name,
-                        description,
-                        IconName::Settings,
-                        "Actions",
-                        vec![action_name.clone(), "action".into(), "command".into()],
-                        move |window, cx| match build_action(serde_json::json!({})) {
-                            Ok(action) => window.dispatch_action(action, cx),
-                            Err(error) => {
-                                tracing::warn!(%error, "Could not build command palette action")
-                            }
-                        },
-                        cx,
-                    );
-                }
-
-                // Registered windows can be opened by name, so surface them
-                // without maintaining a second hand-written command list.
-                for name in registered_windows {
-                    let label = format!("Open {}", humanize_action_name(name));
-                    let registered_name = name;
-                    palette.add_item_with_keywords(
-                        label,
-                        "Open this registered engine window",
-                        IconName::Folder,
-                        "Windows",
-                        vec![name.to_string(), "window".into(), "open".into()],
-                        move |_window, cx| {
-                            use gpui::UpdateGlobal as _;
-                            window_manager::WindowRegistry::update_global(cx, |registry, cx| {
-                                registry.open(registered_name, cx)
-                            });
-                        },
-                        cx,
-                    );
-                }
-
-                // Fast path: use the file list that the loading-screen background
-                // thread already scanned — no disk I/O on the main thread.
-                for entry in preloaded_files {
-                    let path = entry.path.clone();
-                    let open_path = path.clone();
-                    let item_id = palette.add_item(
-                        entry.name,
-                        entry.path.to_string_lossy().to_string(),
-                        IconName::SubmitDocument,
-                        "Files",
-                        move |window, cx| {
-                            window.dispatch_action(
-                                Box::new(OpenFile {
-                                    path: open_path.clone(),
-                                }),
-                                cx,
-                            );
-                        },
-                        cx,
-                    );
-                    palette.set_item_thumbnail_path(item_id, path);
-                }
-            });
-
-            app.state.command_palette_id = Some(palette_id);
-            app.state.command_palette = Some(palette_ref.clone());
-
-            // Slow-path fallback: when there were no pre-loaded files (entry-screen
-            // launch, project-switcher, URI open without loading screen) scan the
-            // project directory on the background executor so the main thread never
-            // blocks.  The palette entries appear shortly after the window opens.
-            if !had_preloaded_files {
-                if let Some(ref project_path) = app.state.project_path {
-                    use ui_common::file_utils::find_openable_files;
-                    let project_path_bg = project_path.clone();
-                    cx.spawn(async move |_, cx| {
-                        let files = cx
-                            .background_executor()
-                            .spawn(async move { find_openable_files(&project_path_bg, Some(1000)) })
-                            .await;
-                        cx.update(|cx| {
-                            palette_ref.update(cx, |palette, cx| {
-                                for file in files {
-                                    let path = file.path.clone();
-                                    let open_path = path.clone();
-                                    let item_id = palette.add_item(
-                                        file.name.clone(),
-                                        file.path.to_string_lossy().to_string(),
-                                        IconName::SubmitDocument,
-                                        "Files",
-                                        move |window, cx| {
-                                            window.dispatch_action(
-                                                Box::new(OpenFile {
-                                                    path: open_path.clone(),
-                                                }),
-                                                cx,
-                                            );
-                                        },
-                                        cx,
-                                    );
-                                    palette.set_item_thumbnail_path(item_id, path);
-                                }
-                            });
-                        });
-                    })
-                    .detach();
-                }
-            }
-        }
+        register_command_palette(&mut app, window, cx);
 
         tracing::info!(
             "[PulsarApp] new_internal total: {}ms",
             t_total.elapsed().as_millis()
         );
 
-        // Focus this app's handle so menus built before any editor interaction have
-        // a valid action_context that routes back to PulsarApp's .on_action() handlers.
-        // Without this, window.focused(cx) returns None when the first menu is opened,
-        // action_context is never set, and menu item actions dispatch from PopupMenu's
-        // own focus chain — which is a sibling of PulsarApp, not a descendant.
-        app.state.focus_handle.focus(window, cx);
-        app.install_radial_menu(window, cx);
-
-        app.install_tab_preview_handlers(window, cx);
-        let dock_area = app.state.dock_area.clone();
-        cx.subscribe_in(
-            &dock_area,
+        finish_construction(
+            &mut app,
+            plugin_manager,
+            plugins_staged,
+            has_project,
             window,
-            |app, _, event: &ui::dock::DockEvent, window, cx| {
-                if matches!(event, ui::dock::DockEvent::LayoutChanged) {
-                    app.install_tab_preview_handlers(window, cx);
-                }
-            },
-        )
-        .detach();
-
-        // Populate the open-editor snapshot so the AI can see tabs that were created
-        // during construction (e.g. the default level editor) without waiting for a
-        // tab-change or file-open event.
-        app.refresh_open_editor_snapshot(cx);
-
-        // Restore the project's saved tab layout and keep saving it.
-        if has_project {
-            app.init_layout_persistence(window, cx);
-        }
-
-        // Plugins load in the background; the layout restores once they have.
-        app.start_plugin_load(plugin_manager, plugins_staged, window, cx);
+            cx,
+        );
 
         app
     }
@@ -780,28 +224,4 @@ impl PulsarApp {
     pub fn workspace_root(&self) -> Option<&PathBuf> {
         self.state.project_path.as_ref()
     }
-}
-
-fn humanize_action_name(name: &str) -> String {
-    let mut result = String::with_capacity(name.len() + 8);
-    let mut previous = None;
-    for character in name.chars() {
-        if matches!(character, '_' | '-') {
-            if !result.ends_with(' ') {
-                result.push(' ');
-            }
-        } else {
-            if character.is_ascii_uppercase()
-                && previous.is_some_and(|previous: char| {
-                    previous.is_ascii_lowercase() || previous.is_ascii_digit()
-                })
-                && !result.ends_with(' ')
-            {
-                result.push(' ');
-            }
-            result.push(character);
-        }
-        previous = Some(character);
-    }
-    result.trim().to_string()
 }

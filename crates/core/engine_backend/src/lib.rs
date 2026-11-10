@@ -5,6 +5,8 @@
 //! It is designed to be modular and extensible, allowing developers to
 //! build high-performance games with ease.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 pub mod component_registry;
 /// Persistent GPU objects (bind group cache, readback ring, upload pool).
 #[cfg(any(feature = "render", feature = "pie"))]
@@ -52,7 +54,7 @@ pub struct EngineBackend {
 impl EngineBackend {
     /// Initialize engine backend with empty subsystem registry.
     ///
-    /// All subsystems (including built-in ones like PhysicsEngine) are
+    /// All subsystems are
     /// registered later via the plugin pipeline so that everything — built-in
     /// and DLL-provided — goes through the same injection and initialization
     /// path. See `inject_plugin_subsystems()` and `inject_plugin_components()`.

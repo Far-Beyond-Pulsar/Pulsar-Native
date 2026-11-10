@@ -160,6 +160,8 @@ impl LoadedTexture {
     }
 }
 
+// Static atomic: read on every texture cook, from loader threads that cannot reach
+// an `EngineContext` (the standalone game sets none before it loads textures).
 static PREFERRED_FORMAT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 /// The format a texture is cooked in as it loads, before any device has asked
@@ -544,6 +546,8 @@ struct ResidentTexture {
 type Residency = std::collections::HashMap<(usize, AssetId, TextureUse), ResidentTexture>;
 
 fn resident() -> &'static std::sync::Mutex<Residency> {
+    // Static: process-wide GPU residency table, locked on every texture upload and
+    // used by the game runtime too, where no `EngineContext` need exist.
     static RESIDENT: std::sync::OnceLock<std::sync::Mutex<Residency>> = std::sync::OnceLock::new();
     RESIDENT.get_or_init(Default::default)
 }
@@ -566,6 +570,7 @@ struct SharedTexture {
 type SharedTextures = std::collections::HashMap<(usize, AssetId, TextureUse), SharedTexture>;
 
 fn shared_textures() -> &'static std::sync::Mutex<SharedTextures> {
+    // Static: per-device texture sharing table; same reasons as `RESIDENT`.
     static SHARED: std::sync::OnceLock<std::sync::Mutex<SharedTextures>> =
         std::sync::OnceLock::new();
     SHARED.get_or_init(Default::default)

@@ -257,9 +257,9 @@ status = "verified"
 
 [[site]]
 pattern = "add-component"
-file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
+file = "crates/editor/ui_level_editor/src/core/commands/component.rs"
 count = 3
-owner = "editor::ui_level_editor::core::commands::executor"
+owner = "editor::ui_level_editor::core::commands::component"
 disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer. The third site is `command_label`'s match arm naming the undo entry (#931), not a producer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "crates/editor/ui_level_editor/src/core/commands/tests.rs typed_component_commands_are_undoable_and_report_no_ops"
@@ -267,12 +267,22 @@ status = "verified"
 
 [[site]]
 pattern = "property-edit"
-file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
+file = "crates/editor/ui_level_editor/src/core/commands/component.rs"
 count = 5
-owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "converted (Phase 3): SetComponentProperty and SetMovability use typed reflected setters; SetComponentData writes a typed value in place (or an unresolved payload to an unresolved instance); change detection is reported by each edit, no JSON fingerprint"
+owner = "editor::ui_level_editor::core::commands::component"
+disposition = "converted (Phase 3): SetComponentProperty and SetMovability use typed reflected setters; SetComponentData writes a typed value in place (or an unresolved payload to an unresolved instance); change detection is reported by each edit, no JSON fingerprint. One site is the dispatch arm that routes SetComponentData to this module"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "crates/editor/ui_level_editor/src/core/commands/tests.rs"
+status = "verified"
+
+[[site]]
+pattern = "property-edit"
+file = "crates/editor/ui_level_editor/src/core/commands/class.rs"
+count = 1
+owner = "editor::ui_level_editor::core::commands::class"
+disposition = "converted (Phase 3): SetClassVariable writes the class variable through the same typed reflected setter as a component property"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/classes.rs reverts_and_variable_edits_are_undoable_commands"
 status = "verified"
 
 [[site]]

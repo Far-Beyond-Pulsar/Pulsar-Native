@@ -11,8 +11,6 @@ use ui_problems::ProblemsDrawer;
 // Current limitation: Hard-coded dependencies should be replaced with event-driven
 // plugin system when the plugin architecture is finalized.
 
-// use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
-// use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 use futures::FutureExt;
 use plugin_manager;
@@ -646,14 +644,6 @@ pub fn on_tab_panel_event(
             tracing::trace!("[PANEL_EVENT] MoveToNewWindow is now handled by DockArea");
         }
         PanelEvent::TabClosed(_entity_id) => {
-            // Editor tracking has been migrated to plugins
-            // app.state.daw_editors.retain(|e| e.entity_id() != *entity_id);
-            // app.state.database_editors.retain(|e| e.entity_id() != *entity_id);
-            // app.state.struct_editors.retain(|e| e.entity_id() != *entity_id);
-            // app.state.enum_editors.retain(|e| e.entity_id() != *entity_id);
-            // app.state.trait_editors.retain(|e| e.entity_id() != *entity_id);
-            // app.state.alias_editors.retain(|e| e.entity_id() != *entity_id);
-
             // Keep engine-level open-editor snapshot in sync.
             app.refresh_open_editor_snapshot(cx);
             // Update Discord presence when tab is closed

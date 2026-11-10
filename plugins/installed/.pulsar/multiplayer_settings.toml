@@ -1,0 +1,9 @@
+version = 1
+
+[settings]
+mode = "standalone"
+players = 2
+tick_rate_hz = 60
+separate_windows = false
+latency_ms = 0
+packet_loss_pct = 0

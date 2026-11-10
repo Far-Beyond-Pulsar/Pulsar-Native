@@ -36,8 +36,8 @@
 //! itself does or doesn't have day to day (that pin has moved several times
 //! without incident since this crate was first written; the constraint here
 //! was always about the dependency direction, not about pin friction).
-//! Every actual consumer of this crate (`helio_component`, `pulsar_physics`,
-//! `engine_backend`, `ui_level_editor`) already depends on both
+//! Every actual consumer of this crate (`helio_component`, the plugins'
+//! component crates, `engine_backend`, `ui_level_editor`) already depends on both
 //! `pulsar_scenedb` and `pulsar_reflection` directly, so a small
 //! Pulsar-Native-internal crate sitting alongside them -- itself depending
 //! on both -- is a clean fit with no cross-repo coordination needed at all.
@@ -51,6 +51,8 @@
 //! consumers through their data (SceneDB GPU rows and graph-owned
 //! derivations); `#[register_world_component]` names the class after the
 //! type.
+
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 // Re-exported so `#[register_world_component]` (`engine_class_derive`) can
 // emit `pulsar_world_registry::inventory::submit! { .. }` in the calling
@@ -774,6 +776,8 @@ impl<T: Copy> From<T> for GpuRepr<T> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NoGpuMirror;
 
+// SAFETY: `NoGpuMirror` is a zero-sized unit struct: it has no bytes, so there
+// is no padding and every (empty) bit pattern is a valid value.
 unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
 
 // `SceneGpuStore::register_gpu_buffer` keys shared buffers on an element type
