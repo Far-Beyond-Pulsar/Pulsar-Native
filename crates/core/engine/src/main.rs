@@ -191,6 +191,12 @@ fn main() {
 
     // Name the main thread FIRST
     profiling::set_thread_name("Main Thread");
+    // The UI thread is listed in the Tasks window's Threads view, with the
+    // task it is running (tab creation, renderer setup) when there is one.
+    let _main_thread = editor_task_queue::register_current_thread(
+        editor_task_queue::ThreadSpec::new("Main Thread", editor_task_queue::ThreadRole::Main)
+            .owner("engine"),
+    );
 
     // Route wgpui's frame-stage scopes (draw/layout/prepaint/paint/present,
     // swapchain acquire, surface-registry and submit-lock waits, ...) into the

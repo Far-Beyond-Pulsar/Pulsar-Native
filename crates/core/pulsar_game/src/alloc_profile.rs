@@ -136,9 +136,7 @@ pub fn start_reporter() {
     else {
         return;
     };
-    let _ = std::thread::Builder::new()
-        .name("alloc-profile".into())
-        .spawn(move || loop {
+    let _ = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("alloc-profile", editor_task_queue::ThreadRole::Other).owner("pulsar_game"), move || loop {
             std::thread::sleep(std::time::Duration::from_secs(seconds));
             report();
         });

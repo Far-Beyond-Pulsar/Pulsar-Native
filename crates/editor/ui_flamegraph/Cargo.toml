@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+editor_task_queue = { workspace = true }
 # Its registration with the editor shell (`ui_common::editor_tools`).
 pulsar_plugins = { workspace = true }
 inventory = { workspace = true }

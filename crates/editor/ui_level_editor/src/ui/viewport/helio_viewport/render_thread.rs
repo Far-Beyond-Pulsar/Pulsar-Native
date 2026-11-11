@@ -29,9 +29,18 @@ impl HelioViewport {
         let frames_published = self.frames_published.clone();
         let display_refresh_millihertz = self.display_refresh_millihertz.clone();
 
-        let handle = std::thread::Builder::new()
-            .name("Helio Render".into())
-            .spawn(move || {
+        // A persistent task: it is listed under Services with its frame rate,
+        // its log, and a stall report if frames stop. The thread is the task's.
+        let handle = editor_task_queue::spawn_service(
+            editor_task_queue::ServiceDescription::new(
+                "Helio render loop",
+                "render",
+                "Helio Render",
+                editor_task_queue::ThreadRole::Render,
+            )
+            .owner("level editor viewport")
+            .heartbeat(Duration::from_secs(3)),
+            move |ctx| {
                 profiling::set_thread_name("Helio Render");
 
                 let panic_result = catch_unwind(AssertUnwindSafe(|| {
@@ -39,6 +48,8 @@ impl HelioViewport {
                     // pipelines. Let the first editor frame reach the display
                     // before starting that work, so startup never presents as a
                     // blank window while the driver initializes.
+                    ctx.set_phase("Waiting for the first editor frame");
+                    ctx.set_idle(true);
                     loop {
                         if stop.load(Ordering::Acquire) {
                             return;
@@ -48,6 +59,8 @@ impl HelioViewport {
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                         }
                     }
+                    ctx.set_idle(false);
+                    ctx.set_phase("Rendering frames");
                     loading.set_progress(0.05);
 
                     // Start at the display's refresh rate and drop from there only
@@ -74,6 +87,7 @@ impl HelioViewport {
                         if stop.load(Ordering::Acquire) {
                             break;
                         }
+                        ctx.heartbeat();
 
                         let millihertz = display_refresh_millihertz.load(Ordering::Relaxed);
                         if millihertz > 0 {
@@ -133,6 +147,8 @@ impl HelioViewport {
                             // All editor viewports share this cold-start lane.
                             // The viewport thread waits for its own result; the
                             // UI thread stays free to repaint the loading overlay.
+                            ctx.set_phase("Waiting for the Helio initialization lane");
+                            ctx.set_idle(true);
                             let engine = engine.clone();
                             let device = device.clone();
                             let queue = queue.clone();
@@ -151,11 +167,11 @@ impl HelioViewport {
                                         poisoned.into_inner()
                                     }
                                 };
-                                engine.prepare_for_render(
-                                    &device, &queue, width, height, format,
-                                )
+                                engine.prepare_for_render(&device, &queue, width, height, format)
                             }) else {
-                                tracing::error!("[HELIO-VIEWPORT] Helio initialization worker unavailable");
+                                tracing::error!(
+                                    "[HELIO-VIEWPORT] Helio initialization worker unavailable"
+                                );
                                 return;
                             };
                             let result = loop {
@@ -165,7 +181,9 @@ impl HelioViewport {
                                 match result_rx.recv_timeout(Duration::from_millis(50)) {
                                     Ok(Ok(prepared)) => break prepared,
                                     Ok(Err(())) => {
-                                        tracing::error!("[HELIO-VIEWPORT] renderer initialization panicked");
+                                        tracing::error!(
+                                            "[HELIO-VIEWPORT] renderer initialization panicked"
+                                        );
                                         break false;
                                     }
                                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
@@ -174,6 +192,8 @@ impl HelioViewport {
                                     }
                                 }
                             };
+                            ctx.set_idle(false);
+                            ctx.set_phase("Rendering frames");
                             if result {
                                 if let Some(loading) = initial_load.as_ref() {
                                     loading.set_progress(1.0);
@@ -348,8 +368,11 @@ impl HelioViewport {
                     // not hide the fact that the renderer thread has terminated.
                     eprintln!("[HELIO RENDER THREAD PANIC] {report}");
                     tracing::error!("[HELIO RENDER THREAD PANIC] {report}");
+                    return Err(format!("Helio render thread panicked: {message}"));
                 }
-            });
+                Ok(())
+            },
+        );
 
         match handle {
             Ok(h) => self.render_thread_handle = Some(h),

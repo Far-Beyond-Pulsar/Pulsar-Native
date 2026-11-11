@@ -19,7 +19,7 @@ pub fn prepare_relative_mouse_mode() -> bool {
         //         `'static` (`CLASS_NAME`) or to a local that lives across the call (`class`,
         //         `device`, `message`). The window class and message-only window are created and
         //         pumped on this same thread, as Win32 requires for a window's message loop.
-        std::thread::spawn(move || unsafe {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui level editor: prepare relative mouse mode", editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || unsafe {
             use std::mem::{size_of, zeroed};
             use std::ptr::{null, null_mut};
             use winapi::shared::minwindef::{ATOM, LPARAM, LRESULT, UINT, WPARAM};

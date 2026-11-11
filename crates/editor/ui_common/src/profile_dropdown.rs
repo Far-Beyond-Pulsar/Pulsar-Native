@@ -70,7 +70,7 @@ impl ProfileDropdown {
         self.avatar_image = None;
 
         let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui common: ensure avatar loaded", editor_task_queue::ThreadRole::Io).owner("ui_common"), move || {
             let image = fetch_avatar_image(&url).ok();
             let _ = smol::block_on(tx.send(image));
         });

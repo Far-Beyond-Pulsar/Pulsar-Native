@@ -12,7 +12,8 @@
 
 use crate::components::log_drawer::LogDrawer;
 use editor_task_queue::{
-    StallKind, TaskActivity, TaskDuration, TaskId, TaskModel, TaskSnapshot, TaskStatus,
+    StallKind, TaskActivity, TaskDuration, TaskId, TaskModel, TaskSnapshot, TaskStatus, ThreadRole,
+    ThreadSnapshot, ThreadState,
 };
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
@@ -74,9 +75,32 @@ impl TaskTab {
     }
 }
 
+/// What the window lists. Tasks and services are task records (finite work
+/// and persistent loops); Threads is the registry of every thread, grouped by
+/// role, which says what each one is doing whether or not a task is behind it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum View {
+    Tasks,
+    Threads,
+    Services,
+}
+
+impl View {
+    const ALL: [Self; 3] = [Self::Tasks, Self::Threads, Self::Services];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Tasks => "Tasks",
+            Self::Threads => "Threads",
+            Self::Services => "Services",
+        }
+    }
+}
+
 pub struct TaskQueuePanel {
     focus_handle: FocusHandle,
     search: Entity<InputState>,
+    view: View,
     selected_tab: TaskTab,
     visible: Vec<TaskSnapshot>,
     /// The task open in the detail pane, with the drawer following its log.
@@ -106,6 +130,7 @@ impl TaskQueuePanel {
             // Saves and other short background jobs may finish before the
             // task panel is opened. Keep completed work visible by default so
             // the queue also serves as an audit history.
+            view: View::Tasks,
             selected_tab: TaskTab::All,
             visible: Vec::new(),
             selected: None,
@@ -141,7 +166,39 @@ impl Focusable for TaskQueuePanel {
 
 impl Render for TaskQueuePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let snapshots = editor_task_queue::global().snapshots();
+        let all_tasks = editor_task_queue::global().snapshots();
+        let threads = editor_task_queue::thread_snapshots();
+        let view = self.view;
+        let persistent = |task: &&TaskSnapshot| task.duration == TaskDuration::Persistent;
+        let view_counts = [
+            all_tasks.iter().filter(|task| !persistent(task)).count(),
+            threads
+                .iter()
+                .filter(|thread| thread.state != ThreadState::Exited)
+                .count(),
+            all_tasks
+                .iter()
+                .filter(|task| persistent(task) && !task.status.is_finished())
+                .count(),
+        ];
+        let view_stalled = [
+            all_tasks
+                .iter()
+                .filter(|task| !persistent(task) && task.stall.is_some())
+                .count(),
+            0,
+            all_tasks
+                .iter()
+                .filter(|task| persistent(task) && task.stall.is_some())
+                .count(),
+        ];
+        // Tasks and Services share the list; Threads has its own.
+        let snapshots: Vec<TaskSnapshot> = all_tasks
+            .iter()
+            .filter(|task| persistent(task) == (view == View::Services))
+            .cloned()
+            .collect();
+        let strip = strip_text(view, &threads);
         let query = self.search.read(cx).text().to_string().to_ascii_lowercase();
         let counts =
             TaskTab::ALL.map(|tab| snapshots.iter().filter(|task| tab.includes(task)).count());
@@ -149,7 +206,7 @@ impl Render for TaskQueuePanel {
         let selected_snapshot = self
             .selected
             .as_ref()
-            .and_then(|(id, _)| snapshots.iter().find(|task| task.id == *id).cloned());
+            .and_then(|(id, _)| all_tasks.iter().find(|task| task.id == *id).cloned());
         let selected_id = self.selected.as_ref().map(|(id, _)| *id);
         self.visible = snapshots
             .into_iter()
@@ -164,7 +221,9 @@ impl Render for TaskQueuePanel {
 
         let count = self.visible.len();
         let row_sizes = Rc::new(vec![size(px(0.0), px(ROW_HEIGHT)); count]);
-        let list = if count == 0 {
+        let list = if view == View::Threads {
+            render_threads(&threads, &all_tasks, &query, cx)
+        } else if count == 0 {
             v_flex()
                 .flex_1()
                 .min_w_0()
@@ -174,8 +233,13 @@ impl Render for TaskQueuePanel {
                 .text_color(cx.theme().muted_foreground)
                 .child(if query.is_empty() {
                     format!(
-                        "No {} tasks",
-                        self.selected_tab.label().to_ascii_lowercase()
+                        "No {} {}",
+                        self.selected_tab.label().to_ascii_lowercase(),
+                        if view == View::Services {
+                            "services"
+                        } else {
+                            "tasks"
+                        }
                     )
                 } else {
                     "No matching tasks".to_string()
@@ -264,7 +328,33 @@ impl Render for TaskQueuePanel {
                                     .child("Worker counts apply to editor tasks only. Select a task for its log."),
                             ),
                     )
-                    .child(h_flex().w_full().gap_2().children(
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_2()
+                            .children(View::ALL.into_iter().enumerate().map(|(index, tab)| {
+                                let selected = view == tab;
+                                let stalled = view_stalled[index];
+                                Button::new(("editor-task-view", index))
+                                    .label(format!(
+                                        "{} ({}){}",
+                                        tab.label(),
+                                        view_counts[index],
+                                        if stalled > 0 {
+                                            format!("  ⚠ {stalled} stalled")
+                                        } else {
+                                            String::new()
+                                        }
+                                    ))
+                                    .when(selected, |button| button.primary())
+                                    .when(!selected, |button| button.outline())
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.view = tab;
+                                        cx.notify();
+                                    }))
+                            })),
+                    )
+                    .when(view != View::Threads, |header| header.child(h_flex().w_full().gap_2().children(
                         TaskTab::ALL.into_iter().enumerate().map(|(index, tab)| {
                             let selected = self.selected_tab == tab;
                             Button::new(("editor-task-tab", index))
@@ -276,7 +366,15 @@ impl Render for TaskQueuePanel {
                                     cx.notify();
                                 }))
                         }),
-                    )),
+                    )))
+                    .when_some(strip, |header, text| {
+                        header.child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(text),
+                        )
+                    }),
             )
             .child(div().flex_1().min_h_0().w_full().child(match detail {
                 Some(detail) => h_resizable("editor-tasks-split")
@@ -330,6 +428,7 @@ fn render_row(task: TaskSnapshot, open: bool, cx: &mut Context<TaskQueuePanel>) 
         .stall
         .as_ref()
         .map(|stall| stall.message.clone())
+        .or_else(|| (task.duration == TaskDuration::Persistent).then(|| service_summary(&task)))
         .or_else(|| task.detail.clone())
         .or_else(|| task.phase.clone())
         .or_else(|| task.error.clone())
@@ -492,6 +591,21 @@ fn render_detail(
         TaskActivity::Pending => format!("Waiting on an await for {}", fmt(task.activity_for)),
         TaskActivity::Finished => "Finished".to_string(),
     };
+    let heartbeat = if task.beats == 0 {
+        "none yet".to_string()
+    } else {
+        format!(
+            "{} beats{}{}{}",
+            task.beats,
+            task.beat_rate_hz
+                .map(|hz| format!(", {hz:.1} Hz"))
+                .unwrap_or_default(),
+            task.since_beat
+                .map(|since| format!(", last {} ago", fmt(since)))
+                .unwrap_or_default(),
+            if task.idle { " (idle on purpose)" } else { "" }
+        )
+    };
     let started = task
         .started_at
         .map(|at| format!("{} ago", fmt(since(at))))
@@ -563,6 +677,7 @@ fn render_detail(
                 StallKind::BlockedThread => "Blocking its thread",
                 StallKind::Pending => "Waiting with no progress",
                 StallKind::NoProgress => "No progress",
+                StallKind::NoHeartbeat => "Heartbeat stopped",
             };
             column.child(
                 v_flex()
@@ -629,6 +744,18 @@ fn render_detail(
                                                 ),
                                             ))
                                             .child(row("Polls", task.polls.to_string()))
+                                            .when(
+                                                task.duration == TaskDuration::Persistent,
+                                                |column| {
+                                                    column.child(row("Heartbeat", heartbeat)).child(
+                                                        row(
+                                                            "Last pass",
+                                                            task.last_tick
+                                                                .map_or_else(|| "-".into(), fmt),
+                                                        ),
+                                                    )
+                                                },
+                                            )
                                             .when_some(task.detail.clone(), |column, detail| {
                                                 column.child(row("Detail", detail))
                                             })
@@ -757,6 +884,7 @@ fn pool_label(task: &TaskSnapshot) -> &'static str {
         TaskDuration::Short => "On-demand worker",
         TaskDuration::Long => "Dedicated worker",
         TaskDuration::Foreground => "Inline",
+        TaskDuration::Persistent => "Service thread",
     }
 }
 
@@ -765,6 +893,7 @@ fn duration_label(task: &TaskSnapshot) -> &'static str {
         TaskDuration::Short => "Short task",
         TaskDuration::Long => "Long task",
         TaskDuration::Foreground => "Inline task",
+        TaskDuration::Persistent => "Persistent service",
     }
 }
 
@@ -773,6 +902,7 @@ fn model_label(model: TaskModel) -> &'static str {
         TaskModel::Async => "async",
         TaskModel::Blocking => "blocking",
         TaskModel::Foreground => "inline on the calling thread",
+        TaskModel::Persistent => "persistent loop on its own thread",
     }
 }
 
@@ -782,7 +912,9 @@ fn since(at: SystemTime) -> Duration {
 
 fn fmt(duration: Duration) -> String {
     let millis = duration.as_millis();
-    if millis < 1_000 {
+    if duration.as_micros() < 1_000 {
+        format!("{}µs", duration.as_micros())
+    } else if millis < 1_000 {
         format!("{millis}ms")
     } else if millis < 60_000 {
         format!("{:.1}s", duration.as_secs_f32())
@@ -793,4 +925,277 @@ fn fmt(duration: Duration) -> String {
             duration.as_secs() % 60
         )
     }
+}
+
+/// One line under the view tabs: micro tasks on Tasks, the pools on Threads.
+fn strip_text(view: View, threads: &[ThreadSnapshot]) -> Option<String> {
+    match view {
+        View::Tasks => {
+            let micro = editor_task_queue::micro_snapshots();
+            if micro.is_empty() {
+                return None;
+            }
+            let top = micro
+                .iter()
+                .take(4)
+                .map(|stat| {
+                    format!(
+                        "{} x{} (mean {}, max {}{})",
+                        stat.name,
+                        stat.count,
+                        fmt(stat.mean()),
+                        fmt(stat.max),
+                        if stat.slow > 0 {
+                            format!(", {} slow", stat.slow)
+                        } else {
+                            String::new()
+                        }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("  |  ");
+            Some(format!(
+                "Micro tasks (counted, not listed): {top}{}",
+                if micro.len() > 4 {
+                    format!("  |  +{} more", micro.len() - 4)
+                } else {
+                    String::new()
+                }
+            ))
+        }
+        View::Threads => {
+            let tokio = editor_task_queue::pools::tokio_metrics().map_or_else(
+                || "tokio: not started".to_string(),
+                |m| {
+                    format!(
+                        "tokio: {} workers, {} live tasks, {} queued",
+                        m.workers, m.alive_tasks, m.queue_depth
+                    )
+                },
+            );
+            let rayon = threads
+                .iter()
+                .filter(|thread| thread.pool.as_deref() == Some("rayon"))
+                .count();
+            Some(format!(
+                "{tokio}  |  rayon: {rayon} workers (state not reported by rayon)  |  Threads this process created outside the task system do not appear here."
+            ))
+        }
+        View::Services => None,
+    }
+}
+
+/// `Hz | pass time | phase` for a persistent task's row.
+fn service_summary(task: &TaskSnapshot) -> String {
+    let mut parts = Vec::new();
+    match (task.beat_rate_hz, task.idle) {
+        (_, true) => parts.push("idle".to_string()),
+        (Some(hz), _) => parts.push(format!("{hz:.0} Hz")),
+        _ => {}
+    }
+    if let Some(tick) = task.last_tick {
+        parts.push(format!("pass {}", fmt(tick)));
+    }
+    if let Some(phase) = &task.phase {
+        parts.push(phase.clone());
+    }
+    if parts.is_empty() {
+        "starting".to_string()
+    } else {
+        parts.join(" · ")
+    }
+}
+
+fn thread_matches(thread: &ThreadSnapshot, title: Option<&str>, query: &str) -> bool {
+    query.is_empty()
+        || thread.name.to_ascii_lowercase().contains(query)
+        || thread.owner.to_ascii_lowercase().contains(query)
+        || thread
+            .pool
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains(query)
+        || thread
+            .phase
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains(query)
+        || title
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains(query)
+}
+
+/// The Threads view: every registered thread, grouped by role.
+fn render_threads(
+    threads: &[ThreadSnapshot],
+    tasks: &[TaskSnapshot],
+    query: &str,
+    cx: &mut Context<TaskQueuePanel>,
+) -> AnyElement {
+    let theme = cx.theme().clone();
+    let title_of = |id: TaskId| {
+        tasks
+            .iter()
+            .find(|task| task.id == id)
+            .map(|task| task.title.clone())
+    };
+    let cell = |width: f32, text: String, color: Hsla| {
+        div()
+            .w(px(width))
+            .flex_shrink_0()
+            .truncate()
+            .text_color(color)
+            .child(text)
+    };
+    let mut body = v_flex().w_full().child(
+        h_flex()
+            .w_full()
+            .px_4()
+            .py_1()
+            .gap_3()
+            .text_xs()
+            .text_color(theme.muted_foreground)
+            .border_b_1()
+            .border_color(theme.border)
+            .child(div().w(px(8.0)).flex_shrink_0())
+            .child(cell(230.0, "Thread".into(), theme.muted_foreground))
+            .child(cell(150.0, "Owner / pool".into(), theme.muted_foreground))
+            .child(cell(130.0, "State".into(), theme.muted_foreground))
+            .child(cell(110.0, "Busy".into(), theme.muted_foreground))
+            .child(div().flex_1().min_w_0().child("Doing")),
+    );
+    let mut shown = 0;
+    for role in ThreadRole::ALL {
+        let group: Vec<(&ThreadSnapshot, Option<String>)> = threads
+            .iter()
+            .map(|thread| (thread, thread.task.and_then(title_of)))
+            .filter(|(thread, title)| {
+                thread.role == role && thread_matches(thread, title.as_deref(), query)
+            })
+            .collect();
+        if group.is_empty() {
+            continue;
+        }
+        let running = group
+            .iter()
+            .filter(|(thread, _)| thread.state == ThreadState::Running)
+            .count();
+        body = body.child(
+            h_flex()
+                .w_full()
+                .px_4()
+                .py_1()
+                .bg(theme.muted.opacity(0.1))
+                .text_xs()
+                .font_semibold()
+                .child(format!(
+                    "{}  ·  {} thread(s), {} running",
+                    role.label(),
+                    group.len(),
+                    running
+                )),
+        );
+        for (thread, title) in group {
+            shown += 1;
+            body = body.child(render_thread_row(thread, title, cx));
+        }
+    }
+    if shown == 0 {
+        body = body.child(
+            div()
+                .p_4()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child("No matching threads"),
+        );
+    }
+    v_flex()
+        .id("editor-thread-list")
+        .flex_1()
+        .min_w_0()
+        .overflow_y_scroll()
+        .child(body)
+        .into_any_element()
+}
+
+fn render_thread_row(
+    thread: &ThreadSnapshot,
+    title: Option<String>,
+    cx: &mut Context<TaskQueuePanel>,
+) -> AnyElement {
+    let theme = cx.theme().clone();
+    let (color, state_text) = match thread.state {
+        ThreadState::Running => (theme.success, format!("Running {}", fmt(thread.state_for))),
+        ThreadState::Parked => (
+            theme.muted_foreground,
+            format!("Waiting {}", fmt(thread.state_for)),
+        ),
+        ThreadState::Unknown => (theme.muted_foreground.opacity(0.6), "Not reported".into()),
+        ThreadState::Exited => (theme.warning, "Exited".into()),
+    };
+    let busy = thread.busy.map_or_else(
+        || "-".to_string(),
+        |busy| {
+            let alive = thread.alive_for.as_secs_f64().max(0.001);
+            format!("{} ({:.0}%)", fmt(busy), busy.as_secs_f64() / alive * 100.0)
+        },
+    );
+    let doing = title
+        .map(|title| format!("▶ {title}"))
+        .or_else(|| thread.phase.clone())
+        .unwrap_or_default();
+    let owner = match (&thread.pool, thread.owner.is_empty()) {
+        (Some(pool), true) => pool.clone(),
+        (Some(pool), false) => format!("{} / {pool}", thread.owner),
+        (None, _) => thread.owner.clone(),
+    };
+    let cell = |width: f32, text: String, color: Hsla| {
+        div()
+            .w(px(width))
+            .flex_shrink_0()
+            .truncate()
+            .text_color(color)
+            .child(text)
+    };
+    let task = thread.task;
+    h_flex()
+        .id(("editor-thread-row", thread.id))
+        .w_full()
+        .h(px(28.0))
+        .px_4()
+        .gap_3()
+        .items_center()
+        .text_xs()
+        .border_b_1()
+        .border_color(theme.border.opacity(0.3))
+        .when(thread.state == ThreadState::Exited, |row| row.opacity(0.6))
+        .when_some(task, |row, id| {
+            row.cursor_pointer()
+                .hover(|row| row.bg(theme.muted.opacity(0.12)))
+                .on_click(cx.listener(move |this, _, _, cx| this.select(id, cx)))
+        })
+        .child(
+            div()
+                .w(px(8.0))
+                .h(px(8.0))
+                .flex_shrink_0()
+                .rounded_full()
+                .bg(color),
+        )
+        .child(cell(230.0, thread.name.clone(), theme.foreground))
+        .child(cell(150.0, owner, theme.muted_foreground))
+        .child(cell(130.0, state_text, color))
+        .child(cell(110.0, busy, theme.foreground))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_color(theme.muted_foreground)
+                .child(doing),
+        )
+        .into_any_element()
 }

@@ -172,7 +172,7 @@ impl FabSearchWindow {
         cx.notify();
 
         let (tx, rx) = smol::channel::bounded::<Result<Box<crate::parser::SketchfabMe>, String>>(1);
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: fetch me", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
             smol::block_on(tx.send(fetch_sketchfab_me(&token)));
         });
 
@@ -255,7 +255,7 @@ impl FabSearchWindow {
         self.image_inflight += 1;
         let (tx, rx) = smol::channel::bounded::<Option<Arc<gpui::RenderImage>>>(1);
         let url_thread = url.clone();
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: start image fetch", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
             let maybe = crate::image_loader::fetch_and_decode(&url_thread).ok();
             smol::block_on(tx.send(maybe));
         });

@@ -21,7 +21,7 @@ pub fn on_refresh_friends(this: &mut FriendsScreen, cx: &mut Context<FriendsScre
 
     let (tx, rx) = smol::channel::bounded::<Result<Vec<FriendInfo>, FriendsError>>(1);
 
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on refresh friends", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let result = friends_engine::get_friends_list();
         let _ = smol::block_on(tx.send(result));
     });
@@ -90,7 +90,7 @@ pub fn on_send_friend_request(this: &mut FriendsScreen, cx: &mut Context<Friends
 
     let target = username.clone();
     let (tx, rx) = smol::channel::bounded::<Result<bool, FriendsError>>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on send friend request", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let result = friends_engine::check_user_has_gist(&target);
         let _ = smol::block_on(tx.send(result));
     });
@@ -129,7 +129,7 @@ pub fn on_accept_request(
 ) {
     let target = username.to_string();
     let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on accept request", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let result = friends_engine::accept_friend_request(&target);
         let _ = smol::block_on(tx.send(result));
     });
@@ -151,7 +151,7 @@ pub fn on_decline_request(
 ) {
     let target = username.to_string();
     let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on decline request", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let result = friends_engine::decline_friend_request(&target);
         let _ = smol::block_on(tx.send(result));
     });
@@ -172,7 +172,7 @@ pub fn on_fetch_friend_homes(this: &mut FriendsScreen, cx: &mut Context<FriendsS
 
     let (tx, rx) = smol::channel::bounded::<Result<usize, friends_engine::FriendsError>>(1);
 
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on fetch friend homes", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let result = friends_engine::fetch_friend_homes();
         let _ = smol::block_on(tx.send(result));
     });
@@ -212,7 +212,7 @@ pub fn on_add_friend(this: &mut FriendsScreen, username: &str, cx: &mut Context<
 
     let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
     let target_for_thread = target.clone();
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on add friend", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let result = friends_engine::send_friend_request(&target_for_thread);
         let _ = smol::block_on(tx.send(result));
     });
@@ -275,7 +275,7 @@ pub fn on_invite_to_session(
     cx: &mut Context<FriendsPopover>,
 ) {
     let clicked = username.to_string();
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: on invite to session", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         tracing::info!("[FriendsPopover] checking online status for {}", clicked);
         let online = friends_engine::relay_integration::is_user_online(&clicked);
         tracing::info!(
@@ -320,7 +320,7 @@ fn ensure_avatar_loaded(this: &mut FriendsScreen, url: &str, cx: &mut Context<Fr
     let url = url.to_string();
     let url_for_thread = url.clone();
     let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: ensure avatar loaded", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
         let image = fetch_avatar_image(&url_for_thread).ok();
         let _ = smol::block_on(tx.send(image));
     });

@@ -3312,6 +3312,8 @@ dependencies = [
  "chrono",
  "futures",
  "parking_lot",
+ "rayon",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3545,6 +3547,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
+ "editor_task_queue",
  "futures",
  "notify 8.2.0",
  "parking_lot",
@@ -4399,6 +4402,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "directories 6.0.0",
+ "editor_task_queue",
  "engine_state",
  "futures",
  "once_cell",
@@ -11907,6 +11911,7 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "crossbeam-queue",
+ "editor_task_queue",
  "libc",
  "memmap2",
  "once_cell",
@@ -12232,6 +12237,7 @@ dependencies = [
 name = "pulsar_core"
 version = "0.1.0"
 dependencies = [
+ "editor_task_queue",
  "profiling 0.1.0",
  "smol",
  "tracing",
@@ -12345,6 +12351,7 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
+ "editor_task_queue",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
@@ -12400,6 +12407,7 @@ name = "pulsar_lsp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "editor_task_queue",
  "flume",
  "gpui-ce",
  "lsp-types",
@@ -17372,6 +17380,7 @@ name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
  "dirs 6.0.0",
+ "editor_task_queue",
  "engine_fs",
  "engine_state",
  "gpui-ce",
@@ -17427,6 +17436,7 @@ dependencies = [
  "arc-swap",
  "bytemuck",
  "crossbeam-queue",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -17454,6 +17464,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "editor_task_queue",
  "engine_state",
  "friends_engine",
  "gpui-ce",
@@ -17483,6 +17494,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "directories 6.0.0",
+ "editor_task_queue",
  "engine_fs",
  "engine_state",
  "git2 0.21.0",
@@ -17603,6 +17615,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "directories 6.0.0",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -17664,6 +17677,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-tungstenite",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -17689,6 +17703,7 @@ dependencies = [
 name = "ui_multiuser_status"
 version = "0.1.0"
 dependencies = [
+ "editor_task_queue",
  "engine_state",
  "gpui-ce",
  "image",

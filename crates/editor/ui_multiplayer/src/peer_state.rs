@@ -731,7 +731,7 @@ impl MultiplayerWindow {
         // Create manifest in background thread
         let client_clone = client.clone();
         let session_id_clone = req_session_id.clone();
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui multiplayer: guest serve manifest", editor_task_queue::ThreadRole::Io).owner("ui_multiplayer"), move || {
             tracing::debug!("PEER: Creating file manifest");
             match simple_sync::create_manifest(&project_root) {
                 Ok(manifest) => match serde_json::to_string(&manifest) {
@@ -774,7 +774,7 @@ impl MultiplayerWindow {
         // Read files in background thread
         let client_clone = client.clone();
         let session_id_clone = req_session_id.clone();
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui multiplayer: guest serve files", editor_task_queue::ThreadRole::Io).owner("ui_multiplayer"), move || {
             tracing::debug!("PEER: Reading {} files", file_paths.len());
             match simple_sync::read_files(&project_root, file_paths.clone()) {
                 Ok(files_data) => {

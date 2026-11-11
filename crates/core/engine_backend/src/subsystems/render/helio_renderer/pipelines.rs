@@ -251,9 +251,7 @@ pub fn graph_pin_probe() -> Option<&'static helio_graph_asset::Probe> {
 /// Starts [`graph_pin_probe`] on a background thread, so the pins are ready
 /// when an editor first asks for the node registry.
 pub fn start_graph_pin_probe() {
-    std::thread::Builder::new()
-        .name("render-graph-pin-probe".into())
-        .spawn(|| {
+    editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("render-graph-pin-probe", editor_task_queue::ThreadRole::Other).owner("engine_backend"), || {
             graph_pin_probe();
         })
         .ok();

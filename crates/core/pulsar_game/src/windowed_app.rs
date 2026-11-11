@@ -657,9 +657,7 @@ impl PulsarApp {
 
     fn spawn_ecs_thread(&mut self) {
         if let Some(mut tick_loop) = self.tick_loop.take() {
-            std::thread::Builder::new()
-                .name("pulsar-ecs".into())
-                .spawn(move || tick_loop.run_blocking())
+            editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("pulsar-ecs", editor_task_queue::ThreadRole::Service).owner("pulsar_game"), move || tick_loop.run_blocking())
                 .expect("Failed to spawn ECS tick thread");
             tracing::info!("ECS tick thread started");
         }

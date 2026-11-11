@@ -102,7 +102,7 @@ pub async fn launch_and_monitor(
         // Drain stderr off-thread so the pipe never blocks the game.
         let stderr_pipe = child.stderr.take();
         let (stderr_tx, stderr_rx) = smol::channel::bounded::<String>(1);
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: launch and monitor", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
             let Some(pipe) = stderr_pipe else { return };
             let _ = smol::block_on(stderr_tx.send(read_tail(pipe)));
         });

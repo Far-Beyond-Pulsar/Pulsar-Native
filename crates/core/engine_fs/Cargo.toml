@@ -9,6 +9,7 @@ remote = ["dep:ureq", "dep:urlencoding", "dep:base64"]
 p2p = ["dep:futures", "dep:pulsar-multiplayer-core"]
 
 [dependencies]
+editor_task_queue = { workspace = true }
 # Mounted content and the index's registrations are origin-gated contributions.
 pulsar_plugins = { workspace = true }
 # The watcher publishes asset updates (`AssetChangeKind`).

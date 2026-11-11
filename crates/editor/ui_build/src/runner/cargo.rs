@@ -107,7 +107,7 @@ fn command(invocation: &Invocation, project_root: &Path) -> Command {
 /// Kill `child`, and everything it started, if `cancel` is raised before
 /// `done` is. Returns when either is.
 fn watch_for_cancel(child: Arc<Mutex<Child>>, cancel: Arc<AtomicBool>, done: Arc<AtomicBool>) {
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: watch for cancel", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
         while !done.load(Ordering::Acquire) {
             if cancel.load(Ordering::Acquire) {
                 super::process_tree::kill_tree(&mut child.lock());
@@ -272,7 +272,7 @@ pub fn run_compiling(
 
     // stderr carries registry activity and, when there is no JSON, the failure.
     let stderr_progress = progress.clone();
-    let stderr_thread = std::thread::spawn(move || {
+    let stderr_thread = editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: run compiling", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
         let mut text = String::new();
         for line in stderr.lines().map_while(Result::ok) {
             if let Some(activity) = registry_activity(&line) {

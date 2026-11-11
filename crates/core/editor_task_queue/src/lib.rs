@@ -24,9 +24,19 @@
 //! scheduling priority within its pool.
 
 mod log;
+mod micro;
+pub mod pools;
+mod services;
+pub mod threads;
 mod track;
 
 pub use log::{LogRead, TaskLog, TaskLogLayer, MAX_LOG_LINES};
+pub use micro::{micro, micro_snapshots, MicroSnapshot};
+pub use services::{spawn_service, ServiceDescription, ServiceHandle};
+pub use threads::{
+    current_thread, register_current_thread, spawn_named, spawn_thread, thread_snapshots,
+    ThreadGuard, ThreadHandle, ThreadRole, ThreadSnapshot, ThreadSpec, ThreadState,
+};
 pub use track::{scope, tracked, TaskOutcome, Tracked};
 
 use parking_lot::{Condvar, Mutex};
@@ -77,6 +87,10 @@ pub enum TaskDuration {
     Long,
     /// Runs inline on the calling thread (see [`scope`]); not a pool.
     Foreground,
+    /// Lives as long as its thread: a render loop, a watcher, a language
+    /// server (see [`TaskQueue::spawn_service`]). It has no result; it has a
+    /// heartbeat.
+    Persistent,
 }
 
 /// How a task's work is expected to behave. Stall detection depends on it.
@@ -88,6 +102,8 @@ pub enum TaskModel {
     Blocking,
     /// Inline on the calling thread, which it blocks until it returns.
     Foreground,
+    /// A long-lived thread's loop, judged by its heartbeat.
+    Persistent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,6 +158,8 @@ pub enum StallKind {
     Pending,
     /// A blocking task with no log, progress or phase change.
     NoProgress,
+    /// A persistent task whose heartbeat stopped.
+    NoHeartbeat,
 }
 
 impl StallKind {
@@ -201,6 +219,11 @@ impl TaskDescription {
         }
     }
 
+    /// A description for a persistent task ([`TaskQueue::spawn_service`]).
+    pub fn persistent(title: impl Into<String>, category: impl Into<String>) -> Self {
+        Self::new(title, category, TaskDuration::Persistent)
+    }
+
     /// A description for inline work ([`scope`]).
     pub fn foreground(title: impl Into<String>, category: impl Into<String>) -> Self {
         Self::new(title, category, TaskDuration::Foreground)
@@ -238,6 +261,16 @@ pub struct TaskSnapshot {
     pub stall: Option<Stall>,
     /// Lines written to its log so far.
     pub log_lines: u64,
+    /// Persistent tasks: heartbeats so far.
+    pub beats: u64,
+    /// Persistent tasks: recent heartbeat rate (frames or loop passes per second).
+    pub beat_rate_hz: Option<f32>,
+    /// Persistent tasks: how long the last pass took, if it reported it.
+    pub last_tick: Option<Duration>,
+    /// Persistent tasks: time since the last heartbeat.
+    pub since_beat: Option<Duration>,
+    /// Persistent tasks: intentionally idle (waiting for work), so silence is fine.
+    pub idle: bool,
 }
 
 /// What a finished unit of work reported.
@@ -262,6 +295,12 @@ pub(crate) struct TaskShared {
     polls: AtomicU64,
     last_activity: AtomicU64,
     reported_stall: AtomicU8,
+    beats: AtomicU64,
+    last_beat_ms: AtomicU64,
+    beat_interval_us: AtomicU64,
+    tick_us: AtomicU64,
+    idle: AtomicBool,
+    beat_timeout_ms: AtomicU64,
 }
 
 impl TaskShared {
@@ -290,6 +329,40 @@ impl TaskShared {
         self.last_activity
             .load(Ordering::Acquire)
             .max(self.log.last_line_ms())
+    }
+
+    pub(crate) fn beat(&self, tick: Option<Duration>) {
+        let now = now_ms();
+        let last = self.last_beat_ms.swap(now, Ordering::AcqRel);
+        let interval_us = now.saturating_sub(last).saturating_mul(1_000);
+        let previous = self.beat_interval_us.load(Ordering::Acquire);
+        let smoothed = if previous == 0 {
+            interval_us
+        } else {
+            (previous * 7 + interval_us) / 8
+        };
+        self.beat_interval_us.store(smoothed, Ordering::Release);
+        if let Some(tick) = tick {
+            self.tick_us
+                .store(tick.as_micros() as u64, Ordering::Release);
+        }
+        self.beats.fetch_add(1, Ordering::AcqRel);
+        self.idle.store(false, Ordering::Release);
+        self.touch();
+    }
+
+    fn fill_heartbeat(&self, snapshot: &mut TaskSnapshot, now: u64) {
+        let beats = self.beats.load(Ordering::Acquire);
+        let since = now.saturating_sub(self.last_beat_ms.load(Ordering::Acquire));
+        let interval = self.beat_interval_us.load(Ordering::Acquire);
+        snapshot.beats = beats;
+        snapshot.idle = self.idle.load(Ordering::Acquire);
+        snapshot.since_beat = (beats > 0).then(|| Duration::from_millis(since));
+        // A rate that is not backed by a recent beat would be stale.
+        snapshot.beat_rate_hz =
+            (beats > 1 && interval > 0 && since < 3_000).then(|| 1_000_000.0 / interval as f32);
+        let tick = self.tick_us.load(Ordering::Acquire);
+        snapshot.last_tick = (tick > 0).then(|| Duration::from_micros(tick));
     }
 
     /// Write a line into the task's log and emit it as a tracing event inside
@@ -338,6 +411,9 @@ impl TaskRecord {
         snapshot.idle_for =
             Duration::from_millis(now.saturating_sub(self.shared.last_activity_ms()));
         snapshot.log_lines = self.shared.log.total();
+        if self.shared.model == TaskModel::Persistent {
+            self.shared.fill_heartbeat(&mut snapshot, now);
+        }
         snapshot.stall = self.diagnose(now, thresholds, running);
         snapshot
     }
@@ -412,6 +488,23 @@ impl TaskRecord {
                         ),
                     )
                 }
+                (TaskModel::Persistent, _) => {
+                    let timeout = shared.beat_timeout_ms.load(Ordering::Acquire);
+                    let silent = now.saturating_sub(shared.last_beat_ms.load(Ordering::Acquire));
+                    if timeout == 0 || shared.idle.load(Ordering::Acquire) || silent < timeout {
+                        return None;
+                    }
+                    stall(
+                        StallKind::NoHeartbeat,
+                        format!(
+                            "No heartbeat for {:.1}s on \"{}\" (expected one every {:.1}s; phase: {}). The loop is blocked, waiting on something that never arrives, or dead.",
+                            silent as f32 / 1000.0,
+                            snapshot.worker.as_deref().unwrap_or("?"),
+                            timeout as f32 / 1000.0,
+                            snapshot.phase.as_deref().unwrap_or("none set")
+                        ),
+                    )
+                }
                 (TaskModel::Blocking, _) if idle >= thresholds.blocking_idle => stall(
                     StallKind::NoProgress,
                     format!(
@@ -444,7 +537,7 @@ impl QueueState {
                 match record.snapshot.duration {
                     TaskDuration::Short => counts.0 += 1,
                     TaskDuration::Long => counts.1 += 1,
-                    TaskDuration::Foreground => {}
+                    TaskDuration::Foreground | TaskDuration::Persistent => {}
                 }
             }
         }
@@ -499,6 +592,12 @@ impl QueueInner {
             polls: AtomicU64::new(0),
             last_activity: AtomicU64::new(now_ms()),
             reported_stall: AtomicU8::new(0),
+            beats: AtomicU64::new(0),
+            last_beat_ms: AtomicU64::new(now_ms()),
+            beat_interval_us: AtomicU64::new(0),
+            tick_us: AtomicU64::new(0),
+            idle: AtomicBool::new(false),
+            beat_timeout_ms: AtomicU64::new(0),
         });
         let snapshot = TaskSnapshot {
             id,
@@ -523,6 +622,11 @@ impl QueueInner {
             idle_for: Duration::ZERO,
             stall: None,
             log_lines: 0,
+            beats: 0,
+            beat_rate_hz: None,
+            last_tick: None,
+            since_beat: None,
+            idle: false,
         };
         let forgotten = {
             let mut state = self.state.lock();
@@ -594,6 +698,7 @@ impl QueueInner {
             record.snapshot.submitted_at.elapsed().unwrap_or_default()
         };
         shared.touch();
+        shared.last_beat_ms.store(now_ms(), Ordering::Release);
         self.changed();
         shared.emit(
             Level::INFO,
@@ -809,7 +914,7 @@ impl TaskQueue {
         work: Work,
     ) -> TaskId {
         let duration = match description.duration {
-            TaskDuration::Foreground => TaskDuration::Short,
+            TaskDuration::Foreground | TaskDuration::Persistent => TaskDuration::Short,
             other => other,
         };
         let shared = self.inner.create(&description, model, true, origin);
@@ -974,6 +1079,8 @@ pub fn current() -> Option<TaskContext> {
 /// Keeps a task's span entered and its context current while alive.
 pub(crate) struct EnterGuard {
     _span: tracing::span::EnteredSpan,
+    /// The task the thread record named before this one entered.
+    prev_task: u64,
 }
 
 impl Drop for EnterGuard {
@@ -981,6 +1088,7 @@ impl Drop for EnterGuard {
         CURRENT.with(|stack| {
             stack.borrow_mut().pop();
         });
+        threads::set_current_task(self.prev_task);
     }
 }
 
@@ -1014,8 +1122,10 @@ impl TaskContext {
 
     pub(crate) fn enter(&self) -> EnterGuard {
         CURRENT.with(|stack| stack.borrow_mut().push(self.clone()));
+        let prev_task = threads::set_current_task(self.shared.id.get());
         EnterGuard {
             _span: self.shared.span.clone().entered(),
+            prev_task,
         }
     }
 
@@ -1046,6 +1156,9 @@ impl TaskContext {
         }
         self.shared.touch();
         self.inner.changed();
+        if let Some(thread) = threads::current_thread() {
+            thread.set_phase(phase.clone());
+        }
         self.shared.emit(Level::INFO, &format!("phase: {phase}"));
     }
 
@@ -1065,6 +1178,37 @@ impl TaskContext {
 
     pub fn error(&self, message: impl AsRef<str>) {
         self.log(Level::ERROR, message);
+    }
+
+    /// Persistent tasks: one pass of the loop happened (a frame, a poll of the
+    /// watcher). Cheap enough to call every iteration. The task is reported as
+    /// stalled when beats stop for longer than [`Self::expect_heartbeat`].
+    pub fn heartbeat(&self) {
+        self.shared.beat(None);
+    }
+
+    /// [`Self::heartbeat`], also recording how long the pass of work took.
+    pub fn tick(&self, work: Duration) {
+        self.shared.beat(Some(work));
+    }
+
+    /// Persistent tasks: the loop is waiting for work on purpose (for the first
+    /// UI frame, for a message), so silence is not a stall. Any heartbeat or
+    /// `set_idle(false)` ends it and restarts the heartbeat clock.
+    pub fn set_idle(&self, idle: bool) {
+        if !idle {
+            self.shared.last_beat_ms.store(now_ms(), Ordering::Release);
+        }
+        self.shared.idle.store(idle, Ordering::Release);
+        self.shared.touch();
+    }
+
+    /// Persistent tasks: how long between heartbeats counts as stalled. Zero
+    /// turns the check off.
+    pub fn expect_heartbeat(&self, every: Duration) {
+        self.shared
+            .beat_timeout_ms
+            .store(every.as_millis() as u64, Ordering::Release);
     }
 }
 
@@ -1095,10 +1239,16 @@ fn spawn_worker(inner: Arc<QueueInner>, duration: TaskDuration, index: usize) {
 fn spawn_watchdog(inner: Weak<QueueInner>) {
     let spawned = std::thread::Builder::new()
         .name("editor-task-watchdog".into())
-        .spawn(move || loop {
-            std::thread::sleep(WATCHDOG_INTERVAL);
-            let Some(inner) = inner.upgrade() else { return };
-            inner.watchdog_pass();
+        .spawn(move || {
+            let _registered = threads::register_current_thread(
+                ThreadSpec::new("editor-task-watchdog", ThreadRole::Other)
+                    .owner("editor_task_queue"),
+            );
+            loop {
+                std::thread::sleep(WATCHDOG_INTERVAL);
+                let Some(inner) = inner.upgrade() else { return };
+                inner.watchdog_pass();
+            }
         });
     if let Err(error) = spawned {
         tracing::error!("failed to start the editor task watchdog: {error}");
@@ -1106,7 +1256,21 @@ fn spawn_watchdog(inner: Weak<QueueInner>) {
 }
 
 fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration, worker_index: usize) {
+    let (pool, name) = match duration {
+        TaskDuration::Long => ("editor-long", format!("editor-task-long-{worker_index}")),
+        _ => ("editor-short", format!("editor-task-short-{worker_index}")),
+    };
+    let _registered = threads::register_current_thread(
+        ThreadSpec::new(name, ThreadRole::EditorWorker)
+            .pool(pool)
+            .owner("editor_task_queue"),
+    );
+    let thread = threads::current_thread();
     loop {
+        if let Some(thread) = &thread {
+            thread.mark_parked();
+            thread.clear_phase();
+        }
         let work = {
             let mut state = inner.state.lock();
             loop {
@@ -1145,6 +1309,9 @@ fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration, worker_index: usi
             }
         };
 
+        if let Some(thread) = &thread {
+            thread.mark_running();
+        }
         let ctx = TaskContext {
             inner: Arc::clone(&inner),
             shared: Arc::clone(&work.shared),

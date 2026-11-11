@@ -232,7 +232,7 @@ pub struct ViewportPanel {
     input_thread_stop: Arc<AtomicBool>,
 
     /// Join handle for the input thread
-    input_thread_handle: Option<std::thread::JoinHandle<()>>,
+    input_thread_handle: Option<editor_task_queue::ServiceHandle<()>>,
 
     /// Viewport hover state
     viewport_hovered: Arc<AtomicBool>,

@@ -5,6 +5,7 @@ edition = "2021"
 description = "Pulsar game runtime: archetypal ECS, tick loop, async task pool, and actor lifecycle"
 
 [dependencies]
+editor_task_queue = { workspace = true }
 # Core primitives (extracted)
 pulsar_core  = { workspace = true }
 pulsar_scenedb   = { workspace = true }

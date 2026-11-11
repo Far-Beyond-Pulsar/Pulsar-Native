@@ -146,7 +146,7 @@ impl InstrumentationCollector {
         let update_interval = self.update_interval_ms;
         let session = Arc::clone(&self.session);
 
-        thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui flamegraph: start", editor_task_queue::ThreadRole::Io).owner("ui_flamegraph"), move || {
             collector_loop(trace_data, running_flag, update_interval, source, session);
         });
         Ok(())

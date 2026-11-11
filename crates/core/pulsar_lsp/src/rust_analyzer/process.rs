@@ -48,7 +48,7 @@ impl RustAnalyzerManager {
             let stdin_arc_clone = stdin_arc.clone();
             let request_id_arc_clone = request_id_arc.clone();
             let pending_requests_clone = pending_requests_arc.clone();
-            let spawn_result = std::thread::spawn(move || {
+            let spawn_result = editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: start", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || {
                 Self::spawn_process_blocking(
                     &analyzer_path,
                     &workspace_root_for_spawn,
@@ -186,7 +186,7 @@ impl RustAnalyzerManager {
                 .ok_or_else(|| anyhow!("Failed to take stdin"))?;
 
             if let Some(stderr) = child.stderr.take() {
-                thread::spawn(move || {
+                editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: spawn process blocking", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || {
                     let reader = BufReader::new(stderr);
                     for line in reader.lines().map_while(Result::ok) {
                         tracing::error!("[rust-analyzer stderr] {}", line);
@@ -227,7 +227,7 @@ impl RustAnalyzerManager {
         // it, or a restart replaced it).
         let progress_tx_exit = progress_tx.clone();
         let process_arc_exit = Arc::clone(&process_arc);
-        thread::spawn(move || loop {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: spawn process blocking", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || loop {
             let polled = {
                 let Ok(mut process_lock) = process_arc_exit.lock() else {
                     break;
@@ -276,7 +276,7 @@ impl RustAnalyzerManager {
     ) {
         let progress_tx_stdout = progress_tx.clone();
         let pending_requests_clone = Arc::clone(pending_requests);
-        thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: spawn stdout reader", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || {
             let mut reader = BufReader::new(stdout);
             let mut buffer = String::new();
 

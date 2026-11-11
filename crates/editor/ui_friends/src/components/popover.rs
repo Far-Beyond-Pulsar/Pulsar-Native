@@ -61,7 +61,7 @@ impl FriendsPopover {
 
         let (tx, rx) = smol::channel::bounded::<Result<Vec<FriendInfo>, FriendsError>>(1);
 
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui friends: refresh", editor_task_queue::ThreadRole::Io).owner("ui_friends"), move || {
             let result = friends_engine::get_friends_list();
             let _ = smol::block_on(tx.send(result));
         });

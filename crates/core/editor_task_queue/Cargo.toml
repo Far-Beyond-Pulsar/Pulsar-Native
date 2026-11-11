@@ -8,6 +8,8 @@ publish = false
 chrono = { workspace = true }
 futures = { workspace = true }
 parking_lot = { workspace = true }
+rayon = "1"
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 

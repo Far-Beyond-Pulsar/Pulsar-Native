@@ -5,6 +5,7 @@ edition = "2021"
 description = "Pulsar game runtime core primitives: event channels, game time, task pool, tick mode"
 
 [dependencies]
+editor_task_queue = { workspace = true }
 smol      = { workspace = true }
 profiling = { workspace = true }
 tracing   = { workspace = true }

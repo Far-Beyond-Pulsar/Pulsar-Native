@@ -852,9 +852,7 @@ impl SharedTickLoop {
     pub fn spawn_thread(&self, name: impl Into<String>) -> std::thread::JoinHandle<()> {
         let shared = self.0.clone();
         let name = name.into();
-        std::thread::Builder::new()
-            .name(name)
-            .spawn(move || {
+        editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service).owner("pulsar_game"), move || {
                 let mut guard = shared.lock().unwrap();
                 guard.run_blocking();
             })

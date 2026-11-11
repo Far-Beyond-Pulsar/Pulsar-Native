@@ -16,18 +16,35 @@ fn sender() -> Option<&'static Sender<Job>> {
     INIT_QUEUE
         .get_or_init(|| {
             let (tx, rx) = mpsc::channel::<Job>();
-            std::thread::Builder::new()
-                .name("Helio Initialization".into())
-                .spawn(move || {
+            // A persistent task with no heartbeat of its own: it is idle between
+            // jobs, and a job is a renderer's cold start, which can take
+            // seconds. The jobs' own work is tracked by the renderer's scopes.
+            editor_task_queue::spawn_service(
+                editor_task_queue::ServiceDescription::new(
+                    "Helio initialization lane",
+                    "render",
+                    "Helio Initialization",
+                    editor_task_queue::ThreadRole::Render,
+                )
+                .owner("level editor viewport")
+                .no_heartbeat(),
+                move |ctx| {
+                    ctx.set_phase("Waiting for a renderer to initialize");
+                    ctx.set_idle(true);
                     while let Ok(job) = rx.recv() {
+                        ctx.set_idle(false);
+                        ctx.set_phase("Initializing a renderer");
                         job();
+                        ctx.set_phase("Waiting for a renderer to initialize");
+                        ctx.set_idle(true);
                     }
-                })
-                .map(|_| tx)
-                .map_err(|error| {
-                    tracing::error!(%error, "Failed to start Helio initialization worker");
-                })
-                .ok()
+                },
+            )
+            .map(|_| tx)
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to start Helio initialization worker");
+            })
+            .ok()
         })
         .as_ref()
 }

@@ -51,7 +51,7 @@ pub struct HelioViewport {
     debug_replace_with_yellow: bool,
     tab_activated: Arc<AtomicBool>,
     render_thread_stop: Arc<AtomicBool>,
-    render_thread_handle: Option<std::thread::JoinHandle<()>>,
+    render_thread_handle: Option<editor_task_queue::ServiceHandle<Result<(), String>>>,
     /// Incremented by the render thread each time it publishes a frame into the
     /// triple buffer. Read by the frame pump to decide whether a repaint is
     /// warranted.

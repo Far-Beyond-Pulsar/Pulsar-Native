@@ -47,9 +47,7 @@ pub fn start() {
     let hs = home_server.clone();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let thread = std::thread::Builder::new()
-        .name("notification-listener".into())
-        .spawn(move || {
+    let thread = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("notification-listener", editor_task_queue::ThreadRole::Service).owner("friends_engine"), move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
