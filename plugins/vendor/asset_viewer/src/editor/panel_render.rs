@@ -330,8 +330,9 @@ fn local_vertex_density(
             if cancelled.load(Ordering::Relaxed) {
                 return None;
             }
+            // In u64: `index * 350` overflows u32 past 12M triangles.
             progress.store(
-                100 + (triangle_index as u32 * 350 / triangle_count as u32),
+                100 + (triangle_index as u64 * 350 / triangle_count as u64) as u32,
                 Ordering::Relaxed,
             );
         }
@@ -378,7 +379,7 @@ fn local_vertex_density(
                 return None;
             }
             progress.store(
-                500 + (vertex as u32 * 400 / vertex_count as u32),
+                500 + (vertex as u64 * 400 / vertex_count as u64) as u32,
                 Ordering::Relaxed,
             );
         }
@@ -2071,13 +2072,20 @@ impl AssetViewerPanel {
             } else {
                 self.mesh_sections
                     .iter()
-                    .map(|&(first, count, slot)| {
-                        let color = self
-                            .slot_colors
-                            .get(slot)
-                            .copied()
-                            .unwrap_or(DEFAULT_BASE_COLOR);
-                        (first..first + count, color, slot)
+                    .filter_map(|&(first, count, slot)| {
+                        // Clamped to the uploaded indices: a section of a
+                        // corrupt `.mesh` must not reach `draw_indexed` out
+                        // of range (a wgpu validation error aborts the editor).
+                        let first = first.min(index_count);
+                        let end = first.saturating_add(count).min(index_count);
+                        (end > first).then(|| {
+                            let color = self
+                                .slot_colors
+                                .get(slot)
+                                .copied()
+                                .unwrap_or(DEFAULT_BASE_COLOR);
+                            (first..end, color, slot)
+                        })
                     })
                     .collect()
             };

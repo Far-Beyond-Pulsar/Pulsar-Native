@@ -51,11 +51,21 @@ impl GeneralOperations {
         if kind == AssetKind::DataTable {
             // Create empty SQLite database
             use std::process::Command;
-            Command::new("sqlite3")
+            let output = Command::new("sqlite3")
                 .arg(&file_path)
                 .arg("VACUUM;")
                 .output()
-                .context("Failed to create SQLite database")?;
+                .context("Failed to run sqlite3 to create the database")?;
+            // `output()` only fails when sqlite3 cannot be started; a failed
+            // run must not leave a registered asset without a database.
+            if !output.status.success() {
+                anyhow::bail!(
+                    "sqlite3 failed to create '{}' ({}): {}",
+                    file_path.display(),
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
         } else {
             // Write template content
             crate::virtual_fs::write_file(&file_path, content.as_bytes())

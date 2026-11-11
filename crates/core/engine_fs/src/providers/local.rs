@@ -82,6 +82,15 @@ impl LocalFsProvider {
         let Some(root) = &self.root else {
             return Ok(());
         };
+        // A relative path is resolved against the process working directory,
+        // not the root, so the ancestor walk below could not vouch for it.
+        if !path.is_absolute() {
+            anyhow::bail!(
+                "Path '{}' must be absolute to be written inside the sandbox root '{}'",
+                path.display(),
+                root.display(),
+            );
+        }
         let root_canonical = root
             .canonicalize()
             .context("Failed to canonicalize sandbox root")?;
@@ -91,12 +100,20 @@ impl LocalFsProvider {
             return self.check_read_allowed(path);
         }
 
-        // Walk up until we find an ancestor that exists.
-        let ancestor = path
+        // Walk up until we find an ancestor that exists. Without one there is
+        // nothing to prove the path lies inside the root, so refuse rather
+        // than assume it does.
+        let Some(ancestor) = path
             .ancestors()
             .skip(1) // skip self (already checked above)
             .find(|a| a.exists())
-            .unwrap_or(root.as_path());
+        else {
+            anyhow::bail!(
+                "Path '{}' has no existing ancestor to check against the sandbox root '{}'",
+                path.display(),
+                root.display(),
+            );
+        };
 
         if ancestor == root.as_path() {
             return Ok(());
@@ -591,6 +608,24 @@ mod tests {
                 .expect("read temp directory")
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn rooted_provider_rejects_relative_write_paths() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let provider =
+            LocalFsProvider::with_root(temp.path().to_path_buf()).expect("create local provider");
+
+        assert!(provider
+            .write_file(Path::new("relative.txt"), b"x")
+            .is_err());
+        assert!(provider.create_dir_all(Path::new("relative-dir")).is_err());
+        assert_eq!(
+            std::fs::read_dir(temp.path())
+                .expect("read temp directory")
+                .count(),
+            0
         );
     }
 

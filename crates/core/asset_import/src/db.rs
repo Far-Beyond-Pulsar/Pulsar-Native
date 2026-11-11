@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use engine_fs::virtual_fs;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 const DIR: &str = ".pulsar";
 const FILE: &str = "import_db.json";
@@ -96,7 +96,18 @@ pub fn hash_file(file: &Path) -> Result<(String, u64)> {
 impl ImportDb {
     /// The project's database; empty when missing or unreadable (a damaged
     /// database must never block opening a project).
+    ///
+    /// Read-only: options still in the legacy asset-keyed store are folded
+    /// into the records in memory only, so this is safe to call without the
+    /// database lock. Writing them back is [`Self::load_with_migration`]'s
+    /// caller's job.
     pub fn load(project_root: &Path) -> Self {
+        Self::load_with_migration(project_root).0
+    }
+
+    /// [`load`](Self::load), also returning the legacy-store trim the
+    /// in-memory migration calls for, when it moved anything.
+    pub fn load_with_migration(project_root: &Path) -> (Self, Option<LegacyMigration>) {
         let file = path(project_root);
         let mut db = match virtual_fs::exists(&file) {
             Ok(true) => virtual_fs::read_file(&file)
@@ -105,8 +116,8 @@ impl ImportDb {
                 .unwrap_or_default(),
             _ => Self::default(),
         };
-        migrate_legacy_options(project_root, &mut db);
-        db
+        let migration = migrate_legacy_options(project_root, &mut db);
+        (db, migration)
     }
 
     pub fn save(&self, project_root: &Path) -> Result<()> {
@@ -174,10 +185,38 @@ impl ImportDb {
     }
 }
 
-/// Move options for linked assets out of the legacy asset-keyed store. Keep
-/// entries for unlinked assets there: convert-in-place imports intentionally
-/// have no `ImportRecord`, so their legacy settings remain a fallback.
-fn migrate_legacy_options(project_root: &Path, db: &mut ImportDb) {
+/// Legacy options that [`ImportDb::load`] folded into records in memory. Once
+/// a database carrying them is saved, [`commit`](Self::commit) trims them from
+/// the legacy store so they are not migrated again.
+#[derive(Debug)]
+#[must_use = "the legacy store keeps the migrated entries until this is committed"]
+pub struct LegacyMigration {
+    /// What the legacy store holds once the migrated entries are gone.
+    remaining: Map<String, Value>,
+}
+
+impl LegacyMigration {
+    /// Write the trimmed legacy store. Call only after the database that now
+    /// holds the migrated options was saved, under the caller's database lock
+    /// (this writes a project file). Best effort: the next load migrates
+    /// again if the write fails.
+    pub fn commit(self, project_root: &Path) {
+        let path = project_root.join(DIR).join("import_options.json");
+        if self.remaining.is_empty() {
+            let _ = virtual_fs::delete_path(&path);
+        } else if let Ok(bytes) = serde_json::to_vec_pretty(&self.remaining) {
+            let _ = virtual_fs::write_file(&path, &bytes);
+        }
+    }
+}
+
+/// Move options for linked assets out of the legacy asset-keyed store, in
+/// memory. Keep entries for unlinked assets there: convert-in-place imports
+/// intentionally have no `ImportRecord`, so their legacy settings remain a
+/// fallback. Returns the legacy-store trim to commit once `db` is saved, or
+/// `None` when nothing moved. Writes nothing itself: loads happen without
+/// the database lock, and a write here raced the locked read-modify-write.
+fn migrate_legacy_options(project_root: &Path, db: &mut ImportDb) -> Option<LegacyMigration> {
     let mut legacy = engine_fs::import_options::read_all(project_root);
     let mut migrated = false;
     for record in &mut db.records {
@@ -190,18 +229,7 @@ fn migrate_legacy_options(project_root: &Path, db: &mut ImportDb) {
             migrated = true;
         }
     }
-    if !migrated {
-        return;
-    }
-    // Best effort: the next load retries migration if either write fails.
-    if db.save(project_root).is_ok() {
-        let path = project_root.join(DIR).join("import_options.json");
-        if legacy.is_empty() {
-            let _ = virtual_fs::delete_path(&path);
-        } else if let Ok(bytes) = serde_json::to_vec_pretty(&legacy) {
-            let _ = virtual_fs::write_file(&path, &bytes);
-        }
-    }
+    migrated.then_some(LegacyMigration { remaining: legacy })
 }
 
 #[cfg(test)]
@@ -307,11 +335,26 @@ mod tests {
             loaded.find_source("m/a.fbx").unwrap().options,
             Some(serde_json::json!({"scale": 0.25}))
         );
+        // `load` writes nothing: the legacy store still holds the entry.
+        assert_eq!(
+            engine_fs::import_options::get(root, "m/a.mesh"),
+            Some(serde_json::json!({"scale": 0.25}))
+        );
+
+        let (db, migration) = ImportDb::load_with_migration(root);
+        assert_eq!(db, loaded);
+        db.save(root).unwrap();
+        migration
+            .expect("a linked legacy entry calls for a migration")
+            .commit(root);
         assert_eq!(
             engine_fs::import_options::get(root, "m/converted.mesh"),
             Some(serde_json::json!({"scale": 2.0}))
         );
         assert_eq!(engine_fs::import_options::get(root, "m/a.mesh"), None);
-        assert_eq!(ImportDb::load(root), loaded);
+
+        let (reloaded, migration) = ImportDb::load_with_migration(root);
+        assert_eq!(reloaded, loaded);
+        assert!(migration.is_none(), "migrated once");
     }
 }

@@ -92,6 +92,13 @@ pub enum GitHookSyncSkipReason {
     CustomHooksPath {
         path: PathBuf,
     },
+    /// The nearest repository is rooted above the project (a home-directory
+    /// dotfiles repository, a monorepo). Hooks are executable code installed
+    /// where every commit runs them; a repository the project merely sits
+    /// inside is not the project's to change, so the sync leaves it alone.
+    RepositoryAboveProject {
+        workdir: PathBuf,
+    },
 }
 
 impl GitHookSyncReport {
@@ -223,7 +230,10 @@ fn sync_project_git_hooks_with_provider(
     };
 
     let local_provider = LocalFsProvider::new();
-    validate_repository_worktree(project_root, &repository, &local_provider)?;
+    if let Some(reason) = validate_repository_worktree(project_root, &repository, &local_provider)?
+    {
+        return Ok(GitHookSyncReport::skipped(reason));
+    }
 
     let repository_config = repository
         .config()
@@ -296,11 +306,13 @@ fn sync_project_git_hooks_with_provider(
     Ok(report)
 }
 
+/// Checks the repository `discover` found is the project's own: `Some` names
+/// a reason to skip the sync, `Err` a repository that must not be touched.
 fn validate_repository_worktree(
     project_root: &Path,
     repository: &Repository,
     provider: &LocalFsProvider,
-) -> Result<()> {
+) -> Result<Option<GitHookSyncSkipReason>> {
     let workdir = repository
         .workdir()
         .context("Git hook synchronization requires a non-bare repository")?;
@@ -323,6 +335,13 @@ fn validate_repository_worktree(
             canonical_workdir.display()
         );
     }
+    // `discover` walks up without a ceiling, so a project that is not a
+    // repository itself finds whatever repository encloses it.
+    if canonical_project_root != canonical_workdir {
+        return Ok(Some(GitHookSyncSkipReason::RepositoryAboveProject {
+            workdir: canonical_workdir,
+        }));
+    }
 
     let git_marker = canonical_workdir.join(".git");
     if provider
@@ -335,7 +354,7 @@ fn validate_repository_worktree(
         );
     }
 
-    Ok(())
+    Ok(None)
 }
 
 fn validate_enabled_hooks(config: &GitHooksConfig) -> Result<Vec<(&str, &GitHookDefinition)>> {
@@ -605,6 +624,31 @@ mod tests {
             GitHookSyncStatus::Skipped(GitHookSyncSkipReason::MissingGitDirectory)
         );
         assert!(!temp.path().join(".git").exists());
+    }
+
+    #[test]
+    fn repository_above_the_project_is_left_alone() {
+        let temp = tempfile::tempdir().unwrap();
+        initialize_repository(temp.path());
+        let project = temp.path().join("games").join("demo");
+        fs::create_dir_all(&project).unwrap();
+
+        let report =
+            sync_project_git_hooks(&project, &config_with("pre-commit", "#!/bin/sh\nexit 0\n"))
+                .unwrap();
+
+        assert!(matches!(
+            report.status,
+            GitHookSyncStatus::Skipped(GitHookSyncSkipReason::RepositoryAboveProject { .. })
+        ));
+        assert!(
+            !temp
+                .path()
+                .join(".git")
+                .join("hooks")
+                .join("pre-commit")
+                .exists()
+        );
     }
 
     #[test]

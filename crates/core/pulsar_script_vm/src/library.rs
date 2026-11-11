@@ -19,9 +19,10 @@
 //! - The library must be built against the same `pulsar_script_vm` (and
 //!   compiler) as the engine; this is checked by comparing the `TypeId` of
 //!   [`LibraryRegistrar`] across the boundary, which differs between builds.
-//! - Every native keeps its library mapped (an `Arc`), so programs linked
-//!   against an old version keep working until they are relinked; the old
-//!   code is unmapped when the last one is dropped.
+//! - Every native holds its library (an `Arc`), so programs linked against
+//!   an old version keep working until they are relinked. An old build is
+//!   never unmapped, not even once the last such program is dropped:
+//!   values it created may outlive them (see [`ShadowLibrary`]).
 //! - Reloading removes the library's natives and registers the new build's,
 //!   bumping the registry generation. Relinking then re-verifies every
 //!   import, so a changed signature is a link error, never a call through a
@@ -247,7 +248,19 @@ pub enum LibraryError {
     NotLoaded(LibraryId),
 }
 
-/// A mapped shadow copy of a library file; deletes the copy once unmapped.
+/// A mapped shadow copy of a library file. The mapping lives for the rest
+/// of the process, even after the last native from it is dropped:
+///
+/// Values a library creates outlive the programs linked against it. A
+/// [`Value::Object`](crate::Value::Object) built by one of its natives
+/// (`Obj<T>::into_value`) carries a `&'static str` type name and a clone
+/// `fn` pointer that point into the library's code, and such values sit in
+/// instance variables, event payloads and host-side copies with nothing
+/// tying them to the library. Unmapping it would turn every later clone,
+/// comparison or drop of them into a call through a dangling pointer. So
+/// each build stays mapped (a reload leaks one mapping; builds are small)
+/// until objects are constructed through the host's registry by `TypeId`
+/// instead.
 pub struct ShadowLibrary {
     library: ManuallyDrop<libloading::Library>,
     path: PathBuf,
@@ -255,9 +268,13 @@ pub struct ShadowLibrary {
 
 impl Drop for ShadowLibrary {
     fn drop(&mut self) {
-        // SAFETY: dropped exactly once, here; nothing uses it afterwards.
-        unsafe { ManuallyDrop::drop(&mut self.library) };
-        let _ = std::fs::remove_file(&self.path);
+        // Deliberately not unmapped: `self.library` is never dropped (see
+        // the type's doc). The shadow file goes where a mapped file may be
+        // unlinked; Windows refuses, so there the copies (named by process
+        // id) stay in the shadow directory for a later cleanup.
+        if cfg!(unix) {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -335,8 +352,9 @@ impl NativeLibraries {
         Ok(())
     }
 
-    /// Unregister library `id`'s natives. Its code stays mapped until
-    /// every program linked against it is dropped.
+    /// Unregister library `id`'s natives. Programs linked against it keep
+    /// working until relinked; its code stays mapped for the rest of the
+    /// process (see [`ShadowLibrary`]).
     pub fn unload(
         &mut self,
         id: LibraryId,

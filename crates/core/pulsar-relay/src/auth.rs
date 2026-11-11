@@ -266,6 +266,11 @@ fn hex_encode(data: &[u8]) -> String {
 }
 
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
+    // The slicing below is by byte index; a multi-byte character in a
+    // (client-supplied) token would make it panic at a char boundary.
+    if !s.is_ascii() {
+        return Err("Invalid hex string".to_string());
+    }
     if !s.len().is_multiple_of(2) {
         return Err("Invalid hex string length".to_string());
     }

@@ -234,6 +234,13 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
     // them to `ClassInstance`. Only entries the migration could not express
     // (a second class bound to one object) are carried over, so a re-save
     // never destroys them.
+    // A re-save keeps when the level was first created; only `modified`
+    // is now.
+    let created = existing_file
+        .as_ref()
+        .map(|file| file.metadata.created.clone())
+        .filter(|created| !created.is_empty())
+        .unwrap_or_else(|| now.clone());
     let preserved_bindings = existing_file
         .map(|file| unmigrated_bindings(&class_names, file.blueprint_bindings))
         .unwrap_or_default();
@@ -243,7 +250,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         components,
         blueprint_bindings: preserved_bindings,
         metadata: LevelMetadata {
-            created: now.clone(),
+            created,
             modified: now,
             editor_version: env!("CARGO_PKG_VERSION").into(),
         },
@@ -252,7 +259,9 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
     };
     let json = serde_json::to_string_pretty(&level_file)
         .map_err(|e| format!("Failed to serialize: {e}"))?;
-    virtual_fs::write_file(path, json.as_bytes())
+    // Staged and renamed into place: a crash or a full disk mid-write must
+    // not leave the level (the only copy of it) empty or truncated.
+    virtual_fs::write_file_atomically(path, json.as_bytes())
         .map_err(|e| format!("Failed to write file: {e}"))?;
 
     tracing::info!("Scene saved to: {}", path.display());

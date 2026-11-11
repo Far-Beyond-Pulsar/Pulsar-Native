@@ -13,6 +13,17 @@
 
 use crate::blueprint;
 
+/// Byte offset of character `index` of `text` (`text.len()` for the
+/// position just past the last character); `None` past that. The string
+/// nodes take character positions, so a multi-byte character is never
+/// split (slicing at a byte offset inside one panics).
+fn byte_offset(text: &str, index: usize) -> Option<usize> {
+    text.char_indices()
+        .nth(index)
+        .map(|(offset, _)| offset)
+        .or_else(|| (index == text.chars().count()).then_some(text.len()))
+}
+
 // =============================================================================
 // String Concatenation and Basic Operations
 // =============================================================================
@@ -57,7 +68,7 @@ pub fn string_concat(a: String, b: String) -> String {
 /// Returns the number of characters in a string.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_length(text: String) -> usize {
-    text.len()
+    text.chars().count()
 }
 
 /// Checks if a string is empty.
@@ -193,17 +204,17 @@ pub fn string_replace(text: String, from: String, to: String) -> String {
 ///
 /// # Notes
 /// If start >= end, or indices are out of bounds, the result is an empty string.
-/// This function operates on byte indices, so be careful with multi-byte UTF-8 characters.
+/// Indices are character positions, not byte offsets.
 /// # String Substring
 /// Extracts a portion of a string from start to end index.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_substring(text: String, start: i64, end: i64) -> String {
-    let start = start as usize;
-    let end = end as usize;
-    if start < text.len() && end <= text.len() && start <= end {
-        text[start..end].to_string()
-    } else {
-        String::new()
+    let (Ok(start), Ok(end)) = (usize::try_from(start), usize::try_from(end)) else {
+        return String::new();
+    };
+    match (byte_offset(&text, start), byte_offset(&text, end)) {
+        (Some(from), Some(to)) if from < text.len() && from <= to => text[from..to].to_string(),
+        _ => String::new(),
     }
 }
 
@@ -606,9 +617,12 @@ pub fn repeat(text: String, count: i64) -> String {
 /// Inserts a string at a specific position.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn insert_at(text: String, insert: String, position: i64) -> String {
-    let pos = position.clamp(0, text.len() as i64) as usize;
+    // A character position, clamped into the string.
+    let count = text.chars().count();
+    let pos = position.clamp(0, count as i64) as usize;
+    let offset = byte_offset(&text, pos).unwrap_or(text.len());
     let mut result = text;
-    result.insert_str(pos, &insert);
+    result.insert_str(offset, &insert);
     result
 }
 
@@ -626,10 +640,15 @@ pub fn insert_at(text: String, insert: String, position: i64) -> String {
 /// Removes a substring at a specific position.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn remove_at(text: String, position: i64, length: i64) -> String {
-    let start = position.clamp(0, text.len() as i64) as usize;
-    let end = (position + length).clamp(0, text.len() as i64) as usize;
+    // Character positions, clamped into the string; a negative length
+    // removes nothing (a range running backwards would panic).
+    let count = text.chars().count() as i64;
+    let start = position.clamp(0, count) as usize;
+    let end = (position.saturating_add(length).clamp(0, count) as usize).max(start);
+    let from = byte_offset(&text, start).unwrap_or(text.len());
+    let to = byte_offset(&text, end).unwrap_or(text.len());
     let mut result = text;
-    result.drain(start..end.min(result.len()));
+    result.drain(from..to);
     result
 }
 
@@ -668,14 +687,12 @@ pub fn count_occurrences(text: String, pattern: String) -> i64 {
 pub fn left_justify(text: String, width: i64, fill: String) -> String {
     let fill_char = fill.chars().next().unwrap_or(' ');
     let width = width.max(0) as usize;
-    if text.len() >= width {
+    // Width in characters, not bytes.
+    let len = text.chars().count();
+    if len >= width {
         text
     } else {
-        format!(
-            "{}{}",
-            text,
-            fill_char.to_string().repeat(width - text.len())
-        )
+        format!("{}{}", text, fill_char.to_string().repeat(width - len))
     }
 }
 
@@ -695,14 +712,12 @@ pub fn left_justify(text: String, width: i64, fill: String) -> String {
 pub fn right_justify(text: String, width: i64, fill: String) -> String {
     let fill_char = fill.chars().next().unwrap_or(' ');
     let width = width.max(0) as usize;
-    if text.len() >= width {
+    // Width in characters, not bytes.
+    let len = text.chars().count();
+    if len >= width {
         text
     } else {
-        format!(
-            "{}{}",
-            fill_char.to_string().repeat(width - text.len()),
-            text
-        )
+        format!("{}{}", fill_char.to_string().repeat(width - len), text)
     }
 }
 
@@ -722,10 +737,12 @@ pub fn right_justify(text: String, width: i64, fill: String) -> String {
 pub fn center_justify(text: String, width: i64, fill: String) -> String {
     let fill_char = fill.chars().next().unwrap_or(' ');
     let width = width.max(0) as usize;
-    if text.len() >= width {
+    // Width in characters, not bytes.
+    let len = text.chars().count();
+    if len >= width {
         text
     } else {
-        let total_padding = width - text.len();
+        let total_padding = width - len;
         let left_padding = total_padding / 2;
         let right_padding = total_padding - left_padding;
         format!(

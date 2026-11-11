@@ -21,6 +21,15 @@ fn fs_rename(from: &Path, to: &Path) -> Result<()> {
     engine_fs::virtual_fs::rename(from, to)
 }
 
+fn fs_exists(path: &Path, remote: bool) -> bool {
+    if remote {
+        engine_fs::virtual_fs::exists(path).unwrap_or(false)
+    } else {
+        // Not `exists()`: a dangling symlink at `path` would still be replaced.
+        path.symlink_metadata().is_ok()
+    }
+}
+
 /// Copy a local file or folder, announcing the copy as the virtual
 /// filesystem's own operations do.
 pub(crate) fn copy_local(src: &Path, dst: &Path) -> Result<()> {
@@ -64,6 +73,16 @@ impl FileOperations {
             let remote = engine_fs::virtual_fs::is_remote()
                 || engine_fs::is_cloud_path(src)
                 || engine_fs::is_cloud_path(target_dir);
+            // A rename replaces a file already at `dst` (on Unix an empty
+            // folder too), so a drop onto a folder holding a same-named item
+            // is refused rather than silently overwriting it.
+            if fs_exists(&dst, remote) {
+                anyhow::bail!(
+                    "\"{}\" already exists in \"{}\"",
+                    name.to_string_lossy(),
+                    target_dir.display()
+                );
+            }
             if let Err(error) = fs_rename(src, &dst) {
                 if remote {
                     return Err(error);

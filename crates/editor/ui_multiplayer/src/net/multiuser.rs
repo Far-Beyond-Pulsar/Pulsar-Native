@@ -668,7 +668,8 @@ impl MultiuserClient {
             )
         };
 
-        info!("🔗 Connecting to Studio workspace session: {:?}", ws_url);
+        // The URL carries the auth token, so it is never logged.
+        info!("🔗 Connecting to Studio workspace session {}", workspace_id);
 
         // Create channels for bidirectional communication
         let (message_tx, message_rx) = mpsc::unbounded_channel::<ClientMessage>();

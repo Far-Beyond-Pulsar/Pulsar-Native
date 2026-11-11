@@ -371,6 +371,18 @@ impl GameViewport {
             crate::ui::panel::pie::finish_stop(&mut state, true);
         }
 
+        // A start that arrived after a Stop (the build outran it, or the
+        // stop above just restored the editor world): the scene is in edit
+        // mode, so a game loaded now would run against the live level with
+        // nothing left to restore. Drop it.
+        let pending = pending.filter(|_| {
+            let in_play = self.shared_state.read().scene.is_play_mode();
+            if !in_play {
+                tracing::info!("PiE: dropping a start request; the scene is in edit mode");
+            }
+            in_play
+        });
+
         // Play again with only script changes (#833): keep the running game
         // and reload every class in it; no new library.
         let pending = match pending {

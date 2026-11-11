@@ -39,6 +39,31 @@ fn descriptors() -> Vec<(PathBuf, PluginDescriptor)> {
         }
     }
     found.sort_by(|a, b| a.1.id.cmp(&b.1.id));
+    // Two plugins with one id or one root crate would generate a duplicate
+    // dependency and re-export; the gate could not tell them apart either.
+    for pair in found.windows(2) {
+        assert!(
+            pair[0].1.id != pair[1].1.id,
+            "{} and {} both describe the plugin `{}`",
+            pair[0].0.display(),
+            pair[1].0.display(),
+            pair[0].1.id
+        );
+    }
+    let mut roots: Vec<(&str, &Path)> = found
+        .iter()
+        .map(|(dir, plugin)| (plugin.root.as_str(), dir.as_path()))
+        .collect();
+    roots.sort();
+    for pair in roots.windows(2) {
+        assert!(
+            pair[0].0 != pair[1].0,
+            "{} and {} both name the root crate `{}`",
+            pair[0].1.display(),
+            pair[1].1.display(),
+            pair[0].0
+        );
+    }
     found
 }
 
@@ -91,12 +116,19 @@ fn replaced(source: &str, comment: &str, blocks: &[&[String]]) -> String {
             for generated in *next.next().expect("a block for every marker") {
                 out.push(generated.clone());
             }
-            for line in lines.by_ref() {
-                if line.trim_start() == format!("{comment} {END}") {
+            // Without the end marker the rest of the file would be dropped
+            // as if it were the old block.
+            let closed = lines.by_ref().any(|line| {
+                let closing = line.trim_start() == format!("{comment} {END}");
+                if closing {
                     out.push(line.to_string());
-                    break;
                 }
-            }
+                closing
+            });
+            assert!(
+                closed,
+                "`{comment} {BEGIN}` has no closing `{comment} {END}` marker"
+            );
         }
     }
     assert!(next.next().is_none(), "a marker for every block");

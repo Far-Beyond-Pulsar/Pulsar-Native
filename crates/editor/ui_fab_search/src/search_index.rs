@@ -100,6 +100,16 @@ pub(crate) fn make_auth_client(token: &str) -> Result<reqwest::blocking::Client,
 
 // ── Fetch functions ──────────────────────────────────────────────────────────
 
+/// The first `max` bytes of `text`, for an error message, cut back to a char
+/// boundary: a response body sliced mid-character would panic.
+fn truncated(text: &str, max: usize) -> &str {
+    let mut end = max.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
 pub(crate) fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPage, String>) {
     let rt = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -135,7 +145,7 @@ pub(crate) fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPa
         };
         logv!("body {} bytes", text.len());
         if !status.is_success() {
-            return (log, Err(format!("HTTP {} — {}", status, &text[..text.len().min(120)])));
+            return (log, Err(format!("HTTP {} — {}", status, truncated(&text, 120))));
         }
         let result = serde_json::from_str::<crate::parser::SketchfabSearchResponse>(&text)
             .map_err(|e| { logv!("parse: {}", e); format!("Parse error: {e}") })
@@ -214,11 +224,7 @@ pub(crate) fn fetch_sketchfab_me(token: &str) -> Result<Box<SketchfabMe>, String
     let status = resp.status();
     let text = resp.text().map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!(
-            "HTTP {} — {}",
-            status,
-            &text[..text.len().min(120)]
-        ));
+        return Err(format!("HTTP {} — {}", status, truncated(&text, 120)));
     }
     serde_json::from_str::<SketchfabMe>(&text)
         .map(Box::new)
@@ -235,11 +241,7 @@ pub(crate) fn fetch_sketchfab_download_info(
     let status = resp.status();
     let text = resp.text().map_err(|e| e.to_string())?;
     if !status.is_success() {
-        return Err(format!(
-            "HTTP {} — {}",
-            status,
-            &text[..text.len().min(200)]
-        ));
+        return Err(format!("HTTP {} — {}", status, truncated(&text, 200)));
     }
     serde_json::from_str::<SketchfabDownloadInfo>(&text)
         .map_err(|e| format!("parse download info: {e}"))
@@ -256,11 +258,7 @@ pub(crate) fn sketchfab_like_model(uid: &str, token: &str) -> Result<(), String>
     let status = resp.status();
     if !status.is_success() && status.as_u16() != 204 {
         let text = resp.text().unwrap_or_default();
-        return Err(format!(
-            "HTTP {} — {}",
-            status,
-            &text[..text.len().min(120)]
-        ));
+        return Err(format!("HTTP {} — {}", status, truncated(&text, 120)));
     }
     Ok(())
 }
@@ -272,11 +270,7 @@ pub(crate) fn sketchfab_unlike_model(uid: &str, token: &str) -> Result<(), Strin
     let status = resp.status();
     if !status.is_success() && status.as_u16() != 204 {
         let text = resp.text().unwrap_or_default();
-        return Err(format!(
-            "HTTP {} — {}",
-            status,
-            &text[..text.len().min(120)]
-        ));
+        return Err(format!("HTTP {} — {}", status, truncated(&text, 120)));
     }
     Ok(())
 }

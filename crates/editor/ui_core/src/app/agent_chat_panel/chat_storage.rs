@@ -4,7 +4,7 @@ use agent_chat_tools::ToolRegistry;
 use engine_state;
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -23,7 +23,14 @@ impl AgentChatPanel {
         }
     }
 
+    /// Where the chat `chat_id` is stored. `None` for an id that is not a
+    /// plain file name (see [`is_valid_chat_id`]): ids also come from file
+    /// contents, and must never name a path outside the chats folder.
     pub(super) fn chat_file_path(chat_id: &str) -> Option<PathBuf> {
+        if !is_valid_chat_id(chat_id) {
+            tracing::warn!("Refusing chat id {chat_id:?}: not a plain file name");
+            return None;
+        }
         Some(Self::ensure_chats_dir()?.join(format!("{chat_id}.json")))
     }
 
@@ -142,6 +149,18 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
                 continue;
             }
 
+            // The entry's id is the file's name, not the id written inside
+            // it: the id is what the chat is opened and saved by, so it must
+            // be the file it came from, never a path of the file's choosing.
+            let Some(id) = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .filter(|stem| is_valid_chat_id(stem))
+                .map(str::to_string)
+            else {
+                continue;
+            };
+
             let Ok(raw) = fs::read_to_string(&path) else {
                 continue;
             };
@@ -150,7 +169,7 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             };
 
             entries.push(ChatHistoryEntry {
-                id: chat.id,
+                id,
                 title: chat.title,
                 updated_at: chat.updated_at,
             });
@@ -242,8 +261,15 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             display_items: persisted_display_items,
         };
 
-        if let Ok(serialized) = serde_json::to_string_pretty(&payload) {
-            let _ = fs::write(path, serialized);
+        match serde_json::to_string_pretty(&payload) {
+            Ok(serialized) => {
+                if let Err(error) = write_chat_file(&path, &serialized) {
+                    tracing::warn!("Could not save chat to {}: {error}", path.display());
+                }
+            }
+            Err(error) => {
+                tracing::warn!("Could not serialize chat {}: {error}", self.current_chat_id);
+            }
         }
     }
 
@@ -265,7 +291,9 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             return;
         };
 
-        self.current_chat_id = chat.id;
+        // The id the chat was opened by (a checked file name), not the one
+        // written inside the file.
+        self.current_chat_id = chat_id.to_string();
         self.current_chat_created_at = chat.created_at;
         self.display_item_heights.clear();
         self.streaming_display_item_ix = None;
@@ -392,7 +420,9 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             .save_file();
 
         if let Some(save_path) = file {
-            let _ = fs::write(save_path, raw);
+            if let Err(error) = fs::write(&save_path, raw) {
+                tracing::warn!("Could not export chat to {}: {error}", save_path.display());
+            }
         }
     }
 
@@ -409,7 +439,12 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
                         if let Ok(content) = fs::read(&path) {
                             if let Some(file_name) = path.file_name() {
                                 let dest_path = dir.join(file_name);
-                                let _ = fs::write(dest_path, &content);
+                                if let Err(error) = fs::write(&dest_path, &content) {
+                                    tracing::warn!(
+                                        "Could not export chat to {}: {error}",
+                                        dest_path.display()
+                                    );
+                                }
                             }
                         }
                     }
@@ -424,18 +459,88 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             .add_filter("All Files", &["*"])
             .pick_file();
 
-        if let Some(file_path) = file {
-            if let Ok(raw) = fs::read_to_string(&file_path) {
-                if let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) {
-                    if let Some(save_path) = Self::chat_file_path(&chat.id) {
-                        if let Ok(serialized) = serde_json::to_string_pretty(&chat) {
-                            let _ = fs::write(save_path, serialized);
-                            self.refresh_chat_history_list(cx);
-                            self.load_chat_session(&chat.id, cx);
-                        }
-                    }
-                }
+        let Some(file_path) = file else {
+            return;
+        };
+        let raw = match fs::read_to_string(&file_path) {
+            Ok(raw) => raw,
+            Err(error) => {
+                tracing::warn!("Could not read {}: {error}", file_path.display());
+                return;
             }
+        };
+        let mut chat = match serde_json::from_str::<ChatSessionFile>(&raw) {
+            Ok(chat) => chat,
+            Err(error) => {
+                tracing::warn!("{} is not a chat file: {error}", file_path.display());
+                return;
+            }
+        };
+        // The file's own id is untrusted (it would name the file written
+        // here) and may collide with an existing chat: the copy gets a fresh
+        // one.
+        chat.id = format!("chat-{}", Self::now_epoch_nanos());
+        let Some(save_path) = Self::chat_file_path(&chat.id) else {
+            return;
+        };
+        let serialized = match serde_json::to_string_pretty(&chat) {
+            Ok(serialized) => serialized,
+            Err(error) => {
+                tracing::warn!("Could not serialize the imported chat: {error}");
+                return;
+            }
+        };
+        if let Err(error) = write_chat_file(&save_path, &serialized) {
+            tracing::warn!("Could not import chat to {}: {error}", save_path.display());
+            return;
+        }
+        self.refresh_chat_history_list(cx);
+        self.load_chat_session(&chat.id, cx);
+    }
+}
+
+/// Whether `id` may name a chat file: non-empty, ASCII letters, digits, `-`
+/// and `_` only. Ids are read back from file contents and from imported
+/// files, so anything else (a separator, `..`, a drive letter) could make a
+/// crafted chat file name a path outside the chats folder.
+pub(super) fn is_valid_chat_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Write `contents` to `path` through a temporary sibling renamed into
+/// place (as `layout::format::write_raw` does), so a crash or a full disk
+/// mid-write cannot leave a truncated chat behind.
+fn write_chat_file(path: &Path, contents: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, contents)?;
+    fs::rename(&tmp, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_valid_chat_id;
+
+    #[test]
+    fn chat_ids_are_plain_file_names() {
+        assert!(is_valid_chat_id("chat-1699999999999999999"));
+        assert!(is_valid_chat_id("Chat_01"));
+        for bad in [
+            "",
+            ".",
+            "..",
+            "../layout",
+            "a/b",
+            "a\\b",
+            "C:",
+            "chat.json",
+            "chat 1",
+            "chät",
+            "chat\0",
+        ] {
+            assert!(!is_valid_chat_id(bad), "{bad:?} must be refused");
         }
     }
 }

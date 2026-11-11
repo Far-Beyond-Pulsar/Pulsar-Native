@@ -218,18 +218,28 @@ impl Program {
         self.module.variables.iter().position(|v| v.name == name)
     }
 
-    /// Variable `index` of `instance`.
+    /// Variable `index` of `instance`; `None` for an instance of another
+    /// module's program, whose variables are laid out differently.
     pub fn var<'i>(&self, instance: &'i Instance, index: usize) -> Option<&'i Value> {
+        if !Arc::ptr_eq(&instance.module, &self.module) {
+            return None;
+        }
         instance.vars.get(index)
     }
 
-    /// Set variable `index` of `instance`, if `value` has its type.
+    /// Set variable `index` of `instance`, if `value` has its type and
+    /// `instance` is of this program's module (see [`Instance`]).
     pub fn set_var(
         &self,
         instance: &mut Instance,
         index: usize,
         value: Value,
     ) -> Result<(), String> {
+        // Another module's instance has its own variable layout: `index`
+        // would name a different variable there, or none.
+        if !Arc::ptr_eq(&instance.module, &self.module) {
+            return Err("instance does not belong to this program".into());
+        }
         let var = self
             .module
             .variables

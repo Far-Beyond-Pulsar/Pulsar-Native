@@ -62,9 +62,23 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         if ty.is_dir() {
             copy_dir_all(&e.path(), &dst.join(e.file_name()))?;
         } else {
-            std::fs::copy(e.path(), dst.join(e.file_name()))?;
+            copy_file_new(&e.path(), &dst.join(e.file_name()))?;
         }
     }
+    Ok(())
+}
+
+/// Copy `src` to `dst`, which must not exist yet: `fs::copy` would replace a
+/// same-named file in the folder being copied into.
+fn copy_file_new(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let mut from = std::fs::File::open(src)?;
+    let mut to = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dst)?;
+    std::io::copy(&mut from, &mut to)?;
+    // What `fs::copy` carries over as well (read-only, Unix mode bits).
+    to.set_permissions(from.metadata()?.permissions())?;
     Ok(())
 }
 

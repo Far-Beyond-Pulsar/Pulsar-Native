@@ -50,29 +50,35 @@ pub fn provider() -> Arc<dyn FsProvider> {
 
 /// `true` when the active provider serves a remote filesystem.
 pub fn is_remote() -> bool {
-    global().read().is_remote()
+    provider().is_remote()
 }
 
 /// Human-readable label for the current provider ("Local" or "Remote").
 pub fn current_label() -> String {
-    global().read().label().to_string()
+    provider().label().to_string()
 }
 
 // ── Convenience pass-throughs ─────────────────────────────────────────────────
+//
+// Every wrapper clones the `Arc` out of the lock (`provider()`) and calls the
+// provider through the clone, never while holding the read guard: providers
+// emit filesystem events synchronously, and the event handlers (file index
+// updates) call back into these wrappers. A re-entrant `read()` deadlocks as
+// soon as a writer (`set_provider`) is queued, because the lock is fair.
 
 /// Read the full contents of a file.
 pub fn read_file(path: &Path) -> Result<Vec<u8>> {
-    global().read().read_file(path)
+    provider().read_file(path)
 }
 
 /// Read up to `len` bytes from the start of a file.
 pub fn read_file_prefix(path: &Path, len: usize) -> Result<Vec<u8>> {
-    global().read().read_file_prefix(path, len)
+    provider().read_file_prefix(path, len)
 }
 
 /// Overwrite (or create) a file with `content`.
 pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
-    let result = global().read().write_file(path, content);
+    let result = provider().write_file(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Modified);
     }
@@ -84,7 +90,7 @@ pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
 /// Providers that cannot guarantee atomic replacement return an error rather
 /// than silently falling back to a partial write.
 pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
-    let result = global().read().write_file_atomically(path, content);
+    let result = provider().write_file_atomically(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Modified);
     }
@@ -93,7 +99,7 @@ pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
 
 /// Create a new file with `content`, failing if it already exists.
 pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
-    let result = global().read().create_file(path, content);
+    let result = provider().create_file(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Created);
     }
@@ -102,7 +108,7 @@ pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
 
 /// Delete a file or recursively remove a directory.
 pub fn delete_path(path: &Path) -> Result<()> {
-    let result = global().read().delete_path(path);
+    let result = provider().delete_path(path);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Deleted);
     }
@@ -111,17 +117,17 @@ pub fn delete_path(path: &Path) -> Result<()> {
 
 /// Rename / move a path.
 pub fn rename(from: &Path, to: &Path) -> Result<()> {
-    global().read().rename(from, to)
+    provider().rename(from, to)
 }
 
 /// List the immediate children of a directory.
 pub fn list_dir(path: &Path) -> Result<Vec<FsEntry>> {
-    global().read().list_dir(path)
+    provider().list_dir(path)
 }
 
 /// Recursively create a directory and all missing parents.
 pub fn create_dir_all(path: &Path) -> Result<()> {
-    let result = global().read().create_dir_all(path);
+    let result = provider().create_dir_all(path);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Created);
     }
@@ -130,24 +136,24 @@ pub fn create_dir_all(path: &Path) -> Result<()> {
 
 /// Return `true` if `path` exists.
 pub fn exists(path: &Path) -> Result<bool> {
-    global().read().exists(path)
+    provider().exists(path)
 }
 
 /// Return basic metadata for `path`.
 pub fn metadata(path: &Path) -> Result<FsMetadata> {
-    global().read().metadata(path)
+    provider().metadata(path)
 }
 
 /// Return a flat manifest of every entry under `path`.
 pub fn manifest(path: &Path) -> Result<Vec<ManifestEntry>> {
-    global().read().manifest(path)
+    provider().manifest(path)
 }
 
 /// Return paths of all files under `root` whose extension matches `ext`
 /// (case-insensitive, without leading dot). Paths are relative to `root`.
 pub fn find_by_extension(root: &Path, ext: &str) -> Vec<std::path::PathBuf> {
     let ext_lower = ext.trim_start_matches('.').to_ascii_lowercase();
-    match global().read().manifest(root) {
+    match provider().manifest(root) {
         Ok(entries) => entries
             .into_iter()
             .filter(|e| !e.is_dir)

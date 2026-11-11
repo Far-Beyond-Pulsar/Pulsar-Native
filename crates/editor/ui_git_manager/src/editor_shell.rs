@@ -94,6 +94,12 @@ fn sync_hooks(project: &Path) -> String {
                     crate::GitHookSyncSkipReason::CustomHooksPath { path } => {
                         format!("skipped: custom hooks path {}", path.display())
                     }
+                    crate::GitHookSyncSkipReason::RepositoryAboveProject { workdir } => {
+                        format!(
+                            "skipped: the repository is rooted above the project ({})",
+                            workdir.display()
+                        )
+                    }
                 },
             }
         }

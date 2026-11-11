@@ -187,9 +187,11 @@ impl RustAnalyzerManager {
         )
     }
 
-    /// Check if analyzer is fully initialized (LSP handshake complete)
-    /// Per LSP spec, server must complete initialize handshake before accepting document operations.
-    /// We know this is complete once we transition to Indexing status (which happens after initialize response).
+    /// Check if analyzer is initialized: the `initialize` request (and the
+    /// `initialized` notification) are on the wire ahead of anything else, so
+    /// document operations the server receives from now on follow them.
+    /// That is the transition to Indexing status, which `start` makes only
+    /// after the spawn thread has written the request.
     pub fn is_initialized(&self) -> bool {
         matches!(
             self.status,

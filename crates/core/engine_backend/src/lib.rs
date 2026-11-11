@@ -97,11 +97,9 @@ impl EngineBackend {
             let id = ss.id();
             match self.subsystems.register_boxed(ss) {
                 Ok(()) => {
-                    // Initialize just this new subsystem.
-                    let ss = self.subsystems.get_mut(id).unwrap();
-                    ss.init(&context).map_err(|e| {
-                        SubsystemError::InitFailed(format!("{}: {}", id.as_str(), e))
-                    })?;
+                    // Initialize just this new subsystem; it joins the init
+                    // order so it is ticked and shut down with the others.
+                    self.subsystems.init_one(id, &context)?;
                     tracing::debug!("  ✅ Plugin subsystem initialized: {}", id);
                 }
                 Err(SubsystemError::AlreadyRegistered(_)) => {

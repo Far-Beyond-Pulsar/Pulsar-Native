@@ -617,8 +617,26 @@ fn write_trait(project_root: &Path, relative: &str, value: &Value) -> Result<()>
     let path = project_root.join(relative);
     let mut bytes = serde_json::to_vec_pretty(value).context("Failed to serialize trait")?;
     bytes.push(b'\n');
-    virtual_fs::write_file(&path, &bytes)
-        .with_context(|| format!("Failed to write trait asset '{}'", path.display()))?;
+    // The trait asset is the user's data, rewritten during an index rebuild:
+    // replace it atomically so an interrupted write cannot leave it truncated.
+    match virtual_fs::write_file_atomically(&path, &bytes) {
+        Ok(()) => {}
+        Err(error) if virtual_fs::is_remote() => {
+            // Remote and P2P providers currently have no atomic publish
+            // operation (same fallback as `persist`).
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "Provider has no atomic write; writing trait asset directly"
+            );
+            virtual_fs::write_file(&path, &bytes)
+                .with_context(|| format!("Failed to write trait asset '{}'", path.display()))?;
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("Failed to write trait asset '{}'", path.display()));
+        }
+    }
     mirror_to_file_index(project_root, relative, value);
     Ok(())
 }

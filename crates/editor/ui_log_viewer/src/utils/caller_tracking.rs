@@ -80,9 +80,18 @@ impl Default for CallerStats {
 pub static CALLER_MAP: Lazy<DashMap<StackKey, CallerStats>> =
     Lazy::new(|| DashMap::with_capacity(4096));
 
-/// Maps allocation pointer → StackKey, so deallocs can be paired with their alloc site.
+/// What is remembered about a live tracked allocation: its call site, and the
+/// `MemoryCategory` (as its discriminant) it was charged to, so that its
+/// dealloc credits the same category whatever the freeing thread's category is.
+#[derive(Clone, Copy, Debug)]
+pub struct TrackedAlloc {
+    pub key: StackKey,
+    pub category: u8,
+}
+
+/// Maps allocation pointer → its record, so deallocs can be paired with their site.
 /// Size is bounded by the number of currently live tracked allocations (naturally shrinks on dealloc).
-pub static ALLOC_KEYS: Lazy<DashMap<usize, StackKey>> =
+pub static ALLOC_KEYS: Lazy<DashMap<usize, TrackedAlloc>> =
     Lazy::new(|| DashMap::with_capacity(131072));
 
 /// Global live-bytes counter: incremented on every tracked alloc, decremented on every matched dealloc.
@@ -118,17 +127,22 @@ static SYMBOL_CACHE: Lazy<Mutex<HashMap<u64, String>>> = Lazy::new(|| Mutex::new
 
 /// Record an allocation. Called from within the global allocator with TRACKING_ENABLED=false
 /// so recursion from DashMap's own allocations is suppressed.
+///
+/// Returns whether the pointer is now in `ALLOC_KEYS`, which is what
+/// [`record_dealloc`] will later match: the caller charges the per-category
+/// counters only for such allocations, so that it never credits one it did not
+/// charge.
 #[inline]
-pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
+pub fn record_alloc(ptr: usize, frames: &[usize], size: usize, category: u8) -> bool {
     if frames.is_empty() {
-        return;
+        return false;
     }
 
     // Global counter updated unconditionally — even if CALLER_BUSY blocks per-site recording.
     GLOBAL_LIVE_BYTES.fetch_add(size as i64, Ordering::Relaxed);
 
     if CALLER_BUSY.with(|b| b.replace(true)) {
-        return;
+        return false;
     }
 
     // Skip allocator-internal frames:
@@ -139,6 +153,7 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
     let skip = frames.len().min(4);
     let meaningful = &frames[skip..];
 
+    let mut tracked = false;
     if !meaningful.is_empty() {
         let key = StackKey::from_frames(meaningful);
         let first = meaningful[0] as u64;
@@ -157,37 +172,58 @@ pub fn record_alloc(ptr: usize, frames: &[usize], size: usize) {
                     Ordering::Relaxed,
                 );
             }
-            // Store ptr → key for dealloc pairing.
-            if ptr != 0 {
-                ALLOC_KEYS.insert(ptr, key);
-            }
+        }
+        // Store ptr → record for dealloc pairing, whether or not the call-site
+        // cap admitted a new site: the category counters pair on it too.
+        if ptr != 0 {
+            ALLOC_KEYS.insert(ptr, TrackedAlloc { key, category });
+            tracked = true;
         }
     }
 
     CALLER_BUSY.with(|b| b.set(false));
+    tracked
 }
 
 /// Record a deallocation by matching the pointer to its original alloc site.
+///
+/// Returns the category the allocation was charged to when it was recorded by
+/// [`record_alloc`], and `None` for a pointer that never was: one allocated
+/// before tracking began, or already forgotten by [`reset`].
 #[inline]
-pub fn record_dealloc(ptr: usize, size: usize) {
+pub fn record_dealloc(ptr: usize, size: usize) -> Option<u8> {
     if ptr == 0 {
-        return;
+        return None;
     }
 
     // Always subtract from global counter.
     GLOBAL_LIVE_BYTES.fetch_sub(size as i64, Ordering::Relaxed);
 
     if CALLER_BUSY.with(|b| b.replace(true)) {
-        return;
+        return None;
     }
 
-    if let Some((_, key)) = ALLOC_KEYS.remove(&ptr) {
-        if let Some(entry) = CALLER_MAP.get(&key) {
+    let tracked = ALLOC_KEYS.remove(&ptr).map(|(_, alloc)| {
+        if let Some(entry) = CALLER_MAP.get(&alloc.key) {
             entry.total_deallocs.fetch_add(1, Ordering::Relaxed);
             entry.live_bytes.fetch_sub(size as i64, Ordering::Relaxed);
         }
-    }
+        alloc.category
+    });
     CALLER_BUSY.with(|b| b.set(false));
+    tracked
+}
+
+/// Forget every call site and live pointer and zero the live-bytes counter:
+/// a fresh tracking window. Called with tracking off, so the entries dropped
+/// here are not recorded as deallocs; `CALLER_BUSY` guards the maps' own
+/// frees as well.
+pub fn reset() {
+    CALLER_BUSY.with(|b| b.set(true));
+    ALLOC_KEYS.clear();
+    CALLER_MAP.clear();
+    CALLER_BUSY.with(|b| b.set(false));
+    GLOBAL_LIVE_BYTES.store(0, Ordering::Relaxed);
 }
 
 // ─── Background snapshot builder ─────────────────────────────────────────────

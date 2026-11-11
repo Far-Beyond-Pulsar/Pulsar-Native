@@ -260,6 +260,13 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
             return String::new();
         }
     }
+    let transform = match validate_transform(&obj.transform) {
+        Ok(transform) => transform,
+        Err(reason) => {
+            tracing::error!(id = %obj.id, name = %obj.name, "rejected object: {reason}");
+            return String::new();
+        }
+    };
 
     // v2 scene objects may carry component instances inline. Preserve those
     // instances before the normal hydration pass; otherwise World-registered
@@ -299,7 +306,7 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
         stable_id: (!obj.id.is_empty()).then(|| obj.id.clone()),
         name: obj.name.clone(),
         parent: parent_entity,
-        transform: (&obj.transform).into(),
+        transform: (&transform).into(),
         visibility: WorldVisibility {
             visible: obj.visible,
             locked: obj.locked,
@@ -441,7 +448,14 @@ pub fn update_object(world: &mut World, obj: SceneObjectData) -> bool {
     let Some(entity) = world.entity_for(&id) else {
         return false;
     };
-    world.insert(entity, WorldTransform::from(&obj.transform));
+    let transform = match validate_transform(&obj.transform) {
+        Ok(transform) => transform,
+        Err(reason) => {
+            tracing::error!(object = %id, "rejected object update: {reason}");
+            return false;
+        }
+    };
+    world.insert(entity, WorldTransform::from(&transform));
     world.insert(entity, Name(obj.name));
     world.insert(
         entity,
@@ -505,6 +519,13 @@ pub fn set_transform(
     scale: Option<[f32; 3]>,
 ) -> bool {
     profiling::profile_scope!("scene_edit::set_transform");
+    let scale = match validate_transform_fields(position, rotation, scale) {
+        Ok(scale) => scale,
+        Err(reason) => {
+            tracing::error!(object = %id, "rejected transform: {reason}");
+            return false;
+        }
+    };
     let Some(entity) = world.entity_for(id) else {
         return false;
     };
@@ -532,6 +553,66 @@ pub fn set_transform(
     changed
 }
 
+// ── Transform validation ───────────────────────────────────────────────────
+//
+// The editor's write boundary: every transform an edit stores passes
+// through [`add_object`], [`update_object`] or [`set_transform`]. A zero
+// scale makes the object's matrix singular, and a child's local transform
+// is computed through its inverse (`hierarchy_transform::local_for_world`),
+// which turns NaN; NaN serializes as `null`, which the level then fails to
+// load. Non-finite values are refused outright.
+
+/// Smallest magnitude a scale axis may have.
+pub const MIN_SCALE: f32 = 1e-6;
+
+/// `transform` as an edit may store it: `Err` names a non-finite
+/// component; a scale axis closer to zero than [`MIN_SCALE`] is moved to
+/// it, keeping its sign.
+pub fn validate_transform(transform: &Transform) -> Result<Transform, String> {
+    let scale = validate_transform_fields(
+        Some(transform.position),
+        Some(transform.rotation),
+        Some(transform.scale),
+    )?
+    .unwrap_or(transform.scale);
+    Ok(Transform {
+        position: transform.position,
+        rotation: transform.rotation,
+        scale,
+    })
+}
+
+/// [`validate_transform`] for the fields a [`set_transform`] changes: the
+/// clamped scale comes back, or `Err` names the non-finite field.
+pub fn validate_transform_fields(
+    position: Option<[f64; 3]>,
+    rotation: Option<[f32; 3]>,
+    scale: Option<[f32; 3]>,
+) -> Result<Option<[f32; 3]>, String> {
+    if let Some(p) = position.filter(|p| !p.iter().all(|v| v.is_finite())) {
+        return Err(format!("position {p:?} is not finite"));
+    }
+    if let Some(r) = rotation.filter(|r| !r.iter().all(|v| v.is_finite())) {
+        return Err(format!("rotation {r:?} is not finite"));
+    }
+    if let Some(s) = scale.filter(|s| !s.iter().all(|v| v.is_finite())) {
+        return Err(format!("scale {s:?} is not finite"));
+    }
+    Ok(scale.map(|s| s.map(clamp_scale_axis)))
+}
+
+/// `value` at least [`MIN_SCALE`] in magnitude, keeping its sign (a
+/// negative scale mirrors, and stays a mirror).
+fn clamp_scale_axis(value: f32) -> f32 {
+    if value.abs() >= MIN_SCALE {
+        value
+    } else if value.is_sign_negative() {
+        -MIN_SCALE
+    } else {
+        MIN_SCALE
+    }
+}
+
 /// Re-parent an object (cycle-safe).
 pub fn reparent_object(world: &mut World, id: &str, new_parent: Option<ObjectId>) -> bool {
     profiling::profile_scope!("scene_edit::reparent_object");
@@ -553,6 +634,30 @@ pub fn reparent_object(world: &mut World, id: &str, new_parent: Option<ObjectId>
         new_parent_entity,
     )
     .is_ok()
+}
+
+/// Put `id` under `parent` as it is: only the hierarchy link changes; the
+/// object's stored (parent-relative) transform is not rewritten. For
+/// restoring a captured state, whose transform is already relative to the
+/// captured parent. An edit uses [`reparent_object`], which keeps the object
+/// where it is in the world instead. Returns `false` for an unknown object
+/// or parent, or a cycle.
+pub(super) fn set_parent(world: &mut World, id: &str, parent: Option<&str>) -> bool {
+    let Some(entity) = world.entity_for(id) else {
+        return false;
+    };
+    let parent_entity = match parent {
+        Some(parent_id) => match world.entity_for(parent_id) {
+            Some(e) => Some(e),
+            None => return false,
+        },
+        None => None,
+    };
+    if world.parent_of(entity) == parent_entity {
+        // Already there; leaving the link alone keeps its sibling order.
+        return true;
+    }
+    world.reparent(entity, parent_entity).is_ok()
 }
 
 /// Reorder two sibling objects by swapping their positions. Both must share a

@@ -180,7 +180,11 @@ pub struct Vm {
     /// (#858). Off by default, like a Rust release build; the engine turns
     /// it on in the editor and Play-in-Editor and off in shipping builds.
     pub checked_arithmetic: bool,
-    /// Optional language-neutral debugger attached to this VM.
+    /// Optional language-neutral debugger attached to this VM. It stops in
+    /// interpreted code only: with a debugger attached, a function of a
+    /// program with generated code ([`Program::link_compiled`]) runs in the
+    /// interpreter if it kept its instruction stream, and runs its
+    /// generated code, with no stops, if it has none.
     pub debugger: Option<Debugger>,
 }
 
@@ -423,53 +427,62 @@ impl Vm {
     ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
         loop {
-            if self.debugger.is_none() {
-                if let Some(code) = &program.compiled {
-                    // Generated code runs the function until it must call,
-                    // return, wait or fail; calls, returns and waits are handled
-                    // here, as for interpreted code. It charges the budget
-                    // itself, per instruction.
-                    let frame = self.frames.last_mut().expect("a frame is active");
-                    let func = frame.func;
-                    let registers = program.registers[func as usize].len();
-                    let mut cx = Cx {
-                        host: &mut *host,
-                        vars: &mut instance.vars,
-                        budget: &mut *budget,
-                        natives: &program.natives,
-                        constants: &program.constants,
-                        checked: self.checked_arithmetic,
-                        scratch: &mut self.args,
-                    };
-                    let regs = &mut self.regs[frame.base..frame.base + registers];
-                    let exit = code.step(func, &mut frame.pc, regs, &mut cx);
-                    match exit {
-                        Err(kind) => return Err(self.fail(program, frame_base, kind)),
-                        Ok(Exit::Call {
-                            func: callee,
-                            args,
-                            dst,
-                        }) => {
-                            if self.frames.len() - frame_base >= self.max_depth {
-                                return Err(self.fail(
-                                    program,
-                                    frame_base,
-                                    ScriptErrorKind::StackOverflow,
-                                ));
-                            }
-                            self.push_frame(program, callee, args.into_iter(), dst);
+            // Generated code runs the active frame, unless a debugger is
+            // attached and the function kept its instructions: the
+            // interpreter runs those, where the debugger can stop. A
+            // function with no instructions (a module linked with
+            // generated code carries none) always runs its generated code:
+            // there is nothing to interpret, and indexing the empty stream
+            // would panic.
+            let generated = program.compiled.as_ref().filter(|_| {
+                let func = self.frames.last().expect("a frame is active").func;
+                self.debugger.is_none() || module.functions[func as usize].code.is_empty()
+            });
+            if let Some(code) = generated {
+                // Generated code runs the function until it must call,
+                // return, wait or fail; calls, returns and waits are handled
+                // here, as for interpreted code. It charges the budget
+                // itself, per instruction.
+                let frame = self.frames.last_mut().expect("a frame is active");
+                let func = frame.func;
+                let registers = program.registers[func as usize].len();
+                let mut cx = Cx {
+                    host: &mut *host,
+                    vars: &mut instance.vars,
+                    budget: &mut *budget,
+                    natives: &program.natives,
+                    constants: &program.constants,
+                    checked: self.checked_arithmetic,
+                    scratch: &mut self.args,
+                };
+                let regs = &mut self.regs[frame.base..frame.base + registers];
+                let exit = code.step(func, &mut frame.pc, regs, &mut cx);
+                match exit {
+                    Err(kind) => return Err(self.fail(program, frame_base, kind)),
+                    Ok(Exit::Call {
+                        func: callee,
+                        args,
+                        dst,
+                    }) => {
+                        if self.frames.len() - frame_base >= self.max_depth {
+                            return Err(self.fail(
+                                program,
+                                frame_base,
+                                ScriptErrorKind::StackOverflow,
+                            ));
                         }
-                        Ok(Exit::Return(value)) => {
-                            if let Some(done) = self.finish_frame(value, frame_base) {
-                                return Ok(done);
-                            }
-                        }
-                        Ok(Exit::Wait(seconds)) => {
-                            return Ok(self.suspend(program, frame_base, seconds));
+                        self.push_frame(program, callee, args.into_iter(), dst);
+                    }
+                    Ok(Exit::Return(value)) => {
+                        if let Some(done) = self.finish_frame(value, frame_base) {
+                            return Ok(done);
                         }
                     }
-                    continue;
+                    Ok(Exit::Wait(seconds)) => {
+                        return Ok(self.suspend(program, frame_base, seconds));
+                    }
                 }
+                continue;
             }
             if budget.remaining == 0 {
                 return Err(self.fail(program, frame_base, ScriptErrorKind::BudgetExceeded));

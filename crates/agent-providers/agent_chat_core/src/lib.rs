@@ -313,7 +313,15 @@ pub fn save_provider_instances(
     let file = ProviderInstanceFile {
         providers: instances.to_vec(),
     };
-    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
+    let text = serde_json::to_string_pretty(&file)?;
+    // Written beside the store and renamed over it, so a crash or a full
+    // disk mid-write leaves the previous file rather than a truncated one.
+    let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    std::fs::write(&temp, text)?;
+    if let Err(error) = std::fs::rename(&temp, path) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(error.into());
+    }
     Ok(())
 }
 

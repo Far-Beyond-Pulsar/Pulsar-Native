@@ -139,9 +139,16 @@ pub(crate) fn sync_failed_message(error: impl std::fmt::Display) -> String {
 }
 
 /// Writes one chunk of a received file at `offset`, creating parent directories
-/// and the file as needed. I/O errors are ignored, matching the original behavior.
+/// and the file as needed. I/O errors are ignored, matching the original behavior;
+/// a path that would leave the project is refused.
 pub(crate) fn write_file_chunk(project_root: &Path, file_path: &str, offset: u64, data: &[u8]) {
-    let full_path = project_root.join(file_path);
+    let full_path = match crate::net::simple_sync::project_relative(project_root, file_path) {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!("Ignoring file chunk: {}", error);
+            return;
+        }
+    };
 
     if let Some(parent) = full_path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -360,5 +367,24 @@ mod tests {
         assert_eq!(contents, b"abcdefgh");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_file_chunk_refuses_a_path_outside_the_project() {
+        let root = std::env::temp_dir().join(format!(
+            "ui_multiplayer_chunk_escape_test_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let escaped = root.with_file_name(format!(
+            "ui_multiplayer_chunk_escaped_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&escaped);
+
+        let outside = format!("../{}", escaped.file_name().unwrap().to_str().unwrap());
+        write_file_chunk(&root, &outside, 0, b"nope");
+        assert!(!escaped.exists());
+        assert!(!root.exists());
     }
 }

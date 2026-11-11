@@ -111,12 +111,17 @@ pub fn divide(a: i64, b: i64) -> i64 {
 /// If `a` is 7 and `b` is 2, the output will be 1.
 ///
 /// # Notes
-/// The result has the same sign as the dividend. Division by zero will panic or return NaN depending on the type.
+/// The result has the same sign as the dividend. A zero divisor gives 0 (as `divide` does).
 /// # Modulo
 /// Returns the remainder of division (a % b).
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn modulo(a: i64, b: i64) -> i64 {
-    a % b
+    if b == 0 {
+        0
+    } else {
+        // `i64::MIN % -1` overflows; the wrapping remainder is 0.
+        a.wrapping_rem(b)
+    }
 }
 
 // =============================================================================
@@ -408,7 +413,9 @@ pub fn radians_to_degrees(radians: f64) -> f64 {
 pub fn angle_difference(angle1: f64, angle2: f64) -> f64 {
     let diff = angle2 - angle1;
     let pi = std::f64::consts::PI;
-    ((diff + pi) % (2.0 * pi)) - pi
+    // `%` keeps the sign of the dividend, so a difference below -π would
+    // come out below -π instead of wrapping; `rem_euclid` is always in [0, 2π).
+    (diff + pi).rem_euclid(2.0 * pi) - pi
 }
 
 // =============================================================================
@@ -943,7 +950,8 @@ pub fn mean(a: f64, b: f64) -> f64 {
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn median(a: f64, b: f64, c: f64) -> f64 {
     let mut values = [a, b, c];
-    values.sort_by(|x, y| x.partial_cmp(y).unwrap());
+    // A total order: `partial_cmp` is `None` for NaN, which must not panic.
+    values.sort_by(f64::total_cmp);
     values[1]
 }
 
@@ -1106,4 +1114,35 @@ pub fn proportion(part: f64, whole: f64) -> f64 {
         return 0.0;
     }
     (part / whole).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::PI;
+
+    #[test]
+    fn angle_difference_wraps_both_ways() {
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        // A difference below -π wraps around to the short way.
+        assert!(close(angle_difference(3.0 * PI / 2.0, 0.0), PI / 2.0));
+        assert!(close(angle_difference(0.0, 3.0 * PI / 2.0), -PI / 2.0));
+        assert!(close(angle_difference(0.0, PI / 4.0), PI / 4.0));
+        assert!(close(angle_difference(PI / 4.0, 0.0), -PI / 4.0));
+    }
+
+    #[test]
+    fn modulo_never_panics() {
+        assert_eq!(modulo(10, 3), 1);
+        assert_eq!(modulo(-7, 2), -1);
+        assert_eq!(modulo(7, 0), 0);
+        assert_eq!(modulo(i64::MIN, -1), 0);
+    }
+
+    #[test]
+    fn median_tolerates_nan() {
+        assert_eq!(median(3.0, 1.0, 2.0), 2.0);
+        // Must not panic; NaN sorts last under `total_cmp`.
+        assert_eq!(median(f64::NAN, 1.0, 2.0), 2.0);
+    }
 }

@@ -31,6 +31,27 @@ use crate::metrics::METRICS;
 use peer_discovery::PeerSession;
 
 impl RendezvousCoordinator {
+    /// How long a broadcast waits on one peer's outbound channel. The
+    /// channel is bounded; a peer that stopped reading its socket fills it,
+    /// and waiting on it forever would stall the sending peer's handler, and
+    /// with it everything that peer relays, for as long as the stuck peer
+    /// stays connected.
+    const SEND_TIMEOUT: Duration = Duration::from_secs(2);
+
+    /// Queue `msg` for `peer`, giving up after [`Self::SEND_TIMEOUT`].
+    async fn deliver(peer: &PeerSession, msg: ServerMessage) {
+        match tokio::time::timeout(Self::SEND_TIMEOUT, peer.tx.send(msg)).await {
+            Ok(Ok(())) => {}
+            // The receiver is gone: the peer's connection is closing.
+            Ok(Err(_)) => {}
+            Err(_) => warn!(
+                peer = %peer.peer_id,
+                session = %peer.session_id,
+                "Peer is not reading its messages; dropped a broadcast to it"
+            ),
+        }
+    }
+
     /// Handle WebSocket upgrade
     pub async fn handle_websocket(
         State(coordinator): State<Arc<Self>>,
@@ -127,6 +148,92 @@ impl RendezvousCoordinator {
         send_task.abort();
     }
 
+    /// The session and peer a message says it comes from: `None` for the
+    /// messages that carry neither (`Join` establishes them, `Ping` needs
+    /// none).
+    fn claimed_identity(msg: &ClientMessage) -> Option<(&str, &str)> {
+        use ClientMessage::*;
+        match msg {
+            Join { .. } | Ping => None,
+            Leave {
+                session_id,
+                peer_id,
+            }
+            | KickUser {
+                session_id,
+                peer_id,
+                ..
+            }
+            | ChatMessage {
+                session_id,
+                peer_id,
+                ..
+            }
+            | RequestFileManifest {
+                session_id,
+                peer_id,
+            }
+            | FileManifest {
+                session_id,
+                peer_id,
+                ..
+            }
+            | RequestFiles {
+                session_id,
+                peer_id,
+                ..
+            }
+            | FilesChunk {
+                session_id,
+                peer_id,
+                ..
+            }
+            | FileChanged {
+                session_id,
+                peer_id,
+                ..
+            }
+            | P2PConnectionRequest {
+                session_id,
+                peer_id,
+                ..
+            }
+            | P2PConnectionResponse {
+                session_id,
+                peer_id,
+                ..
+            }
+            | RequestBinaryProxy {
+                session_id,
+                peer_id,
+            }
+            | BinaryProxyData {
+                session_id,
+                peer_id,
+                ..
+            }
+            | RequestProjectTree {
+                session_id,
+                peer_id,
+            }
+            | ProjectTreeResponse {
+                session_id,
+                peer_id,
+                ..
+            }
+            | RequestFile {
+                session_id,
+                peer_id,
+                ..
+            }
+            | FileChunk {
+                session_id,
+                peer_id,
+                ..
+            } => Some((session_id.as_str(), peer_id.as_str())),
+        }
+    }
+
     async fn handle_client_message(
         &self,
         msg: ClientMessage,
@@ -134,6 +241,21 @@ impl RendezvousCoordinator {
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
+        // The identity a message carries is only ever the one this connection
+        // joined with. The handlers below trust the message's `peer_id` and
+        // `session_id` (relaying as that peer, leaving or kicking as it), so
+        // a guest naming the host's id here would otherwise speak for the
+        // host, and a connection that never joined could act in any session.
+        if let Some((claimed_session, claimed_peer)) = Self::claimed_identity(&msg) {
+            if session_id.as_deref() != Some(claimed_session)
+                || peer_id.as_deref() != Some(claimed_peer)
+            {
+                anyhow::bail!(
+                    "message from peer {claimed_peer} in session {claimed_session} on a connection that joined as {peer_id:?} in {session_id:?}"
+                );
+            }
+        }
+
         match msg {
             ClientMessage::Join {
                 session_id: sid,
@@ -328,6 +450,14 @@ impl RendezvousCoordinator {
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
+        if peer_id.is_some() || session_id.is_some() {
+            tx.send(ServerMessage::Error {
+                message: "This connection already joined a session".to_string(),
+            })
+            .await?;
+            anyhow::bail!("connection joined as {peer_id:?} in {session_id:?} sent a second Join");
+        }
+
         let creating_session = join_token.trim().is_empty();
         let mut created_join_token = None;
 
@@ -336,27 +466,50 @@ impl RendezvousCoordinator {
             if sid.trim().is_empty() {
                 sid = Uuid::new_v4().to_string()[..8].to_string();
             }
-            if !self.sessions.contains_key(&sid) {
-                self.create_session(sid.clone(), pid.clone())?;
+            // Only a session that does not exist yet is created this way.
+            // Joining an existing one takes its join token; without this
+            // check anyone who learned a session id walked in as a second
+            // "host" and was handed a host token for it.
+            if self.sessions.contains_key(&sid) {
+                tx.send(ServerMessage::Error {
+                    message: "Session already exists; a join token is required".to_string(),
+                })
+                .await?;
+                anyhow::bail!("refused to join existing session {sid} without a join token");
             }
+            self.create_session(sid.clone(), pid.clone())?;
             created_join_token = Some(self.auth.create_join_token(
                 sid.clone(),
                 Role::Host,
                 Duration::from_secs(3600),
             )?);
-        } else if let Err(e) = self.auth.verify_join_token(&join_token) {
-            error!(error = %e, "Invalid join token");
-            tx.send(ServerMessage::Error {
-                message: "Invalid join token".to_string(),
-            })
-            .await?;
-            return Err(e);
-        }
-
-        // If session doesn't exist, create it (first peer is host)
-        let is_new_session = !self.sessions.contains_key(&sid);
-        if is_new_session {
-            self.create_session(sid.clone(), pid.clone())?;
+        } else {
+            let (token_session, _role) = match self.auth.verify_join_token(&join_token) {
+                Ok(verified) => verified,
+                Err(e) => {
+                    error!(error = %e, "Invalid join token");
+                    tx.send(ServerMessage::Error {
+                        message: "Invalid join token".to_string(),
+                    })
+                    .await?;
+                    return Err(e);
+                }
+            };
+            // A token admits its holder to the session it was minted for,
+            // not to whichever session the message names.
+            if token_session != sid {
+                tx.send(ServerMessage::Error {
+                    message: "Join token is for another session".to_string(),
+                })
+                .await?;
+                anyhow::bail!("join token for session {token_session} used on session {sid}");
+            }
+            // A session created over the REST API has no rendezvous entry
+            // until its host connects; the token proves this relay issued it
+            // for `sid`, so the first peer in becomes the host.
+            if !self.sessions.contains_key(&sid) {
+                self.create_session(sid.clone(), pid.clone())?;
+            }
         }
 
         let session = self
@@ -364,6 +517,17 @@ impl RendezvousCoordinator {
             .get(&sid)
             .context("Session not found")?
             .clone();
+
+        // A peer id names one connection. Admitting a second one under the
+        // host's id would replace the host's channel in the session and hand
+        // the newcomer everything routed to the host.
+        if session.get_peer(&pid).is_some() {
+            tx.send(ServerMessage::Error {
+                message: "Peer id is already in the session".to_string(),
+            })
+            .await?;
+            anyhow::bail!("peer {pid} is already in session {sid}");
+        }
 
         // Add the new peer FIRST
         let profile = if display_name.is_none() && avatar_url.is_none() && github_login.is_none() {
@@ -432,12 +596,9 @@ impl RendezvousCoordinator {
     async fn handle_kick(&self, sid: &str, pid: &str, target_peer_id: String) -> Result<()> {
         let session = self.sessions.get(sid).context("Session not found")?;
 
-        // Verify the kicker is the host (first participant)
-        let is_host = session
-            .list_peers()
-            .first()
-            .map(|p| p.peer_id == pid)
-            .unwrap_or(false);
+        // Verify the kicker is the host. The session records who created it;
+        // the peer map's iteration order says nothing about that.
+        let is_host = session.host_id == pid;
 
         if !is_host {
             warn!(
@@ -504,7 +665,7 @@ impl RendezvousCoordinator {
 
         // Broadcast to all peers in session
         for peer in session.list_peers() {
-            let _ = peer.tx.send(msg.clone()).await;
+            Self::deliver(&peer, msg.clone()).await;
         }
 
         METRICS
@@ -546,7 +707,7 @@ impl RendezvousCoordinator {
         // Send to all other peers (typically just the requesting guest)
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -579,7 +740,7 @@ impl RendezvousCoordinator {
         // Send to all other peers
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -608,7 +769,7 @@ impl RendezvousCoordinator {
         };
 
         for peer in session.list_peers() {
-            let _ = peer.tx.send(msg.clone()).await;
+            Self::deliver(&peer, msg.clone()).await;
         }
 
         METRICS
@@ -635,7 +796,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -657,7 +818,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -687,7 +848,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -717,7 +878,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -739,7 +900,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -769,7 +930,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -792,7 +953,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 
@@ -826,7 +987,7 @@ impl RendezvousCoordinator {
 
         for peer in session.list_peers() {
             if peer.peer_id != pid {
-                let _ = peer.tx.send(msg.clone()).await;
+                Self::deliver(&peer, msg.clone()).await;
             }
         }
 

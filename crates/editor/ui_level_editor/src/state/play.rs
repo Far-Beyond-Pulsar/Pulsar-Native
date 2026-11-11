@@ -43,6 +43,11 @@ pub struct PieControl {
     pub building: bool,
     /// Set on Stop; the viewport tears down the host and clears it.
     pub stop_requested: bool,
+    /// Which Play the running build belongs to: bumped by every Play and
+    /// Stop. A build finishing under another generation was overtaken by a
+    /// Stop (or a later Play) while cargo ran, and its result is dropped
+    /// instead of starting a game the user no longer asked for.
+    pub build_generation: u64,
     /// Last build/start error, surfaced by the viewport/toolbar.
     pub last_error: Option<String>,
     /// Asset updates (e.g. an edited class) waiting to be forwarded to the
