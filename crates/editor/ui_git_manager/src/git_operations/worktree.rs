@@ -16,7 +16,10 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
         .workdir()
         .map(|dir| dir.join(&git_path))
         .unwrap_or_else(|| repo_path.join(&git_path));
-    if LocalFsProvider::new().exists(&workdir_file).unwrap_or(false) {
+    if LocalFsProvider::new()
+        .exists(&workdir_file)
+        .unwrap_or(false)
+    {
         index.add_path(Path::new(&git_path))?;
     } else {
         // A deleted file is staged by removing it from the index.
@@ -92,7 +95,10 @@ pub fn open_in_explorer(path: &Path) {
     #[cfg(target_os = "windows")]
     {
         // Use /select to highlight the file, or just open the folder
-        let arg = if LocalFsProvider::new().metadata(path).is_ok_and(|m| !m.is_dir) {
+        let arg = if LocalFsProvider::new()
+            .metadata(path)
+            .is_ok_and(|m| !m.is_dir)
+        {
             format!("/select,{}", path.to_string_lossy())
         } else {
             path.to_string_lossy().to_string()
@@ -101,7 +107,10 @@ pub fn open_in_explorer(path: &Path) {
     }
     #[cfg(target_os = "macos")]
     {
-        if LocalFsProvider::new().metadata(path).is_ok_and(|m| !m.is_dir) {
+        if LocalFsProvider::new()
+            .metadata(path)
+            .is_ok_and(|m| !m.is_dir)
+        {
             let _ = std::process::Command::new("open")
                 .arg("-R")
                 .arg(path)
@@ -112,7 +121,10 @@ pub fn open_in_explorer(path: &Path) {
     }
     #[cfg(target_os = "linux")]
     {
-        let dir = if LocalFsProvider::new().metadata(path).is_ok_and(|m| !m.is_dir) {
+        let dir = if LocalFsProvider::new()
+            .metadata(path)
+            .is_ok_and(|m| !m.is_dir)
+        {
             path.parent().unwrap_or(path)
         } else {
             path

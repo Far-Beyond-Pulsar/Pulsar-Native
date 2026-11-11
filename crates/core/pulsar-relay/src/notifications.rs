@@ -10,9 +10,74 @@ use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
+
+/// A home server another relay runs: a public `https://` origin. The relay
+/// posts to this address on a caller's behalf, so a loopback, private or
+/// link-local target would turn it into a probe of its own network (cloud
+/// metadata services included). Name resolution happens later, so a public
+/// name that resolves to a private address is not caught here.
+fn validated_home_server(url: &str) -> Result<reqwest::Url> {
+    let parsed = reqwest::Url::parse(url.trim()).context("invalid home server URL")?;
+    if parsed.scheme() != "https" {
+        anyhow::bail!("home server must be an https:// URL");
+    }
+    let host = parsed
+        .host_str()
+        .context("home server URL has no host")?
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if !is_public_ip(ip) {
+            anyhow::bail!("home server must be a public address");
+        }
+    } else {
+        let name = host.to_ascii_lowercase();
+        if name == "localhost"
+            || name.ends_with(".localhost")
+            || name.ends_with(".local")
+            || name.ends_with(".internal")
+            || !name.contains('.')
+        {
+            anyhow::bail!("home server must be a public host name");
+        }
+    }
+    Ok(parsed)
+}
+
+fn is_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => is_public_v4(v4),
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_v4(v4);
+            }
+            let first = v6.segments()[0];
+            let unique_local = (first & 0xfe00) == 0xfc00;
+            let link_local = (first & 0xffc0) == 0xfe80;
+            !(v6.is_loopback() || v6.is_unspecified() || unique_local || link_local)
+        }
+    }
+}
+
+fn is_public_v4(ip: Ipv4Addr) -> bool {
+    let [a, b, _, _] = ip.octets();
+    let carrier_nat = a == 100 && (b & 0xc0) == 64;
+    let this_network = a == 0;
+    let ietf_protocol_assignments = a == 192 && b == 0;
+    !(ip.is_private()
+        || ip.is_loopback()
+        || ip.is_link_local()
+        || ip.is_unspecified()
+        || ip.is_broadcast()
+        || ip.is_documentation()
+        || carrier_nat
+        || this_network
+        || ietf_protocol_assignments)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubAuthRequest {
@@ -275,17 +340,26 @@ impl NotificationStore {
             "created_at": now,
         });
 
+        let target = validated_home_server(&req.target_home_server)?;
         let target_url = format!(
             "{}/api/v1/notifications",
-            req.target_home_server.trim_end_matches('/')
+            target.as_str().trim_end_matches('/')
         );
 
         let resp = client.post(&target_url).json(&body).send().await;
 
+        // What the other server answered stays in the log: echoing it would
+        // let a caller use this endpoint to map which hosts answer.
         match resp {
             Ok(r) if r.status().is_success() => Ok(()),
-            Ok(r) => anyhow::bail!("Target server returned HTTP {}", r.status()),
-            Err(e) => anyhow::bail!("Failed to reach target server: {}", e),
+            Ok(r) => {
+                tracing::warn!(status = %r.status(), target = %target, "Target server rejected the relayed notification");
+                anyhow::bail!("Target server did not accept the notification")
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, target = %target, "Failed to reach target server");
+                anyhow::bail!("Failed to reach target server")
+            }
         }
     }
 
@@ -432,5 +506,42 @@ impl NotificationStore {
         forward_task.abort();
         self.unregister_connection(&username, &tx);
         tracing::info!("[NotificationWS] {}: disconnected", username);
+    }
+}
+
+#[cfg(test)]
+mod home_server_tests {
+    use super::validated_home_server;
+
+    #[test]
+    fn public_https_hosts_are_accepted() {
+        assert!(validated_home_server("https://relay.example.com").is_ok());
+        assert!(validated_home_server("https://relay.example.com/").is_ok());
+        assert!(validated_home_server("https://93.184.216.34:8443").is_ok());
+    }
+
+    #[test]
+    fn local_and_private_targets_are_rejected() {
+        for url in [
+            "http://relay.example.com",
+            "https://localhost",
+            "https://127.0.0.1",
+            "https://10.1.2.3",
+            "https://192.168.1.1",
+            "https://169.254.169.254/latest",
+            "https://100.64.0.1",
+            "https://[::1]",
+            "https://[fd00::1]",
+            "https://[::ffff:10.0.0.1]",
+            "https://relay",
+            "https://printer.local",
+            "ftp://relay.example.com",
+            "not a url",
+        ] {
+            assert!(
+                validated_home_server(url).is_err(),
+                "{url} should be rejected"
+            );
+        }
     }
 }

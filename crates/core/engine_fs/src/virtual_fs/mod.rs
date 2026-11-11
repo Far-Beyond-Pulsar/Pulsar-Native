@@ -20,17 +20,18 @@ use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use crate::providers::{FsEntry, FsMetadata, FsProvider, FsWriter, LocalFsProvider, ManifestEntry, ReadSeek};
+use crate::providers::{
+    FsEntry, FsMetadata, FsProvider, FsWriter, LocalFsProvider, ManifestEntry, ReadSeek,
+};
 use crate::{events, FsChangeKind};
 
 pub mod mounts;
 pub mod path_utils;
 
 pub use mounts::{
-    is_read_only, mount_of, mount_problems, mount_project, plugin_snapshot,
-    serve_packaged_folders, unmount_project, CacheFolder, EmbeddedFile, FileProvider,
-    FolderSource, InGame, MemoryFolder, MountedFs, PluginFolder, ReadOnlyMount, CACHE_FOLDER,
-    ENGINE_FOLDER, PLUGINS_FOLDER,
+    is_read_only, mount_of, mount_problems, mount_project, plugin_snapshot, serve_packaged_folders,
+    unmount_project, CacheFolder, EmbeddedFile, FileProvider, FolderSource, InGame, MemoryFolder,
+    MountedFs, PluginFolder, ReadOnlyMount, CACHE_FOLDER, ENGINE_FOLDER, PLUGINS_FOLDER,
 };
 // Re-export commonly used path utilities
 pub use path_utils::{cloud_join, is_cloud_path, normalize_path};
@@ -41,7 +42,8 @@ pub use path_utils::{cloud_join, is_cloud_path, normalize_path};
 static VIRTUAL_FS: OnceLock<RwLock<Arc<MountedFs>>> = OnceLock::new();
 
 fn global() -> &'static RwLock<Arc<MountedFs>> {
-    VIRTUAL_FS.get_or_init(|| RwLock::new(Arc::new(MountedFs::new(Arc::new(LocalFsProvider::new())))))
+    VIRTUAL_FS
+        .get_or_init(|| RwLock::new(Arc::new(MountedFs::new(Arc::new(LocalFsProvider::new())))))
 }
 
 /// The active layer, taken out of the lock: a provider call may emit events
@@ -91,6 +93,12 @@ pub fn current_label() -> String {
 }
 
 // ── Convenience pass-throughs ─────────────────────────────────────────────────
+//
+// Every wrapper clones the `Arc` out of the lock (`provider()`) and calls the
+// provider through the clone, never while holding the read guard: providers
+// emit filesystem events synchronously, and the event handlers (file index
+// updates) call back into these wrappers. A re-entrant `read()` deadlocks as
+// soon as a writer (`set_provider`) is queued, because the lock is fair.
 
 /// Read the full contents of a file.
 pub fn read_file(path: &Path) -> Result<Vec<u8>> {
@@ -180,7 +188,9 @@ pub fn open_write(path: &Path) -> Result<FsWriter> {
         return Ok(FsWriter::direct(stream));
     }
     let path = path.to_path_buf();
-    Ok(FsWriter::buffered(move |bytes| layer.write_file(&path, &bytes)))
+    Ok(FsWriter::buffered(move |bytes| {
+        layer.write_file(&path, &bytes)
+    }))
 }
 
 /// Whether `path` is a directory (`false` when it does not exist).

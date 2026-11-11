@@ -642,11 +642,19 @@ impl ScriptRuntime {
         Ok((id, self.relink_all()))
     }
 
+    /// Load the current build of library `id` and relink every class
+    /// against it. The previous build stays mapped for the rest of the
+    /// process: values it created (objects in instance variables, event
+    /// payloads) may outlive every program linked against it, see
+    /// `pulsar_script_vm::library::ShadowLibrary`.
     pub fn reload_library(&mut self, id: LibraryId) -> Result<RelinkReport, RuntimeError> {
         self.libraries.reload(id, &mut self.natives)?;
         Ok(self.relink_all())
     }
 
+    /// Remove library `id`'s natives and relink every class; classes that
+    /// import them fail to relink. The library's code is not unmapped (as
+    /// for [`reload_library`](Self::reload_library)).
     pub fn unload_library(&mut self, id: LibraryId) -> Result<RelinkReport, RuntimeError> {
         self.libraries.unload(id, &mut self.natives)?;
         Ok(self.relink_all())
@@ -1595,6 +1603,15 @@ pub fn value_from_json_with(
             .as_f64()
             .map(Value::Float)
             .ok_or_else(|| format!("{n} is not a number")),
+        // NaN and the infinities have no JSON number; a save writes them as
+        // the strings `NaN`, `inf` and `-inf` (see `state::value_to_json`).
+        (Type::Float, J::String(s)) => s
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|f| !f.is_finite())
+            .map(Value::Float)
+            .ok_or_else(|| format!("\"{s}\" is not a number")),
         (Type::Str, J::String(s)) => Ok(Value::Str(s.as_str().into())),
         // Value types use their registered literal form (see `Constant::Value`).
         (Type::Object(name), json) => TypeRegistry::global().decode_value(name, &json.to_string()),

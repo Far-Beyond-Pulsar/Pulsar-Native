@@ -1092,3 +1092,18 @@ project trait in a reserved namespace, are refused as `TraitIndex::problems`.
 - A packaged game ships no `.pulsar/trait_index.json`, so its classes are `TraitCheck::Unknown`
   (the role binding is trusted, as before when it shipped no Blueprints): shipping derived
   editor data in the pak is the packager's design (#1601, how a packaged game resolves).
+
+**#1681 (the severity audit) carried into p21's homes.** Merged from main before landing; where
+p21 moved or deleted the code it patched, the fix moved with it:
+- trait assets replaced atomically during an index rebuild (was `engine_fs::blueprint_trait_index`):
+  `pulsar_traits::index::replace_file`, shared with the index write;
+- the VFS wrappers never call a provider under the read guard: already p21's `layer()` clone;
+- provider instances replaced atomically: `agent_chat_core` through `LocalFsProvider::write_file_atomically`
+  (machine config, not a project file);
+- chats written atomically, ids checked: `chat_storage` through `virtual_fs::write_file_atomically`;
+- folder copy never replaces a same-named file: `ui_file_manager::helpers::copy_file_new` through
+  `virtual_fs::create_file`; `same_file` canonicalizes through the VFS;
+- the owner-only credentials directory (`pulsar_auth::create_private_dir`) and the PIE temp copy's
+  drop are real-machine code with their allow;
+- `GeneralOperations`' `sqlite3` exit check: the code was dead and is deleted in p21 (nothing
+  creates a data table that way).

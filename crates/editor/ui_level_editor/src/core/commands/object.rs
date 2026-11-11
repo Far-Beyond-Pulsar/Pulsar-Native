@@ -11,6 +11,12 @@ use crate::state::LevelEditorState;
 use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 
+/// Why a command with a non-finite transform did nothing
+/// (`scene_edit::objects::validate_transform` refuses it; this names it for
+/// the caller, since a no-op reason is static text).
+const INVALID_TRANSFORM: &str =
+    "Transform is not finite: position, rotation and scale must be finite numbers";
+
 /// The Edit-menu translation key for the object commands, `None` when `cmd`
 /// is not one of them.
 pub(super) fn label(cmd: &SceneCommand) -> Option<&'static str> {
@@ -95,6 +101,9 @@ fn add_object(
     data: SceneObjectData,
     parent_id: Option<String>,
 ) -> CommandResult {
+    if crate::scene_edit::objects::validate_transform(&data.transform).is_err() {
+        return CommandResult::noop(INVALID_TRANSFORM);
+    }
     let id = crate::scene_edit::objects::add_object(&mut state.scene.world_mut(), data, parent_id);
     if id.is_empty() {
         return CommandResult::noop("Object could not be added");
@@ -111,6 +120,9 @@ fn add_object_with_components(
     parent_id: Option<String>,
     components: Vec<TypedComponent>,
 ) -> CommandResult {
+    if crate::scene_edit::objects::validate_transform(&data.transform).is_err() {
+        return CommandResult::noop(INVALID_TRANSFORM);
+    }
     let planned: Vec<_> = components
         .iter()
         .map(|component| level_rules::NewComponent {
@@ -159,6 +171,9 @@ fn remove_object(state: &mut LevelEditorState, id: &String) -> CommandResult {
 
 fn update_object(state: &mut LevelEditorState, data: SceneObjectData) -> CommandResult {
     let id = data.id.clone();
+    if crate::scene_edit::objects::validate_transform(&data.transform).is_err() {
+        return CommandResult::noop(INVALID_TRANSFORM);
+    }
     if crate::scene_edit::objects::update_object(&mut state.scene.world_mut(), data) {
         state.scene.bump_revision(true);
         CommandResult::ok(vec![id])
@@ -239,6 +254,9 @@ fn set_transform(
     // re-serialize/re-hydrate of every component on the object --
     // on every keystroke of a position/rotation/scale field, for a
     // change that has nothing to do with component data at all.
+    if crate::scene_edit::objects::validate_transform_fields(position, rotation, scale).is_err() {
+        return CommandResult::noop(INVALID_TRANSFORM);
+    }
     if crate::scene_edit::objects::set_transform(
         &mut state.scene.world_mut(),
         id,

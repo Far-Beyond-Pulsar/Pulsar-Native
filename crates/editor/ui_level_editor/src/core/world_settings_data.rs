@@ -113,7 +113,10 @@ mod tests {
     fn every_role_round_trips_through_the_key_the_runtime_reads() {
         let mut settings = WorldSettingsData::default();
         for (i, role) in roles().into_iter().enumerate() {
-            settings.set_role_asset(role.setting_key, Some(format!("classes/R{i}/graph_save.json")));
+            settings.set_role_asset(
+                role.setting_key,
+                Some(format!("classes/R{i}/graph_save.json")),
+            );
         }
         let level =
             serde_json::json!({ "world_settings": serde_json::to_value(&settings).unwrap() });

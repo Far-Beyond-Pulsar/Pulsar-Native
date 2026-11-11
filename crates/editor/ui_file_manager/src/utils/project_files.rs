@@ -24,6 +24,21 @@ fn exists(path: &Path) -> bool {
     engine_fs::virtual_fs::exists(path).unwrap_or(false)
 }
 
+/// Whether `a` and `b` are one local file: on a case-insensitive filesystem
+/// `Readme.md` renamed to `README.md` finds "itself" at the new name.
+fn same_file(a: &Path, b: &Path) -> bool {
+    if remote(a) || remote(b) {
+        return false;
+    }
+    match (
+        engine_fs::virtual_fs::canonicalize(a),
+        engine_fs::virtual_fs::canonicalize(b),
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
 /// `name` in `folder`, or `<stem> copy[ n].<ext>` there when `name` is taken.
 pub fn free_name_in(folder: &Path, name: &str) -> PathBuf {
     let first = cloud_join(folder, name);
@@ -195,7 +210,8 @@ impl FileManagerDrawer {
             return Ok(old.to_path_buf());
         }
         if let Some(parent) = old.parent() {
-            if exists(&cloud_join(parent, new_name)) {
+            let new = cloud_join(parent, new_name);
+            if exists(&new) && !same_file(old, &new) {
                 return Err(format!("{new_name} already exists"));
             }
         }

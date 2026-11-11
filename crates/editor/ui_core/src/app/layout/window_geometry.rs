@@ -168,8 +168,11 @@ pub(crate) fn fit_to_displays(
     let (dx, dy, dw, dh) = bounds_in(display);
     let (x, y, w, h) = bounds_in(&b);
     let (w, h) = (w.min(dw), h.min(dh));
-    let x = x.clamp(dx, dx + dw - w);
-    let y = y.clamp(dy, dy + dh - h);
+    // Not `clamp`: a scaled display has a fractional size, and for a window
+    // as wide as it `dx + dw - w` can round a hair below `dx`, which `clamp`
+    // (min > max) panics on. The origin wins when both cannot hold.
+    let x = x.min(dx + dw - w).max(dx);
+    let y = y.min(dy + dh - h).max(dy);
     let fitted = rect(x, y, w, h);
     match saved {
         WindowBounds::Windowed(_) => WindowBounds::Windowed(fitted),
@@ -342,5 +345,35 @@ mod tests {
         );
         // A NaN position is not on any display.
         assert!(display_holding(&rect(f32::NAN, 0., 10., 10.), &tiny).is_none());
+    }
+
+    #[test]
+    fn a_window_filling_a_fractionally_sized_display_does_not_panic() {
+        // A 2560-wide display at 150% scale is 1706.666626 logical pixels
+        // wide (the f32 1706.6666). For a window as wide as the display,
+        // `dx + dw - w` rounds (in f32) a hair below `dx`, which
+        // `f32::clamp` rejected with a panic while the layout was restored
+        // at startup.
+        let displays = [
+            display(0., 0., 1280., 720.),
+            display(1280., 0., 1706.6666, 960.),
+        ];
+        let filling = rect(1280., 0., 1706.6666, 960.);
+        let WindowBounds::Maximized(fit) =
+            fit_to_displays(Some(WindowBounds::Maximized(filling)), &displays)
+        else {
+            panic!("stays maximized");
+        };
+        let (x, y, w, h) = bounds_in(&fit);
+        assert_eq!((x, y, h), (1280., 0., 960.));
+        assert!((w - 1706.6666).abs() < 1e-3, "{w}");
+        // A wider window is limited to the display, at its left edge.
+        let wider = rect(1300., 0., 2000., 960.);
+        let WindowBounds::Windowed(fit) =
+            fit_to_displays(Some(WindowBounds::Windowed(wider)), &displays)
+        else {
+            panic!("stays windowed");
+        };
+        assert_eq!(bounds_in(&fit).0, 1280.);
     }
 }

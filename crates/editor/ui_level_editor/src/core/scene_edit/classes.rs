@@ -69,11 +69,18 @@ pub fn instantiate_class(
         Some(parent_id) => Some(entity(world, parent_id)?),
         None => None,
     };
+    let transform = match super::objects::validate_transform(transform) {
+        Ok(transform) => transform,
+        Err(reason) => {
+            tracing::error!(class = %def.name, "Could not place class: {reason}");
+            return None;
+        }
+    };
     let spawn = SpawnObject {
         stable_id: None,
         name: name.unwrap_or_else(|| def.name.clone()),
         parent: parent_entity,
-        transform: WorldTransform::from(transform),
+        transform: WorldTransform::from(&transform),
         visibility: Default::default(),
         object_type: ObjectType::Blueprint,
     };

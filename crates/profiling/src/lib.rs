@@ -26,7 +26,6 @@ pub mod scope;
 pub mod utilities;
 
 pub use events::ProfileEvent;
-pub use macros::*;
 pub use options::{set_uncap_frame_rate, uncap_frame_rate};
 pub use profiler::Profiler;
 pub use scope::{

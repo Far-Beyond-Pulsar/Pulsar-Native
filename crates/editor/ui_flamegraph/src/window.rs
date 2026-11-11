@@ -306,8 +306,7 @@ impl FlamegraphWindow {
             .set_directory(
                 engine_state::get_project_path()
                     .and_then(|p| {
-                        let dir = std::path::PathBuf::from(p)
-                            .join(".pulsar/profiling/flamegraph");
+                        let dir = std::path::PathBuf::from(p).join(".pulsar/profiling/flamegraph");
                         // Seeds a native dialog: a real-machine path.
                         engine_fs::FsProvider::canonicalize(
                             &engine_fs::LocalFsProvider::new(),

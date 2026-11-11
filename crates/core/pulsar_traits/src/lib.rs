@@ -33,7 +33,9 @@ pub mod sources;
 pub use db::{Declaration, Implementation, TraitDb};
 pub use index::{resolve_declared, ImplementerEntry, TraitIndex, TRAIT_ASSET_KIND};
 pub use records::{TraitMethodRecord, TraitParamRecord, TraitRecord};
-pub use roles::{BindingStatus, RoleBinding, RoleRegistration, RoleSelection, RoleStart, WorldRoles};
+pub use roles::{
+    BindingStatus, RoleBinding, RoleRegistration, RoleSelection, RoleStart, WorldRoles,
+};
 pub use sources::{Binding, Declared, NativeTraitImpl, Scanned, TraitImplementerSource};
 
 /// The key a project's snapshot is published under (shared with plugins

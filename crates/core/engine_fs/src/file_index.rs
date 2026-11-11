@@ -1362,7 +1362,8 @@ impl pulsar_plugins::Contribution for FileTypeClassifier {
 pulsar_plugins::registration!(FileTypeClassifier);
 
 fn registered_file_type(path: &Path) -> Option<String> {
-    pulsar_plugins::registered::<FileTypeClassifier>().find_map(|classifier| (classifier.classify)(path))
+    pulsar_plugins::registered::<FileTypeClassifier>()
+        .find_map(|classifier| (classifier.classify)(path))
 }
 
 #[cfg(test)]

@@ -29,7 +29,8 @@ impl FolderNode {
         {
             return None;
         }
-        let absolute_path = engine_fs::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let absolute_path =
+            engine_fs::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         if let Some(index) = engine_fs::project_file_index_for_path(&absolute_path) {
             return Self::from_indexed_path(path, &index);
         }

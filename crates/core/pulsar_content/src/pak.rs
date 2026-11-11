@@ -188,12 +188,11 @@ impl PakReader {
     /// Open the pak at `path` and load its table of contents.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, PakError> {
         let path = path.as_ref().to_path_buf();
-        let mut file = engine_fs::virtual_fs::open_read(&path)
-            .map_err(|error| {
-                error
-                    .downcast::<io::Error>()
-                    .unwrap_or_else(|other| io::Error::other(other.to_string()))
-            })?;
+        let mut file = engine_fs::virtual_fs::open_read(&path).map_err(|error| {
+            error
+                .downcast::<io::Error>()
+                .unwrap_or_else(|other| io::Error::other(other.to_string()))
+        })?;
         let file_len = file.seek(SeekFrom::End(0))?;
         file.seek(SeekFrom::Start(0))?;
         let mut header = [0u8; HEADER_LEN as usize];

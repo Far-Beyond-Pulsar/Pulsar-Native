@@ -86,7 +86,9 @@ impl RemoteConfig {
         if workspace_id.is_empty() {
             return None;
         }
-        let remaining = &rest[workspace_id_end + 1..];
+        // `workspace_id_end + 1` is past the end when the path stops at the
+        // workspace id; slicing would panic, `get` yields `None`.
+        let remaining = rest.get(workspace_id_end + 1..).unwrap_or("");
         let environment_id = if remaining.is_empty() {
             return None;
         } else {
@@ -370,4 +372,35 @@ fn decode_b64(s: &str) -> Result<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(s.trim())
         .context("base64 decode error")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_cloud_path_without_an_environment_segment_is_none() {
+        // Two segments only: used to panic on the out-of-range slice.
+        assert!(RemoteConfig::from_cloud_path(Path::new("cloud+pulsar://host/ws")).is_none());
+        assert!(RemoteConfig::from_cloud_path(Path::new("cloud+pulsar://host/ws/")).is_none());
+        assert!(RemoteConfig::from_cloud_path(Path::new("cloud+pulsar://host/")).is_none());
+        assert!(RemoteConfig::from_cloud_path(Path::new("cloud+pulsar://host")).is_none());
+        assert!(RemoteConfig::from_cloud_path(Path::new("/not/a/cloud/path")).is_none());
+    }
+
+    #[test]
+    fn from_cloud_path_reads_host_workspace_and_environment() {
+        let config = RemoteConfig::from_cloud_path(Path::new(
+            "cloud+pulsar://studio.example:7700/ws/env/sub/file.txt",
+        ))
+        .expect("full cloud path");
+        assert_eq!(config.server_url, "http://studio.example:7700");
+        assert_eq!(config.workspace_id, "ws");
+        assert_eq!(config.environment_id, "env");
+        assert!(config.auth_token.is_none());
+
+        let bare = RemoteConfig::from_cloud_path(Path::new("cloud+pulsar://host/ws/env"))
+            .expect("environment without a subpath");
+        assert_eq!(bare.environment_id, "env");
+    }
 }

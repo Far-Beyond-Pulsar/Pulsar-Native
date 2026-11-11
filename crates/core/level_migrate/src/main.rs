@@ -220,7 +220,8 @@ fn migrate_file(path: &Path, project: Option<&Path>) -> Result<(), String> {
         return Err(format!("not a file: {}", path.display()));
     }
 
-    let content = engine_fs::virtual_fs::read_to_string(path).map_err(|e| format!("failed to read: {e}"))?;
+    let content =
+        engine_fs::virtual_fs::read_to_string(path).map_err(|e| format!("failed to read: {e}"))?;
     let mut root: Value =
         serde_json::from_str(&content).map_err(|e| format!("not valid JSON: {e}"))?;
 

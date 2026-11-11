@@ -301,7 +301,9 @@ impl WorldSettingsPanelImpl {
             .fields
             .iter()
             .filter_map(|state| match state.field.kind {
-                WorldSettingKind::AssetPath { extensions, .. } => Some((state.field.id, extensions)),
+                WorldSettingKind::AssetPath { extensions, .. } => {
+                    Some((state.field.id, extensions))
+                }
                 _ => None,
             })
             .collect();
@@ -374,7 +376,11 @@ impl WorldSettingsPanelImpl {
                 .path
                 .extension()
                 .and_then(|e| e.to_str())
-                .is_some_and(|ext| extensions.iter().any(|known| known.eq_ignore_ascii_case(ext)));
+                .is_some_and(|ext| {
+                    extensions
+                        .iter()
+                        .any(|known| known.eq_ignore_ascii_case(ext))
+                });
             if !matches {
                 continue;
             }
@@ -479,21 +485,29 @@ impl WorldSettingsPanelImpl {
                 .gap_2()
                 .items_center()
                 .child(label)
-                .children(["X", "Y", "Z"].into_iter().zip(inputs).map(|(axis, input)| {
-                    h_flex()
-                        .gap_1()
-                        .items_center()
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(axis),
-                        )
-                        .child(NumberInput::new(input).xsmall())
-                }))
+                .children(
+                    ["X", "Y", "Z"]
+                        .into_iter()
+                        .zip(inputs)
+                        .map(|(axis, input)| {
+                            h_flex()
+                                .gap_1()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(axis),
+                                )
+                                .child(NumberInput::new(input).xsmall())
+                        }),
+                )
                 .child(unit_text(unit, cx))
                 .into_any_element(),
-            (FieldWidget::AssetPath { picker, catalog }, WorldSettingKind::AssetPath { extensions, help }) => {
+            (
+                FieldWidget::AssetPath { picker, catalog },
+                WorldSettingKind::AssetPath { extensions, help },
+            ) => {
                 let selected = settings
                     .value(field.key)
                     .and_then(Value::as_str)
@@ -509,16 +523,19 @@ impl WorldSettingsPanelImpl {
                             .items_center()
                             .child(label)
                             .child(
-                                Popover::<SearchableList<String>>::new(format!("field-{}", field.id))
-                                    .anchor(Corner::BottomRight)
-                                    .trigger(
-                                        Button::new(format!("field-{}-trigger", field.id))
-                                            .label(asset_label(&selected))
-                                            .small()
-                                            .ghost()
-                                            .dropdown_caret(true),
-                                    )
-                                    .content(move |_window, _cx| picker.clone()),
+                                Popover::<SearchableList<String>>::new(format!(
+                                    "field-{}",
+                                    field.id
+                                ))
+                                .anchor(Corner::BottomRight)
+                                .trigger(
+                                    Button::new(format!("field-{}-trigger", field.id))
+                                        .label(asset_label(&selected))
+                                        .small()
+                                        .ghost()
+                                        .dropdown_caret(true),
+                                )
+                                .content(move |_window, _cx| picker.clone()),
                             ),
                     )
                     .child(
@@ -559,9 +576,14 @@ mod tests {
             engine_fs::virtual_fs::write_file(&path, b"{}").unwrap();
         }
         let listed = list_assets(dir.path(), &["inputmap"]);
-        assert!(listed.contains(&"input/Game.inputmap".to_string()), "{listed:?}");
         assert!(
-            listed.iter().all(|path| path.to_lowercase().ends_with(".inputmap")),
+            listed.contains(&"input/Game.inputmap".to_string()),
+            "{listed:?}"
+        );
+        assert!(
+            listed
+                .iter()
+                .all(|path| path.to_lowercase().ends_with(".inputmap")),
             "{listed:?}"
         );
         assert!(listed.iter().all(|path| !path.contains('\\')));
@@ -575,6 +597,9 @@ mod tests {
         assert!(asset_message(&empty, "None", &["inputmap"], "h").contains("No .inputmap file"));
         let ready = BlueprintCatalogState::Ready(vec!["a.inputmap".into()]);
         assert!(asset_message(&ready, "gone.inputmap", &["inputmap"], "h").contains("not found"));
-        assert_eq!(asset_message(&ready, "a.inputmap", &["inputmap"], "help"), "help");
+        assert_eq!(
+            asset_message(&ready, "a.inputmap", &["inputmap"], "help"),
+            "help"
+        );
     }
 }

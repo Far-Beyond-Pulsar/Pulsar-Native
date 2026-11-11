@@ -717,7 +717,21 @@ fn write_if_changed(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     {
         return Ok(());
     }
-    virtual_fs::write_file(path, content)
+    // cargo and rust-analyzer read these files while the editor regenerates
+    // them: replace atomically so neither ever sees a truncated manifest.
+    match virtual_fs::write_file_atomically(path, content) {
+        Ok(()) => Ok(()),
+        Err(error) if virtual_fs::is_remote() => {
+            // Remote and P2P providers have no atomic replace operation.
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "Provider has no atomic write; writing generated file directly"
+            );
+            virtual_fs::write_file(path, content)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 // ── scripts/ — user gameplay script crates (#653) ────────────────────────────

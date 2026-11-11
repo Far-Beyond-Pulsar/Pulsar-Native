@@ -46,7 +46,11 @@ fn images_in(dir: &Path, found: &mut Vec<PathBuf>) {
     let Ok(entries) = engine_fs::virtual_fs::list_dir(dir) else {
         return;
     };
-    for path in entries.into_iter().filter(|entry| !entry.is_dir).map(|entry| dir.join(&entry.name)) {
+    for path in entries
+        .into_iter()
+        .filter(|entry| !entry.is_dir)
+        .map(|entry| dir.join(&entry.name))
+    {
         if is_image(&path) && !found.contains(&path) {
             found.push(path);
         }

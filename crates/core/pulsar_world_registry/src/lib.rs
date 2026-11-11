@@ -115,22 +115,30 @@ inventory::collect!(ComponentEventRegistration);
 
 /// Register all link-time component event descriptors on a session hub.
 /// Calling this more than once is safe when descriptors are identical.
+/// Every descriptor is tried: one that the hub refuses (a name or id clash)
+/// does not keep the ones after it off the hub. The error lists every
+/// refused descriptor.
 pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), String> {
+    let mut failures = Vec::new();
     for registration in crate::runtime::events().iter().copied() {
-        hub.register(
-            (registration.descriptor)(),
-            pulsar_events::EventCategory::Gameplay,
-        )
-        .map_err(|error| error.to_string())?;
+        let descriptor = (registration.descriptor)();
+        let name = descriptor.name.to_string();
+        if let Err(error) = hub.register(descriptor, pulsar_events::EventCategory::Gameplay) {
+            failures.push(format!("`{name}` ({}): {error}", registration.class_name));
+        }
     }
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
 }
 
 /// Link-time component event declarations used to install typed local
 /// signatures in the Blueprint bridge after their Gamma descriptors exist.
 pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration>
 {
-    crate::runtime::events().iter().copied().into_iter()
+    crate::runtime::events().iter().copied()
 }
 
 /// Short-lived, per-entity outbox for events emitted by reflected World
@@ -171,9 +179,16 @@ pub fn queue_component_event(
     );
 }
 
+/// Event names [`flush_component_events`] has already warned about: an
+/// event the hub refuses is refused every tick, so it is reported once.
+static REFUSED_EVENTS_WARNED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
 /// Publish queued outbox events after all World borrows for the emitting
-/// phase have ended. Unknown/unregistered names remain queued for the next
-/// phase rather than being silently discarded.
+/// phase have ended. An event the hub refuses (its name is not registered,
+/// or its fields do not match the descriptor) is dropped with a warning
+/// (once per event name): nothing registers events between phases, so
+/// keeping it queued would only retry, and warn, every tick forever.
 pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) -> usize {
     let entities: Vec<_> = world
         .query::<&ComponentEventOutbox>()
@@ -190,7 +205,6 @@ pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) 
         // entity (Pulsar-Native#1035).
         let owner = pulsar_scene_model::attachments::owner_of(world, entity);
         let channels: Vec<Entity> = std::iter::once(entity).chain(owner).collect();
-        let mut pending = Vec::new();
         for event in outbox.events.drain(..) {
             let mut published = 0;
             for channel in &channels {
@@ -201,19 +215,20 @@ pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) 
                 ) {
                     Ok(()) => published += 1,
                     Err(error) => {
-                        tracing::warn!(event = %event.name, %error, "component event was not registered; keeping it queued");
+                        let first = REFUSED_EVENTS_WARNED
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .insert(event.name.clone());
+                        if first {
+                            tracing::warn!(event = %event.name, %error, "component event refused by the hub; dropping it (reported once per event)");
+                        }
                         break;
                     }
                 }
             }
-            if published == 0 {
-                pending.push(event);
-            } else {
+            if published > 0 {
                 delivered += 1;
             }
-        }
-        if !pending.is_empty() {
-            world.insert(entity, ComponentEventOutbox { events: pending });
         }
     }
     delivered
@@ -620,7 +635,6 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
     crate::runtime::world_components()
         .iter()
         .copied()
-        .into_iter()
         .map(|r| r.class_name)
 }
 

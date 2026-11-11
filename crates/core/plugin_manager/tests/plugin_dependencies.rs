@@ -80,7 +80,9 @@ fn prepare(
 #[test]
 fn a_library_exports_its_manifest_with_dependencies() {
     let top = PermanentLibrary::new(fixture("fixture_dep_top")).expect("load top");
-    let manifest = read_manifest(&top).expect("top exports a manifest");
+    let manifest = read_manifest(&top)
+        .expect("top builds its manifest")
+        .expect("top exports a manifest");
     assert_eq!(manifest.id.as_str(), "fixture.top");
     assert_eq!(manifest.requires.len(), 1);
     assert_eq!(manifest.requires[0].id.as_str(), "fixture.base");

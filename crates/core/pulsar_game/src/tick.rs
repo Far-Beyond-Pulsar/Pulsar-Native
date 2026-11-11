@@ -834,11 +834,18 @@ impl Drop for TickLoop {
 /// A `TickLoop` wrapped in `Arc<Mutex<…>>` for sharing between threads.
 ///
 /// Use `spawn_thread` to run the loop on a dedicated OS thread.
-pub struct SharedTickLoop(pub Arc<Mutex<TickLoop>>);
+///
+/// The second field is the loop's [`TickLoop::running_flag`]: the tick
+/// thread holds the mutex for the whole of `run_blocking`, so [`stop`](Self::stop)
+/// must clear the flag without locking, or it would wait for the run it is
+/// trying to end.
+pub struct SharedTickLoop(pub Arc<Mutex<TickLoop>>, Arc<AtomicBool>);
 
 impl SharedTickLoop {
     pub fn new(mode: TickMode, task_threads: usize) -> Self {
-        Self(Arc::new(Mutex::new(TickLoop::new(mode, task_threads))))
+        let tick_loop = TickLoop::new(mode, task_threads);
+        let running = Arc::clone(&tick_loop.running_flag);
+        Self(Arc::new(Mutex::new(tick_loop)), running)
     }
 
     /// Spawn a dedicated OS thread that runs the tick loop until stopped.
@@ -854,7 +861,9 @@ impl SharedTickLoop {
             .expect("failed to spawn tick thread")
     }
 
+    /// Signal the loop to stop after the current tick. Never locks the
+    /// loop: `spawn_thread`'s thread holds that lock until the loop ends.
     pub fn stop(&self) {
-        self.0.lock().unwrap().stop();
+        self.1.store(false, Ordering::SeqCst);
     }
 }

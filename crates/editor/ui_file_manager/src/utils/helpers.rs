@@ -61,10 +61,17 @@ pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
         if e.is_dir {
             copy_dir_all(&src.join(&e.name), &dst.join(&e.name))?;
         } else {
-            engine_fs::virtual_fs::copy(&src.join(&e.name), &dst.join(&e.name)).map_err(io)?;
+            copy_file_new(&src.join(&e.name), &dst.join(&e.name)).map_err(io)?;
         }
     }
     Ok(())
+}
+
+/// Copy `src` to `dst`, which must not exist yet: a plain copy would replace
+/// a same-named file in the folder being copied into.
+fn copy_file_new(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    let bytes = engine_fs::virtual_fs::read_file(src)?;
+    engine_fs::virtual_fs::create_file(dst, &bytes)
 }
 
 pub fn cloud_join(base: &Path, component: &str) -> PathBuf {

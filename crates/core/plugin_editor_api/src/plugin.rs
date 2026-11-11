@@ -114,9 +114,24 @@ pub type PluginCreate = unsafe extern "C" fn(
     theme_ptr: *const std::ffi::c_void,
 ) -> Option<&'static mut dyn EditorPluginFull>;
 
-/// Type alias for `_plugin_manifest`. `None` if the plugin panicked building it.
+/// Type alias for `_plugin_manifest`. `None` if the plugin exports no
+/// manifest or panicked building it; `_plugin_manifest_status` tells which.
 #[allow(improper_ctypes_definitions)]
 pub type PluginManifestFn = extern "C" fn() -> Option<PluginManifest>;
+
+/// Type alias for `_plugin_manifest_status`: what the last `_plugin_manifest`
+/// call did. A host that gets `None` from the manifest must not treat a
+/// plugin whose manifest panicked (a bad dependency requirement, most often)
+/// as one without dependencies: it would load it first, ahead of everything
+/// it depends on.
+pub type PluginManifestStatusFn = extern "C" fn() -> u32;
+
+/// [`PluginManifestStatusFn`]: `_plugin_manifest` has not been called.
+pub const MANIFEST_STATUS_UNCALLED: u32 = 0;
+/// [`PluginManifestStatusFn`]: the manifest was built.
+pub const MANIFEST_STATUS_OK: u32 = 1;
+/// [`PluginManifestStatusFn`]: building the manifest panicked.
+pub const MANIFEST_STATUS_PANICKED: u32 = 2;
 
 // ============================================================================
 // Plugin Declaration and Export Macro
@@ -319,11 +334,32 @@ macro_rules! export_plugin {
         /// instance; `None` if that panics.
         #[no_mangle]
         pub extern "C" fn _plugin_manifest() -> Option<$crate::manifest::PluginManifest> {
-            std::panic::catch_unwind(|| {
+            let manifest = std::panic::catch_unwind(|| {
                 let plugin = __PluginExport(<$plugin_type>::default());
                 $crate::plugin::EditorPlugin::manifest(&plugin)
             })
-            .ok()
+            .ok();
+            __MANIFEST_STATUS.store(
+                if manifest.is_some() {
+                    $crate::plugin::MANIFEST_STATUS_OK
+                } else {
+                    $crate::plugin::MANIFEST_STATUS_PANICKED
+                },
+                std::sync::atomic::Ordering::Release,
+            );
+            manifest
+        }
+
+        static __MANIFEST_STATUS: std::sync::atomic::AtomicU32 =
+            std::sync::atomic::AtomicU32::new($crate::plugin::MANIFEST_STATUS_UNCALLED);
+
+        /// What the last `_plugin_manifest` call did (see
+        /// [`PluginManifestStatusFn`]($crate::plugin::PluginManifestStatusFn)):
+        /// lets the host tell a manifest that panicked from a plugin that has
+        /// none, instead of loading the broken plugin first as dependency-free.
+        #[no_mangle]
+        pub extern "C" fn _plugin_manifest_status() -> u32 {
+            __MANIFEST_STATUS.load(std::sync::atomic::Ordering::Acquire)
         }
 
         /// Internal accessor for plugin theme (called by ui crate).

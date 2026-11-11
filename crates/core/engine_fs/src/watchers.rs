@@ -118,6 +118,8 @@ fn publish_asset_update(path: &Path) {
         return;
     };
     if crate::virtual_fs::is_file(path) {
-        pulsar_events::publish_asset_updated(pulsar_events::AssetUpdated::new(kind).with_path(path));
+        pulsar_events::publish_asset_updated(
+            pulsar_events::AssetUpdated::new(kind).with_path(path),
+        );
     }
 }

@@ -71,7 +71,8 @@ pub(super) fn scan() -> (Vec<TargetInfo>, Vec<SessionFile>) {
         .map(|path| {
             // Profiling sessions are SQLite files on the real machine (the profiler opens
             // them by path), so ask the local disk, not the project provider.
-            let meta = engine_fs::FsProvider::metadata(&engine_fs::LocalFsProvider::new(), &path).ok();
+            let meta =
+                engine_fs::FsProvider::metadata(&engine_fs::LocalFsProvider::new(), &path).ok();
             SessionFile {
                 bytes: meta.as_ref().map_or(0, |m| m.size),
                 modified: meta

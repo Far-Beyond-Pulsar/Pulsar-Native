@@ -7,8 +7,8 @@
 
 use crate::git_operations::open_repo;
 use crate::models::*;
-use git2::{Oid, Repository, Sort};
 use engine_fs::{FsProvider as _, LocalFsProvider};
+use git2::{Oid, Repository, Sort};
 use std::collections::HashMap;
 use std::path::Path;
 

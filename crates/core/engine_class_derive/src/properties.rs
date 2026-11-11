@@ -1,7 +1,6 @@
 //! `#[property]` / `#[category]` parsing and the generated reflection
 //! metadata and accessors.
 
-use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
     Attribute, Expr, Field, Lit, Meta, MetaNameValue,

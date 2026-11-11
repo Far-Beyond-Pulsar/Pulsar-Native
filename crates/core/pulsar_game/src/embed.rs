@@ -243,6 +243,33 @@ impl EmbeddedGame {
     }
 }
 
+/// Keeps the host's shared-world transfer balanced when [`EmbeddedGame::new`]
+/// fails after it adopted the count (ABI v2, #635).
+///
+/// The host hands over one strong count and reclaims it itself when `init`
+/// returns `INIT_ERR`. Once the guest has turned that count into an `Arc`
+/// inside its `TickLoop`, any failure drops the `TickLoop` and releases the
+/// count, so the host's reclaim would release it a second time: a double free
+/// of the editor's `SceneDb` the moment the editor dropped a handle of its
+/// own. While armed, the guard restores the count the dropped state released.
+struct HostCountGuard {
+    world: *const RwLock<pulsar_scenedb::SceneDb>,
+    armed: bool,
+}
+
+impl Drop for HostCountGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            // SAFETY: `world` came from `Arc::into_raw` on the host's handle,
+            // and the host keeps strong counts of its own (the world bridge
+            // and the editor's handle) for the whole `init` call, so the
+            // allocation is alive. This re-adds the one count the guest's
+            // partially built state released, for the host to reclaim.
+            unsafe { Arc::increment_strong_count(self.world) };
+        }
+    }
+}
+
 /// Create the offscreen color target the game renders into and the editor
 /// samples. `TEXTURE_BINDING` lets the editor bind it in a blit; `COPY_SRC`
 /// allows thumbnail/readback paths.
@@ -332,21 +359,29 @@ impl EmbeddedGame {
         // actor registration, per-tick schedule/actor phases -- then
         // operates on the editor's live world, so editor edits are visible
         // to gameplay the same frame gameplay runs, and vice versa.
-        let tick_loop = if ctx.shared_world.is_null() {
+        if ctx.shared_world.is_null() {
             return Err(
                 "PiE: v2 context carries no shared_world token (host too old?)".to_string(),
             );
-        } else {
-            // SAFETY: `shared_world` is non-null (checked above) and, per the
-            // ABI v2 contract, a token the host made with `Arc::into_raw` on a
-            // clone of an `Arc<RwLock<SceneDb>>` of this same type, handing over
-            // one strong count that this `from_raw` reclaims exactly once.
-            let host_store = unsafe {
-                Arc::from_raw(ctx.shared_world as *const RwLock<pulsar_scenedb::SceneDb>)
-            };
-            TickLoop::with_scene_store(host_store, TickMode::default(), threads)
+        }
+        let host_world = ctx.shared_world as *const RwLock<pulsar_scenedb::SceneDb>;
+        // The transferred count becomes the game's only when `new` succeeds.
+        // When `init` reports failure the host reclaims it with its own
+        // `Arc::from_raw` (see `pie_host`), so every exit below -- an `Err`
+        // from `setup`, a renderer panic caught by the shim -- must leave the
+        // count in place even though the partially built `TickLoop` drops the
+        // handle we adopted. The guard puts the count back on those paths and
+        // is disarmed once the game owns the handle for good.
+        let mut host_count = HostCountGuard {
+            world: host_world,
+            armed: true,
         };
-        let mut tick_loop = tick_loop;
+        // SAFETY: `shared_world` is non-null (checked above) and, per the
+        // ABI v2 contract, a token the host made with `Arc::into_raw` on a
+        // clone of an `Arc<RwLock<SceneDb>>` of this same type, handing over
+        // one strong count that this `from_raw` reclaims exactly once.
+        let host_store = unsafe { Arc::from_raw(host_world) };
+        let mut tick_loop = TickLoop::with_scene_store(host_store, TickMode::default(), threads);
         // Native hot reload (#653): when the host stopped a still-running
         // game to swap in this fresh build, the shared world carries the
         // previous session's entities. Arm rebinding BEFORE project setup so
@@ -413,6 +448,9 @@ impl EmbeddedGame {
         // Advisory only under v2 (the world comes pre-hydrated); it names
         // the level `LevelLoaded` reports.
         let session = PieSession::new(tick_loop, scene_path.map(|p| p.display().to_string()));
+        // Nothing below can fail: the adopted count is the game's now and
+        // drops with it at shutdown.
+        host_count.armed = false;
 
         Ok(Self {
             session,

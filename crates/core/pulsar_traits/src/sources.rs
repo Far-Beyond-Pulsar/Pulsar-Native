@@ -33,7 +33,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::conformance::{self, ConformanceIssue, ProvidedMethod, ProvidedParam, ProvidedReturn, Severity};
+use crate::conformance::{
+    self, ConformanceIssue, ProvidedMethod, ProvidedParam, ProvidedReturn, Severity,
+};
 use crate::db::TraitDb;
 
 /// What an implementer declares about traits, as authored: ids (current)
@@ -273,7 +275,8 @@ pub fn native_conformance(db: &TraitDb) -> Vec<(String, ConformanceIssue)> {
             .required_methods(registration.trait_id)
             .into_iter()
             .filter_map(|(_, required)| {
-                let bound = bound_method(registration.class, registration.trait_id, &required.name)?;
+                let bound =
+                    bound_method(registration.class, registration.trait_id, &required.name)?;
                 let wanted = conformance::normalize_name(bound);
                 methods
                     .iter()

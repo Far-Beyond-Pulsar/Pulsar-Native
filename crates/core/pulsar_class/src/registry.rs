@@ -409,11 +409,9 @@ impl ClassRegistry {
         }
         let path = Path::new(trimmed);
         if let Ok(canonical) = virtual_fs::canonicalize(path) {
-            if let Some(entry) = self
-                .entries
-                .iter()
-                .find(|e| virtual_fs::canonicalize(&e.dir).ok().as_deref() == Some(canonical.as_path()))
-            {
+            if let Some(entry) = self.entries.iter().find(|e| {
+                virtual_fs::canonicalize(&e.dir).ok().as_deref() == Some(canonical.as_path())
+            }) {
                 return Some(entry);
             }
         }

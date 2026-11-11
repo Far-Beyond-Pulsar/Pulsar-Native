@@ -28,7 +28,10 @@ fn scan_impl(relative: &str, bytes: &[u8]) -> Option<Scanned> {
             paths: list("paths"),
         },
         binding: Some(Binding::ScriptClass {
-            dir: relative.rsplit_once('/').map_or("", |(dir, _)| dir).to_owned(),
+            dir: relative
+                .rsplit_once('/')
+                .map_or("", |(dir, _)| dir)
+                .to_owned(),
         }),
     })
 }
@@ -92,7 +95,9 @@ fn charges_methods() -> Vec<pulsar_reflection::MethodMetadata> {
             name: "amount",
             type_info: i32_info,
         }],
-        return_type: Some(pulsar_reflection::MethodReturnType { type_info: i32_info }),
+        return_type: Some(pulsar_reflection::MethodReturnType {
+            type_info: i32_info,
+        }),
         flags: pulsar_reflection::MethodFlags::NONE,
         caller: Box::new(|_, _| None),
     }]
@@ -156,7 +161,11 @@ fn id_in_file(root: &Path, relative: &str) -> String {
 #[test]
 fn legacy_path_references_resolve_and_traits_get_ids() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "types/traits/movable.trait.json", &trait_json("Movable", None));
+    put(
+        dir.path(),
+        "types/traits/movable.trait.json",
+        &trait_json("Movable", None),
+    );
     put(
         dir.path(),
         "classes/Player/player.impl.json",
@@ -178,7 +187,11 @@ fn legacy_path_references_resolve_and_traits_get_ids() {
 #[test]
 fn a_renamed_trait_keeps_its_implementers_and_a_second_rebuild_is_stable() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "types/traits/a.trait.json", &trait_json("A", Some("ta")));
+    put(
+        dir.path(),
+        "types/traits/a.trait.json",
+        &trait_json("A", Some("ta")),
+    );
     put(dir.path(), "x/one.impl.json", &impl_json(&["ta"], &[]));
     let first = TraitIndex::rebuild(dir.path()).unwrap();
     virtual_fs::rename(
@@ -212,18 +225,28 @@ fn missing_references_are_reported_not_resolved() {
     put(
         dir.path(),
         "x/one.impl.json",
-        &impl_json(&["gone-id"], &["types/traits/gone.trait.json", "../escape.trait.json"]),
+        &impl_json(
+            &["gone-id"],
+            &["types/traits/gone.trait.json", "../escape.trait.json"],
+        ),
     );
     let index = TraitIndex::rebuild(dir.path()).unwrap();
     let entry = index.entry("x/one.impl.json").unwrap();
     assert!(entry.implemented_trait_ids.is_empty());
-    assert_eq!(entry.unresolved, ["gone-id", "types/traits/gone.trait.json"]);
+    assert_eq!(
+        entry.unresolved,
+        ["gone-id", "types/traits/gone.trait.json"]
+    );
 }
 
 #[test]
 fn supertraits_make_subtrait_implementers_implementers_of_the_base() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "base.trait.json", &trait_json("Base", Some("base")));
+    put(
+        dir.path(),
+        "base.trait.json",
+        &trait_json("Base", Some("base")),
+    );
     let mut sub: Value = serde_json::from_str(&trait_json("Sub", Some("sub"))).unwrap();
     sub["supertraits"] = json!(["base"]);
     put(dir.path(), "sub.trait.json", &sub.to_string());
@@ -240,31 +263,43 @@ fn supertraits_make_subtrait_implementers_implementers_of_the_base() {
 #[test]
 fn update_path_matches_a_full_rebuild() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "types/traits/a.trait.json", &trait_json("A", Some("ta")));
+    put(
+        dir.path(),
+        "types/traits/a.trait.json",
+        &trait_json("A", Some("ta")),
+    );
     put(dir.path(), "x/one.impl.json", &impl_json(&["ta"], &[]));
     TraitIndex::rebuild(dir.path()).unwrap();
 
-    put(dir.path(), "types/traits/b.trait.json", &trait_json("B", Some("tb")));
+    put(
+        dir.path(),
+        "types/traits/b.trait.json",
+        &trait_json("B", Some("tb")),
+    );
     TraitIndex::update_path(dir.path(), Path::new("types/traits/b.trait.json")).unwrap();
-    put(dir.path(), "x/two.impl.json", &impl_json(&["tb", "ta"], &[]));
-    let updated =
-        TraitIndex::update_path(dir.path(), &dir.path().join("x/two.impl.json")).unwrap();
+    put(
+        dir.path(),
+        "x/two.impl.json",
+        &impl_json(&["tb", "ta"], &[]),
+    );
+    let updated = TraitIndex::update_path(dir.path(), &dir.path().join("x/two.impl.json")).unwrap();
     assert_eq!(updated, TraitIndex::rebuild(dir.path()).unwrap());
 
     virtual_fs::delete_path(&dir.path().join("types/traits/b.trait.json")).unwrap();
     let updated =
         TraitIndex::update_path(dir.path(), Path::new("types/traits/b.trait.json")).unwrap();
-    assert_eq!(
-        updated.entry("x/two.impl.json").unwrap().unresolved,
-        ["tb"]
-    );
+    assert_eq!(updated.entry("x/two.impl.json").unwrap().unresolved, ["tb"]);
     assert_eq!(updated, TraitIndex::rebuild(dir.path()).unwrap());
 }
 
 #[test]
 fn lookups_accept_either_slash_style_and_reject_unsafe_paths() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "classes/One/one.impl.json", &impl_json(&[], &[]));
+    put(
+        dir.path(),
+        "classes/One/one.impl.json",
+        &impl_json(&[], &[]),
+    );
     let index = TraitIndex::rebuild(dir.path()).unwrap();
     assert!(index.traits_for("classes\\One\\one.impl.json").is_some());
     assert!(index.traits_for("../classes/One/one.impl.json").is_none());
@@ -285,8 +320,16 @@ fn load_rejects_an_older_schema() {
 #[test]
 fn the_type_index_is_cross_referenced() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "types/traits/a.trait.json", &trait_json("Named", Some("ta")));
-    put(dir.path(), "type-index/index.json", r#"{"types":{"traits":{"Named":{}}}}"#);
+    put(
+        dir.path(),
+        "types/traits/a.trait.json",
+        &trait_json("Named", Some("ta")),
+    );
+    put(
+        dir.path(),
+        "type-index/index.json",
+        r#"{"types":{"traits":{"Named":{}}}}"#,
+    );
     let index = TraitIndex::rebuild(dir.path()).unwrap();
     assert_eq!(
         index.resolve_trait("ta").unwrap().type_index_id.as_deref(),
@@ -299,7 +342,11 @@ fn the_type_index_is_cross_referenced() {
 #[test]
 fn the_engines_traits_come_from_its_read_only_mount() {
     let dir = tempfile::tempdir().unwrap();
-    put(dir.path(), "classes/Mode/mode.impl.json", &impl_json(&[], &[GAME_MODE_TRAIT_PATH]));
+    put(
+        dir.path(),
+        "classes/Mode/mode.impl.json",
+        &impl_json(&[], &[GAME_MODE_TRAIT_PATH]),
+    );
     let index = TraitIndex::rebuild(dir.path()).unwrap();
     let record = index.resolve_trait(GAME_MODE_TRAIT_ID).unwrap();
     assert_eq!(record.path, GAME_MODE_TRAIT_PATH);
@@ -316,7 +363,11 @@ fn the_engines_traits_come_from_its_read_only_mount() {
     .unwrap();
     assert!(stored["traits"].as_array().unwrap().is_empty());
     assert_eq!(
-        TraitIndex::load(dir.path()).unwrap().resolve_trait(GAME_MODE_TRAIT_ID).unwrap().path,
+        TraitIndex::load(dir.path())
+            .unwrap()
+            .resolve_trait(GAME_MODE_TRAIT_ID)
+            .unwrap()
+            .path,
         GAME_MODE_TRAIT_PATH
     );
 }
@@ -339,7 +390,10 @@ fn an_old_projects_copy_of_a_built_in_is_refused_not_resynced() {
         .problems()
         .iter()
         .any(|p| p.starts_with("types/traits/game_mode.trait.json: ") && p.contains("reserved")));
-    assert_eq!(index.resolve_trait(GAME_MODE_TRAIT_ID).unwrap().path, GAME_MODE_TRAIT_PATH);
+    assert_eq!(
+        index.resolve_trait(GAME_MODE_TRAIT_ID).unwrap().path,
+        GAME_MODE_TRAIT_PATH
+    );
     // The file is left as it was.
     assert_eq!(
         virtual_fs::read_to_string(&dir.path().join("types/traits/game_mode.trait.json")).unwrap(),
@@ -359,7 +413,10 @@ fn mounted_traits_outside_their_namespace_or_unversioned_are_refused() {
     assert!(index.resolve_trait("elsewhere.Outside").is_none());
     assert!(index.resolve_trait("test.traits.Unversioned").is_none());
     let problems = index.problems().join("\n");
-    assert!(problems.contains("outside its owner's namespace"), "{problems}");
+    assert!(
+        problems.contains("outside its owner's namespace"),
+        "{problems}"
+    );
     assert!(problems.contains("contractVersion"), "{problems}");
 }
 

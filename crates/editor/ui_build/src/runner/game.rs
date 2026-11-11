@@ -40,7 +40,9 @@ pub async fn launch_and_monitor(
     for index in 0..count {
         if index == 1 {
             let mut waited = Duration::ZERO;
-            while !engine_fs::virtual_fs::exists(&cache_file).unwrap_or(false) && waited < Duration::from_secs(90) {
+            while !engine_fs::virtual_fs::exists(&cache_file).unwrap_or(false)
+                && waited < Duration::from_secs(90)
+            {
                 async_app
                     .background_executor()
                     .timer(Duration::from_millis(500))
@@ -144,7 +146,7 @@ pub async fn launch_and_monitor(
         let Some((index, rx)) = stderrs.get(pid) else {
             continue;
         };
-        let text = rx.try_recv().unwrap_or_default();
+        let text = drained_stderr(rx, async_app).await;
         let bad = !status.success();
         failed |= bad;
         if text.trim().is_empty() {
@@ -197,6 +199,24 @@ pub async fn launch_and_monitor(
 
 /// Most of a game's stderr kept for a crash report.
 const STDERR_KEEP: usize = 256 * 1024;
+
+/// How long to wait for an exited game's stderr reader to finish. The pipe
+/// closes with the process, so the reader normally finishes at once; the
+/// bound covers a grandchild that inherited the pipe and lives on.
+const STDERR_DRAIN_WAIT: Duration = Duration::from_secs(5);
+
+/// The captured stderr of a game that exited: what its reader thread sends
+/// once the pipe reached end-of-file, waited for (bounded) rather than
+/// taken the instant the exit was observed, when a crash's last lines (the
+/// panic message, the backtrace) may still be in flight.
+async fn drained_stderr(rx: &smol::channel::Receiver<String>, async_app: &AsyncApp) -> String {
+    let timeout = async_app.background_executor().timer(STDERR_DRAIN_WAIT);
+    smol::future::or(async { rx.recv().await.unwrap_or_default() }, async {
+        timeout.await;
+        rx.try_recv().unwrap_or_default()
+    })
+    .await
+}
 
 /// Read `pipe` to the end, keeping only the last [`STDERR_KEEP`] bytes: a game
 /// that logs without end must not grow the editor's memory with it.

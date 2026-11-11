@@ -317,9 +317,7 @@ mod tests {
     }
 
     fn tool() -> WindowRequest {
-        WindowRequest::Custom {
-            type_name: "Tool".into(),
-        }
+        WindowRequest::Custom { type_name: "Tool" }
     }
 
     fn open(wm: &WindowManager, cx: &mut TestAppContext) {

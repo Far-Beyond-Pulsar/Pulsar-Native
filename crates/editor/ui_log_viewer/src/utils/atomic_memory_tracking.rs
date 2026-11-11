@@ -119,11 +119,38 @@ impl AtomicMemoryCounters {
     pub fn record_dealloc(&self, size: usize, category: MemoryCategory) {
         // Update category counter
         let counter = self.get_counter(category);
-        counter.fetch_sub(size, Ordering::Relaxed);
+        sub_saturating(counter, size);
 
         // Update size bucket counters
         let bucket = SizeBucket::from_size(size);
         self.update_bucket_dealloc(bucket, size);
+    }
+
+    /// Zero every counter: a fresh tracking window.
+    pub fn reset(&self) {
+        for counter in [
+            &self.unknown,
+            &self.engine,
+            &self.renderer,
+            &self.ui,
+            &self.physics,
+            &self.audio,
+            &self.assets,
+            &self.scripts,
+            &self.network,
+            &self.tiny_count,
+            &self.small_count,
+            &self.medium_count,
+            &self.large_count,
+            &self.huge_count,
+            &self.tiny_bytes,
+            &self.small_bytes,
+            &self.medium_bytes,
+            &self.large_bytes,
+            &self.huge_bytes,
+        ] {
+            counter.store(0, Ordering::Relaxed);
+        }
     }
 
     /// Update size bucket on allocation
@@ -156,28 +183,15 @@ impl AtomicMemoryCounters {
     /// Update size bucket on deallocation
     #[inline]
     fn update_bucket_dealloc(&self, bucket: SizeBucket, size: usize) {
-        match bucket {
-            SizeBucket::Tiny => {
-                self.tiny_count.fetch_sub(1, Ordering::Relaxed);
-                self.tiny_bytes.fetch_sub(size, Ordering::Relaxed);
-            }
-            SizeBucket::Small => {
-                self.small_count.fetch_sub(1, Ordering::Relaxed);
-                self.small_bytes.fetch_sub(size, Ordering::Relaxed);
-            }
-            SizeBucket::Medium => {
-                self.medium_count.fetch_sub(1, Ordering::Relaxed);
-                self.medium_bytes.fetch_sub(size, Ordering::Relaxed);
-            }
-            SizeBucket::Large => {
-                self.large_count.fetch_sub(1, Ordering::Relaxed);
-                self.large_bytes.fetch_sub(size, Ordering::Relaxed);
-            }
-            SizeBucket::Huge => {
-                self.huge_count.fetch_sub(1, Ordering::Relaxed);
-                self.huge_bytes.fetch_sub(size, Ordering::Relaxed);
-            }
-        }
+        let (count, bytes) = match bucket {
+            SizeBucket::Tiny => (&self.tiny_count, &self.tiny_bytes),
+            SizeBucket::Small => (&self.small_count, &self.small_bytes),
+            SizeBucket::Medium => (&self.medium_count, &self.medium_bytes),
+            SizeBucket::Large => (&self.large_count, &self.large_bytes),
+            SizeBucket::Huge => (&self.huge_count, &self.huge_bytes),
+        };
+        sub_saturating(count, 1);
+        sub_saturating(bytes, size);
     }
 
     /// Get the atomic counter for a category
@@ -327,6 +341,16 @@ impl AtomicMemoryCounters {
         entries.sort_by(|a, b| b.size.cmp(&a.size));
         entries
     }
+}
+
+/// `fetch_sub` that stops at zero. The allocator credits only what it charged,
+/// but a free racing a tracking toggle can still slip through; a counter
+/// wrapped to ~2^64 is worse than one that is briefly low.
+#[inline]
+fn sub_saturating(counter: &AtomicUsize, n: usize) {
+    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+        Some(v.saturating_sub(n))
+    });
 }
 
 /// Global atomic counters instance

@@ -121,23 +121,39 @@ fn everyone_else_gets_the_named_error() {
     let refused = |result: Result<()>| {
         let error = result.unwrap_err();
         assert!(is_read_only(&error), "{error:#}");
-        assert!(error.to_string().contains("only its plugin can change"), "{error}");
+        assert!(
+            error.to_string().contains("only its plugin can change"),
+            "{error}"
+        );
     };
     refused(virtual_fs::write_file(&file, b"x"));
     refused(virtual_fs::write_file_atomically(&file, b"x"));
-    refused(virtual_fs::create_file(&root.join("plugins/test.provider/new.txt"), b"x"));
+    refused(virtual_fs::create_file(
+        &root.join("plugins/test.provider/new.txt"),
+        b"x",
+    ));
     refused(virtual_fs::append_file(&file, b"x"));
     refused(virtual_fs::delete_path(&file));
     refused(virtual_fs::delete_path(&root.join("plugins")));
     refused(virtual_fs::rename(&file, &root.join("moved.txt")));
-    refused(virtual_fs::rename(&root.join("own.txt"), &root.join("plugins/other/own.txt")));
+    refused(virtual_fs::rename(
+        &root.join("own.txt"),
+        &root.join("plugins/other/own.txt"),
+    ));
     refused(virtual_fs::copy(&root.join("own.txt"), &file));
-    refused(virtual_fs::create_dir_all(&root.join("plugins/test.provider/new_folder")));
-    refused(virtual_fs::create_dir_all(&root.join("plugins/not_a_plugin")));
+    refused(virtual_fs::create_dir_all(
+        &root.join("plugins/test.provider/new_folder"),
+    ));
+    refused(virtual_fs::create_dir_all(
+        &root.join("plugins/not_a_plugin"),
+    ));
     refused(virtual_fs::open_write(&file).map(|_| ()));
     // Copying out of a plugin folder is reading it.
     virtual_fs::copy(&file, &root.join("copied.txt")).unwrap();
-    assert_eq!(virtual_fs::read_file(&root.join("copied.txt")).unwrap(), b"one");
+    assert_eq!(
+        virtual_fs::read_file(&root.join("copied.txt")).unwrap(),
+        b"one"
+    );
     // The project's own files are the provider's as before.
     virtual_fs::write_file(&root.join("own.txt"), b"changed").unwrap();
 }
@@ -146,12 +162,17 @@ fn everyone_else_gets_the_named_error() {
 fn an_on_disk_plugins_folder_is_a_problem_and_is_shadowed() {
     let dir = tempfile::tempdir().unwrap();
     let disk = dir.path().join("plugins/stale.txt");
-    crate::LocalFsProvider::new().write_file(&disk, b"old").unwrap();
+    crate::LocalFsProvider::new()
+        .write_file(&disk, b"old")
+        .unwrap();
     let problems = mount_problems(dir.path());
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(problems[0].contains("'plugins/'"), "{}", problems[0]);
     mount_project(dir.path());
-    assert!(!virtual_fs::exists(&disk).unwrap(), "the virtual folder shadows it");
+    assert!(
+        !virtual_fs::exists(&disk).unwrap(),
+        "the virtual folder shadows it"
+    );
     unmount_project(dir.path());
     assert!(virtual_fs::exists(&disk).unwrap());
 }
@@ -159,7 +180,9 @@ fn an_on_disk_plugins_folder_is_a_problem_and_is_shadowed() {
 #[test]
 fn an_unmounted_project_is_the_providers_alone() {
     let dir = tempfile::tempdir().unwrap();
-    assert!(!virtual_fs::exists(&dir.path().join("plugins/test.provider/templates/one.txt")).unwrap());
+    assert!(
+        !virtual_fs::exists(&dir.path().join("plugins/test.provider/templates/one.txt")).unwrap()
+    );
     virtual_fs::write_file(&dir.path().join("plugins/real.txt"), b"x").unwrap();
 }
 
@@ -217,7 +240,12 @@ fn the_snapshot_holds_the_folders_files_and_a_packaged_copy_serves_them() {
     let packaged = PackagedFolder {
         owner: "test.provider".into(),
     };
-    assert_eq!(packaged.read_file(game.path(), "templates/one.txt").unwrap(), b"one");
+    assert_eq!(
+        packaged
+            .read_file(game.path(), "templates/one.txt")
+            .unwrap(),
+        b"one"
+    );
     let names: Vec<String> = packaged
         .list_dir(game.path(), "templates")
         .unwrap()
@@ -248,7 +276,10 @@ fn an_owners_runtime_write_reaches_the_project_file_index_the_drawer_lists() {
     assert!(!listed("index_probe.txt"));
     let memory = FOLDER.get().expect("opened when mounted");
     memory.write("live/index_probe.txt", b"probe".to_vec());
-    assert!(listed("index_probe.txt"), "the write's event updated the index");
+    assert!(
+        listed("index_probe.txt"),
+        "the write's event updated the index"
+    );
     memory.delete("live/index_probe.txt");
     assert!(!listed("index_probe.txt"), "and so did the delete's");
 }

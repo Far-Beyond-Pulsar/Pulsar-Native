@@ -36,7 +36,7 @@ pub fn init_profiler() -> &'static Profiler {
         // SAFETY: set by `attach_host` to the host's process-lifetime profiler.
         return unsafe { &*host };
     }
-    PROFILER.get_or_init(|| Profiler::new())
+    PROFILER.get_or_init(Profiler::new)
 }
 
 /// What a plugin library needs to share this copy's profiler; pass it to

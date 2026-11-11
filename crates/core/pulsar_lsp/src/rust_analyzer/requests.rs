@@ -3,7 +3,6 @@
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 use ui::diagnostics::CodeAction;
 
 use super::RustAnalyzerManager;

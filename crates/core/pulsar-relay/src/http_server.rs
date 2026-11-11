@@ -6,7 +6,7 @@
 use anyhow::Result;
 use axum::{
     extract::{Path, State, WebSocketUpgrade},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
     Router,
@@ -77,6 +77,62 @@ impl IntoResponse for ErrorResponse {
     fn into_response(self) -> Response {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(self)).into_response()
     }
+}
+
+/// An API failure with the status it is reported under. A bare
+/// [`ErrorResponse`] always answers 500; authentication and authorization
+/// failures answer 401 and 403 so a client can tell them apart.
+pub struct ApiError {
+    status: StatusCode,
+    body: ErrorResponse,
+}
+
+impl ApiError {
+    fn unauthorized(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            body: ErrorResponse {
+                error: "unauthorized".to_string(),
+                message: message.into(),
+            },
+        }
+    }
+
+    fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            body: ErrorResponse {
+                error: "forbidden".to_string(),
+                message: message.into(),
+            },
+        }
+    }
+}
+
+impl From<ErrorResponse> for ApiError {
+    fn from(body: ErrorResponse) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            body,
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        (self.status, Json(self.body)).into_response()
+    }
+}
+
+/// The bearer token of the request's `Authorization` header, if it has one.
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
 }
 
 pub async fn run_server(config: Arc<Config>, shutdown: mpsc::Receiver<()>) -> Result<()> {
@@ -309,7 +365,20 @@ async fn join_session(
 async fn close_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<StatusCode, ErrorResponse> {
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    // Only the host closes a session: the request carries the host join
+    // token the relay issued for it.
+    let token = bearer_token(&headers)
+        .ok_or_else(|| ApiError::unauthorized("the session's host join token is required"))?;
+    let (token_session, role) = state
+        .auth
+        .verify_join_token(token)
+        .map_err(|e| ApiError::unauthorized(e.to_string()))?;
+    if token_session != session_id || role != Role::Host {
+        return Err(ApiError::forbidden("only the session's host may close it"));
+    }
+
     state
         .sessions
         .close_session(&session_id, "user_requested")
@@ -333,13 +402,18 @@ async fn get_session(
             message: "Session not found".to_string(),
         })?;
 
-    let value = serde_json::to_value(session).map_err(|error| {
+    let mut value = serde_json::to_value(session).map_err(|error| {
         tracing::error!(%error, "Failed to serialize session");
         ErrorResponse {
             error: "internal_error".to_string(),
             message: "Failed to serialize session".to_string(),
         }
     })?;
+    if let Some(fields) = value.as_object_mut() {
+        // The session key authenticates the session's traffic; it is never a
+        // response field, least of all on an endpoint anyone can call.
+        fields.remove("session_key");
+    }
     Ok(Json(value))
 }
 
@@ -398,21 +472,35 @@ async fn github_auth_handler(
 
 async fn get_notifications(
     State(state): State<AppState>,
+    headers: HeaderMap,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<Vec<Notification>>, ErrorResponse> {
-    let username = params.get("username").ok_or_else(|| ErrorResponse {
-        error: "missing_parameter".to_string(),
-        message: "username query parameter is required".to_string(),
+) -> Result<Json<Vec<Notification>>, ApiError> {
+    // Reading a queue empties it, so a caller reads their own only: the
+    // user is the subject of the server token `/api/v1/auth/github` issued,
+    // never a query parameter.
+    let token = bearer_token(&headers).ok_or_else(|| {
+        ApiError::unauthorized("a server token from /api/v1/auth/github is required")
     })?;
+    let claims = state
+        .auth
+        .verify_token(token)
+        .map_err(|e| ApiError::unauthorized(e.to_string()))?;
+    let username = claims.sub;
+    if let Some(requested) = params.get("username") {
+        if requested != &username {
+            return Err(ApiError::forbidden("the username does not match the token"));
+        }
+    }
 
-    if !state.notifications.is_user_verified(username) {
+    if !state.notifications.is_user_verified(&username) {
         return Err(ErrorResponse {
             error: "unverified_user".to_string(),
             message: "User must authenticate via /api/v1/auth/github first".to_string(),
-        });
+        }
+        .into());
     }
 
-    let notes = state.notifications.take_notifications(username);
+    let notes = state.notifications.take_notifications(&username);
     info!(
         "📬 Returning {} notifications for {}",
         notes.len(),
@@ -440,8 +528,25 @@ async fn push_notification_handler(
 
 async fn relay_notification_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<PushNotificationRequest>,
-) -> Result<impl IntoResponse, ErrorResponse> {
+) -> Result<impl IntoResponse, ApiError> {
+    // The relay posts to another server on behalf of its own authenticated
+    // users, and only as them. Without this anyone could make it send a
+    // request anywhere, as anyone.
+    let token = bearer_token(&headers).ok_or_else(|| {
+        ApiError::unauthorized("a server token from /api/v1/auth/github is required")
+    })?;
+    let claims = state
+        .auth
+        .verify_token(token)
+        .map_err(|e| ApiError::unauthorized(e.to_string()))?;
+    if claims.sub != req.from_username {
+        return Err(ApiError::forbidden(
+            "from_username does not match the token",
+        ));
+    }
+
     info!(
         "🔄 Relaying notification from {} to {} at {}",
         req.from_username, req.target_username, req.target_home_server

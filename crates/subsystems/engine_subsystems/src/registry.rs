@@ -179,18 +179,27 @@ impl SubsystemRegistry {
     /// Idempotent — subsequent calls are no-ops (logged at `warn` level).
     /// Each subsystem's `init()` is called with the provided context.
     pub fn init_all(&mut self, context: &SubsystemContext) -> Result<(), SubsystemError> {
-        if self.initialized {
-            tracing::warn!("SubsystemRegistry already initialized, skipping");
+        let order = self.resolve_dependencies()?;
+        // Subsystems `init_one` already initialized (a plugin's, injected
+        // after start-up) keep their place in the order; only the rest run.
+        let pending: Vec<SubsystemId> = order
+            .iter()
+            .copied()
+            .filter(|id| !self.init_order.contains(id))
+            .collect();
+        if pending.is_empty() {
+            if self.initialized {
+                tracing::warn!("SubsystemRegistry already initialized, skipping");
+            }
+            self.initialized = true;
             return Ok(());
         }
-
-        let order = self.resolve_dependencies()?;
         tracing::info!(
             "Subsystem initialization order: {:?}",
-            order.iter().map(|id| id.as_str()).collect::<Vec<_>>()
+            pending.iter().map(|id| id.as_str()).collect::<Vec<_>>()
         );
 
-        for id in &order {
+        for id in &pending {
             let subsystem = self.subsystems.get_mut(id).unwrap();
             tracing::debug!("Initializing subsystem: {}", id.as_str());
             profiling::profile_scope!(format!("Subsystem::{}::init", id.as_str()));
@@ -199,10 +208,39 @@ impl SubsystemRegistry {
                 .map_err(|e| SubsystemError::InitFailed(format!("{}: {}", id.as_str(), e)))?;
         }
 
-        self.init_order = order;
+        self.init_order.extend(pending);
         self.initialized = true;
 
         tracing::info!("All subsystems initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize one subsystem registered after start-up (a plugin's,
+    /// injected once its library loaded), in place of a second `init_all`.
+    ///
+    /// It joins the tail of the init order, so `update_all` ticks it and
+    /// `shutdown_all` shuts it down with the others; without that an injected
+    /// subsystem got its `init` and nothing of the rest of the lifecycle.
+    /// A subsystem already initialized is left alone.
+    pub fn init_one(
+        &mut self,
+        id: SubsystemId,
+        context: &SubsystemContext,
+    ) -> Result<(), SubsystemError> {
+        if self.init_order.contains(&id) {
+            return Ok(());
+        }
+        let subsystem = self
+            .subsystems
+            .get_mut(&id)
+            .ok_or(SubsystemError::NotFound(id.as_str()))?;
+        tracing::debug!("Initializing subsystem: {}", id.as_str());
+        profiling::profile_scope!(format!("Subsystem::{}::init", id.as_str()));
+        subsystem
+            .init(context)
+            .map_err(|e| SubsystemError::InitFailed(format!("{}: {}", id.as_str(), e)))?;
+        self.init_order.push(id);
+        self.initialized = true;
         Ok(())
     }
 
@@ -225,6 +263,8 @@ impl SubsystemRegistry {
             }
         }
 
+        // Cleared so a later `init_all` initializes everything again.
+        self.init_order.clear();
         self.initialized = false;
         tracing::info!("All subsystems shut down successfully");
         Ok(())

@@ -56,9 +56,10 @@ pub fn discover_script_crates(project_root: &Path) -> Vec<ScriptCrate> {
         .into_iter()
         .filter(|e| e.is_dir)
         .filter_map(|e| {
-            let manifest =
-                engine_fs::virtual_fs::read_to_string(&scripts_dir.join(&e.name).join("Cargo.toml"))
-                    .ok()?;
+            let manifest = engine_fs::virtual_fs::read_to_string(
+                &scripts_dir.join(&e.name).join("Cargo.toml"),
+            )
+            .ok()?;
             let name = read_package_name(&manifest)?;
             Some(ScriptCrate {
                 name,

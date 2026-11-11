@@ -250,12 +250,12 @@ impl PluginManager {
                         }
                     })?;
 
-                engine_fs::virtual_fs::write_file(&marker_path, content.as_bytes()).map_err(|e| {
-                    PluginManagerError::FileCreationError {
+                engine_fs::virtual_fs::write_file(&marker_path, content.as_bytes()).map_err(
+                    |e| PluginManagerError::FileCreationError {
                         path: marker_path,
                         message: e.to_string(),
-                    }
-                })?;
+                    },
+                )?;
 
                 // Create template structure
                 for template in template_structure {
@@ -268,12 +268,11 @@ impl PluginManager {
                             if let Some(parent) = file_path.parent() {
                                 let _ = engine_fs::virtual_fs::create_dir_all(parent);
                             }
-                            engine_fs::virtual_fs::write_file(&file_path, content.as_bytes()).map_err(|e| {
-                                PluginManagerError::FileCreationError {
+                            engine_fs::virtual_fs::write_file(&file_path, content.as_bytes())
+                                .map_err(|e| PluginManagerError::FileCreationError {
                                     path: file_path,
                                     message: e.to_string(),
-                                }
-                            })?;
+                                })?;
                         }
                         PathTemplate::Folder { path: rel_path } => {
                             let folder_path = path.join(rel_path);

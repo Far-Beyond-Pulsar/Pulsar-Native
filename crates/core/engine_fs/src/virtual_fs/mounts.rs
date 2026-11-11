@@ -486,16 +486,14 @@ impl CacheFolder {
     /// Create the folder `path` (and its parents) in `project`'s copy.
     pub fn create_dir_all(&self, project: &Path, path: &str) -> Result<()> {
         super::create_dir_all(&self.real(project, path))?;
-        self.folder
-            .changed_in(project, path, FsChangeKind::Created);
+        self.folder.changed_in(project, path, FsChangeKind::Created);
         Ok(())
     }
 
     /// Remove the file or folder at `path` from `project`'s copy.
     pub fn delete(&self, project: &Path, path: &str) -> Result<()> {
         super::delete_path(&self.real(project, path))?;
-        self.folder
-            .changed_in(project, path, FsChangeKind::Deleted);
+        self.folder.changed_in(project, path, FsChangeKind::Deleted);
         Ok(())
     }
 }
@@ -1056,11 +1054,9 @@ impl FsProvider for MountedFs {
                 }
                 Ok(entries)
             }
-            Located::PluginsFolder => Ok(tree()
-                .folders
-                .keys()
-                .map(|name| dir_entry(name))
-                .collect()),
+            Located::PluginsFolder => {
+                Ok(tree().folders.keys().map(|name| dir_entry(name)).collect())
+            }
             Located::Folder {
                 project,
                 inner,
@@ -1150,10 +1146,16 @@ impl FsProvider for MountedFs {
                     size: 0,
                     modified: None,
                 });
-                out.extend(folder.source.manifest(project, "").into_iter().map(|mut entry| {
-                    entry.path = format!("{at}/{}", entry.path);
-                    entry
-                }));
+                out.extend(
+                    folder
+                        .source
+                        .manifest(project, "")
+                        .into_iter()
+                        .map(|mut entry| {
+                            entry.path = format!("{at}/{}", entry.path);
+                            entry
+                        }),
+                );
             }
             out
         };

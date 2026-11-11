@@ -27,10 +27,8 @@ pub const GAME_STATE_TRAIT_ID: &str = "pulsar.GameState";
 
 /// Where the engine's trait files are in a project.
 pub const GAME_MODE_TRAIT_PATH: &str = "plugins/pulsar/traits/game_mode.trait.json";
-pub const PLAYER_CONTROLLER_TRAIT_PATH: &str =
-    "plugins/pulsar/traits/player_controller.trait.json";
-pub const PLAYER_CHARACTER_TRAIT_PATH: &str =
-    "plugins/pulsar/traits/player_character.trait.json";
+pub const PLAYER_CONTROLLER_TRAIT_PATH: &str = "plugins/pulsar/traits/player_controller.trait.json";
+pub const PLAYER_CHARACTER_TRAIT_PATH: &str = "plugins/pulsar/traits/player_character.trait.json";
 pub const GAME_STATE_TRAIT_PATH: &str = "plugins/pulsar/traits/game_state.trait.json";
 pub const INTO_GRAPH_TRAIT_PATH: &str = "plugins/pulsar/traits/into_graph.trait.json";
 

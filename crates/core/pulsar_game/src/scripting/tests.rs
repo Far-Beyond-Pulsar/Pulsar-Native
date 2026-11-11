@@ -2193,15 +2193,15 @@ mod roles {
     use super::*;
     use crate::roles::RoleEntity;
     use crate::scripting::traits::HookOutcome;
+    use pulsar_events::entity_channel;
+    use pulsar_events::gamma::DynValue;
+    use pulsar_script_vm::{EventDecl, EventField, EventRef, Subscription, SubscriptionScope};
     use pulsar_traits::builtin::{
         GAME_MODE_ROLE, GAME_MODE_TRAIT_ID, GAME_STATE_ROLE, GAME_STATE_TRAIT_ID,
         PLAYER_CHARACTER_ROLE, PLAYER_CHARACTER_TRAIT_ID, PLAYER_CONTROLLER_ROLE,
         PLAYER_CONTROLLER_TRAIT_ID,
     };
     use pulsar_traits::{RoleSelection, WorldRoles};
-    use pulsar_events::entity_channel;
-    use pulsar_events::gamma::DynValue;
-    use pulsar_script_vm::{EventDecl, EventField, EventRef, Subscription, SubscriptionScope};
 
     type Hook<'a> = (&'a str, Vec<Type>, &'a str);
 
@@ -2476,10 +2476,7 @@ mod roles {
         let level = level(project.path(), &[]);
         let (mut game, log) = standalone(project.path(), &level);
         game.set_world_roles(WorldRoles::resolve(
-            &selection(&[
-                (GAME_MODE_ROLE, "Mode"),
-                (GAME_STATE_ROLE, "Ghost"),
-            ]),
+            &selection(&[(GAME_MODE_ROLE, "Mode"), (GAME_STATE_ROLE, "Ghost")]),
             None,
         ));
         game.tick_once();

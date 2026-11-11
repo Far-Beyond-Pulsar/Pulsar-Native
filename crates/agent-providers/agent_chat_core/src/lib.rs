@@ -290,16 +290,24 @@ struct ProviderInstanceFile {
     providers: Vec<ProviderInstanceConfig>,
 }
 
+use engine_fs::FsProvider as _;
+
+/// The saved instances are the machine's (the user's config dir), never a
+/// project's: they go to the physical disk whatever provider is active.
+fn machine() -> engine_fs::LocalFsProvider {
+    engine_fs::LocalFsProvider::new()
+}
+
 /// Read saved instances from `path`. A missing file is an empty list; an
 /// unreadable one is an error, so callers never overwrite it blindly.
 pub fn load_provider_instances(
     path: &std::path::Path,
 ) -> anyhow::Result<Vec<ProviderInstanceConfig>> {
-    if !engine_fs::virtual_fs::exists(path)? {
+    if !machine().exists(path)? {
         return Ok(Vec::new());
     }
-    let text = engine_fs::virtual_fs::read_to_string(path)?;
-    Ok(serde_json::from_str::<ProviderInstanceFile>(&text)?.providers)
+    let bytes = machine().read_file(path)?;
+    Ok(serde_json::from_slice::<ProviderInstanceFile>(&bytes)?.providers)
 }
 
 /// Write `instances` to `path`, creating its directory.
@@ -310,7 +318,10 @@ pub fn save_provider_instances(
     let file = ProviderInstanceFile {
         providers: instances.to_vec(),
     };
-    engine_fs::virtual_fs::write_file(path, serde_json::to_string_pretty(&file)?.as_bytes())?;
+    let text = serde_json::to_string_pretty(&file)?;
+    // Replaced atomically, so a crash or a full disk mid-write leaves the
+    // previous file rather than a truncated one.
+    machine().write_file_atomically(path, text.as_bytes())?;
     Ok(())
 }
 

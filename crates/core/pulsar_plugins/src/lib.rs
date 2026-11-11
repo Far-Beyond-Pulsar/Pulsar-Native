@@ -492,7 +492,10 @@ pub fn deactivate() {
 /// read it) against the installed plugins and activate the result (problems
 /// are logged and returned). An unreadable list activates every installed
 /// plugin's default.
-pub fn activate_project(project_root: &Path, project: Result<ProjectPlugins, String>) -> Resolution {
+pub fn activate_project(
+    project_root: &Path,
+    project: Result<ProjectPlugins, String>,
+) -> Resolution {
     let project = project.unwrap_or_else(|error| {
         tracing::error!("the project's plugin list: {error}; using every plugin's default");
         ProjectPlugins::default()

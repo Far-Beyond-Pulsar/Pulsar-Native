@@ -246,7 +246,9 @@ impl WorldRoles {
 
     /// The binding for `role` if it can be instantiated.
     pub fn usable(&self, role: &str) -> Option<&RoleBinding> {
-        self.bindings.get(role).filter(|binding| binding.is_usable())
+        self.bindings
+            .get(role)
+            .filter(|binding| binding.is_usable())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &RoleBinding> {

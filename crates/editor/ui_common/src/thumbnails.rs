@@ -408,7 +408,10 @@ fn get_or_generate_thumbnail_sync(
 /// Decode a cached thumbnail PNG read through the VFS.
 fn load_cached_png(path: &Path) -> anyhow::Result<image::DynamicImage> {
     let bytes = engine_fs::virtual_fs::read_file(path)?;
-    Ok(image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)?)
+    Ok(image::load_from_memory_with_format(
+        &bytes,
+        image::ImageFormat::Png,
+    )?)
 }
 
 /// Size and modification time (at the best precision the provider knows),
@@ -428,8 +431,8 @@ fn modified_secs(path: &Path) -> Option<(u64, Option<u128>)> {
 fn is_supported_ext(ext: &str) -> bool {
     matches!(ext, "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif")
         || FORMAT_RENDERERS
-        .get()
-        .is_some_and(|renderers| renderers.lock().contains_key(ext))
+            .get()
+            .is_some_and(|renderers| renderers.lock().contains_key(ext))
 }
 
 fn compute_cache_key(path: &Path) -> String {

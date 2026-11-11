@@ -687,7 +687,10 @@ fn load_role_blueprints(
                         .implementers_of(role.trait_id)
                         .into_iter()
                         .filter(|entry| {
-                            matches!(entry.binding, Some(pulsar_traits::Binding::ScriptClass { .. }))
+                            matches!(
+                                entry.binding,
+                                Some(pulsar_traits::Binding::ScriptClass { .. })
+                            )
                         })
                         .map(|entry| entry.id.clone())
                         .collect();
@@ -802,7 +805,10 @@ mod tests {
                 "classes/Mode/graph_save.json"
             ]
         );
-        assert_eq!(roles[PLAYER_CHARACTER_ROLE], ["classes/Hero/graph_save.json"]);
+        assert_eq!(
+            roles[PLAYER_CHARACTER_ROLE],
+            ["classes/Hero/graph_save.json"]
+        );
         assert_eq!(roles[GAME_STATE_ROLE], ["classes/Both/graph_save.json"]);
         assert!(roles[PLAYER_CONTROLLER_ROLE].is_empty());
     }

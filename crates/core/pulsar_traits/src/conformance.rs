@@ -356,7 +356,6 @@ mod tests {
         )
     }
 
-
     fn provided(name: &str, params: &[&str], returns: ProvidedReturn) -> ProvidedMethod {
         ProvidedMethod {
             name: name.to_owned(),

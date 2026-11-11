@@ -16,7 +16,14 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 static TRACKING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Enable allocation tracking (captures backtraces and records stats).
+///
+/// Starts a fresh window: everything allocated while tracking was off was
+/// never counted, so the counters and the set of live tracked pointers start
+/// from zero rather than being credited for frees they never saw charged.
 pub fn enable_tracking() {
+    TRACKING_ACTIVE.store(false, Ordering::Relaxed);
+    caller_tracking::reset();
+    ATOMIC_MEMORY_COUNTERS.reset();
     TRACKING_ACTIVE.store(true, Ordering::Relaxed);
 }
 
@@ -74,7 +81,7 @@ impl TrackingAllocator {
             return;
         }
 
-        ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), Self::categorize_allocation());
+        let category = Self::categorize_allocation();
 
         // Capture raw return addresses only — no symbol resolution, no heap alloc.
         // Ordinary allocations keep 8 frames; a large one (see `large_allocs`)
@@ -101,7 +108,16 @@ impl TrackingAllocator {
             });
         }
         if count > 0 {
-            caller_tracking::record_alloc(ptr as usize, &frames[..count.min(8)], layout.size());
+            // The category counters are charged only for a pointer the caller
+            // map now holds, so `record_dealloc` credits exactly what was charged.
+            if caller_tracking::record_alloc(
+                ptr as usize,
+                &frames[..count.min(8)],
+                layout.size(),
+                category as u8,
+            ) {
+                ATOMIC_MEMORY_COUNTERS.record_alloc(layout.size(), category);
+            }
             if large {
                 large_allocs::record_alloc(ptr as usize, layout.size(), &frames[..count]);
             }
@@ -131,8 +147,14 @@ impl TrackingAllocator {
             return;
         }
 
-        ATOMIC_MEMORY_COUNTERS.record_dealloc(layout.size(), Self::categorize_allocation());
-        caller_tracking::record_dealloc(ptr as usize, layout.size());
+        // Only a block charged by `record_alloc` is credited back, to the
+        // category it was charged to: one allocated before tracking began (or
+        // freed under another category guard) would otherwise wrap the
+        // counters to ~2^64.
+        if let Some(category) = caller_tracking::record_dealloc(ptr as usize, layout.size()) {
+            ATOMIC_MEMORY_COUNTERS
+                .record_dealloc(layout.size(), MemoryCategory::from(category as usize));
+        }
         large_allocs::record_dealloc(ptr as usize, layout.size());
 
         TRACKING_ENABLED.with(|e| e.set(true));

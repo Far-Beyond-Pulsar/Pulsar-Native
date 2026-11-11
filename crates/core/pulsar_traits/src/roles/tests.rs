@@ -19,7 +19,9 @@ fn project() -> (tempfile::TempDir, TraitIndex) {
         virtual_fs::create_dir_all(path.parent().unwrap()).unwrap();
         virtual_fs::write_file(
             &path,
-            serde_json::json!({ "paths": traits }).to_string().as_bytes(),
+            serde_json::json!({ "paths": traits })
+                .to_string()
+                .as_bytes(),
         )
         .unwrap();
     }
@@ -41,7 +43,12 @@ fn the_registry_has_one_distinct_key_and_trait_per_role_in_order() {
     let ids: Vec<_> = all.iter().map(|role| role.id).collect();
     assert_eq!(
         ids,
-        [GAME_MODE_ROLE, GAME_STATE_ROLE, PLAYER_CONTROLLER_ROLE, PLAYER_CHARACTER_ROLE]
+        [
+            GAME_MODE_ROLE,
+            GAME_STATE_ROLE,
+            PLAYER_CONTROLLER_ROLE,
+            PLAYER_CHARACTER_ROLE
+        ]
     );
     let keys: std::collections::BTreeSet<_> = all.iter().map(|r| r.setting_key).collect();
     let traits: std::collections::BTreeSet<_> = all.iter().map(|r| r.trait_id).collect();
@@ -49,7 +56,11 @@ fn the_registry_has_one_distinct_key_and_trait_per_role_in_order() {
     assert_eq!(traits.len(), all.len());
     let index = TraitIndex::live(tempfile::tempdir().unwrap().path());
     for role in &all {
-        assert!(index.resolve_trait(role.trait_id).is_some(), "{}", role.trait_id);
+        assert!(
+            index.resolve_trait(role.trait_id).is_some(),
+            "{}",
+            role.trait_id
+        );
     }
 }
 
@@ -66,7 +77,11 @@ fn selections_are_checked_against_the_roles_trait() {
     );
     let mode = roles.get(GAME_MODE_ROLE).unwrap();
     assert_eq!(mode.status, BindingStatus::Valid);
-    assert_eq!(mode.class_name(), Some("Mode"), "through the index's binding");
+    assert_eq!(
+        mode.class_name(),
+        Some("Mode"),
+        "through the index's binding"
+    );
     assert_eq!(
         roles.get(PLAYER_CHARACTER_ROLE).unwrap().status,
         BindingStatus::MissingTrait
@@ -80,7 +95,9 @@ fn selections_are_checked_against_the_roles_trait() {
     assert!(roles.usable(PLAYER_CHARACTER_ROLE).is_none());
     let diagnostics = roles.diagnostics();
     assert_eq!(diagnostics.len(), 2);
-    assert!(diagnostics.iter().any(|d| d.starts_with("Player Character")));
+    assert!(diagnostics
+        .iter()
+        .any(|d| d.starts_with("Player Character")));
 }
 
 #[test]
@@ -99,7 +116,10 @@ fn without_an_index_selections_pass_through_unchecked() {
 fn levels_from_before_a_role_existed_select_nothing_for_it() {
     let level = r#"{"world_settings":{"game_mode_blueprint":"classes/Mode/graph_save.json"}}"#;
     let selection = RoleSelection::from_world_settings(&world_settings_of(level));
-    assert_eq!(selection.get(GAME_MODE_ROLE), Some("classes/Mode/graph_save.json"));
+    assert_eq!(
+        selection.get(GAME_MODE_ROLE),
+        Some("classes/Mode/graph_save.json")
+    );
     assert_eq!(selection.get(PLAYER_CONTROLLER_ROLE), None);
     assert_eq!(
         RoleSelection::from_world_settings(&world_settings_of("not json")),
@@ -118,7 +138,9 @@ fn a_plugins_settings_ride_beside_the_roles() {
     let level = r#"{"world_settings":{"player_input_mapping":"input/Game.inputmap"}}"#;
     let roles = WorldRoles::for_level(level, tempfile::tempdir().unwrap().path());
     assert_eq!(
-        roles.setting("player_input_mapping").and_then(Value::as_str),
+        roles
+            .setting("player_input_mapping")
+            .and_then(Value::as_str),
         Some("input/Game.inputmap")
     );
     assert!(roles.is_empty(), "a setting alone is no role");

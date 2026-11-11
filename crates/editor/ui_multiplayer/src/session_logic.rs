@@ -138,9 +138,16 @@ pub(crate) fn sync_failed_message(error: impl std::fmt::Display) -> String {
 }
 
 /// Writes one chunk of a received file at `offset`, creating parent directories
-/// and the file as needed. I/O errors are ignored, matching the original behavior.
+/// and the file as needed. I/O errors are ignored, matching the original behavior;
+/// a path that would leave the project is refused.
 pub(crate) fn write_file_chunk(project_root: &Path, file_path: &str, offset: u64, data: &[u8]) {
-    let full_path = project_root.join(file_path);
+    let full_path = match crate::net::simple_sync::project_relative(project_root, file_path) {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!("Ignoring file chunk: {}", error);
+            return;
+        }
+    };
 
     let _ = write_chunk(&full_path, offset, data);
 }
@@ -152,7 +159,9 @@ fn write_chunk(path: &Path, offset: u64, data: &[u8]) -> anyhow::Result<()> {
     if offset == 0 {
         return virtual_fs::write_file(path, data);
     }
-    let current = virtual_fs::metadata(path).map(|meta| meta.size).unwrap_or(0);
+    let current = virtual_fs::metadata(path)
+        .map(|meta| meta.size)
+        .unwrap_or(0);
     if current == offset {
         return virtual_fs::append_file(path, data);
     }
@@ -368,5 +377,24 @@ mod tests {
         assert_eq!(contents, b"abcdefgh");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_file_chunk_refuses_a_path_outside_the_project() {
+        let root = std::env::temp_dir().join(format!(
+            "ui_multiplayer_chunk_escape_test_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let escaped = root.with_file_name(format!(
+            "ui_multiplayer_chunk_escaped_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&escaped);
+
+        let outside = format!("../{}", escaped.file_name().unwrap().to_str().unwrap());
+        write_file_chunk(&root, &outside, 0, b"nope");
+        assert!(!escaped.exists());
+        assert!(!root.exists());
     }
 }

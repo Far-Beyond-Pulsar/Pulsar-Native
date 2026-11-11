@@ -193,7 +193,9 @@ impl RuntimeTraits {
         let index = self.index(project_root);
         let traits = match index.entry_for_binding(&Binding::ScriptClass { dir }) {
             Some(implementer) => ClassTraits {
-                effective: index.db().with_ancestors(&implementer.implemented_trait_ids),
+                effective: index
+                    .db()
+                    .with_ancestors(&implementer.implemented_trait_ids),
                 has_unresolved: !implementer.unresolved.is_empty(),
                 declared: Some(implementer.implemented_trait_ids.clone()),
             },
@@ -350,7 +352,9 @@ impl RuntimeTraits {
         problems: &mut Vec<String>,
     ) -> HookOutcome {
         let Some(trait_id) = self.trait_id(project_root, trait_ref) else {
-            let message = format!("trait '{trait_ref}' is not known to this project; `{method}` was not called");
+            let message = format!(
+                "trait '{trait_ref}' is not known to this project; `{method}` was not called"
+            );
             problems.push(message);
             return HookOutcome::Violation;
         };

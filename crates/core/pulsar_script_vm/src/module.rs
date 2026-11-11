@@ -73,8 +73,21 @@ pub enum ModuleDecodeError {
     Corrupt(String),
 }
 
+/// The most bytes a binary module may claim while decoding: every length
+/// prefix (a string, a function's instructions, ..) is checked against it
+/// before anything is allocated, so a corrupt or hostile length claim is a
+/// [`ModuleDecodeError::Corrupt`], not a huge allocation or an abort.
+pub const MAX_BINARY_MODULE_LEN: usize = 64 << 20;
+
 fn bincode_config() -> impl bincode::config::Config {
     bincode::config::standard()
+}
+
+/// [`bincode_config`] for reading: the same encoding, with the
+/// [`MAX_BINARY_MODULE_LEN`] bound (writing a module into memory is never
+/// bounded).
+fn bincode_decode_config() -> impl bincode::config::Config {
+    bincode::config::standard().with_limit::<MAX_BINARY_MODULE_LEN>()
 }
 
 /// Register index within a function.
@@ -147,7 +160,9 @@ impl Module {
 
     /// Read a binary module ([`to_binary`](Self::to_binary)). Only the
     /// current [`FORMAT_VERSION`] is accepted: binary modules are build
-    /// outputs, rebuilt with the engine, never hand-kept.
+    /// outputs, rebuilt with the engine, never hand-kept. The bytes are
+    /// not trusted: a length claim past [`MAX_BINARY_MODULE_LEN`] or a
+    /// type nested past [`crate::types::MAX_TYPE_DEPTH`] is corrupt.
     pub fn from_binary(bytes: &[u8]) -> Result<Self, ModuleDecodeError> {
         if bytes.len() < BINARY_HEADER_LEN || bytes[..4] != BINARY_MAGIC {
             return Err(ModuleDecodeError::Truncated);
@@ -160,7 +175,7 @@ impl Module {
             });
         }
         let (module, read): (Self, usize) =
-            bincode::decode_from_slice(&bytes[BINARY_HEADER_LEN..], bincode_config())
+            bincode::decode_from_slice(&bytes[BINARY_HEADER_LEN..], bincode_decode_config())
                 .map_err(|error| ModuleDecodeError::Corrupt(error.to_string()))?;
         if BINARY_HEADER_LEN + read != bytes.len() {
             return Err(ModuleDecodeError::Corrupt(format!(

@@ -410,14 +410,17 @@ impl RustAnalyzerManager {
 
     pub(super) fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
         if cfg!(windows) {
+            // Inside a PowerShell single-quoted string only `'` is special,
+            // and it is escaped by doubling; nothing else is interpolated.
+            let quote = |s: &str| format!("'{}'", s.replace('\'', "''"));
             let powershell_result = Command::new("powershell")
                 .args([
                     "-NoProfile",
                     "-Command",
                     &format!(
-                        "Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-                        url,
-                        dest.display()
+                        "Invoke-WebRequest -Uri {} -OutFile {}",
+                        quote(url),
+                        quote(&dest.to_string_lossy())
                     ),
                 ])
                 .output();

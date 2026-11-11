@@ -5,7 +5,6 @@ use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use super::path_utils;

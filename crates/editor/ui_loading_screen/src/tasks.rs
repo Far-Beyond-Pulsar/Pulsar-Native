@@ -178,7 +178,8 @@ fn task_read_config(project: &Path) -> TaskResult {
 
 fn task_scan_packages(project: &Path) -> TaskResult {
     let t = Instant::now();
-    let content = engine_fs::virtual_fs::read_to_string(&project.join("Cargo.toml")).unwrap_or_default();
+    let content =
+        engine_fs::virtual_fs::read_to_string(&project.join("Cargo.toml")).unwrap_or_default();
     // Count quoted workspace member entries inside the [workspace] section.
     let mut in_workspace = false;
     let mut count = 0usize;
@@ -371,7 +372,9 @@ fn task_prepare_plugins(_project: &Path) -> TaskResult {
 fn task_warm_open_tabs(project: &Path) -> TaskResult {
     let t = Instant::now();
     let mut files = Vec::new();
-    if let Ok(text) = engine_fs::virtual_fs::read_to_string(&project.join(".pulsar").join("layout.json")) {
+    if let Ok(text) =
+        engine_fs::virtual_fs::read_to_string(&project.join(".pulsar").join("layout.json"))
+    {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
             collect_tab_files(&value, &mut files);
         }
@@ -434,7 +437,9 @@ fn warm_path(path: &Path, depth: usize) -> usize {
             .map(|entry| warm_path(&path.join(&entry.name), depth + 1))
             .sum();
     }
-    engine_fs::virtual_fs::read_file(path).map(|b| b.len()).unwrap_or(0)
+    engine_fs::virtual_fs::read_file(path)
+        .map(|b| b.len())
+        .unwrap_or(0)
 }
 
 /// The files the last session's open tabs refer to, absolute. Filled by

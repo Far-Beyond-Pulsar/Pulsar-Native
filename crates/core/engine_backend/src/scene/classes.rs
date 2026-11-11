@@ -89,7 +89,8 @@ pub fn registry_for_class_dir(class_dir: &Path) -> ClassRegistry {
 }
 
 fn same_dir(a: &Path, b: &Path) -> bool {
-    a == b || matches!((engine_fs::virtual_fs::canonicalize(a), engine_fs::virtual_fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+    a == b
+        || matches!((engine_fs::virtual_fs::canonicalize(a), engine_fs::virtual_fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 // ── Rebuilding ──────────────────────────────────────────────────────────────

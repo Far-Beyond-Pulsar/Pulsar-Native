@@ -5,9 +5,42 @@ use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use std::time::Duration;
 
 const DMR_CHAT_URL: &str = "http://localhost:12434/engines/v1/chat/completions";
 const DMR_MODEL_ENV: &str = "PULSAR_DOCKER_MODEL";
+
+/// Streams number their partial tool calls from 0; an index past this is a
+/// malformed stream, not a call list, and must not size a `Vec`.
+const MAX_STREAM_TOOL_CALLS: usize = 256;
+
+/// The blocking client. `Client::new()` gives every wait 30 s, which the
+/// first byte of a long generation exceeds. The blocking client applies
+/// `timeout` to each wait for the server (the response, then each body
+/// read), not to the whole request, so this keeps a slow stream open as long
+/// as the server keeps sending, and still fails a stalled one.
+fn http_client() -> anyhow::Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("building HTTP client")
+}
+
+/// The message of a top-level `error` a server sends as a stream event
+/// instead of an HTTP error status.
+fn stream_error(event: &Value) -> Option<String> {
+    let error = event.get("error")?;
+    Some(match error {
+        Value::Null => return None,
+        Value::String(message) => message.clone(),
+        Value::Object(fields) => fields
+            .get("message")
+            .and_then(|m| m.as_str())
+            .map_or_else(|| error.to_string(), str::to_string),
+        _ => error.to_string(),
+    })
+}
 
 pub struct DockerModelRunnerProvider {
     client: Client,
@@ -15,11 +48,11 @@ pub struct DockerModelRunnerProvider {
 }
 
 impl DockerModelRunnerProvider {
-    pub fn new() -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            client: http_client()?,
             models: Self::default_models(),
-        }
+        })
     }
 
     fn default_models() -> Vec<ModelDescriptor> {
@@ -125,8 +158,16 @@ impl DockerModelRunnerProvider {
                             let index = tool_call
                                 .get("index")
                                 .and_then(|value| value.as_u64())
-                                .unwrap_or(partials.len() as u64)
-                                as usize;
+                                .map_or(partials.len(), |index| {
+                                    usize::try_from(index).unwrap_or(usize::MAX)
+                                });
+                            if index >= MAX_STREAM_TOOL_CALLS {
+                                tracing::warn!(
+                                    index,
+                                    "ignoring a tool call delta whose index is out of range"
+                                );
+                                continue;
+                            }
 
                             while partials.len() <= index {
                                 partials.push(PartialToolCall::default());
@@ -308,6 +349,11 @@ impl DockerModelRunnerProvider {
 
             let event: Value =
                 serde_json::from_str(data).context("invalid JSON event in Docker stream")?;
+            if let Some(message) = stream_error(&event) {
+                return Err(anyhow!(
+                    "Docker Model Runner streaming API error: {message}"
+                ));
+            }
 
             if let Some(choice) = event
                 .get("choices")
@@ -375,12 +421,6 @@ impl DockerModelRunnerProvider {
             ChatRole::Tool => "tool",
             ChatRole::AgentEvent => "system",
         }
-    }
-}
-
-impl Default for DockerModelRunnerProvider {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -457,7 +497,7 @@ impl ChatProvider for DockerModelRunnerProvider {
     }
 }
 
-use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+use agent_chat_core::{ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
 
 pub struct DockerModelRunnerProviderCrate;
 
@@ -475,7 +515,7 @@ impl ProviderCrate for DockerModelRunnerProviderCrate {
 
     fn create(&self, id: &str, _config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "docker_model_runner", "unknown provider: {id}");
-        Ok(Box::new(DockerModelRunnerProvider::new()))
+        Ok(Box::new(DockerModelRunnerProvider::new()?))
     }
 }
 

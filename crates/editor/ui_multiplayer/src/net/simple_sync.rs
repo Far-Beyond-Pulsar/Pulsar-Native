@@ -12,7 +12,7 @@ use engine_fs::{events, FsChangeKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// File manifest entry
@@ -78,26 +78,54 @@ const DEFAULT_IGNORES: &[&str] = &[
 ];
 
 /// Check if a path should be ignored
-fn should_ignore(path: &Path) -> bool {
-    let path_str = path.to_string_lossy();
-
-    for pattern in DEFAULT_IGNORES {
-        if pattern.contains('*') {
-            // Simple glob matching for extensions
-            if let Some(ext) = pattern.strip_prefix("*.") {
-                if path_str.ends_with(ext) {
-                    return true;
-                }
-            }
-        } else {
-            // Exact component matching
-            if path.components().any(|c| c.as_os_str() == *pattern) {
-                return true;
-            }
-        }
+fn should_ignore(project_root: &Path, path: &Path) -> bool {
+    // Only the part inside the project is matched: a project under a folder
+    // named `build` or `target` would otherwise vanish from the manifest, and
+    // the root entry itself is never ignored.
+    let Ok(relative) = path.strip_prefix(project_root) else {
+        return false;
+    };
+    if relative.as_os_str().is_empty() {
+        return false;
     }
 
-    false
+    DEFAULT_IGNORES
+        .iter()
+        .copied()
+        .any(|pattern| match pattern.strip_prefix("*.") {
+            // `*.ext` is an extension, not a suffix: `my_dll` is not a `.dll`.
+            Some(ext) => relative.extension().is_some_and(|e| e == ext),
+            None => relative.components().any(|c| c.as_os_str() == pattern),
+        })
+}
+
+/// The project file a peer named by a project-relative path.
+///
+/// Peers send bare manifest paths; a hostile or buggy one could send `../x`,
+/// `/etc/x` or `C:/x` and have the host read or write outside the project, so
+/// only a non-empty path of plain components is accepted. Both separators
+/// are split on: a Windows peer's `\` would otherwise hide a component.
+pub(crate) fn project_relative(root: &Path, rel: &str) -> std::io::Result<PathBuf> {
+    let refuse = |why: &str| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("refusing path {rel:?}: {why}"),
+        )
+    };
+    if rel.is_empty() {
+        return Err(refuse("empty"));
+    }
+    let mut full = root.to_path_buf();
+    for component in rel.split(['/', '\\']) {
+        match component {
+            "" => return Err(refuse("absolute, or an empty component")),
+            "." | ".." => return Err(refuse("not a plain path")),
+            // A drive (`C:`) or an NTFS stream (`f.txt:ads`).
+            _ if component.contains(':') => return Err(refuse("not a plain path")),
+            _ => full.push(component),
+        }
+    }
+    Ok(full)
 }
 
 /// Calculate SHA256 hash of file contents
@@ -122,7 +150,7 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
     for entry in WalkDir::new(project_root)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !should_ignore(e.path()))
+        .filter_entry(|e| !should_ignore(project_root, e.path()))
     {
         let entry = entry?;
 
@@ -231,7 +259,8 @@ pub fn compute_diff(
                         "SIMPLE_SYNC: File to UPDATE: {} (local: {}, remote: {})",
                         file.path,
                         &local_hash[..8],
-                        &file.hash[..8]
+                        // The remote hash is peer data and may be short.
+                        file.hash.get(..8).unwrap_or(&file.hash)
                     );
                     files_to_update.push(file.path.clone());
                 }
@@ -271,7 +300,7 @@ pub fn apply_files(
     let mut written_count = 0;
 
     for (relative_path, data) in files {
-        let full_path = project_root.join(&relative_path);
+        let full_path = project_relative(project_root, &relative_path)?;
 
         // Create parent directories
         if let Some(parent) = full_path.parent() {
@@ -301,7 +330,7 @@ pub fn delete_files(project_root: &Path, file_paths: Vec<String>) -> Result<usiz
     let mut deleted_count = 0;
 
     for relative_path in file_paths {
-        let full_path = project_root.join(&relative_path);
+        let full_path = project_relative(project_root, &relative_path)?;
 
         if virtual_fs::exists(&full_path).unwrap_or(false) {
             virtual_fs::delete_path(&full_path)
@@ -329,7 +358,7 @@ pub fn read_files(
     let mut files = Vec::new();
 
     for relative_path in file_paths {
-        let full_path = project_root.join(&relative_path);
+        let full_path = project_relative(project_root, &relative_path)?;
         let data = virtual_fs::read_file(&full_path)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let data_len = data.len();
@@ -339,4 +368,55 @@ pub fn read_files(
 
     tracing::debug!("SIMPLE_SYNC: Successfully read {} files", files.len());
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_relative_accepts_a_nested_path() {
+        let root = Path::new("root");
+        assert_eq!(
+            project_relative(root, "src/main.rs").unwrap(),
+            root.join("src").join("main.rs")
+        );
+        assert_eq!(
+            project_relative(root, "assets\\tex.png").unwrap(),
+            root.join("assets").join("tex.png")
+        );
+    }
+
+    #[test]
+    fn project_relative_refuses_paths_that_leave_the_project() {
+        let root = Path::new("root");
+        for bad in [
+            "",
+            "/etc/passwd",
+            "\\windows",
+            "../secret",
+            "src/../../secret",
+            "src/./main.rs",
+            "C:/x",
+            "C:\\x",
+            "c:x",
+            "\\\\server\\share",
+            "f.txt:stream",
+            "src//main.rs",
+            "src/",
+        ] {
+            assert!(project_relative(root, bad).is_err(), "{bad:?} was accepted");
+        }
+    }
+
+    #[test]
+    fn ignores_match_components_and_extensions_inside_the_project() {
+        let root = Path::new("/home/me/build/game");
+        assert!(!should_ignore(root, root));
+        assert!(!should_ignore(root, &root.join("src").join("lib.rs")));
+        assert!(should_ignore(root, &root.join("target").join("debug")));
+        assert!(should_ignore(root, &root.join("app.exe")));
+        assert!(!should_ignore(root, &root.join("my_dll")));
+        assert!(!should_ignore(root, &root.join("build_notes.md")));
+    }
 }

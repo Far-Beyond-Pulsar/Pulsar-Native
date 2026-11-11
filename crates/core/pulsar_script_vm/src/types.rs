@@ -29,9 +29,10 @@ use serde::{Deserialize, Serialize};
 use crate::value::{MapKey, Object, Value};
 
 /// The type of a register, variable, parameter or return value.
-#[derive(
-    Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,
-)]
+///
+/// The binary decoding is written by hand (below): it bounds the nesting
+/// depth, which the derived one cannot.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode)]
 #[serde(tag = "kind", content = "name", rename_all = "snake_case")]
 pub enum Type {
     Unit,
@@ -105,6 +106,80 @@ impl Type {
 
     pub fn is_numeric(&self) -> bool {
         matches!(self, Self::Int | Self::Float)
+    }
+}
+
+/// The deepest nesting of `List`, `Map` and `Tuple` a decoded [`Type`] may
+/// have. Decoding recurses once per level, and a binary module is not
+/// trusted: a few hundred thousand bytes claiming as many levels would
+/// otherwise overflow the stack. Nothing legitimate nests types this deep.
+pub const MAX_TYPE_DEPTH: usize = 32;
+
+/// Decode a [`Type`] from the bytes the derived [`bincode::Encode`] writes
+/// (the variant index as a `u32`, then the fields; a `Vec` as its length
+/// then its items), refusing nesting past [`MAX_TYPE_DEPTH`].
+fn decode_type<D: bincode::de::Decoder>(
+    decoder: &mut D,
+    depth: usize,
+) -> Result<Type, bincode::error::DecodeError> {
+    use bincode::error::{AllowedEnumVariants, DecodeError};
+    use bincode::Decode;
+
+    if depth > MAX_TYPE_DEPTH {
+        return Err(DecodeError::Other("a type is nested too deeply"));
+    }
+    let variant = <u32 as Decode<D::Context>>::decode(decoder)?;
+    Ok(match variant {
+        0 => Type::Unit,
+        1 => Type::Bool,
+        2 => Type::Int,
+        3 => Type::Float,
+        4 => Type::Str,
+        5 => Type::Entity,
+        6 => Type::Component(<String as Decode<D::Context>>::decode(decoder)?),
+        7 => Type::Object(<String as Decode<D::Context>>::decode(decoder)?),
+        8 => Type::List(Box::new(decode_type(decoder, depth + 1)?)),
+        9 => {
+            let key = decode_type(decoder, depth + 1)?;
+            let value = decode_type(decoder, depth + 1)?;
+            Type::Map(Box::new(key), Box::new(value))
+        }
+        10 => {
+            // As `Vec<Type>` decodes, claiming the items' size against the
+            // configured limit before allocating for them.
+            let len = <u64 as Decode<D::Context>>::decode(decoder)?;
+            let len = usize::try_from(len).map_err(|_| DecodeError::OutsideUsizeRange(len))?;
+            decoder.claim_container_read::<Type>(len)?;
+            let mut items = Vec::with_capacity(len);
+            for _ in 0..len {
+                decoder.unclaim_bytes_read(std::mem::size_of::<Type>());
+                items.push(decode_type(decoder, depth + 1)?);
+            }
+            Type::Tuple(items)
+        }
+        found => {
+            return Err(DecodeError::UnexpectedVariant {
+                found,
+                type_name: "Type",
+                allowed: &AllowedEnumVariants::Range { min: 0, max: 10 },
+            })
+        }
+    })
+}
+
+impl<Context> bincode::Decode<Context> for Type {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        decode_type(decoder, 0)
+    }
+}
+
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for Type {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        decode_type(decoder, 0)
     }
 }
 

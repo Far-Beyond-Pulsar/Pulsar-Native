@@ -84,13 +84,20 @@ pub(crate) fn begin_pie(
     // Native hot reload (#653): pressing Play while a game runs rebuilds
     // and swaps the library WITHOUT dropping the world — the viewport stops
     // the old host only once the new build is in hand.
-    let (reload, loaded_artifact) = {
+    let (reload, loaded_artifact, generation) = {
         let mut st = shared_state.write();
         st.play.pie.building = true;
         st.play.pie.stop_requested = false;
         st.play.pie.last_error = None;
         st.play.pie.pending_start = None;
-        (st.play.pie.active, st.play.pie.loaded_artifact.clone())
+        // This Play's session; a Stop or another Play before the build
+        // finishes retires it (see the completion below).
+        st.play.pie.build_generation = st.play.pie.build_generation.wrapping_add(1);
+        (
+            st.play.pie.active,
+            st.play.pie.loaded_artifact.clone(),
+            st.play.pie.build_generation,
+        )
     };
     if !reload {
         // A new session: the problems panel forgets the last one's.
@@ -126,15 +133,34 @@ pub(crate) fn begin_pie(
                 &task,
             );
             let mut st = shared.write();
-            st.play.pie.building = false;
+            // A Stop (or a later Play) while cargo ran retired this build:
+            // the state now describes that newer session, not this one.
+            let current = st.play.pie.build_generation == generation;
+            if current {
+                st.play.pie.building = false;
+            }
             match result {
                 Ok(req) => {
-                    st.play.pie.pending_start = Some(req);
+                    // Start the game only while it is still wanted. After a
+                    // Stop the scene is back in edit mode (or about to be):
+                    // a game loaded then would run against the live level,
+                    // with no snapshot left for the next Stop to restore.
+                    let wanted =
+                        current && st.scene.is_play_mode() && !st.play.pie.stop_requested;
+                    if wanted {
+                        st.play.pie.pending_start = Some(req);
+                    } else {
+                        tracing::info!(
+                            "PiE: build finished after Stop; discarding it instead of starting the game"
+                        );
+                    }
                     Ok(())
                 }
                 Err(error) => {
                     tracing::error!("PiE build failed: {error}");
-                    st.play.pie.last_error = Some(error.clone());
+                    if current {
+                        st.play.pie.last_error = Some(error.clone());
+                    }
                     Err(error)
                 }
             }
@@ -153,6 +179,9 @@ pub(crate) fn end_pie(shared_state: Arc<parking_lot::RwLock<LevelEditorState>>) 
     let mut st = shared_state.write();
     st.play.pie.pending_start = None;
     st.play.pie.building = false;
+    // A build still running belongs to the session being stopped: its
+    // result must not start a game once it finishes.
+    st.play.pie.build_generation = st.play.pie.build_generation.wrapping_add(1);
     st.play.pie.pause_request = None;
     st.play.pie.step_request = 0;
     if st.play.pie.active {
@@ -276,6 +305,11 @@ fn build_pie_dylib(
         .current_dir(root)
         .output()
         .map_err(|e| format!("Failed to spawn cargo: {e}"))?;
+
+    // Cancelled while cargo ran: the artifact it built is not started.
+    if task.is_cancelled() {
+        return Err("Build cancelled".into());
+    }
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

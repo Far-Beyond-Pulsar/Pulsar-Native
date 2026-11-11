@@ -646,7 +646,8 @@ impl BuildConfigurations {
                 }
                 Err(error) => {
                     tracing::warn!("unreadable build configurations ({error}); using defaults");
-                    let _ = engine_fs::virtual_fs::rename(&path, &path.with_extension("toml.corrupt"));
+                    let _ =
+                        engine_fs::virtual_fs::rename(&path, &path.with_extension("toml.corrupt"));
                     None
                 }
             },

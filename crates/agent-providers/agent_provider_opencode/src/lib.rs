@@ -1,11 +1,44 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
     ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use std::time::Duration;
+
+/// Streams number their partial tool calls from 0; an index past this is a
+/// malformed stream, not a call list, and must not size a `Vec`.
+const MAX_STREAM_TOOL_CALLS: usize = 256;
+
+/// The blocking client. `Client::new()` gives every wait 30 s, which the
+/// first byte of a long generation exceeds. The blocking client applies
+/// `timeout` to each wait for the server (the response, then each body
+/// read), not to the whole request, so this keeps a slow stream open as long
+/// as the server keeps sending, and still fails a stalled one.
+fn http_client() -> anyhow::Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("building HTTP client")
+}
+
+/// The message of a top-level `error` a server sends as a stream event
+/// instead of an HTTP error status.
+fn stream_error(event: &Value) -> Option<String> {
+    let error = event.get("error")?;
+    Some(match error {
+        Value::Null => return None,
+        Value::String(message) => message.clone(),
+        Value::Object(fields) => fields
+            .get("message")
+            .and_then(|m| m.as_str())
+            .map_or_else(|| error.to_string(), str::to_string),
+        _ => error.to_string(),
+    })
+}
 
 fn models_url(base: &str) -> String {
     format!("{}/models", base.trim_end_matches('/'))
@@ -72,7 +105,7 @@ impl ProviderCrate for OpenCodeProviderCrate {
             .ok_or_else(|| anyhow!("unknown provider: {id}"))?;
         let api_key = config.get("api_key").unwrap_or_default().to_string();
         Ok(Box::new(OpenCodeChatProvider {
-            client: Client::new(),
+            client: http_client()?,
             id: id.to_string(),
             display_name: entry.display_name.to_string(),
             base_endpoint: entry.endpoint.to_string(),
@@ -112,10 +145,8 @@ impl ChatProvider for OpenCodeChatProvider {
                 401 | 403 => Err(anyhow::anyhow!("API key is invalid or expired")),
                 _ => Ok(()),
             },
-            Err(e) => {
-                tracing::warn!(error = %e, "validate_config connection failed, assuming valid");
-                Ok(())
-            }
+            // A hosted API: unreachable means misconfigured, not merely down.
+            Err(e) => Err(anyhow!("could not reach {murl}: {e}")),
         }
     }
 
@@ -369,7 +400,16 @@ fn parse_stream_tool_calls(events: &[Value]) -> Vec<ToolCall> {
                         let idx = tc
                             .get("index")
                             .and_then(|v| v.as_u64())
-                            .unwrap_or(ps.len() as u64) as usize;
+                            .map_or(ps.len(), |index| {
+                                usize::try_from(index).unwrap_or(usize::MAX)
+                            });
+                        if idx >= MAX_STREAM_TOOL_CALLS {
+                            tracing::warn!(
+                                index = idx,
+                                "ignoring a tool call delta whose index is out of range"
+                            );
+                            continue;
+                        }
                         while ps.len() <= idx {
                             ps.push(P::default());
                         }
@@ -429,6 +469,9 @@ fn read_stream_response(
             break;
         }
         let ev: Value = serde_json::from_str(data)?;
+        if let Some(message) = stream_error(&ev) {
+            return Err(anyhow!("chat API stream error: {message}"));
+        }
         if let Some(choice) = ev
             .get("choices")
             .and_then(|c| c.as_array())

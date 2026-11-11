@@ -1,12 +1,45 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
     ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use std::time::Duration;
 use tracing;
+
+/// Streams number their partial tool calls from 0; an index past this is a
+/// malformed stream, not a call list, and must not size a `Vec`.
+const MAX_STREAM_TOOL_CALLS: usize = 256;
+
+/// The blocking client. `Client::new()` gives every wait 30 s, which the
+/// first byte of a long generation exceeds. The blocking client applies
+/// `timeout` to each wait for the server (the response, then each body
+/// read), not to the whole request, so this keeps a slow stream open as long
+/// as the server keeps sending, and still fails a stalled one.
+fn http_client() -> anyhow::Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("building HTTP client")
+}
+
+/// The message of a top-level `error` a server sends as a stream event
+/// instead of an HTTP error status.
+fn stream_error(event: &Value) -> Option<String> {
+    let error = event.get("error")?;
+    Some(match error {
+        Value::Null => return None,
+        Value::String(message) => message.clone(),
+        Value::Object(fields) => fields
+            .get("message")
+            .and_then(|m| m.as_str())
+            .map_or_else(|| error.to_string(), str::to_string),
+        _ => error.to_string(),
+    })
+}
 
 // ── Provider entries ────────────────────────────────────────────────────────
 
@@ -109,7 +142,8 @@ const ENTRIES: &[Entry] = &[
         id: "cohere",
         display_name: "Cohere",
         kind: ProviderKind::Cloud,
-        endpoint: Some("https://api.cohere.com/v2"),
+        // Cohere's own v2 API is not OpenAI-shaped; its compatibility API is.
+        endpoint: Some("https://api.cohere.ai/compatibility/v1"),
         use_ollama_protocol: false,
         chat_path: None,
         template: false,
@@ -275,16 +309,17 @@ impl ProviderCrate for OpenAiProviderCrate {
         let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol, entry.chat_path);
         let models_url = build_models_url(&chat_url, entry.use_ollama_protocol);
 
-        let config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
+        let _config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
 
         Ok(Box::new(OpenAiChatProvider {
-            client: Client::new(),
+            client: http_client()?,
             id: id.to_string(),
             display_name: entry.display_name.to_string(),
             chat_url,
             models_url,
             api_key,
             is_ollama: entry.use_ollama_protocol,
+            cloud: entry.kind == ProviderKind::Cloud,
         }))
     }
 }
@@ -347,6 +382,8 @@ struct OpenAiChatProvider {
     models_url: String,
     api_key: String,
     is_ollama: bool,
+    /// A hosted API: unreachable means misconfigured, not merely down.
+    cloud: bool,
 }
 
 impl ChatProvider for OpenAiChatProvider {
@@ -373,7 +410,10 @@ impl ChatProvider for OpenAiChatProvider {
                 401 | 403 => Err(anyhow::anyhow!("API key is invalid or expired")),
                 _ => Ok(()),
             },
+            Err(e) if self.cloud => Err(anyhow!("could not reach {}: {e}", self.models_url)),
             Err(e) => {
+                // A self-hosted server may be down while its settings are
+                // right; the chat reports the failure when it is used.
                 tracing::warn!(url = %self.models_url, error = %e, "validate_config: connection failed, assuming valid");
                 Ok(())
             }
@@ -701,7 +741,16 @@ fn parse_stream_tool_calls(events: &[Value]) -> Vec<ToolCall> {
                         let idx = tc
                             .get("index")
                             .and_then(|v| v.as_u64())
-                            .unwrap_or(ps.len() as u64) as usize;
+                            .map_or(ps.len(), |index| {
+                                usize::try_from(index).unwrap_or(usize::MAX)
+                            });
+                        if idx >= MAX_STREAM_TOOL_CALLS {
+                            tracing::warn!(
+                                index = idx,
+                                "ignoring a tool call delta whose index is out of range"
+                            );
+                            continue;
+                        }
                         while ps.len() <= idx {
                             ps.push(P::default());
                         }
@@ -761,6 +810,9 @@ fn read_stream_response(
             break;
         }
         let ev: Value = serde_json::from_str(data)?;
+        if let Some(message) = stream_error(&ev) {
+            return Err(anyhow!("chat API stream error: {message}"));
+        }
         if let Some(choice) = ev
             .get("choices")
             .and_then(|c| c.as_array())
@@ -1044,6 +1096,34 @@ mod template_tests {
             build_chat_url("http://gpu-box:1234/v1/", false, None),
             "http://gpu-box:1234/v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn cohere_uses_its_openai_compatible_api() {
+        let cohere = entry("cohere");
+        let chat = build_chat_url(cohere.endpoint.unwrap(), false, None);
+        assert_eq!(
+            chat,
+            "https://api.cohere.ai/compatibility/v1/chat/completions"
+        );
+        assert_eq!(
+            build_models_url(&chat, false),
+            "https://api.cohere.ai/compatibility/v1/models"
+        );
+    }
+
+    #[test]
+    fn a_stream_error_event_is_reported() {
+        assert_eq!(
+            stream_error(&json!({ "error": { "message": "quota", "type": "x" } })).as_deref(),
+            Some("quota")
+        );
+        assert_eq!(
+            stream_error(&json!({ "error": "down" })).as_deref(),
+            Some("down")
+        );
+        assert_eq!(stream_error(&json!({ "error": null })), None);
+        assert_eq!(stream_error(&json!({ "choices": [] })), None);
     }
 }
 

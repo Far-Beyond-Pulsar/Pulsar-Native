@@ -315,7 +315,8 @@ impl TraitIndex {
         let mut part = self.project.clone();
         part.traits.retain(|record| record.path != relative);
         let prefix = format!("{relative}: ");
-        part.problems.retain(|problem| !problem.starts_with(&prefix));
+        part.problems
+            .retain(|problem| !problem.starts_with(&prefix));
 
         if virtual_fs::exists(&path).unwrap_or(false) {
             let bytes = virtual_fs::read_file(&path)
@@ -494,7 +495,8 @@ impl TraitIndex {
 
     /// The paths of the traits the implementer `id` declares.
     pub fn traits_for(&self, id: &str) -> Option<&[String]> {
-        self.entry(id).map(|entry| entry.implemented_traits.as_slice())
+        self.entry(id)
+            .map(|entry| entry.implemented_traits.as_slice())
     }
 
     /// Every implementer, in id order.
@@ -531,22 +533,26 @@ impl TraitIndex {
         let mut bytes =
             serde_json::to_vec_pretty(&persisted).context("Failed to serialize the trait index")?;
         bytes.push(b'\n');
-        match virtual_fs::write_file_atomically(&path, &bytes) {
-            Ok(()) => Ok(()),
-            Err(error) if virtual_fs::is_remote() => {
-                // Remote and P2P providers currently have no atomic publish
-                // operation. The index is derived and can always be rebuilt.
-                tracing::warn!(
-                    path = %path.display(),
-                    %error,
-                    "Provider has no atomic index write; writing derived index directly"
-                );
-                virtual_fs::write_file(&path, &bytes)
-                    .with_context(|| format!("Failed to write derived index '{}'", path.display()))
-            }
-            Err(error) => Err(error)
-                .with_context(|| format!("Failed to atomically write '{}'", path.display())),
+        replace_file(&path, &bytes)
+            .with_context(|| format!("Failed to write derived index '{}'", path.display()))
+    }
+}
+
+/// Replace `path` with `bytes` atomically, so an interrupted write cannot
+/// leave it truncated. Remote and P2P providers have no atomic publish
+/// operation yet and write directly.
+fn replace_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    match virtual_fs::write_file_atomically(path, bytes) {
+        Ok(()) => Ok(()),
+        Err(error) if virtual_fs::is_remote() => {
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "Provider has no atomic write; writing directly"
+            );
+            virtual_fs::write_file(path, bytes)
         }
+        Err(error) => Err(error),
     }
 }
 
@@ -622,8 +628,8 @@ fn mounted_trait(project_root: &Path, relative: &str) -> std::result::Result<Tra
         .map_err(|error| format!("{relative}: unreadable: {error:#}"))?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("{relative}: malformed trait declaration: {error}"))?;
-    let id =
-        embedded_id(&value).ok_or_else(|| format!("{relative}: a mounted trait must carry its id"))?;
+    let id = embedded_id(&value)
+        .ok_or_else(|| format!("{relative}: a mounted trait must carry its id"))?;
     let name_part = id
         .strip_prefix(owner.as_str())
         .and_then(|rest| rest.strip_prefix('.'));
@@ -801,7 +807,8 @@ fn write_trait(project_root: &Path, relative: &str, value: &Value) -> Result<()>
     let path = project_root.join(relative);
     let mut bytes = serde_json::to_vec_pretty(value).context("Failed to serialize trait")?;
     bytes.push(b'\n');
-    virtual_fs::write_file(&path, &bytes)
+    // The trait asset is the user's data, rewritten during an index rebuild.
+    replace_file(&path, &bytes)
         .with_context(|| format!("Failed to write trait asset '{}'", path.display()))?;
     mirror_to_file_index(project_root, relative, value);
     Ok(())
@@ -876,7 +883,10 @@ fn entry_for(db: &TraitDb, kind: &str, relative: &str, scanned: Scanned) -> Impl
         if db.get(id).is_some() {
             ids.insert(id.to_owned());
         } else {
-            tracing::warn!(implementer = relative, "Ignoring reference to missing trait id '{id}'");
+            tracing::warn!(
+                implementer = relative,
+                "Ignoring reference to missing trait id '{id}'"
+            );
             unresolved.insert(id.to_owned());
         }
     }

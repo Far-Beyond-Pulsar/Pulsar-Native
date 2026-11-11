@@ -18,9 +18,17 @@ static DB_LOCK: Mutex<()> = Mutex::new(());
 
 fn with_db(project_root: &Path, edit: impl FnOnce(&mut ImportDb)) -> Result<(), String> {
     let _guard = DB_LOCK.lock();
-    let mut db = ImportDb::load(project_root);
+    let (mut db, migration) = ImportDb::load_with_migration(project_root);
     edit(&mut db);
     let saved = db.save(project_root).map_err(|error| format!("{error:#}"));
+    if saved.is_ok() {
+        // The save carried the legacy options folded into the records; only
+        // now may the legacy store drop them. This is the one place the
+        // migration writes, and it holds `DB_LOCK` like every other write.
+        if let Some(migration) = migration {
+            migration.commit(project_root);
+        }
+    }
     crate::state::bump_db_revision();
     saved
 }
