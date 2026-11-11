@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use std::{collections::HashMap, env};
+use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args().nth(1).expect("database path");

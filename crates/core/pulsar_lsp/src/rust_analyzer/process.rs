@@ -3,7 +3,7 @@
 //! [`RustAnalyzerManager::start`], `stop`, `restart`.
 use anyhow::{anyhow, Result};
 use gpui::{Context, Window};
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;

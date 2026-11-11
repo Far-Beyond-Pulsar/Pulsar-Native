@@ -2,7 +2,6 @@
 //! Blueprint events. Entry point: [`expand`].
 
 use proc_macro::TokenStream;
-use quote::quote;
 use syn::{ItemTrait, parse::Parser, parse_macro_input};
 
 pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {

@@ -138,7 +138,7 @@ pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), St
 /// signatures in the Blueprint bridge after their Gamma descriptors exist.
 pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration>
 {
-    crate::runtime::events().iter().copied().into_iter()
+    crate::runtime::events().iter().copied()
 }
 
 /// Short-lived, per-entity outbox for events emitted by reflected World
@@ -635,7 +635,6 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
     crate::runtime::world_components()
         .iter()
         .copied()
-        .into_iter()
         .map(|r| r.class_name)
 }
 

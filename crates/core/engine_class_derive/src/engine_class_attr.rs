@@ -186,7 +186,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    let name = &item_struct.ident;
+    let _name = &item_struct.ident;
     // SceneDB storage (Pod/HasTypeToken/SceneColumnSet/GpuColumnSet) is no
     // longer hand-generated here -- `add_scene_store` instead adds
     // `::pulsar_scenedb::SceneStore` to `derive_additions` above, which

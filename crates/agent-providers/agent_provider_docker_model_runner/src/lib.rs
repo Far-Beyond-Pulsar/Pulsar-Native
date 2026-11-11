@@ -497,7 +497,7 @@ impl ChatProvider for DockerModelRunnerProvider {
     }
 }
 
-use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+use agent_chat_core::{ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
 
 pub struct DockerModelRunnerProviderCrate;
 

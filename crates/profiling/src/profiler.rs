@@ -145,6 +145,12 @@ impl Profiler {
     }
 }
 
+impl Default for Profiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Profiler;

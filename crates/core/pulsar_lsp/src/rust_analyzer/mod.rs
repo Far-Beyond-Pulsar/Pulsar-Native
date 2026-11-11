@@ -16,13 +16,12 @@ mod transport;
 pub use path_utils::{path_key, path_to_uri, uri_key, uri_to_path};
 
 use gpui::{Context, EventEmitter, Window};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 use ui::diagnostics::Diagnostic;
 
@@ -209,6 +208,7 @@ impl Drop for RustAnalyzerManager {
 #[cfg(test)]
 mod trigger_tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn the_servers_registered_trigger_characters_are_read_from_initialize() {

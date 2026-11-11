@@ -1,5 +1,5 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
     ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
 };
 use anyhow::{anyhow, Context};

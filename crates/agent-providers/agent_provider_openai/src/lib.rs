@@ -1,5 +1,5 @@
 use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
     ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
 };
 use anyhow::{anyhow, Context};
@@ -309,7 +309,7 @@ impl ProviderCrate for OpenAiProviderCrate {
         let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol, entry.chat_path);
         let models_url = build_models_url(&chat_url, entry.use_ollama_protocol);
 
-        let config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
+        let _config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
 
         Ok(Box::new(OpenAiChatProvider {
             client: http_client()?,

@@ -832,7 +832,7 @@ mod tests {
     fn event(i: u64) -> ProfileEvent {
         ProfileEvent {
             scope_id: i,
-            parent_scope_id: (i % 2 == 0).then_some(i / 2),
+            parent_scope_id: i.is_multiple_of(2).then_some(i / 2),
             name: format!("scope-{i}"),
             thread_id: 7,
             thread_name: Some("worker ✓".into()),

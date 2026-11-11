@@ -9,7 +9,6 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
 use syn::{ItemImpl, parse::Parser, parse_macro_input};
 
 /// The attribute's optional `enabled = field` and `class = "Name"` options.
@@ -300,7 +299,7 @@ fn generate(
     let handler_calls = &handlers.calls;
     let handler_events = &handlers.events;
     let enabled_field = args.enabled_field.clone();
-    let tick = find_method(impl_block, "tick");
+    let _tick = find_method(impl_block, "tick");
     let begin_play = find_method(impl_block, "begin_play");
     let end_play = find_method(impl_block, "end_play");
     let shim = quote::format_ident!("__pulsar_component_tick_{}", ty_ident);

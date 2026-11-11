@@ -294,10 +294,6 @@ mod tests {
         assert!(scanner.line_has_unreferenced_todo("  TODO: document", Syntax::PowerShell, false));
         assert!(!scanner.line_has_unreferenced_todo("#>", Syntax::PowerShell, false));
         assert!(scanner.line_has_unreferenced_todo("$x = 1 # TODO", Syntax::PowerShell, false));
-        assert!(!scanner.line_has_unreferenced_todo(
-            "$x = '# TODO'",
-            Syntax::PowerShell,
-            false
-        ));
+        assert!(!scanner.line_has_unreferenced_todo("$x = '# TODO'", Syntax::PowerShell, false));
     }
 }

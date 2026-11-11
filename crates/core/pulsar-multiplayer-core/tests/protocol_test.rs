@@ -549,7 +549,7 @@ async fn test_replicator_sync_state() {
     replicator.sync_state().await.unwrap();
 
     // Verify state was sent via channel — read from the sender's buffer
-    let received = tokio::time::timeout(std::time::Duration::from_millis(100), tx.closed()).await;
+    let _received = tokio::time::timeout(std::time::Duration::from_millis(100), tx.closed()).await;
 
     // The state_update was sent via channel.send, which goes through
     // the internal tx/rx pair. We can't easily get it from here since
