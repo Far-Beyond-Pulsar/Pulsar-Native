@@ -75,7 +75,9 @@ pub fn collect() -> Linked {
         inventory::iter::<pulsar_world_registry::WorldComponentRegistration>
             .into_iter()
             // A plugin's classes come from its root's build.
-            .chain(pulsar_plugins::built::<pulsar_world_registry::WorldComponentRegistration>())
+            .chain(pulsar_plugins::built::<
+                pulsar_world_registry::WorldComponentRegistration,
+            >())
             .map(|registration| (registration.class_name, registration.origin))
             .collect();
     let mirrored = ids::<GpuMirrorRegistration>(|r| (r.component_id)());

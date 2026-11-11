@@ -461,9 +461,8 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
                     current_struct = Some(caps[1].to_string());
                 }
             }
-            let by_constant = line.contains(".key()")
-                || line.contains(".name()")
-                || line.contains(".resolve(");
+            let by_constant =
+                line.contains(".key()") || line.contains(".name()") || line.contains(".resolve(");
             if !line.contains("#[gpu(") && !line.contains("BufferKey::of") && !by_constant {
                 continue;
             }
