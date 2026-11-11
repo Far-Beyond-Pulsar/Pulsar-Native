@@ -1,0 +1,8 @@
+# Files allowed to call `std::fs` (and the `Path` methods that ask the disk)
+# directly: `#[allow(clippy::disallowed_methods)]` in them, with the reason
+# here. Everything else goes through `engine_fs::virtual_fs` (the root
+# clippy.toml). This list may only shrink; checked by
+# crates/core/engine_fs/tests/std_fs_allow_list.rs.
+#
+# path | reason
+

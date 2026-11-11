@@ -122,8 +122,9 @@ let pos: Vec3 = value.get_field_typed("position").unwrap();
 ```
 
 Dynamic types are registered in `DYNAMIC_TYPE_REGISTRY` (global `LazyLock`,
-auto-assigns UUIDs). User-defined `.alias.json` files are scanned by
-`engine_fs::UserTypeRegistry` and registered here.
+auto-assigns UUIDs). (The old `engine_fs::UserTypeRegistry`, which scanned
+`.alias.json` files into it, had no live caller and was deleted in p21; the
+type debugger lists what it is given.)
 
 ## Components in the World
 

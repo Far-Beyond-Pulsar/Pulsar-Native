@@ -1,83 +1,139 @@
 # Traits
 
-A **trait** is a named contract: a set of methods an asset promises to
-provide. Traits are language-agnostic project data (`*.trait.json`). Blueprints
-are the first implementers, and any plugin can add its own asset kind. The
-engine uses traits to give gameplay *roles* to Blueprints (game mode, player
-controller, ...), and the project index answers "who implements this?".
+A **trait** is a named contract: a set of methods an implementer promises to
+provide. Traits are language-agnostic data (`*.trait.json`): the project's own,
+and those the engine and the enabled plugins serve read-only into every
+project. Implementers come from registered **sources**: Blueprints (the
+Blueprint plugin) and native components (from reflection), and any plugin can
+add its own kind. The engine uses traits to give gameplay **roles** to classes
+(game mode, player controller, ...), and the project's trait index answers
+"who implements this?". The one owner of all of it is `pulsar_traits`.
 
 ## Pieces
 
 | Piece | Where | What |
 |---|---|---|
-| Trait asset | `ui_types_common::TraitAsset` (`types.rs`); editor in `plugins/vendor/trait_editor` (the `pulsar.trait_editor` plugin) | `.trait.json`: `id`, `name`, `methods`, `supertraits`, `meta` |
-| Records | `engine_fs::trait_records` (`TraitRecord`) | Tolerant parse of a trait asset, no `ui_types_common` needed (runtime-safe) |
-| Built-ins | `engine_fs::builtin_traits` | Engine-owned traits: `IntoGraph` and the four role traits |
-| `TraitDb` | `engine_fs::trait_db` | Resolved in-memory model: maps, supertrait closure, effective implementers |
-| Index | `engine_fs::BlueprintTraitIndex` (`blueprint_trait_index.rs`) | Scans/persists `.pulsar/blueprint_trait_index.json` (schema 2), incremental `update_path` |
-| Conformance | `engine_fs::trait_conformance` | Does an asset provide the methods of the traits it declares? |
-| Roles | `engine_fs::world_roles` | `ROLES` table, `RoleSelection` (level -> paths), `WorldRoles` (resolved + checked) |
+| Trait asset | `ui_types_common::TraitAsset` (`types.rs`); editor in `plugins/vendor/trait_editor` (the `pulsar.trait_editor` plugin) | `.trait.json`: `id`, `name`, `methods`, `supertraits`, `meta` (`contractVersion`) |
+| Records | `pulsar_traits::records` (`TraitRecord`) | Tolerant parse of a trait asset, no `ui_types_common` needed (runtime-safe) |
+| Engine traits | `pulsar_traits::builtin`, files in `crates/core/pulsar_traits/content/traits/` | `IntoGraph` and the four role traits, served read-only at `pulsar/traits/` (the engine's VFS mount) |
+| `TraitDb` | `pulsar_traits::db` | Resolved in-memory model: maps, supertrait closure, effective implementers, each implementer's source kind |
+| Sources | `pulsar_traits::sources` | `TraitImplementerSource` (kind, file scan, listed implementers), `Binding` (how the runtime reaches an implementer), `NativeTraitImpl` + `implements!` (native components) |
+| Index | `pulsar_traits::TraitIndex` (`index.rs`) | The project's one index over every source and the mounted traits; stores `.pulsar/trait_index.json` (schema 3), incremental `update_path` |
+| Conformance | `pulsar_traits::conformance` | Does an implementer provide the methods of the traits it declares? |
+| Roles | `pulsar_traits::roles` | `RoleRegistration` (the registry), `RoleSelection` (level -> paths), `WorldRoles` (resolved + checked, plus the level's settings) |
+| Blueprint source | `plugins/vendor/blueprint_editor/src/features/traits/source.rs` | Which files are Blueprints, what they declare and provide, `check_blueprint`; registered by the plugin's root |
 | Reflection | `pulsar_reflection::trait_registry` (`TRAIT_REGISTRY`) | Published, language-agnostic snapshot per project |
 | Plugin API | `plugin_editor_api::ProjectTraits` | `traits()`, `implementers(trait)`, `traits_of(asset)`, `implements`, `to_json` |
 | Blueprint editor | `plugins/vendor/blueprint_editor/src/features/traits/` | Trait panel, Add-menu trait events, conformance at compile/preflight |
-| Runtime | `pulsar_game` (`roles.rs`, `scripting/driver.rs`, `scripting/traits.rs`) | Spawns the selected role classes as session entities, answers "does this entity's class implement trait X", calls their trait events through the trait; possession runs the plugins' session hooks on the pawn (the input plugin routes the player's input to the character) |
+| Runtime | `pulsar_game` (`roles.rs`, `scripting/driver/roles.rs`, `scripting/traits.rs`) | Spawns the selected role classes as session entities, answers "does this entity implement trait X", dispatches trait methods to script handlers and native component methods (`RuntimeTraits`, the one dispatcher), publishes the role lifecycle on the hub |
 
 ## Identity: ids, not paths
 
 A trait's identity is its **id**; the path is where it currently lives.
 
 - The id is embedded in the asset (`"id"`). The trait editor keeps it and mints
-  one for a new trait. `engine_fs` assigns one to any trait asset that has none
-  when the index is rebuilt (the file is rewritten once). If the file cannot be
+  one for a new trait. The index assigns one to any project trait that has none
+  when it is rebuilt (the file is rewritten once). If the file cannot be
   written, the id comes from the repo's durable asset-id manifest
   (`.pulsar/asset_ids.json`, kind `trait`, via `ProjectFileIndex::ensure_typed_asset_id`,
   which also follows file moves), and as a last resort it is `path:<path>`
   (not rename-safe; logged). Ids are also mirrored into the file index
   (`record_typed_asset_id("trait", ...)`) so pickers can look traits up by kind.
 - A copied trait file carries the same id; the copy that sorts second gets a
-  fresh id. A copy of a built-in becomes an ordinary trait.
-- Blueprints store `blueprint_metadata.implemented_trait_ids` (authoritative)
-  and `implemented_traits` (paths: the pre-id format, a fallback, and a hint
-  refreshed on save). Resolution: ids first; then paths. A path beside ids that
-  all resolve is only a stale hint after a rename and is ignored. A Blueprint
-  with paths but no ids is **path only** (`BlueprintTraitEntry::path_only`): it
-  still works, and the Blueprint editor adds ids when it loads the traits and
-  writes them with the next save. Nothing rewrites a Blueprint behind your back.
+  fresh id. A copy of a mounted trait becomes an ordinary project trait.
+- **Namespaces.** A mounted trait's id is its owner's: `pulsar.<Trait>` in the
+  engine's mount, `<plugin id>.<Trait>` in a plugin's (`pulsar.lights.Glows`),
+  one segment after the owner, with a `meta.contractVersion` (>= 1). A mounted
+  trait outside its namespace or without a version is refused and reported
+  (`TraitIndex::problems`). A **project** trait whose id is in a reserved
+  namespace (the engine's or an installed plugin's) is refused too: an old
+  project's copy of a built-in (`types/traits/game_mode.trait.json` from before
+  p21) is reported, left as it is, and the mounted original serves instead.
+- Implementers store ids (`blueprint_metadata.implemented_trait_ids` for a
+  Blueprint) and may keep paths (the pre-id format, a fallback and a hint).
+  Resolution: ids first; then paths. A path beside ids that all resolve is only
+  a stale hint after a rename and is ignored. An implementer with paths but no
+  ids is **path only** (`ImplementerEntry::path_only`): it still works, and its
+  editor adds ids when it next saves. Nothing rewrites an implementer behind
+  your back.
 - Renaming or moving a trait therefore keeps its implementers. References
   that name nothing are kept as `unresolved`, shown as "Missing trait", and
-  never dropped silently.
+  never dropped silently. Disabling a plugin removes its mount, so its traits'
+  implementers see "Missing trait" the same way.
 - Supertrait references (`supertraits`: ids or paths) resolve the same way.
+
+## Implementer sources
+
+A `pulsar_traits::TraitImplementerSource` (an origin-gated contribution,
+category `traits.implementer_sources`) tells the index how to find one kind of
+implementer:
+
+- `kind`: its id, prefixed by its owner (`pulsar.blueprints.blueprint`); what
+  `TraitImplementer::kind` says;
+- `claims` + `scan`: which project files it reads, and one file's implementer
+  (`Scanned { id, declared, binding }`);
+- `list`: implementers that are not files, listed whenever the index loads.
+
+Each implementer carries a **binding**, how the runtime reaches it:
+`Binding::ScriptClass { dir }` (a compiled class: a trait method is its handler
+for the event `<Class>.<method>`) or `Binding::Component { class }` (a native
+component: a trait method is the component method it is bound to).
+
+- **Blueprints**: the Blueprint plugin's root registers the source
+  (`features/traits/source.rs`). A class's `graph_save.json` binds to its class
+  folder, so the runtime meets Blueprints through the index and compiled
+  classes, never a Blueprint file. A loose `*.blueprint.json` is indexed with no
+  binding. The plugin is an editor tool: a game links none of this.
+- **Native components**: `pulsar_traits` registers the source over every enabled
+  `NativeTraitImpl`, which a plugin's root submits:
+
+  ```rust
+  pulsar_traits::implements!(HealthComponent: "pulsar.health.Respawnable");
+  pulsar_traits::implements!(HealthComponent: "pulsar.health.Damageable" {
+      take_damage => apply_damage,
+  });
+  ```
+
+  Each trait method binds to one of the component's registered methods
+  (`pulsar_reflection::ComponentMethodRegistration`, the by-name methods scripts
+  and the editor call), the same name unless mapped, so `health.respawn()` and
+  the dispatcher calling `Respawnable.respawn` run the same function. The
+  binding is checked by the conformance rules with `ProvidedMethod`s built from
+  `MethodMetadata` (`sources::native_conformance`); a mismatch is an index
+  problem. SceneDB knows nothing about traits.
+
+A plugin's own asset kind (a behaviour tree, a state machine) registers a
+source and gets indexing, conformance and dispatch with no other change.
 
 ## The index
 
-`BlueprintTraitIndex` is derived data. `rebuild` scans the project (and is what
-opening a project does: providers have no reliable freshness contract).
-`update_path(root, path)` re-reads **one** Blueprint or trait asset and updates
-the persisted index; the Blueprint editor's save hook uses it. A trait change
-only recomputes the derived paths and the references that newly (un)resolve;
-no Blueprint file is read. Persisted output is sorted and deterministic.
+`TraitIndex` is derived data. `rebuild` scans the project (opening a project
+does it: providers have no reliable freshness contract), `update_path(root,
+path)` re-reads **one** implementer or trait file (save hooks use it), `load`
+reads the stored index, and `live(root)` is what the engine and plugins bring
+alone (a game whose content ships no index).
 
-Lookups are map-based (`TraitDb`): `blueprints_for_trait(id | path | name)`,
-`traits_for_blueprint`, `resolve_trait`. **Supertraits are modelled**: a
-Blueprint that declares `MyMode: GameMode` is an implementer of `GameMode`
-(`Implementation::via` names the declared trait). Cycles are detected and do
-not hang. The type system's `type-index/index.json` is cross-referenced
-(`TraitRecord::type_index_id`).
+What is **stored** (`.pulsar/trait_index.json`, schema 3) is only what the
+project's own files say: its traits, its file implementers, and the problems
+with them. Everything the engine and plugins bring (mounted traits and
+implementers, listed native implementers) is read again whenever the index
+loads, so it always matches the enabled set. Persisted output is sorted and
+deterministic.
 
-Blueprints as the editor writes them have `//` header comments and
-`format_version` 2; the index reads both (before this work it only accepted
-header-less version 1, so editor-saved Blueprints were never indexed).
+Lookups are maps (`TraitDb`): `implementers_of(id | path | name)`,
+`traits_for(implementer)`, `resolve_trait`, `entry_for_binding`.
+**Supertraits are modelled**: an implementer that declares `MyMode: GameMode`
+is an implementer of `GameMode` (`Implementation::via` names the declared
+trait). Cycles are detected and do not hang. The type system's
+`type-index/index.json` is cross-referenced (`TraitRecord::type_index_id`).
 
-## Built-in role traits
+## Engine traits
 
-Engine-owned. Defined once in `builtin_traits.rs` with fixed ids
-(`pulsar.GameMode`, ...) and materialized into every project as ordinary
-`types/traits/<snake>.trait.json`. At every rebuild the project copy is
-**re-synced**: `id`, `meta.builtin`, `meta.contractVersion` and the methods are
-the engine's; a project may edit `description` only. A copy whose methods drifted
-is rewritten (warning). A hand-authored file at a built-in's path is adopted.
-If the project cannot be written, `TraitDb` serves the engine's definition
-anyway. To change a contract, edit the definition and bump `contract_version`.
+Engine-owned, defined as files (`crates/core/pulsar_traits/content/traits/`),
+embedded and mounted read-only at `pulsar/traits/` in every project, with fixed
+ids (`pulsar.GameMode`, ...). A project cannot change them (a write fails with
+`engine_fs::ReadOnlyMount`; the trait editor opens them read-only). To change a
+contract, edit the file and bump its `meta.contractVersion`.
 
 | Role | Trait | Methods |
 |---|---|---|
@@ -89,31 +145,40 @@ anyway. To change a contract, edit the definition and bump `contract_version`.
 Ids are plain integers until the spawn path hands Blueprints typed actor
 references (a parameter type change is a contract version bump).
 
-## Roles in a level
+## Roles
 
-`engine_fs::world_roles::ROLES` is the one table: role -> trait id -> setting key
-(`game_mode_blueprint`, `player_controller_blueprint`, `player_character_blueprint`,
-`game_state_blueprint`). World Settings builds one picker per row, listing the
-Blueprints that implement the role's trait (effective, so sub-traits count). The
-fields on `WorldSettingsData` default to `None`, so older levels load. Adding a role:
-a row in `ROLES`, a field + two match arms in `WorldSettingsData`, a built-in trait.
+A role is a `pulsar_traits::RoleRegistration` (an origin-gated contribution,
+category `gameplay.roles`): `id` (`pulsar.game_mode`), `label`, `trait_id`,
+`setting_key` (the key in the level's `world_settings`), `order` and `start`
+(`Now`: spawned and started in the session's first script phase;
+`EndOfFrame`: queued like a script's spawn). The engine registers its four
+(`pulsar_traits::builtin`: `game_mode_blueprint`, `game_state_blueprint`,
+`player_controller_blueprint`, `player_character_blueprint`, the keys levels
+always used); a plugin registers its own from its root, and a disabled plugin's
+roles are absent. Adding a role is one registration and a trait.
 
-The level also names the input mapping the player controller brings to its pawn,
-`player_input_mapping` (`world_roles::PLAYER_INPUT_MAPPING_KEY`): a project-relative
-`.inputmap` path, chosen with the "Player Input Mapping" picker under the role
-pickers in World Settings (`panel/input_section.rs`, which lists the project's
-`.inputmap` files). It is not a role (no trait, no Blueprint):
-`RoleSelection::input_mapping` / `WorldRoles::input_mapping` carry it beside the
-roles and `WorldSettingsData` stores it as an `Option<String>`, so a level saved
-before it existed loads with none. It is kept in the level beside the role pickers
-because that needs no new Blueprint or class data; a property on the controller
-class would be the alternative.
+World Settings builds one picker per registered role, listing the implementers
+of its trait that run as a script class (effective, so sub-traits count). The
+selections live in `WorldSettingsData::values` under each role's key, with
+every plugin's field (`ui_level_editor::extend::WorldSettingField`: the input
+plugin's player input mapping, the physics plugin's toggle and gravity),
+rendered by kind; keys nobody registers now round-trip untouched.
 
 `WorldRoles::for_level(level_json, project_root)` resolves a level's selections
-against the persisted index (read-only; `Unchecked` when there is no index, as in
-shipped content): `Valid`, `NotInIndex`, `MissingTrait`, `Unchecked`.
-`TickLoop::load_world_roles` is called when a level loads, in standalone
-(`standalone::load_level`) and Play-in-Editor (`embed.rs`, from `target/pie/play.level`).
+against the stored index (read-only; `Unchecked` when there is none, as in
+shipped content): `Valid`, `NotInIndex`, `MissingTrait`, `Unchecked`. It also
+carries the level's `world_settings` (`WorldRoles::setting(key)`), where a
+plugin reads its own (the input plugin's `PLAYER_INPUT_MAPPING_KEY`, through
+`game_hooks::PossessionContext::roles`). `TickLoop::load_world_roles` is called
+when a level loads, in standalone (`standalone::load_level`) and Play-in-Editor
+(`embed.rs`, from `target/pie/play.level`).
+
+How others do it: Unreal's `AGameModeBase` names its classes
+(`PlayerControllerClass`, `DefaultPawnClass`, `GameStateClass`), each a
+`TSubclassOf` the World Settings override per level; a plugin adds a slot by
+subclassing the game mode. Here the slots are data: a plugin adds a role by
+registering it, and the slot names a trait rather than a base class, so any
+implementer kind fills it.
 
 ## Trait methods are event nodes
 
@@ -136,8 +201,10 @@ Placing the node is what *provides* the method for conformance.
 
 ## Conformance
 
-`trait_conformance::check_blueprint(db, blueprint_json)` checks every declared
-trait. A method is provided by a custom event (`local_events`), a macro
+`pulsar_traits::conformance::check(db, declared_ids, provided, severity)` is
+the one rule; each source builds the `ProvidedMethod`s from its own format. For
+Blueprints, `check_blueprint(db, blueprint_json)` (the Blueprint plugin's
+`features/traits/source.rs`) checks every declared trait. A method is provided by a custom event (`local_events`), a macro
 (`subgraphs`), or a placed trait event node, matched by snake-cased name. Missing
 methods (without a default body), wrong parameter counts and incompatible types are
 errors. It is deliberately conservative: parameter names are not compared, numeric
@@ -165,9 +232,16 @@ traits.to_json();                      // for a non-Rust plugin
 ```
 
 The host publishes after every index rebuild/update/load
-(`BlueprintTraitIndex::publish`). Snapshots are per project (`trait_scope_key`).
-A plugin adding its own implementer kind should extend the index (today only
-Blueprints are scanned; `TraitImplementer::kind` is `blueprint`).
+(`TraitIndex::publish`). Snapshots are per project (`pulsar_traits::scope_key`).
+`TraitImplementer::kind` is the implementer's source kind
+(`pulsar.blueprints.blueprint`, `pulsar.native.component`, a plugin's own).
+
+A plugin brings traits by mounting them: `.trait.json` files in its
+`MountedContent` (registered by its root) appear at `plugins/<plugin id>/` in
+every project that enables it, namespaced `<plugin id>.<Trait>` and versioned
+(`meta.contractVersion`). It implements traits with a `TraitImplementerSource`
+(its own asset kind) or `implements!` (its components). Depending on another
+plugin's trait is a `requires` entry (p22, #1608 phase 3).
 
 ## Editing a Blueprint's traits (no hitches)
 
@@ -176,7 +250,7 @@ the profile catalog from the trait catalog already in memory
 (`refresh_trait_catalog`, not the full `refresh_catalog`, which reads other classes'
 modules from disk). Persistence goes through the background `plugin_save`. Before
 this, the UI thread ran `save_to_path` (snapshot, serialize and write the whole
-Blueprint) and then `BlueprintTraitIndex::rebuild` (scan the manifest and read
+Blueprint) and then the trait index rebuild (scan the manifest and read
 every trait and Blueprint file) on each click. The catalog now loads from the
 persisted index, and trait file events/Refresh update the index on a background
 thread. Compile (codegen + `syn`) never runs on a trait change; it runs on Compile/Play.
@@ -185,14 +259,32 @@ thread. Compile (codegen + `syn`) never runs on a trait change; it runs on Compi
 
 ### Role entities
 
-`ScriptDriver::start_roles` (`pulsar_game/src/scripting/driver.rs`), in the first
-script phase, spawns every usable role as an **entity of its class**, through the
-same world-command path scripts use for `world::spawn` (`apply_spawn`). A role
-therefore has what any bound object has: an entity, a `ClassInstance`, and
-`Self`-scoped subscriptions on its own entity channel. Order: Game Mode, Game
-State and Player Controller are spawned and their scripts started within the phase
-(so they `begin_play` in that order, before the level's own objects); the Player
-Character's spawn is queued like a script's and applied at the end of the frame.
+`ScriptDriver::start_roles` (`pulsar_game/src/scripting/driver/roles.rs`), in the
+first script phase, spawns every usable role of the registry, in its order, as an
+**entity of its class**, through the same world-command path scripts use for
+`world::spawn` (`apply_spawn`). A role therefore has what any bound object has: an
+entity, a `ClassInstance`, and `Self`-scoped subscriptions on its own entity
+channel. A `Now` role (Game Mode, Game State, Player Controller) is spawned and its
+script started within the phase (so they `begin_play` in that order, before the
+level's own objects); an `EndOfFrame` role (the Player Character) is queued like a
+script's spawn and applied at the end of the frame.
+
+### Role lifecycle on the hub
+
+The driver publishes the role lifecycle as built-in Gamma events
+(`pulsar_events::builtin`, global channel), so a plugin's role, or any plugin,
+reacts to play wherever the engine's roles do:
+
+| Event | When |
+|---|---|
+| `RoleSpawned { role, entity }` | each role entity the session spawns (any registered role) |
+| `GameBegan { level }` | after the roles spawned and the engine's start hooks ran |
+| `PossessionChanged { controller, pawn, possessed }` | the local player's controller takes (`true`) or releases (`false`) its pawn |
+| `GameEnded { level }` | at shutdown, after possession ended and `GameMode.on_game_end` ran, before the role entities go |
+
+Events say what happened; trait methods are called directly (below), because they
+return values and some run at a set point in the frame (`on_input` every frame
+while possessed), which the hub's deferred delivery cannot give.
 
 Role entities are **session objects, never level data**: no level-format field, no
 editor outliner or save-path filtering. (Under Play-in-Editor they are visible in
@@ -226,14 +318,22 @@ the pawn. At shutdown (`end_play_all`, before the scripts end): possession ends,
 this level; skipped`; no roles logs once; unusable ones (`NotInIndex`,
 `MissingTrait`, no compiled script) warn and fail soft.
 
-Hooks go **through the trait** (`scripting/traits.rs`). `call_trait_hook(entity,
-trait, method, args)`:
+Hooks go **through the trait**, to **one dispatcher**: `RuntimeTraits::dispatch`
+(`scripting/traits.rs`; `ScriptDriver::call_trait(entity, trait, method, args)`
+builds the target):
 
 1. resolves the trait to its id (`TraitDb::resolve`) and the method in the trait's
    `required_methods(id)` (supertraits included), so an inherited method or a renamed
-   trait resolves; the handler is the class's event `<Class>.<trait method name>`;
-2. checks the class's **contract** with the existing conformance code
-   (`trait_conformance::check`) over what the compiled module actually handles. A
+   trait resolves;
+2. calls every implementation on the entity: its **script class**'s handler for
+   the event `<Class>.<trait method name>`, and each attached **native component**
+   implementing the trait, through the method bound to it
+   (`pulsar_traits::sources::bound_method`, the world registry's
+   `invoke_component_method`, arguments converted by the script VM's type
+   bindings). Unreal's `Execute_<Method>` reaches C++ and Blueprint
+   implementations the same way;
+3. checks the class's **contract** with the conformance code
+   (`pulsar_traits::conformance::check`) over what the compiled module actually handles. A
    required method (no default body) with no handler is a **violation**: the
    driver reports it once per session, naming the class, trait and signature, in
    `DriverReport::failures` and a warning, and the hook returns
@@ -246,13 +346,14 @@ trait, method, args)`:
 The **entity-level query** is `ScriptDriver::entity_implements(world, entity, trait)`
 (and `class_implements(class, trait)`; `entity_trait_check` keeps "cannot tell"
 apart). The entity's class is its `ClassInstance` resolved through the class
-registry; the class's declared trait ids come from its Blueprint
-(`<class dir>/graph_save.json`, `engine_fs::declared_traits`), widened by
-`TraitDb::with_ancestors`; the database is the persisted index when the project has
-one, else the engine's built-ins (`TraitDb::builtin`). No file path or name string
-of the caller takes part. A class whose Blueprint cannot be read (content shipped
-without it) is `TraitCheck::Unknown`, which hooks and possession treat as "trust the
-level's role binding" rather than as a failure. Possession validates the pawn with
+registry; the class's declared trait ids are its implementer entry's in the index
+(`Binding::ScriptClass` with the class's project-relative folder), widened by
+`TraitDb::with_ancestors`; the index is the stored one when the project has it,
+else `TraitIndex::live` (the engine's and the enabled plugins' traits and native
+implementers). No file path or name string of the caller takes part, and the
+runtime reads no Blueprint. A class the index does not list (content shipped
+without it) is `TraitCheck::Unknown`, which hooks and possession treat as "trust
+the level's role binding" rather than as a failure. Possession validates the pawn with
 this query and skips (reports) when it is a definite no.
 
 Behaviour notes: `on_possessed` now receives the controller's entity bits (the
@@ -270,7 +371,7 @@ root submits one (`input_plugin::runtime::session`; the input runtime and its
 1. At the end of `advance_possession`, `possession_hooks` calls each hook's `possess`
    with the pawn and a `PossessionContext` (the project root, the level's `WorldRoles`).
    The input plugin attaches a `PlayerInputComponent` carrying
-   `WorldRoles::input_mapping()` to the **pawn** entity (`attach_component`, by class
+   the level's mapping (its World Settings field, `runtime::session::PLAYER_INPUT_MAPPING_KEY`, read through `WorldRoles::setting`) to the **pawn** entity (`attach_component`, by class
    name) and returns the instance; the driver stamps it so a later session over the
    same world can replace a leftover instead of doubling it. A level with no mapping
    possesses without input (a warning, not a failure); a mapping the runtime cannot
@@ -343,22 +444,17 @@ Where each plugs in:
 
 - `ui_types_common::codegen::generate_trait` ignores `supertraits` (resolving them needs names).
 - The Trait Editor edits supertraits as text (one id/path per line), no picker.
-- The conformance check does not see a trait implemented by a plugin-defined asset kind.
-- The runtime trait query reads the persisted index (`.pulsar/blueprint_trait_index.json`) once per
-  driver, so a trait edited while the game runs is seen after the next class reload (which clears
-  the cache) or the next session; without an index only the built-in traits resolve.
+- The runtime reads the stored index (`.pulsar/trait_index.json`) once per driver, so a
+  trait edited while the game runs is seen after the next class reload (which clears the
+  cache) or the next session. A packaged game ships no index today, so its classes are
+  `Unknown` (the role binding is trusted) until the packager ships it.
 - Stale unresolved references only re-resolve incrementally when a trait changes;
-  a full rebuild re-reads the Blueprints' declared references.
+  a full rebuild re-reads every implementer's declared references.
+- A role spawns a script class, so only implementers bound to one (`Binding::ScriptClass`)
+  are offered for a role; a native component implements traits on the entities it is
+  attached to.
 - Input: the Blueprint editor reads the project's `.inputaction` files for its event
   nodes (its pin of the engine is by revision, so it does not link `input_plugin`) and
   mirrors `to_identifier` for an action's event name; a rename rule change there must be
   made in both. Actions created while Play-in-Editor runs have no declared events until
   the next session. The input library reads loose project files, not the content pak.
-- Submodules changed: `crates/external/pulsar-reflection` (Pulsar-Reflection),
-  `crates/third-party/graphy` (Graphy), `plugins/vendor/blueprint_editor`
-  (Plugin_Blueprints; input action event nodes, `engine_events.rs`, and a compiler
-  test) and `plugins/vendor/input_plugin` (Input plugin: the `editor` feature,
-  `runtime::{set_world_project_root, end_session}`, `Driver::use_project_root`,
-  `events::{project_action_descriptors, declare_project_events}`, README). `pulsar_game`
-  depends on `input_plugin` by path, so the input_plugin commit merges first, then the
-  Pulsar-Native pin. Merge dependency-first (see `CRATES.md`, "Submodule pins").

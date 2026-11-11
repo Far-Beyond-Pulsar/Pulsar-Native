@@ -675,6 +675,9 @@ almost_complete_range = "allow"
 arc_with_non_send_sync = "allow"
 borrowed_box = "allow"
 dbg_macro = "deny"
+# File IO goes through `engine_fs` (the root clippy.toml lists the methods;
+# architecture/std-fs-allowed.txt the files allowed to touch the disk).
+disallowed_methods = "deny"
 let_underscore_future = "allow"
 map_entry = "allow"
 module_inception = "allow"

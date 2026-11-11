@@ -62,7 +62,7 @@ pub fn installed_plugins() -> &'static [pulsar_plugins::PluginDescriptor] {
 /// (`pulsar_plugins::resolve`; problems are logged). Nothing else of a
 /// plugin is linked, so a disabled plugin's kind is absent from the game.
 pub fn project_plugin_roots(project_root: &Path) -> Vec<&'static str> {
-    let project = pulsar_plugins::ProjectPlugins::read(project_root).unwrap_or_else(|error| {
+    let project = engine_state::project_plugins(project_root).unwrap_or_else(|error| {
         tracing::error!("the project's plugin list: {error}; using every plugin's default");
         pulsar_plugins::ProjectPlugins::default()
     });
