@@ -4,7 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemImpl};
+use syn::{ItemImpl, parse_macro_input};
 
 /// `#[register_world_component]`'s optional arguments:
 ///
