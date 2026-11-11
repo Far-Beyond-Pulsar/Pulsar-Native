@@ -94,7 +94,10 @@ pub fn init(verbose: bool) -> LogGuard {
     let registry = tracing_subscriber::registry()
         .with(env_filter)
         .with(file_layer)
-        .with(live_layer);
+        .with(live_layer)
+        // Routes each editor task's tracing output to that task's own log
+        // (the Tasks window), by the task span the output is emitted in.
+        .with(editor_task_queue::TaskLogLayer);
 
     if verbose {
         // Console log: keep GorgeousFormatter (with color)

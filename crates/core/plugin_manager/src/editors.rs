@@ -49,7 +49,41 @@ impl PluginManager {
     /// Create an editor for a file while giving it an explicit tree root.
     /// This is used by engine source browsing, where the editor must browse the
     /// engine workspace even when a game project is currently open.
+    ///
+    /// Every editor, built in or from a plugin, is created here, and creation
+    /// always runs as an editor task (`editor_task_queue::scope`): it is listed
+    /// in the Tasks window while it runs, everything the editor logs while
+    /// being built goes to that task's log, and the watchdog reports it if it
+    /// holds the UI thread. A plugin cannot opt out; there is no other path
+    /// from a file to an editor. See `.agents/EDITOR_TASKS.md`.
     pub fn create_editor_for_file_with_project_root(
+        &mut self,
+        file_path: &Path,
+        project_root: Option<PathBuf>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
+        let name = file_path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| file_path.display().to_string());
+        editor_task_queue::scope(
+            editor_task_queue::TaskDescription::foreground(format!("Open editor: {name}"), "tabs"),
+            |task| {
+                tracing::info!(path = %file_path.display(), "creating an editor");
+                task.set_phase("Resolving the editor for this file");
+                let result =
+                    self.create_editor_for_file_tracked(file_path, project_root, window, cx);
+                match &result {
+                    Ok(_) => tracing::info!("editor created"),
+                    Err(error) => tracing::error!(%error, "editor creation failed"),
+                }
+                result
+            },
+        )
+    }
+
+    fn create_editor_for_file_tracked(
         &mut self,
         file_path: &Path,
         project_root: Option<PathBuf>,
@@ -80,6 +114,16 @@ impl PluginManager {
                 editor_id: editor_id.clone(),
             })?
             .clone(); // Clone to avoid borrow checker issues
+
+        tracing::info!(
+            file_type = %file_type_id,
+            editor = %editor_id,
+            plugin = %plugin_id.as_str(),
+            "resolved the editor for this file"
+        );
+        if let Some(task) = editor_task_queue::current() {
+            task.set_phase(format!("Building {editor_id} ({})", plugin_id.as_str()));
+        }
 
         // Check if this is a built-in editor
         if plugin_id.as_str() == "builtin" {

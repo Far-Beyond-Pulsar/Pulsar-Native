@@ -3309,7 +3309,11 @@ dependencies = [
 name = "editor_task_queue"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "futures",
  "parking_lot",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3462,6 +3466,7 @@ dependencies = [
  "bytemuck",
  "crossbeam-channel",
  "dashmap",
+ "editor_task_queue",
  "engine_fs",
  "engine_state",
  "engine_subsystems",
@@ -11390,6 +11395,7 @@ name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "editor_task_queue",
  "engine_fs",
  "engine_subsystems",
  "env_logger",
@@ -12267,6 +12273,7 @@ dependencies = [
  "directories 6.0.0",
  "dirs 6.0.0",
  "dotenv",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -17623,6 +17630,7 @@ dependencies = [
  "crossbeam-channel",
  "dashmap",
  "directories 6.0.0",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",

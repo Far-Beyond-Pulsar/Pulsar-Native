@@ -21,6 +21,7 @@ inventory = { workspace = true }
 # Dynamic library loading
 libloading = { workspace = true }
 serde_json = { workspace = true }
+editor_task_queue = { workspace = true }
 tracing = { workspace = true }
 once_cell = { workspace = true }
 arc-swap = { workspace = true }

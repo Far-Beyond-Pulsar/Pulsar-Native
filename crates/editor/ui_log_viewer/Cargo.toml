@@ -10,6 +10,8 @@ pulsar_plugins = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 engine_fs = { workspace = true }
+# The Tasks window (`components/task_panel.rs`) and per-task logs.
+editor_task_queue = { workspace = true }
 ui.workspace = true
 
 # UI crates

@@ -1,5 +1,8 @@
+use editor_task_queue::TaskLog;
 use gpui::{prelude::*, *};
-use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc, time::Duration};
+use std::{
+    cell::RefCell, collections::VecDeque, ops::Range, rc::Rc, sync::Arc, time::Duration,
+};
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -12,6 +15,7 @@ const MAX_BUFFERED_LINES: usize = 250_000;
 const TRIM_CHUNK_LINES: usize = 10_000;
 const LIVE_BATCH_MAX_LINES: usize = 2_048;
 const INGEST_FLUSH_INTERVAL_MS: u64 = 100;
+const TASK_LOG_POLL_MS: u64 = 150;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LogLevel {
@@ -400,13 +404,13 @@ impl LogTableDelegate {
         Self {
             store,
             columns: vec![
-                Column::new("line", "Line").width(px(90.0)).resizable(false),
+                Column::new("line", "Line").width(px(90.0)).resizable(true),
                 Column::new("level", "Level")
                     .width(px(88.0))
-                    .resizable(false),
+                    .resizable(true),
                 Column::new("message", "Message")
                     .width(px(1600.0))
-                    .resizable(false),
+                    .resizable(true),
             ],
         }
     }
@@ -554,7 +558,17 @@ impl TableDelegate for LogTableDelegate {
     }
 }
 
+/// Where a drawer's lines come from.
+enum LogSource {
+    /// Everything the engine logs (Mission Control).
+    Live,
+    /// One editor task's own log: the lines emitted inside that task's span,
+    /// so nothing from any other task or the rest of the engine appears.
+    Task(Arc<TaskLog>),
+}
+
 pub struct LogDrawer {
+    source: LogSource,
     store: Rc<RefCell<LogStore>>,
     table: Option<Entity<Table<LogTableDelegate>>>,
     search_input: Option<Entity<InputState>>,
@@ -565,7 +579,18 @@ pub struct LogDrawer {
 
 impl LogDrawer {
     pub fn new(_cx: &mut Context<Self>) -> Self {
+        Self::with_source(LogSource::Live)
+    }
+
+    /// A drawer that shows only `log`, one editor task's log. It uses the same
+    /// table, level filters and search as Mission Control's log view.
+    pub fn for_task(log: Arc<TaskLog>, _cx: &mut Context<Self>) -> Self {
+        Self::with_source(LogSource::Task(log))
+    }
+
+    fn with_source(source: LogSource) -> Self {
         Self {
+            source,
             store: Rc::new(RefCell::new(LogStore::new())),
             table: None,
             search_input: None,
@@ -590,7 +615,7 @@ impl LogDrawer {
             Table::new(delegate, window, cx)
                 .sortable(false)
                 .col_movable(false)
-                .col_resizable(false)
+                .col_resizable(true)
                 .row_selectable(false)
                 .col_selectable(false)
                 .loop_selection(false)
@@ -602,6 +627,11 @@ impl LogDrawer {
 
     pub fn start_monitoring(&mut self, cx: &mut Context<Self>) {
         if self._background_task.is_some() {
+            return;
+        }
+
+        if let LogSource::Task(log) = &self.source {
+            self.monitor_task_log(Arc::clone(log), cx);
             return;
         }
 
@@ -651,6 +681,44 @@ impl LogDrawer {
             }
         });
 
+        self._background_task = Some(task);
+        self.error_message = None;
+        cx.notify();
+    }
+
+    /// Follow one task's log by cursor. The task writes into a bounded buffer
+    /// and this reads only what is new, so a task that logs faster than the
+    /// UI repaints costs the task nothing.
+    fn monitor_task_log(&mut self, log: Arc<TaskLog>, cx: &mut Context<Self>) {
+        let task = cx.spawn(async move |this, cx| {
+            let mut cursor = 0u64;
+            loop {
+                let read = log.read_from(cursor);
+                cursor = read.next_cursor;
+                let mut batch = Vec::with_capacity(read.lines.len() + 1);
+                if read.dropped > 0 {
+                    batch.push(format!(
+                        "... {} earlier line(s) were dropped from this task's log buffer",
+                        read.dropped
+                    ));
+                }
+                batch.extend(read.lines);
+                if !batch.is_empty() {
+                    let alive = cx
+                        .update(|cx| {
+                            let Some(this) = this.upgrade() else {
+                                return false;
+                            };
+                            this.update(cx, |drawer, cx| drawer.ingest_lines(batch, cx));
+                            true
+                        });
+                    if !alive {
+                        break;
+                    }
+                }
+                smol::Timer::after(Duration::from_millis(TASK_LOG_POLL_MS)).await;
+            }
+        });
         self._background_task = Some(task);
         self.error_message = None;
         cx.notify();
