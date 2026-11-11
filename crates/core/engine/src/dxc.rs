@@ -205,7 +205,10 @@ fn extract(zip_path: &Path, out: &Path) -> Result<()> {
     let mut found = 0;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().replace('\\', "/").to_ascii_lowercase();
+        let Ok(raw_name) = entry.name() else {
+            continue;
+        };
+        let name = raw_name.replace('\\', "/").to_ascii_lowercase();
         let mut parts = name.rsplit('/');
         let (Some(file), Some(dir)) = (parts.next(), parts.next()) else {
             continue;
