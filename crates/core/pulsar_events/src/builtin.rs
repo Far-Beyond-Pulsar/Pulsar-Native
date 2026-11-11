@@ -248,7 +248,9 @@ mod tests {
     #[test]
     fn descriptors_use_script_friendly_fields() {
         let events = builtin_events();
-        assert_eq!(events.len(), 16);
+        // 16 plus the four session events (GameBegan, GameEnded,
+        // RoleSpawned, PossessionChanged).
+        assert_eq!(events.len(), 20);
         let hit = &events.iter().find(|(d, _)| d.name == "Hit").unwrap().0;
         assert_eq!(hit.id, Hit::stable_type_id());
         assert_eq!(

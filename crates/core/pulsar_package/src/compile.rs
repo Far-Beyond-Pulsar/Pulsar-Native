@@ -210,7 +210,7 @@ fn link_all(
 }
 
 fn is_older(a: &Path, b: &Path) -> bool {
-    let modified = |p: &Path| virtual_fs::metadata(p).ok().and_then(|m| m.modified);
+    let modified = |p: &Path| virtual_fs::metadata(p).ok().and_then(|m| m.modified_nanos());
     matches!((modified(a), modified(b)), (Some(a), Some(b)) if a < b)
 }
 

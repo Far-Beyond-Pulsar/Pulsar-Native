@@ -88,10 +88,6 @@ fn member_manifests(root: &Path) -> Vec<PathBuf> {
     manifests
 }
 
-fn features(names: &[&str]) -> BTreeSet<String> {
-    names.iter().map(|name| (*name).to_owned()).collect()
-}
-
 #[test]
 fn workspace_engine_fs_callers_declare_their_minimum_surface() {
     let root = workspace_root();
@@ -109,25 +105,10 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         "the workspace engine_fs baseline must stay local-only"
     );
 
-    let expected = BTreeMap::from([
-        ("agent_chat_tools".to_owned(), features(&[])),
-        ("asset_import".to_owned(), features(&[])),
-        ("engine_backend".to_owned(), features(&[])),
-        ("engine_state".to_owned(), features(&[])),
-        ("pulsar_class".to_owned(), features(&[])),
-        ("pulsar_content".to_owned(), features(&[])),
-        ("pulsar_game".to_owned(), features(&[])),
-        ("pulsar_scene".to_owned(), features(&[])),
-        ("pulsar_std".to_owned(), features(&[])),
-        ("pulsar_traits".to_owned(), features(&[])),
-        ("ui_common".to_owned(), features(&[])),
-        ("ui_file_manager".to_owned(), features(&[])),
-        ("ui_git_manager".to_owned(), features(&[])),
-        ("ui_level_editor".to_owned(), features(&[])),
-        ("ui_loading_screen".to_owned(), features(&[])),
-        ("ui_multiplayer".to_owned(), features(&[])),
-        ("ui_type_debugger".to_owned(), features(&[])),
-    ]);
+    // The callers that ask for more than the local-only baseline (`remote`,
+    // `p2p`), with what they ask for. Every other caller (since p21 that is
+    // every crate that touches a file) takes the baseline as it is.
+    let expected: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
     let mut actual = BTreeMap::new();
     for manifest_path in member_manifests(&root) {
@@ -159,11 +140,13 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
                 "{package} must inherit the workspace engine_fs baseline"
             );
         }
-        actual.insert(package.to_owned(), policy.features);
+        if !policy.features.is_empty() {
+            actual.insert(package.to_owned(), policy.features);
+        }
     }
 
     assert_eq!(
         actual, expected,
-        "classify every engine_fs caller explicitly; new callers must not inherit the full graph"
+        "a caller that enables engine_fs features must be listed here; new callers take the local-only baseline"
     );
 }

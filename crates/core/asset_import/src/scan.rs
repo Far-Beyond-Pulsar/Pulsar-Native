@@ -82,7 +82,7 @@ impl OfferedOnce {
         report.unlinked.retain(|_, sources| !sources.is_empty());
         report.out_of_date.retain(|record| {
             let version = engine_fs::virtual_fs::metadata(&project_root.join(&record.source))
-                .map(|meta| format!("{}:{:?}", meta.size, meta.modified))
+                .map(|meta| format!("{}:{:?}", meta.size, meta.modified_nanos()))
                 .unwrap_or_default();
             self.offered
                 .insert(format!("changed:{}:{version}", record.source))

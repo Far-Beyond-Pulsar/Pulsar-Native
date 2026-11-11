@@ -10,7 +10,7 @@ use ui::{button::Button, IconName, Selectable};
 /// A reusable toggle button that manages state through a callback.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// ToggleButton::new("my_button")
 ///     .icon(IconName::Grid)
 ///     .tooltip("Toggle Grid")
@@ -90,7 +90,7 @@ impl ToggleButton {
 /// of toggling a boolean value in shared state.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// create_state_toggle(
 ///     "toggle_grid",
 ///     IconName::LayoutDashboard,

@@ -12,6 +12,26 @@ use std::path::{Path, PathBuf};
 
 const ALLOW: &str = "allow(clippy::disallowed_methods)";
 
+/// What the root `clippy.toml` disallows for the disk (and `RustEmbed`, whose
+/// derive reads the disk in a debug build): a file whose allowance names none
+/// of these allows another rule's method (Helio's `create_shader_module`),
+/// not `std::fs`.
+const DISK_API: &[&str] = &[
+    "RustEmbed",
+    "fs::",
+    "File::",
+    "OpenOptions",
+    ".exists()",
+    ".try_exists()",
+    ".is_file()",
+    ".is_dir()",
+    ".metadata()",
+    ".symlink_metadata()",
+    ".read_dir()",
+    ".canonicalize()",
+    ".read_link()",
+];
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -50,7 +70,9 @@ fn rust_files(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) {
                 continue;
             }
             rust_files(&path, root, out);
-        } else if relative.ends_with(".rs") {
+        } else if relative.ends_with(".rs") && !relative.contains("/tests/") {
+            // Integration tests are outside the rule (clippy lints the
+            // libraries and binaries), so an allowance there is never needed.
             out.push(path);
         }
     }
@@ -70,14 +92,14 @@ fn listed(root: &Path) -> BTreeSet<String> {
 fn every_std_fs_allowance_is_listed_and_every_listed_file_still_needs_one() {
     let root = workspace_root();
     let mut files = Vec::new();
-    for top in ["crates", "plugins"] {
+    for top in ["crates", "plugins", "tools"] {
         rust_files(&root.join(top), &root, &mut files);
     }
     let allowing: BTreeSet<String> = files
         .iter()
         .filter(|path| {
             std::fs::read_to_string(path)
-                .map(|text| text.contains(ALLOW))
+                .map(|text| text.contains(ALLOW) && DISK_API.iter().any(|api| text.contains(api)))
                 .unwrap_or(false)
         })
         .map(|path| {
