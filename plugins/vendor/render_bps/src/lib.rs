@@ -11,8 +11,8 @@
 //! editor chrome ([`editor`], [`view`]), the Sections and Buffers panels and the
 //! pipeline preview.
 //!
-//! A project's `.rendergraph` assets are offered as render pipelines in the
-//! level editor's World Settings, next to Helio's built-in ones.
+//! A project's `.rendergraph` assets are what the level editor's World Settings
+//! asset picker offers as render pipelines, next to the ones providers offer.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -66,10 +66,8 @@ pub(crate) fn open_editor(
 }
 
 pub(crate) fn file_type() -> FileTypeDefinition {
-    // A new graph is a marker the editor expands when it opens the file: the
-    // default deferred pipeline, wired from the pins its passes declare. Those
-    // are known only once the pin probe has run, which a file written at startup
-    // cannot wait for.
+    // A new graph holds an On Frame Start and an Output node and nothing else:
+    // pipelines are not implicit, and every pass is added from the palette.
     FileTypeDefinition {
         id: FileTypeId::new(FILE_TYPE),
         extension: EXTENSION.to_string(),
@@ -77,10 +75,8 @@ pub(crate) fn file_type() -> FileTypeDefinition {
         icon: ui::IconName::Component,
         color: gpui::rgb(0x2B6CB0).into(),
         structure: FileStructure::Standalone,
-        default_content: serde_json::json!({
-            "format_version": helio_graph_asset::FORMAT_VERSION,
-            "template": "deferred",
-        }),
+        default_content: serde_json::from_str(&document::new_graph_asset().to_json())
+            .expect("a graph asset is JSON"),
         creation_directory: None,
         categories: vec!["Rendering".to_string()],
     }

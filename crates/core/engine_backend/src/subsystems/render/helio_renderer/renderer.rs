@@ -451,9 +451,10 @@ impl HelioEditorMailbox {
     }
 
     /// The level's render pipeline (World Settings): a registered pipeline id
-    /// (see [`super::pipelines`]), or `None` for the default. The viewport
-    /// rebuilds its renderer from it at the next frame boundary; an id that is
-    /// not registered runs the default.
+    /// (see [`super::pipelines`]), or `None` for no pipeline. The viewport
+    /// rebuilds its renderer from it at the next frame boundary, also when the
+    /// asset behind the id is saved again; an id that is not registered runs
+    /// no pipeline (there is no default).
     pub fn set_render_pipeline(&self, id: Option<String>) {
         self.requested_pipeline.set(id);
     }
@@ -603,8 +604,8 @@ pub struct HelioRenderer {
     /// The pipeline the level asks for (World Settings); see
     /// [`HelioEditorMailbox::set_render_pipeline`].
     requested_pipeline: super::pipelines::RequestedPipeline,
-    /// The registered id `inner` was built from.
-    applied_pipeline: Option<String>,
+    /// What `inner` was built from: the pipeline, or why none runs.
+    applied_pipeline: Option<super::pipelines::PipelineState>,
 
     // ── Camera State ──
     /// The perspective camera's pose: its frame follows the ground's local
@@ -686,6 +687,37 @@ struct HelioInner {
 use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
 
 impl HelioRenderer {
+    /// Publishes the debug views the current pipeline's passes advertise, for
+    /// the viewport's view menu. A pipeline swap changes them.
+    fn publish_debug_views(&self) {
+        let Some(inner) = self.inner.as_ref() else {
+            return;
+        };
+        let Ok(mut views) = self.viewport_debug_views.lock() else {
+            return;
+        };
+        let r = &inner.scene.renderer;
+        let legends = r.available_debug_view_legends();
+        let categories = r.available_debug_view_categories();
+        *views = r
+            .available_debug_views()
+            .into_iter()
+            .map(|view| ViewportDebugView {
+                name: view.name,
+                debug_mode: view.debug_mode,
+                description: view.description,
+                category: categories
+                    .iter()
+                    .find(|(mode, _)| *mode == view.debug_mode)
+                    .map_or("", |(_, category)| *category),
+                legend: legends
+                    .iter()
+                    .find(|(mode, _)| *mode == view.debug_mode)
+                    .map(|(_, legend)| *legend),
+            })
+            .collect();
+    }
+
     /// The scene renderer's host part of type `T` (a plugin's), once the
     /// renderer is built.
     pub fn host_part<T: super::host_parts::RenderHostPart>(&self) -> Option<&T> {
@@ -915,19 +947,25 @@ impl HelioRenderer {
             self.reset_taa_next_frame = true;
         }
 
-        // A different level pipeline is a different pass topology: rebuild.
-        // Compared as resolved ids, so an unknown id and the default match.
+        // A different level pipeline, or the same asset saved again, is a
+        // different pass topology: the renderer swaps its pipeline at this frame
+        // boundary (the scene, its GPU mirror and the device stay). Compared as
+        // states, so a pipeline registering after it was requested (a project
+        // graph loading) replaces the status screen of "not found".
         let wanted_pipeline =
-            super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
-        if self.inner.is_some() && self.applied_pipeline != wanted_pipeline {
-            tracing::info!(
-                previous_pipeline = ?self.applied_pipeline,
-                wanted_pipeline = ?wanted_pipeline,
-                "Rebuilding Helio renderer because the selected render pipeline changed"
-            );
-            self.inner = None;
-            self.applied_graph_settings = None;
-            self.reset_taa_next_frame = true;
+            super::pipelines::pipeline_state(self.requested_pipeline.get().as_deref());
+        if self.applied_pipeline.as_ref() != Some(&wanted_pipeline) {
+            if let Some(inner) = self.inner.as_mut() {
+                tracing::info!(
+                    previous_pipeline = ?self.applied_pipeline,
+                    wanted_pipeline = ?wanted_pipeline,
+                    "Swapping the Helio renderer's pipeline"
+                );
+                inner.scene.set_pipeline_state(wanted_pipeline.clone());
+                self.applied_pipeline = Some(wanted_pipeline);
+                self.reset_taa_next_frame = true;
+                self.publish_debug_views();
+            }
         }
 
         // A frame for another device (the old one was lost and a new one
@@ -993,32 +1031,7 @@ impl HelioRenderer {
                         },
                     );
                     scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
-                    self.applied_pipeline = super::pipelines::resolve_pipeline(
-                        self.requested_pipeline.get().as_deref(),
-                    );
-
-                    if let Ok(mut views) = self.viewport_debug_views.lock() {
-                        let r = &scene.renderer;
-                        let legends = r.available_debug_view_legends();
-                        let categories = r.available_debug_view_categories();
-                        *views = r
-                            .available_debug_views()
-                            .into_iter()
-                            .map(|view| ViewportDebugView {
-                                name: view.name,
-                                debug_mode: view.debug_mode,
-                                description: view.description,
-                                category: categories
-                                    .iter()
-                                    .find(|(mode, _)| *mode == view.debug_mode)
-                                    .map_or("", |(_, category)| *category),
-                                legend: legends
-                                    .iter()
-                                    .find(|(mode, _)| *mode == view.debug_mode)
-                                    .map(|(_, legend)| *legend),
-                            })
-                            .collect();
-                    }
+                    self.applied_pipeline = Some(scene.pipeline().clone());
 
                     let inner = HelioInner {
                         scene,
@@ -1032,6 +1045,7 @@ impl HelioRenderer {
                         editor_lines: None,
                     };
                     self.inner = Some(inner);
+                    self.publish_debug_views();
                     self.applied_graph_settings = Some(graph_settings.clone());
                     self.viewport_size = (width, height);
 

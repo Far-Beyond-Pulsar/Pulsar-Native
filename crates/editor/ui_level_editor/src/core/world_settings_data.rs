@@ -12,6 +12,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use engine_backend::subsystems::render::helio_renderer::pipelines;
+
 /// Gameplay and simulation defaults stored in each `.level` file.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -22,10 +24,15 @@ pub struct WorldSettingsData {
     pub fixed_timestep: f32,
     /// Whether simulation advances automatically during play.
     pub auto_simulation: bool,
-    /// The render pipeline the level runs: the id of a built-in Helio
-    /// pipeline (`helio.fxaa`) or the project-relative path of a render-graph
-    /// asset. `None`, or an id no longer registered, runs the engine default.
+    /// The render pipeline the level runs: an id a provider offers
+    /// (`helio.deferred`) or the project-relative path of a render-graph asset.
+    /// There is no default: `None`, or an id that is not registered, runs no
+    /// pipeline and the viewport says so.
     pub render_pipeline: Option<String>,
+    /// What `render_pipeline` means (`pipelines::PIPELINE_VERSION`):
+    /// 0 is a level saved when `None` meant the engine default, and loading
+    /// migrates it ([`WorldSettingsData::migrate_level`]).
+    pub pipeline_version: u32,
     /// Every registered setting by key: role selections (project-relative
     /// paths) and plugins' fields. Absent keys are their defaults.
     #[serde(flatten)]
@@ -39,12 +46,47 @@ impl Default for WorldSettingsData {
             fixed_timestep: 0.02,
             auto_simulation: true,
             render_pipeline: None,
+            pipeline_version: pipelines::PIPELINE_VERSION,
             values: Map::new(),
         }
     }
 }
 
 impl WorldSettingsData {
+    /// Migrates a level file's JSON in place before it is read: a level saved
+    /// when pipelines were implicit (no `pipeline_version`) and named none ran
+    /// the engine's default, so it is given that pipeline's id and the current
+    /// version. A level written since keeps its `None`.
+    pub fn migrate_level(level: &mut Value) {
+        let Some(root) = level.as_object_mut() else {
+            return;
+        };
+        let settings = root
+            .entry("world_settings")
+            .or_insert_with(|| Value::Object(Map::new()));
+        let Some(settings) = settings.as_object_mut() else {
+            return;
+        };
+        let version = settings
+            .get("pipeline_version")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32;
+        if version >= pipelines::PIPELINE_VERSION {
+            return;
+        }
+        let saved = settings
+            .get("render_pipeline")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        if let Some(migrated) = pipelines::migrated_render_pipeline(version, saved) {
+            settings.insert("render_pipeline".into(), Value::String(migrated));
+        }
+        settings.insert(
+            "pipeline_version".into(),
+            Value::from(pipelines::PIPELINE_VERSION),
+        );
+    }
+
     /// The value stored under `key`, if any.
     pub fn value(&self, key: &str) -> Option<&Value> {
         self.values.get(key)
@@ -85,6 +127,44 @@ impl WorldSettingsData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn levels_saved_with_an_implicit_pipeline_keep_rendering_and_new_ones_may_have_none() {
+        let migrate = |text: &str| {
+            let mut level: Value = serde_json::from_str(text).unwrap();
+            WorldSettingsData::migrate_level(&mut level);
+            serde_json::from_value::<WorldSettingsData>(level["world_settings"].clone()).unwrap()
+        };
+        for legacy in [
+            r#"{"version":"2.1"}"#,
+            r#"{"world_settings":{"time_scale":2.0}}"#,
+            r#"{"world_settings":{"render_pipeline":null}}"#,
+        ] {
+            let settings = migrate(legacy);
+            assert_eq!(
+                settings.render_pipeline.as_deref(),
+                Some(pipelines::LEGACY_DEFAULT_PIPELINE),
+                "{legacy}"
+            );
+            assert_eq!(settings.pipeline_version, pipelines::PIPELINE_VERSION);
+        }
+        // A saved choice is untouched, and so is an explicit None.
+        assert_eq!(
+            migrate(r#"{"world_settings":{"render_pipeline":"g/a.rendergraph"}}"#)
+                .render_pipeline
+                .as_deref(),
+            Some("g/a.rendergraph")
+        );
+        assert_eq!(
+            migrate(r#"{"world_settings":{"pipeline_version":1,"render_pipeline":null}}"#)
+                .render_pipeline,
+            None
+        );
+        // What the editor writes round-trips as no pipeline.
+        let saved = serde_json::to_value(WorldSettingsData::default()).unwrap();
+        let level = serde_json::json!({ "world_settings": saved });
+        assert_eq!(migrate(&level.to_string()).render_pipeline, None);
+    }
     use pulsar_traits::builtin::{GAME_MODE_ROLE, GAME_STATE_ROLE};
     use pulsar_traits::roles::{roles, world_settings_of, RoleSelection};
 

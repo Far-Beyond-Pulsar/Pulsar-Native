@@ -56,9 +56,11 @@ pub struct WorldSettingsPanelImpl {
     role_pickers: Vec<RolePicker>,
     /// The plugins' fields and their widgets.
     fields: Vec<fields_section::FieldState>,
-    /// The render pipeline picker and the ids it currently lists.
-    pipeline_picker: Entity<SearchableList<String>>,
-    pipeline_ids: Vec<String>,
+    /// The render pipeline asset picker, made when first shown.
+    pipeline_picker: Option<pipeline_section::PipelinePicker>,
+    /// Counts the times the project's render graphs were compiled again, so
+    /// the picker lists what is there now.
+    render_graph_epoch: u64,
     /// The level component sections' widget state, by class.
     level_components: HashMap<&'static str, level_component_section::SectionState>,
     environment_property_state: ui_common::PropertyStateManager,
@@ -109,29 +111,8 @@ impl WorldSettingsPanelImpl {
             })
             .collect();
 
-        let pipeline_ids = Self::pipeline_ids();
-        let pipeline_picker = cx.new(|cx| {
-            SearchableList::<String>::new(
-                window,
-                cx,
-                pipeline_ids.clone(),
-                pipeline_section::pipeline_label,
-            )
-            .with_empty_text("No render pipelines")
-            .with_max_width(px(360.0))
-            .with_max_height(px(320.0))
-        });
-
         let mut subscriptions = Vec::new();
         let fields = Self::build_fields(&state, window, cx, &mut subscriptions);
-        subscriptions.push(cx.subscribe(
-            &pipeline_picker,
-            |panel, _picker, event: &SearchableListEvent<String>, cx| {
-                if let SearchableListEvent::Select(id) = event {
-                    panel.world_settings.select_pipeline(id, cx);
-                }
-            },
-        ));
         for (input, field) in [
             (time_scale_input.clone(), NumericSetting::TimeScale),
             (fixed_timestep_input.clone(), NumericSetting::FixedTimestep),
@@ -194,8 +175,8 @@ impl WorldSettingsPanelImpl {
             fixed_timestep_input,
             role_pickers,
             fields,
-            pipeline_picker,
-            pipeline_ids,
+            pipeline_picker: None,
+            render_graph_epoch: 0,
             level_components: HashMap::new(),
             environment_property_state: ui_common::PropertyStateManager::default(),
             environment_properties: HashMap::new(),
@@ -360,7 +341,7 @@ impl WorldSettingsPanelImpl {
             return div().into_any_element();
         };
         let body = match key.as_str() {
-            "pipeline" => self.render_pipeline_section(cx),
+            "pipeline" => self.render_pipeline_section(window, cx),
             "environment" => self.render_environment_tools(cx),
             "simulation" => {
                 let auto_simulation = self.state.read().scene.world_settings.auto_simulation;

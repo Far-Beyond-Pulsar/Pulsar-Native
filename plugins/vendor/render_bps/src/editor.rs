@@ -912,10 +912,19 @@ impl RenderGraphEditor {
     /// The toolbar's Compile: check the graph and, if it is sound, run it in the preview.
     pub fn validate(&mut self, cx: &mut Context<Self>) {
         let (problems, asset) = self.check(cx);
+        let warnings = model::warnings(&asset, model::registry());
         self.status = Some(if problems.is_empty() {
             Status {
                 is_error: false,
-                text: "✓ Graph is valid".to_string(),
+                text: if warnings.is_empty() {
+                    "✓ Graph is valid".to_string()
+                } else {
+                    format!(
+                        "✓ Graph is valid, {} warning(s): {}",
+                        warnings.len(),
+                        warnings.join("; ")
+                    )
+                },
             }
         } else {
             Status {

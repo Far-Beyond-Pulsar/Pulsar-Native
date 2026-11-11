@@ -76,6 +76,31 @@ pub fn plugin_features() -> FeatureSet {
         })
 }
 
+/// The node kinds of the render features whose plugin is disabled, each with
+/// the plugin's id: what a graph asset can still name that no longer exists.
+/// (A registration whose origin is the engine's or no plugin's is never gated,
+/// so it is never listed.)
+pub fn disabled_feature_nodes() -> Vec<(String, &'static str)> {
+    let mut absent = Vec::new();
+    for registration in inventory::iter::<RenderFeatureRegistration> {
+        if pulsar_plugins::origin_enabled(registration.origin) {
+            continue;
+        }
+        let Some(plugin) = pulsar_plugins::plugin_of(registration.origin) else {
+            continue;
+        };
+        let mut scratch = helio_feature_api::NodeRegistry::new();
+        (registration.features)().register_into(&mut scratch);
+        absent.extend(
+            scratch
+                .list()
+                .into_iter()
+                .map(|node| (node.kind.clone(), plugin.id.as_str())),
+        );
+    }
+    absent
+}
+
 /// `config` with every registered plugin's feature settings.
 pub fn configure(config: helio::RendererConfig) -> helio::RendererConfig {
     pulsar_plugins::registered::<RenderFeatureRegistration>()

@@ -624,21 +624,39 @@ pub fn section_names(doc: &DocRef<'_>) -> HashMap<String, String> {
 
 // ── Text ─────────────────────────────────────────────────────────────────────
 
-/// Reads a `.rendergraph` file into a document. A new file is a marker the
-/// editor expands: the default deferred pipeline, wired from the pins its passes
-/// declare (known only once the pin probe has run).
-pub fn decode(text: &str, registry: &NodeRegistry) -> Result<RenderDocument, String> {
-    let marker: Value =
-        serde_json::from_str(text).map_err(|error| format!("invalid render graph: {error}"))?;
-    let is_empty = marker
-        .get("nodes")
-        .and_then(Value::as_array)
-        .map_or(true, |nodes| nodes.is_empty());
-    let asset = if is_empty && marker.get("template").and_then(Value::as_str) == Some("deferred") {
-        helio_presets::graphs::deferred_graph_asset(registry)
-    } else {
-        GraphAsset::from_json(text)?
+/// A new render graph: an On Frame Start node flowing into an Output node, and
+/// nothing else. Every pass is something the author adds from the palette; no
+/// pipeline is implied (the shipped ones are assets a provider offers).
+pub fn new_graph_asset() -> GraphAsset {
+    use helio_graph_asset::core_nodes::{ON_FRAME_START, OUTPUT};
+    use helio_graph_asset::{Connection, NodeInstance, PinRef};
+
+    let node = |id: &str, kind: &str, x: f32| NodeInstance {
+        id: id.to_string(),
+        kind: kind.to_string(),
+        params: Default::default(),
+        position: [x, 0.0],
     };
+    GraphAsset {
+        nodes: vec![
+            node("start", ON_FRAME_START, 0.0),
+            node("output", OUTPUT, 360.0),
+        ],
+        connections: vec![Connection {
+            from: PinRef::new("start", "out"),
+            to: PinRef::new("output", "in"),
+        }],
+        ..GraphAsset::default()
+    }
+}
+
+/// Reads a `.rendergraph` file into a document. A file with no nodes (one made
+/// before new graphs held their two core nodes) opens as a new graph.
+pub fn decode(text: &str, registry: &NodeRegistry) -> Result<RenderDocument, String> {
+    let mut asset = GraphAsset::from_json(text)?;
+    if asset.nodes.is_empty() && asset.sections.is_empty() {
+        asset = new_graph_asset();
+    }
     Ok(RenderDocument::from_asset(&asset, registry))
 }
 

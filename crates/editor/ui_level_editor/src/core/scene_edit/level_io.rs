@@ -140,7 +140,10 @@ fn read_existing_world_settings(path: &Path) -> WorldSettingsData {
     virtual_fs::read_file(path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-        .and_then(|value| value.get("world_settings").cloned())
+        .and_then(|mut value| {
+            WorldSettingsData::migrate_level(&mut value);
+            value.get("world_settings").cloned()
+        })
         .and_then(|settings| serde_json::from_value(settings).ok())
         .unwrap_or_default()
 }
@@ -508,6 +511,7 @@ fn prepare_level_bytes_for_hydration<P: AsRef<Path>>(
         );
     }
     log_record_migrations(&report.records, path.as_ref());
+    WorldSettingsData::migrate_level(&mut value);
     let level_file: LevelFile =
         serde_json::from_value(value).map_err(|e| format!("Failed to parse JSON: {e}"))?;
     if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {

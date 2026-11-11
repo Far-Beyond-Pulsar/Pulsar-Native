@@ -40,6 +40,9 @@ pub enum DeviceOwner {
     Host,
 }
 
+/// What Helio's status screen says about assigning a pipeline.
+const PIPELINE_HINT: &str = "Pick a render pipeline asset in the level's World Settings.";
+
 /// How a [`SceneRenderer`] is built.
 #[derive(Clone)]
 pub struct SceneRendererOptions {
@@ -48,8 +51,9 @@ pub struct SceneRendererOptions {
     pub editor_mode: bool,
     pub device: DeviceOwner,
     /// The render pipeline asked for (a registered id, see
-    /// [`super::pipelines`]); `None`, an unregistered id or the default build
-    /// the engine's default graph.
+    /// [`super::pipelines`]). `None`, an id nobody registered or one that does
+    /// not compile builds a renderer with no pipeline
+    /// ([`super::pipelines::PipelineState`] says why): nothing is chosen for it.
     pub pipeline: Option<String>,
     /// Applied to the plugins' render-host parts when they are made
     /// (tests, tools: a plugin's settings in place of the project's).
@@ -129,9 +133,8 @@ pub struct SceneRenderer {
     ground: GroundQueries,
     /// The plugins' per-renderer state (`RenderHostPartRegistration`).
     host_parts: Vec<Box<dyn RenderHostPart>>,
-    /// The registered pipeline id the graph was built from (`None`: the
-    /// default).
-    pipeline: Option<String>,
+    /// What the graph was built from: a registered pipeline, or why none runs.
+    pipeline: super::pipelines::PipelineState,
     /// What the host publishes for this view's passes besides the scene's
     /// payloads ([`Self::set_view_payload`]).
     view_payloads: Vec<(&'static str, super::ViewPayload)>,
@@ -211,21 +214,13 @@ impl SceneRenderer {
         if options.device == DeviceOwner::Host {
             builder = builder.with_external_device();
         }
-        // The level's registered pipeline, or the default deferred preset.
-        let pipeline = super::pipelines::resolve_pipeline(options.pipeline.as_deref())
-            .filter(|id| *id != helio_presets::pipelines::DEFAULT);
-        let custom = pipeline
-            .as_deref()
-            .and_then(|id| super::pipelines::create_pipeline(Some(id)));
-        let pipeline = custom.is_some().then_some(pipeline).flatten();
-        let builder = builder.with_boxed_graph(custom.unwrap_or_else(|| {
-            Box::new(
-                helio_presets::Preset::Deferred
-                    .with_features(&super::render_features::plugin_features()),
-            )
-        }));
-        let mut renderer = builder.build(device, queue.clone(), width, height, format);
-        Self {
+        // The renderer is built with no pipeline; the level's is assigned below.
+        // There is no default: none, a missing or an invalid one shows Helio's
+        // status screen with the reason.
+        let renderer = builder
+            .with_status_hint(PIPELINE_HINT)
+            .build(device, queue.clone(), width, height, format);
+        let mut this = Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),
             scene: scene.clone(),
@@ -235,9 +230,53 @@ impl SceneRenderer {
             last_errors: Vec::new(),
             ground: GroundQueries::default(),
             host_parts,
-            pipeline,
+            pipeline: super::pipelines::PipelineState::Unassigned,
             view_payloads: Vec::new(),
+        };
+        this.set_pipeline_state(super::pipelines::pipeline_state(options.pipeline.as_deref()));
+        this
+    }
+
+    /// Runs the pipeline `state` names, at once (the caller is at a frame
+    /// boundary): the old graph and its GPU resources are dropped and the new
+    /// one built, or Helio's status screen shows why none runs. Nothing is
+    /// substituted for a pipeline that is missing or does not build.
+    pub fn set_pipeline_state(&mut self, state: super::pipelines::PipelineState) {
+        use super::pipelines;
+        match &state {
+            pipelines::PipelineState::Assigned { id, .. } => {
+                match pipelines::create_pipeline(Some(id)) {
+                    Some(graph) => self
+                        .renderer
+                        .set_pipeline(Some(helio::NamedPipeline::boxed(id.clone(), graph))),
+                    None => self.renderer.fail_pipeline(
+                        id.clone(),
+                        helio::PipelineFailure::new(format!(
+                            "Render pipeline `{id}` is no longer registered"
+                        )),
+                    ),
+                }
+            }
+            pipelines::PipelineState::Unassigned => self.renderer.set_pipeline(None),
+            missing => {
+                if let Some((id, failure)) = missing.failure() {
+                    self.renderer.fail_pipeline(id, failure);
+                }
+            }
         }
+        self.renderer.apply_pending_pipeline();
+        match (state.reason(), self.renderer.pipeline_status()) {
+            (Some(reason), _) => tracing::error!("{reason}; the renderer runs no pipeline"),
+            (None, helio::PipelineStatus::Invalid { id, reason, .. }) => {
+                tracing::error!("Render pipeline `{id}` does not build: {reason}")
+            }
+            (None, _) => {
+                if let Some(id) = state.id() {
+                    pipelines::log_routing(id, &self.renderer.routing_issues());
+                }
+            }
+        }
+        self.pipeline = state;
     }
 
     /// Publish `payload` for this view's passes under a feature's payload
@@ -251,10 +290,12 @@ impl SceneRenderer {
         }
     }
 
-    /// The registered pipeline the graph was built from (`None`: the
-    /// engine's default).
-    pub fn pipeline(&self) -> Option<&str> {
-        self.pipeline.as_deref()
+    /// What the renderer was told to run; [`PipelineState::reason`] says why
+    /// none does. Whether the pipeline built is `renderer.pipeline_status()`.
+    ///
+    /// [`PipelineState::reason`]: super::pipelines::PipelineState::reason
+    pub fn pipeline(&self) -> &super::pipelines::PipelineState {
+        &self.pipeline
     }
 
     /// This renderer's host part of type `T` (a plugin's), if one was made.

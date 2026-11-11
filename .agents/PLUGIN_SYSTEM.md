@@ -232,6 +232,14 @@ the render, scene and editor ones above, the kernel's seams for what used to be 
 A plugin owns the closure-ledger rows of what it ships (`plugins/vendor/<dir>/ledger.toml`);
 `cargo test -p scene_inventory` checks every installed plugin's ledger with the engine's.
 
+### Render graph nodes
+
+A plugin's passes reach render graph assets through its `RenderFeatureRegistration`:
+each pass is a node its feature registers (`.agents/RENDER_GRAPH.md`, "Plugin nodes"),
+so a `.rendergraph` can contain it, the pins are probed from what the pass declares,
+and a disabled plugin's nodes are absent (a graph naming one reports `missing node
+`<kind>` (plugin <id> disabled)`). The node registry follows `pulsar_plugins::generation()`.
+
 ### Starter content
 
 A plugin that offers downloadable content (a pack of assets) registers a

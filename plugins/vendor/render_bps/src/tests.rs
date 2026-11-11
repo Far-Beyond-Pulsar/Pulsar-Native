@@ -73,11 +73,43 @@ fn the_default_graph_survives_the_document_without_loss_or_id_churn() {
 }
 
 #[test]
-fn a_new_file_is_expanded_to_the_default_graph() {
+fn a_new_graph_is_an_input_and_an_output_and_nothing_else() {
+    use helio_graph_asset::core_nodes::{ON_FRAME_START, OUTPUT};
     let registry = base_registry();
-    let doc = decode(r#"{"format_version":1,"template":"deferred"}"#, &registry).unwrap();
-    assert!(!doc.main.nodes.is_empty());
+    let asset = crate::document::new_graph_asset();
+    let kinds: Vec<_> = asset.nodes.iter().map(|n| n.kind.as_str()).collect();
+    assert_eq!(kinds, [ON_FRAME_START, OUTPUT]);
+    assert!(asset.sections.is_empty());
+    assert!(model::problems(&asset, &registry).is_empty());
+
+    // The file type's creation template is that graph, as written.
+    let template = crate::file_type().default_content;
+    assert_eq!(
+        GraphAsset::from_json(&template.to_string()).unwrap().nodes,
+        asset.nodes
+    );
+
+    // It opens as written, and a file with no nodes (the old marker) opens as new.
+    let doc = decode(&template.to_string(), &registry).unwrap();
+    assert_eq!(doc.main.nodes.len(), 2);
+    let old_marker = decode(r#"{"format_version":1,"template":"deferred"}"#, &registry).unwrap();
+    assert_eq!(old_marker.main.nodes.len(), 2);
     assert!(decode("not json", &registry).is_err());
+}
+
+#[test]
+fn the_palette_offers_every_registered_node() {
+    let registry = base_registry();
+    let mut offered: Vec<_> = model::catalog(&registry)
+        .into_iter()
+        .map(|entry| entry.definition)
+        .collect();
+    let mut registered: Vec<_> = registry.list().iter().map(|d| d.kind.clone()).collect();
+    offered.sort();
+    registered.sort();
+    assert_eq!(offered, registered);
+    // A pass the default graph uses is no more special than one it does not.
+    assert!(registered.len() > 10, "the shipped passes are nodes");
 }
 
 #[test]

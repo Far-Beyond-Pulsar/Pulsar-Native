@@ -487,6 +487,18 @@ pub fn problems(asset: &GraphAsset, registry: &NodeRegistry) -> Vec<String> {
         .collect()
 }
 
+/// What does not stop the graph from building but the author should see, one
+/// line each: resources nobody reads, reads nothing writes, nodes whose results
+/// never reach the Output (Helio's routing validation) and the other warnings.
+pub fn warnings(asset: &GraphAsset, registry: &NodeRegistry) -> Vec<String> {
+    helio_graph_asset::validate(asset, registry)
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .map(ToString::to_string)
+        .collect()
+}
+
 /// The palette categories of `registry`, in order, each with its entries.
 pub fn catalog_by_category(registry: &NodeRegistry) -> BTreeMap<String, Vec<CatalogEntry>> {
     let mut by_category: BTreeMap<String, Vec<CatalogEntry>> = BTreeMap::new();
