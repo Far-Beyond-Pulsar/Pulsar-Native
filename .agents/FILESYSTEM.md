@@ -67,53 +67,108 @@ The free functions clone the active layer out of its lock before calling it, so
 a provider whose events call back into the VFS (the file index refreshing a
 path) cannot deadlock.
 
-## Read-only mounts
+## Plugin folders
 
-A project sees two kinds of content it did not author and cannot change
-(`engine_fs::virtual_fs::mounts`):
+A plugin can **provide files** into every project: content packs, templates,
+default items such as the engine's gameplay-role traits. One that does
+registers an `engine_fs::FileProvider` from its root crate (an origin-gated
+contribution, category `fs.file_providers`), and every project then shows a
+folder named after it under a virtual `plugins/` folder at its root
+(`engine_fs::virtual_fs::mounts`). It is opt-in: a plugin that registers no
+provider has no folder, and a disabled or absent plugin's folder is gone. The
+engine provides its own files the same way, at `plugins/pulsar/` (its id and
+trait namespace).
 
-- `<project>/pulsar/`: the engine's (its trait files, `pulsar_traits::builtin`);
-- `<project>/plugins/<plugin id>/`: each enabled plugin's. Every enabled
-  installed plugin has one, so the folder lists exactly the project's plugins.
+**The plugin owns its folder and fills it from any source.** When the folder is
+first mounted, the engine calls the registration's `open` with a
+`PluginFolder`: the capability to change that folder, which only `engine_fs`
+can make and which goes to the owner alone. `open` returns the folder's
+`FolderSource`, a read-only trait the plugin implements over anything it likes
+(each call names the project asking, so a source can hold one set of files
+for every project or its own per project): files embedded in its library (one
+option, `embedded_files!`), data it generates or downloads, its own cache. At
+runtime the plugin creates, writes and deletes whatever files and folders it
+wants in its folder and reports each change with `PluginFolder::changed` (or
+`changed_in` for one project), which emits the file event the file drawer and
+the project watcher follow. Two convenience sources:
 
-The files are embedded in the binary that links their owner and registered as
-`engine_fs::MountedContent` (an origin-gated contribution, category
-`fs.mounted_content`). The registration's **owner** picks the mount: the
-engine's (`pulsar_plugins::engine_origin!`) goes to `pulsar/`, a plugin root's
-to `plugins/<its id>/`, so no plugin can put files in another's folder. The
-mount list follows the enabled set (`pulsar_plugins::generation()`): a disabled
-plugin's folder is gone.
+- `MemoryFolder`: in memory, the same for every project; starts with whatever
+  the plugin puts in (`MemoryFolder::with_files(folder, embedded)`), changes
+  through `write`, `create_dir_all` and `delete`, reports each change itself;
+  gone at exit.
+- `CacheFolder`: kept per project in `<project>/.pulsar/plugins/<id>/` (derived
+  data version control ignores, like the rest of `.pulsar/`), written through
+  the project's own provider (so a remote project keeps it too); its writes
+  take the project and report themselves. What a plugin writes at runtime and
+  wants next session goes here.
+
+**A source never blocks.** Every `FolderSource` method answers from what the
+source already holds: the VFS calls it from any thread, the UI's included. A
+slow fetch (a download, a generator) runs on the plugin's own task and
+announces what it produced through `PluginFolder::changed`. The VFS holds none
+of its locks while it calls a source (the active layer is cloned out of its
+lock; the project table is released before the folders are asked).
+
+**A plugin folder is the plugin's content, not the project's.** A user who
+wants to own or change one of its files copies it into the project (copying
+out of a plugin folder is reading it).
 
 ```rust
+fn open(folder: engine_fs::PluginFolder) -> std::sync::Arc<dyn engine_fs::FolderSource> {
+    let files = std::sync::Arc::new(engine_fs::MemoryFolder::with_files(
+        folder,
+        engine_fs::embedded_files!("content": "traits/light_source.trait.json"),
+    ));
+    FILES.set(files.clone()).ok(); // to write into it later: FILES.get().unwrap().write(..)
+    files
+}
 inventory::submit! {
-    engine_fs::MountedContent {
+    engine_fs::FileProvider {
         origin: pulsar_plugins::origin!(),
-        id: "pulsar.lights.traits",
-        files: engine_fs::mounted_files!("content": "traits/light_source.trait.json"),
+        open,
+        in_game: engine_fs::InGame::Snapshot,
     }
 }
 ```
 
-`MountedFs` is the layer every call goes through: paths inside a mount are
-answered from memory, everything else goes to the active provider, so mounts
-look the same over a local, remote or P2P project. **Writing, creating,
-appending, deleting or renaming** anything inside a mount fails with
+**Nobody else writes there.** `MountedFs` is the layer every VFS call goes
+through: paths under `plugins/` are answered by the owners' sources,
+everything else goes to the active provider, so the folders look the same over
+a local, remote or P2P project. **Writing, creating, appending, deleting or
+renaming** anything under `plugins/` through the VFS fails with
 `engine_fs::ReadOnlyMount { mount, path }` inside the `anyhow::Error`
-(`virtual_fs::is_read_only(&error)`). A project is mounted with
-`virtual_fs::mount_project(root)`: `engine_state::set_project_path` (the editor),
-and the trait index's `load`/`rebuild`/`live` (so a game's runtime and tests get
-them too). `virtual_fs::mount_of(path)` names the mount a path is in (the file
-drawer's read-only state).
+(`virtual_fs::is_read_only(&error)`), whoever calls it: the editor, another
+plugin, a script. Only the owner's capability changes a folder, never a name a
+caller types. A project is mounted with `virtual_fs::mount_project(root)`:
+`engine_state::set_project_path` (the editor), and the trait index's
+`load`/`rebuild`/`live` (so a game's runtime and tests get them too).
+`virtual_fs::mount_of(path)` names the folder a path is in (the file drawer's
+read-only state).
 
-An on-disk `plugins/` or `pulsar/` folder in a project is shadowed by the mount
-and reported (`virtual_fs::mount_problems(root)`): logged when the project is
+An on-disk `plugins/` folder in a project is shadowed by the virtual one and
+reported (`virtual_fs::mount_problems(root)`): logged when the project is
 mounted, and shown as a banner above the file drawer's files.
+
+**Packaging.** A shipped game sees the same files without depending on where
+the editor's plugin got them (a download, a generator). The packager writes a
+snapshot of every plugin folder whose provider says `InGame::Snapshot` (the
+default) into the package (`virtual_fs::plugin_snapshot(project)`, at
+`plugins/<id>/...`, after activating the project's plugin list), and a packaged
+game serves each such folder from it, read-only, without calling the plugin
+(`virtual_fs::serve_packaged_folders(true)`, which `pulsar_content::ContentRoot::install`
+calls). A plugin that builds its folder in the game too says `InGame::Live`
+(the engine's own folder does: its traits are embedded in every binary).
+
+The capability prevents accidental writes; it is no sandbox: a native plugin
+runs in-process.
 
 How others do it: Unreal stacks `IPlatformFile` layers (the pak layer over the
 physical one) and registers a mount point per plugin's content
-(`FPackageName::RegisterMountPoint`); Unity shows immutable packages under
-`Packages/<name>` and refuses edits. Ours is Unreal's layering with Unity's
-layout. Cost: a lookup over the mounted project roots per call (usually one).
+(`FPackageName::RegisterMountPoint`), opt-in through the plugin's
+`CanContainContent`; Unity shows packages under `Packages/<name>` and refuses
+edits to immutable ones. Ours is Unreal's opt-in mount points over whichever
+provider is active, with the plugin, not a directory, as the source of its
+folder. Cost: a lookup over the mounted project roots per call (usually one).
 
 ## The rule: no `std::fs`
 
@@ -127,6 +182,13 @@ reason in `architecture/std-fs-allowed.txt`, which only shrinks
 (`crates/core/engine_fs/tests/std_fs_allow_list.rs`): the local provider, build
 scripts, and tools that work on the real machine (the packager's output, the
 native-library loader, the engine's own install).
+
+Files that belong to the **machine**, not a project (the user's config and
+credentials, the editor's logs, the Downloads folder, profiling databases,
+libgit2's checkout), go through `engine_fs::LocalFsProvider` by name: the
+physical layer, explicitly, so a remote or P2P project's provider never
+captures them (Unreal's split between the pak-aware file API and the
+platform's physical file for saved config and logs).
 
 ## FsEvent
 

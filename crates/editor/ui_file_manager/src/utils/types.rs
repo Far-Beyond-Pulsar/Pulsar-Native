@@ -147,12 +147,12 @@ impl FileItem {
     ) -> Option<Self> {
         let name = path.file_name()?.to_str()?.to_string();
         use plugin_editor_api::FileStructure;
-        let file_type_def = if path.is_dir() {
+        let file_type_def = if engine_fs::virtual_fs::is_dir(path) {
             file_types
                 .iter()
                 .find(|def| {
                     if let FileStructure::FolderBased { marker_file, .. } = &def.structure {
-                        path.join(marker_file).exists()
+                        engine_fs::virtual_fs::exists(&path.join(marker_file)).unwrap_or(false)
                             || name.ends_with(&format!(".{}", def.extension))
                             || path.extension().and_then(|x| x.to_str())
                                 == Some(def.extension.as_str())

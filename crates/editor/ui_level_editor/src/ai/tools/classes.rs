@@ -46,7 +46,7 @@ pub fn level_editor_place_class(
     let registry = scene_edit::classes::project_registry();
     let class_dir = match registry.by_name(&class) {
         Some(entry) => entry.dir.clone(),
-        None if std::path::Path::new(&class).is_dir() => std::path::PathBuf::from(&class),
+        None if engine_fs::virtual_fs::is_dir(std::path::Path::new(&class)) => std::path::PathBuf::from(&class),
         None => bail!("Unknown class '{class}'. Use level_editor_list_classes."),
     };
     let state_arc = edit_scene(ctx)?;

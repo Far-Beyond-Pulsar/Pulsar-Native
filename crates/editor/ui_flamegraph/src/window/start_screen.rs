@@ -69,10 +69,14 @@ pub(super) fn scan() -> (Vec<TargetInfo>, Vec<SessionFile>) {
         .into_iter()
         .take(MAX_RECENT)
         .map(|path| {
-            let meta = std::fs::metadata(&path).ok();
+            // Profiling sessions are SQLite files on the real machine (the profiler opens
+            // them by path), so ask the local disk, not the project provider.
+            let meta = engine_fs::FsProvider::metadata(&engine_fs::LocalFsProvider::new(), &path).ok();
             SessionFile {
-                bytes: meta.as_ref().map_or(0, |m| m.len()),
-                modified: meta.and_then(|m| m.modified().ok()),
+                bytes: meta.as_ref().map_or(0, |m| m.size),
+                modified: meta
+                    .and_then(|m| m.modified)
+                    .map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
                 path,
             }
         })

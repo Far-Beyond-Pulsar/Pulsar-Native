@@ -117,6 +117,7 @@ impl FsProvider for ContentFsProvider {
                 is_dir: false,
                 size: len,
                 modified: None,
+                modified_ns: None,
             });
         }
         if self.pak_dir(path).is_some() {
@@ -124,6 +125,7 @@ impl FsProvider for ContentFsProvider {
                 is_dir: true,
                 size: 0,
                 modified: None,
+                modified_ns: None,
             });
         }
         self.local.metadata(path)

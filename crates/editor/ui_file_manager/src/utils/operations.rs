@@ -24,10 +24,10 @@ fn fs_rename(from: &Path, to: &Path) -> Result<()> {
 /// Copy a local file or folder, announcing the copy as the virtual
 /// filesystem's own operations do.
 pub(crate) fn copy_local(src: &Path, dst: &Path) -> Result<()> {
-    if src.is_dir() {
+    if engine_fs::virtual_fs::is_dir(src) {
         copy_dir_all(src, dst)?;
     } else {
-        std::fs::copy(src, dst)?;
+        engine_fs::virtual_fs::copy(src, dst)?;
     }
     engine_fs::emit(dst.to_path_buf(), engine_fs::FsChangeKind::Created);
     Ok(())

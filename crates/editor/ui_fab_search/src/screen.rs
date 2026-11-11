@@ -205,12 +205,14 @@ impl FabSearchWindow {
         let dir = dirs::download_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("Sketchfab");
-        let Ok(read_dir) = std::fs::read_dir(&dir) else {
+        // The user's Downloads folder on the real machine, not a project.
+        let Ok(entries) = engine_fs::FsProvider::list_dir(&engine_fs::LocalFsProvider::new(), &dir)
+        else {
             return;
         };
-        for entry in read_dir.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
+        for entry in entries {
+            let path = dir.join(&entry.name);
+            if entry.is_dir {
                 continue;
             }
             let filename = match path.file_name().and_then(|n| n.to_str()) {
@@ -225,7 +227,7 @@ impl FabSearchWindow {
             if self.download_state.contains_key(&uid) {
                 continue;
             }
-            let total_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let total_bytes = entry.size;
             self.download_state.insert(
                 uid,
                 DownloadState::Done {

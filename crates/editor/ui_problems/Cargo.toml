@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 # UI framework
 gpui-ce.workspace = true
+engine_fs = { workspace = true }
 ui.workspace = true
 
 # UI crates

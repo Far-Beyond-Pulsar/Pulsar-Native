@@ -406,7 +406,7 @@ pub(super) fn compute_before_after(
     let first_edit = &edits[0];
 
     // Read the original file content
-    let content = match std::fs::read_to_string(file_path) {
+    let content = match engine_fs::virtual_fs::read_to_string(std::path::Path::new(&file_path)) {
         Ok(c) => c,
         Err(_) => return (None, Some(first_edit.new_text.clone())),
     };

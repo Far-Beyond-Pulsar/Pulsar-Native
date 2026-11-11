@@ -21,6 +21,7 @@ scripting = ["installed_plugins/editor", "dep:plugin_editor_api"]
 
 [dependencies]
 pulsar_content = { workspace = true }
+engine_fs = { workspace = true }
 pulsar_class = { workspace = true }
 pulsar_script_vm = { workspace = true }
 pulsar_script_runtime = { workspace = true }
@@ -29,6 +30,8 @@ pulsar_script_runtime = { workspace = true }
 pulsar_game = { workspace = true }
 pulsar_events = { workspace = true }
 engine_state = { workspace = true }
+# The project's plugin set (`activate_project`), so the plugin folders it snapshots are the game's.
+pulsar_plugins = { workspace = true }
 pulsar_settings = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

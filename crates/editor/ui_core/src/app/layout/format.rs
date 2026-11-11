@@ -184,7 +184,7 @@ fn parse(text: &str, path: &Path) -> Option<RawLayout> {
 }
 
 fn read_raw(path: &Path) -> Option<RawLayout> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = engine_fs::virtual_fs::read_to_string(path).ok()?;
     parse(&text, path)
 }
 
@@ -192,8 +192,8 @@ fn read_raw(path: &Path) -> Option<RawLayout> {
 /// the next save, which replaces it, does not destroy the only copy.
 fn keep_unreadable_copy(path: &Path) {
     let backup = path.with_extension("json.bak");
-    if !backup.exists() {
-        if let Err(error) = std::fs::copy(path, &backup) {
+    if !engine_fs::virtual_fs::exists(&backup).unwrap_or(false) {
+        if let Err(error) = engine_fs::virtual_fs::copy(path, &backup) {
             tracing::warn!("could not keep a copy of the unreadable layout: {error}");
         }
     }
@@ -204,13 +204,10 @@ fn keep_unreadable_copy(path: &Path) {
 /// cannot be read right now, or that belongs to another version, is never
 /// overwritten: a write would erase layouts this build does not understand.
 fn raw_for_write(path: &Path) -> std::io::Result<RawLayout> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(RawLayout::default())
-        }
-        Err(error) => return Err(error),
-    };
+    if !engine_fs::virtual_fs::exists(path).map_err(std::io::Error::other)? {
+        return Ok(RawLayout::default());
+    }
+    let text = engine_fs::virtual_fs::read_to_string(path).map_err(std::io::Error::other)?;
     if let Ok(value) = serde_json::from_str::<Value>(&text) {
         let version = value.get("version").and_then(Value::as_u64);
         if let Some(v) = version {
@@ -277,16 +274,10 @@ pub(super) fn slot_keys(path: &Path) -> Vec<String> {
 }
 
 fn write_raw(path: &Path, raw: &RawLayout) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
     let file = serde_json::json!({ "version": LAYOUT_VERSION, "windows": raw.windows });
     let json = serde_json::to_vec_pretty(&file)?;
-    // Write beside the target and rename, so a crash mid-write cannot leave a
-    // truncated layout behind.
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, json)?;
-    std::fs::rename(&tmp, path)
+    // Atomic, so a crash mid-write cannot leave a truncated layout behind.
+    engine_fs::virtual_fs::write_file_atomically(path, &json).map_err(std::io::Error::other)
 }
 
 // ── Project-relative paths ───────────────────────────────────────────────────

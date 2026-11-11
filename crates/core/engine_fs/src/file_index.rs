@@ -1127,7 +1127,7 @@ impl ProjectFileIndex {
         if !path.is_absolute() {
             return None;
         }
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let path = crate::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         if let Ok(relative) = path.strip_prefix(&self.project_root) {
             return Some(normalize_relative_path(&relative.to_string_lossy()));
         }
@@ -1175,8 +1175,7 @@ pub fn open_project_file_index(project_root: &Path) -> Result<Option<Arc<Project
         return Ok(None);
     }
     let key = normalize_absolute_path(
-        project_root
-            .canonicalize()
+        crate::virtual_fs::canonicalize(project_root)
             .unwrap_or_else(|_| project_root.to_path_buf()),
     );
     let indexes = SHARED_FILE_INDEXES.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
@@ -1218,7 +1217,7 @@ pub fn project_file_index_for_path(path: &Path) -> Option<Arc<ProjectFileIndex>>
     if !path.is_absolute() {
         return None;
     }
-    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path = crate::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let indexes = SHARED_FILE_INDEXES.get()?.lock();
     indexes
         .values()

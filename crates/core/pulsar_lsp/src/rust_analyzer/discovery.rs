@@ -12,6 +12,8 @@ use super::RustAnalyzerManager;
 impl RustAnalyzerManager {
     /// Validate that a path is a safe location for a rust-analyzer binary.
     /// Returns true if the path is in a trusted directory or has an expected filename.
+    // Real machine: locates and installs the rust-analyzer binary (PATH, ~/.cargo/bin, the engine's deps dir), outside any project.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn is_safe_analyzer_path(path: &PathBuf) -> bool {
         // Must be a file, not a directory.
         if !path.is_file() {
@@ -466,6 +468,8 @@ impl RustAnalyzerManager {
     }
 
     /// Download rust-analyzer binary directly from GitHub
+    // Real machine: locates and installs the rust-analyzer binary (PATH, ~/.cargo/bin, the engine's deps dir), outside any project.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn download_rust_analyzer_binary() -> Result<PathBuf> {
         tracing::debug!("   Downloading rust-analyzer to engine deps directory...");
 

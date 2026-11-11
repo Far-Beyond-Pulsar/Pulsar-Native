@@ -8,6 +8,7 @@
 use crate::git_operations::open_repo;
 use crate::models::*;
 use git2::{Oid, Repository, Sort};
+use engine_fs::{FsProvider as _, LocalFsProvider};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -486,7 +487,7 @@ pub fn load_diff_texts(repo_path: &Path, target: &DiffTarget) -> Result<DiffText
                 .workdir()
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| repo_path.to_path_buf());
-            let new = match std::fs::read(workdir.join(path)) {
+            let new = match LocalFsProvider::new().read_file(&workdir.join(path)) {
                 Ok(bytes) => decode_blob(&bytes),
                 Err(_) => Blob::Missing,
             };

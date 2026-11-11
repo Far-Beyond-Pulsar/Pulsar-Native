@@ -36,6 +36,8 @@ fn extract_source_from_span<T: ToTokens>(node: &T, _source_code: &str) -> String
 ///
 /// # Returns
 /// Complete crate documentation
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 pub fn extract_documentation(
     parsed_crate: &ParsedCrate,
 ) -> Result<CrateDocumentation, Box<dyn Error>> {

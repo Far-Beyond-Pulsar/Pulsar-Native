@@ -241,7 +241,7 @@ fn build_pie_dylib(
     if let Ok(crate_name) = read_crate_name(root) {
         let dylib_path =
             engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
-        if dylib_path.exists() && !any_source_newer(root, &dylib_path) {
+        if artifact_exists(&dylib_path) && !any_source_newer(root, &dylib_path) {
             // #833: script classes are data (their compiled modules are
             // reloaded in place); only native sources need cargo. With the
             // running game loaded from this very artifact, Play again only
@@ -287,7 +287,7 @@ fn build_pie_dylib(
     let crate_name = read_crate_name(root)?;
     let dylib_path =
         engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
-    if !dylib_path.exists() {
+    if !artifact_exists(&dylib_path) {
         return Err(format!(
             "Build succeeded but library not found at {}",
             dylib_path.display()
@@ -318,7 +318,18 @@ fn same_artifact(
     path == dylib && artifact_mtime(dylib).is_some_and(|now| now == *mtime)
 }
 
+/// Whether the built library exists.
+// Allowed std::fs: the library is cargo's output on this machine, not a
+// project file.
+#[allow(clippy::disallowed_methods)]
+fn artifact_exists(path: &Path) -> bool {
+    path.exists()
+}
+
 /// The modification time of a built library.
+// Allowed std::fs: the library is cargo's output on this machine, not a
+// project file.
+#[allow(clippy::disallowed_methods)]
 pub(crate) fn artifact_mtime(path: &Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
@@ -340,6 +351,10 @@ pub(crate) fn class_reload_events(root: &Path) -> Vec<plugin_editor_api::AssetUp
 /// Whether any `.rs` or `.toml` file under `root` is newer than `artifact`.
 /// Skips `target/` and `.git/`. A missing/unreadable artifact counts as "newer"
 /// so the caller rebuilds.
+// Allowed std::fs: compares source mtimes to the compiler's output on this
+// machine at sub-second precision, which the VFS metadata (whole seconds)
+// cannot; cargo reads the same files from the real disk.
+#[allow(clippy::disallowed_methods)]
 fn any_source_newer(root: &Path, artifact: &Path) -> bool {
     let Ok(artifact_mtime) = std::fs::metadata(artifact).and_then(|m| m.modified()) else {
         return true;
@@ -380,7 +395,7 @@ fn any_source_newer(root: &Path, artifact: &Path) -> bool {
 
 /// Read the `[package] name` from the project's `Cargo.toml`.
 fn read_crate_name(root: &Path) -> Result<String, String> {
-    let toml = std::fs::read_to_string(root.join("Cargo.toml"))
+    let toml = engine_fs::virtual_fs::read_to_string(&root.join("Cargo.toml"))
         .map_err(|e| format!("Failed to read Cargo.toml: {e}"))?;
     for line in toml.lines() {
         let line = line.trim();

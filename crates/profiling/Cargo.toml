@@ -20,3 +20,6 @@ libc = "0.2"
 [lib]
 name = "profiling"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

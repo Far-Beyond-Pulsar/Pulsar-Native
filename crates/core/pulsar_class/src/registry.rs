@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use engine_fs::virtual_fs;
 use serde_json::Value;
 
 use crate::component::ClassInstance;
@@ -239,23 +240,24 @@ fn skip_when_searching(name: &str) -> bool {
 /// build outputs are skipped; a class folder's own contents are not
 /// searched). Sorted, without duplicates.
 pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
-    let mut found: Vec<PathBuf> = std::fs::read_dir(classes_dir(project_root))
+    let classes = classes_dir(project_root);
+    let mut found: Vec<PathBuf> = virtual_fs::list_dir(&classes)
         .map(|entries| {
             entries
-                .flatten()
-                .map(|e| e.path())
+                .into_iter()
+                .map(|e| classes.join(&e.name))
                 .filter(|p| is_class_dir(p))
                 .collect()
         })
         .unwrap_or_default();
     let mut stack = vec![(project_root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = virtual_fs::list_dir(&dir) else {
             continue;
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
+        for entry in entries {
+            let path = dir.join(&entry.name);
+            if !entry.is_dir {
                 continue;
             }
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -295,18 +297,20 @@ pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
     }
     parent
         .ancestors()
-        .find(|dir| dir.join("Pulsar").is_dir() || dir.join("Cargo.toml").is_file())
+        .find(|dir| {
+            virtual_fs::is_dir(&dir.join("Pulsar")) || virtual_fs::is_file(&dir.join("Cargo.toml"))
+        })
         .map(Path::to_path_buf)
 }
 
 /// Whether `dir` looks like a class directory.
 pub fn is_class_dir(dir: &Path) -> bool {
     let module = dir.join("events").join(".build").join("module.json");
-    dir.is_dir()
+    virtual_fs::is_dir(dir)
         && ([CLASS_META_FILE, PREFAB_FILE, "graph_save.json", "class.ts"]
             .iter()
-            .any(|f| dir.join(f).is_file())
-            || module.is_file())
+            .any(|f| virtual_fs::is_file(&dir.join(f)))
+            || virtual_fs::is_file(&module))
 }
 
 impl ClassRegistry {
@@ -323,11 +327,11 @@ impl ClassRegistry {
 
     /// Scan one classes directory (its direct children only).
     pub fn scan_classes_dir(dir: &Path) -> Self {
-        let dirs: Vec<PathBuf> = std::fs::read_dir(dir)
+        let dirs: Vec<PathBuf> = virtual_fs::list_dir(dir)
             .map(|entries| {
                 entries
-                    .flatten()
-                    .map(|e| e.path())
+                    .into_iter()
+                    .map(|e| dir.join(&e.name))
                     .filter(|p| is_class_dir(p))
                     .collect()
             })
@@ -404,11 +408,11 @@ impl ClassRegistry {
             return None;
         }
         let path = Path::new(trimmed);
-        if let Ok(canonical) = path.canonicalize() {
+        if let Ok(canonical) = virtual_fs::canonicalize(path) {
             if let Some(entry) = self
                 .entries
                 .iter()
-                .find(|e| e.dir.canonicalize().ok().as_deref() == Some(canonical.as_path()))
+                .find(|e| virtual_fs::canonicalize(&e.dir).ok().as_deref() == Some(canonical.as_path()))
             {
                 return Some(entry);
             }

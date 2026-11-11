@@ -102,6 +102,8 @@ impl Default for AdvancedSettings {
 }
 
 impl EngineSettings {
+    // std::fs allowed: the engine's own per-user config file, outside any project
+    #[allow(clippy::disallowed_methods)]
     /// Load settings from the given path, or return default if not found or invalid.
     pub fn load(path: &Path) -> Self {
         match fs::read_to_string(path) {
@@ -110,6 +112,8 @@ impl EngineSettings {
         }
     }
 
+    // std::fs allowed: the engine's own per-user config file, outside any project
+    #[allow(clippy::disallowed_methods)]
     /// Save settings to the given path, creating parent directories if needed.
     pub fn save(&self, path: &Path) {
         if let Some(parent) = path.parent() {

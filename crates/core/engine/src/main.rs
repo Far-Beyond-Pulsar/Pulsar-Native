@@ -493,12 +493,12 @@ fn main() {
             open_via_loading_screen(path, &hardware_profile, cx);
         } else {
             match project_path {
-                Some(path) if path.is_dir() => {
+                Some(path) if engine_fs::virtual_fs::is_dir(&path) => {
                     tracing::info!("Opening project from --project-path: {}", path.display());
                     open_via_loading_screen(path, &hardware_profile, cx);
                 }
                 Some(path) => {
-                    if path.exists() {
+                    if engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
                         tracing::error!(
                             "Project path is not a directory: {}",
                             path.display()

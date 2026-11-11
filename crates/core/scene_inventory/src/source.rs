@@ -210,6 +210,8 @@ fn is_test_file(path: &Path) -> bool {
     name == "tests.rs" || name.ends_with("_tests.rs") || name == "build.rs"
 }
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -231,6 +233,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 fn package_name(dir: &Path, cache: &mut HashMap<PathBuf, Option<String>>) -> Option<String> {
     if let Some(cached) = cache.get(dir) {
         return cached.clone();
@@ -293,6 +297,8 @@ fn production_lines(text: &str) -> Vec<(usize, String)> {
     out
 }
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 /// Every production `.rs` file under the scan roots, in path order.
 pub fn production_files(root: &Path) -> &'static [SourceFile] {
     static FILES: OnceLock<Vec<SourceFile>> = OnceLock::new();
@@ -556,6 +562,8 @@ pub struct PassCrate {
     pub in_default_graph: bool,
 }
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
     let helio = root.join("crates/renderer/helio/crates");
     let default_graph: BTreeSet<String> =

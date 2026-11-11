@@ -295,11 +295,11 @@ struct ProviderInstanceFile {
 pub fn load_provider_instances(
     path: &std::path::Path,
 ) -> anyhow::Result<Vec<ProviderInstanceConfig>> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(serde_json::from_str::<ProviderInstanceFile>(&text)?.providers),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(e.into()),
+    if !engine_fs::virtual_fs::exists(path)? {
+        return Ok(Vec::new());
     }
+    let text = engine_fs::virtual_fs::read_to_string(path)?;
+    Ok(serde_json::from_str::<ProviderInstanceFile>(&text)?.providers)
 }
 
 /// Write `instances` to `path`, creating its directory.
@@ -307,13 +307,10 @@ pub fn save_provider_instances(
     path: &std::path::Path,
     instances: &[ProviderInstanceConfig],
 ) -> anyhow::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let file = ProviderInstanceFile {
         providers: instances.to_vec(),
     };
-    std::fs::write(path, serde_json::to_string_pretty(&file)?)?;
+    engine_fs::virtual_fs::write_file(path, serde_json::to_string_pretty(&file)?.as_bytes())?;
     Ok(())
 }
 

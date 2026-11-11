@@ -326,6 +326,7 @@ impl FsProvider for RemoteFsProvider {
             is_dir: r.is_dir,
             size: r.size,
             modified: r.modified,
+            modified_ns: None,
         })
     }
 

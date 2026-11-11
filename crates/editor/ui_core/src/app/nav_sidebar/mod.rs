@@ -858,20 +858,20 @@ impl PulsarApp {
                 let width = capture.width;
                 let height = capture.height;
                 cx.background_spawn(async move {
-                    if let Some(parent) = path.parent() {
-                        if let Err(error) = std::fs::create_dir_all(parent) {
-                            tracing::warn!(%error, "could not create tab preview cache");
-                            return;
-                        }
-                    }
-                    if let Err(error) = image::save_buffer_with_format(
-                        path,
+                    // Encode in memory; the VFS write creates the parent folders.
+                    let mut png = std::io::Cursor::new(Vec::new());
+                    if let Err(error) = image::write_buffer_with_format(
+                        &mut png,
                         &pixels,
                         width,
                         height,
                         image::ColorType::Rgba8,
                         image::ImageFormat::Png,
                     ) {
+                        tracing::warn!(%error, "could not encode tab preview");
+                        return;
+                    }
+                    if let Err(error) = engine_fs::virtual_fs::write_file(&path, png.get_ref()) {
                         tracing::warn!(%error, "could not save tab preview");
                     }
                 })

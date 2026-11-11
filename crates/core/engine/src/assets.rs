@@ -36,14 +36,22 @@ use gpui::{AssetSource, Result, SharedString};
 use rust_embed::{EmbeddedFile, RustEmbed};
 use std::borrow::Cow;
 
-#[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../../assets"]
-#[include = "fonts/**/*.ttf"]
-#[include = "images/**/*.png"]
-#[include = "meshes/**"]
-#[include = "sound/*.mp3"]
-#[include = "default.level"]
-pub struct EngineAssets;
+// In a debug build RustEmbed's generated code reads the engine's own
+// `assets/` folder from disk: the engine's install, not a project.
+#[allow(clippy::disallowed_methods)]
+mod engine_assets {
+    use rust_embed::RustEmbed;
+
+    #[derive(RustEmbed)]
+    #[folder = "$CARGO_MANIFEST_DIR/../../../assets"]
+    #[include = "fonts/**/*.ttf"]
+    #[include = "images/**/*.png"]
+    #[include = "meshes/**"]
+    #[include = "sound/*.mp3"]
+    #[include = "default.level"]
+    pub struct EngineAssets;
+}
+pub use engine_assets::EngineAssets;
 
 /// Combined asset source that delegates to UI assets for icons and engine assets for everything else
 pub struct CombinedAssets;

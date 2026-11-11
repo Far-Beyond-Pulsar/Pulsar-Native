@@ -13,10 +13,18 @@ use std::path::{Path, PathBuf};
 ///
 /// Embedding (rather than reading a source-tree path) is what lets the engine seed
 /// and update its own theme cache on *any* machine, not just a dev checkout.
-#[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../../themes"]
-#[include = "*.json"]
-struct BundledThemes;
+// In a debug build RustEmbed's generated code reads the engine's own
+// `themes/` folder from disk: the engine's install, not a project.
+#[allow(clippy::disallowed_methods)]
+mod bundled_themes {
+    use rust_embed::RustEmbed;
+
+    #[derive(RustEmbed)]
+    #[folder = "$CARGO_MANIFEST_DIR/../../../themes"]
+    #[include = "*.json"]
+    pub(super) struct BundledThemes;
+}
+use bundled_themes::BundledThemes;
 
 pub struct AppDataPaths {
     pub appdata_dir: PathBuf,
@@ -25,6 +33,8 @@ pub struct AppDataPaths {
     pub config_file: PathBuf,
 }
 
+// std::fs allowed: the engine's own per-user app data and config dir, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Set up app data directories and copy bundled resources if needed.
 pub fn setup_appdata() -> AppDataPaths {
     let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
@@ -71,6 +81,8 @@ fn content_hash(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
+// std::fs allowed: the engine's own per-user theme cache, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Synchronise the engine's bundled themes into the user's theme cache.
 ///
 /// A small manifest (`{filename -> hash the engine last wrote}`) is kept next to the

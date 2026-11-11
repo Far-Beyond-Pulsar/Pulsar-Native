@@ -3,6 +3,9 @@ use super::*;
 /// Render a high-resolution image as GPU-sized tiles, freezing scene time for
 /// the whole sequence and streaming rows to a PNG so output size is not bounded
 /// by a single texture or a full-frame CPU allocation.
+// Allowed std::fs: the PNG is streamed to a temp file in the OS temp dir, not a
+// project file; the `png` encoder streams rows into it as bands finish.
+#[allow(clippy::disallowed_methods)]
 pub(super) fn capture_viewport_png_tiled(
     engine: &mut GpuRenderer,
     surface: &WgpuSurfaceHandle,
@@ -276,10 +279,15 @@ pub(super) fn capture_viewport_thumbnail(
         return;
     };
 
-    if let Some(parent) = out_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    match rgba.save(out_path) {
+    // Encode in memory; the VFS write creates the parent folders.
+    let mut png = std::io::Cursor::new(Vec::new());
+    let saved = rgba
+        .write_to(&mut png, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())
+        .and_then(|()| {
+            engine_fs::virtual_fs::write_file(out_path, png.get_ref()).map_err(|e| e.to_string())
+        });
+    match saved {
         Ok(()) => tracing::info!(
             "[THUMBNAIL] Saved viewport thumbnail to {}",
             out_path.display()

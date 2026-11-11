@@ -27,7 +27,21 @@ pub struct FsEntry {
 pub struct FsMetadata {
     pub is_dir: bool,
     pub size: u64,
+    /// Last modified, in whole seconds since the Unix epoch.
     pub modified: Option<u64>,
+    /// Last modified in nanoseconds since the Unix epoch, when the provider
+    /// knows it that precisely (the local disk does): for change detection
+    /// that must see two writes within one second.
+    pub modified_ns: Option<u128>,
+}
+
+impl FsMetadata {
+    /// The modification time at the best precision known, in nanoseconds
+    /// since the Unix epoch.
+    pub fn modified_nanos(&self) -> Option<u128> {
+        self.modified_ns
+            .or_else(|| self.modified.map(|secs| u128::from(secs) * 1_000_000_000))
+    }
 }
 
 /// Flat file manifest entry (for whole-project tree scans).

@@ -3,7 +3,7 @@
 
 use super::repository::open_repo;
 use crate::models::*;
-use engine_fs::FsProvider as _;
+use engine_fs::{FsProvider as _, LocalFsProvider};
 use git2::{StatusOptions, build::CheckoutBuilder};
 use std::path::Path;
 
@@ -16,7 +16,7 @@ pub fn stage_file(repo_path: &Path, file_path: &str) -> Result<(), git2::Error> 
         .workdir()
         .map(|dir| dir.join(&git_path))
         .unwrap_or_else(|| repo_path.join(&git_path));
-    if workdir_file.exists() {
+    if LocalFsProvider::new().exists(&workdir_file).unwrap_or(false) {
         index.add_path(Path::new(&git_path))?;
     } else {
         // A deleted file is staged by removing it from the index.
@@ -57,7 +57,9 @@ pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git
     if status.contains(git2::Status::WT_NEW) {
         // Untracked — delete the file
         let full_path = repo_path.join(file_path);
-        std::fs::remove_file(&full_path).map_err(|e| git2::Error::from_str(&e.to_string()))?;
+        LocalFsProvider::new()
+            .delete_path(&full_path)
+            .map_err(|e| git2::Error::from_str(&e.to_string()))?;
         return Ok(());
     }
 
@@ -67,7 +69,7 @@ pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git
         index.remove_path(std::path::Path::new(&git_path))?;
         index.write()?;
         let full_path = repo_path.join(file_path);
-        let _ = std::fs::remove_file(&full_path);
+        let _ = LocalFsProvider::new().delete_path(&full_path);
         return Ok(());
     }
 
@@ -90,7 +92,7 @@ pub fn open_in_explorer(path: &Path) {
     #[cfg(target_os = "windows")]
     {
         // Use /select to highlight the file, or just open the folder
-        let arg = if path.is_file() {
+        let arg = if LocalFsProvider::new().metadata(path).is_ok_and(|m| !m.is_dir) {
             format!("/select,{}", path.to_string_lossy())
         } else {
             path.to_string_lossy().to_string()
@@ -99,7 +101,7 @@ pub fn open_in_explorer(path: &Path) {
     }
     #[cfg(target_os = "macos")]
     {
-        if path.is_file() {
+        if LocalFsProvider::new().metadata(path).is_ok_and(|m| !m.is_dir) {
             let _ = std::process::Command::new("open")
                 .arg("-R")
                 .arg(path)
@@ -110,7 +112,7 @@ pub fn open_in_explorer(path: &Path) {
     }
     #[cfg(target_os = "linux")]
     {
-        let dir = if path.is_file() {
+        let dir = if LocalFsProvider::new().metadata(path).is_ok_and(|m| !m.is_dir) {
             path.parent().unwrap_or(path)
         } else {
             path
@@ -122,7 +124,12 @@ pub fn open_in_explorer(path: &Path) {
 /// Append a line to the repo's .gitignore (creating it if needed).
 pub fn append_to_gitignore(repo_path: &Path, line: &str) -> Result<(), git2::Error> {
     let gitignore = repo_path.join(".gitignore");
-    let existing = std::fs::read_to_string(&gitignore).unwrap_or_default();
+    let local = LocalFsProvider::new();
+    let existing = local
+        .read_file(&gitignore)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_default();
     // Don't duplicate
     if !existing.lines().any(|l| l.trim() == line.trim()) {
         let separator = if existing.is_empty() || existing.ends_with('\n') {
@@ -130,7 +137,11 @@ pub fn append_to_gitignore(repo_path: &Path, line: &str) -> Result<(), git2::Err
         } else {
             "\n"
         };
-        std::fs::write(&gitignore, format!("{}{}{}\n", existing, separator, line))
+        local
+            .write_file(
+                &gitignore,
+                format!("{}{}{}\n", existing, separator, line).as_bytes(),
+            )
             .map_err(|e| git2::Error::from_str(&e.to_string()))?;
     }
     Ok(())

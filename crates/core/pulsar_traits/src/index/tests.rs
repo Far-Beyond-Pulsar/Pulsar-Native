@@ -44,28 +44,39 @@ inventory::submit! {
     }
 }
 
-/// Engine-mounted fixtures: a trait a native component implements, and two
-/// the index must refuse.
-const TEST_FILES: &[engine_fs::MountedFile] = &[
-    engine_fs::MountedFile {
-        path: "test/greeter.trait.json",
-        bytes: br#"{"schemaVersion":1,"typeKind":"trait","id":"pulsar.TestGreeter","name":"TestGreeter","displayName":"Test Greeter","methods":[{"name":"add_charges","signature":{"params":[{"name":"amount","type":{"kind":"Primitive","name":"i32"}}],"return":{"kind":"Primitive","name":"i32"}}}],"meta":{"contractVersion":1}}"#,
+// A fixture plugin whose root is this test crate (so `origin!()` here is
+// its origin), providing a trait a native component implements and two the
+// index must refuse.
+const DESCRIPTOR: &str = "id = \"test.traits\"\nname = \"Test traits\"\ndescription = \"A fixture that provides traits\"\nenabled_by_default = true\nrequires = []\nroot = \"pulsar_traits\"\n";
+
+inventory::submit! {
+    pulsar_plugins::InstalledPlugin { descriptor: DESCRIPTOR }
+}
+
+const TEST_FILES: &[engine_fs::EmbeddedFile] = &[
+    engine_fs::EmbeddedFile {
+        path: "traits/greeter.trait.json",
+        bytes: br#"{"schemaVersion":1,"typeKind":"trait","id":"test.traits.TestGreeter","name":"TestGreeter","displayName":"Test Greeter","methods":[{"name":"add_charges","signature":{"params":[{"name":"amount","type":{"kind":"Primitive","name":"i32"}}],"return":{"kind":"Primitive","name":"i32"}}}],"meta":{"contractVersion":1}}"#,
     },
-    engine_fs::MountedFile {
-        path: "test/outside.trait.json",
+    engine_fs::EmbeddedFile {
+        path: "traits/outside.trait.json",
         bytes: br#"{"schemaVersion":1,"typeKind":"trait","id":"elsewhere.Outside","name":"Outside","displayName":"Outside","methods":[],"meta":{"contractVersion":1}}"#,
     },
-    engine_fs::MountedFile {
-        path: "test/unversioned.trait.json",
-        bytes: br#"{"schemaVersion":1,"typeKind":"trait","id":"pulsar.Unversioned","name":"Unversioned","displayName":"Unversioned","methods":[],"meta":{}}"#,
+    engine_fs::EmbeddedFile {
+        path: "traits/unversioned.trait.json",
+        bytes: br#"{"schemaVersion":1,"typeKind":"trait","id":"test.traits.Unversioned","name":"Unversioned","displayName":"Unversioned","methods":[],"meta":{}}"#,
     },
 ];
 
+fn open_fixture(folder: engine_fs::PluginFolder) -> std::sync::Arc<dyn engine_fs::FolderSource> {
+    std::sync::Arc::new(engine_fs::MemoryFolder::with_files(folder, TEST_FILES))
+}
+
 inventory::submit! {
-    engine_fs::MountedContent {
-        origin: pulsar_plugins::engine_origin!(),
-        id: "pulsar.traits.test",
-        files: TEST_FILES,
+    engine_fs::FileProvider {
+        origin: pulsar_plugins::origin!(),
+        open: open_fixture,
+        in_game: engine_fs::InGame::Snapshot,
     }
 }
 
@@ -98,7 +109,7 @@ inventory::submit! {
     crate::NativeTraitImpl {
         origin: pulsar_plugins::engine_origin!(),
         class: "TestCharger",
-        trait_id: "pulsar.TestGreeter",
+        trait_id: "test.traits.TestGreeter",
         methods: &[],
     }
 }
@@ -108,7 +119,7 @@ inventory::submit! {
     crate::NativeTraitImpl {
         origin: pulsar_plugins::engine_origin!(),
         class: "TestSilent",
-        trait_id: "pulsar.TestGreeter",
+        trait_id: "test.traits.TestGreeter",
         methods: &[],
     }
 }
@@ -346,7 +357,7 @@ fn an_old_projects_copy_of_a_built_in_is_refused_not_resynced() {
 fn mounted_traits_outside_their_namespace_or_unversioned_are_refused() {
     let index = TraitIndex::live(tempfile::tempdir().unwrap().path());
     assert!(index.resolve_trait("elsewhere.Outside").is_none());
-    assert!(index.resolve_trait("pulsar.Unversioned").is_none());
+    assert!(index.resolve_trait("test.traits.Unversioned").is_none());
     let problems = index.problems().join("\n");
     assert!(problems.contains("outside its owner's namespace"), "{problems}");
     assert!(problems.contains("contractVersion"), "{problems}");
@@ -359,7 +370,7 @@ fn native_components_implement_traits_through_their_registered_methods() {
     let index = TraitIndex::live(tempfile::tempdir().unwrap().path());
     let entry = index.entry("component:TestCharger").unwrap();
     assert_eq!(entry.kind, NATIVE_KIND);
-    assert_eq!(entry.implemented_trait_ids, ["pulsar.TestGreeter"]);
+    assert_eq!(entry.implemented_trait_ids, ["test.traits.TestGreeter"]);
     assert_eq!(
         entry.binding,
         Some(Binding::Component {
@@ -371,5 +382,5 @@ fn native_components_implement_traits_through_their_registered_methods() {
     assert!(!problems.contains("component:TestCharger"), "{problems}");
     assert!(problems.contains("component:TestSilent"), "{problems}");
     assert!(problems.contains("add_charges"), "{problems}");
-    assert_eq!(index.implementers_of("pulsar.TestGreeter").len(), 2);
+    assert_eq!(index.implementers_of("test.traits.TestGreeter").len(), 2);
 }

@@ -13,6 +13,7 @@ name = "asset_viewer_plugin"
 builtin = []
 
 [dependencies]
+engine_fs = { workspace = true }
 # The plugin's descriptor and its editor provider's registration.
 pulsar_plugins = { workspace = true }
 plugin_manager = { workspace = true }
@@ -53,3 +54,6 @@ solid-fbx = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "b9eb5
 [dev-dependencies]
 psgc = { workspace = true }
 tempfile = { workspace = true }
+
+[lints]
+workspace = true

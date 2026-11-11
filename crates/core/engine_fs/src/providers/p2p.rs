@@ -193,6 +193,7 @@ impl FsProvider for P2pFsProvider {
             is_dir: entry.is_dir,
             size: entry.size,
             modified: entry.modified,
+            modified_ns: None,
         })
     }
 

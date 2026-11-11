@@ -15,7 +15,7 @@ add its own kind. The engine uses traits to give gameplay **roles** to classes
 |---|---|---|
 | Trait asset | `ui_types_common::TraitAsset` (`types.rs`); editor in `plugins/vendor/trait_editor` (the `pulsar.trait_editor` plugin) | `.trait.json`: `id`, `name`, `methods`, `supertraits`, `meta` (`contractVersion`) |
 | Records | `pulsar_traits::records` (`TraitRecord`) | Tolerant parse of a trait asset, no `ui_types_common` needed (runtime-safe) |
-| Engine traits | `pulsar_traits::builtin`, files in `crates/core/pulsar_traits/content/traits/` | `IntoGraph` and the four role traits, served read-only at `pulsar/traits/` (the engine's VFS mount) |
+| Engine traits | `pulsar_traits::builtin`, files in `crates/core/pulsar_traits/content/traits/` | `IntoGraph` and the four role traits, provided into every project at `plugins/pulsar/traits/` (the engine's plugin folder) |
 | `TraitDb` | `pulsar_traits::db` | Resolved in-memory model: maps, supertrait closure, effective implementers, each implementer's source kind |
 | Sources | `pulsar_traits::sources` | `TraitImplementerSource` (kind, file scan, listed implementers), `Binding` (how the runtime reaches an implementer), `NativeTraitImpl` + `implements!` (native components) |
 | Index | `pulsar_traits::TraitIndex` (`index.rs`) | The project's one index over every source and the mounted traits; stores `.pulsar/trait_index.json` (schema 3), incremental `update_path` |
@@ -130,7 +130,8 @@ trait). Cycles are detected and do not hang. The type system's
 ## Engine traits
 
 Engine-owned, defined as files (`crates/core/pulsar_traits/content/traits/`),
-embedded and mounted read-only at `pulsar/traits/` in every project, with fixed
+embedded in the engine and provided at `plugins/pulsar/traits/` in every project
+(the engine's `FileProvider`, the same mechanism a plugin uses), with fixed
 ids (`pulsar.GameMode`, ...). A project cannot change them (a write fails with
 `engine_fs::ReadOnlyMount`; the trait editor opens them read-only). To change a
 contract, edit the file and bump its `meta.contractVersion`.
@@ -236,9 +237,10 @@ The host publishes after every index rebuild/update/load
 `TraitImplementer::kind` is the implementer's source kind
 (`pulsar.blueprints.blueprint`, `pulsar.native.component`, a plugin's own).
 
-A plugin brings traits by mounting them: `.trait.json` files in its
-`MountedContent` (registered by its root) appear at `plugins/<plugin id>/` in
-every project that enables it, namespaced `<plugin id>.<Trait>` and versioned
+A plugin brings traits by providing them: `.trait.json` files in its plugin
+folder (its `engine_fs::FileProvider`, from any source, embedded or generated)
+appear at `plugins/<plugin id>/` in every project that enables it, namespaced
+`<plugin id>.<Trait>` and versioned
 (`meta.contractVersion`). It implements traits with a `TraitImplementerSource`
 (its own asset kind) or `implements!` (its components). Depending on another
 plugin's trait is a `requires` entry (p22, #1608 phase 3).

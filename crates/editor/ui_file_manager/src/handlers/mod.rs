@@ -166,10 +166,7 @@ pub fn handle_create_asset(
     let mut fp =
         crate::utils::cloud_join(&folder, &format!("New{}.{}", display.replace(" ", ""), ext));
     let mut c = 1;
-    while (engine_fs::virtual_fs::is_remote()
-        && engine_fs::virtual_fs::exists(&fp).unwrap_or(false))
-        || (!engine_fs::virtual_fs::is_remote() && fp.exists())
-    {
+    while engine_fs::virtual_fs::exists(&fp).unwrap_or(false) {
         fp = crate::utils::cloud_join(
             &folder,
             &format!("New{}_{}.{}", display.replace(" ", ""), c, ext),
@@ -303,10 +300,7 @@ pub fn handle_new_folder(
     let mut c = 1;
     let mut name = "New Folder".to_string();
     let mut fp = crate::utils::cloud_join(&folder, &name);
-    while (engine_fs::virtual_fs::is_remote()
-        && engine_fs::virtual_fs::exists(&fp).unwrap_or(false))
-        || (!engine_fs::virtual_fs::is_remote() && fp.exists())
-    {
+    while engine_fs::virtual_fs::exists(&fp).unwrap_or(false) {
         name = format!("New Folder ({})", c);
         fp = crate::utils::cloud_join(&folder, &name);
         c += 1;
@@ -342,10 +336,7 @@ pub fn handle_duplicate_item(d: &mut FileManagerDrawer, cx: &mut Context<FileMan
             let mut c = 1;
             let mut nn = format!("{}_copy", ns);
             let mut np = crate::utils::cloud_join(parent, &nn);
-            while (engine_fs::virtual_fs::is_remote()
-                && engine_fs::virtual_fs::exists(&np).unwrap_or(false))
-                || (!engine_fs::virtual_fs::is_remote() && np.exists())
-            {
+            while engine_fs::virtual_fs::exists(&np).unwrap_or(false) {
                 nn = format!("{}_copy_{}", ns, c);
                 np = crate::utils::cloud_join(parent, &nn);
                 c += 1;
@@ -421,7 +412,7 @@ pub fn handle_open_terminal_here(
 ) {
     let f = d.selected_folder.clone().or_else(|| {
         d.selected_items.iter().next().and_then(|p| {
-            if p.is_dir() {
+            if engine_fs::virtual_fs::is_dir(p) {
                 Some(p.clone())
             } else {
                 p.parent().map(|x| x.to_path_buf())
@@ -512,26 +503,28 @@ pub fn handle_toggle_gitignore(
         return;
     };
     let gp = proj.join(".gitignore");
-    let content = std::fs::read_to_string(&gp).unwrap_or_default();
+    let content = engine_fs::virtual_fs::read_to_string(&gp).unwrap_or_default();
     if let Ok(rel) = item.strip_prefix(proj) {
         let p = rel.to_string_lossy().replace('\\', "/");
         if content.lines().any(|l| l.trim() == p) {
-            let _ = std::fs::write(
+            let _ = engine_fs::virtual_fs::write_file(
                 &gp,
                 content
                     .lines()
                     .filter(|l| l.trim() != p)
                     .collect::<Vec<_>>()
-                    .join("\n"),
+                    .join("\n")
+                    .as_bytes(),
             );
         } else {
-            let _ = std::fs::write(
+            let _ = engine_fs::virtual_fs::write_file(
                 &gp,
                 if content.is_empty() {
                     p
                 } else {
                     format!("{}\n{}", content.trim_end(), p)
-                },
+                }
+                .as_bytes(),
             );
         }
         cx.notify();

@@ -1,5 +1,6 @@
 //! Compiling a project's TypeScript classes.
 
+use engine_fs::virtual_fs as vfs;
 use std::path::{Path, PathBuf};
 
 use plugin_editor_api::{CompileDiagnostic, DiagnosticSeverity, NativeRegistry};
@@ -18,12 +19,12 @@ fn class_name(dir: &Path) -> Option<String> {
 
 /// Every `src/classes/<Class>/` of the project at `root` that has a `class.ts`.
 fn class_dirs(root: &Path) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::fs::read_dir(root.join("src").join("classes"))
+    let mut dirs: Vec<PathBuf> = vfs::list_dir(&root.join("src").join("classes"))
         .map(|entries| {
             entries
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| p.join(CLASS_FILE).is_file())
+                .into_iter()
+                .map(|e| root.join("src").join("classes").join(&e.name))
+                .filter(|p| vfs::is_file(&p.join(CLASS_FILE)))
                 .collect()
         })
         .unwrap_or_default();
@@ -33,12 +34,12 @@ fn class_dirs(root: &Path) -> Vec<PathBuf> {
 
 /// Whether this language may compile `dir`: see the crate docs.
 fn check_language(dir: &Path) -> Result<(), String> {
-    if dir.join(GRAPH_FILE).is_file() {
+    if vfs::is_file(&dir.join(GRAPH_FILE)) {
         return Err(format!(
             "this class has both `{CLASS_FILE}` (TypeScript) and `{GRAPH_FILE}` (Blueprint): a class has one language, so remove one of them"
         ));
     }
-    match std::fs::read_to_string(dir.join("events").join(".build").join(LANGUAGE_MARKER)) {
+    match vfs::read_to_string(&dir.join("events").join(".build").join(LANGUAGE_MARKER)) {
         Ok(other) if !other.trim().is_empty() && other.trim() != LANGUAGE_ID => Err(format!(
             "its compiled module was written by the `{}` language; delete `events/.build` to compile it as TypeScript",
             other.trim()
@@ -67,12 +68,12 @@ pub fn compile_class_dir(
         return vec![diagnostic(&class, &file, message)];
     }
     let out = dir.join("events").join(".build").join("module.json");
-    let source = match std::fs::read_to_string(&file) {
+    let source = match vfs::read_to_string(&file) {
         Ok(source) => source,
         Err(e) => return vec![diagnostic(&class, &file, format!("failed to read: {e}"))],
     };
     let schema_path = dir.join(SCHEMA_FILE);
-    let previous = match std::fs::read_to_string(&schema_path) {
+    let previous = match vfs::read_to_string(&schema_path) {
         Ok(text) => match serde_json::from_str::<ClassSchema>(&text) {
             Ok(schema) => Some(schema),
             Err(e) => {
@@ -113,14 +114,14 @@ pub fn compile_class_dir(
     let Some(module) = compiled.module else {
         if write {
             // Never leave a module from an older source behind (only our own).
-            let _ = std::fs::remove_file(&out);
+            let _ = vfs::delete_path(&out);
         }
         return problems;
     };
     if !write {
         return problems;
     }
-    let io_error = |what: &str, path: &Path, e: std::io::Error| {
+    let io_error = |what: &str, path: &Path, e: String| {
         diagnostic(&class, path, format!("failed to write {what}: {e}"))
     };
     let json = match module.to_json() {
@@ -134,16 +135,16 @@ pub fn compile_class_dir(
         }
     };
     if let Some(build) = out.parent() {
-        if let Err(e) = std::fs::create_dir_all(build) {
-            problems.push(io_error("`events/.build`", build, e));
+        if let Err(e) = vfs::create_dir_all(build) {
+            problems.push(io_error("`events/.build`", build, e.to_string()));
             return problems;
         }
-        if let Err(e) = std::fs::write(&out, json) {
-            problems.push(io_error("the module", &out, e));
+        if let Err(e) = vfs::write_file(&out, json.as_bytes()) {
+            problems.push(io_error("the module", &out, e.to_string()));
             return problems;
         }
-        if let Err(e) = std::fs::write(build.join(LANGUAGE_MARKER), LANGUAGE_ID) {
-            problems.push(io_error("the language marker", build, e));
+        if let Err(e) = vfs::write_file(&build.join(LANGUAGE_MARKER), LANGUAGE_ID.as_bytes()) {
+            problems.push(io_error("the language marker", build, e.to_string()));
         }
     }
     // The schema is the class's field identity: write it when it changed.
@@ -151,8 +152,8 @@ pub fn compile_class_dir(
         if previous.as_ref() != Some(&schema) {
             match serde_json::to_string_pretty(&schema) {
                 Ok(text) => {
-                    if let Err(e) = std::fs::write(&schema_path, text + "\n") {
-                        problems.push(io_error("the schema", &schema_path, e));
+                    if let Err(e) = vfs::write_file(&schema_path, (text + "\n").as_bytes()) {
+                        problems.push(io_error("the schema", &schema_path, e.to_string()));
                     }
                 }
                 Err(e) => problems.push(diagnostic(
@@ -205,13 +206,13 @@ pub fn validate_project_classes(root: &Path, natives: &NativeRegistry) -> Result
 fn write_declarations(root: &Path, natives: &NativeRegistry) {
     let text = pulsar_script_ts::declarations(natives);
     let path = root.join("Pulsar").join("types").join("pulsar.d.ts");
-    if std::fs::read_to_string(&path).is_ok_and(|existing| existing == text) {
+    if vfs::read_to_string(&path).is_ok_and(|existing| existing == text) {
         return;
     }
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = vfs::create_dir_all(parent);
     }
-    if let Err(e) = std::fs::write(&path, text) {
+    if let Err(e) = vfs::write_file(&path, text.as_bytes()) {
         tracing::warn!("could not write {}: {e}", path.display());
     }
 }

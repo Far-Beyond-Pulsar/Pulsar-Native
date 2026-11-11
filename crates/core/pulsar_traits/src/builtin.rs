@@ -1,10 +1,12 @@
-//! What the engine itself brings: its trait files, served read-only into
-//! every project from the `pulsar/` mount, and its four gameplay roles.
+//! What the engine itself brings: its trait files, provided into every
+//! project at `plugins/pulsar/` the way any plugin provides files, and its
+//! four gameplay roles.
 //!
 //! The traits are ordinary `*.trait.json` files (`content/traits/`), embedded
-//! and registered as the engine's [`MountedContent`](engine_fs::MountedContent),
-//! so a project sees them at `pulsar/traits/<name>.trait.json` and cannot
-//! change them (a write fails with `engine_fs::ReadOnlyMount`). Their ids are
+//! in the engine and served by its `engine_fs::FileProvider` (a
+//! `MemoryFolder` it fills at `open`), so a project sees them at
+//! `plugins/pulsar/traits/<name>.trait.json` and cannot change them (a write
+//! fails with `engine_fs::ReadOnlyMount`). Their ids are
 //! fixed, readable strings in the engine's namespace (`pulsar.GameMode`), equal
 //! in every project. To change a contract, edit the file and bump its
 //! `meta.contractVersion`.
@@ -24,11 +26,13 @@ pub const PLAYER_CHARACTER_TRAIT_ID: &str = "pulsar.PlayerCharacter";
 pub const GAME_STATE_TRAIT_ID: &str = "pulsar.GameState";
 
 /// Where the engine's trait files are in a project.
-pub const GAME_MODE_TRAIT_PATH: &str = "pulsar/traits/game_mode.trait.json";
-pub const PLAYER_CONTROLLER_TRAIT_PATH: &str = "pulsar/traits/player_controller.trait.json";
-pub const PLAYER_CHARACTER_TRAIT_PATH: &str = "pulsar/traits/player_character.trait.json";
-pub const GAME_STATE_TRAIT_PATH: &str = "pulsar/traits/game_state.trait.json";
-pub const INTO_GRAPH_TRAIT_PATH: &str = "pulsar/traits/into_graph.trait.json";
+pub const GAME_MODE_TRAIT_PATH: &str = "plugins/pulsar/traits/game_mode.trait.json";
+pub const PLAYER_CONTROLLER_TRAIT_PATH: &str =
+    "plugins/pulsar/traits/player_controller.trait.json";
+pub const PLAYER_CHARACTER_TRAIT_PATH: &str =
+    "plugins/pulsar/traits/player_character.trait.json";
+pub const GAME_STATE_TRAIT_PATH: &str = "plugins/pulsar/traits/game_state.trait.json";
+pub const INTO_GRAPH_TRAIT_PATH: &str = "plugins/pulsar/traits/into_graph.trait.json";
 
 /// The engine's roles: the rules of a level, its shared state, and the local
 /// player's controller and body. The game runtime gives these four their
@@ -39,8 +43,8 @@ pub const GAME_STATE_ROLE: &str = "pulsar.game_state";
 pub const PLAYER_CONTROLLER_ROLE: &str = "pulsar.player_controller";
 pub const PLAYER_CHARACTER_ROLE: &str = "pulsar.player_character";
 
-/// The engine's trait files, as mounted.
-pub const TRAIT_FILES: &[engine_fs::MountedFile] = engine_fs::mounted_files!("content":
+/// The engine's trait files, embedded.
+pub const TRAIT_FILES: &[engine_fs::EmbeddedFile] = engine_fs::embedded_files!("content":
     "traits/into_graph.trait.json",
     "traits/game_mode.trait.json",
     "traits/game_state.trait.json",
@@ -48,11 +52,17 @@ pub const TRAIT_FILES: &[engine_fs::MountedFile] = engine_fs::mounted_files!("co
     "traits/player_controller.trait.json",
 );
 
+/// The engine's folder: its embedded trait files.
+fn open(folder: engine_fs::PluginFolder) -> std::sync::Arc<dyn engine_fs::FolderSource> {
+    std::sync::Arc::new(engine_fs::MemoryFolder::with_files(folder, TRAIT_FILES))
+}
+
 inventory::submit! {
-    engine_fs::MountedContent {
+    engine_fs::FileProvider {
         origin: pulsar_plugins::engine_origin!(),
-        id: "pulsar.traits",
-        files: TRAIT_FILES,
+        open,
+        // Embedded in the engine, so a game builds the same folder itself.
+        in_game: engine_fs::InGame::Live,
     }
 }
 
@@ -122,7 +132,7 @@ mod tests {
             assert!(ids.insert(id.clone()), "duplicate id {id}");
             let name = id.strip_prefix("pulsar.").expect("the engine's namespace");
             assert!(!name.contains('.'), "{id}");
-            let path = format!("pulsar/{}", file.path);
+            let path = format!("plugins/pulsar/{}", file.path);
             let record = parse_trait_record(&value, &path, id.clone()).unwrap();
             assert!(record.contract_version >= 1, "{id} versions its contract");
             assert!(!record.methods.is_empty());
@@ -139,7 +149,7 @@ mod tests {
             assert!(
                 TRAIT_FILES
                     .iter()
-                    .any(|file| format!("pulsar/{}", file.path) == path),
+                    .any(|file| format!("plugins/pulsar/{}", file.path) == path),
                 "{path}"
             );
         }

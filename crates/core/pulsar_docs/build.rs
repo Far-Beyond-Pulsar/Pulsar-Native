@@ -18,6 +18,8 @@ fn main() {
     }
 }
 
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_docs() -> Result<(), String> {
     let manifest_dir = env::var_os("CARGO_MANIFEST_DIR")
         .map(PathBuf::from)
@@ -53,6 +55,8 @@ fn generate_docs() -> Result<(), String> {
     Ok(())
 }
 
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn find_workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
     for candidate in manifest_dir.ancestors() {
         let manifest_path = candidate.join("Cargo.toml");

@@ -7,7 +7,6 @@ use serde_json::{json, Value};
 use std::time::Instant;
 use std::{
     collections::{HashMap, VecDeque},
-    fs,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -242,17 +241,14 @@ fn summarize_workspace(workspace_root: &Path) -> Value {
         }
         visited += 1;
 
-        let Ok(read_dir) = fs::read_dir(&path) else {
+        let Ok(entries) = engine_fs::virtual_fs::list_dir(&path) else {
             continue;
         };
 
-        for entry in read_dir.flatten() {
-            let entry_path = entry.path();
-            let Ok(meta) = entry.metadata() else {
-                continue;
-            };
+        for entry in entries {
+            let entry_path = path.join(&entry.name);
 
-            if meta.is_dir() {
+            if entry.is_dir {
                 dir_count += 1;
                 if visited < MAX_VISITS {
                     stack.push(entry_path.clone());
@@ -1223,12 +1219,10 @@ pub fn cancel_subagent(subagent_id: String) -> anyhow::Result<Value> {
 fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {
     let p = PathBuf::from(rel_or_abs);
     let joined = if p.is_absolute() { p } else { root.join(p) };
-    let canonical = joined
-        .canonicalize()
+    let canonical = engine_fs::virtual_fs::canonicalize(&joined)
         .with_context(|| format!("Path does not exist: {}", joined.display()))?;
 
-    let root_canonical = root
-        .canonicalize()
+    let root_canonical = engine_fs::virtual_fs::canonicalize(root)
         .with_context(|| format!("Workspace root missing: {}", root.display()))?;
 
     if !canonical.starts_with(&root_canonical) {
@@ -1241,8 +1235,8 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
     let p = PathBuf::from(rel_or_abs);
     let joined = if p.is_absolute() { p } else { root.join(&p) };
 
-    if let Ok(canonical) = joined.canonicalize() {
-        if let Ok(root_canonical) = root.canonicalize() {
+    if let Ok(canonical) = engine_fs::virtual_fs::canonicalize(&joined) {
+        if let Ok(root_canonical) = engine_fs::virtual_fs::canonicalize(root) {
             if !canonical.starts_with(&root_canonical) {
                 return Err(anyhow!("Path escapes workspace root"));
             }

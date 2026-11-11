@@ -40,6 +40,9 @@ fn legacy_file() -> Option<PathBuf> {
 
 /// Load saved connections, moving any legacy custom providers into the store
 /// (the legacy file is removed once they are saved).
+// Allowed std::fs: the legacy file lives in the OS user config dir, outside
+// any project.
+#[allow(clippy::disallowed_methods)]
 pub fn load_provider_instances() -> Vec<ProviderInstanceConfig> {
     let Some(path) = providers_file() else {
         return Vec::new();

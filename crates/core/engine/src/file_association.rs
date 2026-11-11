@@ -185,6 +185,8 @@ fn association_query_target() -> &'static str {
     }
 }
 
+// std::fs allowed: probes the OS for file-association support with a temp probe file, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Detect the TOML UTI on macOS by creating a temporary .toml file and querying it
 #[cfg(target_os = "macos")]
 fn detect_macos_toml_uti() -> Option<String> {
@@ -230,6 +232,8 @@ fn detect_macos_toml_uti() -> Option<String> {
     Some(uti)
 }
 
+// std::fs allowed: writes the user's own desktop entry for the engine, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Ensure a .desktop entry exists for Linux file associations
 #[cfg(target_os = "linux")]
 fn ensure_linux_desktop_entry(exe_path: &std::path::Path) -> Option<String> {

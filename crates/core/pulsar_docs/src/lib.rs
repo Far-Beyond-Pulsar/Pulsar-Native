@@ -1,4 +1,3 @@
-use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 
 pub mod project_parser;
@@ -8,15 +7,23 @@ pub mod project_parser;
 // crates/core/pulsar_docs, so three parents reach the workspace root. build.rs
 // resolves that same root from CARGO_MANIFEST_DIR and populates target/doc
 // before this crate is compiled.
-#[derive(RustEmbed)]
-#[folder = "../../../target/doc"]
-#[prefix = ""]
-// Only include json and md files to avoid scanning everything
-#[include = "*.json"]
-#[include = "*.md"]
-#[include = "**/*.json"]
-#[include = "**/*.md"]
-pub struct DocAssets;
+// Compile-time embedding of the generated docs: the derive reads the build output on the real machine.
+#[allow(clippy::disallowed_methods)]
+mod embedded {
+    use rust_embed::RustEmbed;
+
+    #[derive(RustEmbed)]
+    #[folder = "../../../target/doc"]
+    #[prefix = ""]
+    // Only include json and md files to avoid scanning everything
+    #[include = "*.json"]
+    #[include = "*.md"]
+    #[include = "**/*.json"]
+    #[include = "**/*.md"]
+    pub struct DocAssets;
+}
+
+pub use embedded::DocAssets;
 
 /// JSON index structures matching the build script
 #[derive(Serialize, Deserialize, Debug, Clone)]

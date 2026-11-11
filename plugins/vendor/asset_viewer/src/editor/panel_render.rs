@@ -464,14 +464,14 @@ pub(crate) fn linked_native_asset(path: &std::path::Path) -> Option<std::path::P
     let root = std::path::PathBuf::from(engine_state::get_project_path()?);
     let key = asset_import::db::relative_key(&root, path);
     let asset = root.join(&asset_import::ImportDb::load(&root).find_source(&key)?.asset);
-    asset.is_file().then_some(asset)
+    engine_fs::virtual_fs::is_file(&asset).then_some(asset)
 }
 
 /// Why `path` did not decode as a native mesh.
 fn native_mesh_error(path: &std::path::Path) -> String {
-    match std::fs::metadata(path) {
+    match engine_fs::virtual_fs::metadata(path) {
         Err(error) => format!("Could not read {}: {error}", path.display()),
-        Ok(meta) if meta.len() == 0 => format!("{} is empty", path.display()),
+        Ok(meta) if meta.size == 0 => format!("{} is empty", path.display()),
         Ok(_) => format!("{} is not a valid Pulsar mesh", path.display()),
     }
 }

@@ -127,7 +127,7 @@ impl NewProjectContent {
     pub fn install_assets(&self, project_root: &std::path::Path) {
         for (path, bytes) in &self.assets {
             let dst = project_root.join("assets").join(path);
-            if dst.exists() {
+            if engine_fs::virtual_fs::exists(&dst).unwrap_or(false) {
                 continue;
             }
             if let Some(parent) = dst.parent() {

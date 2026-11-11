@@ -1,7 +1,10 @@
-//! Log file reader with streaming and virtual scrolling support
+//! Log file reader with streaming and virtual scrolling support.
+//!
+//! The engine's logs live in the user's app-data directory, outside any project, so every
+//! read here goes to the local disk (`LocalFsProvider`), never the active project provider.
 
 use anyhow::{Context, Result};
-use std::fs::File;
+use engine_fs::{FsProvider as _, LocalFsProvider, ReadSeek};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -17,7 +20,7 @@ pub struct LogLine {
 /// Log reader that streams lines from disk with windowing
 pub struct LogReader {
     file_path: PathBuf,
-    file: Arc<Mutex<BufReader<File>>>,
+    file: Arc<Mutex<BufReader<Box<dyn ReadSeek>>>>,
     total_lines: usize,
     line_index: Vec<u64>, // Byte offsets for each line
     window_size: usize,
@@ -27,7 +30,8 @@ impl LogReader {
     /// Create a new log reader for the given file
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let file = File::open(&path)
+        let file = LocalFsProvider::new()
+            .open_read(&path)
             .with_context(|| format!("Failed to open log file: {}", path.display()))?;
         let reader = BufReader::new(file);
 
@@ -47,7 +51,7 @@ impl LogReader {
 
     /// Build an index of line offsets for fast random access
     fn build_index(&mut self) -> Result<()> {
-        let file = File::open(&self.file_path)?;
+        let file = LocalFsProvider::new().open_read(&self.file_path)?;
         let mut reader = BufReader::new(file);
 
         let mut offset = 0u64;
@@ -102,7 +106,7 @@ impl LogReader {
         let start_offset = self.line_index[start_line];
 
         // Open new reader at position
-        let file = File::open(&self.file_path)?;
+        let file = LocalFsProvider::new().open_read(&self.file_path)?;
         let mut reader = BufReader::new(file);
         reader.seek(SeekFrom::Start(start_offset))?;
 
@@ -143,7 +147,7 @@ impl LogReader {
     pub fn get_latest_log_path() -> Result<PathBuf> {
         if let Ok(path) = std::env::var("PULSAR_ENGINE_LOG_FILE") {
             let candidate = PathBuf::from(path);
-            if candidate.exists() {
+            if LocalFsProvider::new().exists(&candidate).unwrap_or(false) {
                 return Ok(candidate);
             }
         }
@@ -155,19 +159,20 @@ impl LogReader {
         let logs_dir = proj_dirs.data_dir().join("logs");
 
         // Find the most recent timestamp folder
-        let mut entries: Vec<_> = std::fs::read_dir(&logs_dir)
+        let mut entries: Vec<_> = LocalFsProvider::new()
+            .list_dir(&logs_dir)
             .with_context(|| format!("Failed to read logs directory: {}", logs_dir.display()))?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+            .into_iter()
+            .filter(|e| e.is_dir)
             .collect();
 
-        entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+        entries.sort_by_key(|e| std::cmp::Reverse(e.name.clone()));
 
         let latest_dir = entries.first().context("No log directories found")?;
 
-        let log_path = latest_dir.path().join("engine.log");
+        let log_path = logs_dir.join(&latest_dir.name).join("engine.log");
 
-        if !log_path.exists() {
+        if !LocalFsProvider::new().exists(&log_path).unwrap_or(false) {
             anyhow::bail!("Log file does not exist: {}", log_path.display());
         }
 
@@ -183,15 +188,16 @@ pub fn find_latest_log_dir() -> Result<PathBuf> {
         .context("Could not determine app data directory")?;
     let logs_dir = proj_dirs.data_dir().join("logs");
 
-    let mut entries: Vec<_> = std::fs::read_dir(&logs_dir)
+    let mut entries: Vec<_> = LocalFsProvider::new()
+        .list_dir(&logs_dir)
         .with_context(|| format!("Failed to read logs directory: {}", logs_dir.display()))?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+        .into_iter()
+        .filter(|e| e.is_dir)
         .collect();
 
-    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.name.clone()));
 
-    let latest_dir = entries.first().context("No log directories found")?.path();
+    let latest_dir = logs_dir.join(&entries.first().context("No log directories found")?.name);
 
     Ok(latest_dir)
 }

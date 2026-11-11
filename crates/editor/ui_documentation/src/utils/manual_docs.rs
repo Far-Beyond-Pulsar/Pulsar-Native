@@ -2,7 +2,6 @@ use crate::utils::doc_source::DocSource;
 use gpui::{prelude::*, *};
 use regex::Regex;
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use ui::input::{InputState, TabSize};
 
@@ -94,13 +93,13 @@ impl ManualDocsState {
             None => return,
         };
 
-        if !docs_folder.exists() {
-            let _ = fs::create_dir_all(&docs_folder);
+        if !engine_fs::virtual_fs::exists(&docs_folder).unwrap_or(false) {
+            let _ = engine_fs::virtual_fs::create_dir_all(&docs_folder);
 
             let readme_path = docs_folder.join("README.md");
-            let _ = fs::write(
+            let _ = engine_fs::virtual_fs::write_file(
                 &readme_path,
-                "# Project Documentation\n\nWelcome to your project documentation!\n\n## Getting Started\n\nAdd your documentation here.",
+                b"# Project Documentation\n\nWelcome to your project documentation!\n\n## Getting Started\n\nAdd your documentation here.",
             );
         }
 
@@ -133,7 +132,7 @@ impl ManualDocsState {
     pub fn select_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut App) {
         self.selected_file = Some(path.clone());
 
-        if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(content) = engine_fs::virtual_fs::read_to_string(&path) {
             self.editor_input_state.update(cx, |editor, cx| {
                 editor.set_value(content.clone(), window, cx);
             });
@@ -165,7 +164,8 @@ impl ManualDocsState {
         let content = self.editor_input_state.read(cx).value().to_string();
         self.current_markdown = content.clone();
 
-        fs::write(path, &self.current_markdown)?;
+        engine_fs::virtual_fs::write_file(path, self.current_markdown.as_bytes())
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         self.saved_markdown = self.current_markdown.clone();
         self.markdown_preview = self.resolve_image_urls(&self.current_markdown.clone());
@@ -187,17 +187,18 @@ impl ManualDocsState {
 
         let file_path = docs_folder.join(&file_name);
 
-        if file_path.exists() {
+        if engine_fs::virtual_fs::exists(&file_path).unwrap_or(false) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
                 "File already exists",
             ));
         }
 
-        fs::write(
+        engine_fs::virtual_fs::write_file(
             &file_path,
-            format!("# {}\n\n", name.trim_end_matches(".md")),
-        )?;
+            format!("# {}\n\n", name.trim_end_matches(".md")).as_bytes(),
+        )
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
         self.load_file_tree();
         self.select_file(file_path, window, cx);
 
@@ -205,11 +206,8 @@ impl ManualDocsState {
     }
 
     pub fn delete_file(&mut self, path: PathBuf) -> Result<(), std::io::Error> {
-        if path.is_dir() {
-            fs::remove_dir_all(&path)?;
-        } else {
-            fs::remove_file(&path)?;
-        }
+        engine_fs::virtual_fs::delete_path(&path)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         if self.selected_file.as_ref() == Some(&path) {
             self.selected_file = None;
@@ -236,26 +234,21 @@ impl ManualDocsState {
 /// Collect markdown files and directories under `path` (sorted by name, hidden
 /// entries skipped); descend only into directories listed in `expanded`.
 fn scan_docs_dir(path: &Path, depth: usize, expanded: &HashSet<PathBuf>, out: &mut Vec<FileEntry>) {
-    let Ok(entries) = fs::read_dir(path) else {
+    let Ok(mut entries) = engine_fs::virtual_fs::list_dir(path) else {
         return;
     };
 
-    let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
 
     for entry in entries {
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
+        let path = path.join(&entry.name);
+        let name = entry.name;
 
         if name.starts_with('.') {
             continue;
         }
 
-        let is_directory = metadata.is_dir();
+        let is_directory = entry.is_dir;
 
         if !is_directory && !name.ends_with(".md") {
             continue;
@@ -306,7 +299,7 @@ fn rewrite_image_urls(selected_file: Option<&Path>, markdown: &str) -> String {
         }
 
         let image_path = base_dir.join(url);
-        if let Ok(absolute_path) = image_path.canonicalize() {
+        if let Ok(absolute_path) = engine_fs::virtual_fs::canonicalize(&image_path) {
             #[cfg(target_os = "windows")]
             let file_url = format!(
                 "file:///{}",
@@ -328,6 +321,7 @@ mod tests {
     use super::*;
     // `gpui::*` (pulled in by `super::*`) exports a `test` macro that would shadow `#[test]`.
     use core::prelude::v1::test;
+    use std::fs;
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir =

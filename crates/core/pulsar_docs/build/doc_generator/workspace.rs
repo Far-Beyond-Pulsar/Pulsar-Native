@@ -51,6 +51,8 @@ struct Workspace {
 ///
 /// # Returns
 /// Vector of CrateInfo for each crate found
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 pub fn discover_crates(workspace_root: &Path) -> Result<Vec<CrateInfo>, Box<dyn Error>> {
     let mut crates = Vec::new();
 
@@ -97,6 +99,8 @@ pub fn discover_crates(workspace_root: &Path) -> Result<Vec<CrateInfo>, Box<dyn 
 }
 
 /// Expand a glob pattern to find crate directories
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn expand_glob(workspace_root: &Path, pattern: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let mut dirs = Vec::new();
 
@@ -121,6 +125,8 @@ fn expand_glob(workspace_root: &Path, pattern: &str) -> Result<Vec<PathBuf>, Box
 }
 
 /// Parse a single crate's Cargo.toml and determine its structure
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn parse_crate_info(crate_dir: &Path) -> Result<CrateInfo, Box<dyn Error>> {
     let cargo_toml_path = crate_dir.join("Cargo.toml");
     let cargo_toml_content = std::fs::read_to_string(&cargo_toml_path)?;

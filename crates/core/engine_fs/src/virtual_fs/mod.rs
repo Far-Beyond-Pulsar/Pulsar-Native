@@ -5,10 +5,10 @@
 //! engine, the editor and every plugin use the free functions in this module
 //! and never need to care which backend is active.
 //!
-//! Every call goes through the read-only [`mounts`] first: a mounted
-//! project's `pulsar/` and `plugins/<plugin id>/` folders are served from the
-//! engine's and the enabled plugins' embedded content, whatever the provider,
-//! and refuse writes with [`ReadOnlyMount`].
+//! Every call goes through the plugin folders first ([`mounts`]): a mounted
+//! project's `plugins/<owner>/` folders are served by the plugins that
+//! provide them (and the engine, `plugins/pulsar/`), whatever the provider,
+//! and refuse every writer but their owner with [`ReadOnlyMount`].
 //!
 //! This is the one place engine and plugin code touches files: `std::fs` is
 //! a disallowed method across the workspace (the root `clippy.toml`), allowed
@@ -27,8 +27,10 @@ pub mod mounts;
 pub mod path_utils;
 
 pub use mounts::{
-    is_read_only, mount_of, mount_problems, mount_project, unmount_project, MountedContent,
-    MountedFile, MountedFs, ReadOnlyMount, ENGINE_MOUNT, PLUGINS_FOLDER,
+    is_read_only, mount_of, mount_problems, mount_project, plugin_snapshot,
+    serve_packaged_folders, unmount_project, CacheFolder, EmbeddedFile, FileProvider,
+    FolderSource, InGame, MemoryFolder, MountedFs, PluginFolder, ReadOnlyMount, CACHE_FOLDER,
+    ENGINE_FOLDER, PLUGINS_FOLDER,
 };
 // Re-export commonly used path utilities
 pub use path_utils::{cloud_join, is_cloud_path, normalize_path};

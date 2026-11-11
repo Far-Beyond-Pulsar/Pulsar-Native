@@ -10,6 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
+use engine_fs::virtual_fs;
 use pulsar_class::{ClassEntry, ClassRegistry};
 use pulsar_content::ProjectSettings;
 use pulsar_script_vm::Module;
@@ -96,15 +97,15 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
         let build = entry.dir.join("events").join(".build");
         let json = build.join(pulsar_game::scripting::MODULE_JSON_FILE);
         let graph = entry.dir.join("graph_save.json");
-        if !json.is_file() {
-            if graph.is_file() {
+        if !virtual_fs::is_file(&json) {
+            if virtual_fs::is_file(&graph) {
                 output.problems.push(problem(
                     "has a graph but no compiled module; open it in the editor and save, or build this \
                      tool with the `blueprint` feature to compile it here"
                         .into(),
                     Some(graph),
                 ));
-            } else if entry.dir.join("class.ts").is_file() {
+            } else if virtual_fs::is_file(&entry.dir.join("class.ts")) {
                 output.problems.push(problem(
                     "has TypeScript source but no compiled module; build this tool with the `typescript` feature to compile it here"
                         .into(),
@@ -122,7 +123,7 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
                 message: "compiled module is older than its graph; it may be stale".into(),
             });
         }
-        match std::fs::read(&json)
+        match virtual_fs::read_file(&json)
             .map_err(|e| e.to_string())
             .and_then(|b| Module::decode(&b).map_err(|e| e.to_string()))
         {
@@ -209,7 +210,7 @@ fn link_all(
 }
 
 fn is_older(a: &Path, b: &Path) -> bool {
-    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let modified = |p: &Path| virtual_fs::metadata(p).ok().and_then(|m| m.modified);
     matches!((modified(a), modified(b)), (Some(a), Some(b)) if a < b)
 }
 

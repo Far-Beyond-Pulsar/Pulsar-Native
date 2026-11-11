@@ -193,6 +193,8 @@ impl PieHost {
         project_root.join("target").join(profile_dir).join(file)
     }
 
+    // std::fs allowed: loads the freshly built game dylib (libloading needs a real path); a temp copy of a build artifact, not a project file
+    #[allow(clippy::disallowed_methods)]
     /// Load a freshly-built game `cdylib` and initialize the embedded game.
     ///
     /// `device`/`queue` are the editor's (GPUI's) handles; the game clones them
@@ -600,6 +602,8 @@ impl PieHost {
         (self.out_texture as *const wgpu::Texture).as_ref()
     }
 
+    // std::fs allowed: removes the temp copy of the game dylib made at load, not a project file
+    #[allow(clippy::disallowed_methods)]
     /// Stop the game: run its teardown and unload the library.
     pub fn stop(&mut self) {
         // #942: plugins drop their handles onto the game's hub now, while

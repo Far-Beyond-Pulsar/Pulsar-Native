@@ -43,8 +43,8 @@ The heart of the engine.
 | `engine` | Binary entry point, startup graph, GPUI `App` creation |
 | `engine_backend` | Window and rendering backend; subsystem lifecycle; the plugins' engine seams (render features, scene rows, game hooks, level rules) |
 | `engine_class_derive` | `#[derive(EngineClass)]` proc macro |
-| `engine_fs` | The filesystem library every file goes through: `virtual_fs` (local, remote, P2P providers, with the engine's and plugins' read-only mounts composed over them), the project file index and its watcher. `std::fs` is a disallowed method elsewhere (root `clippy.toml`) |
-| `pulsar_traits` | Traits and gameplay roles: trait records and database, the one trait index over every implementer source (`TraitImplementerSource`, `NativeTraitImpl`), conformance, the role registry (`RoleRegistration`), the engine's trait files (`pulsar/` mount) and roles |
+| `engine_fs` | The filesystem library every file goes through: `virtual_fs` (local, remote, P2P providers, with the plugin folders composed over them: `plugins/<id>/`, provided and changed only by their owner), the project file index and its watcher. `std::fs` is a disallowed method elsewhere (root `clippy.toml`) |
+| `pulsar_traits` | Traits and gameplay roles: trait records and database, the one trait index over every implementer source (`TraitImplementerSource`, `NativeTraitImpl`), conformance, the role registry (`RoleRegistration`), the engine's trait files (its `plugins/pulsar/` folder) and roles |
 | `engine_state` | Typed resource system — `StateStore`, `ResourceHandle`, `EngineContext` |
 | `engine_subsystems` | Subsystem trait and registry |
 | `friends_engine` | Multiplayer friends backend |

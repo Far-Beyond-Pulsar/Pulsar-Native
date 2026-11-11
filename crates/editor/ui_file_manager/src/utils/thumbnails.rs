@@ -38,7 +38,7 @@ impl FileManagerDrawer {
             .unwrap_or_default();
         // `.material` is a folder-based asset containing the actual graph in
         // shader_graph_save.json; pass the asset folder to its registered hook.
-        if path.is_dir() && ext != "material" {
+        if engine_fs::virtual_fs::is_dir(path) && ext != "material" {
             return;
         }
         if !Self::is_thumbable_ext(&ext) || self.thumbnails.contains_key(path) {

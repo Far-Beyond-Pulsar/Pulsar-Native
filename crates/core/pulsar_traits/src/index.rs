@@ -2,8 +2,8 @@
 //! every source.
 //!
 //! Traits are `*.trait.json` files: the project's own, and those the engine
-//! (`pulsar/`) and the enabled plugins (`plugins/<id>/`) serve read-only
-//! through the VFS mounts (`engine_fs::virtual_fs::mounts`). Implementers come
+//! (`plugins/pulsar/`) and the enabled plugins (`plugins/<id>/`) provide into
+//! their own folders (`engine_fs::virtual_fs::mounts`). Implementers come
 //! from the registered [`TraitImplementerSource`](crate::TraitImplementerSource)s:
 //! files a source claims (Blueprints) and implementers a source lists (native
 //! components).
@@ -25,7 +25,7 @@
 //!   from before ids is "path only" until it is next saved), and a renamed or
 //!   moved trait keeps its implementers;
 //! - **namespaces**: a mounted trait's id is its owner's, `pulsar.<Trait>` in
-//!   the engine's mount and `<plugin id>.<Trait>` in a plugin's, with a
+//!   the engine's folder and `<plugin id>.<Trait>` in a plugin's, with a
 //!   `meta.contractVersion`; a mounted trait outside its namespace, and a
 //!   project trait claiming a reserved one (an old project's copy of a
 //!   built-in), are rejected as [`problems`](TraitIndex::problems), not
@@ -124,13 +124,10 @@ struct ScanContext {
     type_index_traits: BTreeSet<String>,
 }
 
-/// The owner whose mount a project-relative path is in (`pulsar`, a plugin
-/// id), or `None` for the project's own files.
+/// The owner whose folder a project-relative path is in (`pulsar` for the
+/// engine, a plugin's id), or `None` for the project's own files.
 pub fn mount_owner(relative: &str) -> Option<String> {
     let (first, rest) = relative.split_once('/')?;
-    if first == virtual_fs::ENGINE_MOUNT {
-        return Some(ENGINE_NAMESPACE.to_owned());
-    }
     if first == virtual_fs::PLUGINS_FOLDER {
         return rest.split_once('/').map(|(id, _)| id.to_owned());
     }
@@ -601,7 +598,7 @@ fn ensure_sorted_unique(values: &[String], what: &str) -> Result<()> {
 fn live_traits(project_root: &Path) -> (Vec<TraitRecord>, Vec<String>) {
     let mut records = Vec::new();
     let mut problems = Vec::new();
-    for mount in [virtual_fs::ENGINE_MOUNT, virtual_fs::PLUGINS_FOLDER] {
+    for mount in [virtual_fs::PLUGINS_FOLDER] {
         let Ok(entries) = virtual_fs::manifest(&project_root.join(mount)) else {
             continue;
         };
@@ -651,7 +648,7 @@ fn mounted_trait(project_root: &Path, relative: &str) -> std::result::Result<Tra
 /// and listed ones.
 fn live_implementers(project_root: &Path, db: &TraitDb) -> Vec<ImplementerEntry> {
     let mut out = Vec::new();
-    for mount in [virtual_fs::ENGINE_MOUNT, virtual_fs::PLUGINS_FOLDER] {
+    for mount in [virtual_fs::PLUGINS_FOLDER] {
         let Ok(entries) = virtual_fs::manifest(&project_root.join(mount)) else {
             continue;
         };
@@ -700,7 +697,7 @@ fn project_trait(
     if let Some(id) = embedded_id(&value) {
         if let Some(namespace) = reserved_namespace(&id) {
             return Err(format!(
-                "{relative}: trait id '{id}' is in the reserved namespace '{namespace}' (the engine and plugins serve their traits from their read-only mounts, `pulsar/` and `plugins/<id>/`); this file is ignored. An old project's copy of a built-in trait can be deleted"
+                "{relative}: trait id '{id}' is in the reserved namespace '{namespace}' (the engine and plugins provide their traits in their own folders, `plugins/<id>/`); this file is ignored. An old project's copy of a built-in trait can be deleted"
             ));
         }
     }

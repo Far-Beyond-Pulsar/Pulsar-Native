@@ -37,6 +37,8 @@ pub mod source;
 
 use std::path::PathBuf;
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 /// The Pulsar-Native repository root (this crate lives at `crates/core/scene_inventory`).
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

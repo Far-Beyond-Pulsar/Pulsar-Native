@@ -4,9 +4,10 @@
 //! - [`virtual_fs`]: the free functions everything calls (`read_file`,
 //!   `write_file`, `open_read`, `manifest`, ...), routed to the active
 //!   [`FsProvider`] (local disk, a remote `pulsar-studio` project, a
-//!   peer-to-peer session) with the read-only mounts composed over it
-//!   ([`virtual_fs::mounts`]: the engine's `pulsar/` and each enabled plugin's
-//!   `plugins/<id>/` folder in every project).
+//!   peer-to-peer session) with the plugin folders composed over it
+//!   ([`virtual_fs::mounts`]: `plugins/<owner>/` in every project for each
+//!   plugin that provides files, and the engine's `plugins/pulsar/`; only
+//!   their owner changes them).
 //! - [`providers`]: the provider trait and its implementations.
 //! - [`events`]: change notifications for what the editor wrote.
 //! - [`file_index`]: the persistent, disposable SQLite index of a local
@@ -40,7 +41,8 @@ pub use providers::{
 #[cfg(feature = "remote")]
 pub use providers::{RemoteConfig, RemoteFsProvider};
 pub use virtual_fs::{
-    cloud_join, is_cloud_path, MountedContent, MountedFile, ReadOnlyMount,
+    cloud_join, is_cloud_path, CacheFolder, EmbeddedFile, FileProvider, FolderSource, InGame,
+    MemoryFolder, PluginFolder, ReadOnlyMount,
 };
 pub use watchers::AssetChangeKind;
 

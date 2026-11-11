@@ -48,19 +48,21 @@ pub struct ScriptActorType {
 /// `Cargo.toml` with a package name. Missing `scripts/` ⇒ empty vec.
 pub fn discover_script_crates(project_root: &Path) -> Vec<ScriptCrate> {
     let scripts_dir = project_root.join("scripts");
-    let Ok(entries) = std::fs::read_dir(&scripts_dir) else {
+    let Ok(entries) = engine_fs::virtual_fs::list_dir(&scripts_dir) else {
         return Vec::new();
     };
 
     let mut crates: Vec<ScriptCrate> = entries
-        .flatten()
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .into_iter()
+        .filter(|e| e.is_dir)
         .filter_map(|e| {
-            let manifest = std::fs::read_to_string(e.path().join("Cargo.toml")).ok()?;
+            let manifest =
+                engine_fs::virtual_fs::read_to_string(&scripts_dir.join(&e.name).join("Cargo.toml"))
+                    .ok()?;
             let name = read_package_name(&manifest)?;
             Some(ScriptCrate {
                 name,
-                dir_name: e.file_name().to_string_lossy().into_owned(),
+                dir_name: e.name,
             })
         })
         .collect();
@@ -78,17 +80,17 @@ pub fn discover_script_actors(project_root: &Path) -> Vec<ScriptActorType> {
         let dir = project_root.join("scripts").join(&krate.dir_name);
         let mut stack = vec![dir.join("src")];
         while let Some(d) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&d) else {
+            let Ok(entries) = engine_fs::virtual_fs::list_dir(&d) else {
                 continue;
             };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            for entry in entries {
+                let path = d.join(&entry.name);
+                if entry.is_dir {
                     stack.push(path);
                     continue;
                 }
                 if path.extension().map(|e| e == "rs").unwrap_or(false) {
-                    if let Ok(text) = std::fs::read_to_string(&path) {
+                    if let Ok(text) = engine_fs::virtual_fs::read_to_string(&path) {
                         for ty in scan_registered_types(&text) {
                             out.push(ScriptActorType {
                                 crate_name: krate.name.clone(),

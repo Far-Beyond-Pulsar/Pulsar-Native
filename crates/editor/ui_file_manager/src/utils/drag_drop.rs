@@ -88,7 +88,9 @@ impl FileManagerDrawer {
         let (taken, outside): (Vec<PathBuf>, Vec<PathBuf>) =
             outside.into_iter().partition(|path| {
                 path.file_name()
-                    .is_some_and(|name| target.join(name).exists())
+                    .is_some_and(|name| {
+                        engine_fs::virtual_fs::exists(&target.join(name)).unwrap_or(false)
+                    })
             });
         for path in &taken {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");

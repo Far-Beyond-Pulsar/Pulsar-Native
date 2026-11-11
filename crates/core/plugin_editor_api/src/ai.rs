@@ -133,7 +133,7 @@ fn resolve_for_compare(path: &std::path::Path) -> std::path::PathBuf {
     let mut existing = path;
     let mut rest = Vec::new();
     let resolved = loop {
-        if let Ok(canonical) = existing.canonicalize() {
+        if let Ok(canonical) = engine_fs::virtual_fs::canonicalize(existing) {
             break canonical;
         }
         match (existing.parent(), existing.file_name()) {

@@ -141,7 +141,7 @@ impl AgentChatPanel {
     }
 
     pub(super) fn expand_file_references(text: &str) -> String {
-        use std::fs;
+        use engine_fs::virtual_fs as fs;
         let workspace_root = engine_state::get_project_path()
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from("."));
@@ -160,7 +160,7 @@ impl AgentChatPanel {
                 workspace_root.join(path_str),
             ];
             for candidate in &candidates {
-                if candidate.is_file() {
+                if fs::is_file(candidate) {
                     if let Ok(content) = fs::read_to_string(candidate) {
                         let ext = candidate.extension().and_then(|e| e.to_str()).unwrap_or("");
                         let display = candidate.display().to_string();

@@ -73,6 +73,7 @@ name = "agent_chat_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "pulsar_plugins",
  "serde",
  "serde_json",
@@ -592,6 +593,7 @@ dependencies = [
  "anyhow",
  "asset_import",
  "bytemuck",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
@@ -3283,6 +3285,7 @@ name = "editor_table_plugin"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -6868,6 +6871,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "helio",
@@ -7390,6 +7394,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "engine_class_derive",
+ "engine_fs",
  "gilrs",
  "gpui-ce",
  "inventory",
@@ -8013,6 +8018,7 @@ dependencies = [
 name = "level_migrate"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "installed_plugins",
  "pulsar_class",
  "pulsar_reflection",
@@ -11350,6 +11356,7 @@ dependencies = [
 name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_subsystems",
  "gamma",
  "gpui-ce",
@@ -11414,6 +11421,7 @@ name = "plugin_matter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "gpui-ce",
  "image",
  "parking_lot",
@@ -11440,6 +11448,7 @@ dependencies = [
 name = "plugin_typescript"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "plugin_manager",
@@ -12226,6 +12235,7 @@ dependencies = [
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "prettyplease",
  "quote",
  "rust-embed",
@@ -12258,6 +12268,7 @@ dependencies = [
  "dirs 6.0.0",
  "dotenv",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "file-association-manager",
  "futures",
@@ -12408,6 +12419,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "helio_component",
  "installed_plugins",
@@ -12416,6 +12428,7 @@ dependencies = [
  "pulsar_content",
  "pulsar_events",
  "pulsar_game",
+ "pulsar_plugins",
  "pulsar_script_runtime",
  "pulsar_script_vm",
  "pulsar_settings",
@@ -12582,6 +12595,7 @@ dependencies = [
 name = "pulsar_script_runtime"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "glam 0.33.5",
  "profiling 0.1.0",
  "pulsar_scenedb",
@@ -14073,6 +14087,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -17209,6 +17224,7 @@ version = "0.1.0"
 dependencies = [
  "editor_task_queue",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "image",
@@ -17269,6 +17285,7 @@ dependencies = [
  "dirs 6.0.0",
  "editor_task_queue",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -17313,6 +17330,7 @@ dependencies = [
 name = "ui_documentation"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "inventory",
@@ -17347,6 +17365,7 @@ name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
  "dirs 6.0.0",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "image",
@@ -17402,6 +17421,7 @@ dependencies = [
  "bytemuck",
  "crossbeam-queue",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "inventory",
@@ -17493,6 +17513,7 @@ dependencies = [
 name = "ui_keybindings"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "inventory",
@@ -17603,6 +17624,7 @@ dependencies = [
  "dashmap",
  "directories 6.0.0",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -17688,6 +17710,7 @@ dependencies = [
 name = "ui_problems"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "gpui-ce",
  "rust-i18n",
  "similar 3.2.0",

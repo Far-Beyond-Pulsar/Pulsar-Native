@@ -351,6 +351,9 @@ impl QuicServer {
     }
 
     /// Load certificates from files
+    // Real machine: the relay is a standalone server; its config and TLS key files are
+    // deployment files on the host, not project files, and it has no project virtual FS.
+    #[allow(clippy::disallowed_methods)]
     fn load_certificates(
         cert_path: &Path,
         key_path: &Path,

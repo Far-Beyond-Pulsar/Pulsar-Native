@@ -21,11 +21,7 @@ fn remote(path: &Path) -> bool {
 }
 
 fn exists(path: &Path) -> bool {
-    if remote(path) {
-        engine_fs::virtual_fs::exists(path).unwrap_or(false)
-    } else {
-        path.exists()
-    }
+    engine_fs::virtual_fs::exists(path).unwrap_or(false)
 }
 
 /// `name` in `folder`, or `<stem> copy[ n].<ext>` there when `name` is taken.

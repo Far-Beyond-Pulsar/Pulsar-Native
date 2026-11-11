@@ -19,6 +19,8 @@ fn identifier(name: &str) -> String {
     id
 }
 
+// Build script: reads fixtures and writes generated code in the build's real source and OUT_DIR.
+#[allow(clippy::disallowed_methods)]
 fn main() {
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"));
     let manifest_dir =

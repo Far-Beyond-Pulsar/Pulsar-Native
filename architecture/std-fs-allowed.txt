@@ -6,3 +6,61 @@
 #
 # path | reason
 
+crates/core/engine/build.rs | build script: walks the source tree for cargo rerun-if-changed
+crates/core/engine/src/appdata.rs | the engine's own per-user app data, config and theme cache, outside any project
+crates/core/engine/src/assets.rs | RustEmbed's generated code reads the engine's own assets folder in debug builds (a module allow: derive output takes no item allow)
+crates/core/engine/src/dev_bootstrap.rs | the restart sidecar: its log in the OS temp dir, restoring the engine's own executable
+crates/core/engine/src/dxc.rs | the Windows-on-ARM DXC install in the engine's own per-user tool cache (cfg windows+aarch64)
+crates/core/engine/src/file_association.rs | OS file-association probes and the user's desktop entry, outside any project (cfg macos/linux)
+crates/core/engine/src/gpu_policy.rs | reads the OS /proc/version to detect WSL
+crates/core/engine/src/logging.rs | the engine's own per-user log folder, outside any project
+crates/core/engine/src/macos_permissions.rs | the engine's own prompt-state file in the user dir (cfg macos)
+crates/core/engine/src/settings/engine_settings.rs | the engine's own per-user config file, outside any project
+crates/core/engine/src/steps/settings.rs | reads the engine's own per-user config file, outside any project
+crates/core/engine_backend/build.rs | build script: reads the engine source tree
+crates/core/engine_backend/src/services/core_project_builder.rs | resolves the engine's own source checkout, not a project path
+crates/core/engine_backend/src/services/pie_host.rs | loads and removes a temp copy of the built game dylib (libloading needs a real path)
+crates/core/engine_fs/src/providers/local.rs | the local provider: the one place a project's files meet the disk
+crates/core/helio_component/src/subsystems.rs | the working directory and the engine's built-in assets: machine paths outside any project
+crates/core/one_owner/src/lib.rs | the one-owner checker reads the engine's own source tree, not a project
+crates/core/plugin_manager/src/loading.rs | the engine's own plugin install dir of native libraries (the OS loader needs real paths; manifests sit beside them)
+crates/core/plugin_manager/src/permanent_library.rs | opens the native library itself to hash and load it from one handle (no swap between check and load)
+crates/core/pulsar-relay/src/config.rs | the standalone relay server's config file on its host, no project
+crates/core/pulsar-relay/src/transport/quic.rs | the standalone relay server's TLS certificate and key files on its host
+crates/core/pulsar_auth/src/lib.rs | the user's token and profile cache in the machine's per-user data dir, never routed through a project's provider
+crates/core/pulsar_content/src/pak.rs | PakWriter::create: the packaged game's output pak, a seekable file whose header is rewritten at the end
+crates/core/pulsar_content/src/root.rs | asset_root_in unpacks pak assets into a machine cache dir for loaders that need OS paths
+crates/core/pulsar_docs/build.rs | build script
+crates/core/pulsar_docs/build/doc_generator/extractor.rs | build script
+crates/core/pulsar_docs/build/doc_generator/markdown.rs | build script
+crates/core/pulsar_docs/build/doc_generator/parser.rs | build script
+crates/core/pulsar_docs/build/doc_generator/workspace.rs | build script
+crates/core/pulsar_docs/src/lib.rs | the RustEmbed derive reads target/doc at compile time (a module allow: derive output takes no item allow)
+crates/core/pulsar_game/build.rs | build script writing OUT_DIR
+crates/core/pulsar_game/src/scripting/driver/native_libs.rs | a project's Cargo-built native cdylibs, loaded by the OS loader from real paths, reloaded on full-precision mtimes
+crates/core/pulsar_lsp/src/rust_analyzer/discovery.rs | finds or installs rust-analyzer (PATH, ~/.cargo/bin, the engine's deps dir), outside any project
+crates/core/pulsar_macros/src/lib.rs | a proc macro: runs inside rustc and reads its own crate's source dir
+crates/core/pulsar_package/src/lib.rs | the packaged game's output folder and executable copy, and the engine source checkout lookup
+crates/core/pulsar_package/src/main.rs | the CLI writes its JSON report to the path it is given
+crates/core/pulsar_script_conformance/build.rs | build script reading fixtures, writing OUT_DIR
+crates/core/pulsar_script_vm/src/library.rs | shadow copies of native libraries in the OS temp dir for libloading
+crates/core/scene_inventory/src/home.rs | a CI inventory of the engine's own source checkout, not a project
+crates/core/scene_inventory/src/ledger.rs | a CI inventory of the engine's own source checkout, not a project
+crates/core/scene_inventory/src/lib.rs | a CI inventory of the engine's own source checkout, not a project
+crates/core/scene_inventory/src/source.rs | a CI inventory of the engine's own source checkout, not a project
+crates/editor/ui_core/src/app/agent_chat_panel/chat_storage.rs | chat export/import: the other side is a path picked in a native file dialog on this machine, not a project file (the project side goes through the VFS)
+crates/editor/ui_core/src/app/menu_actions.rs | the engine's own source checkout and the bootstrap sidecar (a copy of the running exe in the OS temp dir): machine process plumbing
+crates/editor/ui_core/src/custom_providers.rs | the legacy AI provider file in the OS user config dir, outside any project
+crates/editor/ui_git_manager/src/manager.rs | diff polling needs the working file's sub-second mtime on libgit2's real checkout (FsMetadata has whole seconds)
+crates/editor/ui_level_editor/src/ui/panel/pie.rs | cargo's output dylib and the source-vs-artifact mtime comparison at sub-second precision on the real disk
+crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/mod.rs | the high-res screenshot's OS temp file and its copy to a save-dialog path
+crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/thumbnail.rs | a PNG the `png` encoder streams into an OS temp file
+crates/editor/ui_log_viewer/src/utils/gpu_info.rs | reads the Linux kernel's /proc and /sys GPU driver files (cfg linux)
+crates/profiling/src/database.rs | profiling sits below engine_fs (Helio links it): the SQLite trace store on the developer's machine
+crates/profiling/src/remote.rs | profiling sits below engine_fs (Helio links it): the profiler's IPC channel files in the machine's temp dir
+plugins/vendor/meshes/asset-compat/src/texture_loader.rs | Helio-layer format crate (no engine_fs): solid_rs opens the model by real path, so its texture lookups read real paths (3 fns)
+plugins/vendor/meshes/snapshot/src/renderer.rs | Helio-layer tool crate (no engine_fs): the caller passes a real model path; its sidecar base-colour scan (1 fn)
+plugins/vendor/meshes/vg/stream/src/source.rs | Helio-layer: VgeoBytes::open takes a real path from a tool or example; Pulsar reads through open_reader (1 fn)
+plugins/vendor/sky/feature/src/sky_texture.rs | Helio-layer feature crate: polls the mtime of the real file the sky component registered, for hot reload (1 fn)
+plugins/vendor/voxel/world/src/planet_maps.rs | Helio-layer: the planet-map bake cache lives in the machine cache dir (LOCALAPPDATA/XDG), outside any project (load, store)
+tools/todo_check/src/main.rs | a repository tool reading the files git lists

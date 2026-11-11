@@ -44,7 +44,10 @@ pub fn open_editors() -> Vec<EditorState> {
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
+    match (
+        engine_fs::virtual_fs::canonicalize(a),
+        engine_fs::virtual_fs::canonicalize(b),
+    ) {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
@@ -86,7 +89,7 @@ pub fn find_editor(requested: Option<&Path>) -> Result<EditorState, String> {
             return Ok(state.clone());
         }
     }
-    let names_a_real_file = requested.is_some_and(Path::is_file);
+    let names_a_real_file = requested.is_some_and(engine_fs::virtual_fs::is_file);
     if editors.len() == 1 && !names_a_real_file {
         return Ok(editors[0].clone());
     }

@@ -1,5 +1,7 @@
 use std::path::Path;
 
+// std::fs allowed: build script: walks the source tree for cargo rerun-if-changed, not a project file
+#[allow(clippy::disallowed_methods)]
 fn emit_rerun_for_tree(path: &Path) {
     println!("cargo:rerun-if-changed={}", path.display());
     if let Ok(entries) = std::fs::read_dir(path) {
@@ -13,6 +15,8 @@ fn emit_rerun_for_tree(path: &Path) {
     }
 }
 
+// std::fs allowed: build script: checks the source tree's mesh folder for cargo rerun-if-changed
+#[allow(clippy::disallowed_methods)]
 fn main() {
     // Windows: Embed application icon
     #[cfg(target_os = "windows")]

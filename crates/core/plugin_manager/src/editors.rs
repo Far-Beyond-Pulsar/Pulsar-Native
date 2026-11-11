@@ -220,7 +220,7 @@ impl PluginManager {
                         }
                     })?;
 
-                std::fs::write(path, content).map_err(|e| {
+                engine_fs::virtual_fs::write_file(path, content.as_bytes()).map_err(|e| {
                     PluginManagerError::FileCreationError {
                         path: path.to_path_buf(),
                         message: e.to_string(),
@@ -233,7 +233,7 @@ impl PluginManager {
                 template_structure,
             } => {
                 // Create the folder
-                std::fs::create_dir_all(path).map_err(|e| {
+                engine_fs::virtual_fs::create_dir_all(path).map_err(|e| {
                     PluginManagerError::FileCreationError {
                         path: path.to_path_buf(),
                         message: e.to_string(),
@@ -250,7 +250,7 @@ impl PluginManager {
                         }
                     })?;
 
-                std::fs::write(&marker_path, content).map_err(|e| {
+                engine_fs::virtual_fs::write_file(&marker_path, content.as_bytes()).map_err(|e| {
                     PluginManagerError::FileCreationError {
                         path: marker_path,
                         message: e.to_string(),
@@ -266,9 +266,9 @@ impl PluginManager {
                         } => {
                             let file_path = path.join(rel_path);
                             if let Some(parent) = file_path.parent() {
-                                std::fs::create_dir_all(parent);
+                                let _ = engine_fs::virtual_fs::create_dir_all(parent);
                             }
-                            std::fs::write(&file_path, content).map_err(|e| {
+                            engine_fs::virtual_fs::write_file(&file_path, content.as_bytes()).map_err(|e| {
                                 PluginManagerError::FileCreationError {
                                     path: file_path,
                                     message: e.to_string(),
@@ -277,7 +277,7 @@ impl PluginManager {
                         }
                         PathTemplate::Folder { path: rel_path } => {
                             let folder_path = path.join(rel_path);
-                            std::fs::create_dir_all(&folder_path).map_err(|e| {
+                            engine_fs::virtual_fs::create_dir_all(&folder_path).map_err(|e| {
                                 PluginManagerError::FileCreationError {
                                     path: folder_path,
                                     message: e.to_string(),

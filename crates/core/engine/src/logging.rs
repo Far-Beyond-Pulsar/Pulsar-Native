@@ -24,6 +24,8 @@ use ui_log_viewer::publish_live_log;
 #[allow(dead_code)]
 pub struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
 
+// std::fs allowed: the engine's own per-user log folder, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Initializes logging for the engine.
 ///
 /// - `verbose`: If true, enables colored console output with detailed formatting.

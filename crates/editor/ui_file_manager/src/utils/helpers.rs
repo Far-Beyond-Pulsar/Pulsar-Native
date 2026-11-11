@@ -55,14 +55,13 @@ pub fn get_icon_for_file_type(item: &FileItem) -> IconName {
 }
 
 pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let e = entry?;
-        let ty = e.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(&e.path(), &dst.join(e.file_name()))?;
+    let io = |e: anyhow::Error| std::io::Error::other(e.to_string());
+    engine_fs::virtual_fs::create_dir_all(dst).map_err(io)?;
+    for e in engine_fs::virtual_fs::list_dir(src).map_err(io)? {
+        if e.is_dir {
+            copy_dir_all(&src.join(&e.name), &dst.join(&e.name))?;
         } else {
-            std::fs::copy(e.path(), dst.join(e.file_name()))?;
+            engine_fs::virtual_fs::copy(&src.join(&e.name), &dst.join(&e.name)).map_err(io)?;
         }
     }
     Ok(())

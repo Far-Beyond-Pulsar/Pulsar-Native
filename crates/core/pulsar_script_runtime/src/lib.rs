@@ -729,9 +729,9 @@ impl ScriptRuntime {
         path: impl AsRef<Path>,
     ) -> Result<(String, ReloadReport), RuntimeError> {
         let path = path.as_ref();
-        let bytes = std::fs::read(path).map_err(|source| RuntimeError::Io {
+        let bytes = engine_fs::virtual_fs::read_file(path).map_err(|e| RuntimeError::Io {
             path: path.to_owned(),
-            source,
+            source: std::io::Error::other(e.to_string()),
         })?;
         self.load_class_bytes(&bytes, path)
     }

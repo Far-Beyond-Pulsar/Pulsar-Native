@@ -33,6 +33,8 @@ impl Home {
 /// The engine's ledger, repository-relative.
 pub const CORE_LEDGER: &str = "crates/core/scene_inventory/ledger.toml";
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 /// Every installed plugin's directory under `plugins/vendor` (the
 /// directories with a `pulsar-plugin.toml`), sorted.
 pub fn plugin_dirs(root: &Path) -> Vec<String> {
@@ -47,6 +49,8 @@ pub fn plugin_dirs(root: &Path) -> Vec<String> {
     dirs
 }
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 /// Every ledger file: the engine's, then each installed plugin's that exists.
 pub fn ledger_files(root: &Path) -> Vec<PathBuf> {
     let mut files = vec![root.join(CORE_LEDGER)];

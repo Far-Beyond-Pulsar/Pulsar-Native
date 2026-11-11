@@ -123,9 +123,9 @@ pub(crate) enum LoadingEvent {
 
 fn task_verify_project(project: &Path) -> TaskResult {
     let t = Instant::now();
-    let exists = project.exists();
-    let has_cargo = project.join("Cargo.toml").exists();
-    let has_src = project.join("src").exists();
+    let exists = engine_fs::virtual_fs::exists(project).unwrap_or(false);
+    let has_cargo = engine_fs::virtual_fs::exists(&project.join("Cargo.toml")).unwrap_or(false);
+    let has_src = engine_fs::virtual_fs::exists(&project.join("src")).unwrap_or(false);
     let detail = format!(
         "{}{}{}",
         if exists { "found" } else { "missing" },
@@ -167,7 +167,7 @@ fn task_index_project_files(project: &Path) -> TaskResult {
 fn task_read_config(project: &Path) -> TaskResult {
     let t = Instant::now();
     let path = project.join("Cargo.toml");
-    let detail = std::fs::read_to_string(&path)
+    let detail = engine_fs::virtual_fs::read_to_string(&path)
         .map(|s| format!("{} bytes", s.len()))
         .unwrap_or_else(|_| "not found".to_string());
     TaskResult {
@@ -178,7 +178,7 @@ fn task_read_config(project: &Path) -> TaskResult {
 
 fn task_scan_packages(project: &Path) -> TaskResult {
     let t = Instant::now();
-    let content = std::fs::read_to_string(project.join("Cargo.toml")).unwrap_or_default();
+    let content = engine_fs::virtual_fs::read_to_string(&project.join("Cargo.toml")).unwrap_or_default();
     // Count quoted workspace member entries inside the [workspace] section.
     let mut in_workspace = false;
     let mut count = 0usize;
@@ -227,7 +227,7 @@ fn task_scan_assets(project: &Path) -> TaskResult {
     let t = Instant::now();
     let assets_dir = project.join("assets");
     let count = count_files_recursive(&assets_dir, 4);
-    let detail = if assets_dir.is_dir() {
+    let detail = if engine_fs::virtual_fs::is_dir(&assets_dir) {
         format!("{count} assets")
     } else {
         "no assets/ dir".to_string()
@@ -241,10 +241,10 @@ fn task_scan_assets(project: &Path) -> TaskResult {
 fn task_warm_scene(project: &Path) -> TaskResult {
     let t = Instant::now();
     let scene_dir = project.join("scene");
-    let _ = std::fs::create_dir_all(&scene_dir);
+    let _ = engine_fs::virtual_fs::create_dir_all(&scene_dir);
     // Read the file into memory — the OS page cache remains warm so
     // ensure_default_level_file's subsequent deserialization skips disk.
-    let size = std::fs::read(scene_dir.join("default.level"))
+    let size = engine_fs::virtual_fs::read_file(&scene_dir.join("default.level"))
         .map(|b| b.len())
         .unwrap_or(0);
     let detail = if size > 0 {
@@ -264,9 +264,10 @@ fn task_load_settings(_project: &Path) -> TaskResult {
     let detail = directories::ProjectDirs::from("dev", "Pulsar", "Pulsar Engine")
         .map(|dirs| dirs.config_dir().join("settings.json"))
         .and_then(|p| {
-            std::fs::metadata(&p)
+            // The user's config dir, outside any project: the local disk.
+            engine_fs::FsProvider::metadata(&engine_fs::LocalFsProvider::new(), &p)
                 .ok()
-                .map(|m| format!("{} bytes", m.len()))
+                .map(|m| format!("{} bytes", m.size))
         })
         .unwrap_or_else(|| "using defaults".to_string());
     TaskResult {
@@ -282,8 +283,12 @@ fn task_check_lsp(_project: &Path) -> TaskResult {
         .unwrap_or_default()
         .split(sep)
         .any(|dir| {
+            // A PATH lookup on the real machine, not a project file.
+            let local = engine_fs::LocalFsProvider::new();
             let base = Path::new(dir);
-            base.join("rust-analyzer").exists() || base.join("rust-analyzer.exe").exists()
+            [base.join("rust-analyzer"), base.join("rust-analyzer.exe")]
+                .iter()
+                .any(|candidate| engine_fs::FsProvider::exists(&local, candidate).unwrap_or(false))
         });
     TaskResult {
         elapsed: t.elapsed(),
@@ -322,19 +327,18 @@ fn count_tree_nodes(node: &ui_file_manager::FolderNode) -> usize {
 }
 
 fn count_files_recursive(dir: &Path, max_depth: usize) -> usize {
-    if max_depth == 0 || !dir.is_dir() {
+    if max_depth == 0 {
         return 0;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else {
+    let Ok(entries) = engine_fs::virtual_fs::list_dir(dir) else {
         return 0;
     };
     let mut n = 0usize;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_file() {
+    for entry in entries {
+        if entry.is_dir {
+            n += count_files_recursive(&dir.join(&entry.name), max_depth - 1);
+        } else {
             n += 1;
-        } else if path.is_dir() {
-            n += count_files_recursive(&path, max_depth - 1);
         }
     }
     n
@@ -367,7 +371,7 @@ fn task_prepare_plugins(_project: &Path) -> TaskResult {
 fn task_warm_open_tabs(project: &Path) -> TaskResult {
     let t = Instant::now();
     let mut files = Vec::new();
-    if let Ok(text) = std::fs::read_to_string(project.join(".pulsar").join("layout.json")) {
+    if let Ok(text) = engine_fs::virtual_fs::read_to_string(&project.join(".pulsar").join("layout.json")) {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
             collect_tab_files(&value, &mut files);
         }
@@ -420,18 +424,17 @@ fn collect_tab_files(value: &serde_json::Value, out: &mut Vec<String>) {
 
 /// Read a file, or a folder's files (a few levels deep), returning the bytes.
 fn warm_path(path: &Path, depth: usize) -> usize {
-    if path.is_dir() {
+    if engine_fs::virtual_fs::is_dir(path) {
         if depth >= 3 {
             return 0;
         }
-        return std::fs::read_dir(path)
+        return engine_fs::virtual_fs::list_dir(path)
             .into_iter()
             .flatten()
-            .flatten()
-            .map(|entry| warm_path(&entry.path(), depth + 1))
+            .map(|entry| warm_path(&path.join(&entry.name), depth + 1))
             .sum();
     }
-    std::fs::read(path).map(|b| b.len()).unwrap_or(0)
+    engine_fs::virtual_fs::read_file(path).map(|b| b.len()).unwrap_or(0)
 }
 
 /// The files the last session's open tabs refer to, absolute. Filled by

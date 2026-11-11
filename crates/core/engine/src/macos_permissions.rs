@@ -59,6 +59,8 @@ fn now_unix_seconds() -> Option<u64> {
     Some(dur.as_secs())
 }
 
+// std::fs allowed: the engine's own prompt-state file in the user dir, outside any project
+#[allow(clippy::disallowed_methods)]
 #[cfg(target_os = "macos")]
 fn prompt_cooldown_active(cooldown_secs: u64) -> bool {
     let Some(path) = prompt_state_file() else {
@@ -77,6 +79,8 @@ fn prompt_cooldown_active(cooldown_secs: u64) -> bool {
     now_s.saturating_sub(last_prompt_s) < cooldown_secs
 }
 
+// std::fs allowed: the engine's own prompt-state file in the user dir, outside any project
+#[allow(clippy::disallowed_methods)]
 #[cfg(target_os = "macos")]
 fn mark_prompted_now() {
     let Some(path) = prompt_state_file() else {

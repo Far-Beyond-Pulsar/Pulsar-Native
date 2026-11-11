@@ -63,6 +63,8 @@ pub fn parse_crate(crate_info: &CrateInfo) -> Result<ParsedCrate, Box<dyn Error>
 }
 
 /// Parse a single Rust source file
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn parse_file(path: &Path) -> Result<ParsedFile, Box<dyn Error>> {
     let content = fs::read_to_string(path)?;
     let ast = syn::parse_file(&content)?;

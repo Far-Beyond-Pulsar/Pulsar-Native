@@ -55,12 +55,10 @@ fn resolve_read_path(user_path: &str) -> Result<PathBuf, String> {
         PathBuf::from(user_path)
     };
 
-    let canonical = raw
-        .canonicalize()
+    let canonical = engine_fs::virtual_fs::canonicalize(&raw)
         .map_err(|e| format!("Cannot resolve path '{}': {}", user_path, e))?;
 
-    let canonical_root = root
-        .canonicalize()
+    let canonical_root = engine_fs::virtual_fs::canonicalize(root)
         .map_err(|_| "Sandbox root does not exist".to_string())?;
 
     if !canonical.starts_with(&canonical_root) {
@@ -89,18 +87,16 @@ fn resolve_write_path(user_path: &str) -> Result<PathBuf, String> {
 
     // Walk up the ancestor chain until we find a path that exists.
     // The existing ancestor must be inside the sandbox root.
-    let canonical_root = root
-        .canonicalize()
+    let canonical_root = engine_fs::virtual_fs::canonicalize(root)
         .map_err(|_| "Sandbox root does not exist".to_string())?;
 
     let existing_ancestor = raw
         .ancestors()
-        .find(|a| a.exists())
+        .find(|a| engine_fs::virtual_fs::exists(a).unwrap_or(false))
         .unwrap_or(root.as_path());
 
     if existing_ancestor != root.as_path() {
-        let canonical_ancestor = existing_ancestor
-            .canonicalize()
+        let canonical_ancestor = engine_fs::virtual_fs::canonicalize(existing_ancestor)
             .map_err(|e| format!("Cannot resolve path '{}': {}", user_path, e))?;
         if !canonical_ancestor.starts_with(&canonical_root) {
             return Err(format!(

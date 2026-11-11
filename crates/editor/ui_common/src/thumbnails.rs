@@ -327,11 +327,11 @@ fn load_cached_thumbnail(
         .join(".pulsar")
         .join("thumbnails")
         .join(format!("{cache_key}.png"));
-    if !cache_file.exists() {
+    if !engine_fs::virtual_fs::exists(&cache_file).unwrap_or(false) {
         return (cache_key, None);
     }
 
-    match image::open(&cache_file) {
+    match load_cached_png(&cache_file) {
         Ok(image) => {
             let image = Arc::new(image.into_rgba8());
             mem_cache
@@ -345,7 +345,7 @@ fn load_cached_thumbnail(
                 cache_file,
                 error
             );
-            let _ = std::fs::remove_file(cache_file);
+            let _ = engine_fs::virtual_fs::delete_path(&cache_file);
             (cache_key, None)
         }
     }
@@ -376,31 +376,46 @@ fn get_or_generate_thumbnail_sync(
     let cache_file = cache_dir.join(format!("{cache_key}.png"));
 
     // Fast path: already cached.
-    if cache_file.exists() {
-        if image::open(&cache_file).is_ok() {
+    if engine_fs::virtual_fs::exists(&cache_file).unwrap_or(false) {
+        if load_cached_png(&cache_file).is_ok() {
             return Some(cache_file);
         }
         tracing::warn!(
             "thumbnail cache entry is corrupt; regenerating {:?}",
             cache_file
         );
-        let _ = std::fs::remove_file(&cache_file);
+        let _ = engine_fs::virtual_fs::delete_path(&cache_file);
     }
 
     // Slow path: generate then persist.
     let rgba = generate_rgba(abs_asset_path, &ext)?;
 
-    if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-        tracing::warn!("thumbnail cache: could not create {:?}: {}", cache_dir, e);
+    // Encode in memory and write through the VFS (which creates the parent
+    // directories), so the cache lives wherever the project does.
+    let mut png = std::io::Cursor::new(Vec::new());
+    if let Err(e) = rgba.write_to(&mut png, image::ImageFormat::Png) {
+        tracing::warn!("thumbnail cache: could not encode {:?}: {}", cache_file, e);
         return None;
     }
-
-    if let Err(e) = rgba.save_with_format(&cache_file, image::ImageFormat::Png) {
+    if let Err(e) = engine_fs::virtual_fs::write_file(&cache_file, png.get_ref()) {
         tracing::warn!("thumbnail cache: could not save {:?}: {}", cache_file, e);
         return None;
     }
 
     Some(cache_file)
+}
+
+/// Decode a cached thumbnail PNG read through the VFS.
+fn load_cached_png(path: &Path) -> anyhow::Result<image::DynamicImage> {
+    let bytes = engine_fs::virtual_fs::read_file(path)?;
+    Ok(image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)?)
+}
+
+/// Size and modification time (at the best precision the provider knows),
+/// for cache-key hashing.
+fn modified_secs(path: &Path) -> Option<(u64, Option<u128>)> {
+    let meta = engine_fs::virtual_fs::metadata(path).ok()?;
+    Some((meta.size, meta.modified_nanos()))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -425,33 +440,22 @@ fn compute_cache_key(path: &Path) -> String {
 
     // Modification time prevents stale previews when an asset is overwritten
     // with the same size and its changed bytes occur after the short fingerprint.
-    if let Ok(meta) = std::fs::metadata(path) {
-        meta.len().hash(&mut hasher);
-        if let Ok(modified) = meta.modified() {
-            modified.hash(&mut hasher);
-        }
-    }
+    modified_secs(path).hash(&mut hasher);
 
     // Folder-backed formats give their registered
     // renderer the asset directory. Fingerprint its direct files so edits to
     // the marker/manifest invalidate the cached preview.
-    if path.is_dir() {
-        let mut entries = std::fs::read_dir(path)
+    if engine_fs::virtual_fs::is_dir(path) {
+        let mut entries = engine_fs::virtual_fs::list_dir(path)
             .ok()
             .into_iter()
             .flatten()
-            .filter_map(std::result::Result::ok)
-            .map(|entry| entry.path())
+            .map(|entry| path.join(&entry.name))
             .collect::<Vec<_>>();
         entries.sort();
         for entry in entries {
             entry.file_name().hash(&mut hasher);
-            if let Ok(metadata) = std::fs::metadata(&entry) {
-                metadata.len().hash(&mut hasher);
-                if let Ok(modified) = metadata.modified() {
-                    modified.hash(&mut hasher);
-                }
-            }
+            modified_secs(&entry).hash(&mut hasher);
             hash_file_prefix(&entry, &mut hasher);
         }
     } else {
@@ -469,19 +473,12 @@ fn compute_cache_key(path: &Path) -> String {
 }
 
 fn hash_file_prefix(path: &Path, hasher: &mut DefaultHasher) {
-    use std::io::Read;
-
-    if let Ok(mut file) = std::fs::File::open(path) {
-        let mut buffer = [0u8; 8192];
-        if let Ok(length) = file.read(&mut buffer) {
-            buffer[..length].hash(hasher);
-        }
+    if let Ok(prefix) = engine_fs::virtual_fs::read_file_prefix(path, 8192) {
+        prefix.hash(hasher);
     }
 }
 
 fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {
-    use std::io::Read;
-
     let (Some(parent), Some(stem)) = (
         path.parent(),
         path.file_stem().and_then(|stem| stem.to_str()),
@@ -489,13 +486,12 @@ fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {
         return;
     };
     let prefix = format!("{stem}_").to_lowercase();
-    let mut candidates = std::fs::read_dir(parent)
+    let mut candidates = engine_fs::virtual_fs::list_dir(parent)
         .ok()
         .into_iter()
         .flatten()
-        .filter_map(std::result::Result::ok)
         .filter_map(|entry| {
-            let candidate = entry.path();
+            let candidate = parent.join(&entry.name);
             let name = candidate.file_name()?.to_str()?.to_lowercase();
             let extension = candidate.extension()?.to_str()?.to_lowercase();
             if !name.starts_with(&prefix)
@@ -519,18 +515,8 @@ fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {
 
     if let Some((_, sidecar)) = candidates.into_iter().next() {
         sidecar.hash(hasher);
-        if let Ok(metadata) = std::fs::metadata(&sidecar) {
-            metadata.len().hash(hasher);
-            if let Ok(modified) = metadata.modified() {
-                modified.hash(hasher);
-            }
-        }
-        if let Ok(mut file) = std::fs::File::open(sidecar) {
-            let mut buffer = [0u8; 8192];
-            if let Ok(length) = file.read(&mut buffer) {
-                buffer[..length].hash(hasher);
-            }
-        }
+        modified_secs(&sidecar).hash(hasher);
+        hash_file_prefix(&sidecar, hasher);
     }
 }
 

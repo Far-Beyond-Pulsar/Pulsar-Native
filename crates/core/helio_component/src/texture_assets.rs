@@ -451,7 +451,7 @@ fn cook_from_source(
 fn decode_rgba(path: &std::path::Path, cap: u32) -> Result<(u32, u32, Vec<u8>), String> {
     let shown = path.display();
     let bytes =
-        std::fs::read(path).map_err(|error| format!("could not read '{shown}': {error}"))?;
+        engine_fs::virtual_fs::read_file(path).map_err(|error| format!("could not read '{shown}': {error}"))?;
     let mut decoded = image::load_from_memory(&bytes)
         .map_err(|error| format!("could not decode '{shown}': {error}"))?;
     drop(bytes);

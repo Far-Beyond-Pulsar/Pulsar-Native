@@ -56,7 +56,7 @@ impl LevelEditorPanel {
                         })?;
                     }
 
-                    if !prepare_path.exists() {
+                    if !engine_fs::virtual_fs::exists(&prepare_path).unwrap_or(false) {
                         // The assets the starter level references first,
                         // so it loads complete.
                         if let Some(root) = prepare_path.parent().and_then(|p| p.parent()) {

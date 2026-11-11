@@ -1,4 +1,3 @@
-use std::fs;
 use std::sync::Arc;
 
 use gpui::{prelude::*, *};
@@ -716,7 +715,7 @@ pub fn render_file_preview(
 ) -> Div {
     let context_lines = 2;
 
-    if let Ok(content) = fs::read_to_string(&diagnostic.file_path) {
+    if let Ok(content) = engine_fs::virtual_fs::read_to_string(std::path::Path::new(&diagnostic.file_path)) {
         let lines: Vec<&str> = content.lines().collect();
         let error_line = diagnostic.line.saturating_sub(1);
 

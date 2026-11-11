@@ -1,4 +1,7 @@
-//! Local filesystem provider implementation
+//! Local filesystem provider implementation: the one place the engine
+//! touches the disk for a project, so `std::fs` is allowed here
+//! (`architecture/std-fs-allowed.txt`).
+#![allow(clippy::disallowed_methods)]
 
 use anyhow::{Context, Result};
 use std::fs::OpenOptions;
@@ -547,15 +550,15 @@ impl FsProvider for LocalFsProvider {
     fn metadata(&self, path: &Path) -> Result<FsMetadata> {
         self.check_read_allowed(path)?;
         let m = std::fs::metadata(path)?;
-        let modified = m
+        let since_epoch = m
             .modified()
             .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs());
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
         Ok(FsMetadata {
             is_dir: m.is_dir(),
             size: m.len(),
-            modified,
+            modified: since_epoch.map(|d| d.as_secs()),
+            modified_ns: since_epoch.map(|d| d.as_nanos()),
         })
     }
 

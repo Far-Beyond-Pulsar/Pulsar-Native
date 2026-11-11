@@ -308,17 +308,17 @@ impl AssetPicker {
     /// Tries: as-is (if already absolute) → project_root/path → engine_assets_root/path.
     fn resolve_path(&self, relative: &str) -> Option<PathBuf> {
         let p = Path::new(relative);
-        if p.is_absolute() && p.exists() {
+        if p.is_absolute() && engine_fs::virtual_fs::exists(p).unwrap_or(false) {
             return Some(p.to_path_buf());
         }
         if let Some(root) = &self.project_root {
             let candidate = root.join(relative);
-            if candidate.exists() {
+            if engine_fs::virtual_fs::exists(&candidate).unwrap_or(false) {
                 return Some(candidate);
             }
         }
         let candidate = self.engine_assets_root.join(relative);
-        if candidate.exists() {
+        if engine_fs::virtual_fs::exists(&candidate).unwrap_or(false) {
             return Some(candidate);
         }
         None

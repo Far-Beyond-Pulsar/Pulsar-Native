@@ -634,7 +634,7 @@ impl BuildConfigurations {
     /// (or the file cannot be read, which is set aside rather than lost).
     pub fn load(project_root: &Path) -> Self {
         let path = configurations_path(project_root);
-        let mut loaded = match std::fs::read_to_string(&path) {
+        let mut loaded = match engine_fs::virtual_fs::read_to_string(&path) {
             Ok(text) => match toml::from_str::<FileFormat>(&text) {
                 Ok(file) if file.version <= FILE_VERSION => Some(file),
                 Ok(file) => {
@@ -646,7 +646,7 @@ impl BuildConfigurations {
                 }
                 Err(error) => {
                     tracing::warn!("unreadable build configurations ({error}); using defaults");
-                    let _ = std::fs::rename(&path, path.with_extension("toml.corrupt"));
+                    let _ = engine_fs::virtual_fs::rename(&path, &path.with_extension("toml.corrupt"));
                     None
                 }
             },
@@ -684,12 +684,8 @@ impl BuildConfigurations {
         let text = toml::to_string_pretty(&file)
             .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
         let path = configurations_path(project_root);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let tmp = path.with_extension("toml.tmp");
-        std::fs::write(&tmp, text)?;
-        std::fs::rename(&tmp, path)
+        engine_fs::virtual_fs::write_file_atomically(&path, text.as_bytes())
+            .map_err(|error| std::io::Error::other(error.to_string()))
     }
 }
 

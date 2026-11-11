@@ -14,7 +14,7 @@ use crate::net::simple_sync::SyncDiff;
 use crate::utils::types::*;
 use engine_fs::{
     events::{FsChangeKind, FsEventSource},
-    subscribe,
+    subscribe, virtual_fs,
 };
 use engine_state::{EngineContext, MultiuserContext, MultiuserParticipant, MultiuserStatus};
 
@@ -310,8 +310,6 @@ impl MultiplayerWindow {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use std::fs;
-
         let mut diff_files = Vec::new();
 
         let project_root = match &self.project_root {
@@ -332,7 +330,7 @@ impl MultiplayerWindow {
 
         for file_path in &diff.files_to_update {
             let full_path = project_root.join(file_path);
-            let local_content = fs::read_to_string(&full_path).unwrap_or_default();
+            let local_content = virtual_fs::read_to_string(&full_path).unwrap_or_default();
 
             diff_files.push(DiffFileEntry {
                 path: file_path.clone(),
@@ -343,7 +341,7 @@ impl MultiplayerWindow {
 
         for file_path in &diff.files_to_delete {
             let full_path = project_root.join(file_path);
-            let local_content = fs::read_to_string(&full_path).unwrap_or_default();
+            let local_content = virtual_fs::read_to_string(&full_path).unwrap_or_default();
 
             diff_files.push(DiffFileEntry {
                 path: file_path.clone(),
@@ -423,8 +421,6 @@ impl MultiplayerWindow {
     }
 
     pub(crate) fn simulate_diff_for_dev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use std::fs;
-
         let project_root = match &self.project_root {
             Some(root) => root.clone(),
             None => {
@@ -447,7 +443,7 @@ impl MultiplayerWindow {
         for pattern in test_file_patterns {
             for file in &pattern {
                 let full_path = project_root.join(file);
-                if full_path.exists() && full_path.is_file() {
+                if virtual_fs::is_file(&full_path) {
                     test_files.push(file.to_string());
                 }
             }
@@ -458,15 +454,9 @@ impl MultiplayerWindow {
         }
 
         if test_files.is_empty() {
-            if let Ok(entries) = fs::read_dir(&project_root) {
-                for entry in entries.flatten().take(3) {
-                    if let Ok(metadata) = entry.metadata() {
-                        if metadata.is_file() {
-                            if let Some(name) = entry.file_name().to_str() {
-                                test_files.push(name.to_string());
-                            }
-                        }
-                    }
+            if let Ok(entries) = virtual_fs::list_dir(&project_root) {
+                for entry in entries.into_iter().filter(|entry| !entry.is_dir).take(3) {
+                    test_files.push(entry.name);
                 }
             }
         }
@@ -487,7 +477,7 @@ impl MultiplayerWindow {
 
         for file_path in &test_files {
             let full_path = project_root.join(file_path);
-            if let Ok(content) = fs::read_to_string(&full_path) {
+            if let Ok(content) = virtual_fs::read_to_string(&full_path) {
                 let modified_content = format!(
                     "// SIMULATED CHANGE - This line was added for diff testing\n{}",
                     content

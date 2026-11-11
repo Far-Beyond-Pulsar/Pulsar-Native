@@ -27,7 +27,7 @@ pub use engine_backend::scene::classes::{
 /// next to it when that directory exists here, else the current project's.
 pub fn registry_for_script_asset(script_asset: &str) -> ClassRegistry {
     let path = Path::new(script_asset.trim().trim_end_matches(['/', '\\']));
-    if path.is_dir() {
+    if engine_fs::virtual_fs::is_dir(path) {
         let registry = registry_for_class_dir(path);
         if registry.resolve_script_asset(script_asset).is_some() {
             return registry;

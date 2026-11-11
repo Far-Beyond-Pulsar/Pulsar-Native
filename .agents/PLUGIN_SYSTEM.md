@@ -218,7 +218,7 @@ the render, scene and editor ones above, the kernel's seams for what used to be 
 |---|---|---|
 | `GameSessionRegistration` | `engine_backend::scene::game_hooks` | a plugin's part in a game session (`begin` before classes link, `end`) and in the local player's possession (`possess` returns the instance it attached; the driver detaches it): the input plugin's mapping |
 | `SceneRowsRegistration { derivation: None }` | `engine_backend::scene` | source rows another kind's join reads (physics' water hitboxes) |
-| `MountedContent` | `engine_fs` | files served read-only into every project at `plugins/<plugin id>/` (the engine's at `pulsar/`): a plugin's trait definitions and other project-facing data (`.agents/FILESYSTEM.md`, "Read-only mounts") |
+| `FileProvider` | `engine_fs` | the plugin provides files into every project at `plugins/<plugin id>/` (the engine's at `plugins/pulsar/`), from any source, and changes them at runtime through the `PluginFolder` capability it is given; nothing else writes there (`.agents/FILESYSTEM.md`, "Plugin folders") |
 | `AssetChangeKind` | `engine_fs::watchers` | which files changed on disk are an asset update of which kind (the animation plugin's files, the materials' images) |
 | `RoleRegistration` | `pulsar_traits::roles` | a gameplay role: its trait, its World Settings key, its spawn order (`.agents/TRAITS.md`, "Roles") |
 | `TraitImplementerSource` | `pulsar_traits::sources` | a kind of trait implementer: which files it reads and what they declare, or the implementers it lists (Blueprints) |

@@ -136,6 +136,8 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the memory-mapped profiler channel is a file in the machine's shared-memory/temp dir used for inter-process transport, not a project file
+#[allow(clippy::disallowed_methods)]
 /// Where targets publish: [`DIR_ENV`] if set, else `/dev/shm/pulsar-profiler`
 /// where that exists, else `<temp>/pulsar-profiler`.
 pub fn default_dir() -> PathBuf {
@@ -345,6 +347,8 @@ impl Region {
     }
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the memory-mapped profiler channel is a file in the machine's shared-memory/temp dir used for inter-process transport, not a project file
+#[allow(clippy::disallowed_methods)]
 fn open_file(path: &Path) -> io::Result<File> {
     OpenOptions::new().read(true).write(true).open(path)
 }
@@ -406,6 +410,8 @@ impl Publisher {
 }
 
 impl Drop for Publisher {
+    // std::fs allowed: removes this process's own profiler channel file in the machine's shared-memory/temp dir (profiling must not depend on engine_fs)
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(thread) = self.thread.take() {
@@ -441,6 +447,8 @@ pub fn publish_process(description: TargetDescription) -> bool {
         .is_some()
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the memory-mapped profiler channel is a file in the machine's shared-memory/temp dir used for inter-process transport, not a project file
+#[allow(clippy::disallowed_methods)]
 /// Publish this process in `dir` with a ring of `ring_bytes`.
 pub fn serve_in(
     dir: &Path,
@@ -573,6 +581,8 @@ impl TargetInfo {
     }
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the memory-mapped profiler channel is a file in the machine's shared-memory/temp dir used for inter-process transport, not a project file
+#[allow(clippy::disallowed_methods)]
 fn describe(path: &Path) -> io::Result<TargetInfo> {
     let file = File::open(path)?;
     // SAFETY: read-only mapping; fields are read after the magic check.
@@ -608,6 +618,8 @@ fn process_alive(pid: u32) -> bool {
     }
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the memory-mapped profiler channel is a file in the machine's shared-memory/temp dir used for inter-process transport, not a project file
+#[allow(clippy::disallowed_methods)]
 /// Whether a target that stopped heartbeating belongs to a process that
 /// exited. Unix asks the OS about the pid. Windows cannot delete a file
 /// some process still maps, so deleting it is the test: it only succeeds
@@ -625,6 +637,8 @@ pub fn list_targets() -> Vec<TargetInfo> {
     list_targets_in(&default_dir())
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the memory-mapped profiler channel is a file in the machine's shared-memory/temp dir used for inter-process transport, not a project file
+#[allow(clippy::disallowed_methods)]
 /// Every profilable process in `dir`, newest first. Files left behind by
 /// processes that exited are removed.
 pub fn list_targets_in(dir: &Path) -> Vec<TargetInfo> {
@@ -651,7 +665,7 @@ pub fn list_targets_in(dir: &Path) -> Vec<TargetInfo> {
             }
         })
         .collect();
-    targets.sort_by(|a, b| b.started_unix_ms.cmp(&a.started_unix_ms));
+    targets.sort_by_key(|target| std::cmp::Reverse(target.started_unix_ms));
     targets
 }
 

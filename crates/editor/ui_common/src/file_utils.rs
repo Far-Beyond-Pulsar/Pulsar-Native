@@ -38,12 +38,13 @@ pub struct FileInfo {
 impl FileInfo {
     /// Check if a path is a blueprint class folder (contains graph_save.json)
     pub fn is_class_folder(path: &Path) -> bool {
-        path.is_dir() && path.join("graph_save.json").exists()
+        engine_fs::virtual_fs::is_dir(path)
+            && engine_fs::virtual_fs::exists(&path.join("graph_save.json")).unwrap_or(false)
     }
 
     /// Detect file type from path (for display purposes only)
     pub fn detect_file_type(path: &Path) -> FileType {
-        if path.is_dir() {
+        if engine_fs::virtual_fs::is_dir(path) {
             if Self::is_class_folder(path) {
                 FileType::Class
             } else {
@@ -89,12 +90,12 @@ fn find_files_recursive(
         return;
     }
 
-    let Ok(entries) = std::fs::read_dir(current) else {
+    let Ok(entries) = engine_fs::virtual_fs::list_dir(current) else {
         return;
     };
 
-    for entry in entries.flatten() {
-        let path = entry.path();
+    for entry in entries {
+        let path = current.join(&entry.name);
 
         // Skip hidden files and common ignore patterns
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -113,7 +114,7 @@ fn find_files_recursive(
             }
 
             // Recurse into directories (but not class folders, as they're treated as files)
-            if path.is_dir() && !is_class {
+            if entry.is_dir && !is_class {
                 find_files_recursive(&path, results, depth + 1, max_depth);
             }
         }
@@ -122,36 +123,36 @@ fn find_files_recursive(
 
 /// Read a file and deserialize it as JSON.
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
-    let content = std::fs::read_to_string(path)?;
+    let content = engine_fs::virtual_fs::read_to_string(path)?;
     serde_json::from_str(&content).map_err(Into::into)
 }
 
 /// Serialize `value` as pretty-printed JSON and write it to `path`, creating parent dirs.
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        engine_fs::virtual_fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(value)?;
-    std::fs::write(path, json)?;
+    engine_fs::virtual_fs::write_file(path, json.as_bytes())?;
     Ok(())
 }
 
 /// Ensure a directory exists, creating it and all parents if needed.
 pub fn ensure_dir(path: &Path) -> Result<()> {
-    std::fs::create_dir_all(path)?;
+    engine_fs::virtual_fs::create_dir_all(path)?;
     Ok(())
 }
 
 /// Recursively copy a directory tree from `src` to `dst`.
 pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let dest = dst.join(entry.file_name());
-        if entry.path().is_dir() {
-            copy_dir_recursive(&entry.path(), &dest)?;
+    engine_fs::virtual_fs::create_dir_all(dst)?;
+    for entry in engine_fs::virtual_fs::list_dir(src)? {
+        let from = src.join(&entry.name);
+        let dest = dst.join(&entry.name);
+        if entry.is_dir {
+            copy_dir_recursive(&from, &dest)?;
         } else {
-            std::fs::copy(entry.path(), &dest)?;
+            engine_fs::virtual_fs::copy(&from, &dest)?;
         }
     }
     Ok(())

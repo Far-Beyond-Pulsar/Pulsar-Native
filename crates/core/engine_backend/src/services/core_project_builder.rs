@@ -433,7 +433,7 @@ fn remove_missing_local_patch_entries(manifest: &str, project_root: &Path) -> St
                     } else {
                         project_root.join(path)
                     };
-                    if !resolved.exists() {
+                    if !virtual_fs::exists(&resolved).unwrap_or(false) {
                         continue;
                     }
                 }
@@ -483,7 +483,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     let script_crates = discover_script_crates(project_root);
 
     let cargo_toml_path = project_root.join("Cargo.toml");
-    let existing_manifest = if cargo_toml_path.exists() {
+    let existing_manifest = if virtual_fs::exists(&cargo_toml_path).unwrap_or(false) {
         Some(
             String::from_utf8(
                 virtual_fs::read_file(&cargo_toml_path)
@@ -625,7 +625,7 @@ pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
                 .filter(|e| e.is_dir)
                 .filter(|e| {
                     let mod_rs_path = classes_dir.join(&e.name).join("mod.rs");
-                    mod_rs_path.exists()
+                    virtual_fs::exists(&mod_rs_path).unwrap_or(false)
                 })
                 .map(|e| e.name.clone())
                 .collect();
@@ -844,6 +844,8 @@ fn ensure_scripts_crate(project_root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// std::fs allowed: resolves the engine's own source checkout on the real machine, not a project path
+#[allow(clippy::disallowed_methods)]
 /// Resolve a path relative to the ENGINE checkout this editor binary was built
 /// from (its `CARGO_MANIFEST_DIR`, a compile-time anchor). Used for the
 /// script crate's `pulsar_game` path dep; forward slashes keep the emitted
@@ -1093,7 +1095,7 @@ pub unsafe extern "C" fn pulsar_pie_event_bus(out: *mut std::ffi::c_void, out_si
 
     // Only write when missing or still ours, so a user who deletes the marker to
     // customise the shim keeps their edits.
-    let should_write = if lib_rs.exists() {
+    let should_write = if virtual_fs::exists(&lib_rs).unwrap_or(false) {
         virtual_fs::read_file(&lib_rs)
             .ok()
             .and_then(|b| String::from_utf8(b).ok())
@@ -1137,7 +1139,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
     // Read the level config to embed native actor spawn calls.
     // Fall back to an empty config if the file doesn't exist yet.
     let level_json_path = project_root.join("Pulsar").join("level.json");
-    let level_config: LevelConfig = if level_json_path.exists() {
+    let level_config: LevelConfig = if virtual_fs::exists(&level_json_path).unwrap_or(false) {
         virtual_fs::read_file(&level_json_path)
             .ok()
             .and_then(|bytes| String::from_utf8(bytes).ok())
@@ -1259,7 +1261,7 @@ fn ensure_level_json(project_root: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to create Pulsar directory: {e}"))?;
 
     let level_json = pulsar_dir.join("level.json");
-    if level_json.exists() {
+    if virtual_fs::exists(&level_json).unwrap_or(false) {
         return Ok(());
     }
 

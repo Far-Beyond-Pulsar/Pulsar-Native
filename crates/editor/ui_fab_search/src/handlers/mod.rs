@@ -89,7 +89,9 @@ pub(crate) fn on_start_download(
             let dest_dir = dirs::download_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("Sketchfab");
-            std::fs::create_dir_all(&dest_dir).map_err(|e| format!("mkdir: {e}"))?;
+            // The user's Downloads folder on the real machine, not a project file.
+            let local = engine_fs::LocalFsProvider::new();
+            use engine_fs::FsProvider as _;
             let dest = dest_dir.join(&filename_thread);
 
             let client = reqwest::blocking::Client::builder()
@@ -105,7 +107,10 @@ pub(crate) fn on_start_download(
             }
             let total = resp.content_length();
 
-            let mut file = std::fs::File::create(&dest).map_err(|e| format!("create: {e}"))?;
+            let mut file = local
+                .open_write_stream(&dest)
+                .map_err(|e| format!("create: {e}"))?
+                .ok_or_else(|| "create: no write stream".to_string())?;
             let mut bytes_total: u64 = 0;
             let mut last_sample = std::time::Instant::now();
             let mut bytes_since_sample: u64 = 0;

@@ -8,7 +8,6 @@
 //! Entry points: [`validate_join_input`], [`validate_server_address`],
 //! [`add_peer`], [`remove_peer`], [`parse_files_payload`], [`write_file_chunk`].
 
-use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 
 use crate::net::multiuser::PeerProfile;
@@ -143,18 +142,27 @@ pub(crate) fn sync_failed_message(error: impl std::fmt::Display) -> String {
 pub(crate) fn write_file_chunk(project_root: &Path, file_path: &str, offset: u64, data: &[u8]) {
     let full_path = project_root.join(file_path);
 
-    if let Some(parent) = full_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
+    let _ = write_chunk(&full_path, offset, data);
+}
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .open(&full_path)
-    {
-        let _ = file.seek(SeekFrom::Start(offset));
-        let _ = file.write_all(data);
+/// Chunks arrive in order, so the first one starts the file and the rest extend it;
+/// a chunk that lands anywhere else is spliced into what is there.
+fn write_chunk(path: &Path, offset: u64, data: &[u8]) -> anyhow::Result<()> {
+    use engine_fs::virtual_fs;
+    if offset == 0 {
+        return virtual_fs::write_file(path, data);
     }
+    let current = virtual_fs::metadata(path).map(|meta| meta.size).unwrap_or(0);
+    if current == offset {
+        return virtual_fs::append_file(path, data);
+    }
+    let mut bytes = virtual_fs::read_file(path).unwrap_or_default();
+    let start = offset as usize;
+    if bytes.len() < start + data.len() {
+        bytes.resize(start + data.len(), 0);
+    }
+    bytes[start..start + data.len()].copy_from_slice(data);
+    virtual_fs::write_file(path, &bytes)
 }
 
 /// Inserts or updates the participant entry matching `profile.peer_id`.

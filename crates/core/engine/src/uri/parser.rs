@@ -70,12 +70,12 @@ pub fn parse_uri(uri: &str) -> Result<UriCommand> {
     match command {
         "open_project" => {
             // Validate path exists
-            if !path.exists() {
+            if !engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
                 anyhow::bail!("Project path does not exist: {:?}", path);
             }
 
             // Validate Pulsar.toml exists
-            if !path.join("Pulsar.toml").exists() {
+            if !engine_fs::virtual_fs::exists(&path.join("Pulsar.toml")).unwrap_or(false) {
                 anyhow::bail!(
                     "Not a valid Pulsar project (missing Pulsar.toml): {:?}",
                     path

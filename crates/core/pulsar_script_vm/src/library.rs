@@ -254,6 +254,8 @@ pub struct ShadowLibrary {
 }
 
 impl Drop for ShadowLibrary {
+    // Real machine: maps a shadow copy of a native library in a temp dir (so the original can be rebuilt); libloading needs a real file.
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         // SAFETY: dropped exactly once, here; nothing uses it afterwards.
         unsafe { ManuallyDrop::drop(&mut self.library) };
@@ -369,6 +371,8 @@ impl NativeLibraries {
     }
 
     /// Map a shadow copy of `path` and collect its natives.
+    // Real machine: maps a shadow copy of a native library in a temp dir (so the original can be rebuilt); libloading needs a real file.
+    #[allow(clippy::disallowed_methods)]
     fn open(&self, path: &Path, id: LibraryId) -> Result<Vec<NativeFn>, LibraryError> {
         std::fs::create_dir_all(&self.shadow_dir).map_err(|source| LibraryError::Copy {
             path: path.to_owned(),

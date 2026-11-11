@@ -171,6 +171,8 @@ fn run() -> Result<bool, Box<dyn Error>> {
         let Some(syntax) = syntax(path) else {
             continue;
         };
+        // A repository tool reading the files git lists: the disk directly.
+        #[allow(clippy::disallowed_methods)]
         let contents = std::fs::read_to_string(path)
             .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
         let rust = path.extension().is_some_and(|ext| ext == "rs");
