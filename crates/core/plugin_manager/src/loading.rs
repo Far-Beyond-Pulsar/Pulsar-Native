@@ -261,6 +261,19 @@ impl PluginManager {
 
         self.check_compatibility(&library, &path)?;
         Self::attach_host_state(&library, &path)?;
+        // The plugins the library carries, through their roots' builds:
+        // descriptors to the installed set, registrations to the store.
+        if let Some(imported) = crate::attach::import_plugins(&library) {
+            let imported =
+                imported.map_err(|message| PluginManagerError::PluginCreationFailed {
+                    message: format!("{}: its plugin export: {message}", path.display()),
+                })?;
+            for refused in &imported.refused {
+                tracing::error!("{}: {refused}", path.display());
+            }
+            pulsar_world_registry::runtime::import_builds();
+            tracing::info!(plugins = ?imported.plugins, "imported plugin builds from {}", path.display());
+        }
         let plugin = Self::construct_plugin(&library, &path, cx)?;
 
         // Get plugin metadata

@@ -1,50 +1,34 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use plugin_manager::{DependencyState, PluginDetails};
 use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
+use crate::model::{Entry, EntryKind};
+
+/// One row of the list: name, what it contributes, its kind and state.
 pub fn render_plugin_item(
-    details: &PluginDetails,
+    entry: &Entry,
     selected: bool,
     cx: &mut Context<crate::screen::PluginManagerWindow>,
 ) -> impl IntoElement {
-    let plugin = &details.metadata;
-    let plugin_id = plugin.id.clone();
-    let title = plugin.name.clone();
-    let author = plugin.author.clone();
-    let contributions = [
-        (details.file_types.len(), "files"),
-        (details.editors.len(), "editors"),
-        (details.components.len(), "components"),
-        (details.statusbar_buttons.len(), "statusbar widgets"),
-        (details.ai_tools.len(), "AI tools"),
-        (details.subsystems.len(), "subsystems"),
-    ]
-    .into_iter()
-    .filter(|(count, _)| *count > 0)
-    .map(|(count, label)| format!("{count} {label}"))
-    .collect::<Vec<_>>()
-    .join(" · ");
-    let dependency_count = details
-        .dependencies
+    let open_id = entry.id.clone();
+    let summary = entry
+        .groups
         .iter()
-        .filter(|dep| !dep.optional)
-        .count();
-    let has_unmet_dependencies = details
-        .dependencies
-        .iter()
-        .any(|dep| !dep.optional && !matches!(dep.state, DependencyState::Satisfied { .. }));
-    let source = if details.builtin {
-        "Built-in".to_string()
-    } else if plugin.version.is_empty() {
-        "Loaded extension".to_string()
+        .map(|group| format!("{} {}", group.items.len(), group.title.to_lowercase()))
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" · ");
+    let attention = entry.needs_attention();
+    let badge = if entry.kind == EntryKind::Engine {
+        "Engine".to_string()
+    } else if entry.enabled {
+        entry.kind.label().to_string()
     } else {
-        format!("v{}", plugin.version)
+        format!("{} · off", entry.kind.label())
     };
-    let open_id = plugin_id.clone();
 
     h_flex()
-        .id(SharedString::from(format!("plugin-{plugin_id}")))
+        .id(SharedString::from(format!("plugin-{}", entry.id)))
         .w_full()
         .h(px(62.))
         .px_2()
@@ -63,6 +47,7 @@ pub fn render_plugin_item(
         } else {
             cx.theme().transparent
         })
+        .when(!entry.enabled, |row| row.opacity(0.6))
         .cursor_pointer()
         .hover(|style| style.bg(cx.theme().secondary.opacity(0.4)))
         .on_click(cx.listener(move |this, _, _, cx| {
@@ -80,9 +65,13 @@ pub fn render_plugin_item(
                 .items_center()
                 .justify_center()
                 .child(
-                    Icon::new(IconName::Puzzle)
-                        .size_4()
-                        .text_color(cx.theme().muted_foreground),
+                    Icon::new(match entry.kind {
+                        EntryKind::Engine => IconName::Cpu,
+                        EntryKind::Library => IconName::Box,
+                        _ => IconName::Puzzle,
+                    })
+                    .size_4()
+                    .text_color(cx.theme().muted_foreground),
                 ),
         )
         .child(
@@ -102,23 +91,13 @@ pub fn render_plugin_item(
                                 .text_sm()
                                 .font_semibold()
                                 .text_color(cx.theme().foreground)
-                                .child(title),
+                                .child(entry.name.clone()),
                         )
-                        .when(dependency_count > 0, |this| {
+                        .when(attention, |this| {
                             this.child(
-                                Icon::new(if has_unmet_dependencies {
-                                    IconName::TriangleAlert
-                                } else {
-                                    IconName::Check
-                                })
-                                .size_3()
-                                .text_color(
-                                    if has_unmet_dependencies {
-                                        cx.theme().warning
-                                    } else {
-                                        cx.theme().success
-                                    },
-                                ),
+                                Icon::new(IconName::TriangleAlert)
+                                    .size_3()
+                                    .text_color(cx.theme().warning),
                             )
                         }),
                 )
@@ -128,10 +107,10 @@ pub fn render_plugin_item(
                         .text_ellipsis()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(if contributions.is_empty() {
-                            format!("by {author} · no contributions reported")
+                        .child(if summary.is_empty() {
+                            format!("{} · contributes nothing", entry.id)
                         } else {
-                            format!("by {author} · {contributions}")
+                            summary
                         }),
                 ),
         )
@@ -141,17 +120,17 @@ pub fn render_plugin_item(
                 .px_1p5()
                 .py_px()
                 .rounded_sm()
-                .bg(if details.builtin {
+                .bg(if entry.enabled {
                     cx.theme().success.opacity(0.12)
                 } else {
                     cx.theme().secondary.opacity(0.55)
                 })
                 .text_xs()
-                .text_color(if details.builtin {
+                .text_color(if entry.enabled {
                     cx.theme().success
                 } else {
                     cx.theme().muted_foreground
                 })
-                .child(source),
+                .child(badge),
         )
 }

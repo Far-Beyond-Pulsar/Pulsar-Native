@@ -1,4 +1,4 @@
-//! The language, and its link-time registration.
+//! The language and its editor provider (registered by the root's `build`).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use ui::dock::PanelView;
 use crate::compile::{compile_project_classes, validate_project_classes, LANGUAGE_ID};
 
 /// The TypeScript provider's id.
-const PROVIDER_ID: &str = "com.pulsar.typescript-language";
+pub(crate) const PROVIDER_ID: &str = "com.pulsar.typescript-language";
 
 pub struct TypeScriptLanguage;
 
@@ -47,7 +47,7 @@ pub fn script_language() -> Arc<dyn ScriptLanguage> {
 
 /// Contributes the language to the editor. TypeScript has no editor of its
 /// own (the code editor edits `.ts`), so there are no file types or editors.
-struct TypeScriptProvider;
+pub(crate) struct TypeScriptProvider;
 
 impl BuiltinEditorProvider for TypeScriptProvider {
     fn provider_id(&self) -> &str {
@@ -84,27 +84,5 @@ impl BuiltinEditorProvider for TypeScriptProvider {
         Err(PluginError::Other {
             message: "TypeScript has no editor panel".into(),
         })
-    }
-}
-
-// The plugin's descriptor: linking this crate installs it.
-pulsar_plugins::installed!("pulsar-plugin.toml");
-
-// What the plugin registers (this crate is its root): its provider, which
-// the editor asks for the language's validation, and the language itself,
-// which the packager finds without the editor.
-plugin_manager::inventory::submit! {
-    plugin_manager::PluginEditorProvider {
-        origin: pulsar_plugins::origin!(),
-        id: PROVIDER_ID,
-        create: || Arc::new(TypeScriptProvider),
-    }
-}
-
-plugin_editor_api::inventory::submit! {
-    plugin_editor_api::LinkedScriptLanguage {
-        origin: pulsar_plugins::origin!(),
-        id: LANGUAGE_ID,
-        create: script_language,
     }
 }

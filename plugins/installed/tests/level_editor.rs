@@ -31,6 +31,17 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
         ("empty", &[]),
         ("folder", &[]),
         ("camera", &[]),
+        // A facade: the character brings what it is built from.
+        (
+            "character",
+            &[
+                "CharacterComponent",
+                "SkeletalMeshComponent",
+                "AnimationComponent",
+                "CharacterControllerComponent",
+                "PlayerInputComponent",
+            ],
+        ),
         ("light_point", &["LightComponent"]),
         ("light_spot", &["LightComponent"]),
         ("light_directional", &["LightComponent"]),

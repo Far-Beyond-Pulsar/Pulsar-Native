@@ -6,7 +6,11 @@ id = "pulsar.asset_viewer"
 name = "Asset Viewer"
 description = "Viewers for model files, meshes and images, and a mesh's slot materials"
 enabled_by_default = true
-requires = []
+# It views materials' and meshes' assets, through their api crates.
+requires = [
+  { id = "pulsar.materials.api" },
+  { id = "pulsar.meshes.api" },
+]
 
 # The plugin's root crate (the package in this directory): the one place it
 # registers everything it contributes. An editor tool: a game never links it.

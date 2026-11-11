@@ -1,0 +1,28 @@
+[package]
+name = "trait_fixture_plugin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The trait proof's fixture plugin: its root crate defines a trait and a role and implements the trait natively (plugins/installed/tests/traits.rs)"
+
+[dependencies]
+pulsar_plugins = { workspace = true }
+# The trait's folder (an embedded trait file served at plugins/<id>/traits/).
+engine_fs = { workspace = true }
+# The role, and the native implementer declaration.
+pulsar_traits = { workspace = true }
+# `p.components().class::<T>(ClassSpec)`: the game's slim feature set, as the
+# vendor plugins link it.
+engine_backend = { path = "../../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+# The component class and its by-name method.
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
+# The engine-class derive logs through it and decodes with serde.
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

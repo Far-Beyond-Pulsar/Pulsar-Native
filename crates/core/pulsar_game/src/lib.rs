@@ -98,7 +98,9 @@ pub mod scene {
             .iter()
             .filter(|record| record.class_name == class_name)
             .count() as u32;
-        let instance = pulsar_world_registry::attach_component(
+        // Placed as the editor's Add Component places it: the classes it
+        // requires come with it.
+        let instance = pulsar_world_registry::place_component(
             world,
             owner,
             pulsar_world_registry::pulsar_scene_model::NewInstance::new(class_name),

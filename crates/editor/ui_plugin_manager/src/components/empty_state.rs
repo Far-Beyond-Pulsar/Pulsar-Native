@@ -30,14 +30,14 @@ pub fn render_empty_state(
                         .text_lg()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(cx.theme().foreground)
-                        .child("No plugins available"),
+                        .child("Nothing selected"),
                 )
                 .child(
                     div()
                         .text_sm()
                         .text_center()
                         .text_color(cx.theme().muted_foreground)
-                        .child("Built-in providers and compatible plugin libraries appear here after registration."),
+                        .child("Select an extension to see what it contributes and the contracts it provides and requires."),
                 ),
         )
 }

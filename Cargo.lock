@@ -1628,7 +1628,6 @@ dependencies = [
  "catalog_fixture_component",
  "catalog_fixture_editor",
  "engine_backend",
- "inventory",
  "pulsar_plugins",
  "pulsar_settings",
  "ui_common",
@@ -1692,6 +1691,22 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "character_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui_level_editor",
 ]
 
 [[package]]
@@ -2751,7 +2766,6 @@ dependencies = [
  "helio-scene-join",
  "helio_component",
  "image",
- "inventory",
  "pollster 0.4.0",
  "pulsar_plugins",
  "pulsar_scenedb",
@@ -3471,6 +3485,7 @@ dependencies = [
  "helio",
  "helio-core",
  "helio-feature-api",
+ "helio-frame-api",
  "helio-graph-asset",
  "helio-pass-postprocess",
  "helio-pass-tsr",
@@ -4137,7 +4152,6 @@ dependencies = [
  "helio-core",
  "helio-pass-volumetric-fog",
  "helio-scene-join",
- "inventory",
  "pollster 0.4.0",
  "pulsar_plugins",
  "pulsar_scenedb",
@@ -4244,7 +4258,6 @@ dependencies = [
  "helio-core",
  "helio-pass-foliage-place",
  "helio-scene-join",
- "inventory",
  "pollster 0.4.0",
  "pulsar_plugins",
  "pulsar_scenedb",
@@ -4744,7 +4757,6 @@ dependencies = [
  "helio",
  "helio-feature-api",
  "helio-pass-gi",
- "inventory",
  "pulsar_plugins",
  "pulsar_settings",
  "wgpu",
@@ -5716,6 +5728,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-components",
  "helio-core",
+ "helio-vg-format",
  "naga",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -6397,6 +6410,7 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-light-api",
  "helio-light-host",
  "helio-mats",
  "helio-mesh-api",
@@ -7397,7 +7411,6 @@ dependencies = [
  "engine_fs",
  "gilrs",
  "gpui-ce",
- "inventory",
  "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
@@ -7437,6 +7450,7 @@ dependencies = [
  "blueprint_editor_plugin",
  "catalog_fixture_component",
  "catalog_fixture_plugin",
+ "character_plugin",
  "decals_plugin",
  "editor_table_plugin",
  "engine_backend",
@@ -7485,6 +7499,7 @@ dependencies = [
  "pulsar_script_vm",
  "pulsar_settings",
  "pulsar_std",
+ "pulsar_traits",
  "pulsar_world_registry",
  "render_bps_plugin",
  "script_editor_plugin",
@@ -7498,6 +7513,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trait_editor_plugin",
+ "trait_fixture_plugin",
  "ui_common",
  "ui_editor_plugin",
  "ui_level_editor",
@@ -8004,7 +8020,6 @@ dependencies = [
  "helio-core",
  "helio-pass-lens",
  "helio-scene-join",
- "inventory",
  "lens_component",
  "pollster 0.4.0",
  "pulsar_plugins",
@@ -8610,7 +8625,6 @@ dependencies = [
  "helio-mats",
  "helio_component",
  "image",
- "inventory",
  "materials_component",
  "materials_editor",
  "meshes_component",
@@ -8873,7 +8887,6 @@ dependencies = [
  "helio-vg-format",
  "helio_component",
  "image",
- "inventory",
  "meshes_component",
  "meshes_editor",
  "naga",
@@ -10872,7 +10885,6 @@ dependencies = [
  "helio-core",
  "helio-pass-corona",
  "helio-scene-join",
- "inventory",
  "particles_component",
  "pollster 0.4.0",
  "pulsar_plugins",
@@ -11618,7 +11630,6 @@ dependencies = [
  "glam 0.33.5",
  "helio-core",
  "helio-pass-portal-cull",
- "inventory",
  "portals_component",
  "portals_editor",
  "pulsar_plugins",
@@ -11704,7 +11715,6 @@ dependencies = [
  "helio-core",
  "helio-pass-post-volumes",
  "helio-scene-join",
- "inventory",
  "pollster 0.4.0",
  "post_component",
  "post_editor",
@@ -12214,6 +12224,7 @@ dependencies = [
  "anyhow",
  "engine_fs",
  "parking_lot",
+ "pulsar_plugins",
  "serde",
  "serde_json",
  "tempfile",
@@ -13996,6 +14007,7 @@ dependencies = [
  "helio_component",
  "installed_plugins",
  "pulsar_class",
+ "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -14663,7 +14675,6 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "helio_component",
- "inventory",
  "meshes_component",
  "meshes_plugin",
  "plugin_manager",
@@ -14800,7 +14811,6 @@ dependencies = [
  "helio-pass-sky",
  "helio-scene-join",
  "image",
- "inventory",
  "pollster 0.4.0",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -15119,7 +15129,6 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "helio",
- "inventory",
  "pulsar_plugins",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -15203,7 +15212,6 @@ dependencies = [
  "helio-scene-join",
  "helio_component",
  "image",
- "inventory",
  "meshes_component",
  "pollster 0.4.0",
  "pulsar_plugins",
@@ -16659,6 +16667,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "trait_fixture_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "engine_fs",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_traits",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "tree-sitter"
 version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -17294,6 +17319,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_events",
+ "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_settings",
  "pulsar_world_registry",
@@ -17694,10 +17720,8 @@ dependencies = [
 name = "ui_plugin_manager"
 version = "0.1.0"
 dependencies = [
- "engine_backend",
  "gpui-ce",
  "inventory",
- "plugin_editor_api",
  "plugin_manager",
  "pulsar_plugins",
  "tracing",
@@ -18193,7 +18217,6 @@ dependencies = [
  "helio-voxel-data",
  "helio_component",
  "image",
- "inventory",
  "lights_component",
  "lights_plugin",
  "parking_lot",
@@ -18446,7 +18469,6 @@ dependencies = [
  "helio-light-api",
  "helio-pass-water-sim",
  "helio-scene-join",
- "inventory",
  "lights_component",
  "lights_plugin",
  "meshes_component",
@@ -19686,6 +19708,7 @@ name = "world_plugin_host"
 version = "0.0.0"
 dependencies = [
  "libloading 0.9.0",
+ "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
@@ -19697,6 +19720,7 @@ name = "world_static_plugin"
 version = "0.0.0"
 dependencies = [
  "engine_class_derive",
+ "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",

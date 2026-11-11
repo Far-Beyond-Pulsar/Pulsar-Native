@@ -1,0 +1,28 @@
+[package]
+name = "character_plugin"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "pulsar.character: a character as one component (a facade) over a skeletal mesh, its animator, a character controller and the player's input, with its movement system"
+
+[features]
+# The Create menu's character (`ui_level_editor::extend::CreateEntry`).
+editor = ["dep:ui_level_editor"]
+
+[dependencies]
+# The plugin's descriptor and its build.
+pulsar_plugins = { workspace = true }
+# Its class: `#[engine_class]`, `#[world_component]` and the builder's
+# `components()` (class spec, systems).
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
+engine_backend = { path = "../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+ui_level_editor = { workspace = true, optional = true }
+
+[lints]
+workspace = true

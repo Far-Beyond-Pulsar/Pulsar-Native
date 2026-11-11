@@ -242,8 +242,24 @@ folder (its `engine_fs::FileProvider`, from any source, embedded or generated)
 appear at `plugins/<plugin id>/` in every project that enables it, namespaced
 `<plugin id>.<Trait>` and versioned
 (`meta.contractVersion`). It implements traits with a `TraitImplementerSource`
-(its own asset kind) or `implements!` (its components). Depending on another
-plugin's trait is a `requires` entry (p22, #1608 phase 3).
+(its own asset kind) or `implements!(p, Class: "id")` (its components, from its
+root's build). It declares the traits it serves as `trait` contracts in its
+descriptor (`provides = [{ id = "<plugin id>.<Trait>", kind = "trait" }]`), and
+depending on another plugin's trait (a role over it, a native implementer of it)
+is a `requires` entry of that plugin's trait contract.
+
+In the plugin catalog (`.agents/PLUGIN_SYSTEM.md`), a plugin's trait definitions
+are entries (`traits.definition`, read from its folder's files by
+`pulsar_traits::catalog`), next to its roles (`gameplay.roles`), its implementer
+sources (`traits.implementer_sources`) and its native implementers
+(`traits.native_implementers`); a role and a native implementer list the trait
+they use (`traits.uses`). The catalog reports a use of another plugin's trait
+the plugin does not require, and a served trait no contract declares. Proof:
+`plugins/installed/tests/traits.rs` over the fixture plugin `pulsar.test_traits`
+(a trait, a role, a native implementer; a Blueprint implementing the same trait;
+both dispatched in a game through `ScriptDriver::call_trait`; with the plugin
+disabled the Blueprint's reference is `unresolved`, the "Missing trait"
+diagnostic).
 
 ## Editing a Blueprint's traits (no hitches)
 

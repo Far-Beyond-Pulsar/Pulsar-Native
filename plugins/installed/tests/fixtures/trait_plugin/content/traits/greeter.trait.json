@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "trait",
+  "id": "pulsar.test_traits.Greeter",
+  "name": "Greeter",
+  "displayName": "Greeter",
+  "description": "Something that greets: the trait of the trait proof's fixture plugin.",
+  "methods": [
+    {
+      "name": "greet",
+      "signature": {
+        "params": [],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "doc": "Greet once."
+    }
+  ],
+  "meta": {
+    "contractVersion": 1
+  }
+}

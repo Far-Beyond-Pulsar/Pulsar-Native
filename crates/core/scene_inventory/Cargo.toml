@@ -7,6 +7,8 @@ description = "Executable Phase 0 inventory for the SceneDB corrective plan: lin
 
 [dependencies]
 pulsar_reflection     = { workspace = true }
+# Plugin classes come from their roots' builds (`pulsar_plugins::built`).
+pulsar_plugins        = { workspace = true }
 pulsar_scenedb        = { workspace = true }
 pulsar_world_registry = { workspace = true }
 regex                 = { workspace = true }

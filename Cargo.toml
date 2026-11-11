@@ -90,6 +90,7 @@ members = [
     # The media and placement kinds' plugins (phase B, batch 2), the same
     # way; water and foliage also have an api crate (contracts other
     # plugins read: the terrain seam and hitbox rows, the wind rows).
+    "plugins/vendor/character",
     "plugins/vendor/fog",
     "plugins/vendor/fog/component",
     "plugins/vendor/fog/feature",
@@ -189,6 +190,8 @@ members = [
     "plugins/installed/tests/fixtures/catalog_plugin",
     "plugins/installed/tests/fixtures/catalog_plugin/component",
     "plugins/installed/tests/fixtures/catalog_plugin/editor",
+    # The trait proof's fixture plugin (plugins/installed/tests/traits.rs).
+    "plugins/installed/tests/fixtures/trait_plugin",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -345,6 +348,7 @@ splines_plugin                     = { path = "plugins/vendor/splines" }
 splines_editor                     = { path = "plugins/vendor/splines/editor" }
 # The media and placement kinds' plugins, the same way.
 fog_component                      = { path = "plugins/vendor/fog/component" }
+character_plugin                   = { path = "plugins/vendor/character" }
 fog_plugin                         = { path = "plugins/vendor/fog" }
 fog_editor                         = { path = "plugins/vendor/fog/editor" }
 post_component                     = { path = "plugins/vendor/post/component" }

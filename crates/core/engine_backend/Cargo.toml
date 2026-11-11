@@ -78,6 +78,8 @@ flume = { workspace = true, optional = true }
 
 # Helio rendering (wgpu-based)
 helio = { workspace = true, optional = true }
+# The frame's buffer keys, listed for the plugin catalog (`FrameBuffersRegistration`).
+helio-frame-api = { workspace = true, optional = true }
 helio-presets = { workspace = true, optional = true }
 helio-scene-derivations = { workspace = true, optional = true }
 helio-graph-asset = { workspace = true, optional = true }
@@ -113,7 +115,7 @@ default = ["render", "editor-ui", "pie"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-pass-tsr"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-frame-api", "dep:helio-pass-tsr"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 # Hot-reload `.wgsl` edits into the running renderer (Helio's

@@ -10,7 +10,6 @@ editor = ["dep:catalog_fixture_editor", "dep:ui_level_editor", "dep:ui_common"]
 
 [dependencies]
 pulsar_plugins = { workspace = true }
-inventory = { workspace = true }
 catalog_fixture_component = { path = "component" }
 catalog_fixture_editor = { path = "editor", optional = true }
 engine_backend = { path = "../../../../../crates/core/engine_backend", default-features = false, features = ["render"] }

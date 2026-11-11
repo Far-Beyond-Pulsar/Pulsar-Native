@@ -23,6 +23,8 @@ engine_class_derive   = { workspace = true }
 pulsar_reflection     = { workspace = true }
 pulsar_scenedb        = { workspace = true }
 pulsar_world_registry = { workspace = true }
+# Its plugin, registered through its root's build and exported as a library.
+pulsar_plugins        = { workspace = true }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
 tracing               = { workspace = true }

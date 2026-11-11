@@ -1,0 +1,16 @@
+# The character plugin's rows of the SceneDB closure ledger (Pulsar-Native#1035,
+# #1606): its classes. `cargo test -p scene_inventory` checks them. The columns
+# are described in Pulsar-Native's crates/core/scene_inventory/ledger.toml.
+
+# ── Exposed component classes ───────────────────────────────────
+
+[[class]]
+name = "CharacterComponent"
+category = "Gameplay"
+world_registered = true
+own_gpu_columns = false
+owner = "character_plugin"
+disposition = "gameplay facade (Pulsar-Native#1608 phase 5): one component over the skeletal mesh, animator, character controller and player input it places with itself; its system drives the controller by class name and property (no GPU data of its own)"
+target_contract = "Phase 5; .agents/PLUGIN_API_REFACTOR_PLAN.md section 14"
+test = "plugins/installed/tests/character.rs"
+status = "verified"

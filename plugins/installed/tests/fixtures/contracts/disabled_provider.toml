@@ -1,0 +1,5 @@
+# A consumer of the lights' rows, resolved with the lights disabled (tests/contracts.rs).
+id = "pulsar.test_disabled"
+name = "Disabled provider fixture"
+root = "test_disabled_plugin"
+requires = [{ id = "pulsar.lights.rows" }]

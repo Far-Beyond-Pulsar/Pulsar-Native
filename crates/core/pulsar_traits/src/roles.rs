@@ -72,6 +72,12 @@ impl pulsar_plugins::Contribution for RoleRegistration {
     fn label(&self) -> String {
         self.label.to_owned()
     }
+
+    /// The trait it uses (a role of one plugin may name another's trait:
+    /// the catalog checks the plugin requires it).
+    fn children(&self) -> Vec<pulsar_plugins::Summary> {
+        vec![crate::sources::trait_use(self.trait_id, self.origin)]
+    }
 }
 
 pulsar_plugins::registration!(RoleRegistration);

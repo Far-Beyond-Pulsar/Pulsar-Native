@@ -24,6 +24,7 @@
 pub use asset_viewer_plugin;
 #[cfg(feature = "editor")]
 pub use blueprint_editor_plugin;
+pub use character_plugin;
 pub use decals_plugin;
 #[cfg(feature = "editor")]
 pub use editor_table_plugin;

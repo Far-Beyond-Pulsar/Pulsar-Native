@@ -98,7 +98,7 @@ All other writers paused (merge or park every open branch first).
 |---|---|
 | A6 | **Done (p21, `PLUGIN_API_REFACTOR_PLAN.md` section 13).** **Traits, step 2**: role registry replacing `ROLES`/`WorldSettingsData` fields/`EngineRole` arms; World Settings picker via extension points; role lifecycle events on the Gamma hub |
 | A7 | **Done (p21, `PLUGIN_API_REFACTOR_PLAN.md` section 13).** `TraitImplementerSource` (Blueprints first, native second), one trait index, native bindings onto `ComponentMethodRegistration` checked by `trait_conformance`, dispatcher for both, plugin trait namespacing + `contractVersion` |
-| A8 | **#1608 Phase 2 and 3**: Extensions viewer on the catalog (Renderer tab goes); `provides`/`requires` contract ids with named activation errors; trait/role/source entries; fixture-plugin proof (static, contract, renderer, disabled-plugin, trait+role) |
+| A8 | **Done (p22, `PLUGIN_API_REFACTOR_PLAN.md` section 14).** **#1608 Phase 2 and 3**: Extensions viewer on the catalog (Renderer tab goes); `provides`/`requires` contract ids with named activation errors; trait/role/source entries; fixture-plugin proof (static, contract, renderer, disabled-plugin, trait+role) |
 | K2 | **Plugin_SKM#13 physics part**: pose without an animator (ragdoll, folded Plugin_Physics#8) after A3(a) |
 | V1 | **#1599 VG rework**, once you have decided the final design (see preconditions) |
 | B5 | **Helio#390**: composed view graphs for reflections and portals (after B0..B4 and V1: touches frame contracts and the meshes plugin) |
@@ -107,8 +107,8 @@ All other writers paused (merge or park every open branch first).
 
 | ID | Task |
 |---|---|
-| A9 | **#1608 Phase 5** (component class API, `requires`, facade, systems, `UnresolvedComponent`, `pulsar.character` proof) |
-| A10 | **#1608 Phase 4** (binary plugins: fingerprints, DLL `build`, bundling, `replaces =`, no-statics test, CI) |
+| A9 | **Done (p22, section 14; `Plugin_Character` repository is the user's decision).** **#1608 Phase 5** (component class API, `requires`, facade, systems, `UnresolvedComponent`, `pulsar.character` proof) |
+| A10 | **Done except bundling (p22, section 14: bundling waits on a Helio runtime attach).** **#1608 Phase 4** (binary plugins: fingerprints, DLL `build`, bundling, `replaces =`, no-statics test, CI) |
 | B6 | **Rendering roadmap R0** (measurement) then **R1** (ray scene), scoped once the roadmap doc is pointed at |
 | B7 | **Helio#391 README**, last, once the renderer has settled |
 

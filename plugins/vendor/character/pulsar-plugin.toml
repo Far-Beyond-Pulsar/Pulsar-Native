@@ -1,0 +1,20 @@
+# A player or NPC character as one component: a skeletal mesh, its animator,
+# a capsule character controller and (when the input plugin is enabled) the
+# player's input binding, placed and edited as one (a facade), driven each
+# frame by the character's own movement system.
+id = "pulsar.character"
+name = "Character"
+description = "A character as one component over a skeletal mesh, its animator, a character controller and the player's input"
+enabled_by_default = true
+root = "character_plugin"
+provides = [
+    { id = "pulsar.character.classes", kind = "class", members = ["CharacterComponent"], version = 1 },
+]
+# The classes a character places with itself: by class name, so the plugin
+# links none of their crates (runtime `class` contracts).
+requires = [
+    { id = "pulsar.meshes.classes" },
+    { id = "pulsar.animation.classes" },
+    { id = "pulsar.physics.classes" },
+    { id = "pulsar.input.classes", optional = true },
+]

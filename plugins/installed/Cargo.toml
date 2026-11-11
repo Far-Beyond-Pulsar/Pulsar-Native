@@ -12,6 +12,7 @@ pulsar_plugins = { workspace = true }
 skeletal_animation_plugin = { workspace = true }
 asset_viewer_plugin = { workspace = true, optional = true }
 blueprint_editor_plugin = { workspace = true, optional = true }
+character_plugin = { workspace = true }
 script_editor_plugin = { workspace = true, optional = true }
 decals_plugin = { workspace = true }
 fog_plugin = { workspace = true }
@@ -48,6 +49,7 @@ editor = [
     "skeletal_animation_plugin/editor",
     "dep:asset_viewer_plugin",
     "dep:blueprint_editor_plugin",
+    "character_plugin/editor",
     "dep:script_editor_plugin",
     "decals_plugin/editor",
     "fog_plugin/editor",
@@ -109,6 +111,10 @@ parking_lot = { workspace = true }
 plugin_manager = { workspace = true }
 catalog_fixture_plugin = { path = "tests/fixtures/catalog_plugin", features = ["editor"] }
 catalog_fixture_component = { path = "tests/fixtures/catalog_plugin/component" }
+# The trait proof (tests/traits.rs): a fixture plugin defining a trait and a role,
+# a Blueprint implementing the trait, and the game dispatching to both.
+trait_fixture_plugin = { path = "tests/fixtures/trait_plugin" }
+pulsar_traits = { workspace = true }
 
 # The editor's and the game's own tests with every plugin, moved from
 # ui_level_editor and pulsar_game (a kernel crate's tests that need plugins are

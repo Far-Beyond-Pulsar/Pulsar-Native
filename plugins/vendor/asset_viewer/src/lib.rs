@@ -155,8 +155,16 @@ impl AssetViewerPlugin {
 export_plugin!(AssetViewerPlugin);
 
 // This plugin's descriptor (`pulsar-plugin.toml`): linking the crate installs it.
-pulsar_plugins::installed!("pulsar-plugin.toml");
+pulsar_plugins::installed!("pulsar-plugin.toml", build);
 
-/// The plugin's editor provider, submitted to the editor (origin-gated).
+/// Everything the plugin registers (the editor provider, with the `builtin`
+/// feature).
+#[cfg_attr(not(feature = "builtin"), allow(unused_variables))]
+pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    #[cfg(feature = "builtin")]
+    builtin_provider::build(p);
+}
+
+/// The plugin's editor provider, registered by `build` (origin-gated).
 #[cfg(feature = "builtin")]
 mod builtin_provider;

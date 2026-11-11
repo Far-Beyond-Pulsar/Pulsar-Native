@@ -79,7 +79,7 @@ pub(super) struct Contract {
 
 /// What calling a trait method on an entity did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HookOutcome {
+pub enum HookOutcome {
     /// An implementation ran.
     Called,
     /// The method is optional (it has a default body) and no implementer

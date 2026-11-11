@@ -23,6 +23,7 @@
 //! component's method alike. See `.agents/TRAITS.md`.
 
 pub mod builtin;
+pub mod catalog;
 pub mod conformance;
 pub mod db;
 pub mod index;

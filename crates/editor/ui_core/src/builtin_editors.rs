@@ -20,6 +20,16 @@ use ui::dock::PanelView;
 /// Opens `.level` and `.level.json` files in the Level Editor panel.
 pub struct LevelEditorBuiltinProvider;
 
+// The engine's own editor, linked like a plugin's (and listed in the
+// catalog as the engine's).
+plugin_manager::inventory::submit! {
+    plugin_manager::PluginEditorProvider {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "com.pulsar.level-editor",
+        create: || Arc::new(LevelEditorBuiltinProvider),
+    }
+}
+
 impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
     fn provider_id(&self) -> &str {
         "com.pulsar.level-editor"
@@ -147,11 +157,9 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
 pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     tracing::info!("Registering all built-in editors...");
 
-    // Level editor (opens .level and .level.json files)
-    registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
-
-    // Every enabled plugin's editors, submitted from its crate
-    // (`plugin_manager::PluginEditorProvider`), and other linked providers.
+    // The level editor (opens .level and .level.json files) and every
+    // enabled plugin's editors, each submitted as a
+    // `plugin_manager::PluginEditorProvider`.
     registry.register_linked();
 
     tracing::info!("Built-in editor registration complete");

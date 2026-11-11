@@ -44,10 +44,11 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
     }
 }
 
-plugin_manager::inventory::submit! {
-    plugin_manager::PluginEditorProvider {
-        origin: pulsar_plugins::origin!(),
+/// Registers the editor provider.
+pub(crate) fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    p.add(plugin_manager::PluginEditorProvider {
+        origin: p.origin(),
         id: "com.pulsar.asset-viewer",
         create: || Arc::new(AssetViewerBuiltinProvider),
-    }
+    });
 }

@@ -6,7 +6,7 @@ use crate::virtual_fs;
 const DESCRIPTOR: &str = "id = \"test.provider\"\nname = \"Test provider\"\ndescription = \"A fixture that provides files\"\nenabled_by_default = true\nrequires = []\nroot = \"engine_fs\"\n";
 
 pulsar_plugins::inventory::submit! {
-    pulsar_plugins::InstalledPlugin { descriptor: DESCRIPTOR }
+    pulsar_plugins::InstalledPlugin { descriptor: DESCRIPTOR, root: env!("CARGO_PKG_NAME"), build: None }
 }
 
 const FILES: &[EmbeddedFile] = &[

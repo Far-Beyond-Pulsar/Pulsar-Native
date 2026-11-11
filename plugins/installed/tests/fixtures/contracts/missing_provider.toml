@@ -1,0 +1,5 @@
+# A consumer whose requirement no installed plugin provides (tests/contracts.rs).
+id = "pulsar.test_missing"
+name = "Missing provider fixture"
+root = "test_missing_plugin"
+requires = [{ id = "pulsar.nowhere.rows" }]

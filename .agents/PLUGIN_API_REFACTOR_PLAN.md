@@ -9,7 +9,7 @@ This file is the one plan. When it lands it **replaces**
 Status: Phase 0 (audit) is this document's sections 1 to 5. Sections 6 and 7 are
 the plan. Phases 1 and 1b are built (p19): section 9 reviews the audit against the
 code, section 10 records the Q1-Q4 decisions, section 11 is what was built. A3, the
-kernel (#1605, p20), is section 12. Traits, VFS and roles (T1-T4, p21) are section 13. Every row below is based on code read on `main` at 4327973b2 (SceneDB
+kernel (#1605, p20), is section 12. Traits, VFS and roles (T1-T4, p21) are section 13. Phases 2-5 and T5 (p22) are section 14. Every row below is based on code read on `main` at 4327973b2 (SceneDB
 at the pinned rev `017252c`, read from the local cargo checkout). Anything not
 read is marked **UNVERIFIED**.
 
@@ -1107,3 +1107,143 @@ p21 moved or deleted the code it patched, the fix moved with it:
   drop are real-machine code with their allow;
 - `GeneralOperations`' `sqlite3` exit check: the code was dead and is deleted in p21 (nothing
   creates a data table that way).
+
+## 14. Phases 2-5 and T5 as built (p22)
+
+Branch `rewrite/p22-plugin-contracts` in Pulsar-Native, Helio and every plugin repository it
+changed, cut from main after p21 (2d97ccfe). Docs: `PLUGIN_SYSTEM.md` (the root build, contracts,
+the catalog, component classes), `TRAITS.md` (traits in the catalog).
+
+**The root build** (phase 4's builder, needed first by phase 5). A plugin registers everything from
+one function, `pub fn build(p: &mut pulsar_plugins::PluginBuilder)`, which its root names in
+`pulsar_plugins::installed!("pulsar-plugin.toml", build)`. The macro carries the descriptor and the
+build into whatever links the root; the first read of any registry runs every linked plugin's build
+once (providers before the plugins requiring their contracts) into one process-wide store, which
+`registered::<T>()` reads with the engine's link-time registrations. `PluginBuilder::add` refuses a
+registration naming another origin (Q3: the `origin` field stays, the builder checks it). Owners add
+sections as extension traits: `engine_backend::scene::ComponentsBuilder::components()`. The engine's
+own registrations stay `inventory::submit!` with `engine_origin!()` (the engine is no plugin and is
+always present); `installed_set::every_linked_registration_is_the_engines` fails on a plugin
+registration made at link time (`pulsar_plugins::linked_contributions`, a third source field). All 28
+roots, the four in-tree plugins and the catalog fixture moved; `submit_world_component!` remains only
+for a component crate's own unit tests. Class-scoped attachments with no origin (component events,
+unfinished-class reports, physics behaviours, reflection hints) stay at their type.
+
+**Phase 2, the Extensions viewer** (`ui_plugin_manager`). The window reads one
+`plugin_manager::CatalogSnapshot` (renamed from `PluginCatalog`; `PluginManager::catalog()` joins the
+loaded plugin libraries) through a GPUI-free model (`ui_plugin_manager::model::Extensions`): every
+installed plugin and editor tool, every loaded library, and the engine's own registrations as an
+`Engine` entry. Each entry shows its contributions by category (a render feature with its nodes and
+the buffers it reads, each linked to its provider; settings; editors with their file types, editors
+and AI tools; importers; classes; systems; traits...), the contracts it provides and requires with
+each requirement's state, who requires it, and every problem that names it (activation and catalog).
+Counts, filters (All, Enabled, Disabled, Needs attention), search and enabled state come from the
+same snapshot. Deleted: the Renderer tab (`RegistryView`, `load_renderer_features`,
+`render_renderer_workspace`), the built-in half of `plugin_details` and `get_builtin_plugins` (linked
+providers are their plugin's contributions), `LinkedEditorProvider` (only a test used it; the level
+editor is a `PluginEditorProvider` with the engine's origin). Tests: the model's headless tests
+(`model.rs`), the catalog's unit tests, `installed/tests/contracts.rs`.
+
+**Phase 3, contracts.** `PluginDescriptor { provides, requires }`: `provides = [{ id, kind, members,
+version }]` (kinds `buffer`, `api`, `class`, `trait`; ids namespaced by the provider),
+`requires = [{ id, optional, version }]` (a contract id, never a plugin id; `version` pins one, no
+ranges). `resolve` pulls in a provider of each required contract the list does not turn off, and
+names every failure (`pulsar_plugins::Problem`: `Unprovided`, `ProviderDisabled { by_project }`,
+`Incompatible`, `Conflict`, `NotInstalled`); an absent optional contract is
+`Resolution::absent_optional`. The activated resolution is kept (`active_resolution`) for the
+catalog. Seeded from section 3.1 and the features' reads: every render-data requirement is optional
+(a consumer runs on the frame's stand-in, the absent-plugins proof), the asset viewer's are required.
+`ContractUse` (surprise 5): every feature calls `FeatureRegistrar::consumes` for each scene buffer its
+passes read (Helio: repeats recorded once), the render feature summary lists them (`render.reads`),
+and the catalog links each to the plugin whose `buffer` contract covers the key, or to the frame
+(`helio_frame_api::FRAME_BUFFERS`, listed by the engine as `render.frame_buffers`). New contract
+consts where a key had only a string: `helio_light_api::DIRECTIONAL_LIGHTS_ROW`; meshes' skin, bone
+palette, VG instance, suppression and object structure/moved contracts (`SkinVertex` moved to
+`helio-mesh-api`, the consumer's api owning the row); the portal chain's two. Tests
+(`installed/tests/contracts.rs`): the descriptor's linked-contract providers equal the Cargo plugin
+graph (normal edges), `api` members are the provider's packages, every feature read links to a
+provider its plugin requires, the missing/disabled/incompatible fixtures
+(`tests/fixtures/contracts/*.toml`) and the editor's activation naming a disabled provider.
+
+**T5.** Trait definitions are catalog entries read from each plugin's folder files
+(`pulsar_traits::catalog`, `engine_fs::virtual_fs::provided_files` over project-independent sources);
+roles and native implementers list the trait they use (`traits.uses`); the catalog reports a use of
+another plugin's trait without a requirement of its `trait` contract, and a served trait no contract
+declares. `implements!` takes the builder. Fixture `pulsar.test_traits`
+(`installed/tests/fixtures/trait_plugin`): a trait, a role, a native implementer; the test dispatches
+`greet` to a Blueprint class and to the component through `ScriptDriver::call_trait` (now public), and
+disabling the plugin leaves the Blueprint's reference in `unresolved` ("Missing trait").
+
+**Phase 5, component classes.** `p.components().class::<T>(ClassSpec { requires, systems, gpu,
+presentation })` (`engine_backend::scene::class_spec`). `requires`: placing the class
+(`pulsar_world_registry::place_component`: the editor's Add Component and Create entries, the scripts'
+`attach_class`) attaches each required class the object lacks, nested under it; loading never places.
+The loader checks each requirement (`required_class`): the required class's plugin must provide it in
+a `class` contract the requirer's plugin requires (an optional one whose plugin is absent is skipped
+quietly); `class_problems` lists refusals. `systems`: `pulsar_world_registry::systems` (label, after,
+before), ordered around the engine's component lifecycles (`COMPONENTS`) each frame by
+`tick_live_components`; an absent label orders nothing, a cycle is reported. They replace the input
+and physics drivers' hand-written `ComponentTickRegistration`s. `gpu`: the class's source rows and
+join (`SceneRowsRegistration`). `presentation: Facade`: the inspector shows one card over the class
+and its nested members (each member a section), the component tree one entry. `UnresolvedComponent`
+round-trips (the character test). Proof: `plugins/vendor/character` (`pulsar.character`, in-tree on
+this branch, awaiting the user's decision on a `Plugin_Character` repository): `CharacterComponent`, a
+facade over `SkeletalMeshComponent`, `AnimationComponent`, `CharacterControllerComponent` and,
+optionally, `PlayerInputComponent`, whose system `pulsar.character.move` drives the controller after
+input and before physics; providers gained `class` contracts (meshes, animation, physics, input).
+
+**Phase 4, binary plugins.** One `build` serves a static and a library build: the crate built as
+`cdylib` (a plugin's root, or a bundle crate linking several roots) calls
+`pulsar_plugins::export_library!()`, which exports every linked root's descriptor and the
+registrations its build made in the library's copy as plain data (`library::FfiLibrary`); the
+plugin loader imports it (`plugin_manager::attach::import_plugins`, after attaching the world
+crates): descriptors join the installed set (`installed()` grows), registrations the store, each
+taken as the host's type of its category when the **layout fingerprints** agree
+(`library::fingerprint`: type name, size, alignment, category, `Contribution::VERSION`; an
+`Importer` per registration type, from `registration!` and `importer!`). Another layout or an
+unknown category is refused by name. Contract versions: `provides.version` and
+`requires.version` (exact pins) are resolved at activation (`Incompatible`). Proof:
+`plugin_manager/tests/world_component_plugins.rs` `a_library_registers_through_its_root_build`
+and `..._built_separately_...` (the fixture library registers a class through its build; the
+host imports it), and `pulsar_plugins` unit tests (round trip, a wrong fingerprint, an unknown
+category, another export layout). **The `replaces =` decision: no such field.** A contract has one
+enabled provider; a replacement plugin provides the same contract ids and the project disables
+the original; two enabled providers are a named `Conflict` (OSGi's substitutable exports without
+version arbitration; Unreal has no replacement either). **CI** already runs
+`plugin_dependencies` and `world_component_plugins`: they are in the `ci` nextest profile's
+workspace run (`.config/nextest.toml` filters neither). **No statics in api crates:**
+`installed/tests/api_statics.rs` scans every `plugins/vendor/*/api` crate and
+`helio-feature-api` for `static`, `thread_local!` and `inventory` collection or submission
+outside tests, against `api_statics_allowed.txt` (shrink-only: a stale entry fails): the
+materials api's SceneDB type attachments and binding `Once` and its graph registry, and the
+lights' `SHADOWS` group (identified by address). **Known limits** (`PLUGIN_SYSTEM.md`, "Plugin
+libraries"): never unloaded, same compiler, the fingerprint sees name/size/alignment so a
+same-size field reorder must bump `VERSION`, and only the world crates share their state across
+copies.
+
+**Left, with the reason.**
+- **Bundling the first-party plugins into a few libraries**: the export/import path is built and
+  proven, but a render plugin in a library would use its own copy of Helio's process-wide state
+  (shader and pipeline caches, the scene derivation registry): Helio has no runtime attach like
+  the world crates' (`pulsar_world_registry::runtime`). Bundling the object kinds needs that
+  attach first, a Helio design of its own, so they stay linked.
+- **The DLL editor plugins' own manifests** (`plugin_editor_api::PluginManifest`, semver plugin
+  dependencies) remain for libraries that export no builds; a library that exports builds is
+  resolved by contracts. Retiring the manifest belongs with moving the editor-tool libraries onto
+  `export_library!`.
+- **A `Plugin_Character` repository**: the user's decision; the plugin is in-tree on this branch.
+
+**Fixed on the way.** `pulsar_content::is_project_root`: a project is a folder with `Pulsar.toml`
+(what opening a project already requires), so `%LOCALAPPDATA%\Pulsar` is no project; the test now
+covers it. `scene_inventory`'s ledger: the six standalone-host row schemas (`host_rows`, behind the
+lights' and meshes' `host-rows` feature) reach the editor only through the meshes editor's
+thumbnail snapshot (`helio_snapshot` over `helio-mesh-host`), so feature unification decides
+whether a binary links them: they have rows in their owners' ledgers and an unlinked `host_rows`
+row is accepted. The scan now follows key constants (`BufferKey::of(KEY)`, `CONTRACT.key()`,
+`.name()`, `.resolve(`), so the reads p22 moved from string literals to the owners' constants stay
+in the closure graph (and reads that were already through constants appear); class origins come
+from the roots' builds.
+
+**Where this meets #1601/#1602.** A class requirement and a trait use name classes and traits by id,
+never asset paths, so neither depends on the resolver; a plugin folder's files referenced from project
+assets still wait on #1601's stable ids (section 13).

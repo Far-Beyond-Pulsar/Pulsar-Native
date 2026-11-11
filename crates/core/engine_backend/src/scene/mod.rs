@@ -30,6 +30,11 @@ pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 pub mod component_events;
+// A plugin's component classes, registered from its root's build.
+pub mod class_spec;
+#[cfg(feature = "render")]
+pub use class_spec::ClassRows;
+pub use class_spec::{ClassSpec, ComponentsBuilder};
 pub mod game_hooks;
 pub use component_events::{
     component_asset_events, ComponentEventCatalog, ComponentEventsRegistration,

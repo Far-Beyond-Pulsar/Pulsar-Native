@@ -108,26 +108,13 @@ pub trait BuiltinEditorProvider: Send + Sync {
     }
 }
 
-/// A built-in editor provider that registers itself at link time.
-///
-/// A crate that implements [`BuiltinEditorProvider`] submits one of these
-/// (`plugin_manager::inventory::submit! { LinkedEditorProvider { create } }`)
-/// and the host registers it with [`BuiltinEditorRegistry::register_linked`]
-/// without naming the crate. Whether an editor is part of a build is then a
-/// matter of whether its crate is linked, not of a dependency in the editor
-/// shell: building without it leaves everything else working, and a plugin
-/// such as the Blueprint editor stands on the same footing as one loaded from
-/// a library.
-pub struct LinkedEditorProvider {
-    pub create: fn() -> Arc<dyn BuiltinEditorProvider>,
-}
-
-inventory::collect!(LinkedEditorProvider);
-
-/// A plugin's linked editor provider: a [`LinkedEditorProvider`] that counts
-/// only while the plugin that submitted it is enabled for the project
-/// (`pulsar_plugins::origin!()`), as every plugin registration does. A
-/// plugin's root crate submits this one.
+/// A linked editor provider: a plugin's root crate submits one
+/// (`pulsar_plugins::origin!()`), and it counts only while the plugin is
+/// enabled for the project, as every plugin registration does; the engine's
+/// own editors (the level editor) submit one with
+/// `pulsar_plugins::engine_origin!()`. The host registers them with
+/// [`BuiltinEditorRegistry::register_linked`] without naming a crate, and the
+/// catalog lists each with the file types, editors and AI tools it brings.
 pub struct PluginEditorProvider {
     /// The package that submitted it (`pulsar_plugins::origin!()`).
     pub origin: &'static str,
@@ -147,6 +134,46 @@ impl pulsar_plugins::Contribution for PluginEditorProvider {
 
     fn id(&self) -> String {
         self.id.to_string()
+    }
+
+    fn label(&self) -> String {
+        let editors = (self.create)().editors();
+        if editors.is_empty() {
+            return self.id.to_string();
+        }
+        editors
+            .iter()
+            .map(|editor| editor.display_name.as_str())
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
+
+    /// The file types, editors and AI tools the provider brings (made to
+    /// read them: providers are plain descriptions until an editor opens).
+    fn children(&self) -> Vec<pulsar_plugins::Summary> {
+        use pulsar_plugins::Summary;
+        let provider = (self.create)();
+        let file_types = provider.file_types().into_iter().map(|file_type| {
+            Summary::new(
+                "editor.file_type",
+                file_type.id.to_string(),
+                format!("{} (.{})", file_type.display_name, file_type.extension),
+                self.origin,
+            )
+        });
+        let editors = provider.editors().into_iter().map(|editor| {
+            Summary::new(
+                "editor.editor",
+                editor.id.to_string(),
+                editor.display_name,
+                self.origin,
+            )
+        });
+        let tools = provider
+            .ai_tools()
+            .into_iter()
+            .map(|tool| Summary::new("editor.ai_tool", tool.name.clone(), tool.name, self.origin));
+        file_types.chain(editors).chain(tools).collect()
     }
 }
 
@@ -170,26 +197,22 @@ impl BuiltinEditorRegistry {
         self.providers.push(provider);
     }
 
-    /// Register every linked provider ([`LinkedEditorProvider`], and each
-    /// enabled plugin's [`PluginEditorProvider`]) that is not already
-    /// registered under the same id. Order among linked providers is by
-    /// provider id, so it does not depend on link order.
+    /// Register every linked provider ([`PluginEditorProvider`]: each
+    /// enabled plugin's and the engine's) that is not already registered
+    /// under the same id. Order among linked providers is by provider id, so
+    /// it does not depend on link order.
     pub fn register_linked(&mut self) {
         let mut linked: Vec<Arc<dyn BuiltinEditorProvider>> =
-            inventory::iter::<LinkedEditorProvider>
-                .into_iter()
-                .map(|l| (l.create)())
-                .chain(
-                    pulsar_plugins::registered::<PluginEditorProvider>().map(|registration| {
-                        let provider = (registration.create)();
-                        debug_assert_eq!(
-                            provider.provider_id(),
-                            registration.id,
-                            "a plugin editor provider registration names its provider's id"
-                        );
-                        provider
-                    }),
-                )
+            pulsar_plugins::registered::<PluginEditorProvider>()
+                .map(|registration| {
+                    let provider = (registration.create)();
+                    debug_assert_eq!(
+                        provider.provider_id(),
+                        registration.id,
+                        "a linked editor provider registration names its provider's id"
+                    );
+                    provider
+                })
                 .collect();
         linked.sort_by(|a, b| a.provider_id().cmp(b.provider_id()));
         for provider in linked {
@@ -336,7 +359,11 @@ mod tests {
     }
 
     inventory::submit! {
-        LinkedEditorProvider { create: || Arc::new(Probe) }
+        PluginEditorProvider {
+            origin: pulsar_plugins::engine_origin!(),
+            id: "test.linked-probe",
+            create: || Arc::new(Probe),
+        }
     }
 
     #[test]

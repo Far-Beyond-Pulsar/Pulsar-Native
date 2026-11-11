@@ -53,7 +53,7 @@ inventory::submit! {
 const DESCRIPTOR: &str = "id = \"test.traits\"\nname = \"Test traits\"\ndescription = \"A fixture that provides traits\"\nenabled_by_default = true\nrequires = []\nroot = \"pulsar_traits\"\n";
 
 inventory::submit! {
-    pulsar_plugins::InstalledPlugin { descriptor: DESCRIPTOR }
+    pulsar_plugins::InstalledPlugin { descriptor: DESCRIPTOR, root: env!("CARGO_PKG_NAME"), build: None }
 }
 
 const TEST_FILES: &[engine_fs::EmbeddedFile] = &[

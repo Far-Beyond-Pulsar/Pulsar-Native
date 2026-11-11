@@ -280,10 +280,14 @@ pub fn is_cooked(dir: &Path) -> bool {
         || virtual_fs::is_file(&dir.join(crate::CLASS_INDEX_FILE))
 }
 
-/// Whether `dir` is a Pulsar project root.
+/// Whether `dir` is a Pulsar project root: it holds the project file
+/// (`Pulsar.toml`, `pulsar_plugins::PROJECT_FILE`), as opening a project
+/// requires, and is not cooked content. A folder that merely has a `Pulsar`
+/// or `.pulsar` child is not one: the engine's own per-user folder
+/// (`%LOCALAPPDATA%\Pulsar`) has one, and a game started anywhere under it
+/// must not take the user's home for a project.
 pub fn is_project_root(dir: &Path) -> bool {
-    (virtual_fs::is_dir(&dir.join("Pulsar")) || virtual_fs::is_dir(&dir.join(".pulsar")))
-        && !is_cooked(dir)
+    virtual_fs::is_file(&dir.join(pulsar_plugins::PROJECT_FILE)) && !is_cooked(dir)
 }
 
 /// A `virtual_fs` error as an `io::Error`, keeping the kind (`NotFound`) when
@@ -317,7 +321,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         // A dev build: <project>/target/debug/game.
         let project = tmp.path().join("proj");
-        std::fs::create_dir_all(project.join("Pulsar")).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join(pulsar_plugins::PROJECT_FILE), "").unwrap();
+        // Folders named like the engine's (its per-user `Pulsar` folder, a
+        // project's `.pulsar` cache) do not make a project.
+        std::fs::create_dir_all(tmp.path().join("Pulsar")).unwrap();
+        std::fs::create_dir_all(tmp.path().join(".pulsar")).unwrap();
         let exe_dir = project.join("target").join("debug");
         std::fs::create_dir_all(&exe_dir).unwrap();
         let found = ContentRoot::discover_from(&exe_dir, None).unwrap();

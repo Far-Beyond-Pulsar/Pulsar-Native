@@ -838,3 +838,22 @@ target_contract = "Phase C; plugin-migration.md"
 test = "none: no test names this row; the owning plugin's suites cover its behaviour"
 status = "unverified"
 
+[[buffer]]
+key = "view_remaps"
+producers = []
+consumers = ["helio-pass-deferred-light", "helio-pass-portal-cull", "helio-pass-water-sim"]
+owner = "the frame (helio_frame_api::lighting::VIEW_REMAPS; the portals' projection publishes it)"
+disposition = "keep: a frame buffer (helio_frame_api::FRAME_BUFFERS) any feature reads without a requirement; seen since the scan follows key consts (p22)"
+target_contract = "Phase 3; .agents/PLUGIN_API_REFACTOR_PLAN.md section 14"
+test = "plugins/installed/tests/render_acceptance.rs (portal_content_is_lit_by_the_lights_of_its_own_world)"
+status = "verified"
+
+[[buffer]]
+key = "directional_lights"
+producers = []
+consumers = ["helio-pass-gi", "helio-pass-light-cull", "helio-pass-sky", "helio-pass-water-sim"]
+owner = "lights plugin (the light join publishes it; contract helio_light_api::DIRECTIONAL_LIGHTS_ROW)"
+disposition = "keep: the directional lights, published by the lights' join and read through its contract const since p22 (was a string key the scan did not see)"
+target_contract = "Phase 3; .agents/PLUGIN_API_REFACTOR_PLAN.md section 14"
+test = "plugins/installed/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
