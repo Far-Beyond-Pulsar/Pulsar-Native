@@ -249,7 +249,8 @@ fn write_test_scene() -> std::io::Result<PathBuf> {
         "pulsar_render_preview_{}.level.json",
         std::process::id()
     ));
-    engine_fs::virtual_fs::write_file(&path, TEST_SCENE.as_bytes()).map_err(std::io::Error::other)?;
+    engine_fs::virtual_fs::write_file(&path, TEST_SCENE.as_bytes())
+        .map_err(std::io::Error::other)?;
     Ok(path)
 }
 

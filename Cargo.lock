@@ -12310,7 +12310,7 @@ dependencies = [
  "window_manager",
  "windows 0.62.2",
  "winresource",
- "zip 2.4.2",
+ "zip 9.5.0",
 ]
 
 [[package]]
