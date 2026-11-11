@@ -215,7 +215,11 @@ file-type registry submits one, `plugin_manager`; without it files are indexed
 with no type). Query with `FileIndexQuery`. `record_asset_id` and
 `paths_for_asset_id` store plugin-defined stable ids (`.pulsar/asset_ids.json` is
 the durable manifest). Runtime component crates resolve asset GUIDs through it
-(one resolver for packaged games is Pulsar-Native#1601).
+(one resolver for packaged games is Pulsar-Native#1601). A manifest entry for a
+file the index does not list (one under `target/`, which the manifest skips) is
+not restored on open, since `asset_ids.path` references `files.path`. A failed
+open is remembered for 30 s, so the callers that ask from render paths do not
+each rescan the project every frame.
 
 Opening the index starts the project's watcher (`engine_fs::watchers`), which
 keeps it current when files change outside the engine and publishes an
