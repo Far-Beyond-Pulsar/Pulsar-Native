@@ -113,10 +113,13 @@ impl FramePacer {
     pub fn new(refresh_hz: Option<f64>) -> Self {
         // `PULSAR_VIEWPORT_FPS` overrides the target; `0` disables pacing and
         // lets `wait_for_frame_consumed` be the only thing governing the rate.
+        // `0` disables pacing; any other target is at least 1 Hz, so the
+        // budget `1 / hz` is a `Duration` (a tiny or infinite value would
+        // panic in `Duration::from_secs_f64` on the render thread).
         let override_hz = std::env::var("PULSAR_VIEWPORT_FPS")
             .ok()
             .and_then(|v| v.trim().parse::<f64>().ok())
-            .filter(|v| *v >= 0.0);
+            .filter(|v| *v == 0.0 || (v.is_finite() && *v >= 1.0));
 
         let mut pacer = Self::with_target(match override_hz {
             Some(hz) => hz,
@@ -131,7 +134,12 @@ impl FramePacer {
     /// `wl_surface.enter`, which typically lands after the viewport's first
     /// render — so the rate is often unknown when the render thread starts.
     pub fn set_display_refresh(&mut self, refresh_hz: f64) {
-        if self.target_overridden || refresh_hz <= 0.0 || refresh_hz == self.target_hz {
+        // Below 1 Hz (or not a number) is no display rate; see `new`.
+        if self.target_overridden
+            || !refresh_hz.is_finite()
+            || refresh_hz < 1.0
+            || refresh_hz == self.target_hz
+        {
             return;
         }
         tracing::info!(

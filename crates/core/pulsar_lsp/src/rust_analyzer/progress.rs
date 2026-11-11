@@ -2,8 +2,6 @@
 //! coalescing updates and emitting [`AnalyzerEvent`]s. Entry point:
 //! [`RustAnalyzerManager::update_progress_from_thread`].
 use gpui::Context;
-use std::sync::mpsc::channel;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use super::{

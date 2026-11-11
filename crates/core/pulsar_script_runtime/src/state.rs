@@ -57,9 +57,14 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
     match value {
         Value::Bool(b) => Ok(J::Bool(*b)),
         Value::Int(i) => Ok(J::from(*i)),
-        Value::Float(f) => serde_json::Number::from_f64(*f)
-            .map(J::Number)
-            .ok_or_else(|| format!("{f} is not a finite number")),
+        // JSON has no number for NaN or the infinities, which are legal
+        // script values: they are written as the strings `NaN`, `inf` and
+        // `-inf`, which `value_from_json` reads back, so no legal value
+        // fails a save.
+        Value::Float(f) => Ok(match serde_json::Number::from_f64(*f) {
+            Some(number) => J::Number(number),
+            None => J::String(f.to_string()),
+        }),
         Value::Str(s) => Ok(J::String(s.to_string())),
         Value::Object(object) => {
             let text = TypeRegistry::global().encode_value(object)?;
@@ -239,5 +244,35 @@ impl ScriptRuntime {
             .expect("checked above")
             .state = carried.state;
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// NaN and the infinities have no JSON number; they must still save
+    /// and load as themselves, alone and inside a collection.
+    #[test]
+    fn non_finite_floats_round_trip() {
+        let same = |a: f64, b: f64| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
+        for f in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1.5, 0.0] {
+            let json = value_to_json(&Value::Float(f)).unwrap();
+            let Value::Float(back) = value_from_json(&json, &Type::Float).unwrap() else {
+                panic!("{f} did not come back as a float");
+            };
+            assert!(same(f, back), "{f} came back as {back}");
+        }
+
+        let list = Value::list(vec![Value::Float(f64::INFINITY), Value::Float(f64::NAN)]);
+        let json = value_to_json(&list).unwrap();
+        let Value::List(back) = value_from_json(&json, &Type::list(Type::Float)).unwrap() else {
+            panic!("not a list");
+        };
+        assert!(matches!(back[0], Value::Float(f) if f == f64::INFINITY));
+        assert!(matches!(back[1], Value::Float(f) if f.is_nan()));
+
+        // A finite number written as a string is still not a float.
+        assert!(value_from_json(&serde_json::json!("1.5"), &Type::Float).is_err());
     }
 }

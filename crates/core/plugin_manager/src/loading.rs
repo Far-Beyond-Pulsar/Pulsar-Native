@@ -196,6 +196,40 @@ impl PluginManager {
             }
         }
 
+        // The ABI gate. Nothing of the plugin's own may run, and no Rust-ABI
+        // value may cross the library boundary, before the library has proven
+        // it was built by this compiler for this engine: the manifest that
+        // `order_prepared_plugins` reads next is an `Option<PluginManifest>`
+        // laid out by the plugin's compiler. A stale build passes the
+        // integrity check (its hash sits in an equally stale manifest), so
+        // this check is what keeps it out.
+        let version_fn: libloading::Symbol<extern "C" fn() -> VersionInfo> = unsafe {
+            // SAFETY: `_plugin_version` is `extern "C" fn() -> VersionInfo`
+            // (`#[repr(C)]`) in every library `export_plugin!` produced, and
+            // the library is never unloaded. A library without the symbol is
+            // rejected before anything else of it is called.
+            library
+                .get(b"_plugin_version")
+                .map_err(|e| PluginManagerError::MissingSymbol {
+                    symbol: "_plugin_version".to_string(),
+                    message: e.to_string(),
+                })?
+        };
+        let plugin_version = version_fn();
+        let engine_version = VersionInfo::current();
+        if !engine_version.is_compatible(&plugin_version) {
+            tracing::error!(
+                "Plugin at {:?} was built for another engine or compiler (engine rustc hash {:#x}, plugin {:#x}); not loading it",
+                path,
+                engine_version.rustc_version_hash,
+                plugin_version.rustc_version_hash,
+            );
+            return Err(PluginManagerError::VersionMismatch {
+                expected: engine_version,
+                actual: plugin_version,
+            });
+        }
+
         Ok(PreparedPlugin { path, library })
     }
 
@@ -313,7 +347,7 @@ impl PluginManager {
         // Every plugin this one requires must already be installed: that is
         // what `order_prepared_plugins` arranges, and it also covers a
         // dependency that was ordered first but failed to install.
-        if let Some(manifest) = read_manifest(library) {
+        if let Some(manifest) = read_manifest(library)? {
             self.check_dependencies(&manifest)?;
         }
 
@@ -623,11 +657,15 @@ impl PluginManager {
             match result {
                 Err(e) => failed.push((path, Err(e))),
                 Ok(plugin) => match read_manifest(&plugin.library) {
-                    Some(manifest) => {
+                    Ok(Some(manifest)) => {
                         manifests.push(manifest);
                         manifested.push((path, plugin));
                     }
-                    None => unmanifested.push((path, Ok(plugin))),
+                    Ok(None) => unmanifested.push((path, Ok(plugin))),
+                    Err(e) => {
+                        tracing::error!("Plugin at {:?} not loaded: {}", path, e);
+                        failed.push((path, Err(e)));
+                    }
                 },
             }
         }

@@ -5,8 +5,37 @@ use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use std::time::Duration;
 
 const GEMINI_CHAT_URL: &str = "https://generativelanguage.googleapis.com/v1beta/openai/";
+
+/// The blocking client. `Client::new()` gives every wait 30 s, which the
+/// first byte of a long generation exceeds. The blocking client applies
+/// `timeout` to each wait for the server (the response, then each body
+/// read), not to the whole request, so this keeps a slow stream open as long
+/// as the server keeps sending, and still fails a stalled one.
+fn http_client() -> anyhow::Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("building HTTP client")
+}
+
+/// The message of a top-level `error` a server sends as a stream event
+/// instead of an HTTP error status.
+fn stream_error(event: &Value) -> Option<String> {
+    let error = event.get("error")?;
+    Some(match error {
+        Value::Null => return None,
+        Value::String(message) => message.clone(),
+        Value::Object(fields) => fields
+            .get("message")
+            .and_then(|m| m.as_str())
+            .map_or_else(|| error.to_string(), str::to_string),
+        _ => error.to_string(),
+    })
+}
 
 pub struct GeminiProvider {
     client: Client,
@@ -15,12 +44,12 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
-    pub fn new(api_key: String) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(api_key: String) -> anyhow::Result<Self> {
+        Ok(Self {
+            client: http_client()?,
             api_key,
             models: Self::static_models(),
-        }
+        })
     }
 
     fn static_models() -> Vec<ModelDescriptor> {
@@ -74,12 +103,6 @@ impl GeminiProvider {
             .and_then(|message| message.get("content"))
             .and_then(|content| content.as_str())
             .map(|s| s.to_string())
-    }
-}
-
-impl Default for GeminiProvider {
-    fn default() -> Self {
-        Self::new(String::new())
     }
 }
 
@@ -186,10 +209,13 @@ impl ChatProvider for GeminiProvider {
             payload["max_tokens"] = json!(max_tokens);
         }
 
-        let url = format!("{}chat/completions?key={}", GEMINI_CHAT_URL, self.api_key);
+        // The key goes in a header, as for `models`: never in the URL, which
+        // proxies and logs record.
+        let url = format!("{}chat/completions", GEMINI_CHAT_URL);
         let response = self
             .client
             .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
@@ -262,10 +288,11 @@ impl ChatProvider for GeminiProvider {
             payload["max_tokens"] = json!(max_tokens);
         }
 
-        let url = format!("{}chat/completions?key={}", GEMINI_CHAT_URL, self.api_key);
+        let url = format!("{}chat/completions", GEMINI_CHAT_URL);
         let response = self
             .client
             .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .header("Accept", "text/event-stream")
             .json(&payload)
@@ -305,6 +332,9 @@ impl ChatProvider for GeminiProvider {
 
             let event: Value =
                 serde_json::from_str(data).context("invalid JSON event in Gemini stream")?;
+            if let Some(message) = stream_error(&event) {
+                return Err(anyhow!("Gemini streaming API error: {message}"));
+            }
 
             if let Some(choice) = event
                 .get("choices")
@@ -376,7 +406,7 @@ impl ProviderCrate for GeminiProviderCrate {
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "gemini", "unknown provider: {id}");
         let api_key = config.get("api_key").unwrap_or_default().to_string();
-        Ok(Box::new(GeminiProvider::new(api_key)))
+        Ok(Box::new(GeminiProvider::new(api_key)?))
     }
 }
 

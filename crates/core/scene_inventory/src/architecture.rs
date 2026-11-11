@@ -266,9 +266,10 @@ pub const WORLD_STATE_SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/core/pulsar_world_registry/src/lib.rs",
-        4,
+        5,
         "the tick, event and world component inventory lists, read through the \
-         runtime; an immutable RuntimeTypeInfo",
+         runtime; an immutable RuntimeTypeInfo; a per-copy set of component \
+         event names the hub refused, already reported to the log",
     ),
     (
         "crates/core/pulsar_world_registry/src/runtime.rs",

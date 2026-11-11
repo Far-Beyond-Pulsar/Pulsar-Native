@@ -6,13 +6,16 @@ use std::process::Command;
 enum Syntax {
     Slash,
     Hash,
+    /// `#` line comments like [`Syntax::Hash`], plus `<# ... #>` blocks.
+    PowerShell,
 }
 
 fn syntax(path: &Path) -> Option<Syntax> {
     match path.extension()?.to_str()? {
         "rs" | "wgsl" | "c" | "h" | "cc" | "cpp" | "hpp" | "js" | "jsx" | "ts" | "tsx" | "java"
         | "go" | "css" => Some(Syntax::Slash),
-        "py" | "sh" | "bash" | "ps1" | "toml" | "yaml" | "yml" | "nix" => Some(Syntax::Hash),
+        "py" | "sh" | "bash" | "toml" | "yaml" | "yml" | "nix" => Some(Syntax::Hash),
+        "ps1" => Some(Syntax::PowerShell),
         _ => None,
     }
 }
@@ -89,7 +92,16 @@ impl Scanner {
                     i += 1;
                 }
             } else if self.block_depth > 0 {
-                if bytes.get(i..i + 2) == Some(b"/*") {
+                if matches!(syntax, Syntax::PowerShell) {
+                    // `<# ... #>` does not nest.
+                    if bytes.get(i..i + 2) == Some(b"#>") {
+                        self.block_depth = 0;
+                        i += 2;
+                    } else {
+                        comment.push(bytes[i] as char);
+                        i += 1;
+                    }
+                } else if bytes.get(i..i + 2) == Some(b"/*") {
                     self.block_depth += 1;
                     i += 2;
                 } else if bytes.get(i..i + 2) == Some(b"*/") {
@@ -105,7 +117,10 @@ impl Scanner {
             } else if matches!(syntax, Syntax::Slash) && bytes.get(i..i + 2) == Some(b"/*") {
                 self.block_depth = 1;
                 i += 2;
-            } else if matches!(syntax, Syntax::Hash) && bytes[i] == b'#' {
+            } else if matches!(syntax, Syntax::PowerShell) && bytes.get(i..i + 2) == Some(b"<#") {
+                self.block_depth = 1;
+                i += 2;
+            } else if matches!(syntax, Syntax::Hash | Syntax::PowerShell) && bytes[i] == b'#' {
                 comment.push_str(&line[i + 1..]);
                 break;
             } else if rust && bytes[i] == b'r' {
@@ -134,6 +149,14 @@ impl Scanner {
             } else {
                 i += 1;
             }
+        }
+        // Hash-commented files (shell, YAML, TOML, PowerShell) do not carry a
+        // plain quote across lines the way Rust does, but prose in them has
+        // unmatched apostrophes (`Pulsar's`): left open, one hid every
+        // `# TODO` until the next apostrophe, lines or files later. Only a
+        // triple-quoted (Python) string spans lines.
+        if matches!(syntax, Syntax::Hash | Syntax::PowerShell) && !self.triple_quote {
+            self.quote = None;
         }
         has_unreferenced_todo(&comment)
     }
@@ -245,5 +268,32 @@ mod tests {
         let mut scanner = Scanner::default();
         assert!(!scanner.line_has_unreferenced_todo("x = '# TODO'", Syntax::Hash, false));
         assert!(scanner.line_has_unreferenced_todo("x = 1 # TODO", Syntax::Hash, false));
+    }
+
+    #[test]
+    fn an_apostrophe_in_prose_does_not_hide_later_hash_comments() {
+        let mut scanner = Scanner::default();
+        assert!(!scanner.line_has_unreferenced_todo(
+            "- name: Resolve Pulsar's pinned source",
+            Syntax::Hash,
+            false
+        ));
+        assert!(scanner.line_has_unreferenced_todo("# TODO: pin it", Syntax::Hash, false));
+        // A Python triple-quoted string still spans lines.
+        let mut scanner = Scanner::default();
+        assert!(!scanner.line_has_unreferenced_todo("s = '''", Syntax::Hash, false));
+        assert!(!scanner.line_has_unreferenced_todo("# TODO: not a comment", Syntax::Hash, false));
+        assert!(!scanner.line_has_unreferenced_todo("'''", Syntax::Hash, false));
+        assert!(scanner.line_has_unreferenced_todo("# TODO: a comment", Syntax::Hash, false));
+    }
+
+    #[test]
+    fn powershell_block_comments_are_scanned() {
+        let mut scanner = Scanner::default();
+        assert!(!scanner.line_has_unreferenced_todo("<#", Syntax::PowerShell, false));
+        assert!(scanner.line_has_unreferenced_todo("  TODO: document", Syntax::PowerShell, false));
+        assert!(!scanner.line_has_unreferenced_todo("#>", Syntax::PowerShell, false));
+        assert!(scanner.line_has_unreferenced_todo("$x = 1 # TODO", Syntax::PowerShell, false));
+        assert!(!scanner.line_has_unreferenced_todo("$x = '# TODO'", Syntax::PowerShell, false));
     }
 }

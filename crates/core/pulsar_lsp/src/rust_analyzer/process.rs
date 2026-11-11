@@ -3,7 +3,7 @@
 //! [`RustAnalyzerManager::start`], `stop`, `restart`.
 use anyhow::{anyhow, Result};
 use gpui::{Context, Window};
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -46,6 +46,7 @@ impl RustAnalyzerManager {
             let progress_tx_for_spawn = progress_tx.clone();
             let process_arc_clone = process_arc.clone();
             let stdin_arc_clone = stdin_arc.clone();
+            let request_id_arc_clone = request_id_arc.clone();
             let pending_requests_clone = pending_requests_arc.clone();
             let spawn_result = std::thread::spawn(move || {
                 Self::spawn_process_blocking(
@@ -53,6 +54,7 @@ impl RustAnalyzerManager {
                     &workspace_root_for_spawn,
                     process_arc_clone,
                     stdin_arc_clone,
+                    request_id_arc_clone,
                     progress_tx_for_spawn,
                     pending_requests_clone,
                 )
@@ -64,34 +66,17 @@ impl RustAnalyzerManager {
                     tracing::debug!("✓ rust-analyzer process spawned successfully");
                     tracing::debug!("   Active binary: {:?}", resolved_analyzer_path);
 
-                    let _ = manager.update(cx, |manager, _cx| {
-                        manager.analyzer_path = resolved_analyzer_path;
-                    });
-
-                    let workspace_root_for_init = workspace_root.clone();
-                    let stdin_arc_for_init = stdin_arc.clone();
-                    let request_id_arc_for_init = request_id_arc.clone();
-                    let progress_tx_for_init = progress_tx.clone();
-
-                    std::thread::spawn(move || {
-                        if let Err(e) = Self::send_initialize_request(
-                            &workspace_root_for_init,
-                            stdin_arc_for_init,
-                            request_id_arc_for_init,
-                        ) {
-                            tracing::error!("❌ Failed to send initialize request: {}", e);
-                            let _ = progress_tx_for_init
-                                .send(ProgressUpdate::Error(format!("Init failed: {}", e)));
-                        }
-                    });
-
                     let _ = manager.update(cx, |manager, cx| {
+                        manager.analyzer_path = resolved_analyzer_path;
+                        // The initialize request went out inside the spawn,
+                        // before stdin was published, so the server sees it
+                        // ahead of any document notification sent from now
+                        // on (`is_initialized` turns true with this status).
                         manager.status = AnalyzerStatus::Indexing {
                             progress: 0.0,
                             message: "Initializing...".to_string(),
                         };
-                        // DO NOT set initialized=true here - wait for initialize response
-                        tracing::debug!("[LSP ANALYZER] Sent initialize request, waiting for response before setting initialized flag");
+                        tracing::debug!("[LSP ANALYZER] Initialize request sent; accepting document notifications");
                         cx.emit(AnalyzerEvent::IndexingProgress {
                             progress: 0.0,
                             message: "Initializing...".to_string(),
@@ -128,6 +113,7 @@ impl RustAnalyzerManager {
         workspace_root: &PathBuf,
         process_arc: Arc<Mutex<Option<Child>>>,
         stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
+        request_id_arc: Arc<Mutex<i64>>,
         progress_tx: Sender<ProgressUpdate>,
         pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
     ) -> Result<PathBuf> {
@@ -190,118 +176,187 @@ impl RustAnalyzerManager {
         let pid = child.id();
         tracing::debug!("✓ rust-analyzer process spawned (PID: {})", pid);
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow!("Failed to take stdin"))?;
+        // Wire the pipes up and send `initialize` before the child or its
+        // stdin is published; a failure here kills the child rather than
+        // leaving an orphan nobody holds a handle to.
+        let wired = (|| -> Result<()> {
+            let mut stdin = child
+                .stdin
+                .take()
+                .ok_or_else(|| anyhow!("Failed to take stdin"))?;
 
-        if let Some(stderr) = child.stderr.take() {
-            thread::spawn(move || {
-                let reader = BufReader::new(stderr);
-                for line in reader.lines().map_while(Result::ok) {
-                    tracing::error!("[rust-analyzer stderr] {}", line);
-                }
-                tracing::error!("❌ rust-analyzer stderr stream ended");
-            });
-        }
-
-        if let Some(stdout) = child.stdout.take() {
-            let progress_tx_stdout = progress_tx.clone();
-            let pending_requests_clone = Arc::clone(&pending_requests);
-            thread::spawn(move || {
-                let mut reader = BufReader::new(stdout);
-                let mut buffer = String::new();
-
-                loop {
-                    buffer.clear();
-
-                    if reader.read_line(&mut buffer).is_err() || buffer.is_empty() {
-                        break;
+            if let Some(stderr) = child.stderr.take() {
+                thread::spawn(move || {
+                    let reader = BufReader::new(stderr);
+                    for line in reader.lines().map_while(Result::ok) {
+                        tracing::error!("[rust-analyzer stderr] {}", line);
                     }
+                    tracing::error!("❌ rust-analyzer stderr stream ended");
+                });
+            }
 
-                    if !buffer.starts_with("Content-Length:") {
-                        continue;
-                    }
+            // The reader needs the request's id before the reply can arrive.
+            let init_id = Self::next_request_id(&request_id_arc)?;
+            if let Some(stdout) = child.stdout.take() {
+                Self::spawn_stdout_reader(stdout, init_id, &progress_tx, &pending_requests);
+            }
 
-                    let content_len: usize =
-                        match buffer.trim_start_matches("Content-Length:").trim().parse() {
-                            Ok(len) => len,
-                            Err(_) => continue,
-                        };
+            // On the wire before stdin is shared, so no document notification
+            // can precede it (`did_open_file` is gated on the status the
+            // caller sets once this returns).
+            Self::send_initialize_request(workspace_root, &mut stdin, init_id)?;
 
-                    buffer.clear();
-                    if reader.read_line(&mut buffer).is_err() {
-                        break;
-                    }
-
-                    let mut content_buffer = vec![0u8; content_len];
-                    if let Ok(_) = std::io::Read::read_exact(&mut reader, &mut content_buffer) {
-                        if let Ok(content) = String::from_utf8(content_buffer) {
-                            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
-                                if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
-                                    if let Ok(mut pending) = pending_requests_clone.lock() {
-                                        if let Some(tx) = pending.remove(&id) {
-                                            tracing::debug!("[LSP ANALYZER] Received response for request id={}", id);
-                                            let _ = tx.send(msg.clone());
-                                            continue;
-                                        }
-                                    }
-                                    // Handle initialize response specially (id=17 based on our send_initialize_request code)
-                                    if id == 17 {
-                                        tracing::debug!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
-                                            msg.get("result"), msg.get("error"));
-                                        if msg.get("error").is_some() {
-                                            tracing::debug!("[LSP ANALYZER] Initialize response contains an error!");
-                                            let _ = progress_tx_stdout.send(ProgressUpdate::Error(
-                                                format!("Initialize error: {:?}", msg.get("error")),
-                                            ));
-                                        } else if msg.get("result").is_some() {
-                                            tracing::debug!("[LSP ANALYZER] Initialize succeeded, server is ready");
-                                            let triggers = trigger_characters_in(&msg);
-                                            let _ = progress_tx_stdout
-                                                .send(ProgressUpdate::CompletionTriggers(triggers));
-                                            // Initialization complete - server is ready for document operations
-                                        }
-                                    }
-                                }
-                            }
-
-                            Self::handle_lsp_message(&content, &progress_tx_stdout);
-                        }
-                    }
-                }
-                tracing::error!("❌ rust-analyzer stdout stream ended");
-            });
+            let mut stdin_lock = stdin_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
+            *stdin_lock = Some(stdin);
+            Ok(())
+        })();
+        if let Err(error) = wired {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
         }
 
         {
-            let mut stdin_lock = stdin_arc.lock().unwrap();
-            *stdin_lock = Some(stdin);
+            let mut process_lock = process_arc.lock().unwrap();
+            *process_lock = Some(child);
         }
 
+        // Poll rather than `wait()` so the manager keeps the `Child` and can
+        // kill it on stop/restart/drop. The watch ends when the process exits
+        // or when the slot no longer holds this process (`stop_internal` took
+        // it, or a restart replaced it).
         let progress_tx_exit = progress_tx.clone();
-        thread::spawn(move || match child.wait() {
-            Ok(status) => {
-                tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
-                let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
-            }
-            Err(e) => {
-                tracing::error!("❌ Failed to wait for rust-analyzer: {}", e);
-                let _ = progress_tx_exit.send(ProgressUpdate::Error(format!("Wait failed: {}", e)));
+        let process_arc_exit = Arc::clone(&process_arc);
+        thread::spawn(move || loop {
+            let polled = {
+                let Ok(mut process_lock) = process_arc_exit.lock() else {
+                    break;
+                };
+                match process_lock.as_mut() {
+                    Some(child) if child.id() == pid => child.try_wait(),
+                    _ => break,
+                }
+            };
+            match polled {
+                Ok(None) => thread::sleep(Duration::from_millis(200)),
+                Ok(Some(status)) => {
+                    tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
+                    let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!("❌ Failed to wait for rust-analyzer: {}", e);
+                    let _ =
+                        progress_tx_exit.send(ProgressUpdate::Error(format!("Wait failed: {}", e)));
+                    break;
+                }
             }
         });
-
-        {
-            let _process_lock = process_arc.lock().unwrap();
-        }
 
         Ok(active_analyzer_path)
     }
 
+    /// Allocate the next JSON-RPC request id from the manager's shared
+    /// counter (the same one `send_request_async` draws from).
+    pub(super) fn next_request_id(request_id: &Mutex<i64>) -> Result<i64> {
+        let mut req_id = request_id
+            .lock()
+            .map_err(|e| anyhow!("Lock error: {}", e))?;
+        *req_id += 1;
+        Ok(*req_id)
+    }
+
+    /// Start the thread that frames the server's stdout, routes responses to
+    /// waiting requests and handles the `initialize` reply (`init_id`).
+    fn spawn_stdout_reader(
+        stdout: std::process::ChildStdout,
+        init_id: i64,
+        progress_tx: &Sender<ProgressUpdate>,
+        pending_requests: &Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
+    ) {
+        let progress_tx_stdout = progress_tx.clone();
+        let pending_requests_clone = Arc::clone(pending_requests);
+        thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            let mut buffer = String::new();
+
+            loop {
+                buffer.clear();
+
+                if reader.read_line(&mut buffer).is_err() || buffer.is_empty() {
+                    break;
+                }
+
+                if !buffer.starts_with("Content-Length:") {
+                    continue;
+                }
+
+                let content_len: usize =
+                    match buffer.trim_start_matches("Content-Length:").trim().parse() {
+                        Ok(len) => len,
+                        Err(_) => continue,
+                    };
+
+                buffer.clear();
+                if reader.read_line(&mut buffer).is_err() {
+                    break;
+                }
+
+                let mut content_buffer = vec![0u8; content_len];
+                if let Ok(_) = std::io::Read::read_exact(&mut reader, &mut content_buffer) {
+                    if let Ok(content) = String::from_utf8(content_buffer) {
+                        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
+                                if let Ok(mut pending) = pending_requests_clone.lock() {
+                                    if let Some(tx) = pending.remove(&id) {
+                                        tracing::debug!(
+                                            "[LSP ANALYZER] Received response for request id={}",
+                                            id
+                                        );
+                                        let _ = tx.send(msg.clone());
+                                        continue;
+                                    }
+                                }
+                                // The initialize reply carries the id the
+                                // request was sent with; it has no entry
+                                // in `pending_requests`.
+                                if id == init_id {
+                                    tracing::debug!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
+                                        msg.get("result"), msg.get("error"));
+                                    if msg.get("error").is_some() {
+                                        tracing::debug!(
+                                            "[LSP ANALYZER] Initialize response contains an error!"
+                                        );
+                                        let _ = progress_tx_stdout.send(ProgressUpdate::Error(
+                                            format!("Initialize error: {:?}", msg.get("error")),
+                                        ));
+                                    } else if msg.get("result").is_some() {
+                                        tracing::debug!(
+                                            "[LSP ANALYZER] Initialize succeeded, server is ready"
+                                        );
+                                        let triggers = trigger_characters_in(&msg);
+                                        let _ = progress_tx_stdout
+                                            .send(ProgressUpdate::CompletionTriggers(triggers));
+                                        // Initialization complete - server is ready for document operations
+                                    }
+                                }
+                            }
+                        }
+
+                        Self::handle_lsp_message(&content, &progress_tx_stdout);
+                    }
+                }
+            }
+            tracing::error!("❌ rust-analyzer stdout stream ended");
+        });
+    }
+
+    /// Write the `initialize` request (with request id `id`) and the
+    /// `initialized` notification to `stdin`.
     pub(super) fn send_initialize_request(
         workspace_root: &PathBuf,
-        stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
-        request_id_arc: Arc<Mutex<i64>>,
+        stdin: &mut std::process::ChildStdin,
+        id: i64,
     ) -> Result<()> {
         let workspace_str = workspace_root.to_string_lossy().replace("\\", "/");
         let uri = if workspace_str.starts_with("C:/") || workspace_str.starts_with("c:/") {
@@ -314,13 +369,6 @@ impl RustAnalyzerManager {
             "[LSP ANALYZER] Sending initialize with workspace URI: {}",
             uri
         );
-
-        let mut req_id = request_id_arc
-            .lock()
-            .map_err(|e| anyhow!("Lock error: {}", e))?;
-        *req_id += 1;
-        let id = *req_id;
-        drop(req_id);
 
         let init_request = json!({
             "jsonrpc": "2.0",
@@ -494,34 +542,29 @@ impl RustAnalyzerManager {
 
         tracing::debug!("[LSP ANALYZER] Sending initialize request with id={}", id);
 
-        let mut stdin_lock = stdin_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
-        if let Some(stdin) = stdin_lock.as_mut() {
-            let content = serde_json::to_string(&init_request)?;
-            let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+        let content = serde_json::to_string(&init_request)?;
+        let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
 
-            stdin.write_all(message.as_bytes())?;
-            stdin.flush()?;
+        stdin.write_all(message.as_bytes())?;
+        stdin.flush()?;
 
-            tracing::debug!(
-                "[LSP ANALYZER] Initialize request sent, now sending initialized notification"
-            );
+        tracing::debug!(
+            "[LSP ANALYZER] Initialize request sent, now sending initialized notification"
+        );
 
-            let initialized_notification = json!({
-                "jsonrpc": "2.0",
-                "method": "initialized",
-                "params": {}
-            });
+        let initialized_notification = json!({
+            "jsonrpc": "2.0",
+            "method": "initialized",
+            "params": {}
+        });
 
-            let content = serde_json::to_string(&initialized_notification)?;
-            let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
+        let content = serde_json::to_string(&initialized_notification)?;
+        let message = format!("Content-Length: {}\r\n\r\n{}", content.len(), content);
 
-            stdin.write_all(message.as_bytes())?;
-            stdin.flush()?;
+        stdin.write_all(message.as_bytes())?;
+        stdin.flush()?;
 
-            tracing::debug!("[LSP ANALYZER] Initialized notification sent");
-        } else {
-            return Err(anyhow!("stdin not available"));
-        }
+        tracing::debug!("[LSP ANALYZER] Initialized notification sent");
 
         Ok(())
     }

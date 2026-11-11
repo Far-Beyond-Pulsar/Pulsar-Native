@@ -107,6 +107,22 @@ impl AssetViewerPanel {
             .iter()
             .map(|s| (s.first_index, s.index_count, s.material_slot as usize))
             .collect();
+        // Say so once when the section table does not fit the geometry; the
+        // draw (`render_mesh`) clamps every section to the uploaded indices.
+        let index_count = asset.geometry.indices.len() as u32;
+        if let Some(section) = asset
+            .sections
+            .iter()
+            .find(|s| s.first_index.saturating_add(s.index_count) > index_count)
+        {
+            log::warn!(
+                "{:?}: section {}+{} exceeds the mesh's {} indices; drawing the part in range",
+                self.current_path,
+                section.first_index,
+                section.index_count,
+                index_count
+            );
+        }
         self.slot_surfaces = asset.material_slots.iter().map(|s| s.surface).collect();
         let mut rows = Vec::new();
         for (index, slot) in asset.material_slots.iter().enumerate() {

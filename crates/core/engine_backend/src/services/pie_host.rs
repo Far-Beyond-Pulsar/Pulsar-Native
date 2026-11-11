@@ -170,8 +170,8 @@ pub struct PieHost {
     started: bool,
     /// Dropped **last** — after `shutdown`. `Option` so `Drop` can order things.
     lib: Option<Library>,
-    /// On Windows we load a temp copy; remember it so we can clean it up.
-    temp_copy: Option<PathBuf>,
+    /// On Windows we load a temp copy; it is removed when dropped.
+    temp_copy: Option<TempCopy>,
 }
 
 impl PieHost {
@@ -247,7 +247,7 @@ impl PieHost {
             tmp.push(format!("{name}_{stamp}.dll"));
             std::fs::copy(dylib_path, &tmp)
                 .map_err(|e| format!("Failed to copy game dll to temp: {e}"))?;
-            (tmp.clone(), Some(tmp))
+            (tmp.clone(), Some(TempCopy(tmp)))
         } else {
             (dylib_path.to_path_buf(), None)
         };
@@ -370,6 +370,10 @@ impl PieHost {
 
         if ok != INIT_OK {
             // Give the transferred count back so the world can drop normally.
+            // The guest guarantees the count is still outstanding on this
+            // path: `pulsar_game::embed` restores it when its init fails
+            // after adopting the handle (`HostCountGuard`), so this is the
+            // one release of that count.
             drop(Arc::from_raw(
                 shared_world_ptr as *const RwLock<pulsar_scenedb::SceneDb>,
             ));
@@ -620,17 +624,31 @@ impl PieHost {
         // If a misbehaving guest left a slice open, dropping the bridge here
         // releases that lock with the session anyway.
         self.world_bridge = None;
-        // Drop the library (dlclose / FreeLibrary) before removing the temp copy.
+        // Drop the library (dlclose / FreeLibrary) before the temp copy's
+        // drop removes the file.
         self.lib = None;
-        if let Some(path) = self.temp_copy.take() {
-            let _ = std::fs::remove_file(path);
-        }
+        self.temp_copy = None;
     }
 }
 
 impl Drop for PieHost {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+/// The temp copy of the game library loaded on Windows (the original stays
+/// locked while loaded, which would block the next build). Removing it is the
+/// drop, so every exit from `load` that does not keep the library -- a
+/// missing symbol, an ABI mismatch, a failed `init` -- takes the copy with
+/// it instead of leaving one multi-megabyte DLL in the temp directory per
+/// failed Play. Declared before the `Library` locals in `load`, so it drops
+/// after them.
+struct TempCopy(PathBuf);
+
+impl Drop for TempCopy {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
     }
 }
 

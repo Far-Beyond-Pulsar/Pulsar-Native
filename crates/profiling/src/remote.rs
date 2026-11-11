@@ -76,6 +76,10 @@ pub const HEADER_SIZE: usize = 4096;
 /// Ring size of a target made by [`serve`]: at ~100 bytes an event, a few
 /// hundred thousand events of slack between two viewer reads.
 pub const DEFAULT_RING_BYTES: usize = 32 << 20;
+/// The largest ring a target file may claim. The consumer trusts the header
+/// for its copies out of the mapping, so a claim past this (or zero) is a
+/// corrupt or hostile file, not a target.
+pub const MAX_RING_BYTES: u64 = 1 << 32;
 /// How often the publisher refreshes its heartbeat while idle.
 const IDLE_POLL: Duration = Duration::from_millis(100);
 /// How often it drains the event queue while recording.
@@ -369,6 +373,15 @@ fn validate(map: &[u8]) -> io::Result<&Header> {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("profiling target version {}", header.version),
+        ));
+    }
+    // Every copy out of the ring divides by the capacity and indexes with
+    // it, so a header another process wrote has to be sane before any of
+    // that runs.
+    if header.ring_capacity == 0 || header.ring_capacity > MAX_RING_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("profiling target ring size {}", header.ring_capacity),
         ));
     }
     if (map.len() as u64) < HEADER_SIZE as u64 + header.ring_capacity {
@@ -771,11 +784,26 @@ impl TargetConnection {
         let header = self.region.header();
         let write = header.write_pos.0.load(Ordering::Acquire);
         let mut read = header.read_pos.0.load(Ordering::Relaxed);
+        let cap = header.ring_capacity;
+        // The positions are another process's. A write position behind the
+        // read position, or further ahead than the ring holds, is not this
+        // consumer's state (the file was re-created under a reused pid, or
+        // torn): resynchronise rather than underflow or read past the ring.
+        if write < read || write - read > cap {
+            header.read_pos.0.store(write, Ordering::Release);
+            return 0;
+        }
         let before = out.len();
         while write - read >= 4 {
             let mut len = [0u8; 4];
             self.region.copy_out(read, &mut len);
             let len = u32::from_le_bytes(len) as u64;
+            if len > cap - 4 {
+                // No record this ring could hold: corrupt. Skip to the
+                // producer's position instead of copying past the mapping.
+                read = write;
+                break;
+            }
             if write - read < 4 + len {
                 break;
             }
@@ -804,7 +832,7 @@ mod tests {
     fn event(i: u64) -> ProfileEvent {
         ProfileEvent {
             scope_id: i,
-            parent_scope_id: (i % 2 == 0).then_some(i / 2),
+            parent_scope_id: i.is_multiple_of(2).then_some(i / 2),
             name: format!("scope-{i}"),
             thread_id: 7,
             thread_name: Some("worker ✓".into()),

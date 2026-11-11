@@ -146,7 +146,19 @@ pub fn shell_execute_async(command: String) -> Result<u32, String> {
     };
 
     match child {
-        Ok(child) => Ok(child.id()),
+        Ok(mut child) => {
+            let pid = child.id();
+            // Nothing else ever waits on this child, so reap it from a
+            // detached thread when it exits; otherwise every finished
+            // command lingers as a zombie (and keeps its pid) until the
+            // engine exits. A failed thread spawn only loses the reaping.
+            let _ = std::thread::Builder::new()
+                .name(format!("shell-reap-{pid}"))
+                .spawn(move || {
+                    let _ = child.wait();
+                });
+            Ok(pid)
+        }
         Err(e) => Err(format!("Failed to spawn process: {}", e)),
     }
 }
@@ -187,23 +199,33 @@ pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> 
             .spawn()
     };
 
-    let child1 = match cmd1 {
+    let mut child1 = match cmd1 {
         Ok(child) => child,
         Err(e) => return Err(format!("Failed to execute first command: {}", e)),
+    };
+    // `take` rather than moving the field out, so `child1` can still be
+    // waited on below.
+    let Some(stdout1) = child1.stdout.take() else {
+        let _ = child1.wait();
+        return Err("Failed to capture the first command's output".to_string());
     };
 
     // Second command
     let cmd2 = if cfg!(target_os = "windows") {
         Command::new("cmd")
             .args(["/C", &command2])
-            .stdin(child1.stdout.unwrap())
+            .stdin(stdout1)
             .output()
     } else {
         Command::new("sh")
             .args(["-c", &command2])
-            .stdin(child1.stdout.unwrap())
+            .stdin(stdout1)
             .output()
     };
+
+    // The second command has consumed (or closed) the pipe, so the first
+    // is finished or about to be: reap it, or it stays a zombie.
+    let _ = child1.wait();
 
     match cmd2 {
         Ok(output) => {
@@ -232,7 +254,8 @@ pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> 
 /// and the output will be an error message ("Command timed out").
 ///
 /// # Notes
-/// The timeout is enforced by sleeping and checking process status.
+/// The process is polled until it exits or the deadline passes; a timed
+/// out process is killed. A negative timeout is an error.
 /// # Shell Timeout
 /// Executes a command with a timeout (in seconds).
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
@@ -240,8 +263,13 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
     if !crate::unsafe_process_allowed() {
         return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
     }
+    use std::io::Read;
     use std::process::{Command, Stdio};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    // `timeout as u64` of a negative value would wait for centuries.
+    let timeout = u64::try_from(timeout)
+        .map_err(|_| format!("Timeout must not be negative, got {timeout}"))?;
 
     let child = if cfg!(target_os = "windows") {
         Command::new("cmd")
@@ -262,39 +290,52 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
         Err(e) => return Err(format!("Failed to spawn process: {}", e)),
     };
 
-    // Simple timeout simulation
-    std::thread::sleep(Duration::from_millis(100)); // Small delay to let process start
-
-    match child.try_wait() {
-        Ok(Some(status)) => {
-            let output = child.wait_with_output().unwrap();
-            if status.success() {
-                Ok(String::from_utf8_lossy(&output.stdout).to_string())
-            } else {
-                Err(String::from_utf8_lossy(&output.stderr).to_string())
+    // Drain both pipes on their own threads while waiting. A child that
+    // writes more than a pipe buffer holds blocks on that write until
+    // someone reads, and reading only after it exits would wait forever.
+    fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
             }
-        }
-        Ok(None) => {
-            // Process still running - wait for timeout
-            let timeout_secs = timeout as u64;
-            std::thread::sleep(Duration::from_secs(timeout_secs));
+            bytes
+        })
+    }
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
 
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    let output = child.wait_with_output().unwrap();
-                    if status.success() {
-                        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-                    } else {
-                        Err(String::from_utf8_lossy(&output.stderr).to_string())
-                    }
-                }
-                _ => {
+    // `None`: a timeout too large to represent as an instant, so no deadline.
+    let deadline = Instant::now().checked_add(Duration::from_secs(timeout));
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    // Kill, then reap: a killed child is a zombie until
+                    // waited on. The reader threads are not joined: a
+                    // grandchild may keep the pipes open indefinitely, and
+                    // they end on their own once every writer is gone.
                     let _ = child.kill();
-                    Err("Command timed out".to_string())
+                    let _ = child.wait();
+                    return Err("Command timed out".to_string());
                 }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("Error checking process status: {}", e));
             }
         }
-        Err(e) => Err(format!("Error checking process status: {}", e)),
+    };
+
+    let stdout = stdout.join().unwrap_or_default();
+    let stderr = stderr.join().unwrap_or_default();
+    if status.success() {
+        Ok(String::from_utf8_lossy(&stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&stderr).to_string())
     }
 }
 

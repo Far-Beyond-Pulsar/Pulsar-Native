@@ -259,11 +259,28 @@ const PLUMBING: &[&str] = &[
     "0x",
 ];
 
+/// Whether `symbol` is allocator or standard-library plumbing.
+fn is_plumbing(symbol: &str) -> bool {
+    let has_prefix = |text: &str| PLUMBING.iter().any(|prefix| text.starts_with(prefix));
+    if has_prefix(symbol) {
+        return true;
+    }
+    // A std trait implemented for a primitive or std type, such as
+    // `<u8 as alloc::vec::spec_from_elem::SpecFromElem>::from_elem` behind
+    // `vec![0u8; n]`: the type comes first, so the prefixes above miss it. A
+    // user type is always path-qualified (`crate::Type`), so one implementing
+    // a std trait is still attributed to itself.
+    symbol.starts_with('<')
+        && symbol[1..].split_once(" as ").is_some_and(|(ty, trait_path)| {
+            has_prefix(trait_path) && (!ty.contains("::") || has_prefix(ty))
+        })
+}
+
 /// The frame to attribute a stack to.
 pub fn attribution(stack: &[String]) -> String {
     stack
         .iter()
-        .find(|symbol| !PLUMBING.iter().any(|prefix| symbol.starts_with(prefix)))
+        .find(|symbol| !is_plumbing(symbol))
         .or_else(|| stack.first())
         .cloned()
         .unwrap_or_else(|| "<no stack>".into())
@@ -339,5 +356,19 @@ mod tests {
         ];
         assert!(attribution(&stack).starts_with("helio_component::texture_assets"));
         assert_eq!(attribution(&[]), "<no stack>");
+
+        // `vec![0u8; n]` allocates through a std trait on a primitive.
+        let stack = vec![
+            "<u8 as alloc::vec::spec_from_elem::SpecFromElem>::from_elem::<alloc::alloc::Global>"
+                .to_string(),
+            "my_game::world::hold_a_big_buffer".to_string(),
+        ];
+        assert_eq!(attribution(&stack), "my_game::world::hold_a_big_buffer");
+        // A user type implementing a std trait is the owner.
+        let stack = vec![
+            "<my_game::world::Chunk as core::clone::Clone>::clone".to_string(),
+            "my_game::world::copy_chunk".to_string(),
+        ];
+        assert!(attribution(&stack).starts_with("<my_game::world::Chunk"));
     }
 }

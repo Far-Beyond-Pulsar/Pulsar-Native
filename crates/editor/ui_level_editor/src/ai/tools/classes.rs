@@ -44,10 +44,14 @@ pub fn level_editor_place_class(
     scale: Option<[f32; 3]>,
 ) -> Result<Value> {
     let registry = scene_edit::classes::project_registry();
-    let class_dir = match registry.by_name(&class) {
-        Some(entry) => entry.dir.clone(),
-        None if std::path::Path::new(&class).is_dir() => std::path::PathBuf::from(&class),
-        None => bail!("Unknown class '{class}'. Use level_editor_list_classes."),
+    // Only the project's classes, by name or by their directory: an
+    // arbitrary directory on disk is not a class to place.
+    let Some(class_dir) = registry
+        .by_name(&class)
+        .or_else(|| registry.resolve_script_asset(&class))
+        .map(|entry| entry.dir.clone())
+    else {
+        bail!("Unknown class '{class}'. Use level_editor_list_classes.");
     };
     let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();

@@ -5,9 +5,27 @@ use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use std::time::Duration;
 
 const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+
+/// A message's content blocks are numbered from 0; an index past this is a
+/// malformed stream, not a message, and must not size a `Vec`.
+const MAX_STREAM_BLOCKS: usize = 256;
+
+/// The blocking client. `Client::new()` gives every wait 30 s, which the
+/// first byte of a long generation exceeds. The blocking client applies
+/// `timeout` to each wait for the server (the response, then each body
+/// read), not to the whole request, so this keeps a slow stream open as long
+/// as the server keeps sending, and still fails a stalled one.
+fn http_client() -> anyhow::Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("building HTTP client")
+}
 
 const ANTHROPIC_MODEL_ENV: &str = "PULSAR_ANTHROPIC_MODEL";
 
@@ -18,12 +36,12 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub fn new(api_key: String) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(api_key: String) -> anyhow::Result<Self> {
+        Ok(Self {
+            client: http_client()?,
             api_key,
             models: Self::static_models(),
-        }
+        })
     }
 
     fn static_models() -> Vec<ModelDescriptor> {
@@ -327,6 +345,11 @@ impl AnthropicProvider {
             match event.get("type").and_then(|v| v.as_str()) {
                 Some("content_block_start") => {
                     let index = event.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                    if index >= MAX_STREAM_BLOCKS {
+                        return Err(anyhow!(
+                            "Anthropic stream content block index {index} is out of range"
+                        ));
+                    }
                     let block_type = event
                         .get("content_block")
                         .and_then(|b| b.get("type"))
@@ -503,12 +526,6 @@ impl AnthropicProvider {
             finish_reason,
             raw_response: Value::Array(raw_events),
         })
-    }
-}
-
-impl Default for AnthropicProvider {
-    fn default() -> Self {
-        Self::new(String::new())
     }
 }
 
@@ -706,7 +723,7 @@ impl ProviderCrate for AnthropicProviderCrate {
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "anthropic", "unknown provider: {id}");
         let api_key = config.get("api_key").unwrap_or_default().to_string();
-        Ok(Box::new(AnthropicProvider::new(api_key)))
+        Ok(Box::new(AnthropicProvider::new(api_key)?))
     }
 }
 

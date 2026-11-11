@@ -1,7 +1,6 @@
 //! The `#[gpu]` field attribute and the generated GPU mirror companion.
 //! Entry point: [`gpu_mirror_codegen`] (packing rules in its doc).
 
-use proc_macro::TokenStream;
 use quote::quote;
 use syn::Field;
 

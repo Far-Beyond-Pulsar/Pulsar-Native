@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use engine_backend::scene::{new_scene, ObjectType, SceneWorldExt, SpawnObject};
 
-use super::super::{components, objects};
+use super::super::{components, history, objects};
 
 #[test]
 fn duplicate_requested_id_is_rejected_without_creating_a_second_object() {
@@ -186,6 +186,118 @@ fn reparenting_to_the_root_keeps_the_world_pose() {
             .position[0],
         11.0
     );
+}
+
+/// Undo of a reparent: the captured state holds the local transform under
+/// the captured parent, so the restore must put the object back under that
+/// parent as a plain reparent before writing the transform. Reparenting
+/// while keeping the world pose (as an edit does) would rewrite it and move
+/// the object.
+#[test]
+fn restoring_a_reparent_puts_the_object_back_where_it_was() {
+    use engine_backend::scene::hierarchy_transform::world_transform_of;
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let folder = objects::add_folder(world, "folder", None);
+    objects::set_transform(world, &folder, Some([10.0, 0.0, 0.0]), None, None);
+    let item = objects::add_folder(world, "item", None);
+    objects::set_transform(world, &item, Some([1.0, 0.0, 0.0]), None, None);
+    let before = history::capture_history_subset(world, &[item.clone()]);
+
+    assert!(objects::reparent_object(world, &item, Some(folder.clone())));
+    // Kept in place in the world: local x is -9 under the folder.
+    let local_x = objects::get_object(world, &item)
+        .unwrap()
+        .transform
+        .position[0];
+    assert!((local_x + 9.0).abs() < 1e-6, "{local_x}");
+    let after = history::capture_history_subset(world, &[item.clone()]);
+
+    history::restore_history_delta(world, &before, &[item.clone()]).unwrap();
+    let restored = objects::get_object(world, &item).unwrap();
+    assert_eq!(restored.parent, None);
+    assert_eq!(restored.transform.position[0], 1.0);
+    let entity = world.entity_for(&item).unwrap();
+    let world_x = world_transform_of(world, entity).unwrap().position[0];
+    assert!(
+        (world_x - 1.0).abs() < 1e-6,
+        "undo moved the object: {world_x}"
+    );
+
+    history::restore_history_delta(world, &after, &[item.clone()]).unwrap();
+    let redone = objects::get_object(world, &item).unwrap();
+    assert_eq!(redone.parent, Some(folder.clone()));
+    let entity = world.entity_for(&item).unwrap();
+    let world_x = world_transform_of(world, entity).unwrap().position[0];
+    assert!(
+        (world_x - 1.0).abs() < 1e-6,
+        "redo moved the object: {world_x}"
+    );
+}
+
+/// A zero scale would make every child's local transform NaN (and NaN
+/// saves as `null`, which does not load): the write boundary clamps it and
+/// refuses anything non-finite.
+#[test]
+fn a_zero_or_non_finite_scale_is_not_stored() {
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_folder(world, "thing", None);
+
+    assert!(objects::set_transform(
+        world,
+        &id,
+        None,
+        None,
+        Some([0.0, -0.0, 2.0])
+    ));
+    let clamped = [objects::MIN_SCALE, -objects::MIN_SCALE, 2.0];
+    assert_eq!(
+        objects::get_object_transform(world, &id).unwrap().scale,
+        clamped
+    );
+
+    assert!(!objects::set_transform(
+        world,
+        &id,
+        Some([f64::NAN, 0.0, 0.0]),
+        None,
+        None
+    ));
+    assert!(!objects::set_transform(
+        world,
+        &id,
+        None,
+        Some([0.0, f32::INFINITY, 0.0]),
+        None
+    ));
+    assert!(!objects::set_transform(
+        world,
+        &id,
+        None,
+        None,
+        Some([f32::NAN, 1.0, 1.0])
+    ));
+    let transform = objects::get_object_transform(world, &id).unwrap();
+    assert_eq!(transform.position, [0.0, 0.0, 0.0]);
+    assert_eq!(transform.rotation, [0.0, 0.0, 0.0]);
+    assert_eq!(transform.scale, clamped);
+
+    let mut object = objects::get_object(world, &id).unwrap();
+    object.transform.scale = [1.0, f32::NAN, 1.0];
+    assert!(!objects::update_object(world, object.clone()));
+    object.transform.scale = [1.0, 0.0, 1.0];
+    assert!(objects::update_object(world, object));
+    assert_eq!(
+        objects::get_object_transform(world, &id).unwrap().scale,
+        [1.0, objects::MIN_SCALE, 1.0]
+    );
+
+    let mut new = objects::get_object(world, &id).unwrap();
+    new.id = String::new();
+    new.transform.position = [f64::INFINITY, 0.0, 0.0];
+    assert!(objects::add_object(world, new, None).is_empty());
+    assert_eq!(objects::get_all_objects(world).len(), 1);
 }
 
 #[test]

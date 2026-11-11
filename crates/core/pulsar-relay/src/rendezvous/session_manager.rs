@@ -1,10 +1,8 @@
 //! Session lifecycle management and JWT token handling.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::info;
 
 use super::peer_discovery::RendezvousSession;

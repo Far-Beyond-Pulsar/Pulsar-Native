@@ -201,14 +201,35 @@ fn profile_from_user(user: GitHubUserResponse) -> AuthProfile {
     }
 }
 
+/// Persist the token in the OS keyring. Only when the keyring is unavailable
+/// is it cached in an owner-only file instead (the fallback
+/// [`load_access_token`] reads); a successful keyring store removes any such
+/// file left over from an earlier failure.
 pub fn store_access_token(access_token: &str) -> Result<()> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .context("Failed to initialize keyring entry")?;
-    entry
-        .set_password(access_token)
-        .context("Failed to store GitHub token in keyring")?;
-    let _ = save_token_to_cache(access_token);
-    Ok(())
+    let keyring_result = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .context("Failed to initialize keyring entry")
+        .and_then(|entry| {
+            entry
+                .set_password(access_token)
+                .context("Failed to store GitHub token in keyring")
+        });
+    // This crate has no logging dependency, so warnings go to stderr.
+    match keyring_result {
+        Ok(()) => {
+            if let Err(e) = clear_token_cache() {
+                eprintln!(
+                    "[pulsar_auth] warning: could not remove the stale token cache file: {e:#}"
+                );
+            }
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!(
+                "[pulsar_auth] warning: {e:#}; caching the GitHub token in a private file instead"
+            );
+            save_token_to_cache(access_token).context("Failed to cache GitHub token on disk")
+        }
+    }
 }
 
 pub fn load_access_token() -> Result<Option<String>> {
@@ -306,12 +327,46 @@ fn token_cache_path() -> Result<PathBuf> {
 }
 
 fn save_token_to_cache(token: &str) -> Result<()> {
+    use std::io::Write as _;
+
     let path = token_cache_path()?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        create_private_dir(parent)?;
     }
-    std::fs::write(&path, token)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // A bearer credential: owner-only from the moment the file exists.
+        options.mode(0o600);
+    }
+    let mut file = options.open(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        // `mode` only applies to a newly created file; tighten an old one too.
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(token.as_bytes())?;
+    file.sync_all()?;
     Ok(())
+}
+
+/// `create_dir_all` that makes any new directory owner-only on Unix.
+fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(dir)
+    }
 }
 
 fn load_token_from_cache() -> Result<Option<String>> {

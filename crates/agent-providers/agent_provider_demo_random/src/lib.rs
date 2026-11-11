@@ -1,5 +1,4 @@
 use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ModelDescriptor};
-use anyhow::anyhow;
 use serde_json::json;
 use std::{
     thread,
@@ -173,7 +172,7 @@ impl ChatProvider for DemoRandomProvider {
     }
 }
 
-use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+use agent_chat_core::{ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
 
 pub struct DemoRandomProviderCrate;
 

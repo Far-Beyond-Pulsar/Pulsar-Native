@@ -46,7 +46,7 @@ pub fn unfinished_component(class_name: &str) -> Option<&'static UnfinishedCompo
 
 /// Every declared unfinished class, for listings and audits.
 pub fn unfinished_components() -> impl Iterator<Item = &'static UnfinishedComponentRegistration> {
-    crate::runtime::unfinished().iter().copied().into_iter()
+    crate::runtime::unfinished().iter().copied()
 }
 
 static REPORTED: Mutex<Option<HashSet<String>>> = Mutex::new(None);

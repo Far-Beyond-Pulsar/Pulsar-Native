@@ -16,13 +16,12 @@ mod transport;
 pub use path_utils::{path_key, path_to_uri, uri_key, uri_to_path};
 
 use gpui::{Context, EventEmitter, Window};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, ExitStatus};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 use ui::diagnostics::Diagnostic;
 
@@ -187,9 +186,11 @@ impl RustAnalyzerManager {
         )
     }
 
-    /// Check if analyzer is fully initialized (LSP handshake complete)
-    /// Per LSP spec, server must complete initialize handshake before accepting document operations.
-    /// We know this is complete once we transition to Indexing status (which happens after initialize response).
+    /// Check if analyzer is initialized: the `initialize` request (and the
+    /// `initialized` notification) are on the wire ahead of anything else, so
+    /// document operations the server receives from now on follow them.
+    /// That is the transition to Indexing status, which `start` makes only
+    /// after the spawn thread has written the request.
     pub fn is_initialized(&self) -> bool {
         matches!(
             self.status,
@@ -207,6 +208,7 @@ impl Drop for RustAnalyzerManager {
 #[cfg(test)]
 mod trigger_tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn the_servers_registered_trigger_characters_are_read_from_initialize() {

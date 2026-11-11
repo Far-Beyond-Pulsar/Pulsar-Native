@@ -5,9 +5,42 @@ use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use std::time::Duration;
 
 const GITHUB_MODELS_CHAT_URL: &str = "https://models.github.ai/inference/chat/completions";
 const GITHUB_API_VERSION: &str = "2026-03-10";
+
+/// Streams number their partial tool calls from 0; an index past this is a
+/// malformed stream, not a call list, and must not size a `Vec`.
+const MAX_STREAM_TOOL_CALLS: usize = 256;
+
+/// The blocking client. `Client::new()` gives every wait 30 s, which the
+/// first byte of a long generation exceeds. The blocking client applies
+/// `timeout` to each wait for the server (the response, then each body
+/// read), not to the whole request, so this keeps a slow stream open as long
+/// as the server keeps sending, and still fails a stalled one.
+fn http_client() -> anyhow::Result<Client> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .context("building HTTP client")
+}
+
+/// The message of a top-level `error` a server sends as a stream event
+/// instead of an HTTP error status.
+fn stream_error(event: &Value) -> Option<String> {
+    let error = event.get("error")?;
+    Some(match error {
+        Value::Null => return None,
+        Value::String(message) => message.clone(),
+        Value::Object(fields) => fields
+            .get("message")
+            .and_then(|m| m.as_str())
+            .map_or_else(|| error.to_string(), str::to_string),
+        _ => error.to_string(),
+    })
+}
 
 const GITHUB_MODEL_ENV: &str = "PULSAR_GITHUB_MODEL";
 
@@ -18,12 +51,12 @@ pub struct GithubCopilotProvider {
 }
 
 impl GithubCopilotProvider {
-    pub fn new(api_key: String) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(api_key: String) -> anyhow::Result<Self> {
+        Ok(Self {
+            client: http_client()?,
             api_key,
             models: Self::static_models(),
-        }
+        })
     }
 
     fn static_models() -> Vec<ModelDescriptor> {
@@ -270,8 +303,16 @@ impl GithubCopilotProvider {
                             let index = tool_call
                                 .get("index")
                                 .and_then(|value| value.as_u64())
-                                .unwrap_or(partials.len() as u64)
-                                as usize;
+                                .map_or(partials.len(), |index| {
+                                    usize::try_from(index).unwrap_or(usize::MAX)
+                                });
+                            if index >= MAX_STREAM_TOOL_CALLS {
+                                tracing::warn!(
+                                    index,
+                                    "ignoring a tool call delta whose index is out of range"
+                                );
+                                continue;
+                            }
 
                             while partials.len() <= index {
                                 partials.push(PartialToolCall::default());
@@ -394,6 +435,9 @@ impl GithubCopilotProvider {
             let event: Value =
                 serde_json::from_str(data).context("invalid JSON event in stream")?;
             event_count += 1;
+            if let Some(message) = stream_error(&event) {
+                return Err(anyhow!("GitHub Models streaming API error: {message}"));
+            }
 
             if let Some(choice) = event
                 .get("choices")
@@ -499,12 +543,6 @@ impl GithubCopilotProvider {
             finish_reason,
             raw_response: Value::Array(raw_events),
         })
-    }
-}
-
-impl Default for GithubCopilotProvider {
-    fn default() -> Self {
-        Self::new(String::new())
     }
 }
 
@@ -716,7 +754,7 @@ impl ProviderCrate for GithubCopilotProviderCrate {
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "github_copilot", "unknown provider: {id}");
         let token = config.get("token").unwrap_or_default().to_string();
-        Ok(Box::new(GithubCopilotProvider::new(token)))
+        Ok(Box::new(GithubCopilotProvider::new(token)?))
     }
 }
 

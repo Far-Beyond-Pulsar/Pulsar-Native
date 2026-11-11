@@ -552,7 +552,13 @@ impl MultiplayerWindow {
         let Some(project_root) = Self::read_project_root(this, cx) else {
             return;
         };
-        let full_path = project_root.join(&file_path);
+        let full_path = match simple_sync::project_relative(&project_root, &file_path) {
+            Ok(path) => path,
+            Err(error) => {
+                tracing::warn!("{}: Refusing file request: {}", TAG, error);
+                return;
+            }
+        };
 
         let Ok(data) = std::fs::read(&full_path) else {
             return;

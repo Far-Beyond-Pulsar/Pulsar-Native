@@ -93,7 +93,8 @@ fn prompt_continue_without_discrete_gpu() -> bool {
 ///
 /// This function:
 /// 1. Probes for discrete GPUs
-/// 2. If found, sets WGPU environment variables to prefer high-performance GPU
+/// 2. If found, logs the adapter the high-performance preference will pick
+///    (the preference itself reaches the renderer through `WgpuOptions`)
 /// 3. If not found, prompts user whether to continue
 /// 4. Exits the application if user declines
 pub fn enforce_discrete_gpu_policy_or_exit() {
@@ -128,13 +129,15 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
     let probe = probe_gpu_policy();
 
     if probe.has_discrete_gpu {
-        std::env::set_var("WGPU_POWER_PREF", "high");
-
-        if let Some(adapter_name) = probe.selected_gpu_name {
-            std::env::set_var("WGPU_ADAPTER_NAME", adapter_name);
-        }
-
-        tracing::info!("Discrete GPU detected; forcing high-performance GPU preference");
+        // The preference reaches the renderer through `WgpuOptions` (built
+        // in `main` from the same setting). Nothing reads the
+        // `WGPU_POWER_PREF`/`WGPU_ADAPTER_NAME` variables this used to set,
+        // and setting them here raced the runtime's worker threads: `setenv`
+        // against a `getenv` from the logging layer is a data race on Unix.
+        tracing::info!(
+            adapter = probe.selected_gpu_name.as_deref().unwrap_or("unknown"),
+            "Discrete GPU detected; the high-performance GPU preference applies"
+        );
         return;
     }
 

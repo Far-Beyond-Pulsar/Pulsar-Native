@@ -203,8 +203,12 @@ pub fn restore_history_delta(
         if world.entity_for(&object.id).is_none() {
             super::objects::spawn_raw(world, object)?;
         } else {
+            // Hierarchy first, as a plain reparent: the captured transform
+            // is relative to the captured parent, and the world-keeping
+            // reparent of an edit (`objects::reparent_object`) would rewrite
+            // it for the move. Then the captured local transform under it.
+            super::objects::set_parent(world, &object.id, object.parent.as_deref());
             super::objects::update_object(world, object.clone());
-            super::objects::reparent_object(world, &object.id, object.parent.clone());
         }
         let components = snapshot
             .components
