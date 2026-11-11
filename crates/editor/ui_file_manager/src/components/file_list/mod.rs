@@ -102,6 +102,10 @@ pub struct FileManagerDrawer {
     /// Show only the folder's contents, without the folder tree beside them.
     /// The editor's left sidebar sets this when it supplies the tree itself.
     pub(crate) folder_tree_hidden: bool,
+    /// What is wrong with how the project meets its read-only mounts (an
+    /// on-disk `plugins/` or `pulsar/` folder the mount hides), shown above
+    /// the files (`engine_fs::virtual_fs::mount_problems`).
+    pub(crate) mount_problems: Vec<String>,
 }
 
 impl FileManagerDrawer {
@@ -264,6 +268,10 @@ impl FileManagerDrawer {
             recent_commits: Vec::new(),
             commit_picker,
             folder_tree_hidden: false,
+            mount_problems: project_path
+                .as_deref()
+                .map(engine_fs::virtual_fs::mount_problems)
+                .unwrap_or_default(),
         };
 
         this.fs_event_listener = Some(cx.spawn(async move |drawer, cx| {
@@ -434,6 +442,16 @@ impl Render for FileManagerDrawer {
             }))
             .on_action(cx.listener(|this, a: &RestoreFile, _w, cx| {
                 crate::handlers::handle_restore_file(this, a, _w, cx)
+            }))
+            .children(self.mount_problems.iter().map(|problem| {
+                div()
+                    .w_full()
+                    .px_3()
+                    .py_1()
+                    .text_xs()
+                    .bg(cx.theme().warning.opacity(0.15))
+                    .text_color(cx.theme().warning)
+                    .child(problem.clone())
             }))
             .child(render_content(self, window, cx))
     }

@@ -408,12 +408,11 @@ fn get_or_generate_thumbnail_sync(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Images, and the extensions a plugin registered a renderer for
-/// ([`register_thumbnail_renderer`]: the meshes' models and `.mesh`).
+/// ([`register_thumbnail_renderer`]: the meshes' models and `.mesh`, the
+/// materials' graphs).
 fn is_supported_ext(ext: &str) -> bool {
-    matches!(
-        ext,
-        "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" | "material"
-    ) || FORMAT_RENDERERS
+    matches!(ext, "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif")
+        || FORMAT_RENDERERS
         .get()
         .is_some_and(|renderers| renderers.lock().contains_key(ext))
 }
@@ -433,7 +432,7 @@ fn compute_cache_key(path: &Path) -> String {
         }
     }
 
-    // Folder-backed formats (for example `.material`) give their registered
+    // Folder-backed formats give their registered
     // renderer the asset directory. Fingerprint its direct files so edits to
     // the marker/manifest invalidate the cached preview.
     if path.is_dir() {

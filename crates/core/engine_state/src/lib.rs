@@ -148,11 +148,18 @@ pub fn set_project_path(path: String) {
     if let Some(ctx) = EngineContext::global() {
         let current = get_project_path();
         if current.as_deref() != Some(path.as_str()) {
+            // The project's read-only `pulsar/` and `plugins/<id>/` folders
+            // (the engine's and the enabled plugins' content) replace the
+            // outgoing project's.
+            if let Some(previous) = current.as_deref() {
+                engine_fs::virtual_fs::unmount_project(std::path::Path::new(previous));
+            }
             // Save the outgoing project's quick multiplayer setup before the
             // engine-global toolbar state is replaced with the next project's.
             playback::persist_multiplayer_settings();
         }
         let project_path = std::path::PathBuf::from(path);
+        engine_fs::virtual_fs::mount_project(&project_path);
         let project_ctx = ProjectContext::new(project_path.clone());
         ctx.set_project(project_ctx);
         playback::load_multiplayer_settings(&project_path);

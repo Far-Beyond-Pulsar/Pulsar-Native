@@ -1,7 +1,10 @@
 //! Level-wide settings: the components a level holds once (the plugins'
 //! [`crate::extend::LevelComponentSection`]s: its sky, its global wind;
-//! [`level_component_section`]), the environment mixer and the persisted
-//! gameplay and simulation settings.
+//! [`level_component_section`]), the environment mixer, the simulation
+//! clock, the plugins' fields ([`crate::extend::WorldSettingField`],
+//! [`fields_section`]) and one picker per registered role
+//! (`pulsar_traits::RoleRegistration`), listing the implementers of its
+//! trait.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,13 +22,13 @@ use ui::{
 use ui_common::inspector::{Inspector, InspectorRow};
 use ui_common::inspector_model::CardDesc;
 
-use engine_fs::world_roles::{EngineRole, ROLES};
+use pulsar_traits::roles::RoleRegistration;
 
 use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
 
 mod environment_section;
-mod input_section;
+mod fields_section;
 mod level_component_section;
 mod pipeline_section;
 
@@ -36,10 +39,10 @@ enum BlueprintCatalogState {
     Failed(String),
 }
 
-/// One engine role's Blueprint picker: the Blueprints that implement the
-/// role's trait, from the project index.
+/// One role's picker: the implementers of the role's trait that run as a
+/// script class (what a role spawns), from the project's trait index.
 struct RolePicker {
-    role: EngineRole,
+    role: &'static RoleRegistration,
     picker: Entity<SearchableList<String>>,
     catalog: BlueprintCatalogState,
 }
@@ -47,19 +50,15 @@ struct RolePicker {
 /// Body for the World Settings dock panel.
 pub struct WorldSettingsPanelImpl {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
-    gravity_x_input: Entity<InputState>,
-    gravity_y_input: Entity<InputState>,
-    gravity_z_input: Entity<InputState>,
     time_scale_input: Entity<InputState>,
     fixed_timestep_input: Entity<InputState>,
-    /// One picker per row of `engine_fs::world_roles::ROLES`.
+    /// One picker per enabled role.
     role_pickers: Vec<RolePicker>,
+    /// The plugins' fields and their widgets.
+    fields: Vec<fields_section::FieldState>,
     /// The render pipeline picker and the ids it currently lists.
     pipeline_picker: Entity<SearchableList<String>>,
     pipeline_ids: Vec<String>,
-    /// The player input mapping picker and the project's mappings.
-    mapping_picker: Entity<SearchableList<String>>,
-    mapping_catalog: BlueprintCatalogState,
     /// The level component sections' widget state, by class.
     level_components: HashMap<&'static str, level_component_section::SectionState>,
     environment_property_state: ui_common::PropertyStateManager,
@@ -78,10 +77,6 @@ impl WorldSettingsPanelImpl {
         window: &mut Window,
         cx: &mut Context<WorldSettingsPanel>,
     ) -> Self {
-        let gravity = state.read().scene.world_settings.gravity;
-        let gravity_x_input = make_numeric_input(gravity[0], "0.0", window, cx);
-        let gravity_y_input = make_numeric_input(gravity[1], "-9.81", window, cx);
-        let gravity_z_input = make_numeric_input(gravity[2], "0.0", window, cx);
         let time_scale_input = cx.new(|cx| {
             let mut input = InputState::new(window, cx).placeholder("1.0");
             input.set_value(
@@ -100,13 +95,13 @@ impl WorldSettingsPanelImpl {
             );
             input
         });
-        let role_pickers: Vec<RolePicker> = ROLES
-            .iter()
-            .map(|spec| RolePicker {
-                role: spec.role,
+        let role_pickers: Vec<RolePicker> = pulsar_traits::roles::roles()
+            .into_iter()
+            .map(|role| RolePicker {
+                role,
                 picker: cx.new(|cx| {
                     SearchableList::<String>::new(window, cx, Vec::new(), blueprint_label)
-                        .with_empty_text(format!("No {} Blueprints found", spec.label))
+                        .with_empty_text(format!("No {} implementers found", role.label))
                         .with_max_width(px(360.0))
                         .with_max_height(px(320.0))
                 }),
@@ -127,27 +122,8 @@ impl WorldSettingsPanelImpl {
             .with_max_height(px(320.0))
         });
 
-        let mapping_picker = cx.new(|cx| {
-            SearchableList::<String>::new(
-                window,
-                cx,
-                vec!["None".to_string()],
-                input_section::mapping_label,
-            )
-            .with_empty_text("No input mappings found")
-            .with_max_width(px(360.0))
-            .with_max_height(px(320.0))
-        });
-
         let mut subscriptions = Vec::new();
-        subscriptions.push(cx.subscribe(
-            &mapping_picker,
-            |panel, _picker, event: &SearchableListEvent<String>, cx| {
-                if let SearchableListEvent::Select(path) = event {
-                    panel.world_settings.select_input_mapping(path, cx);
-                }
-            },
-        ));
+        let fields = Self::build_fields(&state, window, cx, &mut subscriptions);
         subscriptions.push(cx.subscribe(
             &pipeline_picker,
             |panel, _picker, event: &SearchableListEvent<String>, cx| {
@@ -157,9 +133,6 @@ impl WorldSettingsPanelImpl {
             },
         ));
         for (input, field) in [
-            (gravity_x_input.clone(), NumericSetting::GravityX),
-            (gravity_y_input.clone(), NumericSetting::GravityY),
-            (gravity_z_input.clone(), NumericSetting::GravityZ),
             (time_scale_input.clone(), NumericSetting::TimeScale),
             (fixed_timestep_input.clone(), NumericSetting::FixedTimestep),
         ] {
@@ -189,7 +162,7 @@ impl WorldSettingsPanelImpl {
 
         for role_picker in &role_pickers {
             let state_for_selection = state.clone();
-            let role = role_picker.role;
+            let key = role_picker.role.setting_key;
             subscriptions.push(cx.subscribe(
                 &role_picker.picker,
                 move |_panel, _picker, event: &SearchableListEvent<String>, cx| {
@@ -198,7 +171,7 @@ impl WorldSettingsPanelImpl {
                         state
                             .scene
                             .world_settings
-                            .set_role_blueprint(role, (path != "None").then(|| path.clone()));
+                            .set_role_asset(key, (path != "None").then(|| path.clone()));
                         mark_world_settings_dirty(&mut state);
                         cx.notify();
                     }
@@ -217,16 +190,12 @@ impl WorldSettingsPanelImpl {
 
         let mut panel = Self {
             state: state.clone(),
-            gravity_x_input,
-            gravity_y_input,
-            gravity_z_input,
             time_scale_input,
             fixed_timestep_input,
             role_pickers,
+            fields,
             pipeline_picker,
             pipeline_ids,
-            mapping_picker,
-            mapping_catalog: BlueprintCatalogState::Loading,
             level_components: HashMap::new(),
             environment_property_state: ui_common::PropertyStateManager::default(),
             environment_properties: HashMap::new(),
@@ -238,8 +207,8 @@ impl WorldSettingsPanelImpl {
             _subscriptions: subscriptions,
         };
         panel.load_blueprint_catalog(cx);
-        panel.load_input_mappings(cx);
-        panel.watch_input_mappings(cx);
+        panel.load_field_assets(cx);
+        panel.watch_field_assets(cx);
         panel.watch_blueprint_index(cx);
         panel.watch_render_graphs(cx);
         panel
@@ -257,16 +226,16 @@ impl WorldSettingsPanelImpl {
         let Some(root) = engine_state::get_project_path().map(PathBuf::from) else {
             for role_picker in &mut self.role_pickers {
                 role_picker.catalog = BlueprintCatalogState::Failed(format!(
-                    "Open a project to browse its {} Blueprints.",
-                    role_picker.role.spec().label
+                    "Open a project to browse its {} implementers.",
+                    role_picker.role.label
                 ));
             }
             return;
         };
-        let pickers: Vec<(EngineRole, Entity<SearchableList<String>>)> = self
+        let pickers: Vec<(&'static str, Entity<SearchableList<String>>)> = self
             .role_pickers
             .iter()
-            .map(|role_picker| (role_picker.role, role_picker.picker.clone()))
+            .map(|role_picker| (role_picker.role.id, role_picker.picker.clone()))
             .collect();
         cx.spawn(async move |this, cx| {
             let result = cx
@@ -291,7 +260,7 @@ impl WorldSettingsPanelImpl {
                             .world_settings
                             .role_pickers
                             .iter_mut()
-                            .find(|role_picker| role_picker.role == *role)
+                            .find(|role_picker| role_picker.role.id == *role)
                         {
                             role_picker.catalog = match &result {
                                 Ok(_) => BlueprintCatalogState::Ready(paths),
@@ -337,24 +306,7 @@ impl WorldSettingsPanelImpl {
         cx: &mut Context<WorldSettingsPanel>,
     ) -> impl IntoElement {
         let settings_snapshot = self.state.read().scene.world_settings.clone();
-        sync_numeric_input(
-            &self.gravity_x_input,
-            format!("{:.3}", settings_snapshot.gravity[0]),
-            window,
-            cx,
-        );
-        sync_numeric_input(
-            &self.gravity_y_input,
-            format!("{:.3}", settings_snapshot.gravity[1]),
-            window,
-            cx,
-        );
-        sync_numeric_input(
-            &self.gravity_z_input,
-            format!("{:.3}", settings_snapshot.gravity[2]),
-            window,
-            cx,
-        );
+        self.sync_fields(&settings_snapshot, window, cx);
         sync_numeric_input(
             &self.time_scale_input,
             format!("{:.3}", settings_snapshot.time_scale),
@@ -378,8 +330,13 @@ impl WorldSettingsPanelImpl {
         cards.extend([
             world_settings_card("environment", "Environment Mixer"),
             world_settings_card("simulation", "Simulation"),
-            world_settings_card("gameplay", "Gameplay Roles"),
         ]);
+        cards.extend(
+            fields_section::sections(&self.fields)
+                .into_iter()
+                .map(|section| world_settings_card(&fields_section::section_key(section), section)),
+        );
+        cards.push(world_settings_card("gameplay", "Gameplay Roles"));
         self.inspector.set_cards(cards);
         if !self.inspector_initialized {
             self.inspector.collapse_all();
@@ -406,13 +363,7 @@ impl WorldSettingsPanelImpl {
             "pipeline" => self.render_pipeline_section(cx),
             "environment" => self.render_environment_tools(cx),
             "simulation" => {
-                let (physics_enabled, auto_simulation) = {
-                    let state = self.state.read();
-                    (
-                        state.scene.world_settings.physics_enabled,
-                        state.scene.world_settings.auto_simulation,
-                    )
-                };
+                let auto_simulation = self.state.read().scene.world_settings.auto_simulation;
                 v_flex()
                     .gap_3()
                     .child(self.render_numeric_row("Time Scale", &self.time_scale_input, "x", cx))
@@ -420,13 +371,6 @@ impl WorldSettingsPanelImpl {
                         "Fixed Timestep",
                         &self.fixed_timestep_input,
                         "s",
-                        cx,
-                    ))
-                    .child(self.render_gravity_row(cx))
-                    .child(self.render_toggle_row(
-                        "Physics Enabled",
-                        physics_enabled,
-                        ToggleSetting::Physics,
                         cx,
                     ))
                     .child(self.render_toggle_row(
@@ -441,15 +385,17 @@ impl WorldSettingsPanelImpl {
                 let state = self.state.read();
                 let settings = &state.scene.world_settings;
                 let rows = self.role_pickers.iter().map(|role_picker| {
-                    self.render_role_row(role_picker, settings.role_blueprint(role_picker.role), cx)
-                });
-                v_flex()
-                    .gap_3()
-                    .children(rows)
-                    .child(
-                        self.render_input_mapping_row(settings.player_input_mapping.as_deref(), cx),
+                    self.render_role_row(
+                        role_picker,
+                        settings.role_asset(role_picker.role.setting_key),
+                        cx,
                     )
-                    .into_any_element()
+                });
+                v_flex().gap_3().children(rows).into_any_element()
+            }
+            _ if key.starts_with("fields:") => {
+                let section = key["fields:".len()..].to_owned();
+                self.render_fields_section(&section, cx)
             }
             _ if key.starts_with("component:") => {
                 let class_name = &key["component:".len()..];
@@ -539,56 +485,15 @@ impl WorldSettingsPanelImpl {
             )
     }
 
-    fn render_gravity_row(&self, cx: &Context<WorldSettingsPanel>) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .gap_2()
-            .items_center()
-            .child(
-                div()
-                    .flex_1()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Gravity"),
-            )
-            .child(self.render_axis_input("X", &self.gravity_x_input, cx))
-            .child(self.render_axis_input("Y", &self.gravity_y_input, cx))
-            .child(self.render_axis_input("Z", &self.gravity_z_input, cx))
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("m/s²"),
-            )
-    }
-
-    fn render_axis_input(
-        &self,
-        axis: &'static str,
-        input: &Entity<InputState>,
-        cx: &Context<WorldSettingsPanel>,
-    ) -> impl IntoElement {
-        h_flex()
-            .gap_1()
-            .items_center()
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(axis),
-            )
-            .child(NumberInput::new(input).xsmall())
-    }
-
-    /// One role: its name, the Blueprint chosen for it and, below, whether
-    /// that choice is available in the project.
+    /// One role: its name, the implementer chosen for it and, below,
+    /// whether that choice is available in the project.
     fn render_role_row(
         &self,
         role_picker: &RolePicker,
         selected: Option<&str>,
         cx: &Context<WorldSettingsPanel>,
     ) -> AnyElement {
-        let spec = role_picker.role.spec();
+        let spec = role_picker.role;
         let selected = selected
             .map(str::to_owned)
             .unwrap_or_else(|| "None".to_string());
@@ -625,7 +530,7 @@ impl WorldSettingsPanelImpl {
             )
             .child(catalog_status(
                 spec.label,
-                spec.trait_path,
+                spec.trait_id,
                 &role_picker.catalog,
                 selected.as_str(),
                 cx,
@@ -660,7 +565,6 @@ impl WorldSettingsPanelImpl {
                         let mut state = state.write();
                         let settings = &mut state.scene.world_settings;
                         match field {
-                            ToggleSetting::Physics => settings.physics_enabled = !value,
                             ToggleSetting::AutoSimulation => settings.auto_simulation = !value,
                         }
                         mark_world_settings_dirty(&mut state);
@@ -687,10 +591,8 @@ fn world_settings_card(key: &str, title: &str) -> CardDesc {
     let search_terms = match key {
         "pipeline" => "render pipeline graph",
         "environment" => "environment mixer sky atmosphere wind fog lighting",
-        "simulation" => "time scale fixed timestep gravity physics simulation",
-        "gameplay" => {
-            "game mode player controller player character game state input mapping blueprint trait"
-        }
+        "simulation" => "time scale fixed timestep simulation",
+        "gameplay" => "roles game mode player controller player character game state trait",
         _ => key,
     };
     CardDesc {
@@ -724,24 +626,8 @@ fn render_world_settings_row(
     }
 }
 
-fn make_numeric_input(
-    value: f32,
-    placeholder: &'static str,
-    window: &mut Window,
-    cx: &mut Context<WorldSettingsPanel>,
-) -> Entity<InputState> {
-    cx.new(|cx| {
-        let mut input = InputState::new(window, cx).placeholder(placeholder);
-        input.set_value(format!("{value:.3}"), window, cx);
-        input
-    })
-}
-
 #[derive(Clone, Copy)]
 enum NumericSetting {
-    GravityX,
-    GravityY,
-    GravityZ,
     TimeScale,
     FixedTimestep,
 }
@@ -752,15 +638,11 @@ impl NumericSetting {
             && match self {
                 Self::TimeScale => value >= 0.0,
                 Self::FixedTimestep => value > 0.0,
-                Self::GravityX | Self::GravityY | Self::GravityZ => true,
             }
     }
 
     fn get(self, settings: &crate::world_settings_data::WorldSettingsData) -> f32 {
         match self {
-            Self::GravityX => settings.gravity[0],
-            Self::GravityY => settings.gravity[1],
-            Self::GravityZ => settings.gravity[2],
             Self::TimeScale => settings.time_scale,
             Self::FixedTimestep => settings.fixed_timestep,
         }
@@ -768,9 +650,6 @@ impl NumericSetting {
 
     fn set(self, settings: &mut crate::world_settings_data::WorldSettingsData, value: f32) {
         match self {
-            Self::GravityX => settings.gravity[0] = value,
-            Self::GravityY => settings.gravity[1] = value,
-            Self::GravityZ => settings.gravity[2] = value,
             Self::TimeScale => settings.time_scale = value,
             Self::FixedTimestep => settings.fixed_timestep = value,
         }
@@ -779,7 +658,6 @@ impl NumericSetting {
 
 #[derive(Clone, Copy)]
 enum ToggleSetting {
-    Physics,
     AutoSimulation,
 }
 
@@ -788,38 +666,42 @@ fn mark_world_settings_dirty(state: &mut LevelEditorState) {
     state.scene.revision = state.scene.revision.wrapping_add(1);
 }
 
-/// Adapter boundary between the panel and the project blueprint index: the
-/// Blueprints that can fill each engine role, from one read of the index.
+/// Adapter boundary between the panel and the project's trait index: the
+/// implementers that can fill each enabled role (those running as a script
+/// class, which a role spawns), by role id, from one read of the index.
 fn load_role_blueprints(
     project_root: &Path,
     rebuild: bool,
-) -> Result<std::collections::BTreeMap<EngineRole, Vec<String>>, String> {
+) -> Result<std::collections::BTreeMap<&'static str, Vec<String>>, String> {
     let index = if rebuild {
-        engine_fs::BlueprintTraitIndex::load_or_rebuild(project_root)
+        pulsar_traits::TraitIndex::load_or_rebuild(project_root)
     } else {
-        engine_fs::BlueprintTraitIndex::load(project_root)
+        pulsar_traits::TraitIndex::load(project_root)
     };
     index
         .map(|index| {
-            ROLES
-                .iter()
-                .map(|spec| {
-                    let blueprints = index
-                        .blueprints_for_trait(spec.trait_id)
+            pulsar_traits::roles::roles()
+                .into_iter()
+                .map(|role| {
+                    let implementers = index
+                        .implementers_of(role.trait_id)
                         .into_iter()
-                        .map(|entry| entry.blueprint_path.clone())
+                        .filter(|entry| {
+                            matches!(entry.binding, Some(pulsar_traits::Binding::ScriptClass { .. }))
+                        })
+                        .map(|entry| entry.id.clone())
                         .collect();
-                    (spec.role, blueprints)
+                    (role.id, implementers)
                 })
                 .collect()
         })
-        .map_err(|error| format!("Could not load the Blueprint trait index: {error:#}"))
+        .map_err(|error| format!("Could not load the trait index: {error:#}"))
 }
 
 fn is_blueprint_index_path(path: &Path) -> bool {
     path.to_string_lossy()
         .replace('\\', "/")
-        .ends_with(engine_fs::BlueprintTraitIndex::RELATIVE_PATH)
+        .ends_with(pulsar_traits::TraitIndex::RELATIVE_PATH)
 }
 
 fn blueprint_label(path: &String) -> String {
@@ -842,19 +724,19 @@ fn blueprint_label(path: &String) -> String {
 
 fn catalog_message(
     role_label: &str,
-    trait_path: &str,
+    trait_id: &str,
     state: &BlueprintCatalogState,
     selected: &str,
 ) -> String {
     match state {
-        BlueprintCatalogState::Loading => format!("Loading {role_label} Blueprints…"),
+        BlueprintCatalogState::Loading => format!("Loading {role_label} implementers…"),
         BlueprintCatalogState::Ready(paths) if paths.is_empty() => format!(
-            "No Blueprint implements `{trait_path}`. Add that trait to a Blueprint to make it selectable."
+            "Nothing implements `{trait_id}`. Add that trait to a Blueprint to make it selectable."
         ),
         BlueprintCatalogState::Ready(paths)
             if selected != "None" && !paths.iter().any(|path| path == selected) =>
         {
-            format!("Selected Blueprint is not in the current index: {selected}")
+            format!("The selected implementer is not in the current index: {selected}")
         }
         BlueprintCatalogState::Ready(_) => {
             format!("Select a Blueprint that implements the {role_label} trait.")
@@ -865,7 +747,7 @@ fn catalog_message(
 
 fn catalog_status(
     role_label: &str,
-    trait_path: &str,
+    trait_id: &str,
     state: &BlueprintCatalogState,
     selected: &str,
     cx: &Context<WorldSettingsPanel>,
@@ -873,67 +755,56 @@ fn catalog_status(
     div()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
-        .child(catalog_message(role_label, trait_path, state, selected))
+        .child(catalog_message(role_label, trait_id, state, selected))
         .into_any_element()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState, EngineRole,
+    use super::{blueprint_label, catalog_message, load_role_blueprints, BlueprintCatalogState};
+    use pulsar_traits::builtin::{
+        GAME_MODE_ROLE, GAME_STATE_ROLE, PLAYER_CHARACTER_ROLE, PLAYER_CONTROLLER_ROLE,
     };
 
+    /// The roles list what the project's index says implements their traits;
+    /// the shell has no implementer kind of its own, so this fixture is an
+    /// index stored as the editor's Blueprint source would have stored it.
     #[test]
-    fn each_role_lists_only_blueprints_implementing_its_trait() {
+    fn each_role_lists_only_script_classes_implementing_its_trait() {
         let dir = tempfile::tempdir().unwrap();
-        for (class, traits) in [
-            (
-                "Mode",
-                vec![engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH],
-            ),
-            (
-                "Hero",
-                vec![engine_fs::builtin_traits::PLAYER_CHARACTER_TRAIT_PATH],
-            ),
-            (
-                "Both",
-                vec![
-                    engine_fs::builtin_traits::GAME_MODE_TRAIT_PATH,
-                    engine_fs::builtin_traits::GAME_STATE_TRAIT_PATH,
-                ],
-            ),
-        ] {
-            let path = dir.path().join(format!("classes/{class}/graph_save.json"));
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(
-                path,
-                serde_json::json!({
-                    "format_version": 1, "main_graph": {}, "variables": [],
-                    "blueprint_metadata": {"implemented_traits": traits}
-                })
-                .to_string(),
-            )
-            .unwrap();
-        }
-        let roles = load_role_blueprints(dir.path(), true).unwrap();
+        let entry = |class: &str, ids: &[&str]| {
+            serde_json::json!({
+                "id": format!("classes/{class}/graph_save.json"),
+                "kind": "pulsar.blueprints.blueprint",
+                "implemented_trait_ids": ids,
+                "binding": { "kind": "script_class", "dir": format!("classes/{class}") },
+            })
+        };
+        let stored = serde_json::json!({
+            "schema_version": 3,
+            "traits": [],
+            "implementers": [
+                entry("Both", &["pulsar.GameMode", "pulsar.GameState"]),
+                entry("Hero", &["pulsar.PlayerCharacter"]),
+                entry("Mode", &["pulsar.GameMode"]),
+            ],
+        });
+        engine_fs::virtual_fs::write_file(
+            &dir.path().join(pulsar_traits::TraitIndex::RELATIVE_PATH),
+            stored.to_string().as_bytes(),
+        )
+        .unwrap();
+        let roles = load_role_blueprints(dir.path(), false).unwrap();
         assert_eq!(
-            roles[&EngineRole::GameMode],
+            roles[GAME_MODE_ROLE],
             [
                 "classes/Both/graph_save.json",
                 "classes/Mode/graph_save.json"
             ]
         );
-        assert_eq!(
-            roles[&EngineRole::PlayerCharacter],
-            ["classes/Hero/graph_save.json"]
-        );
-        assert_eq!(
-            roles[&EngineRole::GameState],
-            ["classes/Both/graph_save.json"]
-        );
-        assert!(roles[&EngineRole::PlayerController].is_empty());
-        // The non-rebuilding path (index file watcher) reads the same.
-        assert_eq!(load_role_blueprints(dir.path(), false).unwrap(), roles);
+        assert_eq!(roles[PLAYER_CHARACTER_ROLE], ["classes/Hero/graph_save.json"]);
+        assert_eq!(roles[GAME_STATE_ROLE], ["classes/Both/graph_save.json"]);
+        assert!(roles[PLAYER_CONTROLLER_ROLE].is_empty());
     }
 
     #[test]
@@ -946,11 +817,11 @@ mod tests {
         let empty = BlueprintCatalogState::Ready(Vec::new());
         let message = catalog_message(
             "Player Controller",
-            "types/traits/player_controller.trait.json",
+            "pulsar.PlayerController",
             &empty,
             "None",
         );
-        assert!(message.contains("player_controller.trait.json"));
+        assert!(message.contains("pulsar.PlayerController"));
         let ready = BlueprintCatalogState::Ready(vec!["a".into()]);
         assert!(
             catalog_message("Game State", "t", &ready, "gone").contains("not in the current index")

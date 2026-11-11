@@ -134,6 +134,10 @@ pub struct FileItem {
     pub modified: Option<std::time::SystemTime>,
     pub is_ghost: bool,
     pub restore_commit: Option<String>,
+    /// The read-only mount the item is in (`plugins/<id>`, `pulsar`): the
+    /// engine's or a plugin's content, which the project cannot change
+    /// (`engine_fs::virtual_fs::mounts`).
+    pub read_only_mount: Option<String>,
 }
 
 impl FileItem {
@@ -202,6 +206,7 @@ impl FileItem {
             modified,
             is_ghost: false,
             restore_commit: None,
+            read_only_mount: engine_fs::virtual_fs::mount_of(path),
         })
     }
 

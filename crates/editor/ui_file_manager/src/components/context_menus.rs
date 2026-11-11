@@ -7,6 +7,27 @@ use ui::{Icon, Sizable as _};
 use crate::utils::actions::*;
 use crate::utils::types::FileItem;
 
+/// What a path inside a read-only mount offers: copying it out, and a line
+/// saying why nothing else is offered.
+pub fn read_only_context_menu(
+    mount: String,
+) -> impl Fn(
+    ui::popup_menu::PopupMenu,
+    &mut Window,
+    &mut Context<ui::popup_menu::PopupMenu>,
+) -> ui::popup_menu::PopupMenu
+       + 'static {
+    move |menu, _window, _cx| {
+        menu.label(format!("Read-only: served by '{mount}'"))
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.Copy").to_string(),
+                ui::Icon::new(ui::IconName::Copy),
+                Box::new(Copy),
+            )
+    }
+}
+
 /// Build a context menu for folders
 pub fn folder_context_menu(
     path: PathBuf,

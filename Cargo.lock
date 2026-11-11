@@ -86,6 +86,7 @@ dependencies = [
  "anyhow",
  "engine_fs",
  "engine_state",
+ "parking_lot",
  "plugin_manager",
  "serde_json",
  "tool_registry",
@@ -1252,6 +1253,7 @@ dependencies = [
  "pulsar_script_codegen",
  "pulsar_script_vm",
  "pulsar_std",
+ "pulsar_traits",
  "schemars",
  "serde",
  "serde_json",
@@ -3491,6 +3493,7 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_script_object_model",
  "pulsar_settings",
+ "pulsar_traits",
  "pulsar_world_registry",
  "ropey 2.0.0-beta.1",
  "scenedb-inspector-agent",
@@ -3534,32 +3537,23 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
- "dashmap",
- "editor_task_queue",
  "futures",
- "image",
  "notify 8.2.0",
  "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "profiling 0.1.0",
  "pulsar-multiplayer-core",
- "pulsar_reflection",
+ "pulsar_events",
+ "pulsar_plugins",
  "rusqlite",
  "serde",
  "serde_json",
- "smol",
  "tempfile",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
- "tool_registry",
- "tool_registry_macros",
  "tracing",
  "ui_types_common",
  "ureq 3.4.0",
  "urlencoding",
  "uuid",
- "walkdir",
 ]
 
 [[package]]
@@ -7411,6 +7405,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "ui_level_editor",
  "uuid",
 ]
 
@@ -8604,6 +8599,7 @@ name = "materials_plugin"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "helio-mats",
  "helio_component",
@@ -8622,6 +8618,7 @@ dependencies = [
  "pulsar_world_registry",
  "serde_json",
  "tempfile",
+ "ui_types_common",
  "wgpu",
 ]
 
@@ -11235,6 +11232,7 @@ dependencies = [
  "skeletal_assets",
  "tracing",
  "ui",
+ "ui_level_editor",
  "wgpu",
 ]
 
@@ -11385,6 +11383,7 @@ name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "engine_fs",
  "engine_subsystems",
  "env_logger",
  "fixture_dep_base",
@@ -12355,6 +12354,7 @@ dependencies = [
  "pulsar_script_vm",
  "pulsar_settings",
  "pulsar_std",
+ "pulsar_traits",
  "pulsar_world_registry",
  "serde",
  "serde_json",
@@ -12660,6 +12660,22 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_traits"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "inventory",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -14647,6 +14663,7 @@ dependencies = [
  "skeletal_animation_editor",
  "skeletal_assets",
  "tempfile",
+ "ui_types_common",
 ]
 
 [[package]]
@@ -17213,6 +17230,7 @@ name = "ui_common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "editor_task_queue",
  "engine_fs",
  "engine_state",
  "gpui-ce",
@@ -17523,6 +17541,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_traits",
  "pulsar_world_registry",
  "raw-window-handle",
  "rfd",
@@ -17695,7 +17714,6 @@ dependencies = [
 name = "ui_type_debugger"
 version = "0.1.0"
 dependencies = [
- "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "rust-i18n",

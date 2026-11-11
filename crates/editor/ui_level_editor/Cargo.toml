@@ -51,6 +51,8 @@ helio.workspace = true
 # registered through `extend` (Phase C step 3).
 helio-pass-buffer-view.workspace = true
 engine_fs.workspace = true
+# Roles and the trait index (World Settings' role pickers).
+pulsar_traits = { workspace = true }
 profiling.workspace = true
 ui_helio_viewport.workspace = true
 

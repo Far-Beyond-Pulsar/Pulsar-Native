@@ -112,6 +112,7 @@ impl FileManagerDrawer {
                     modified: None,
                     is_ghost: true,
                     restore_commit: Some(entry.commit_hash.clone()),
+                    read_only_mount: None,
                 });
             }
         }
@@ -179,6 +180,7 @@ impl FileManagerDrawer {
                                 .cloned()
                         };
                         Some(FileItem {
+                            read_only_mount: engine_fs::virtual_fs::mount_of(&path),
                             path,
                             name: name.to_string(),
                             file_type_def: ft.clone(),
@@ -275,6 +277,7 @@ impl FileManagerDrawer {
                                         .cloned()
                                 };
                                 FileItem {
+                                    read_only_mount: engine_fs::virtual_fs::mount_of(&path),
                                     path,
                                     name: entry.name,
                                     file_type_def: file_type_def.clone(),

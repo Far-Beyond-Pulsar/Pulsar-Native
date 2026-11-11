@@ -652,6 +652,7 @@ pub fn handle_restore_file(
 impl FileManagerDrawer {
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
+        self.mount_problems = engine_fs::virtual_fs::mount_problems(&path);
         self.set_folder_tree(FolderNode::from_path(&path));
         self.selected_folder = Some(path.clone());
         self.fs_metadata.load_from_project_root(&path);
