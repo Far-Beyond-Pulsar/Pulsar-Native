@@ -71,7 +71,103 @@ enabled plugins). It is made again when `pulsar_plugins::generation()` changes
 - Shared state between a plugin's nodes and others goes through `BuildEnv::shared`
   and the registry's finishers (voxel offers its ground to foliage placement that way),
   not `find_pass`.
-- Test: `plugins/vendor/voxel/tests/graph_node.rs`.
+- Test: `plugins/vendor/voxel/tests/graph_node.rs`. Every plugin below has the same
+  `tests/graph_node.rs`: each node registered with its feature, generated pins and
+  `enabled`, the plugin's node kinds in the default pipeline's order (`Preset::nodes`),
+  the compiled graph's passes in order (and none with every node `enabled` off), the
+  probed pins, and the `missing node ... (plugin <id> disabled)` message. The GPU
+  parts skip with no adapter.
+
+Lights, sky, fog, water, foliage and particles (`<kind>` is `helio.pass.<name>`; slots
+are the frame's, `Phase` drawers and `before_phase` compute as placed by the feature):
+
+| Plugin | Node (kind) | Title | Default placement |
+|---|---|---|---|
+| lights | `shadow_matrix` | Shadows: Light Matrices | before `ShadowCasters`, -100 |
+| lights | `light_cull` | Lighting: Tile Light Binning | `Visibility` 100 (nothing under light-field) |
+| lights | `deferred_light` | Lighting: Deferred | `lighting.model.deferred` point |
+| lights | `hlfs` | Lighting: HLFS | `lighting.model.light_field` point |
+| lights | `billboard` | Overlay: Billboards | `Overlay` drawer 50 |
+| sky | `atmosphere` | Sky: Atmosphere Tables | `Prepare` 0 |
+| sky | `cloud_trace` | Sky: Cloud Trace | `LightingInputs` 10 |
+| sky | `atmosphere_composite` | Sky: Composite | `Lighting` 0 |
+| fog | `volumetric_fog` | Fog: Volumetric | `Media` 0 |
+| fog | `fog_composite` | Fog: Composite | `Media` 10 |
+| water | `water_transmission` | Water: Caustics | `LightingInputs` 20 (nothing when lighting runs first) |
+| water | `water_sim` | Water: Simulate + Draw | `Overlay` drawer 30 |
+| water | `water_reactivity` | Water: TSR Reactivity | `Transparent` drawer 50 (nothing without a reactive mask) |
+| foliage | `foliage_place` | Foliage: Place Blades | before `GBuffer`, 0 |
+| foliage | `foliage_boxes` | Foliage: Expand Boxes | before `GBuffer`, 5 (takes what placement made) |
+| foliage | `foliage_gbuffer` | Foliage: Draw to GBuffer | `GBuffer` drawer 20 (takes what placement made) |
+| particles | `corona` | Overlay: Light Coronas | `Overlay` drawer 10 |
+
+Not nodes: the water plugin's planar-reflection capture builds a private second graph
+(`reflection_capture.rs`) for its own offscreen view, not a pass of the pipeline.
+
+### Nodes of meshes, materials, decals and sprites
+
+Every pass the default deferred pipeline can hold from these plugins is a node of its
+feature (`pass_node`, kind `helio.pass.<name>`), each with an `enabled` parameter and
+generated pins. Tests: `plugins/vendor/{meshes,decals,sprites,materials}/tests/graph_node.rs`
+(registered with the feature as owner, default placement order, a graph asset builds them
+and `enabled` off bypasses them, probed flow pins, disabled plugin => absent).
+
+| Plugin | Node kind | Title | Placement |
+|---|---|---|---|
+| meshes | `helio.pass.object_batch` | Scene: Object Batches | slot Prepare, -100 |
+| meshes | `helio.pass.indirect_dispatch` | Culling: Prepare Dispatch | slot Visibility, -10 |
+| meshes | `helio.pass.occlusion_cull` | Culling: Frustum + Occlusion | slot Visibility, 10 (needs the Hi-Z node, the spine's) |
+| meshes | `helio.pass.shadow_dirty` | Shadows: Find Stale Faces | before phase ShadowCasters (needs the lights' dirty flags) |
+| meshes | `helio.pass.shadow` | Shadows: Render Atlas | opens phase ShadowCasters |
+| meshes | `helio.pass.gbuffer` | Geometry: GBuffer | opens phase GBuffer |
+| meshes | `helio.pass.forward_lit` | Geometry: Forward Lit | opens phase Forward (builds only where no G-buffer phase runs) |
+| meshes | `helio.pass.virtual_geometry` | Geometry: Virtual Geometry | phase GBuffer drawer, 30 |
+| meshes | `helio.pass.transparent` | Transparency: Blend | drawer of phase Transparent |
+| decals | `helio.pass.decal` | Geometry: Decals | phase GBuffer drawer, 100 |
+| sprites | `helio.pass.sprite_overlay` | Output: Sprites | slot Display, 10 |
+| materials | `host.material_textures` | Host::material_textures | host inputs (data only: it supplies the texture table, no pass) |
+
+The virtual geometry node builds the whole chain (stream begin, BVH, inputs, early and
+late cull and raster, stream end, dense tier, shade) as one unit, because the passes hand
+each other runtime state and buffers; it builds only for a `VgSettings` runtime and where the
+device supports it. The probe's config has no host part, so the meshes' `configure_renderer`
+gives a config without `VgSettings` an idle placeholder runtime (a renderer's config has the
+host part's before it runs), and the node gets the pins of the chain. The sprite overlay is
+likewise one node for its cull and batch passes. `SpriteSimulatePass` and the 2D radiance
+cascade passes (`helio-pass-sprite-simulate`, `helio-pass-radiance-cascades-2d`) have no
+node: they are built by examples around buffers the host owns (slot velocities, occupancy
+and emitter grids) with no frame contract to take them from, so a node would have no way to
+build them. The Hi-Z build (`HiZBuildPass`) is the spine's node, not meshes'.
+
+### Nodes of post, lens, GI, portals, voxel and the kernel
+
+Splines draw through the debug lines (no pass of their own). Tests:
+`plugins/vendor/{post,lens,gi,portals,voxel}/tests/graph_node*.rs` (same set as above).
+
+| Owner | Node kind | Title | Placement |
+|---|---|---|---|
+| post | `helio.pass.post_process_volume_blend` | Post: Blend Volumes | slot Media, -10 |
+| lens | `helio.pass.lens` | Lens: Elements | slot Resolved, 0 |
+| lens | `helio.pass.lens_flare` | Lens: Flares | slot Resolved, 10 |
+| gi | `helio.pass.gi` | GI: Probe Update | before `GBuffer`, 10 |
+| gi | `helio.pass.gi_mesh_trace` | GI: Mesh Rays | slot Geometry, 20 |
+| gi | `helio.pass.gi_resolve` | GI: Resolve | slot LightingInputs, 0 |
+| portals | `helio.pass.portal_cull` | Portals: Cull | before `GBuffer`, -10 |
+| portals | `helio.pass.portal_mask` | Portals: Footprint Mask | `GBuffer` drawer 10 |
+| portals | `helio.pass.portal_instance` | Portals: Draw Through | `GBuffer` drawer 11 (needs Portal Cull) |
+| portals | `helio.pass.portal_editor_overlay` | Overlay: Portal Openings (Editor) | `Overlay` drawer 20 |
+| voxel | `helio.pass.voxel_chunks` | Voxel: Chunk Terrain | `GBuffer` drawer 40 |
+| kernel (spine) | `gbuffer_clear`, `background`, `hiz`, `unlit`, `tsr`, `post_process` | Scene: Clear G-Buffer, Scene: Clear Background, Culling: Depth Pyramid (Hi-Z), Lighting: Unlit, Anti-Aliasing: TSR, Post: Tone Map + Grade | as the preset places them |
+| kernel | `ssr`, `ssr_composite`, `planar_reflection`, `fxaa`, `buffer_view`, `perf_overlay`, `debug_draw_scene`, `debug_draw` | feature crates / `helio-presets` `RendererNodes` | see their features |
+| kernel | `helio.pass.debug_overlay` | Output: Debug Overlay | none: no shipped pipeline draws it; place it after the display slot's nodes |
+
+Voxel is one `ChunkPass` (residency, generation, G-buffer, GI rays, sun pages are inside
+it), so it is one node. The debug overlay node takes the host's `DebugOverlayState` as the
+`DebugOverlayHost` setting (`RendererConfig::with_feature`); with none it owns a hidden state,
+reached through the built pass (`find_pass_mut::<DebugOverlayPass>()`); its `visible`
+parameter shows it. Not nodes by design: the performance analyzers (markers the compiler
+adds), `BakeInjectPass` (a persistent pass the host installs after a bake) and the status
+screen's overlay (the renderer's own graph when no pipeline builds).
 
 ## Pins are generated
 
@@ -163,6 +259,28 @@ registered node (`model::catalog` is `NodeRegistry::list`), including the ones t
 graph uses. A file with no nodes (the old `{"template": "deferred"}` marker) opens as
 that new graph. The default graph above is what a provider ships as an asset, not what the
 editor creates.
+
+## Regenerating the default graph for a project
+
+`DefaultRenderGraph.rendergraph` is generated, never hand-written, by the ignored test
+`plugins/installed/tests/export_default_graph.rs` (a host test: it needs every installed plugin,
+`.agents/CRATES.md` "The layers"). It builds the node registry as the editor does
+(`graph_node_registry()`: core, Helio's and every enabled plugin's nodes, pins probed on a real
+device), makes the wired, sectioned, laid-out graph (`deferred_graph_asset_for`), validates it
+(`helio_graph_asset::validate`, routing included: an error fails the export, warnings are
+printed), compiles it on the GPU and requires the same pass list as the `helio.deferred` preset
+with the plugins' features, writes it with `engine_fs::virtual_fs::write_file`, then reads the file
+back through `render_bps::document::decode` and validates and compiles it again. Re-run it
+whenever a plugin adds nodes:
+
+```
+PULSAR_EXPORT_DIR=<project root> cargo test -p installed_plugins --test export_default_graph -- --ignored --nocapture
+```
+
+`PULSAR_EXPORT_NAME` (default `DefaultRenderGraph`) names the file; `PULSAR_EXPORT_AA=tsr`
+makes the TSR variant (default FXAA; TSR needs the project's TSR setting on). A level selects
+the file by picking it in World Settings, which stores the project-relative path in
+`world_settings.render_pipeline` (with `pipeline_version` 1).
 
 ## Layout
 
@@ -340,9 +458,6 @@ shipped pipelines as assets, a migration rewrites those ids to the asset paths t
   to the preset (FXAA, TSR at each quality, SSR; `graph_parity`).
 - The golden files are the unwired chain form. The editor's wired (Get/Set) form needs
   probed pins, so it is generated on a device and not pinned yet.
-- The debug overlay (`helio-pass-debug-overlay`) has no node: its state
-  (`DebugOverlayState`) is the host's and only examples build the pass. It needs a node
-  that requires that setting.
 - Plugin passes join by slot/phase placement at registration; a plugin node that must sit
   between two kernel nodes inside one slot is ordered by its `order` only (there is no
   per-pin after/before hint).

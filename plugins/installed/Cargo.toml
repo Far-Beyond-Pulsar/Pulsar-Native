@@ -90,6 +90,10 @@ pulsar_scenedb = { workspace = true }
 helio = { workspace = true }
 helio-core = { workspace = true }
 helio-presets = { workspace = true }
+# The default render graph exporter (tests/export_default_graph.rs).
+helio-graph-asset = { workspace = true }
+engine_fs = { workspace = true }
+render_bps_plugin = { workspace = true }
 helio-mats = { workspace = true }
 helio_component = { workspace = true }
 plugin_editor_api = { workspace = true }
