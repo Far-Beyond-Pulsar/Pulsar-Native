@@ -35,22 +35,49 @@ weighted by its elevation, and `sky_darkness` maps that to 0..1 (full dark below
 dim moon light being up does not end the night. The panorama is not a daytime
 backdrop.
 
-## Stars and shooting stars
+## Stars, constellations and shooting stars
 
-Both live in `atmosphere_composite.wgsl` (`night_radiance`) and share one look:
-`point_light` (a core plus a faint halo, never drawn thinner than about a pixel,
-its light spread to match so sub-pixel sources don't blink), `star_color` (the
-blue-white to orange palette) and `star_brightness`.
+All live in `atmosphere_composite.wgsl` (`night_radiance`) and are one
+population: `point_light` (a core plus a faint halo, never drawn thinner than
+about a pixel, its light spread to match so sub-pixel sources don't blink),
+`star_color` (blue-white to orange), `star_radius` and `star_peak` (size and
+brightness from a star's hash), all scaled by `star_brightness`.
 
-A shooting star (`meteor_radiance`) is a head crossing a short great-circle
-path (5 to 25 degrees, 0.35 to 1.1 s at speed 1), starting 8 to 80 degrees up
-and heading mostly downward. Its brightness follows a light curve that peaks
-late and burns out fast; most are as bright as a bright star, a few (a power
-law) far brighter. The train behind it glows as the head did when it passed and
-decays (to e^-2.5 at `shooting_star_length` behind the head), outliving the
-head briefly. Arrivals are a Poisson process at `shooting_star_rate` per
-minute: time slots of fixed candidates, each present by chance, so several can
-share the sky at irregular times and each pixel tests a bounded few.
+**Constellation lines** (`constellation_lines`, Night Sky; off by default,
+`constellation_radiance`): every procedural star (`star_grid`, `star_in_cell`,
+the same stars `night_radiance` draws) is joined to every other star, each line
+drawn until it would be too faint to see. A line's strength is the pair's
+brightness product raised to `constellation_selectivity`, times a Gaussian of
+their separation (`constellation_reach`, in star spacings, sqrt(4π/star_count)),
+times `constellation_brightness` × star brightness (default 0.06: the web is
+faint, never drawn on). Nothing is chosen at random: close bright pairs show,
+far or faint ones fade out. A line is the stars' `point_light` across it at a
+sub-pixel true width (it dims rather than thickens at low resolution), shaded
+from one star's colour to the other's, and stops short of both stars. It adds
+no stars. Each sky pixel gathers the stars within the longest visible line
+(at most 5 cells up and down, 10 across, 28 stars) and tests each pair, so its
+cost is bounded; a reach past that window is clipped to it.
+
+**Shooting stars** (`meteor_radiance`): the head is one of the night's stars,
+drawn exactly as the others, crossing a short great-circle path (5 to 25
+degrees, 0.35 to 1.1 s at speed 1), starting 8 to 80 degrees up and heading
+mostly downward, fading in and out at the path's ends. Each extra adds on top
+and is off at 0:
+
+| Property | Adds |
+|---|---|
+| `shooting_star_flare` | Light at the burn peak (a curve that peaks late and burns out fast), × the star's brightness |
+| `shooting_star_trail` | A train behind the head, relative to it, falling to e^-2.5 at `shooting_star_length` |
+| `shooting_star_afterglow` | Seconds (at speed 1) the train keeps glowing once the head is gone |
+| `shooting_star_heat` | How white-hot the flare and train are (0: the star's own colour) |
+
+Arrivals are a Poisson process at `shooting_star_rate` per minute: time slots of
+fixed candidates, each present by chance, so several can share the sky at
+irregular times and each pixel tests a bounded few.
+
+These controls are words of `AtmosphereRow` (336 bytes) and its SceneDB twin
+`AtmosphereSourceRow` (`meteors`, `constellations`), and of `AtmosphereParams`
+in Helio's `atmosphere_common.wgsl` (`ATMOSPHERE_FRAME_BYTES` 2176).
 
 ## Data flow
 
