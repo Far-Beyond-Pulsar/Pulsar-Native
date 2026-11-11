@@ -95,3 +95,6 @@
 [submodule "plugins/vendor/splines"]
 	path = plugins/vendor/splines
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Splines
+[submodule "plugins/vendor/character"]
+	path = plugins/vendor/character
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Character

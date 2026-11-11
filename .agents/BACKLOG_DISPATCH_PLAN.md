@@ -107,7 +107,7 @@ All other writers paused (merge or park every open branch first).
 
 | ID | Task |
 |---|---|
-| A9 | **Done (p22, section 14; `Plugin_Character` repository is the user's decision).** **#1608 Phase 5** (component class API, `requires`, facade, systems, `UnresolvedComponent`, `pulsar.character` proof) |
+| A9 | **Done (p22, section 14; the plugin is `Plugin_Character`).** **#1608 Phase 5** (component class API, `requires`, facade, systems, `UnresolvedComponent`, `pulsar.character` proof) |
 | A10 | **Done except bundling (p22, section 14: bundling waits on a Helio runtime attach).** **#1608 Phase 4** (binary plugins: fingerprints, DLL `build`, bundling, `replaces =`, no-statics test, CI) |
 | B6 | **Rendering roadmap R0** (measurement) then **R1** (ray scene), scoped once the roadmap doc is pointed at |
 | B7 | **Helio#391 README**, last, once the renderer has settled |

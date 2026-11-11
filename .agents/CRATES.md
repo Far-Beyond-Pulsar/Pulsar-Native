@@ -294,7 +294,7 @@ cargo cannot load the workspace without them.
 | `table_editor` | [Plugin_DBTable](https://github.com/Far-Beyond-Pulsar/Plugin_DBTable) | Database table editor |
 | `matter_editor` | [Plugin_Matter](https://github.com/Far-Beyond-Pulsar/Plugin_Matter) | Texture painting in the Pulsar Image Format (`.pif`) |
 | `asset_viewer` | in-tree | Viewers for model files, meshes and images |
-| `character` | in-tree (p22; its own repository is the user's decision) | `pulsar.character`: a character as one component (a facade) over a skeletal mesh, its animator, a character controller and the player's input, with its movement system |
+| `character` | [Plugin_Character](https://github.com/Far-Beyond-Pulsar/Plugin_Character) | `pulsar.character`: a character as one component (a facade) over a skeletal mesh, its animator, a character controller and the player's input, with its movement system |
 | `render_bps` | in-tree | Render graph editor (`.rendergraph`) on the Graphy canvas, no Blueprint code (`.agents/RENDER_GRAPH.md`) |
 | `trait_editor` | in-tree | `pulsar.trait_editor`: the trait definition editor (`.trait.json`, `.agents/TRAITS.md`) |
 | `typescript` | in-tree | `pulsar.typescript`: TypeScript as a scripting language (`class.ts` compiles to script modules) |

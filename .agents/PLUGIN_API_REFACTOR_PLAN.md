@@ -1186,8 +1186,8 @@ before), ordered around the engine's component lifecycles (`COMPONENTS`) each fr
 and physics drivers' hand-written `ComponentTickRegistration`s. `gpu`: the class's source rows and
 join (`SceneRowsRegistration`). `presentation: Facade`: the inspector shows one card over the class
 and its nested members (each member a section), the component tree one entry. `UnresolvedComponent`
-round-trips (the character test). Proof: `plugins/vendor/character` (`pulsar.character`, in-tree on
-this branch, awaiting the user's decision on a `Plugin_Character` repository): `CharacterComponent`, a
+round-trips (the character test). Proof: `plugins/vendor/character` (`pulsar.character`, its own
+repository [Plugin_Character](https://github.com/Far-Beyond-Pulsar/Plugin_Character), vendored as a submodule): `CharacterComponent`, a
 facade over `SkeletalMeshComponent`, `AnimationComponent`, `CharacterControllerComponent` and,
 optionally, `PlayerInputComponent`, whose system `pulsar.character.move` drives the controller after
 input and before physics; providers gained `class` contracts (meshes, animation, physics, input).
@@ -1231,7 +1231,6 @@ copies.
   dependencies) remain for libraries that export no builds; a library that exports builds is
   resolved by contracts. Retiring the manifest belongs with moving the editor-tool libraries onto
   `export_library!`.
-- **A `Plugin_Character` repository**: the user's decision; the plugin is in-tree on this branch.
 
 **Fixed on the way.** `pulsar_content::is_project_root`: a project is a folder with `Pulsar.toml`
 (what opening a project already requires), so `%LOCALAPPDATA%\Pulsar` is no project; the test now
