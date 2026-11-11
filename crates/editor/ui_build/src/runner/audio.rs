@@ -60,7 +60,7 @@ fn volume() -> f32 {
 
 fn play(sound: &'static [u8]) {
     // Device setup and MP3 decoding can take a moment. Keep it off the UI task.
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: play", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
         let Some(mixer) = OUTPUT_MIXER
             .get_or_init(|| {
                 let stream = OutputStreamBuilder::open_default_stream().ok()?;

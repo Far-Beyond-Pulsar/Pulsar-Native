@@ -27,7 +27,7 @@ pub fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> A
         } else {
             let url = avatar_url.clone();
             let cache_clone = cache.clone();
-            std::thread::spawn(move || match fetch_avatar_image(&url) {
+            editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui multiuser status: avatar chip with image", editor_task_queue::ThreadRole::Io).owner("ui_multiuser_status"), move || match fetch_avatar_image(&url) {
                 Ok(image) => {
                     cache_clone.write().insert(url.clone(), image);
                     tracing::debug!("Fetched avatar from {}", url);

@@ -45,9 +45,7 @@ pub fn start_file_index_watcher(
         return Err(error.into());
     }
 
-    let thread = std::thread::Builder::new()
-        .name("Project File Index Watcher".to_owned())
-        .spawn(move || {
+    let thread = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("Project File Index Watcher".to_owned(), editor_task_queue::ThreadRole::Service).owner("engine_fs"), move || {
             while let Ok(event) = rx.recv() {
                 if matches!(
                     event.kind,

@@ -380,7 +380,7 @@ fn install_derived_cache() {
             _ => 4096,
         };
         pulsar_scenedb::set_derived_cache_dir(Some(directory));
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("engine backend: install derived cache", editor_task_queue::ThreadRole::Io).owner("engine_backend"), move || {
             match pulsar_scenedb::prune_derived_cache(budget_mb * 1024 * 1024) {
                 Ok(report) if report.removed_files > 0 => tracing::info!(
                     "derived-data cache pruned: removed {} files ({} MiB), {} MiB kept",

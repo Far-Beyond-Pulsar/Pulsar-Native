@@ -9,6 +9,7 @@ description = "LSP service layer crate for Pulsar — process lifecycle, protoco
 workspace = true
 
 [dependencies]
+editor_task_queue = { workspace = true }
 gpui-ce.workspace = true
 ui.workspace = true
 lsp-types.workspace = true

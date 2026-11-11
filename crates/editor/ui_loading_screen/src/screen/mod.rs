@@ -56,7 +56,7 @@ impl LoadingScreen {
 
         let project_path_for_thread = project_path.clone();
         let tasks_for_thread = Arc::clone(&tasks);
-        std::thread::spawn(move || {
+        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui loading screen: new with on complete", editor_task_queue::ThreadRole::Io).owner("ui_loading_screen"), move || {
             let project = project_path_for_thread.as_path();
             for (idx, task) in tasks_for_thread.iter().enumerate() {
                 let label = &task.label;

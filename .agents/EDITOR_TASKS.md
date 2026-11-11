@@ -111,11 +111,85 @@ follows the buffer by cursor, so a task that logs fast costs the task nothing.
 * `asset_import`, `ui_build`, `ui_common::thumbnails`, the PIE and Blueprint
   save paths already use `submit`.
 
-Not yet enforced (be honest about it when you touch these): raw `cx.spawn` and
-`std::thread::spawn` in editor and plugin code (dozens of files) are not
-blocked by a lint. Convert them to the entry points above when you change them;
-do not add new ones. A shrink-only allowlist check like
-`architecture/kind-names.txt` is the way to enforce it.
+Raw `cx.spawn` is not blocked; raw threads, tokio runtimes and rayon pools are
+(next section).
+
+## Every thread, not just tasks
+
+Tasks say what work is happening. The thread registry
+(`editor_task_queue::threads`) says what every thread is doing, including the
+ones that run no task. The Tasks window has three views over them:
+
+| View | Shows |
+|---|---|
+| **Tasks** | finite work: queued, running, stalled, failed, done. A strip under the tabs summarises **micro tasks** |
+| **Threads** | every registered thread grouped by role (UI, Render, Services, Editor task workers, Async (tokio), Compute (rayon), I/O, Other): owner and pool, running or waiting and for how long, busy time, the phase it named, and the task being polled on it. Click a row with a task to open that task's log |
+| **Services** | persistent tasks: heartbeat rate, last pass time, phase, stall |
+
+### Persistent tasks (services)
+
+A thread that lives as long as what it serves (a render loop, a file watcher,
+a language-server client) is a **persistent task**. It never succeeds; it has a
+heartbeat. `spawn_service(ServiceDescription::new(title, category, thread_name,
+role).owner(..).heartbeat(every), |ctx| { loop { ctx.heartbeat(); .. } })`
+creates the thread, registers it, runs the loop inside the task's span (its
+`tracing` output is its log) and ends the task if the loop returns or panics.
+Call `ctx.heartbeat()` (or `ctx.tick(work_time)`) once per pass and
+`ctx.set_phase(..)` as the loop changes what it does. A loop that waits for
+work on purpose calls `ctx.set_idle(true)` (silence is then not a stall) and
+`set_idle(false)` when it resumes. `NoHeartbeat` is reported when beats stop
+for longer than `heartbeat(every)` (default 5s, `no_heartbeat()` turns it off).
+Examples: `ui_level_editor` viewport `render_thread.rs` (frame heartbeat),
+`init_queue.rs` (idle between jobs), `input_thread.rs`.
+
+### Plain threads
+
+`spawn_thread(ThreadSpec::new(name, role).pool(..).owner(..), f)` returns the
+same `io::Result<JoinHandle>` as `thread::Builder::spawn`; `spawn_named` panics
+like `std::thread::spawn`. Use these for helper threads that are not a loop
+worth a heartbeat. A thread someone else creates joins with
+`register_current_thread(spec)` (hold the guard); `current_thread()` gives a
+handle for `set_phase` / `mark_running` / `mark_parked`. State lives in atomics
+the thread writes itself, so reading the registry never samples the OS.
+
+### Micro tasks
+
+`micro("name", || work)` keeps only per-name counters (count, total, max). Use
+it for work measured in microseconds where a record, span and log would cost
+more than the work. A single run over 50ms is also kept as its own finished
+task (`Slow micro task: name`), so an outlier is not lost in the mean.
+
+### The engine's rayon pool and tokio runtime
+
+`editor_task_queue::pools` (called from `engine/src/runtime.rs` at startup):
+
+* `install_rayon_global(None)`: rayon's global pool is built with a
+  `spawn_handler`, so every worker is registered (role Compute, pool `rayon`).
+  `par_iter`, `rayon::join` and `rayon::spawn` anywhere then run on it. rayon has
+  no park hook, so its workers show state "Not reported".
+* `build_tokio_runtime(workers, on_start)`: workers register on start and report
+  parked/running through tokio's park/unpark hooks. `tokio_handle()` is the
+  engine runtime for code that needs async work and has no runtime;
+  `tokio_metrics()` gives workers, live tasks and queue depth. Per-task hooks
+  need `--cfg tokio_unstable`, which is not enabled: it must be added to every
+  `[target.*] rustflags` in `.cargo/config.toml` (they override `[build]`) and
+  rebuilds the world.
+
+What this cannot capture: a crate that builds its **own** pool or runtime
+(`ThreadPoolBuilder::new().build()`, `Runtime::new()`, `reqwest::blocking`).
+
+### The raw-thread ratchet
+
+`crates/core/editor_task_queue/tests/raw_threads.rs` fails when a file in
+`crates/core`, `crates/editor`, `crates/subsystems`, `crates/profiling` or
+`plugins/vendor` calls `thread::spawn`, `thread::Builder::new`,
+`Runtime::new`, `Builder::new_multi_thread`/`new_current_thread` or
+`ThreadPoolBuilder::new` (outside `#[cfg(test)]`) and is not listed, with its
+reason, in `architecture/raw-threads-allowed.txt`. The list only shrinks: do not
+add a line, use the task system; remove a line when you migrate a file. What is
+left is mostly plugin repositories (separate submodules), private runtimes in
+`ui_multiplayer`/`ui_fab_search`/`friends_engine`, and Mission Control's own
+allocator-tracking threads.
 
 ## Adding to this system
 

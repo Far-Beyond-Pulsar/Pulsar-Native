@@ -331,7 +331,7 @@ pub(super) fn execute_tool_calls(
             let registry = tool_registry.clone();
             let ctx = tool_context.clone();
             let tx = tx.clone();
-            std::thread::spawn(move || {
+            editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui core: execute tool calls", editor_task_queue::ThreadRole::Io).owner("ui_core"), move || {
                 let result = registry.execute(&name, args, &ctx);
                 let (tool_result, is_error) = match result {
                     Ok(value) => (value.to_string(), false),

@@ -596,3 +596,160 @@ fn finished_history_is_bounded_and_keeps_starred_tasks() {
     assert!(snapshots.len() <= MAX_FINISHED_TASKS + 1);
     assert!(snapshots.iter().any(|s| s.id == keep_id));
 }
+
+fn service(name: &str, heartbeat: Duration) -> ServiceDescription {
+    ServiceDescription::new("Test service", "test", name, ThreadRole::Service)
+        .owner("tests")
+        .heartbeat(heartbeat)
+}
+
+#[test]
+fn a_service_has_a_heartbeat_a_thread_and_stops_on_request() {
+    let queue = TaskQueue::new();
+    let handle = queue
+        .spawn_service(
+            service("test-service-beats", Duration::from_secs(5)),
+            |ctx| {
+                while !ctx.is_cancelled() {
+                    ctx.tick(Duration::from_micros(300));
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            },
+        )
+        .unwrap();
+    let id = handle.id();
+    let start = Instant::now();
+    let snap = loop {
+        let snap = snapshot(&queue, id);
+        if snap.beats > 5 && snap.beat_rate_hz.is_some() {
+            break snap;
+        }
+        assert!(start.elapsed() < TIMEOUT, "no heartbeat rate: {snap:?}");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(snap.model, TaskModel::Persistent);
+    assert_eq!(snap.duration, TaskDuration::Persistent);
+    assert_eq!(snap.status, TaskStatus::Running);
+    assert_eq!(snap.last_tick, Some(Duration::from_micros(300)));
+    assert!(snap.beat_rate_hz.unwrap() > 20.0, "{:?}", snap.beat_rate_hz);
+    assert!(snap.stall.is_none());
+    let thread = thread_snapshots()
+        .into_iter()
+        .find(|t| t.name == "test-service-beats")
+        .expect("service thread is registered");
+    assert_eq!(thread.role, ThreadRole::Service);
+    assert_eq!(thread.task, Some(id));
+
+    handle.request_stop();
+    handle.join().unwrap();
+    assert_eq!(status(&queue, id), TaskStatus::Cancelled);
+}
+
+#[test]
+fn a_service_whose_heartbeat_stops_is_reported_unless_it_is_idle() {
+    let queue = TaskQueue::new();
+    let (release, gate) = mpsc::channel::<()>();
+    let handle = queue
+        .spawn_service(
+            service("test-service-silent", Duration::from_millis(40)),
+            move |ctx| {
+                ctx.set_phase("blocked on a channel");
+                let _ = gate.recv();
+                ctx.set_idle(true);
+                let _ = gate.recv();
+            },
+        )
+        .unwrap();
+    let id = handle.id();
+    let start = Instant::now();
+    let stall = loop {
+        if let Some(stall) = snapshot(&queue, id).stall {
+            break stall;
+        }
+        assert!(start.elapsed() < TIMEOUT, "no stall");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(stall.kind, StallKind::NoHeartbeat);
+    assert!(stall.message.contains("blocked on a channel"));
+
+    // Declared idle: silence is no longer a stall.
+    release.send(()).unwrap();
+    std::thread::sleep(Duration::from_millis(120));
+    let snap = snapshot(&queue, id);
+    assert!(snap.idle);
+    assert!(snap.stall.is_none(), "{:?}", snap.stall);
+    release.send(()).unwrap();
+    handle.join().unwrap();
+    assert_eq!(status(&queue, id), TaskStatus::Succeeded);
+}
+
+#[test]
+fn a_panicking_service_fails_with_its_message_in_the_log() {
+    let queue = TaskQueue::new();
+    let handle = queue
+        .spawn_service(
+            service("test-service-panic", Duration::from_secs(5)),
+            |_| -> () { panic!("service exploded") },
+        )
+        .unwrap();
+    let id = handle.id();
+    assert!(handle.join().is_err());
+    assert_eq!(status(&queue, id), TaskStatus::Failed);
+    assert!(log_text(&queue, id).contains("panicked: service exploded"));
+}
+
+#[test]
+fn engine_tokio_runtime_registers_its_workers_and_parks_them() {
+    let runtime = pools::build_tokio_runtime(2, None).unwrap();
+    runtime.block_on(async {
+        tokio::spawn(async { tokio::time::sleep(Duration::from_millis(5)).await })
+            .await
+            .unwrap();
+    });
+    let workers: Vec<_> = thread_snapshots()
+        .into_iter()
+        .filter(|t| t.pool.as_deref() == Some("tokio") && t.state != ThreadState::Exited)
+        .collect();
+    assert!(!workers.is_empty(), "no tokio workers registered");
+    assert!(workers.iter().all(|t| t.role == ThreadRole::Async));
+    assert!(pools::tokio_metrics().is_some());
+    assert!(pools::tokio_handle().is_some());
+    drop(runtime);
+}
+
+#[test]
+fn global_rayon_pool_workers_are_registered_with_unknown_state() {
+    use rayon::prelude::*;
+    let _ = pools::install_rayon_global(Some(2));
+    let sum: u64 = (0..1_000u64).into_par_iter().sum();
+    assert_eq!(sum, 499_500);
+    let workers: Vec<_> = thread_snapshots()
+        .into_iter()
+        .filter(|t| t.pool.as_deref() == Some("rayon"))
+        .collect();
+    assert!(!workers.is_empty(), "no rayon workers registered");
+    assert!(workers.iter().all(|t| t.role == ThreadRole::Compute));
+    assert!(workers
+        .iter()
+        .all(|t| t.state == ThreadState::Unknown || t.state == ThreadState::Exited));
+}
+
+#[test]
+fn editor_task_workers_are_registered_and_show_their_task() {
+    let queue = TaskQueue::new();
+    let (release, gate) = mpsc::channel::<()>();
+    let id = queue.submit(desc(TaskDuration::Long), move |_| {
+        let _ = gate.recv();
+        Ok(())
+    });
+    wait_for(&queue, id, TaskStatus::Running);
+    let on_worker = thread_snapshots()
+        .into_iter()
+        .find(|t| t.task == Some(id))
+        .expect("a worker names the task it runs");
+    assert_eq!(on_worker.role, ThreadRole::EditorWorker);
+    assert_eq!(on_worker.pool.as_deref(), Some("editor-long"));
+    assert_eq!(on_worker.state, ThreadState::Running);
+    release.send(()).unwrap();
+    wait_for(&queue, id, TaskStatus::Succeeded);
+}

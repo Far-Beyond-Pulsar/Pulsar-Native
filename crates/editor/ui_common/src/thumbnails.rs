@@ -170,9 +170,7 @@ impl ThumbnailService {
         let mem_cache = Arc::new(Mutex::new(MemCache::new()));
         // ── Background eviction thread ───────────────────────────────────────
         let evict_cache = Arc::clone(&mem_cache);
-        std::thread::Builder::new()
-            .name("thumbnail-evictor".into())
-            .spawn(move || loop {
+        editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("thumbnail-evictor", editor_task_queue::ThreadRole::Service).owner("ui_common"), move || loop {
                 std::thread::sleep(EVICTION_INTERVAL);
                 let before = {
                     let mut c = evict_cache.lock();

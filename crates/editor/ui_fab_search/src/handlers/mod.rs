@@ -77,7 +77,7 @@ pub(crate) fn on_start_download(
     let uid_thread = uid.clone();
     let filename_thread = filename.clone();
 
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on start download", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
         let run = || -> Result<(), String> {
             let info = fetch_sketchfab_download_info(&uid_thread, &token)?;
             let fmt = info
@@ -254,7 +254,7 @@ pub(crate) fn on_toggle_like(
 
     let (tx, rx) = smol::channel::bounded::<Result<(), String>>(1);
     let uid_thread = uid.clone();
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on toggle like", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
         let result = if currently_liked {
             sketchfab_unlike_model(&uid_thread, &token)
         } else {
@@ -302,7 +302,7 @@ pub(crate) fn on_open_item_detail(
         Vec<String>,
         Result<Box<crate::parser::SketchfabModelDetail>, String>,
     )>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on open item detail", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
         smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid)));
     });
 
@@ -356,7 +356,7 @@ pub(crate) fn on_begin_search(window: &mut FabSearchWindow, cx: &mut Context<Fab
     cx.notify();
 
     let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on begin search", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
         smol::block_on(tx.send(fetch_sketchfab_models(&url)));
     });
 
@@ -399,7 +399,7 @@ pub(crate) fn on_load_more(window: &mut FabSearchWindow, cx: &mut Context<FabSea
     cx.notify();
 
     let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
-    std::thread::spawn(move || {
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on load more", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
         smol::block_on(tx.send(fetch_sketchfab_models(&url)));
     });
 

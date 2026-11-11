@@ -1,0 +1,36 @@
+# Files that create threads, tokio runtimes or rayon pools by hand instead of
+# through `editor_task_queue` (`spawn_thread`, `spawn_service`, `submit`,
+# `submit_async`, the engine pools in `editor_task_queue::pools`). Each such
+# thread is invisible in the Tasks window, so each has a line here with its
+# reason. This list may only shrink; checked by
+# crates/core/editor_task_queue/tests/raw_threads.rs. See .agents/EDITOR_TASKS.md.
+#
+# path | reason
+
+crates/core/editor_task_queue/src/lib.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
+crates/core/editor_task_queue/src/pools.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
+crates/core/editor_task_queue/src/services.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
+crates/core/editor_task_queue/src/threads.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
+crates/core/friends_engine/src/notification_listener.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+crates/core/pulsar-relay/src/simple_test_server.rs | legacy: raw thread; move to spawn_thread or spawn_service
+crates/core/pulsar_std/src/engine/nodes/process/mod.rs | legacy: raw thread; move to spawn_thread or spawn_service
+crates/core/pulsar_std/src/engine/nodes/thread/mod.rs | legacy: raw thread; move to spawn_thread or spawn_service
+crates/editor/ui_fab_search/src/image_loader.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+crates/editor/ui_fab_search/src/search_index.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+crates/editor/ui_log_viewer/src/utils/memory_database.rs | legacy: raw thread; move to spawn_thread or spawn_service
+crates/editor/ui_log_viewer/src/utils/type_tracking.rs | legacy: raw thread; move to spawn_thread or spawn_service
+crates/editor/ui_multiplayer/src/net/multiuser.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+crates/editor/ui_multiplayer/src/peer_state.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+crates/editor/ui_multiplayer/src/sync_protocol.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+plugins/vendor/asset_viewer/src/editor/panel.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/input_plugin/src/runtime/gamepad.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/lens/feature/lens/src/bundled.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/meshes/component/src/virtual_geometry_host.rs | legacy: raw threads and its own runtime/pool; move to spawn_thread/spawn_service and the engine pools
+plugins/vendor/meshes/vg/stream/src/proxy.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/meshes/web-demos/src/bin/web.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/physics_plugin/src/runtime.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/render_bps/src/preview.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/skm_editor/editor/src/anim_editors/pose_db_build/tests.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/sky/feature/src/sky_texture.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/voxel/component/src/runtime.rs | legacy: raw thread; move to spawn_thread or spawn_service
+plugins/vendor/voxel/world/src/queries.rs | legacy: raw thread; move to spawn_thread or spawn_service

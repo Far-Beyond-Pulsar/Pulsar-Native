@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+editor_task_queue = { workspace = true }
 anyhow = { workspace = true }
 gpui-ce.workspace = true
 window_manager.workspace = true

@@ -55,7 +55,7 @@ fn run_sidecar_ui(args: Vec<OsString>, stable_executable: Option<PathBuf>) {
         Condvar::new(),
     ));
     let worker_state = shared.clone();
-    thread::spawn(move || run_bootstrap(&args, stable_executable.as_deref(), &worker_state));
+    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("engine: run sidecar ui", editor_task_queue::ThreadRole::Io).owner("engine"), move || run_bootstrap(&args, stable_executable.as_deref(), &worker_state));
 
     Application::new().run(|cx| {
         ui::init(cx);

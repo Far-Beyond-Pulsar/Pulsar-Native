@@ -4,17 +4,28 @@
 
 use tokio::runtime::Runtime;
 
-/// Create a multi-threaded Tokio runtime for the engine.
+/// Create the engine's multi-threaded Tokio runtime.
+///
+/// It is built by `editor_task_queue::pools`, which registers every worker
+/// with the thread registry (Tasks window, Threads view) and records its
+/// parked/running state. Code that needs async work and has no runtime should
+/// use `editor_task_queue::pools::tokio_handle()` rather than build its own.
 pub fn create_runtime() -> Runtime {
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(8)
-        .thread_name("PulsarEngineRuntime")
-        .on_thread_start(|| {
+    editor_task_queue::pools::build_tokio_runtime(
+        8,
+        Some(|| {
             // Name Tokio worker threads for profiling
             let thread_id = std::thread::current().id();
             profiling::set_thread_name(&format!("Tokio Worker {:?}", thread_id));
-        })
-        .enable_all()
-        .build()
-        .unwrap()
+        }),
+    )
+    .expect("failed to build the engine's tokio runtime")
+}
+
+/// Make rayon's global pool the engine's: its workers are created through the
+/// thread registry. Must run before anything uses rayon.
+pub fn install_rayon_pool() {
+    if let Err(error) = editor_task_queue::pools::install_rayon_global(None) {
+        tracing::warn!("{error}; its threads will not be listed in the Tasks window");
+    }
 }
