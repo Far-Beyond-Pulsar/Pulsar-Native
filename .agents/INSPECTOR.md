@@ -21,6 +21,7 @@ nothing pages. Content of any size and any row height is windowed by the one
   or `mark_stale` was called; the host calls `PropertyStateManager::mark_stale(editor_key)` when it re-reads a value.
 - Cards, sections and items start collapsed; field editors are created when first opened.
 - A sub-scroll area is opt-in only (`composite_editor::request_subscroll`), never a shortcut.
+- The level editor resolves the project class registry only for a selected class root or generated child, where class variables or slot defaults can appear. Ordinary entities use their attached SceneDB components without scanning project class directories. The selected section retains its registry until the class-definition generation changes.
 
 ## Measuring
 
