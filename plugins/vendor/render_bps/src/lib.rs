@@ -180,4 +180,12 @@ pub use builtin_provider::RenderBpsBuiltinProvider;
 export_plugin!(RenderBpsPlugin);
 
 // This plugin's descriptor (`pulsar-plugin.toml`): linking the crate installs it.
-pulsar_plugins::installed!("pulsar-plugin.toml");
+pulsar_plugins::installed!("pulsar-plugin.toml", build);
+
+/// Everything the plugin registers (the editor provider, with the `builtin`
+/// feature).
+#[cfg_attr(not(feature = "builtin"), allow(unused_variables))]
+pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    #[cfg(feature = "builtin")]
+    builtin_provider::build(p);
+}

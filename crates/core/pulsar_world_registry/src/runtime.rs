@@ -19,12 +19,13 @@ use std::sync::{Mutex, OnceLock};
 
 use pulsar_scenedb::runtime::{AppendList, AttachError};
 
+use crate::systems::SystemRegistration;
 use crate::unfinished::UnfinishedComponentRegistration;
 use crate::{ComponentEventRegistration, ComponentTickRegistration, WorldComponentRegistration};
 
 /// Version of [`WorldRuntimes`]' and [`Runtime`]'s ABI. Bump it on any
 /// change to their fields or to a type passed through them.
-pub const ABI_VERSION: u64 = 2;
+pub const ABI_VERSION: u64 = 3;
 
 const FINGERPRINT: u64 = {
     let parts = [
@@ -36,6 +37,7 @@ const FINGERPRINT: u64 = {
         size_of::<ComponentTickRegistration>(),
         size_of::<ComponentEventRegistration>(),
         size_of::<UnfinishedComponentRegistration>(),
+        size_of::<SystemRegistration>(),
         pulsar_reflection::runtime::ABI_VERSION as usize,
         pulsar_scenedb::runtime::ABI_VERSION as usize,
         pulsar_scene_model::runtime::ABI_VERSION as usize,
@@ -73,6 +75,7 @@ pub struct Runtime {
     ticks: fn() -> &'static [&'static ComponentTickRegistration],
     events: fn() -> &'static [&'static ComponentEventRegistration],
     unfinished: fn() -> &'static [&'static UnfinishedComponentRegistration],
+    systems: fn() -> &'static [&'static SystemRegistration],
     add_registrations: fn(&Registrations),
 }
 
@@ -82,14 +85,13 @@ pub struct Registrations {
     ticks: Vec<&'static ComponentTickRegistration>,
     events: Vec<&'static ComponentEventRegistration>,
     unfinished: Vec<&'static UnfinishedComponentRegistration>,
+    systems: Vec<&'static SystemRegistration>,
 }
 
 impl Registrations {
     fn collected() -> Self {
         Self {
-            world_components: inventory::iter::<WorldComponentRegistration>
-                .into_iter()
-                .collect(),
+            world_components: world_component_registrations(),
             ticks: inventory::iter::<ComponentTickRegistration>
                 .into_iter()
                 .collect(),
@@ -99,15 +101,24 @@ impl Registrations {
             unfinished: inventory::iter::<UnfinishedComponentRegistration>
                 .into_iter()
                 .collect(),
+            systems: pulsar_plugins::built::<SystemRegistration>(),
         }
     }
 }
 
-static WORLD_COMPONENTS: AppendList<WorldComponentRegistration> = AppendList::new(|| {
+/// This copy's world classes: the engine's (link-time) and every plugin
+/// build's (`ClassSpec`, through the plugin's builder).
+fn world_component_registrations() -> Vec<&'static WorldComponentRegistration> {
     inventory::iter::<WorldComponentRegistration>
         .into_iter()
+        .chain(pulsar_plugins::built::<WorldComponentRegistration>())
         .collect()
-});
+}
+
+static WORLD_COMPONENTS: AppendList<WorldComponentRegistration> =
+    AppendList::new(world_component_registrations);
+static SYSTEMS: AppendList<SystemRegistration> =
+    AppendList::new(pulsar_plugins::built::<SystemRegistration>);
 static TICKS: AppendList<ComponentTickRegistration> = AppendList::new(|| {
     inventory::iter::<ComponentTickRegistration>
         .into_iter()
@@ -149,7 +160,12 @@ static OWN: Runtime = Runtime {
         static GATED: Gated<UnfinishedComponentRegistration> = Gated::new();
         GATED.get(UNFINISHED.get(), |r| class_enabled(r.class_name))
     },
+    systems: || {
+        static GATED: Gated<SystemRegistration> = Gated::new();
+        GATED.get(SYSTEMS.get(), |r| class_enabled(r.class_name))
+    },
     add_registrations: |r| {
+        SYSTEMS.extend(&r.systems);
         WORLD_COMPONENTS.extend(&r.world_components);
         TICKS.extend(&r.ticks);
         EVENTS.extend(&r.events);
@@ -246,6 +262,34 @@ pub(crate) fn events() -> &'static [&'static ComponentEventRegistration] {
 
 pub(crate) fn unfinished() -> &'static [&'static UnfinishedComponentRegistration] {
     (runtime().unfinished)()
+}
+
+/// Take what plugin libraries' builds added since the lists were made
+/// (`pulsar_plugins::library::import`): the plugin loader calls it after
+/// importing a library, in the copy that owns the registries.
+pub fn import_builds() {
+    let new_classes: Vec<&'static WorldComponentRegistration> =
+        pulsar_plugins::built::<WorldComponentRegistration>()
+            .into_iter()
+            .filter(|built| {
+                !WORLD_COMPONENTS
+                    .get()
+                    .iter()
+                    .any(|r| std::ptr::eq(*r, *built))
+            })
+            .collect();
+    WORLD_COMPONENTS.extend(&new_classes);
+    let new_systems: Vec<&'static SystemRegistration> =
+        pulsar_plugins::built::<SystemRegistration>()
+            .into_iter()
+            .filter(|built| !SYSTEMS.get().iter().any(|r| std::ptr::eq(*r, *built)))
+            .collect();
+    SYSTEMS.extend(&new_systems);
+}
+
+/// The systems of the registered classes ([`crate::systems`]).
+pub(crate) fn systems() -> &'static [&'static SystemRegistration] {
+    (runtime().systems)()
 }
 
 /// The world runtimes this copy uses, to hand a plugin library: its own,

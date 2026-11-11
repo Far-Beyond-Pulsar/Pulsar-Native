@@ -1,0 +1,19 @@
+# State in an api crate, allowed with its reason (tests/api_statics.rs). This
+# list only shrinks. Format: `<path>: <line>  # <reason>`.
+#
+# The materials api's material instance: SceneDB type attachments (ledger,
+# GPU mirror and clear) and their binding registration. Other kinds create
+# material instances (a mesh's slots), so the rows are written whether or not
+# the materials plugin is enabled (p19, PLUGIN_API_REFACTOR_PLAN.md section 11);
+# moving them needs a SceneDB binding-registration seam.
+plugins/vendor/materials/api/src/instance.rs: pulsar_scenedb::pulsar_reflection::inventory::submit! {  # SceneDB handle ledger type attachment
+plugins/vendor/materials/api/src/instance.rs: static REGISTER: std::sync::Once = std::sync::Once::new();  # SceneDB binding registered once
+plugins/vendor/materials/api/src/instance.rs: pulsar_scenedb::pulsar_reflection::inventory::submit! {  # SceneDB GPU mirror type attachment
+plugins/vendor/materials/api/src/instance.rs: pulsar_scenedb::pulsar_reflection::inventory::submit! {  # SceneDB GPU clear type attachment
+# The shadows' settings group: immutable, but a settings group is identified by
+# its address (`ShadowSettings::from_settings` checks it is this group); a
+# `const` would have none. Belongs with the lights' feature settings.
+plugins/vendor/lights/api/src/settings.rs: pub static SHADOWS: Group = Group {  # settings group compared by address
+# The material graphs a project has open, shared by the materials runtime and
+# the shader editor; belongs in the materials component crate (its runtime).
+plugins/vendor/materials/api/src/radiant/graph_registry.rs: static ACTIVE_GRAPHS: OnceLock<RwLock<RadiantGraphRegistry>> = OnceLock::new();  # material graph registry

@@ -1,0 +1,4 @@
+# The library fixture plugin (plugin_manager/tests/world_component_plugins.rs).
+id = "test.library_plugin"
+name = "Library fixture"
+root = "world_static_plugin"

@@ -149,31 +149,47 @@ impl pulsar_plugins::Contribution for NativeTraitImpl {
     fn id(&self) -> String {
         format!("{}: {}", self.class, self.trait_id)
     }
+
+    /// The trait it implements.
+    fn children(&self) -> Vec<pulsar_plugins::Summary> {
+        vec![trait_use(self.trait_id, self.origin)]
+    }
 }
 
 pulsar_plugins::registration!(NativeTraitImpl);
 
+/// The category of a trait a contribution uses (a child of a role or a
+/// native implementer; its id is the trait id): the catalog links it to the
+/// plugin whose `trait` contract covers it, and a use of another plugin's
+/// trait needs a requirement.
+pub const TRAIT_USE: &str = "traits.uses";
+
+/// The summary of a use of trait `trait_id` by a registration from `origin`.
+pub fn trait_use(trait_id: &str, origin: &'static str) -> pulsar_plugins::Summary {
+    pulsar_plugins::Summary::new(TRAIT_USE, trait_id, trait_id, origin)
+}
+
 /// Declare that a component class implements a trait, from a plugin's root
-/// crate:
+/// build (`p` is its `pulsar_plugins::PluginBuilder`):
 ///
 /// ```ignore
-/// pulsar_traits::implements!(HealthComponent: "pulsar.health.Respawnable");
-/// pulsar_traits::implements!(HealthComponent: "pulsar.health.Damageable" {
+/// pulsar_traits::implements!(p, HealthComponent: "pulsar.health.Respawnable");
+/// pulsar_traits::implements!(p, HealthComponent: "pulsar.health.Damageable" {
 ///     take_damage => apply_damage,
 /// });
 /// ```
 #[macro_export]
 macro_rules! implements {
-    ($class:ident : $trait_id:literal $({ $($method:ident => $bound:ident),* $(,)? })?) => {
-        $crate::inventory::submit! {
-            $crate::NativeTraitImpl {
-                origin: $crate::pulsar_plugins::origin!(),
-                class: stringify!($class),
-                trait_id: $trait_id,
-                methods: &[$($((stringify!($method), stringify!($bound))),*)?],
-            }
-        }
-    };
+    ($p:expr, $class:ident : $trait_id:literal $({ $($method:ident => $bound:ident),* $(,)? })?) => {{
+        let builder: &mut $crate::pulsar_plugins::PluginBuilder = $p;
+        let origin = builder.origin();
+        builder.add($crate::NativeTraitImpl {
+            origin,
+            class: stringify!($class),
+            trait_id: $trait_id,
+            methods: &[$($((stringify!($method), stringify!($bound))),*)?],
+        });
+    }};
 }
 
 /// The implementer id of a native component class.

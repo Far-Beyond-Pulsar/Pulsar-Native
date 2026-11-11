@@ -1,0 +1,11 @@
+# A test plugin for the trait proofs (plugins/installed/tests/traits.rs): it
+# defines a trait and a role and implements the trait with a component.
+id = "pulsar.test_traits"
+name = "Trait fixture"
+description = "The Greeter trait, the greeter role and a component implementing the trait"
+enabled_by_default = true
+provides = [
+  { id = "pulsar.test_traits.Greeter", kind = "trait" },
+]
+requires = []
+root = "trait_fixture_plugin"

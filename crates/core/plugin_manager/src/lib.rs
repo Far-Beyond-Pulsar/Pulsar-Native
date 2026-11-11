@@ -98,14 +98,16 @@ mod startup;
 pub mod tool_bridge;
 
 /// Re-exported so a linked provider can `inventory::submit!` without its own
-/// dependency (see [`LinkedEditorProvider`]).
+/// dependency (see [`PluginEditorProvider`]).
 pub use ::inventory;
 pub use attach::{attach_event_bus, attach_profiler, attach_world_runtime, read_manifest};
 pub use builtin::{
-    BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
-    PluginEditorProvider,
+    BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, PluginEditorProvider,
 };
-pub use catalog::{CatalogPlugin, CatalogProblem, PluginCatalog};
+pub use catalog::{
+    CatalogPlugin, CatalogProblem, CatalogSnapshot, ContractLink, Provider, Requirement,
+    RequirementState,
+};
 pub use dependencies::{plan_load_order, DependencyError, LoadPlan};
 pub use error::PluginManagerError;
 pub use global::{file_type_for_path, global, initialize_global};
@@ -152,13 +154,12 @@ pub enum DependencyState {
     Missing,
 }
 
-/// A plugin as the plugin manager window shows it; see
-/// [`PluginManager::plugin_details`].
+/// A loaded plugin library, as the catalog shows it; see
+/// [`PluginManager::library_details`].
 #[derive(Debug, Clone)]
 pub struct PluginDetails {
     pub metadata: PluginMetadata,
-    pub builtin: bool,
-    pub library_path: Option<PathBuf>,
+    pub library_path: PathBuf,
     pub dependencies: Vec<DependencyStatus>,
     /// Loaded plugins that list this one in `requires` or `optional`.
     pub required_by: Vec<PluginId>,

@@ -148,3 +148,26 @@ fn a_plugin_refuses_a_world_runtime_of_another_abi() {
     assert_eq!(report["host_sees_class"], "false", "{report:?}");
     assert_eq!(report["host_reflects_class"], "false", "{report:?}");
 }
+
+/// Phase 4 (Pulsar-Native#1608): the plugin's root build runs in the
+/// library's copy and crosses the boundary as data; the host installs its
+/// descriptor and takes its registrations as its own types (their layout
+/// fingerprints agree), so the class the build registered is the host's.
+#[test]
+fn a_library_registers_through_its_root_build() {
+    let report = host_report(built_together(), "import");
+    assert_eq!(report["attached"], "true", "{report:?}");
+    assert_eq!(report["imported"], "test.library_plugin", "{report:?}");
+    assert_eq!(report["refused"], "0", "{report:?}");
+    assert_eq!(report["installed_library"], "true", "{report:?}");
+    assert_eq!(report["host_sees_library_class"], "true", "{report:?}");
+}
+
+/// Built on its own (other engine crate features), the library's
+/// registration types still have the host's layouts: imported the same way.
+#[test]
+fn a_library_built_separately_registers_through_its_root_build() {
+    let report = host_report(built_separately(), "import");
+    assert_eq!(report["refused"], "0", "{report:?}");
+    assert_eq!(report["host_sees_library_class"], "true", "{report:?}");
+}

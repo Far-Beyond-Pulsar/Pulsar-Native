@@ -29,3 +29,36 @@ pub extern "C" fn plugin_engine_type_hash() -> u64 {
     std::any::TypeId::of::<pulsar_scenedb::World>().hash(&mut hasher);
     hasher.finish()
 }
+
+// The same plugin through the root build: a descriptor and a build, linked
+// statically by `installed!` or, as here, exported from the library.
+pulsar_plugins::installed!("pulsar-plugin.toml", build);
+pulsar_plugins::export_library!();
+
+/// A class this plugin registers through its build.
+#[engine_class_derive::engine_class(
+    category = "Plugin",
+    default,
+    clone,
+    debug,
+    serialize,
+    deserialize,
+    no_register
+)]
+pub struct LibraryWidget {
+    #[property]
+    pub level: i32,
+}
+
+#[engine_class_derive::world_component]
+impl LibraryWidget {}
+
+/// Everything the plugin registers.
+pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    use pulsar_world_registry::WorldComponentClass as _;
+    let origin = p.origin();
+    p.add(pulsar_world_registry::WorldComponentRegistration {
+        origin,
+        ..LibraryWidget::REGISTRATION
+    });
+}

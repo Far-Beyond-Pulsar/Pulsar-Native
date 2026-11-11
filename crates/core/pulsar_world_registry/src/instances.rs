@@ -96,6 +96,50 @@ pub fn attach_component(
     Ok(instance)
 }
 
+/// Place a new instance of a class on `owner`, as the editor's Add
+/// Component and a script's add do: [`attach_component`], then each class
+/// it requires (`ClassSpec::requires`) that the object lacks, with its
+/// default value, nested under it (so a facade shows them as its own). A
+/// requirement the class may not attach ([`crate::required_class`]) is
+/// skipped and logged; an optional one whose plugin is absent is skipped.
+/// Loading saved records never places: a saved object has its instances
+/// already ([`attach_records`]).
+pub fn place_component(
+    world: &mut World,
+    owner: Entity,
+    spec: NewInstance,
+    payload: ComponentPayload,
+) -> Result<Entity, AttachError> {
+    let class = spec.class_name.clone();
+    let instance = attach_component(world, owner, spec, payload)?;
+    let Some(registration) = crate::find(&class) else {
+        return Ok(instance);
+    };
+    let parent = attachments::meta(world, instance).map(|meta| meta.id);
+    for required in registration.requires {
+        match crate::required_class(registration, required) {
+            crate::RequiredClass::Attach => {}
+            crate::RequiredClass::Absent => continue,
+            crate::RequiredClass::Refused(problem) => {
+                tracing::warn!("{problem}");
+                continue;
+            }
+        }
+        let present = attachments::instances(world, owner)
+            .into_iter()
+            .any(|existing| {
+                attachments::meta(world, existing).is_some_and(|meta| meta.class_name == *required)
+            });
+        if present {
+            continue;
+        }
+        let mut member = NewInstance::new(*required);
+        member.parent = parent;
+        place_component(world, owner, member, ComponentPayload::Default)?;
+    }
+    Ok(instance)
+}
+
 /// Attach typed `value` to `owner` as a new instance of its class `T`.
 /// The typed convenience over [`attach_component`].
 pub fn attach_value<T: EngineClass>(

@@ -438,7 +438,7 @@ impl ScriptDriver {
     /// through the one dispatcher (`RuntimeTraits::dispatch`): the entity's
     /// script class's handler and its implementing components' bound methods.
     /// Problems are reported once per session.
-    pub(crate) fn call_trait(
+    pub fn call_trait(
         &mut self,
         world: &mut World,
         entity: Entity,

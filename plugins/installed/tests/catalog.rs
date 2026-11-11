@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use engine_backend::subsystems::render::helio_renderer::render_features;
-use plugin_manager::catalog::PluginCatalog;
+use plugin_manager::CatalogSnapshot;
 use pulsar_plugins::{Resolution, Summary};
 
 // The installed plugins and the fixture, linked for their registrations.
@@ -41,7 +41,7 @@ fn a_plugins_runtime_and_editor_registrations_resolve_to_its_id() {
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
     pulsar_plugins::deactivate();
-    let catalog = PluginCatalog::snapshot();
+    let catalog = CatalogSnapshot::snapshot();
     let fixture = catalog.plugin(FIXTURE).expect("the fixture is installed");
     assert!(fixture.enabled);
     assert_eq!(fixture.modules, [FIXTURE_ROOT]);
@@ -84,7 +84,7 @@ fn the_catalog_reports_feature_to_node_ownership_and_the_graph_has_the_same_node
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
     pulsar_plugins::deactivate();
-    let catalog = PluginCatalog::snapshot();
+    let catalog = CatalogSnapshot::snapshot();
     let fixture = catalog.plugin(FIXTURE).unwrap();
     assert_eq!(fixture.feature_nodes(), fixture_features());
 
@@ -128,7 +128,7 @@ fn a_disabled_plugin_has_every_registration_filtered() {
             .map(|plugin| plugin.id.clone())
             .filter(|id| id != FIXTURE)
             .collect(),
-        problems: Vec::new(),
+        ..Resolution::default()
     };
     pulsar_plugins::activate(&everything_but_the_fixture);
 
@@ -140,7 +140,7 @@ fn a_disabled_plugin_has_every_registration_filtered() {
     };
     let linked = ours(pulsar_plugins::contributions());
     let handed_out = ours(pulsar_plugins::active_contributions());
-    let catalog = PluginCatalog::snapshot();
+    let catalog = CatalogSnapshot::snapshot();
     let ids = render_features::plugin_features().ids();
     pulsar_plugins::deactivate();
 
@@ -176,7 +176,7 @@ fn every_contribution_is_a_plugins_or_the_engines() {
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
     pulsar_plugins::deactivate();
-    let catalog = PluginCatalog::snapshot();
+    let catalog = CatalogSnapshot::snapshot();
     for plugin in &catalog.plugins {
         if plugin.descriptor.id == FIXTURE {
             continue;

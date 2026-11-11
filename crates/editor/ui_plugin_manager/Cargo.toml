@@ -14,8 +14,6 @@ inventory.workspace = true
 plugin_manager.workspace = true
 # The project's enabled plugins (`generation`): the window reloads when they change.
 pulsar_plugins = { workspace = true }
-plugin_editor_api.workspace = true
-engine_backend.workspace = true
 tracing.workspace = true
 
 [lints]

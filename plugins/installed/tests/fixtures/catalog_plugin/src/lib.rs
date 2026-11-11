@@ -1,49 +1,52 @@
 //! The catalog fixture plugin's root crate: everything the plugin
 //! contributes, registered here from its component and editor crates.
 
-pulsar_plugins::installed!("pulsar-plugin.toml");
+pulsar_plugins::installed!("pulsar-plugin.toml", build);
 
 use catalog_fixture_component as component;
 
-// Two features, two nodes each.
-inventory::submit! {
-    engine_backend::subsystems::render::RenderFeatureRegistration {
-        origin: pulsar_plugins::origin!(),
-        features: component::render_features,
-        configure: component::configure,
-    }
-}
+/// Everything the plugin registers (runtime always, editor with the `editor`
+/// feature).
+pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    // Two features, two nodes each.
+    p.add(
+        engine_backend::subsystems::render::RenderFeatureRegistration {
+            origin: p.origin(),
+            features: component::render_features,
+            configure: component::configure,
+        },
+    );
 
-inventory::submit! {
-    engine_backend::scene::game_hooks::ContentReportRegistration {
-        origin: pulsar_plugins::origin!(),
-        key: "test_catalog",
-        report: component::report,
-    }
-}
+    p.add(
+        engine_backend::scene::game_hooks::ContentReportRegistration {
+            origin: p.origin(),
+            key: "test_catalog",
+            report: component::report,
+        },
+    );
 
-inventory::submit! {
-    pulsar_settings::project::ProjectSettingsRegistration {
-        origin: pulsar_plugins::origin!(),
+    p.add(pulsar_settings::project::ProjectSettingsRegistration {
+        origin: p.origin(),
         name: "test_catalog.settings",
         register: component::register_settings,
-    }
+    });
+
+    #[cfg(feature = "editor")]
+    editor::build(p);
 }
 
 #[cfg(feature = "editor")]
 mod editor {
-    inventory::submit! {
-        ui_common::asset_thumbnails::ThumbnailRendererRegistration {
-            origin: pulsar_plugins::origin!(),
+    pub(super) fn build(p: &mut pulsar_plugins::PluginBuilder) {
+        p.add(ui_common::asset_thumbnails::ThumbnailRendererRegistration {
+            origin: p.origin(),
             extension: "testcatalog",
             render: catalog_fixture_editor::render_thumbnail,
-        }
-    }
+        });
 
-    inventory::submit! {
-        ui_level_editor::extend::AiToolNamespace {
-            origin: pulsar_plugins::origin!(),
+        p.add(ui_level_editor::extend::AiToolNamespace {
+            origin: p.origin(),
             namespace: catalog_fixture_editor::TOOLS,
-        }
+        });
     }
 }

@@ -189,7 +189,7 @@ pub fn add_component_value_enabled(
     };
     let mut spec = attach::NewInstance::new(class_name);
     spec.enabled = enabled;
-    match pulsar_world_registry::attach_component(world, owner, spec, payload) {
+    match pulsar_world_registry::place_component(world, owner, spec, payload) {
         Ok(instance) => attach::instances(world, owner)
             .iter()
             .position(|entity| *entity == instance),

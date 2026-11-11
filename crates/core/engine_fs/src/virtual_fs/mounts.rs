@@ -103,6 +103,13 @@ pub trait FolderSource: Send + Sync + 'static {
         walk(self, project, path, "", &mut out);
         out
     }
+
+    /// Whether its content is the same in every project (embedded files):
+    /// then the catalog can list it without one ([`provided_files`]). A
+    /// source whose files are per project (a cache) says no.
+    fn project_independent(&self) -> bool {
+        false
+    }
 }
 
 fn walk<S: FolderSource + ?Sized>(
@@ -375,6 +382,10 @@ impl MemoryFolder {
 }
 
 impl FolderSource for MemoryFolder {
+    fn project_independent(&self) -> bool {
+        true
+    }
+
     fn read_file(&self, _project: &Path, path: &str) -> Result<Vec<u8>> {
         self.tree
             .read()
@@ -654,20 +665,7 @@ fn build_tree(generation: u64, packaged: bool) -> Tree {
                 owner: owner.clone(),
             })
         } else {
-            let existing = opened().read().get(&owner).cloned();
-            match existing {
-                Some(source) => source,
-                None => {
-                    let source = (provider.open)(PluginFolder {
-                        owner: Arc::from(owner.as_str()),
-                    });
-                    opened()
-                        .write()
-                        .entry(owner.clone())
-                        .or_insert(source)
-                        .clone()
-                }
-            }
+            source_of(provider, &owner)
         };
         folders.insert(
             owner,
@@ -682,6 +680,49 @@ fn build_tree(generation: u64, packaged: bool) -> Tree {
         packaged,
         folders,
     }
+}
+
+/// `provider`'s source for the folder `owner`: opened the first time (with
+/// the capability to change it), the same one after.
+fn source_of(provider: &FileProvider, owner: &str) -> Arc<dyn FolderSource> {
+    if let Some(source) = opened().read().get(owner).cloned() {
+        return source;
+    }
+    let source = (provider.open)(PluginFolder {
+        owner: Arc::from(owner),
+    });
+    opened()
+        .write()
+        .entry(owner.to_owned())
+        .or_insert(source)
+        .clone()
+}
+
+/// The files `provider` serves in every project (its embedded content),
+/// as `(path inside its folder, bytes)`, whether or not its plugin is
+/// enabled: what the plugin catalog lists of a plugin's files (its traits).
+/// A source whose files are per project lists none.
+pub fn provided_files(
+    provider: &FileProvider,
+    wanted: impl Fn(&str) -> bool,
+) -> Vec<(String, Vec<u8>)> {
+    let Some(owner) = owner_folder(provider.origin) else {
+        return Vec::new();
+    };
+    let source = source_of(provider, &owner);
+    if !source.project_independent() {
+        return Vec::new();
+    }
+    let project = Path::new("");
+    source
+        .manifest(project, "")
+        .into_iter()
+        .filter(|entry| !entry.is_dir && wanted(&entry.path))
+        .filter_map(|entry| {
+            let bytes = source.read_file(project, &entry.path).ok()?;
+            Some((entry.path, bytes))
+        })
+        .collect()
 }
 
 static TREE: OnceLock<RwLock<Option<Arc<Tree>>>> = OnceLock::new();
