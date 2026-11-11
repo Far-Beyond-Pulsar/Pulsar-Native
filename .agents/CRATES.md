@@ -39,7 +39,7 @@ The heart of the engine.
 | Crate | Responsibility |
 |---|---|
 | `asset_import` | Source-asset import (FBX, OBJ, …): import database, project scan, per-format importers, conversions as editor tasks (see below) |
-| `editor_task_queue` | Background task queue behind the Tasks window: progress, errors, cancellation |
+| `editor_task_queue` | The editor's task system behind the Tasks window: async/blocking/inline tasks, per-task span-scoped logs (`TaskLogLayer`), progress, phases, cancellation, stall diagnosis. Tab creation and Helio init are enforced through it (`.agents/EDITOR_TASKS.md`) |
 | `engine` | Binary entry point, startup graph, GPUI `App` creation |
 | `engine_backend` | Window and rendering backend; subsystem lifecycle; the plugins' engine seams (render features, scene rows, game hooks, level rules) |
 | `engine_class_derive` | `#[derive(EngineClass)]` proc macro |
@@ -173,7 +173,7 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_level_editor` | Level / scene editor |
 | `ui_helio_viewport` | Shared Helio frame pacing and publish-driven repaint pump |
 | `ui_loading_screen` | Splash + loading progress |
-| `ui_log_viewer` | Mission Control (a tool) and the editor's log and memory tracking |
+| `ui_log_viewer` | Mission Control (a tool) and the editor's log and memory tracking; also the Tasks window (`components/task_panel.rs`) and `LogDrawer::for_task` |
 | `ui_multiplayer` | Multiplayer session UI and its network side (`net`: the relay client, the file sync) |
 | `ui_multiuser_status` | Presence indicators |
 | `ui_plugin_manager` | Plugin browser |

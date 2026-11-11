@@ -959,78 +959,92 @@ impl HelioRenderer {
         }
 
         // ── Lazy init (first frame only) ────────────────────────────────────────
+        // The scene renderer, graph and pipelines are built inline on the render thread,
+        // so the task system tracks and logs them: a hang here is visible in the
+        // Tasks window with this phase, instead of a silently blank viewport.
         if self.inner.is_none() {
-            #[cfg(feature = "editor-ui")]
-            gpui::flamegraph_span!("pulsar: HelioRenderer::lazy_init");
-            tracing::info!("Initializing Helio renderer...");
+            editor_task_queue::scope(
+                editor_task_queue::TaskDescription::foreground(
+                    "Initialize Helio renderer",
+                    "render",
+                ),
+                |task| {
+                    task.set_phase("Creating the scene renderer and render graph");
+                    #[cfg(feature = "editor-ui")]
+                    gpui::flamegraph_span!("pulsar: HelioRenderer::lazy_init");
+                    tracing::info!("Initializing Helio renderer...");
 
-            self.device_loss = Some(crate::services::device_loss::DeviceLoss::watch(_device));
-            // The scene's renderer as the game builds it; the editor adds its
-            // background, overlays and debug views.
-            let mut scene = SceneRenderer::new(
-                Arc::new(_device.clone()),
-                Arc::new(_queue.clone()),
-                &self.scene_store,
-                width,
-                height,
-                format,
-                SceneRendererOptions {
-                    editor_mode: true,
-                    device: DeviceOwner::Host,
-                    pipeline: self.requested_pipeline.get(),
-                    host_part_setups: self.host_part_setups.clone(),
+                    self.device_loss =
+                        Some(crate::services::device_loss::DeviceLoss::watch(_device));
+                    // The scene's renderer as the game builds it; the editor adds its
+                    // background, overlays and debug views.
+                    let mut scene = SceneRenderer::new(
+                        Arc::new(_device.clone()),
+                        Arc::new(_queue.clone()),
+                        &self.scene_store,
+                        width,
+                        height,
+                        format,
+                        SceneRendererOptions {
+                            editor_mode: true,
+                            device: DeviceOwner::Host,
+                            pipeline: self.requested_pipeline.get(),
+                            host_part_setups: self.host_part_setups.clone(),
+                        },
+                    );
+                    scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
+                    self.applied_pipeline = super::pipelines::resolve_pipeline(
+                        self.requested_pipeline.get().as_deref(),
+                    );
+
+                    if let Ok(mut views) = self.viewport_debug_views.lock() {
+                        let r = &scene.renderer;
+                        let legends = r.available_debug_view_legends();
+                        let categories = r.available_debug_view_categories();
+                        *views = r
+                            .available_debug_views()
+                            .into_iter()
+                            .map(|view| ViewportDebugView {
+                                name: view.name,
+                                debug_mode: view.debug_mode,
+                                description: view.description,
+                                category: categories
+                                    .iter()
+                                    .find(|(mode, _)| *mode == view.debug_mode)
+                                    .map_or("", |(_, category)| *category),
+                                legend: legends
+                                    .iter()
+                                    .find(|(mode, _)| *mode == view.debug_mode)
+                                    .map(|(_, legend)| *legend),
+                            })
+                            .collect();
+                    }
+
+                    let inner = HelioInner {
+                        scene,
+                        device: _device.clone(),
+                        queue: Arc::new(_queue.clone()),
+                        interaction: SceneInteraction::default(),
+                        last_scene_revision: 0,
+                        has_rendered_frame: false,
+                        applied_postprocess: None,
+                        applied_debug_mode: 0,
+                        editor_lines: None,
+                    };
+                    self.inner = Some(inner);
+                    self.applied_graph_settings = Some(graph_settings.clone());
+                    self.viewport_size = (width, height);
+
+                    let (yaw, pitch) = self.cam.local_yaw_pitch();
+                    tracing::info!(
+                        width,
+                        height,
+                        "[HELIO] Renderer initialized - camera at {:?}, yaw={yaw}, pitch={pitch}",
+                        self.cam.position,
+                    );
+                    task.set_phase("Renderer ready");
                 },
             );
-            scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
-            self.applied_pipeline =
-                super::pipelines::resolve_pipeline(self.requested_pipeline.get().as_deref());
-
-            if let Ok(mut views) = self.viewport_debug_views.lock() {
-                let r = &scene.renderer;
-                let legends = r.available_debug_view_legends();
-                let categories = r.available_debug_view_categories();
-                *views = r
-                    .available_debug_views()
-                    .into_iter()
-                    .map(|view| ViewportDebugView {
-                        name: view.name,
-                        debug_mode: view.debug_mode,
-                        description: view.description,
-                        category: categories
-                            .iter()
-                            .find(|(mode, _)| *mode == view.debug_mode)
-                            .map_or("", |(_, category)| *category),
-                        legend: legends
-                            .iter()
-                            .find(|(mode, _)| *mode == view.debug_mode)
-                            .map(|(_, legend)| *legend),
-                    })
-                    .collect();
-            }
-
-            let inner = HelioInner {
-                scene,
-                device: _device.clone(),
-                queue: Arc::new(_queue.clone()),
-                interaction: SceneInteraction::default(),
-                last_scene_revision: 0,
-                has_rendered_frame: false,
-                applied_postprocess: None,
-                applied_debug_mode: 0,
-                editor_lines: None,
-            };
-            self.inner = Some(inner);
-            self.applied_graph_settings = Some(graph_settings.clone());
-            self.viewport_size = (width, height);
-
-            let (yaw, pitch) = self.cam.local_yaw_pitch();
-            tracing::info!(
-                width,
-                height,
-                "[HELIO] Renderer initialized - camera at {:?}, yaw={yaw}, pitch={pitch}",
-                self.cam.position,
-            );
-            // First frame must render (lazy init includes nothing visible)
         }
 
         true

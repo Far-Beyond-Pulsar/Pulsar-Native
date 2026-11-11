@@ -659,11 +659,31 @@ impl ProjectFileIndex {
             if !crate::virtual_fs::exists(&path).unwrap_or(false) {
                 continue;
             }
+            // An id can be given to a file the index does not list (a
+            // thumbnail under `.pulsar/`, a file under `target/`): live, the
+            // file is refreshed in first, but reconcile drops it again, and
+            // `asset_ids.path` references `files.path`. Such an entry has no
+            // row to hang from; skip it rather than fail the whole open.
+            if !self.lists(&path)? {
+                tracing::debug!(path = %path.display(), "durable asset id names a file the index does not list; not restored");
+                continue;
+            }
             for (kind, id) in kinds {
                 self.record_typed_asset_id(&kind, &id, &path)?;
             }
         }
         Ok(())
+    }
+
+    /// Whether the index has a `files` row for `path`.
+    fn lists(&self, path: &Path) -> Result<bool> {
+        let Some(relative) = self.relative_path(path) else {
+            return Ok(false);
+        };
+        let connection = self.connection.lock();
+        let mut statement = connection.prepare_cached("SELECT 1 FROM files WHERE path = ?1")?;
+        let listed = statement.exists([&relative])?;
+        Ok(listed)
     }
 
     /// Remove all stable-ID associations for a project file. Call this when a
@@ -1167,6 +1187,15 @@ impl ProjectFileIndex {
 static SHARED_FILE_INDEXES: OnceLock<parking_lot::Mutex<HashMap<PathBuf, Arc<ProjectFileIndex>>>> =
     OnceLock::new();
 
+/// Projects whose index last failed to open: when, and the error.
+static FAILED_FILE_INDEX_OPENS: OnceLock<
+    parking_lot::Mutex<HashMap<PathBuf, (std::time::Instant, String)>>,
+> = OnceLock::new();
+
+/// How long a failed open is answered from [`FAILED_FILE_INDEX_OPENS`]
+/// before the next caller tries again.
+const FAILED_OPEN_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Get the process-shared index for a local project, creating and populating
 /// the cache the first time it is requested. Remote and P2P projects return
 /// `Ok(None)` so callers can use their provider's native listing path.
@@ -1191,14 +1220,39 @@ pub fn open_project_file_index(project_root: &Path) -> Result<Option<Arc<Project
         return Ok(Some(index.clone()));
     }
 
+    // A failed open is a whole-project scan that failed. Many callers ask for
+    // the index from render paths, so retrying on every call turns one bad
+    // index into a scan per caller per frame; retry only after a pause.
+    let failures = FAILED_FILE_INDEX_OPENS.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
+    if let Some((at, error)) = failures.lock().get(&key) {
+        if at.elapsed() < FAILED_OPEN_RETRY {
+            anyhow::bail!("{error}");
+        }
+    }
+
     // Opening creates `.pulsar/cache` through VFS, which emits a local event.
     // Never hold the shared registry lock across provider calls or that event
     // handler would re-enter this registry and deadlock.
-    let index = Arc::new(ProjectFileIndex::open(key.clone())?);
-    let manifest =
-        crate::virtual_fs::manifest(&key).context("read project manifest for file index")?;
-    index.reconcile(&manifest)?;
-    index.restore_durable_asset_ids()?;
+    let opened = (|| -> Result<Arc<ProjectFileIndex>> {
+        let index = Arc::new(ProjectFileIndex::open(key.clone())?);
+        let manifest =
+            crate::virtual_fs::manifest(&key).context("read project manifest for file index")?;
+        index.reconcile(&manifest)?;
+        index.restore_durable_asset_ids()?;
+        Ok(index)
+    })();
+    let index = match opened {
+        Ok(index) => {
+            failures.lock().remove(&key);
+            index
+        }
+        Err(error) => {
+            failures
+                .lock()
+                .insert(key.clone(), (std::time::Instant::now(), format!("{error:#}")));
+            return Err(error);
+        }
+    };
     let index = {
         let mut indexes = indexes.lock();
         if let Some(existing) = indexes.get(&key) {
@@ -1381,6 +1435,49 @@ mod tests {
             size,
             modified,
         }
+    }
+
+    #[test]
+    fn a_durable_id_on_an_unlisted_file_does_not_fail_the_reopen() {
+        // `target/` is left out of the manifest, but a picker can still give
+        // a file there a durable id (it refreshes the file in first). The
+        // next open's reconcile drops that row; restoring the id must not
+        // then trip `asset_ids.path REFERENCES files(path)` and fail the open.
+        let temp = tempfile::tempdir().unwrap();
+        let root = crate::virtual_fs::canonicalize(temp.path()).unwrap();
+        let root = normalize_absolute_path(root);
+        let listed = root.join("Assets").join("wood.png");
+        let unlisted = root.join("target").join("sky.hdr");
+        for path in [&listed, &unlisted] {
+            crate::virtual_fs::create_dir_all(path.parent().unwrap()).unwrap();
+            crate::virtual_fs::write_file(path, b"x").unwrap();
+        }
+        let manifest = [
+            file("Assets", true, 0, None),
+            file("Assets/wood.png", false, 1, Some(1)),
+        ];
+        let listed_id;
+        {
+            let index = ProjectFileIndex::open(root.clone()).unwrap();
+            index.reconcile(&manifest).unwrap();
+            listed_id = index.ensure_typed_asset_id("texture", &listed).unwrap();
+            index.ensure_typed_asset_id("texture", &unlisted).unwrap();
+        }
+
+        let index = ProjectFileIndex::open(root.clone()).unwrap();
+        index.reconcile(&manifest).unwrap();
+        index
+            .restore_durable_asset_ids()
+            .expect("an id on an unlisted file is skipped, not a failed open");
+        let connection = index.connection.lock();
+        let restored: Vec<(String, String)> = connection
+            .prepare("SELECT asset_id, path FROM asset_ids WHERE kind = 'texture'")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(restored, vec![(listed_id, "Assets/wood.png".to_owned())]);
     }
 
     #[test]

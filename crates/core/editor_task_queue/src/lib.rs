@@ -1,23 +1,61 @@
-//! Queue for asynchronous editor work. Game/runtime work must never be
-//! submitted here; it has its own lifecycle and scheduling requirements.
+//! The editor's task system: every piece of editor work that is not a single
+//! GPUI callback runs here, so it can be listed, logged, audited and stopped.
+//! Game/runtime work must never be submitted here; it has its own lifecycle
+//! and scheduling requirements. See `.agents/EDITOR_TASKS.md`.
+//!
+//! # Ways to run work
+//!
+//! | Entry point | For | Where it runs |
+//! |---|---|---|
+//! | [`TaskQueue::submit_async`] | I/O and waiting work | a pool worker, as a future |
+//! | [`TaskQueue::submit`] | blocking work (builds, imports) | a pool worker |
+//! | [`tracked`] | a future an executor already owns (`cx.spawn`) | that executor |
+//! | [`scope`] | work that must run inline (building a tab, first-frame GPU init) | the calling thread |
+//!
+//! Every one of them creates a task record, runs the work inside the task's
+//! tracing span (so `tracing` output is captured per task, see [`log`]),
+//! measures how it is being polled, and ends in a terminal status. The
+//! watchdog turns "no longer making progress" into a [`Stall`] with a reason
+//! and a line in the task's log.
 //!
 //! Short jobs share a small reserved worker pool. Long jobs use a separate
 //! pool so sustained work (builds, thumbnail generation, imports) cannot
 //! starve short editor interactions. Starring a queued job raises its
 //! scheduling priority within its pool.
 
+mod log;
+mod track;
+
+pub use log::{LogRead, TaskLog, TaskLogLayer, MAX_LOG_LINES};
+pub use track::{scope, tracked, TaskOutcome, Tracked};
+
 use parking_lot::{Condvar, Mutex};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
-use std::time::SystemTime;
+use std::future::Future;
+use std::panic::{catch_unwind, AssertUnwindSafe, Location};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::{Arc, OnceLock, Weak};
+use std::time::{Duration, Instant, SystemTime};
+use tracing::Level;
 
 const DEFAULT_ON_DEMAND_WORKERS: usize = 3;
 const DEFAULT_DEDICATED_WORKERS: usize = 2;
 const MAX_WORKERS_PER_POOL: usize = 16;
+/// Finished tasks kept for the audit history before the oldest unstarred ones
+/// are forgotten.
+const MAX_FINISHED_TASKS: usize = 500;
+const WATCHDOG_INTERVAL: Duration = Duration::from_secs(1);
 
 static GLOBAL: OnceLock<TaskQueue> = OnceLock::new();
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+static EPOCH: OnceLock<Instant> = OnceLock::new();
+
+/// Milliseconds since the first task system use in this process.
+pub(crate) fn now_ms() -> u64 {
+    EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
 
 /// Process-wide queue used only by the editor.
 pub fn global() -> &'static TaskQueue {
@@ -37,6 +75,19 @@ impl TaskId {
 pub enum TaskDuration {
     Short,
     Long,
+    /// Runs inline on the calling thread (see [`scope`]); not a pool.
+    Foreground,
+}
+
+/// How a task's work is expected to behave. Stall detection depends on it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskModel {
+    /// A future: it must return from every poll quickly and wait with `.await`.
+    Async,
+    /// A closure that blocks its worker by design (a build, an import).
+    Blocking,
+    /// Inline on the calling thread, which it blocks until it returns.
+    Foreground,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +97,88 @@ pub enum TaskStatus {
     Succeeded,
     Failed,
     Cancelled,
+}
+
+impl TaskStatus {
+    pub fn is_finished(self) -> bool {
+        matches!(self, Self::Succeeded | Self::Failed | Self::Cancelled)
+    }
+}
+
+/// What a running task is doing right now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskActivity {
+    /// Not started yet.
+    NotStarted,
+    /// Inside a poll (or inline): running code, holding its thread.
+    Polling,
+    /// Between polls: waiting for something to wake it.
+    Pending,
+    Finished,
+}
+
+impl TaskActivity {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Polling,
+            2 => Self::Pending,
+            3 => Self::Finished,
+            _ => Self::NotStarted,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StallKind {
+    /// Queued, and no worker has taken it.
+    QueueWait,
+    /// A tracked future that nobody has polled.
+    NeverPolled,
+    /// An async task stuck inside one poll: synchronous work in async code.
+    BlockedPoll,
+    /// Inline work holding its (UI or render) thread.
+    BlockedThread,
+    /// An async task waiting with no log, progress or phase change.
+    Pending,
+    /// A blocking task with no log, progress or phase change.
+    NoProgress,
+}
+
+impl StallKind {
+    fn code(self) -> u8 {
+        self as u8 + 1
+    }
+}
+
+/// Why a task looks stalled or frozen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stall {
+    pub kind: StallKind,
+    pub message: String,
+}
+
+/// How long a task may go without an observable change before it is reported.
+#[derive(Clone, Copy, Debug)]
+pub struct StallThresholds {
+    pub queue_wait: Duration,
+    pub never_polled: Duration,
+    pub blocked_poll: Duration,
+    pub blocked_thread: Duration,
+    pub pending_idle: Duration,
+    pub blocking_idle: Duration,
+}
+
+impl Default for StallThresholds {
+    fn default() -> Self {
+        Self {
+            queue_wait: Duration::from_secs(10),
+            never_polled: Duration::from_secs(5),
+            blocked_poll: Duration::from_secs(2),
+            blocked_thread: Duration::from_secs(1),
+            pending_idle: Duration::from_secs(15),
+            blocking_idle: Duration::from_secs(30),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +200,11 @@ impl TaskDescription {
             duration,
         }
     }
+
+    /// A description for inline work ([`scope`]).
+    pub fn foreground(title: impl Into<String>, category: impl Into<String>) -> Self {
+        Self::new(title, category, TaskDuration::Foreground)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -75,25 +213,219 @@ pub struct TaskSnapshot {
     pub title: String,
     pub category: String,
     pub duration: TaskDuration,
+    pub model: TaskModel,
     pub status: TaskStatus,
     pub starred: bool,
     pub progress: Option<f32>,
     pub detail: Option<String>,
     pub error: Option<String>,
     pub submitted_at: SystemTime,
+    pub started_at: Option<SystemTime>,
+    pub finished_at: Option<SystemTime>,
+    /// The stage the task last named with [`TaskContext::set_phase`].
+    pub phase: Option<String>,
+    /// `file:line` of the code that created the task.
+    pub origin: String,
+    /// The thread running it.
+    pub worker: Option<String>,
+    /// How many times its future was polled.
+    pub polls: u64,
+    pub activity: TaskActivity,
+    /// How long it has been in `activity`.
+    pub activity_for: Duration,
+    /// Time since its last log line, progress, or phase change.
+    pub idle_for: Duration,
+    pub stall: Option<Stall>,
+    /// Lines written to its log so far.
+    pub log_lines: u64,
 }
 
-type Work = Box<dyn FnOnce(TaskContext) -> Result<(), String> + Send + 'static>;
+/// What a finished unit of work reported.
+pub(crate) enum Outcome {
+    Succeeded,
+    Failed(String),
+    /// The future was dropped before it finished.
+    Dropped,
+}
+
+/// State shared between a task's record, its context and its future.
+pub(crate) struct TaskShared {
+    pub(crate) id: TaskId,
+    pub(crate) model: TaskModel,
+    pub(crate) pooled: bool,
+    pub(crate) cancelled: AtomicBool,
+    pub(crate) started: AtomicBool,
+    pub(crate) log: Arc<log::TaskLog>,
+    pub(crate) span: tracing::Span,
+    state: AtomicU8,
+    state_since: AtomicU64,
+    polls: AtomicU64,
+    last_activity: AtomicU64,
+    reported_stall: AtomicU8,
+}
+
+impl TaskShared {
+    pub(crate) fn set_state(&self, activity: TaskActivity) {
+        self.state.store(activity as u8, Ordering::Release);
+        self.state_since.store(now_ms(), Ordering::Release);
+    }
+
+    pub(crate) fn begin_poll(&self) {
+        self.polls.fetch_add(1, Ordering::AcqRel);
+        self.set_state(TaskActivity::Polling);
+    }
+
+    pub(crate) fn touch(&self) {
+        self.last_activity.store(now_ms(), Ordering::Release);
+    }
+
+    fn activity(&self) -> (TaskActivity, u64) {
+        (
+            TaskActivity::from_u8(self.state.load(Ordering::Acquire)),
+            self.state_since.load(Ordering::Acquire),
+        )
+    }
+
+    fn last_activity_ms(&self) -> u64 {
+        self.last_activity
+            .load(Ordering::Acquire)
+            .max(self.log.last_line_ms())
+    }
+
+    /// Write a line into the task's log and emit it as a tracing event inside
+    /// the task's span (so the file log and Mission Control carry it too).
+    pub(crate) fn emit(&self, level: Level, message: &str) {
+        self.log
+            .push(log::format_line(level, "editor_task", message));
+        self.span.in_scope(|| match level {
+            Level::ERROR => tracing::error!(task_direct = true, "{}", message),
+            Level::WARN => tracing::warn!(task_direct = true, "{}", message),
+            Level::INFO => tracing::info!(task_direct = true, "{}", message),
+            Level::DEBUG => tracing::debug!(task_direct = true, "{}", message),
+            Level::TRACE => tracing::trace!(task_direct = true, "{}", message),
+        });
+    }
+}
+
+type LocalFuture = Pin<Box<dyn Future<Output = Result<(), String>>>>;
+type Work = Box<dyn FnOnce(TaskContext) -> LocalFuture + Send + 'static>;
 
 struct QueuedWork {
     id: TaskId,
     duration: TaskDuration,
+    shared: Arc<TaskShared>,
     work: Work,
 }
 
 struct TaskRecord {
     snapshot: TaskSnapshot,
-    cancelled: Arc<AtomicBool>,
+    shared: Arc<TaskShared>,
+}
+
+impl TaskRecord {
+    /// The snapshot with its live, computed fields filled in.
+    fn view(
+        &self,
+        now: u64,
+        thresholds: &StallThresholds,
+        running: (usize, usize),
+    ) -> TaskSnapshot {
+        let mut snapshot = self.snapshot.clone();
+        let (activity, since) = self.shared.activity();
+        snapshot.activity = activity;
+        snapshot.activity_for = Duration::from_millis(now.saturating_sub(since));
+        snapshot.polls = self.shared.polls.load(Ordering::Acquire);
+        snapshot.idle_for =
+            Duration::from_millis(now.saturating_sub(self.shared.last_activity_ms()));
+        snapshot.log_lines = self.shared.log.total();
+        snapshot.stall = self.diagnose(now, thresholds, running);
+        snapshot
+    }
+
+    fn diagnose(
+        &self,
+        now: u64,
+        thresholds: &StallThresholds,
+        running: (usize, usize),
+    ) -> Option<Stall> {
+        let snapshot = &self.snapshot;
+        let shared = &self.shared;
+        let (activity, since) = shared.activity();
+        let in_state = Duration::from_millis(now.saturating_sub(since));
+        let idle = Duration::from_millis(now.saturating_sub(shared.last_activity_ms()));
+        let waited = snapshot.submitted_at.elapsed().unwrap_or_default();
+        let stall = |kind, message: String| Some(Stall { kind, message });
+        match snapshot.status {
+            TaskStatus::Queued if shared.pooled => {
+                if waited < thresholds.queue_wait {
+                    return None;
+                }
+                let (pool, count) = match snapshot.duration {
+                    TaskDuration::Long => ("dedicated", running.1),
+                    _ => ("on-demand", running.0),
+                };
+                stall(
+                    StallKind::QueueWait,
+                    format!(
+                        "Waiting {:.0}s for a free {pool} worker; {count} task(s) are running in that pool.",
+                        waited.as_secs_f32()
+                    ),
+                )
+            }
+            TaskStatus::Queued => (waited >= thresholds.never_polled).then(|| Stall {
+                kind: StallKind::NeverPolled,
+                message: format!(
+                    "Created {:.0}s ago but never polled: the future was not handed to an executor, or it is not being awaited.",
+                    waited.as_secs_f32()
+                ),
+            }),
+            TaskStatus::Running => match (shared.model, activity) {
+                (TaskModel::Foreground, TaskActivity::Polling)
+                    if in_state >= thresholds.blocked_thread =>
+                {
+                    stall(
+                        StallKind::BlockedThread,
+                        format!(
+                            "Running inline on thread \"{}\" for {:.1}s. It holds that thread until it returns.",
+                            snapshot.worker.as_deref().unwrap_or("?"),
+                            in_state.as_secs_f32()
+                        ),
+                    )
+                }
+                (TaskModel::Async, TaskActivity::Polling) if in_state >= thresholds.blocked_poll => {
+                    stall(
+                        StallKind::BlockedPoll,
+                        format!(
+                            "Inside one poll for {:.1}s on \"{}\". Synchronous work or a blocking call in async code is holding the worker; move it to `submit` or await a non-blocking API.",
+                            in_state.as_secs_f32(),
+                            snapshot.worker.as_deref().unwrap_or("?")
+                        ),
+                    )
+                }
+                (TaskModel::Async, TaskActivity::Pending) if idle >= thresholds.pending_idle => {
+                    stall(
+                        StallKind::Pending,
+                        format!(
+                            "Awaiting for {:.0}s with no log line, progress or phase change (phase: {}). Whatever it awaits has not completed or woken it.",
+                            idle.as_secs_f32(),
+                            snapshot.phase.as_deref().unwrap_or("none set")
+                        ),
+                    )
+                }
+                (TaskModel::Blocking, _) if idle >= thresholds.blocking_idle => stall(
+                    StallKind::NoProgress,
+                    format!(
+                        "No log line, progress or phase change for {:.0}s on \"{}\" (phase: {}).",
+                        idle.as_secs_f32(),
+                        snapshot.worker.as_deref().unwrap_or("?"),
+                        snapshot.phase.as_deref().unwrap_or("none set")
+                    ),
+                ),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -104,12 +436,262 @@ struct QueueState {
     dedicated_workers: usize,
 }
 
+impl QueueState {
+    fn running_per_pool(&self) -> (usize, usize) {
+        let mut counts = (0, 0);
+        for record in self.records.values() {
+            if record.snapshot.status == TaskStatus::Running && record.shared.pooled {
+                match record.snapshot.duration {
+                    TaskDuration::Short => counts.0 += 1,
+                    TaskDuration::Long => counts.1 += 1,
+                    TaskDuration::Foreground => {}
+                }
+            }
+        }
+        counts
+    }
+}
+
 struct QueueInner {
     state: Mutex<QueueState>,
     ready: Condvar,
-    next_id: AtomicU64,
     revision: AtomicU64,
     spawned_workers: Mutex<(usize, usize)>,
+    thresholds: Mutex<StallThresholds>,
+}
+
+impl QueueInner {
+    fn changed(&self) {
+        self.revision.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Create a task record, its log and its span.
+    fn create(
+        self: &Arc<Self>,
+        description: &TaskDescription,
+        model: TaskModel,
+        pooled: bool,
+        origin: &Location<'_>,
+    ) -> Arc<TaskShared> {
+        let id = TaskId(NEXT_ID.fetch_add(1, Ordering::Relaxed));
+        let log = Arc::new(log::TaskLog::new());
+        log::register(id, Arc::clone(&log));
+        // A root span, at ERROR so a restrictive RUST_LOG still keeps tasks
+        // attributable: the span carries identity, not a message.
+        let span = tracing::span!(
+            parent: None,
+            Level::ERROR,
+            "editor_task",
+            task_id = id.get(),
+            title = %description.title,
+            category = %description.category,
+        );
+        let shared = Arc::new(TaskShared {
+            id,
+            model,
+            pooled,
+            cancelled: AtomicBool::new(false),
+            started: AtomicBool::new(false),
+            log,
+            span,
+            state: AtomicU8::new(TaskActivity::NotStarted as u8),
+            state_since: AtomicU64::new(now_ms()),
+            polls: AtomicU64::new(0),
+            last_activity: AtomicU64::new(now_ms()),
+            reported_stall: AtomicU8::new(0),
+        });
+        let snapshot = TaskSnapshot {
+            id,
+            title: description.title.clone(),
+            category: description.category.clone(),
+            duration: description.duration,
+            model,
+            status: TaskStatus::Queued,
+            starred: false,
+            progress: None,
+            detail: None,
+            error: None,
+            submitted_at: SystemTime::now(),
+            started_at: None,
+            finished_at: None,
+            phase: None,
+            origin: format!("{}:{}", origin.file(), origin.line()),
+            worker: None,
+            polls: 0,
+            activity: TaskActivity::NotStarted,
+            activity_for: Duration::ZERO,
+            idle_for: Duration::ZERO,
+            stall: None,
+            log_lines: 0,
+        };
+        let forgotten = {
+            let mut state = self.state.lock();
+            state.records.insert(
+                id,
+                TaskRecord {
+                    snapshot,
+                    shared: Arc::clone(&shared),
+                },
+            );
+            Self::prune(&mut state)
+        };
+        for id in forgotten {
+            log::unregister(id);
+        }
+        shared.emit(
+            Level::INFO,
+            &format!(
+                "queued: {} [{}] from {}",
+                description.title, description.category, origin
+            ),
+        );
+        self.changed();
+        shared
+    }
+
+    /// Forget the oldest finished, unstarred tasks beyond the history limit.
+    fn prune(state: &mut QueueState) -> Vec<TaskId> {
+        let finished = state
+            .records
+            .values()
+            .filter(|record| record.snapshot.status.is_finished())
+            .count();
+        if finished <= MAX_FINISHED_TASKS {
+            return Vec::new();
+        }
+        let drop_ids: Vec<TaskId> = state
+            .records
+            .values()
+            .filter(|record| record.snapshot.status.is_finished() && !record.snapshot.starred)
+            .map(|record| record.snapshot.id)
+            .take(finished - MAX_FINISHED_TASKS)
+            .collect();
+        for id in &drop_ids {
+            state.records.remove(id);
+        }
+        drop_ids
+    }
+
+    /// Mark the task running on the current thread.
+    pub(crate) fn mark_started(&self, shared: &TaskShared) {
+        if shared.started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let thread = std::thread::current()
+            .name()
+            .unwrap_or("unnamed")
+            .to_owned();
+        let waited = {
+            let mut state = self.state.lock();
+            let Some(record) = state.records.get_mut(&shared.id) else {
+                return;
+            };
+            if record.snapshot.status == TaskStatus::Queued {
+                record.snapshot.status = TaskStatus::Running;
+            }
+            record.snapshot.started_at = Some(SystemTime::now());
+            record.snapshot.worker = Some(thread.clone());
+            record.snapshot.submitted_at.elapsed().unwrap_or_default()
+        };
+        shared.touch();
+        self.changed();
+        shared.emit(
+            Level::INFO,
+            &format!(
+                "started on {thread} after {:.0}ms in the queue",
+                waited.as_secs_f64() * 1000.0
+            ),
+        );
+    }
+
+    /// Move a task to its terminal status. Idempotent: the first call wins.
+    pub(crate) fn finish(&self, shared: &TaskShared, outcome: Outcome) {
+        let (status, summary, level, duration) = {
+            let mut state = self.state.lock();
+            let Some(record) = state.records.get_mut(&shared.id) else {
+                return;
+            };
+            if record.snapshot.status.is_finished() {
+                return;
+            }
+            let snapshot = &mut record.snapshot;
+            let cancelled = shared.cancelled.load(Ordering::Acquire);
+            let (status, summary, level) = if cancelled {
+                (TaskStatus::Cancelled, "cancelled".to_string(), Level::WARN)
+            } else {
+                match outcome {
+                    Outcome::Succeeded => {
+                        snapshot.progress = Some(1.0);
+                        (TaskStatus::Succeeded, "succeeded".to_string(), Level::INFO)
+                    }
+                    Outcome::Failed(error) => {
+                        let summary = format!("failed: {error}");
+                        snapshot.error = Some(error);
+                        (TaskStatus::Failed, summary, Level::ERROR)
+                    }
+                    Outcome::Dropped => (
+                        TaskStatus::Cancelled,
+                        if shared.started.load(Ordering::Acquire) {
+                            "dropped before it completed: its future was dropped while pending"
+                                .to_string()
+                        } else {
+                            "dropped without ever being polled".to_string()
+                        },
+                        Level::WARN,
+                    ),
+                }
+            };
+            snapshot.status = status;
+            snapshot.finished_at = Some(SystemTime::now());
+            let duration = snapshot
+                .started_at
+                .and_then(|started| started.elapsed().ok())
+                .unwrap_or_default();
+            (status, summary, level, duration)
+        };
+        shared.set_state(TaskActivity::Finished);
+        shared.touch();
+        self.changed();
+        shared.emit(
+            level,
+            &format!(
+                "finished ({status:?}): {summary} after {:.0}ms, {} poll(s)",
+                duration.as_secs_f64() * 1000.0,
+                shared.polls.load(Ordering::Acquire)
+            ),
+        );
+    }
+
+    /// Report newly stalled tasks into their logs, and recoveries.
+    fn watchdog_pass(&self) {
+        let thresholds = *self.thresholds.lock();
+        let now = now_ms();
+        let findings: Vec<(Arc<TaskShared>, Option<Stall>)> = {
+            let state = self.state.lock();
+            let running = state.running_per_pool();
+            state
+                .records
+                .values()
+                .filter(|record| !record.snapshot.status.is_finished())
+                .map(|record| {
+                    (
+                        Arc::clone(&record.shared),
+                        record.diagnose(now, &thresholds, running),
+                    )
+                })
+                .collect()
+        };
+        for (shared, stall) in findings {
+            let code = stall.as_ref().map_or(0, |stall| stall.kind.code());
+            if shared.reported_stall.swap(code, Ordering::AcqRel) == code {
+                continue;
+            }
+            match stall {
+                Some(stall) => shared.emit(Level::WARN, &format!("stalled: {}", stall.message)),
+                None => shared.emit(Level::INFO, "no longer stalled"),
+            }
+        }
+    }
 }
 
 /// Current configured concurrency for the two editor-only worker pools.
@@ -127,6 +709,7 @@ pub struct TaskQueue {
 
 impl TaskQueue {
     pub fn new() -> Self {
+        let _ = now_ms();
         let inner = Arc::new(QueueInner {
             state: Mutex::new(QueueState {
                 on_demand_workers: DEFAULT_ON_DEMAND_WORKERS,
@@ -134,12 +717,13 @@ impl TaskQueue {
                 ..QueueState::default()
             }),
             ready: Condvar::new(),
-            next_id: AtomicU64::new(1),
             revision: AtomicU64::new(0),
             spawned_workers: Mutex::new((0, 0)),
+            thresholds: Mutex::new(StallThresholds::default()),
         });
         ensure_worker_threads(&inner, TaskDuration::Short, DEFAULT_ON_DEMAND_WORKERS);
         ensure_worker_threads(&inner, TaskDuration::Long, DEFAULT_DEDICATED_WORKERS);
+        spawn_watchdog(Arc::downgrade(&inner));
         Self { inner }
     }
 
@@ -165,61 +749,145 @@ impl TaskQueue {
         }
         ensure_worker_threads(&self.inner, TaskDuration::Short, counts.on_demand);
         ensure_worker_threads(&self.inner, TaskDuration::Long, counts.dedicated);
-        self.changed();
+        self.inner.changed();
         self.inner.ready.notify_all();
         counts
     }
 
-    /// Submit editor work. The returned task remains in the list after it
-    /// completes so users can inspect its outcome.
+    /// Change how long a task may go quiet before it is reported as stalled.
+    pub fn set_stall_thresholds(&self, thresholds: StallThresholds) {
+        *self.inner.thresholds.lock() = thresholds;
+    }
+
+    pub fn stall_thresholds(&self) -> StallThresholds {
+        *self.inner.thresholds.lock()
+    }
+
+    /// Submit editor work that blocks its worker by design (a build, an
+    /// import). Prefer [`Self::submit_async`] for anything that waits.
+    ///
+    /// The returned task remains in the list after it completes so users can
+    /// inspect its outcome and its log.
+    #[track_caller]
     pub fn submit(
         &self,
         description: TaskDescription,
         work: impl FnOnce(TaskContext) -> Result<(), String> + Send + 'static,
     ) -> TaskId {
-        let id = TaskId(self.inner.next_id.fetch_add(1, Ordering::Relaxed));
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let snapshot = TaskSnapshot {
-            id,
-            title: description.title,
-            category: description.category,
-            duration: description.duration,
-            status: TaskStatus::Queued,
-            starred: false,
-            progress: None,
-            detail: None,
-            error: None,
-            submitted_at: SystemTime::now(),
+        let origin = Location::caller();
+        self.enqueue(
+            description,
+            TaskModel::Blocking,
+            origin,
+            Box::new(move |ctx| Box::pin(async move { work(ctx) })),
+        )
+    }
+
+    /// Submit an async editor task. The future runs on a pool worker, inside
+    /// the task's span; it must `.await` to wait and never block in a poll.
+    /// It need not be `Send`: it is created and polled on one worker thread.
+    #[track_caller]
+    pub fn submit_async<F, Fut>(&self, description: TaskDescription, work: F) -> TaskId
+    where
+        F: FnOnce(TaskContext) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), String>> + 'static,
+    {
+        let origin = Location::caller();
+        self.enqueue(
+            description,
+            TaskModel::Async,
+            origin,
+            Box::new(move |ctx| Box::pin(work(ctx))),
+        )
+    }
+
+    fn enqueue(
+        &self,
+        description: TaskDescription,
+        model: TaskModel,
+        origin: &Location<'_>,
+        work: Work,
+    ) -> TaskId {
+        let duration = match description.duration {
+            TaskDuration::Foreground => TaskDuration::Short,
+            other => other,
         };
-        {
-            let mut state = self.inner.state.lock();
-            state.records.insert(
-                id,
-                TaskRecord {
-                    snapshot,
-                    cancelled,
-                },
-            );
-            state.pending.push(QueuedWork {
-                id,
-                duration: description.duration,
-                work: Box::new(work),
-            });
-        }
-        self.changed();
+        let shared = self.inner.create(&description, model, true, origin);
+        let id = shared.id;
+        self.inner.state.lock().pending.push(QueuedWork {
+            id,
+            duration,
+            shared,
+            work,
+        });
         self.inner.ready.notify_all();
         id
     }
 
+    /// Track a future that an executor owns (see [`tracked`]).
+    #[track_caller]
+    pub fn track<'a, T: TaskOutcome>(
+        &self,
+        description: TaskDescription,
+        future: impl Future<Output = T> + 'a,
+    ) -> Tracked<'a, T> {
+        let origin = Location::caller();
+        let shared = self
+            .inner
+            .create(&description, TaskModel::Async, false, origin);
+        Tracked::new(
+            TaskContext {
+                inner: Arc::clone(&self.inner),
+                shared,
+            },
+            Box::pin(future),
+        )
+    }
+
+    /// Run `work` inline on the calling thread as a task (see [`scope`]).
+    #[track_caller]
+    pub fn scope<R: TaskOutcome>(
+        &self,
+        description: TaskDescription,
+        work: impl FnOnce(&TaskContext) -> R,
+    ) -> R {
+        let origin = Location::caller();
+        let description = TaskDescription {
+            duration: TaskDuration::Foreground,
+            ..description
+        };
+        let shared = self
+            .inner
+            .create(&description, TaskModel::Foreground, false, origin);
+        let ctx = TaskContext {
+            inner: Arc::clone(&self.inner),
+            shared,
+        };
+        track::run_scope(&ctx, work)
+    }
+
     pub fn snapshots(&self) -> Vec<TaskSnapshot> {
+        let thresholds = *self.inner.thresholds.lock();
         let state = self.inner.state.lock();
+        let now = now_ms();
+        let running = state.running_per_pool();
         let mut snapshots = state
             .records
             .values()
-            .map(|record| record.snapshot.clone())
+            .map(|record| record.view(now, &thresholds, running))
             .collect::<Vec<_>>();
-        snapshots.sort_by(|a, b| b.submitted_at.cmp(&a.submitted_at));
+        snapshots.sort_by_key(|a| std::cmp::Reverse(a.submitted_at));
         snapshots
+    }
+
+    /// The task's log buffer. Read it with [`TaskLog::read_from`]; it stays
+    /// readable while the task is listed.
+    pub fn log(&self, id: TaskId) -> Option<Arc<TaskLog>> {
+        let state = self.inner.state.lock();
+        state
+            .records
+            .get(&id)
+            .map(|record| Arc::clone(&record.shared.log))
     }
 
     pub fn revision(&self) -> u64 {
@@ -240,7 +908,7 @@ impl TaskQueue {
             }
         };
         if changed {
-            self.changed();
+            self.inner.changed();
             self.inner.ready.notify_all();
         }
         true
@@ -249,26 +917,40 @@ impl TaskQueue {
     /// Cancel a queued job immediately or request cooperative cancellation
     /// from a running job. Work can check this through `TaskContext`.
     pub fn cancel(&self, id: TaskId) -> bool {
-        let mut state = self.inner.state.lock();
-        let Some(record) = state.records.get_mut(&id) else {
-            return false;
-        };
-        match record.snapshot.status {
-            TaskStatus::Queued => {
-                record.cancelled.store(true, Ordering::Release);
-                record.snapshot.status = TaskStatus::Cancelled;
-                state.pending.retain(|work| work.id != id);
+        let shared;
+        let was_queued;
+        {
+            let mut state = self.inner.state.lock();
+            let Some(record) = state.records.get_mut(&id) else {
+                return false;
+            };
+            shared = Arc::clone(&record.shared);
+            match record.snapshot.status {
+                TaskStatus::Queued => {
+                    shared.cancelled.store(true, Ordering::Release);
+                    record.snapshot.status = TaskStatus::Cancelled;
+                    record.snapshot.finished_at = Some(SystemTime::now());
+                    was_queued = true;
+                    state.pending.retain(|work| work.id != id);
+                }
+                TaskStatus::Running => {
+                    shared.cancelled.store(true, Ordering::Release);
+                    was_queued = false;
+                }
+                TaskStatus::Succeeded | TaskStatus::Failed | TaskStatus::Cancelled => return false,
             }
-            TaskStatus::Running => record.cancelled.store(true, Ordering::Release),
-            TaskStatus::Succeeded | TaskStatus::Failed | TaskStatus::Cancelled => return false,
         }
-        drop(state);
-        self.changed();
+        if was_queued {
+            shared.set_state(TaskActivity::Finished);
+            shared.emit(Level::WARN, "cancelled while still queued; it never ran");
+        } else {
+            shared.emit(
+                Level::WARN,
+                "cancellation requested; the task must observe it to stop",
+            );
+        }
+        self.inner.changed();
         true
-    }
-
-    fn changed(&self) {
-        self.inner.revision.fetch_add(1, Ordering::AcqRel);
     }
 }
 
@@ -278,47 +960,119 @@ impl Default for TaskQueue {
     }
 }
 
+thread_local! {
+    static CURRENT: RefCell<Vec<TaskContext>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The task whose work is running on this thread right now, if any. Deep
+/// helpers use it to report progress or a phase without being passed the
+/// context.
+pub fn current() -> Option<TaskContext> {
+    CURRENT.with(|stack| stack.borrow().last().cloned())
+}
+
+/// Keeps a task's span entered and its context current while alive.
+pub(crate) struct EnterGuard {
+    _span: tracing::span::EnteredSpan,
+}
+
+impl Drop for EnterGuard {
+    fn drop(&mut self) {
+        CURRENT.with(|stack| {
+            stack.borrow_mut().pop();
+        });
+    }
+}
+
 #[derive(Clone)]
 pub struct TaskContext {
-    id: TaskId,
-    inner: Arc<QueueInner>,
-    cancelled: Arc<AtomicBool>,
+    pub(crate) inner: Arc<QueueInner>,
+    pub(crate) shared: Arc<TaskShared>,
 }
 
 impl TaskContext {
     pub fn id(&self) -> TaskId {
-        self.id
+        self.shared.id
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.shared.cancelled.load(Ordering::Acquire)
     }
 
     /// Mark this task cancelled after its work observes a cancellation request
     /// from its own domain-specific control (for example the build Cancel
     /// button).
     pub fn mark_cancelled(&self) {
-        self.cancelled.store(true, Ordering::Release);
+        self.shared.cancelled.store(true, Ordering::Release);
+    }
+
+    /// The task's tracing span. Instrument spawned sub-futures with it
+    /// (`future.instrument(ctx.span())`) so their logs stay with this task.
+    pub fn span(&self) -> tracing::Span {
+        self.shared.span.clone()
+    }
+
+    pub(crate) fn enter(&self) -> EnterGuard {
+        CURRENT.with(|stack| stack.borrow_mut().push(self.clone()));
+        EnterGuard {
+            _span: self.shared.span.clone().entered(),
+        }
     }
 
     /// Set progress from 0.0 to 1.0 and an optional human-readable stage.
     pub fn report_progress(&self, progress: f32, detail: impl Into<String>) {
         let detail = detail.into();
-        let mut state = self.inner.state.lock();
-        if let Some(record) = state.records.get_mut(&self.id) {
-            record.snapshot.progress = Some(progress.clamp(0.0, 1.0));
-            record.snapshot.detail = (!detail.is_empty()).then_some(detail);
+        {
+            let mut state = self.inner.state.lock();
+            if let Some(record) = state.records.get_mut(&self.shared.id) {
+                record.snapshot.progress = Some(progress.clamp(0.0, 1.0));
+                record.snapshot.detail = (!detail.is_empty()).then_some(detail);
+            }
         }
-        drop(state);
-        self.inner.revision.fetch_add(1, Ordering::AcqRel);
+        self.shared.touch();
+        self.inner.changed();
+    }
+
+    /// Name the stage the task is in. It shows in the task list, resets the
+    /// stall clock, and is written to the log, so a stall report says where
+    /// the task stopped.
+    pub fn set_phase(&self, phase: impl Into<String>) {
+        let phase = phase.into();
+        {
+            let mut state = self.inner.state.lock();
+            if let Some(record) = state.records.get_mut(&self.shared.id) {
+                record.snapshot.phase = Some(phase.clone());
+            }
+        }
+        self.shared.touch();
+        self.inner.changed();
+        self.shared.emit(Level::INFO, &format!("phase: {phase}"));
+    }
+
+    /// Write a line to this task's log (and the engine log) at any level.
+    pub fn log(&self, level: Level, message: impl AsRef<str>) {
+        self.shared.touch();
+        self.shared.emit(level, message.as_ref());
+    }
+
+    pub fn info(&self, message: impl AsRef<str>) {
+        self.log(Level::INFO, message);
+    }
+
+    pub fn warn(&self, message: impl AsRef<str>) {
+        self.log(Level::WARN, message);
+    }
+
+    pub fn error(&self, message: impl AsRef<str>) {
+        self.log(Level::ERROR, message);
     }
 }
 
 fn ensure_worker_threads(inner: &Arc<QueueInner>, duration: TaskDuration, target: usize) {
     let mut spawned = inner.spawned_workers.lock();
     let count = match duration {
-        TaskDuration::Short => &mut spawned.0,
         TaskDuration::Long => &mut spawned.1,
+        _ => &mut spawned.0,
     };
     while *count < target {
         let index = *count;
@@ -329,13 +1083,26 @@ fn ensure_worker_threads(inner: &Arc<QueueInner>, duration: TaskDuration, target
 
 fn spawn_worker(inner: Arc<QueueInner>, duration: TaskDuration, index: usize) {
     let pool = match duration {
-        TaskDuration::Short => "short",
         TaskDuration::Long => "long",
+        _ => "short",
     };
     std::thread::Builder::new()
         .name(format!("editor-task-{pool}-{index}"))
         .spawn(move || worker_loop(inner, duration, index))
         .expect("failed to spawn editor task worker");
+}
+
+fn spawn_watchdog(inner: Weak<QueueInner>) {
+    let spawned = std::thread::Builder::new()
+        .name("editor-task-watchdog".into())
+        .spawn(move || loop {
+            std::thread::sleep(WATCHDOG_INTERVAL);
+            let Some(inner) = inner.upgrade() else { return };
+            inner.watchdog_pass();
+        });
+    if let Err(error) = spawned {
+        tracing::error!("failed to start the editor task watchdog: {error}");
+    }
 }
 
 fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration, worker_index: usize) {
@@ -344,8 +1111,8 @@ fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration, worker_index: usi
             let mut state = inner.state.lock();
             loop {
                 let active_workers = match duration {
-                    TaskDuration::Short => state.on_demand_workers,
                     TaskDuration::Long => state.dedicated_workers,
+                    _ => state.on_demand_workers,
                 };
                 if worker_index >= active_workers {
                     inner.ready.wait(&mut state);
@@ -366,339 +1133,33 @@ fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration, worker_index: usi
                     .map(|(ix, _)| ix);
                 if let Some(ix) = next {
                     let work = state.pending.swap_remove(ix);
+                    // Running before the lock is released, so a cancel cannot
+                    // slip between taking the work and starting it.
                     if let Some(record) = state.records.get_mut(&work.id) {
                         record.snapshot.status = TaskStatus::Running;
                     }
-                    inner.revision.fetch_add(1, Ordering::AcqRel);
+                    inner.changed();
                     break work;
                 }
                 inner.ready.wait(&mut state);
             }
         };
 
-        let cancellation = {
-            let state = inner.state.lock();
-            state
-                .records
-                .get(&work.id)
-                .map(|record| Arc::clone(&record.cancelled))
-                .unwrap_or_else(|| Arc::new(AtomicBool::new(false)))
-        };
-        let context = TaskContext {
-            id: work.id,
+        let ctx = TaskContext {
             inner: Arc::clone(&inner),
-            cancelled: Arc::clone(&cancellation),
+            shared: Arc::clone(&work.shared),
         };
-        let result = catch_unwind(AssertUnwindSafe(|| (work.work)(context)));
-        let mut state = inner.state.lock();
-        if let Some(record) = state.records.get_mut(&work.id) {
-            if cancellation.load(Ordering::Acquire) {
-                record.snapshot.status = TaskStatus::Cancelled;
-            } else {
-                match result {
-                    Ok(Ok(())) => {
-                        record.snapshot.status = TaskStatus::Succeeded;
-                        record.snapshot.progress = Some(1.0);
-                    }
-                    Ok(Err(error)) => {
-                        record.snapshot.status = TaskStatus::Failed;
-                        record.snapshot.error = Some(error);
-                    }
-                    Err(_) => {
-                        record.snapshot.status = TaskStatus::Failed;
-                        record.snapshot.error = Some("Task panicked".into());
-                    }
-                }
-            }
-        }
-        drop(state);
-        inner.revision.fetch_add(1, Ordering::AcqRel);
+        inner.mark_started(&work.shared);
+        // The future is created and polled on this thread only. A panic is
+        // recorded by the tracked future (with its message) before it
+        // unwinds to here; the worker survives it.
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            let future = (work.work)(ctx.clone());
+            let tracked = Tracked::new(ctx, future);
+            futures::executor::block_on(tracked)
+        }));
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::mpsc;
-    use std::time::{Duration, Instant};
-
-    const TIMEOUT: Duration = Duration::from_secs(10);
-
-    fn desc(duration: TaskDuration) -> TaskDescription {
-        TaskDescription::new("job", "test", duration)
-    }
-
-    fn snapshot(queue: &TaskQueue, id: TaskId) -> TaskSnapshot {
-        queue
-            .snapshots()
-            .into_iter()
-            .find(|s| s.id == id)
-            .expect("task record exists")
-    }
-
-    fn status(queue: &TaskQueue, id: TaskId) -> TaskStatus {
-        snapshot(queue, id).status
-    }
-
-    fn wait_for(queue: &TaskQueue, id: TaskId, expected: TaskStatus) {
-        let start = Instant::now();
-        while status(queue, id) != expected {
-            assert!(
-                start.elapsed() < TIMEOUT,
-                "timed out waiting for {expected:?}, last status {:?}",
-                status(queue, id)
-            );
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    }
-
-    /// Queue with one worker per pool, whose short worker is held busy until
-    /// the returned sender is signalled (or dropped).
-    fn queue_with_blocked_short_worker() -> (TaskQueue, TaskId, mpsc::Sender<()>) {
-        let queue = TaskQueue::new();
-        queue.set_worker_counts(1, 1);
-        let (release, gate) = mpsc::channel::<()>();
-        let blocker = queue.submit(desc(TaskDuration::Short), move |_| {
-            let _ = gate.recv();
-            Ok(())
-        });
-        wait_for(&queue, blocker, TaskStatus::Running);
-        (queue, blocker, release)
-    }
-
-    #[test]
-    fn successful_task_reports_succeeded_with_full_progress() {
-        let queue = TaskQueue::new();
-        let id = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        wait_for(&queue, id, TaskStatus::Succeeded);
-        let snap = snapshot(&queue, id);
-        assert_eq!(snap.progress, Some(1.0));
-        assert_eq!(snap.error, None);
-        assert_eq!(snap.title, "job");
-        assert_eq!(snap.category, "test");
-    }
-
-    #[test]
-    fn task_ids_are_unique_and_increasing() {
-        let queue = TaskQueue::new();
-        let a = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        let b = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        assert!(b.get() > a.get());
-    }
-
-    #[test]
-    fn failing_task_records_error_message() {
-        let queue = TaskQueue::new();
-        let id = queue.submit(desc(TaskDuration::Short), |_| Err("boom".to_string()));
-        wait_for(&queue, id, TaskStatus::Failed);
-        assert_eq!(snapshot(&queue, id).error.as_deref(), Some("boom"));
-    }
-
-    #[test]
-    fn panicking_task_is_failed_and_worker_survives() {
-        let queue = TaskQueue::new();
-        queue.set_worker_counts(1, 1);
-        let bad = queue.submit(desc(TaskDuration::Short), |_| panic!("expected test panic"));
-        wait_for(&queue, bad, TaskStatus::Failed);
-        assert_eq!(
-            snapshot(&queue, bad).error.as_deref(),
-            Some("Task panicked")
-        );
-
-        // The only short worker must still be alive to run the next job.
-        let ok = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        wait_for(&queue, ok, TaskStatus::Succeeded);
-    }
-
-    #[test]
-    fn cancelling_queued_task_prevents_it_from_running() {
-        let (queue, _blocker, release) = queue_with_blocked_short_worker();
-        let ran = Arc::new(AtomicBool::new(false));
-        let ran_in_task = Arc::clone(&ran);
-        let id = queue.submit(desc(TaskDuration::Short), move |_| {
-            ran_in_task.store(true, Ordering::SeqCst);
-            Ok(())
-        });
-        assert_eq!(status(&queue, id), TaskStatus::Queued);
-
-        assert!(queue.cancel(id));
-        assert_eq!(status(&queue, id), TaskStatus::Cancelled);
-        // Already terminal: a second cancel is rejected.
-        assert!(!queue.cancel(id));
-
-        // Let the worker drain, then prove the cancelled job never ran.
-        release.send(()).unwrap();
-        let marker = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        wait_for(&queue, marker, TaskStatus::Succeeded);
-        assert!(!ran.load(Ordering::SeqCst));
-        assert_eq!(status(&queue, id), TaskStatus::Cancelled);
-    }
-
-    #[test]
-    fn cancel_of_unknown_or_finished_task_returns_false() {
-        let queue = TaskQueue::new();
-        assert!(!queue.cancel(TaskId(9_999)));
-        let id = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        wait_for(&queue, id, TaskStatus::Succeeded);
-        assert!(!queue.cancel(id));
-        assert_eq!(status(&queue, id), TaskStatus::Succeeded);
-    }
-
-    #[test]
-    fn cooperative_cancel_of_running_task_ends_cancelled() {
-        let queue = TaskQueue::new();
-        let id = queue.submit(desc(TaskDuration::Short), |ctx| {
-            let start = Instant::now();
-            while !ctx.is_cancelled() {
-                if start.elapsed() > TIMEOUT {
-                    return Err("never cancelled".into());
-                }
-                std::thread::sleep(Duration::from_millis(1));
-            }
-            // Even a successful return must not override cancellation.
-            Ok(())
-        });
-        wait_for(&queue, id, TaskStatus::Running);
-        assert!(queue.cancel(id));
-        wait_for(&queue, id, TaskStatus::Cancelled);
-    }
-
-    #[test]
-    fn mark_cancelled_from_inside_work_yields_cancelled() {
-        let queue = TaskQueue::new();
-        let id = queue.submit(desc(TaskDuration::Short), |ctx| {
-            ctx.mark_cancelled();
-            assert!(ctx.is_cancelled());
-            Ok(())
-        });
-        wait_for(&queue, id, TaskStatus::Cancelled);
-    }
-
-    #[test]
-    fn context_exposes_its_task_id() {
-        let queue = TaskQueue::new();
-        let (tx, rx) = mpsc::channel();
-        let id = queue.submit(desc(TaskDuration::Short), move |ctx| {
-            tx.send(ctx.id()).unwrap();
-            Ok(())
-        });
-        assert_eq!(rx.recv_timeout(TIMEOUT).unwrap(), id);
-    }
-
-    #[test]
-    fn report_progress_clamps_and_empty_detail_clears() {
-        let queue = TaskQueue::new();
-        let (reported, wait_reported) = mpsc::channel::<()>();
-        let (release, gate) = mpsc::channel::<()>();
-        let id = queue.submit(desc(TaskDuration::Short), move |ctx| {
-            ctx.report_progress(2.5, "stage one");
-            reported.send(()).unwrap();
-            gate.recv().unwrap();
-            ctx.report_progress(-1.0, "");
-            reported.send(()).unwrap();
-            gate.recv().unwrap();
-            Ok(())
-        });
-
-        wait_reported.recv_timeout(TIMEOUT).unwrap();
-        let snap = snapshot(&queue, id);
-        assert_eq!(snap.progress, Some(1.0));
-        assert_eq!(snap.detail.as_deref(), Some("stage one"));
-
-        release.send(()).unwrap();
-        wait_reported.recv_timeout(TIMEOUT).unwrap();
-        let snap = snapshot(&queue, id);
-        assert_eq!(snap.progress, Some(0.0));
-        assert_eq!(snap.detail, None);
-
-        release.send(()).unwrap();
-        wait_for(&queue, id, TaskStatus::Succeeded);
-    }
-
-    #[test]
-    fn revision_increases_on_state_changes() {
-        let queue = TaskQueue::new();
-        let before = queue.revision();
-        let id = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        wait_for(&queue, id, TaskStatus::Succeeded);
-        assert!(queue.revision() > before);
-
-        let before = queue.revision();
-        assert!(queue.set_starred(id, true));
-        assert!(queue.revision() > before);
-
-        // Setting the same value is not a change.
-        let before = queue.revision();
-        assert!(queue.set_starred(id, true));
-        assert_eq!(queue.revision(), before);
-    }
-
-    #[test]
-    fn set_starred_unknown_id_returns_false() {
-        let queue = TaskQueue::new();
-        assert!(!queue.set_starred(TaskId(12_345), true));
-    }
-
-    #[test]
-    fn starred_queued_task_runs_before_older_unstarred_ones() {
-        let (queue, _blocker, release) = queue_with_blocked_short_worker();
-        let order = Arc::new(Mutex::new(Vec::new()));
-        let mut ids = Vec::new();
-        for label in ["a", "b", "c"] {
-            let order = Arc::clone(&order);
-            ids.push(queue.submit(desc(TaskDuration::Short), move |_| {
-                order.lock().push(label);
-                Ok(())
-            }));
-            // Keep submission timestamps strictly ordered.
-            std::thread::sleep(Duration::from_millis(3));
-        }
-        assert!(queue.set_starred(ids[2], true));
-
-        release.send(()).unwrap();
-        for id in &ids {
-            wait_for(&queue, *id, TaskStatus::Succeeded);
-        }
-        assert_eq!(*order.lock(), vec!["c", "a", "b"]);
-    }
-
-    #[test]
-    fn long_jobs_do_not_wait_behind_a_blocked_short_pool() {
-        let (queue, _blocker, release) = queue_with_blocked_short_worker();
-        let long = queue.submit(desc(TaskDuration::Long), |_| Ok(()));
-        wait_for(&queue, long, TaskStatus::Succeeded);
-        release.send(()).unwrap();
-    }
-
-    #[test]
-    fn worker_counts_default_and_are_clamped() {
-        let queue = TaskQueue::new();
-        assert_eq!(
-            queue.worker_counts(),
-            WorkerCounts {
-                on_demand: DEFAULT_ON_DEMAND_WORKERS,
-                dedicated: DEFAULT_DEDICATED_WORKERS
-            }
-        );
-        assert_eq!(
-            queue.set_worker_counts(0, 1_000),
-            WorkerCounts {
-                on_demand: 1,
-                dedicated: MAX_WORKERS_PER_POOL
-            }
-        );
-        assert_eq!(queue.worker_counts().dedicated, MAX_WORKERS_PER_POOL);
-    }
-
-    #[test]
-    fn snapshots_are_newest_first() {
-        let (queue, blocker, release) = queue_with_blocked_short_worker();
-        std::thread::sleep(Duration::from_millis(3));
-        let second = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        std::thread::sleep(Duration::from_millis(3));
-        let third = queue.submit(desc(TaskDuration::Short), |_| Ok(()));
-        let ids: Vec<_> = queue.snapshots().iter().map(|s| s.id).collect();
-        assert_eq!(ids, vec![third, second, blocker]);
-        release.send(()).unwrap();
-    }
-}
+mod tests;

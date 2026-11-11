@@ -2,6 +2,19 @@
 
 How to add a new dockable panel to the Pulsar editor (e.g. a new tool window, inspector, or viewer).
 
+## Async work, loading and logging (read first)
+
+A panel must not start its own background work with a bare `cx.spawn` or
+`std::thread::spawn`. Anything that loads, scans, builds or waits runs as an
+editor task so it shows in the Tasks window with its own log and stall
+diagnosis: `editor_task_queue::global().submit_async(..)`, or
+`editor_task_queue::tracked(desc, future)` around work inside `cx.spawn`. Log
+with `tracing` inside the task and call `ctx.set_phase(..)` per stage. Your
+editor's creation (`create_editor` in the plugin or provider) is already run
+inside a framework `scope` task, so its `tracing` output is captured to that
+tab's task automatically; there is nothing to opt into. Full rules:
+`.agents/EDITOR_TASKS.md`.
+
 ## Anatomy of a panel
 
 Each editor panel is a GPUI `Entity<T>` that implements:

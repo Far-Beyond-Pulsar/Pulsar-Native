@@ -8,6 +8,7 @@
   ENGINE_LIFECYCLE.md Startup, InitGraph, EngineBackend, subsystems
   PLUGIN_SYSTEM.md   Plugins — descriptors, root crates, the gate, the catalog; DLL plugins
   PLUGIN_API_REFACTOR_PLAN.md  The plugin API plan (#1608): the phase 0 audit, the review, Q1-Q4, what is built
+  EDITOR_TASKS.md    Editor tasks — async tracked work, per-task logs through tracing spans, stall diagnosis, the Tasks window
   FILESYSTEM.md      Virtual filesystem — engine_fs, providers, asset index
   REFLECTION.md      Type system — Reflectable, RuntimeTypeInfo, EngineClass
   ECS.md             Archetype ECS — World, Query, Schedule, Actor

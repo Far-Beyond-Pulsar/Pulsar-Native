@@ -276,6 +276,12 @@ impl ObjectTypeFieldsSection {
     fn refresh_class_caches(&mut self) {
         let generation = crate::scene_edit::classes::class_defs_generation();
         let revision = self.state_arc.read().scene.world_revision();
+        if generation != self.class_defs_generation {
+            // The registry is a project scan, so keep it for this selected
+            // object but discard it when a class asset update advances the
+            // generation. The next class-aware refresh must see new defs.
+            self.class_registry = None;
+        }
         if self.class_view.is_some() && revision != self.class_view_revision {
             self.class_view_revision = revision;
             let registry = self
@@ -290,6 +296,28 @@ impl ObjectTypeFieldsSection {
         }
         if !self.class_cache_dirty && generation == self.class_defs_generation {
             return;
+        }
+
+        // Most inspected objects are ordinary scene entities. Only placed
+        // class roots and their generated children can have class defaults
+        // or a class variables card. Avoid asking the project class registry
+        // for those objects: `project_registry()` scans the project's class
+        // directories, and this section is recreated whenever selection
+        // changes. The existing dirty/generation check above ensures this
+        // lightweight ancestry lookup happens only when these caches need
+        // an initial build or an actual class-definition refresh.
+        if self.class_view.is_none() && self.slot_defaults.is_empty() {
+            let belongs_to_class = {
+                let world = self.scene_db.read();
+                crate::scene_edit::classes::class_root_of(&world.world, &self.object_id).is_some()
+            };
+            if !belongs_to_class {
+                self.slot_default_values.clear();
+                self.class_cache_dirty = false;
+                self.class_defs_generation = generation;
+                self.class_view_revision = revision;
+                return;
+            }
         }
         self.class_view_revision = revision;
         self.class_cache_dirty = false;

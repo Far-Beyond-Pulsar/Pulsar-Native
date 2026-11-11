@@ -20,7 +20,6 @@ mod script_problems;
 mod state;
 mod status_bar;
 mod tab_management;
-mod task_queue_panel;
 mod window_management;
 
 use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};

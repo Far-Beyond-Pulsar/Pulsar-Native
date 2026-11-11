@@ -490,7 +490,13 @@ fn bump_class_defs_generation() {
 /// root when it is a generated child.
 pub fn class_root_of(world: &World, id: &str) -> Option<Entity> {
     let mut current = entity(world, id)?;
+    let mut visited = std::collections::HashSet::new();
     loop {
+        // Generated-child ancestry is normally a tree, but malformed or
+        // partially restored hierarchy data must not hang editor callers.
+        if !visited.insert(current) {
+            return None;
+        }
         if class_world::is_class_root(world, current) {
             return Some(current);
         }
