@@ -140,8 +140,11 @@ renaming** anything under `plugins/` through the VFS fails with
 (`virtual_fs::is_read_only(&error)`), whoever calls it: the editor, another
 plugin, a script. Only the owner's capability changes a folder, never a name a
 caller types. A project is mounted with `virtual_fs::mount_project(root)`:
-`engine_state::set_project_path` (the editor), and the trait index's
-`load`/`rebuild`/`live` (so a game's runtime and tests get them too).
+`engine_state::set_project_path` (the editor), `open_project_file_index` (the
+loading screen indexes the project before the editor publishes it), and the
+trait index's `load`/`rebuild`/`live` (so a game's runtime and tests get them
+too). A root and its canonical form (verbatim `\\?\` on Windows) are the same
+project.
 `virtual_fs::mount_of(path)` names the folder a path is in (the file drawer's
 read-only state).
 

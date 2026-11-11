@@ -1171,6 +1171,10 @@ static SHARED_FILE_INDEXES: OnceLock<parking_lot::Mutex<HashMap<PathBuf, Arc<Pro
 /// the cache the first time it is requested. Remote and P2P projects return
 /// `Ok(None)` so callers can use their provider's native listing path.
 pub fn open_project_file_index(project_root: &Path) -> Result<Option<Arc<ProjectFileIndex>>> {
+    // The index lists the project as the VFS shows it, its `plugins/` folder
+    // included, whoever opens it first (the editor's loading screen opens it
+    // before the project is published).
+    crate::virtual_fs::mount_project(project_root);
     if crate::virtual_fs::is_remote() || crate::is_cloud_path(project_root) {
         return Ok(None);
     }

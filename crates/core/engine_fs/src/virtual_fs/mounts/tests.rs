@@ -283,3 +283,39 @@ fn an_owners_runtime_write_reaches_the_project_file_index_the_drawer_lists() {
     memory.delete("live/index_probe.txt");
     assert!(!listed("index_probe.txt"), "and so did the delete's");
 }
+
+#[test]
+fn opening_a_projects_file_index_mounts_it_and_lists_the_plugin_folders() {
+    // Not mounted first: the editor's loading screen opens the index before
+    // the project path is published.
+    let dir = tempfile::tempdir().unwrap();
+    virtual_fs::write_file(&dir.path().join("own.txt"), b"mine").unwrap();
+    let index = crate::open_project_file_index(dir.path())
+        .unwrap()
+        .expect("a local project has a file index");
+    let paths: Vec<String> = index
+        .query(&crate::FileIndexQuery::default())
+        .unwrap()
+        .into_iter()
+        .map(|file| file.path)
+        .collect();
+    assert!(paths.contains(&"own.txt".to_owned()), "{paths:?}");
+    assert!(
+        paths.contains(&"plugins/test.provider/templates/one.txt".to_owned()),
+        "{paths:?}"
+    );
+    unmount_project(dir.path());
+}
+
+#[test]
+fn a_verbatim_canonical_path_is_the_same_project() {
+    // Mounted by its plain path, asked by its canonical (verbatim on Windows).
+    let dir = project();
+    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    assert_eq!(
+        virtual_fs::read_file(&canonical.join("plugins/test.provider/templates/one.txt")).unwrap(),
+        b"one"
+    );
+    assert!(names(&canonical).contains(&"plugins".to_owned()));
+    unmount_project(dir.path());
+}

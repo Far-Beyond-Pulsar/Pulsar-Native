@@ -749,6 +749,13 @@ struct ProjectRoot {
 
 fn comparable(path: &str) -> String {
     let text = path.replace('\\', "/");
+    // A canonical Windows path is verbatim (`\\?\C:\...`, `\\?\UNC\host\...`):
+    // the same folder as the path without the prefix.
+    let text = if let Some(rest) = text.strip_prefix("//?/UNC/") {
+        format!("//{rest}")
+    } else {
+        text.strip_prefix("//?/").map(str::to_owned).unwrap_or(text)
+    };
     let text = text.trim_end_matches('/');
     if cfg!(windows) {
         text.to_ascii_lowercase()
