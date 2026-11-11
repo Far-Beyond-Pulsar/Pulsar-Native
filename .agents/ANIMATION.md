@@ -624,11 +624,12 @@ the id of the graph the component plays, and `machine` names it.
 
 ### Hot reload
 
-`AssetUpdated(Custom("animation"))` is published by the file watcher
-(`engine_fs::watchers::publish_asset_update`, on any create or modify of an existing file; the
-editor's own saves publish nothing, so the watcher is the only publisher and a save reloads once) for
+`AssetUpdated(Custom("animation"))` is published by the project's file watcher (the one
+the file index starts, `engine_fs::watchers`, on any create or modify of an existing file) for
 `.skeleton .animseq .blendspace .montage .animgraph .ikrig .ikretarget .animretarget
-.posedb`. `engine_backend::scene::reload_updated_asset` reloads the graph/sequence a
+.posedb`: the animation plugin's root registers that kind (`engine_fs::AssetChangeKind`,
+`runtime::animation_change`). The editor's own saves publish nothing, so the watcher is the
+only publisher and a save reloads once. `engine_backend::scene::reload_updated_asset` reloads the graph/sequence a
 component holds directly through SceneDB and calls
 `helio_component::reload_animation_dependencies`: every component whose compiled
 graph's `dependencies` (resolved to canonical paths when the graph binds) include the

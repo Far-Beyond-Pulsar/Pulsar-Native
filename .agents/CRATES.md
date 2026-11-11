@@ -43,7 +43,8 @@ The heart of the engine.
 | `engine` | Binary entry point, startup graph, GPUI `App` creation |
 | `engine_backend` | Window and rendering backend; subsystem lifecycle; the plugins' engine seams (render features, scene rows, game hooks, level rules) |
 | `engine_class_derive` | `#[derive(EngineClass)]` proc macro |
-| `engine_fs` | Virtual filesystem abstraction — local, remote, P2P |
+| `engine_fs` | The filesystem library every file goes through: `virtual_fs` (local, remote, P2P providers, with the plugin folders composed over them: `plugins/<id>/`, provided and changed only by their owner), the project file index and its watcher. `std::fs` is a disallowed method elsewhere (root `clippy.toml`) |
+| `pulsar_traits` | Traits and gameplay roles: trait records and database, the one trait index over every implementer source (`TraitImplementerSource`, `NativeTraitImpl`), conformance, the role registry (`RoleRegistration`), the engine's trait files (its `plugins/pulsar/` folder) and roles |
 | `engine_state` | Typed resource system — `StateStore`, `ResourceHandle`, `EngineContext` |
 | `engine_subsystems` | Subsystem trait and registry |
 | `friends_engine` | Multiplayer friends backend |
@@ -183,7 +184,7 @@ provides a piece of the GPUI-based editor UI shell.
 
 ### Asset thumbnails
 
-`engine_fs::thumbnails` renders and caches file-browser thumbnails, with one
+`ui_common::thumbnails` renders and caches file-browser thumbnails, with one
 renderer per extension. `ui_common::asset_thumbnails::register_mesh_thumbnail_renderer`
 installs Helio's model renderer, plus every `ThumbnailRendererRegistration`
 linked into the binary. A crate that knows a format `ui_common` cannot depend

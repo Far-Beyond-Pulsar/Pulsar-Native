@@ -44,6 +44,8 @@ pub fn run(_ctx: &mut InitContext) -> Result<(), InitError> {
     Ok(())
 }
 
+// std::fs allowed: reads the engine's own per-user config file, outside any project
+#[allow(clippy::disallowed_methods)]
 fn legacy_unsafe_process_override(path: &std::path::Path) -> Option<bool> {
     let content = std::fs::read_to_string(path).ok()?;
     let document: toml::Value = toml::from_str(&content).ok()?;

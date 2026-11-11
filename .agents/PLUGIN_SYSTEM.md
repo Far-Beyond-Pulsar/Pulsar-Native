@@ -218,6 +218,12 @@ the render, scene and editor ones above, the kernel's seams for what used to be 
 |---|---|---|
 | `GameSessionRegistration` | `engine_backend::scene::game_hooks` | a plugin's part in a game session (`begin` before classes link, `end`) and in the local player's possession (`possess` returns the instance it attached; the driver detaches it): the input plugin's mapping |
 | `SceneRowsRegistration { derivation: None }` | `engine_backend::scene` | source rows another kind's join reads (physics' water hitboxes) |
+| `FileProvider` | `engine_fs` | the plugin provides files into every project at `plugins/<plugin id>/` (the engine's at `plugins/pulsar/`), from any source, and changes them at runtime through the `PluginFolder` capability it is given; nothing else writes there (`.agents/FILESYSTEM.md`, "Plugin folders") |
+| `AssetChangeKind` | `engine_fs::watchers` | which files changed on disk are an asset update of which kind (the animation plugin's files, the materials' images) |
+| `RoleRegistration` | `pulsar_traits::roles` | a gameplay role: its trait, its World Settings key, its spawn order (`.agents/TRAITS.md`, "Roles") |
+| `TraitImplementerSource` | `pulsar_traits::sources` | a kind of trait implementer: which files it reads and what they declare, or the implementers it lists (Blueprints) |
+| `NativeTraitImpl` (`pulsar_traits::implements!`) | `pulsar_traits::sources` | a component class implements a trait through its registered methods |
+| `WorldSettingField` | `ui_level_editor::extend` | a setting the plugin keeps in each level's `world_settings`, edited by kind in World Settings (the input mapping, gravity) |
 | `RecordMigrationRegistration::retired_fields` | `pulsar_class::records` | fields a plugin's classes retired, removed from saved data |
 | `EditorToolRegistration`, `TitleBarItemRegistration`, `AccountMenuItemRegistration`, `ProjectOpenedRegistration` | `ui_common::editor_tools` | an optional editor tool's status-bar button and Tools menu entry, title-bar item, account-menu entry and loading-screen step (the engine's tools use them with `engine_origin!()`) |
 | `AgentProviderRegistration` | `agent_chat_core` | a chat provider |

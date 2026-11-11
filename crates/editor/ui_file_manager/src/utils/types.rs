@@ -134,6 +134,10 @@ pub struct FileItem {
     pub modified: Option<std::time::SystemTime>,
     pub is_ghost: bool,
     pub restore_commit: Option<String>,
+    /// The read-only mount the item is in (`plugins/<id>`, `pulsar`): the
+    /// engine's or a plugin's content, which the project cannot change
+    /// (`engine_fs::virtual_fs::mounts`).
+    pub read_only_mount: Option<String>,
 }
 
 impl FileItem {
@@ -143,12 +147,12 @@ impl FileItem {
     ) -> Option<Self> {
         let name = path.file_name()?.to_str()?.to_string();
         use plugin_editor_api::FileStructure;
-        let file_type_def = if path.is_dir() {
+        let file_type_def = if engine_fs::virtual_fs::is_dir(path) {
             file_types
                 .iter()
                 .find(|def| {
                     if let FileStructure::FolderBased { marker_file, .. } = &def.structure {
-                        path.join(marker_file).exists()
+                        engine_fs::virtual_fs::exists(&path.join(marker_file)).unwrap_or(false)
                             || name.ends_with(&format!(".{}", def.extension))
                             || path.extension().and_then(|x| x.to_str())
                                 == Some(def.extension.as_str())
@@ -202,6 +206,7 @@ impl FileItem {
             modified,
             is_ghost: false,
             restore_commit: None,
+            read_only_mount: engine_fs::virtual_fs::mount_of(path),
         })
     }
 

@@ -489,6 +489,65 @@ pub fn ai_tool_namespaces() -> impl Iterator<Item = &'static AiToolNamespace> {
     pulsar_plugins::registered::<AiToolNamespace>()
 }
 
+// ── World Settings fields ───────────────────────────────────────────────────
+
+/// What a [`WorldSettingField`] holds and how World Settings edits it.
+#[derive(Clone, Copy, Debug)]
+pub enum WorldSettingKind {
+    /// On or off.
+    Toggle { default: bool },
+    /// One number, with its unit (`"s"`) and the least value it accepts.
+    Number {
+        default: f64,
+        unit: &'static str,
+        min: Option<f64>,
+    },
+    /// Three numbers (a direction, a gravity), with their unit.
+    Vector3 {
+        default: [f64; 3],
+        unit: &'static str,
+    },
+    /// A project file of one of these extensions (without the dot), stored as
+    /// its project-relative path; `None` clears it.
+    AssetPath {
+        extensions: &'static [&'static str],
+        /// Under the picker: what the chosen file is for.
+        help: &'static str,
+    },
+}
+
+/// A setting a plugin keeps in each level's `world_settings` (the input
+/// plugin's player input mapping, the physics plugin's gravity). World
+/// Settings shows every enabled plugin's fields, grouped by `section`, and
+/// edits them by kind; the value is stored under `key`, which the plugin's
+/// runtime reads from the level (`pulsar_traits::WorldRoles::setting`). A
+/// disabled plugin's fields are absent and their saved values are kept.
+///
+/// Unreal's details panel builds its rows from `AWorldSettings`' reflected
+/// properties by type; these are the same rows, declared by the plugin that
+/// owns the setting rather than by the World Settings class.
+pub struct WorldSettingField {
+    pub origin: &'static str,
+    /// Stable within the plugin (`"input.player_mapping"`).
+    pub id: &'static str,
+    /// The card it is shown in (`"Input"`, `"Physics"`).
+    pub section: &'static str,
+    pub label: &'static str,
+    /// Its place in its section, lowest first.
+    pub order: i32,
+    /// Key in the level's `world_settings`.
+    pub key: &'static str,
+    pub kind: WorldSettingKind,
+}
+
+/// The enabled fields, by section, then `order`.
+pub fn world_setting_fields() -> Vec<&'static WorldSettingField> {
+    let mut all: Vec<&'static WorldSettingField> =
+        pulsar_plugins::registered::<WorldSettingField>().collect();
+    all.sort_by_key(|field| (field.section, field.order, field.id));
+    all
+}
+
 extension_point!(
     ObjectIconRegistration: "editor.object_icon", |r| r.id, r.id;
     ToolModeRegistration: "editor.tool_mode", |r| r.id, r.id;
@@ -498,6 +557,7 @@ extension_point!(
     EnvironmentPreset: "editor.environment_preset", |r| r.id, r.label;
     EnvironmentListing: "editor.environment_listing", |r| r.class_name, r.label;
     LevelComponentSection: "editor.level_component_section", |r| r.class_name, r.title;
+    WorldSettingField: "editor.world_setting_field", |r| r.id, r.label;
     SaveHook: "editor.save_hook", |r| r.id, r.id;
     EditorData: "editor.level_data", |r| r.key, r.key;
     Interaction: "editor.interaction", |r| r.id, r.id;

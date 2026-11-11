@@ -153,6 +153,7 @@ pub(super) fn render_grid_item(
     let cls = item.is_class();
     let fld = item.is_folder;
     let ghost = item.is_ghost;
+    let read_only = item.read_only_mount.clone();
     let import = d.import_state(&item.path).cloned();
     let out_of_date = import.as_ref().is_some_and(|state| state.is_out_of_date());
     if !fld {
@@ -390,6 +391,8 @@ pub(super) fn render_grid_item(
                 .context_menu(move |m, w, cx| {
                     if ghost {
                         crate::components::context_menus::deleted_item_context_menu(&irc)(m, w, cx)
+                    } else if let Some(mount) = read_only.clone() {
+                        crate::components::context_menus::read_only_context_menu(mount)(m, w, cx)
                     } else {
                         crate::components::context_menus::item_context_menu(
                             ip.clone(),

@@ -95,11 +95,11 @@ pub(crate) fn reveal_file(this: &mut KeybindingsWindow, cx: &mut Cx) {
         return;
     };
     let path = file::keybindings_path(&project);
-    if path.is_file() {
+    if engine_fs::virtual_fs::is_file(&path) {
         cx.reveal_path(&path);
     } else if let Some(dir) = path.parent() {
         // Nothing has been changed yet; show where it will be written.
-        let _ = std::fs::create_dir_all(dir);
+        let _ = engine_fs::virtual_fs::create_dir_all(dir);
         cx.reveal_path(dir);
     }
 }

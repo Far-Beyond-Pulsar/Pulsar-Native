@@ -386,19 +386,6 @@ fn render_status_section(snapshot: &DevSnapshot, p: &Palette) -> impl IntoElemen
                     border.opacity(0.4),
                 ))
                 .child(pill(
-                    if snapshot.has_user_types {
-                        "Types ✓"
-                    } else {
-                        "Types ✗"
-                    },
-                    if snapshot.has_user_types {
-                        success
-                    } else {
-                        warning
-                    },
-                    border.opacity(0.4),
-                ))
-                .child(pill(
                     if snapshot.has_discord {
                         "Discord"
                     } else {

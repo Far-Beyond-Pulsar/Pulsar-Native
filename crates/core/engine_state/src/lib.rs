@@ -144,19 +144,47 @@ pub fn set_project_path(path: String) {
     // The project's plugins (its Pulsar.toml `[plugins]` list): from here on
     // a disabled plugin's registrations are skipped, so its kind is absent
     // from the scene, the renderer and the editor.
-    pulsar_plugins::activate_project(std::path::Path::new(&path));
+    pulsar_plugins::activate_project(
+        std::path::Path::new(&path),
+        project_plugins(std::path::Path::new(&path)),
+    );
     if let Some(ctx) = EngineContext::global() {
         let current = get_project_path();
         if current.as_deref() != Some(path.as_str()) {
+            // The project's read-only `pulsar/` and `plugins/<id>/` folders
+            // (the engine's and the enabled plugins' content) replace the
+            // outgoing project's.
+            if let Some(previous) = current.as_deref() {
+                engine_fs::virtual_fs::unmount_project(std::path::Path::new(previous));
+            }
             // Save the outgoing project's quick multiplayer setup before the
             // engine-global toolbar state is replaced with the next project's.
             playback::persist_multiplayer_settings();
         }
         let project_path = std::path::PathBuf::from(path);
+        engine_fs::virtual_fs::mount_project(&project_path);
         let project_ctx = ProjectContext::new(project_path.clone());
         ctx.set_project(project_ctx);
         playback::load_multiplayer_settings(&project_path);
     }
+}
+
+/// The plugin list of the project at `project_root` (its `Pulsar.toml`
+/// `[plugins]`; the empty list without the file), read through the
+/// filesystem library.
+pub fn project_plugins(
+    project_root: &std::path::Path,
+) -> Result<pulsar_plugins::ProjectPlugins, String> {
+    let path = project_root.join(pulsar_plugins::PROJECT_FILE);
+    let source = match engine_fs::virtual_fs::exists(&path) {
+        Ok(false) => None,
+        _ => Some(
+            engine_fs::virtual_fs::read_to_string(&path)
+                .map_err(|error| format!("{}: {error:#}", path.display()))?,
+        ),
+    };
+    pulsar_plugins::ProjectPlugins::from_project_file(source.as_deref())
+        .map_err(|error| format!("{}: {error}", path.display()))
 }
 
 /// Get the current project path from EngineContext.

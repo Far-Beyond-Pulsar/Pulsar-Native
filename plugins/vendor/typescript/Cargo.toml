@@ -5,6 +5,7 @@ edition = "2021"
 description = "TypeScript as a scripting language: a ScriptLanguage plugin that compiles src/classes/<Class>/class.ts to engine script modules (pulsar_script_ts). It has no editor; code editing is the code editor's job."
 
 [dependencies]
+engine_fs = { workspace = true }
 pulsar_script_ts = { workspace = true }
 plugin_editor_api = { workspace = true }
 # Its editor provider and language register at link time, gated by the plugin.

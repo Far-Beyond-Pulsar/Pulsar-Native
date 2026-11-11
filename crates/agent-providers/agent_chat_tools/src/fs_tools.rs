@@ -6,7 +6,7 @@ use std::sync::{Arc, OnceLock};
 use tool_registry::{PluginToolRegistry, ToolContext, ToolRegistry};
 use tool_registry_macros::tool;
 
-use crate::virtual_fs;
+use engine_fs::virtual_fs;
 
 const TOOLING_STATE_KEY: &str = "engine_fs_tooling_state";
 const DEFAULT_MAX_ENTRIES: usize = 200;

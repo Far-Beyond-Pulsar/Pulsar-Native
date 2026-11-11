@@ -40,7 +40,9 @@ pub async fn launch_and_monitor(
     for index in 0..count {
         if index == 1 {
             let mut waited = Duration::ZERO;
-            while !cache_file.exists() && waited < Duration::from_secs(90) {
+            while !engine_fs::virtual_fs::exists(&cache_file).unwrap_or(false)
+                && waited < Duration::from_secs(90)
+            {
                 async_app
                     .background_executor()
                     .timer(Duration::from_millis(500))
@@ -238,12 +240,12 @@ fn read_tail(pipe: impl std::io::Read) -> String {
 /// Write `stderr` to `<project>/.pulsar/crash-reports/crash_<time>.log`.
 fn save_crash_report(project_root: &Path, stderr: &str) -> Option<PathBuf> {
     let dir = project_root.join(".pulsar").join("crash-reports");
-    if let Err(error) = std::fs::create_dir_all(&dir) {
+    if let Err(error) = engine_fs::virtual_fs::create_dir_all(&dir) {
         tracing::warn!("[run] could not create the crash-reports folder: {error}");
         return None;
     }
     let path = dir.join(format!("crash_{}.log", timestamp()));
-    match std::fs::write(&path, stderr) {
+    match engine_fs::virtual_fs::write_file(&path, stderr.as_bytes()) {
         Ok(()) => {
             tracing::info!("[run] crash report written to {}", path.display());
             Some(path)

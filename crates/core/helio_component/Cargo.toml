@@ -44,6 +44,7 @@ wgpu.workspace = true
 # The asset-kind vocabulary (GPUI-free; the editor SDK re-exports it).
 ui_types_common = { workspace = true }
 engine_state.workspace = true
+engine_fs = { workspace = true }
 
 [dev-dependencies]
 pollster = "=0.4.0"

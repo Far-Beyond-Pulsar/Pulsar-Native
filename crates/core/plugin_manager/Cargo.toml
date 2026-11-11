@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 # Plugin editor providers count only while their plugin is enabled.
 pulsar_plugins = { workspace = true }
+# Classifies files for the project file index (`engine_fs::FileTypeClassifier`).
+engine_fs = { workspace = true }
 plugin_editor_api = { workspace = true }
 pulsar_world_registry = { workspace = true }
 profiling = { workspace = true }

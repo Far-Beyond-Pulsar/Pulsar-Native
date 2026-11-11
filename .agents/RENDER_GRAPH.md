@@ -18,7 +18,7 @@ what that pass declares.
 | Engine registry | `engine_backend::…::helio_renderer::pipelines` | Process-wide pipeline and node registries; the pin probe; project `.rendergraph` registration; the hidden `preview:N` pipelines. |
 | Selection | level `world_settings.render_pipeline` | Editor: poller pushes it to every viewport mailbox, which rebuilds the renderer at a frame boundary. Game: `load_level` records it, `game_renderer` builds from it. |
 | Editor | `plugins/vendor/render_bps` | The render graph editor on the Graphy canvas (`.agents/GRAPH_CANVAS.md`), plus a live preview. |
-| Trait | `engine_fs::builtin_traits` | `types/traits/into_graph.trait.json` is written into every project when the trait index rebuilds. |
+| Trait | `pulsar_traits::builtin` | `pulsar.IntoGraph`, provided into every project at `plugins/pulsar/traits/into_graph.trait.json` (the engine's mount). |
 
 ## Pass nodes
 

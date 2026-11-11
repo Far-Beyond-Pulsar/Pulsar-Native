@@ -50,16 +50,18 @@ pub struct Loaded {
 
 pub fn keep_copy(path: &Path) {
     let backup = path.with_extension("json.bak");
-    if let Err(error) = std::fs::copy(path, &backup) {
+    if let Err(error) = engine_fs::virtual_fs::copy(path, &backup) {
         tracing::warn!("could not keep a copy of {}: {error}", path.display());
     }
 }
 
 pub fn load(project_root: &Path) -> Loaded {
     let path = keybindings_path(project_root);
-    let text = match std::fs::read_to_string(&path) {
+    if !engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
+        return Loaded::default();
+    }
+    let text = match engine_fs::virtual_fs::read_to_string(&path) {
         Ok(text) => text,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Loaded::default(),
         Err(error) => {
             return Loaded {
                 read_only: Some(format!("{} could not be read: {error}", path.display())),
@@ -126,14 +128,10 @@ fn parse(text: &str, path: &Path) -> Loaded {
 
 pub fn save(project_root: &Path, overrides: &[Override]) -> io::Result<()> {
     let path = keybindings_path(project_root);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let body = json!({ "version": VERSION, "bindings": overrides });
     let text = serde_json::to_string_pretty(&body).map_err(io::Error::other)?;
-    let temp = path.with_extension("json.tmp");
-    std::fs::write(&temp, text + "\n")?;
-    std::fs::rename(&temp, &path)
+    engine_fs::virtual_fs::write_file_atomically(&path, (text + "\n").as_bytes())
+        .map_err(|error| io::Error::other(error.to_string()))
 }
 
 #[cfg(test)]

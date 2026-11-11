@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Linked script languages count only while their plugin is enabled.
+engine_fs = { workspace = true }
 pulsar_plugins = { workspace = true }
 # Scripting languages register themselves at link time (`LinkedScriptLanguage`).
 inventory = { workspace = true }

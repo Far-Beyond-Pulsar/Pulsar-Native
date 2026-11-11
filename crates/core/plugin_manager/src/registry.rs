@@ -38,7 +38,7 @@ impl FileTypeLookup {
     /// 2. If the path is a regular file with an extension
     pub fn file_type_for_path(&self, path: &Path) -> Option<FileTypeId> {
         // Check if this is a folder with an extension
-        if path.is_dir() {
+        if engine_fs::virtual_fs::is_dir(path) {
             if let Some(folder_name) = path.file_name().and_then(|s| s.to_str()) {
                 // Check if the folder name has an extension
                 if let Some(dot_pos) = folder_name.rfind('.') {
@@ -55,7 +55,7 @@ impl FileTypeLookup {
             // If no extension found, check for marker files
             // This handles folders like "ExampleClass/" that contain "graph_save.json"
             for (file_type_id, marker_file) in &self.folder_markers {
-                if path.join(marker_file).exists() {
+                if engine_fs::virtual_fs::exists(&path.join(marker_file)).unwrap_or(false) {
                     return Some(file_type_id.clone());
                 }
             }
@@ -201,7 +201,7 @@ impl FileTypeRegistry {
     ///
     /// Returns the file type ID if the path is a folder containing the marker file.
     pub fn check_folder_based_file(&self, path: &Path) -> Option<FileTypeId> {
-        if !path.is_dir() {
+        if !engine_fs::virtual_fs::is_dir(path) {
             return None;
         }
 
@@ -212,7 +212,7 @@ impl FileTypeRegistry {
         if let Some(file_type) = self.file_types.get(&folder_type) {
             if let FileStructure::FolderBased { marker_file, .. } = &file_type.structure {
                 let marker_path = path.join(marker_file);
-                if marker_path.exists() {
+                if engine_fs::virtual_fs::exists(&marker_path).unwrap_or(false) {
                     return Some(folder_type);
                 }
             }

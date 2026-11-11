@@ -146,7 +146,7 @@ pub(super) fn pick<T>(items: &[T], matches: impl Fn(&T) -> bool, nth: usize) -> 
 
 /// Whether `owner` (a path as recorded) names a file or folder that exists.
 pub(super) fn owner_exists(owner: &str) -> bool {
-    Path::new(owner).exists()
+    engine_fs::virtual_fs::exists(Path::new(owner)).unwrap_or(false)
 }
 
 /// The leaves of `tree` with an owner marker, in tree order.

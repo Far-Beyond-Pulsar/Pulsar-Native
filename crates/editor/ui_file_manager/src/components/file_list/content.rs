@@ -88,9 +88,18 @@ pub(super) fn render_file_content(
                 }))
                 .context_menu(move |m, w, cx| {
                     if let Some(p) = sf.clone() {
-                        crate::components::context_menus::folder_context_menu(p, hc, ft.clone())(
-                            m, w, cx,
-                        )
+                        match engine_fs::virtual_fs::mount_of(&p) {
+                            Some(mount) => {
+                                crate::components::context_menus::read_only_context_menu(mount)(
+                                    m, w, cx,
+                                )
+                            }
+                            None => crate::components::context_menus::folder_context_menu(
+                                p,
+                                hc,
+                                ft.clone(),
+                            )(m, w, cx),
+                        }
                     } else {
                         m
                     }

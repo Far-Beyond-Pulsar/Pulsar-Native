@@ -1,25 +1,20 @@
-//! File System Watchers
-//!
-//! Monitors file changes and automatically updates indexes
-//!
-//! Note: Currently disabled registry-based type detection in watchers due to Send trait limitations.
-//! Type detection is still handled during project scans and manual operations.
+//! The local project watcher: keeps the persistent file index current when
+//! files change outside the engine (version control, another program) and
+//! publishes the asset updates plugins ask for ([`AssetChangeKind`]).
 
 use anyhow::Result;
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use crate::asset_index::AssetIndex;
 use crate::file_index::ProjectFileIndex;
-use crate::user_types::UserTypeRegistry;
 
 static FILE_INDEX_WATCHERS: OnceLock<parking_lot::Mutex<HashSet<PathBuf>>> = OnceLock::new();
 
-/// Start one local watcher that keeps a persistent file index current even
-/// when the broader AssetIndex/EngineFs service is not active.
+/// Start the one local watcher of `project_root`, keeping its file index
+/// current (the index opens it, once per project).
 pub fn start_file_index_watcher(
     project_root: PathBuf,
     file_index: Arc<ProjectFileIndex>,
@@ -67,6 +62,11 @@ pub fn start_file_index_watcher(
                 for path in &event.paths {
                     let result = match &event.kind {
                         EventKind::Remove(_) => file_index.remove_path(path),
+                        EventKind::Create(_) | EventKind::Modify(_) => {
+                            let refreshed = file_index.refresh_path(path);
+                            publish_asset_update(path);
+                            refreshed
+                        }
                         _ => file_index.refresh_path(path),
                     };
                     if let Err(error) = result {
@@ -83,193 +83,43 @@ pub fn start_file_index_watcher(
     Ok(())
 }
 
-/// Start watching the project directory for changes
-///
-/// Note: Currently only handles file removal events. File creation/modification detection
-/// requires plugin registry access which isn't thread-safe yet.
-pub fn start_watcher(
-    project_root: PathBuf,
-    asset_index: Arc<AssetIndex>,
-    user_types: Arc<UserTypeRegistry>,
-    file_index: Option<Arc<ProjectFileIndex>>,
-) -> Result<()> {
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| {
-        if let Ok(event) = res {
-            let _ = tx.send(event);
-        }
-    })?;
-
-    // Watch the project root
-    watcher.watch(&project_root, RecursiveMode::Recursive)?;
-
-    // Spawn thread to handle events
-    std::thread::Builder::new()
-        .name("FS Watcher".to_string())
-        .spawn(move || {
-            profiling::set_thread_name("FS Watcher");
-            while let Ok(event) = rx.recv() {
-                profiling::profile_scope!("fs_event_handle");
-                handle_fs_event(&event, &asset_index, &user_types, file_index.as_deref());
-            }
-            // Keep watcher alive
-            drop(watcher);
-        })?;
-
-    Ok(())
+/// What kind of asset update a changed file is, for the plugins whose files
+/// reload when they change on disk (an image, a material, an animation): the
+/// file index watcher publishes an [`AssetUpdated`](pulsar_events::AssetUpdated)
+/// of the first kind a registration names. A kind that publishes its own
+/// updates when it writes (a re-imported mesh, a saved class) registers none,
+/// so nothing reloads twice.
+pub struct AssetChangeKind {
+    pub origin: &'static str,
+    /// Stable within its plugin (`"animation.files"`).
+    pub id: &'static str,
+    pub kind_of: fn(&Path) -> Option<ui_types_common::AssetKind>,
 }
 
-fn handle_fs_event(
-    event: &Event,
-    asset_index: &AssetIndex,
-    user_types: &UserTypeRegistry,
-    file_index: Option<&ProjectFileIndex>,
-) {
-    profiling::profile_scope!("handle_fs_event");
-    tracing::debug!("Filesystem event: {:?}", event);
+impl pulsar_plugins::Contribution for AssetChangeKind {
+    const CATEGORY: &'static str = "fs.asset_changes";
 
-    match &event.kind {
-        EventKind::Remove(_) => {
-            // File removed - we can safely unregister
-            for path in &event.paths {
-                asset_index.unregister_by_path(path);
-                user_types.unregister_by_path(path);
-                if let Some(index) = file_index {
-                    if let Err(error) = index.remove_path(path) {
-                        tracing::warn!(%error, path = %path.display(), "Failed to remove path from project file index");
-                    }
-                }
-            }
-        }
-        EventKind::Create(_) | EventKind::Modify(_) => {
-            // File created/modified - log for now, user needs to rescan
-            // TODO: Once PluginManager is Send-safe, integrate registry-based detection here
-            for path in &event.paths {
-                if let Some(index) = file_index {
-                    if let Err(error) = index.refresh_path(path) {
-                        tracing::warn!(%error, path = %path.display(), "Failed to refresh project file index entry");
-                    }
-                }
-                tracing::info!("File changed: {:?} - rescan project to update index", path);
-                publish_asset_update(path);
-            }
-        }
-        _ => {}
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.id.to_owned()
     }
 }
 
-/// The custom asset kind animation files publish their updates under.
-pub const ANIMATION_ASSET_KIND: &str = "animation";
+pulsar_plugins::registration!(AssetChangeKind);
 
-/// Files of the animation family (skeleton, sequence, blend space, Montage, graph,
-/// IK rig and retarget assets, pose database).
-fn is_animation_extension(extension: &str) -> bool {
-    [
-        "skeleton",
-        "animseq",
-        "blendspace",
-        "montage",
-        "animgraph",
-        "ikrig",
-        "ikretarget",
-        "animretarget",
-        "posedb",
-    ]
-    .iter()
-    .any(|known| extension.eq_ignore_ascii_case(known))
-}
-
-/// The asset kind a file's update publishes under, if any.
-fn asset_update_kind(path: &std::path::Path) -> Option<ui_types_common::AssetKind> {
-    use ui_types_common::AssetKind;
-    let extension = path.extension().and_then(|ext| ext.to_str());
-    // Surface materials are saved as `.mat` (mesh slots' extracted
-    // materials), which the file-type table does not list.
-    if path
-        .file_name()
-        .is_some_and(|name| name == "shader_graph_save.json")
-        || extension.is_some_and(|ext| ext.eq_ignore_ascii_case("mat"))
-    {
-        return Some(AssetKind::Material);
-    }
-    if extension.is_some_and(is_animation_extension) {
-        return Some(AssetKind::Custom(ANIMATION_ASSET_KIND.to_string()));
-    }
-    match extension.map(AssetKind::from_extension) {
-        Some(kind @ (AssetKind::Texture | AssetKind::Material)) => Some(kind),
-        _ => None,
-    }
-}
-
-/// An image, material or animation file written on disk is an asset update:
-/// every world showing it reloads it (SceneDB#84; animation files run the
-/// asset-changed hooks, `reload_animation_dependencies`). A shader graph
-/// folder's save is its material's update. Other kinds publish their own
-/// updates when they are written (a re-imported mesh, a saved class). The
-/// editor's animation saves publish nothing themselves, so this is the one
-/// publisher and nothing reloads twice.
-fn publish_asset_update(path: &std::path::Path) {
-    let Some(kind) = asset_update_kind(path) else {
+/// Publish the asset update a file changed on disk is, if a plugin names one.
+fn publish_asset_update(path: &Path) {
+    let Some(kind) =
+        pulsar_plugins::registered::<AssetChangeKind>().find_map(|change| (change.kind_of)(path))
+    else {
         return;
     };
-    if path.is_file() {
-        let mut update = plugin_editor_api::AssetUpdated::new(kind);
-        update.path = Some(path.to_path_buf());
-        plugin_editor_api::publish_asset_updated(update);
-    }
-}
-
-#[cfg(test)]
-mod animation_update_tests {
-    use super::{asset_update_kind, is_animation_extension, ANIMATION_ASSET_KIND};
-    use std::path::Path;
-    use ui_types_common::AssetKind;
-
-    #[test]
-    fn the_animation_family_is_recognised_by_extension_only() {
-        for extension in [
-            "skeleton",
-            "animseq",
-            "blendspace",
-            "montage",
-            "animgraph",
-            "ikrig",
-            "ikretarget",
-            "animretarget",
-            "posedb",
-            "ANIMSEQ",
-        ] {
-            assert!(is_animation_extension(extension), "{extension}");
-        }
-        for extension in ["png", "mat", "json", "animmontage", "anim_graph", ""] {
-            assert!(!is_animation_extension(extension), "{extension}");
-        }
-    }
-
-    #[test]
-    fn animation_files_publish_under_the_animation_kind_and_textures_keep_theirs() {
-        let animation = AssetKind::Custom(ANIMATION_ASSET_KIND.to_string());
-        assert_eq!(
-            asset_update_kind(Path::new("a/walk.animseq")),
-            Some(animation.clone())
+    if crate::virtual_fs::is_file(path) {
+        pulsar_events::publish_asset_updated(
+            pulsar_events::AssetUpdated::new(kind).with_path(path),
         );
-        assert_eq!(
-            asset_update_kind(Path::new("a/body.SKELETON")),
-            Some(animation)
-        );
-        assert_eq!(
-            asset_update_kind(Path::new("a/rock.png")),
-            Some(AssetKind::Texture)
-        );
-        assert_eq!(
-            asset_update_kind(Path::new("a/skin.mat")),
-            Some(AssetKind::Material)
-        );
-        assert_eq!(
-            asset_update_kind(Path::new("a/shader_graph_save.json")),
-            Some(AssetKind::Material)
-        );
-        assert_eq!(asset_update_kind(Path::new("a/notes.txt")), None);
     }
 }

@@ -55,31 +55,23 @@ pub fn get_icon_for_file_type(item: &FileItem) -> IconName {
 }
 
 pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let e = entry?;
-        let ty = e.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(&e.path(), &dst.join(e.file_name()))?;
+    let io = |e: anyhow::Error| std::io::Error::other(e.to_string());
+    engine_fs::virtual_fs::create_dir_all(dst).map_err(io)?;
+    for e in engine_fs::virtual_fs::list_dir(src).map_err(io)? {
+        if e.is_dir {
+            copy_dir_all(&src.join(&e.name), &dst.join(&e.name))?;
         } else {
-            copy_file_new(&e.path(), &dst.join(e.file_name()))?;
+            copy_file_new(&src.join(&e.name), &dst.join(&e.name)).map_err(io)?;
         }
     }
     Ok(())
 }
 
-/// Copy `src` to `dst`, which must not exist yet: `fs::copy` would replace a
-/// same-named file in the folder being copied into.
-fn copy_file_new(src: &Path, dst: &Path) -> std::io::Result<()> {
-    let mut from = std::fs::File::open(src)?;
-    let mut to = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(dst)?;
-    std::io::copy(&mut from, &mut to)?;
-    // What `fs::copy` carries over as well (read-only, Unix mode bits).
-    to.set_permissions(from.metadata()?.permissions())?;
-    Ok(())
+/// Copy `src` to `dst`, which must not exist yet: a plain copy would replace
+/// a same-named file in the folder being copied into.
+fn copy_file_new(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    let bytes = engine_fs::virtual_fs::read_file(src)?;
+    engine_fs::virtual_fs::create_file(dst, &bytes)
 }
 
 pub fn cloud_join(base: &Path, component: &str) -> PathBuf {

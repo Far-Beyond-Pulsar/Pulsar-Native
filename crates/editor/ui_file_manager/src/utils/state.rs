@@ -12,13 +12,10 @@ impl FileManagerDrawer {
         let Some(ref f) = self.selected_folder else {
             return;
         };
-        let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f);
         let mut name = "untitled.txt".to_string();
         let mut suffix = 1;
         let mut np = cloud_join(f, &name);
-        while (remote && engine_fs::virtual_fs::exists(&np).unwrap_or(false))
-            || (!remote && np.exists())
-        {
+        while engine_fs::virtual_fs::exists(&np).unwrap_or(false) {
             name = format!("untitled ({suffix}).txt");
             suffix += 1;
             np = cloud_join(f, &name);
@@ -36,23 +33,15 @@ impl FileManagerDrawer {
         let Some(ref f) = self.selected_folder else {
             return;
         };
-        let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f);
         let mut name = "New Folder".to_string();
         let mut suffix = 1;
         let mut np = cloud_join(f, &name);
-        while (remote && engine_fs::virtual_fs::exists(&np).unwrap_or(false))
-            || (!remote && np.exists())
-        {
+        while engine_fs::virtual_fs::exists(&np).unwrap_or(false) {
             name = format!("New Folder ({suffix})");
             suffix += 1;
             np = cloud_join(f, &name);
         }
-        let r = if remote {
-            engine_fs::virtual_fs::create_dir_all(&np)
-        } else {
-            std::fs::create_dir(&np).map_err(Into::into)
-        };
-        if let Err(e) = r {
+        if let Err(e) = engine_fs::virtual_fs::create_dir_all(&np) {
             tracing::error!("Failed to create folder: {}", e);
             return;
         }
@@ -112,6 +101,7 @@ impl FileManagerDrawer {
                     modified: None,
                     is_ghost: true,
                     restore_commit: Some(entry.commit_hash.clone()),
+                    read_only_mount: None,
                 });
             }
         }
@@ -179,6 +169,7 @@ impl FileManagerDrawer {
                                 .cloned()
                         };
                         Some(FileItem {
+                            read_only_mount: engine_fs::virtual_fs::mount_of(&path),
                             path,
                             name: name.to_string(),
                             file_type_def: ft.clone(),
@@ -275,6 +266,7 @@ impl FileManagerDrawer {
                                         .cloned()
                                 };
                                 FileItem {
+                                    read_only_mount: engine_fs::virtual_fs::mount_of(&path),
                                     path,
                                     name: entry.name,
                                     file_type_def: file_type_def.clone(),
@@ -295,11 +287,11 @@ impl FileManagerDrawer {
                 }
             }
 
-            let Ok(read) = std::fs::read_dir(f) else {
+            let Ok(read) = engine_fs::virtual_fs::list_dir(f) else {
                 return Vec::new();
             };
-            read.filter_map(|e| e.ok())
-                .map(|e| e.path())
+            read.into_iter()
+                .map(|e| f.join(&e.name))
                 .filter_map(|p| FileItem::from_path(&p, &self.registered_file_types))
                 .collect()
         }

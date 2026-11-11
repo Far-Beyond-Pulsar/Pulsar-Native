@@ -404,7 +404,7 @@ pub fn load_level(
     // remember which one this level runs for the renderer built after this.
     {
         use engine_backend::subsystems::render::helio_renderer::pipelines;
-        let requested = std::fs::read_to_string(path)
+        let requested = engine_fs::virtual_fs::read_to_string(path)
             .ok()
             .and_then(|json| pipelines::render_pipeline_of_level(&json));
         // Loading project graphs builds Helio's passes once to learn their pins, so

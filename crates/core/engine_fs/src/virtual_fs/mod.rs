@@ -1,39 +1,66 @@
-//! Virtual filesystem global — routes all file I/O to the correct backend.
+//! Virtual filesystem global: routes all file I/O to the correct backend.
 //!
 //! Call [`set_provider`] once (e.g. when opening a cloud project) to switch
-//! from the default local-disk provider to a remote one.  The rest of the
-//! editor uses the free functions in this module and never needs to care
-//! which backend is active.
+//! from the default local-disk provider to a remote one. The rest of the
+//! engine, the editor and every plugin use the free functions in this module
+//! and never need to care which backend is active.
+//!
+//! Every call goes through the plugin folders first ([`mounts`]): a mounted
+//! project's `plugins/<owner>/` folders are served by the plugins that
+//! provide them (and the engine, `plugins/pulsar/`), whatever the provider,
+//! and refuse every writer but their owner with [`ReadOnlyMount`].
+//!
+//! This is the one place engine and plugin code touches files: `std::fs` is
+//! a disallowed method across the workspace (the root `clippy.toml`), allowed
+//! only in the providers, build scripts and tests
+//! (`architecture/std-fs-allowed.txt`).
 
 use anyhow::Result;
 use parking_lot::RwLock;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use crate::providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};
+use crate::providers::{
+    FsEntry, FsMetadata, FsProvider, FsWriter, LocalFsProvider, ManifestEntry, ReadSeek,
+};
 use crate::{events, FsChangeKind};
 
+pub mod mounts;
 pub mod path_utils;
 
+pub use mounts::{
+    is_read_only, mount_of, mount_problems, mount_project, plugin_snapshot, serve_packaged_folders,
+    unmount_project, CacheFolder, EmbeddedFile, FileProvider, FolderSource, InGame, MemoryFolder,
+    MountedFs, PluginFolder, ReadOnlyMount, CACHE_FOLDER, ENGINE_FOLDER, PLUGINS_FOLDER,
+};
 // Re-export commonly used path utilities
 pub use path_utils::{cloud_join, is_cloud_path, normalize_path};
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
-static VIRTUAL_FS: OnceLock<Arc<RwLock<Arc<dyn FsProvider>>>> = OnceLock::new();
+/// The active provider, already wrapped in the mount layer.
+static VIRTUAL_FS: OnceLock<RwLock<Arc<MountedFs>>> = OnceLock::new();
 
-fn global() -> &'static Arc<RwLock<Arc<dyn FsProvider>>> {
-    VIRTUAL_FS.get_or_init(|| Arc::new(RwLock::new(Arc::new(LocalFsProvider::new()))))
+fn global() -> &'static RwLock<Arc<MountedFs>> {
+    VIRTUAL_FS
+        .get_or_init(|| RwLock::new(Arc::new(MountedFs::new(Arc::new(LocalFsProvider::new())))))
+}
+
+/// The active layer, taken out of the lock: a provider call may emit events
+/// whose handlers call back into this module (the file index refreshing a
+/// path), and the lock is not reentrant.
+fn layer() -> Arc<MountedFs> {
+    global().read().clone()
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-/// Replace the active filesystem provider.
+/// Replace the active filesystem provider. The mounts stay composed over it.
 ///
 /// Call this before opening the editor when connecting to a cloud project.
 /// The change is process-wide and takes effect immediately.
 pub fn set_provider(provider: Arc<dyn FsProvider>) {
-    *global().write() = provider;
+    *global().write() = Arc::new(MountedFs::new(provider));
 }
 
 /// Restore the default local-disk provider (e.g. when disconnecting).
@@ -41,21 +68,28 @@ pub fn reset_to_local() {
     set_provider(Arc::new(LocalFsProvider::new()));
 }
 
-/// Return the currently active provider (cloned `Arc` — cheap).
+/// The active provider with the mounts composed over it (cloned `Arc`:
+/// cheap). What bulk users call; the free functions below go through it too.
 pub fn provider() -> Arc<dyn FsProvider> {
-    global().read().clone()
+    layer()
+}
+
+/// The active provider itself, which knows no mounts (for the mounts' own
+/// checks of what the project has on disk).
+pub fn base_provider() -> Arc<dyn FsProvider> {
+    Arc::clone(layer().base())
 }
 
 // ── Introspection ─────────────────────────────────────────────────────────────
 
 /// `true` when the active provider serves a remote filesystem.
 pub fn is_remote() -> bool {
-    provider().is_remote()
+    layer().is_remote()
 }
 
 /// Human-readable label for the current provider ("Local" or "Remote").
 pub fn current_label() -> String {
-    provider().label().to_string()
+    layer().label().to_string()
 }
 
 // ── Convenience pass-throughs ─────────────────────────────────────────────────
@@ -68,17 +102,17 @@ pub fn current_label() -> String {
 
 /// Read the full contents of a file.
 pub fn read_file(path: &Path) -> Result<Vec<u8>> {
-    provider().read_file(path)
+    layer().read_file(path)
 }
 
 /// Read up to `len` bytes from the start of a file.
 pub fn read_file_prefix(path: &Path, len: usize) -> Result<Vec<u8>> {
-    provider().read_file_prefix(path, len)
+    layer().read_file_prefix(path, len)
 }
 
 /// Overwrite (or create) a file with `content`.
 pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
-    let result = provider().write_file(path, content);
+    let result = layer().write_file(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Modified);
     }
@@ -90,7 +124,7 @@ pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
 /// Providers that cannot guarantee atomic replacement return an error rather
 /// than silently falling back to a partial write.
 pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
-    let result = provider().write_file_atomically(path, content);
+    let result = layer().write_file_atomically(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Modified);
     }
@@ -99,7 +133,7 @@ pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
 
 /// Create a new file with `content`, failing if it already exists.
 pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
-    let result = provider().create_file(path, content);
+    let result = layer().create_file(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Created);
     }
@@ -108,7 +142,7 @@ pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
 
 /// Delete a file or recursively remove a directory.
 pub fn delete_path(path: &Path) -> Result<()> {
-    let result = provider().delete_path(path);
+    let result = layer().delete_path(path);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Deleted);
     }
@@ -117,17 +151,76 @@ pub fn delete_path(path: &Path) -> Result<()> {
 
 /// Rename / move a path.
 pub fn rename(from: &Path, to: &Path) -> Result<()> {
-    provider().rename(from, to)
+    layer().rename(from, to)
+}
+
+/// Read a file as UTF-8 text.
+pub fn read_to_string(path: &Path) -> Result<String> {
+    let bytes = read_file(path)?;
+    String::from_utf8(bytes)
+        .map_err(|error| anyhow::anyhow!("'{}' is not UTF-8 text: {error}", path.display()))
+}
+
+/// Add `content` to the end of a file, creating it if needed.
+pub fn append_file(path: &Path, content: &[u8]) -> Result<()> {
+    layer().append_file(path, content)
+}
+
+/// Copy the file `from` to `to`, replacing `to`.
+pub fn copy(from: &Path, to: &Path) -> Result<()> {
+    let result = layer().copy(from, to);
+    if result.is_ok() {
+        events::emit(to.to_path_buf(), FsChangeKind::Modified);
+    }
+    result
+}
+
+/// Open a file for streamed reading.
+pub fn open_read(path: &Path) -> Result<Box<dyn ReadSeek>> {
+    layer().open_read(path)
+}
+
+/// Open a file for streamed writing (created or truncated). The file holds
+/// what was written once [`FsWriter::finish`] returns `Ok`.
+pub fn open_write(path: &Path) -> Result<FsWriter> {
+    let layer = layer();
+    if let Some(stream) = layer.open_write_stream(path)? {
+        return Ok(FsWriter::direct(stream));
+    }
+    let path = path.to_path_buf();
+    Ok(FsWriter::buffered(move |bytes| {
+        layer.write_file(&path, &bytes)
+    }))
+}
+
+/// Whether `path` is a directory (`false` when it does not exist).
+pub fn is_dir(path: &Path) -> bool {
+    metadata(path).map(|meta| meta.is_dir).unwrap_or(false)
+}
+
+/// Whether `path` is a file (`false` when it does not exist).
+pub fn is_file(path: &Path) -> bool {
+    metadata(path).map(|meta| !meta.is_dir).unwrap_or(false)
+}
+
+/// Resolve `path` to its canonical absolute form.
+pub fn canonicalize(path: &Path) -> Result<PathBuf> {
+    layer().canonicalize(path)
+}
+
+/// Whether `path` is a symbolic link or another filesystem redirection.
+pub fn is_symlink(path: &Path) -> Result<bool> {
+    layer().is_symlink(path)
 }
 
 /// List the immediate children of a directory.
 pub fn list_dir(path: &Path) -> Result<Vec<FsEntry>> {
-    provider().list_dir(path)
+    layer().list_dir(path)
 }
 
 /// Recursively create a directory and all missing parents.
 pub fn create_dir_all(path: &Path) -> Result<()> {
-    let result = provider().create_dir_all(path);
+    let result = layer().create_dir_all(path);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Created);
     }
@@ -136,24 +229,24 @@ pub fn create_dir_all(path: &Path) -> Result<()> {
 
 /// Return `true` if `path` exists.
 pub fn exists(path: &Path) -> Result<bool> {
-    provider().exists(path)
+    layer().exists(path)
 }
 
 /// Return basic metadata for `path`.
 pub fn metadata(path: &Path) -> Result<FsMetadata> {
-    provider().metadata(path)
+    layer().metadata(path)
 }
 
 /// Return a flat manifest of every entry under `path`.
 pub fn manifest(path: &Path) -> Result<Vec<ManifestEntry>> {
-    provider().manifest(path)
+    layer().manifest(path)
 }
 
 /// Return paths of all files under `root` whose extension matches `ext`
 /// (case-insensitive, without leading dot). Paths are relative to `root`.
-pub fn find_by_extension(root: &Path, ext: &str) -> Vec<std::path::PathBuf> {
+pub fn find_by_extension(root: &Path, ext: &str) -> Vec<PathBuf> {
     let ext_lower = ext.trim_start_matches('.').to_ascii_lowercase();
-    match provider().manifest(root) {
+    match layer().manifest(root) {
         Ok(entries) => entries
             .into_iter()
             .filter(|e| !e.is_dir)

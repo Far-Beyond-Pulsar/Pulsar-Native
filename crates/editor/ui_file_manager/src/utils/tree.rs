@@ -13,7 +13,7 @@ impl FolderNode {
         if engine_fs::is_cloud_path(path) {
             return Self::from_cloud_path(path);
         }
-        if !path.is_dir() {
+        if !engine_fs::virtual_fs::is_dir(path) {
             return None;
         }
         let name = path.file_name()?.to_str()?.to_string();
@@ -25,11 +25,12 @@ impl FolderNode {
             "alias.json",
         ]
         .iter()
-        .any(|m| path.join(m).exists())
+        .any(|m| engine_fs::virtual_fs::exists(&path.join(m)).unwrap_or(false))
         {
             return None;
         }
-        let absolute_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let absolute_path =
+            engine_fs::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         if let Some(index) = engine_fs::project_file_index_for_path(&absolute_path) {
             return Self::from_indexed_path(path, &index);
         }

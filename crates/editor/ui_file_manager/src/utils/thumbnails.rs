@@ -38,7 +38,7 @@ impl FileManagerDrawer {
             .unwrap_or_default();
         // `.material` is a folder-based asset containing the actual graph in
         // shader_graph_save.json; pass the asset folder to its registered hook.
-        if path.is_dir() && ext != "material" {
+        if engine_fs::virtual_fs::is_dir(path) && ext != "material" {
             return;
         }
         if !Self::is_thumbable_ext(&ext) || self.thumbnails.contains_key(path) {
@@ -49,7 +49,7 @@ impl FileManagerDrawer {
         let root = self.thumbnail_cache_root.clone();
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<image::RgbaImage>>>(1);
         ui_common::asset_thumbnails::register_thumbnail_renderers();
-        engine_fs::thumbnails::service().request(abs.clone(), root, move |rgba| {
+        ui_common::thumbnails::service().request(abs.clone(), root, move |rgba| {
             let _ = smol::block_on(tx.send(rgba));
         });
         cx.spawn(async move |this, cx| {

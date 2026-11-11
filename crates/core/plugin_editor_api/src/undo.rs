@@ -82,7 +82,7 @@ impl DocumentId {
     /// The id of the document stored at `path`: its normalised form, so the
     /// same file reached two ways is one document.
     pub fn for_path(path: &std::path::Path) -> Self {
-        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let path = engine_fs::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         Self::new(path.to_string_lossy().replace('\\', "/"))
     }
 

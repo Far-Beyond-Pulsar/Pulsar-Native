@@ -536,6 +536,9 @@ pub fn exceptions(text: &str) -> BTreeSet<(String, String)> {
 }
 
 /// Reads every `.wgsl` and `.rs` file under `dirs` (relative to `root`).
+// The checker reads the engine's own source tree on the developer's
+// machine, not a project: the disk directly.
+#[allow(clippy::disallowed_methods)]
 pub fn read_tree(root: &std::path::Path, dirs: &[&str]) -> Vec<Source> {
     fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Source>) {
         let Ok(entries) = std::fs::read_dir(dir) else {

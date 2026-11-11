@@ -16,7 +16,6 @@ use super::world_commands::discard_commands;
 use super::{DriverReport, ScriptDriver, Tracked};
 use crate::scripting::bind_class_slots;
 use crate::scripting::commands::CommandScope;
-use engine_fs::world_roles::EngineRole;
 use pulsar_events::builtin::{EndPlay, EntityDestroyed};
 use pulsar_events::entity_channel;
 
@@ -65,9 +64,23 @@ impl ScriptDriver {
         // go of their pawn, then the game mode hears the game end.
         let mut report = DriverReport::default();
         self.end_possession(world, &mut report);
-        if let Some(mode) = self.role_entity(EngineRole::GameMode) {
-            let mode_trait = EngineRole::GameMode.spec().trait_id;
-            self.call_trait_hook(world, mode, mode_trait, "on_game_end", &[], &mut report);
+        if let Some(mode) = self.role_entity(pulsar_traits::builtin::GAME_MODE_ROLE) {
+            self.call_trait(
+                world,
+                mode,
+                pulsar_traits::builtin::GAME_MODE_TRAIT_ID,
+                "on_game_end",
+                &[],
+                &mut report,
+            );
+        }
+        if self.roles_started {
+            self.publish(
+                pulsar_events::gamma::Channel::Global,
+                pulsar_events::builtin::GameEnded {
+                    level: self.level.clone(),
+                },
+            );
         }
         if let Some(events) = self.events.as_mut() {
             // No handler runs after end_play.

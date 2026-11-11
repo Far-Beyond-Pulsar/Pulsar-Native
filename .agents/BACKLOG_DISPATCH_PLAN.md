@@ -89,15 +89,15 @@ All other writers paused (merge or park every open branch first).
 
 | ID | Task |
 |---|---|
-| A4 | **#1608 traits, step 1**: read-only mounts in `engine_fs::virtual_fs`, `plugins/<id>/` mount, file drawer read-only state, `pulsar` mount replaces `builtin_traits::ensure`/`sync_one`; an on-disk `plugins/` folder is reported |
-| A5 | **All file IO through `engine_fs`**: complete missing ops, migrate the 663 `std::fs` lines in 148 files, add `clippy.toml` `disallowed-methods` with a shrink-only allow list. Split mechanically by crate group across workers only if no two groups share a crate |
+| A4 | **Done (p21, `PLUGIN_API_REFACTOR_PLAN.md` section 13).** **#1608 traits, step 1**: read-only mounts in `engine_fs::virtual_fs`, `plugins/<id>/` mount, file drawer read-only state, `pulsar` mount replaces `builtin_traits::ensure`/`sync_one`; an on-disk `plugins/` folder is reported |
+| A5 | **Done (p21, `PLUGIN_API_REFACTOR_PLAN.md` section 13).** **All file IO through `engine_fs`**: complete missing ops, migrate the 663 `std::fs` lines in 148 files, add `clippy.toml` `disallowed-methods` with a shrink-only allow list. Split mechanically by crate group across workers only if no two groups share a crate |
 
 ### Wave 4 — traits and catalog UI (Track A, mostly serial) + renderer views
 
 | ID | Task |
 |---|---|
-| A6 | **Traits, step 2**: role registry replacing `ROLES`/`WorldSettingsData` fields/`EngineRole` arms; World Settings picker via extension points; role lifecycle events on the Gamma hub |
-| A7 | `TraitImplementerSource` (Blueprints first, native second), one trait index, native bindings onto `ComponentMethodRegistration` checked by `trait_conformance`, dispatcher for both, plugin trait namespacing + `contractVersion` |
+| A6 | **Done (p21, `PLUGIN_API_REFACTOR_PLAN.md` section 13).** **Traits, step 2**: role registry replacing `ROLES`/`WorldSettingsData` fields/`EngineRole` arms; World Settings picker via extension points; role lifecycle events on the Gamma hub |
+| A7 | **Done (p21, `PLUGIN_API_REFACTOR_PLAN.md` section 13).** `TraitImplementerSource` (Blueprints first, native second), one trait index, native bindings onto `ComponentMethodRegistration` checked by `trait_conformance`, dispatcher for both, plugin trait namespacing + `contractVersion` |
 | A8 | **#1608 Phase 2 and 3**: Extensions viewer on the catalog (Renderer tab goes); `provides`/`requires` contract ids with named activation errors; trait/role/source entries; fixture-plugin proof (static, contract, renderer, disabled-plugin, trait+role) |
 | K2 | **Plugin_SKM#13 physics part**: pose without an animator (ragdoll, folded Plugin_Physics#8) after A3(a) |
 | V1 | **#1599 VG rework**, once you have decided the final design (see preconditions) |

@@ -450,8 +450,8 @@ fn cook_from_source(
 /// becomes a 64 MiB RGBA buffer on the way to a 16 MiB one.
 fn decode_rgba(path: &std::path::Path, cap: u32) -> Result<(u32, u32, Vec<u8>), String> {
     let shown = path.display();
-    let bytes =
-        std::fs::read(path).map_err(|error| format!("could not read '{shown}': {error}"))?;
+    let bytes = engine_fs::virtual_fs::read_file(path)
+        .map_err(|error| format!("could not read '{shown}': {error}"))?;
     let mut decoded = image::load_from_memory(&bytes)
         .map_err(|error| format!("could not decode '{shown}': {error}"))?;
     drop(bytes);

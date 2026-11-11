@@ -169,6 +169,9 @@ pub struct Cli {
 
 impl Config {
     /// Load configuration from environment, CLI args, and optional config file
+    // Real machine: the relay is a standalone server; its config and TLS key files are
+    // deployment files on the host, not project files, and it has no project virtual FS.
+    #[allow(clippy::disallowed_methods)]
     pub fn from_env() -> Result<Self> {
         let cli = Cli::parse();
         let mut config = Self::default();

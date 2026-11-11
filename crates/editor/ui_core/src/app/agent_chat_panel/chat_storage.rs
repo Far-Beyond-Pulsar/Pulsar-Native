@@ -1,9 +1,9 @@
 use super::*;
 use agent_chat_core::ChatRole;
 use agent_chat_tools::ToolRegistry;
+use engine_fs::virtual_fs as vfs;
 use engine_state;
 use std::{
-    fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -16,7 +16,7 @@ impl AgentChatPanel {
 
     pub(super) fn ensure_chats_dir() -> Option<PathBuf> {
         let dir = Self::chats_dir()?;
-        if fs::create_dir_all(&dir).is_ok() {
+        if vfs::create_dir_all(&dir).is_ok() {
             Some(dir)
         } else {
             None
@@ -139,12 +139,12 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         };
 
         let mut entries = Vec::new();
-        let Ok(files) = fs::read_dir(dir) else {
+        let Ok(files) = vfs::list_dir(&dir) else {
             return entries;
         };
 
-        for file in files.flatten() {
-            let path = file.path();
+        for file in files {
+            let path = dir.join(&file.name);
             if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
                 continue;
             }
@@ -161,7 +161,7 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
                 continue;
             };
 
-            let Ok(raw) = fs::read_to_string(&path) else {
+            let Ok(raw) = vfs::read_to_string(&path) else {
                 continue;
             };
             let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
@@ -284,7 +284,7 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         let Some(path) = Self::chat_file_path(chat_id) else {
             return;
         };
-        let Ok(raw) = fs::read_to_string(path) else {
+        let Ok(raw) = vfs::read_to_string(&path) else {
             return;
         };
         let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
@@ -402,11 +402,14 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         }
     }
 
+    // Allowed std::fs: the destination is a path the user picked in a native
+    // save dialog on this machine, not a project file.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn export_current_chat(&self) {
         let Some(path) = Self::chat_file_path(&self.current_chat_id) else {
             return;
         };
-        let Ok(raw) = fs::read_to_string(&path) else {
+        let Ok(raw) = vfs::read_to_string(&path) else {
             return;
         };
 
@@ -420,26 +423,29 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             .save_file();
 
         if let Some(save_path) = file {
-            if let Err(error) = fs::write(&save_path, raw) {
+            if let Err(error) = std::fs::write(&save_path, raw) {
                 tracing::warn!("Could not export chat to {}: {error}", save_path.display());
             }
         }
     }
 
+    // Allowed std::fs: the destination folder is picked in a native dialog on
+    // this machine, not a project path; the chats themselves are read via the VFS.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn export_all_chats(&self) {
         let Some(dir) = rfd::FileDialog::new().pick_folder() else {
             return;
         };
 
         if let Some(chats_dir) = Self::chats_dir() {
-            if let Ok(entries) = fs::read_dir(&chats_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
+            if let Ok(entries) = vfs::list_dir(&chats_dir) {
+                for entry in entries {
+                    let path = chats_dir.join(&entry.name);
                     if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                        if let Ok(content) = fs::read(&path) {
+                        if let Ok(content) = vfs::read_file(&path) {
                             if let Some(file_name) = path.file_name() {
                                 let dest_path = dir.join(file_name);
-                                if let Err(error) = fs::write(&dest_path, &content) {
+                                if let Err(error) = std::fs::write(&dest_path, &content) {
                                     tracing::warn!(
                                         "Could not export chat to {}: {error}",
                                         dest_path.display()
@@ -453,6 +459,9 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         }
     }
 
+    // Allowed std::fs: the source is a file picked in a native open dialog on
+    // this machine, not a project file; the copy into the project uses the VFS.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn import_chat(&mut self, cx: &mut Context<Self>) {
         let file = rfd::FileDialog::new()
             .add_filter("JSON Chat Files", &["json"])
@@ -462,7 +471,7 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         let Some(file_path) = file else {
             return;
         };
-        let raw = match fs::read_to_string(&file_path) {
+        let raw = match std::fs::read_to_string(&file_path) {
             Ok(raw) => raw,
             Err(error) => {
                 tracing::warn!("Could not read {}: {error}", file_path.display());
@@ -510,13 +519,14 @@ pub(super) fn is_valid_chat_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// Write `contents` to `path` through a temporary sibling renamed into
-/// place (as `layout::format::write_raw` does), so a crash or a full disk
-/// mid-write cannot leave a truncated chat behind.
-fn write_chat_file(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, contents)?;
-    fs::rename(&tmp, path)
+/// Write `contents` to `path` atomically, so a crash or a full disk mid-write
+/// cannot leave a truncated chat behind. A remote or P2P provider has no
+/// atomic replace yet and writes directly.
+fn write_chat_file(path: &Path, contents: &str) -> anyhow::Result<()> {
+    if vfs::is_remote() {
+        return vfs::write_file(path, contents.as_bytes());
+    }
+    vfs::write_file_atomically(path, contents.as_bytes())
 }
 
 #[cfg(test)]

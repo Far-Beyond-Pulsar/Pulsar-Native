@@ -37,6 +37,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use engine_fs::virtual_fs;
 use pulsar_class::{ClassIndex, ClassRegistry};
 use pulsar_content::{
     AssetRegistry, BuildProfile, PakWriter, ProjectSettings, ASSET_REGISTRY_FILE, CONTENT_DIR_NAME,
@@ -119,6 +120,8 @@ pub struct PackageReport {
 /// The engine's own `assets/` directory, where built-in assets (mesh
 /// primitives, the default level's meshes) live. A packaging-time lookup
 /// only: shipped content never names it.
+// std::fs allowed: looks up the engine's own source checkout on the real machine, not a project
+#[allow(clippy::disallowed_methods)]
 pub fn default_engine_assets() -> Option<PathBuf> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
     dir.is_dir().then(|| dir.canonicalize().unwrap_or(dir))
@@ -142,7 +145,7 @@ fn project_settings(
     profile: BuildProfile,
 ) -> Result<ProjectSettings, PackageError> {
     let path = project.join(PROJECT_SETTINGS_FILE);
-    let mut settings = match std::fs::read(&path) {
+    let mut settings = match virtual_fs::read_file(&path) {
         Ok(bytes) => ProjectSettings::from_json(&bytes).map_err(PackageError::Project)?,
         Err(_) => ProjectSettings::default(),
     };
@@ -152,10 +155,13 @@ fn project_settings(
 
 /// Package a project. See the crate doc.
 pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> {
-    let project = options.project.canonicalize().map_err(|e| {
+    let project = virtual_fs::canonicalize(&options.project).map_err(|e| {
         PackageError::Project(format!("project {}: {e}", options.project.display()))
     })?;
     let mut settings = project_settings(&project, options.profile)?;
+    // The project's plugins, as its game links them: what is cooked (and
+    // which plugin folders are snapshotted) follows the project's list.
+    pulsar_plugins::activate_project(&project, engine_state::project_plugins(&project));
     let mut report = PackageReport {
         profile: options.profile.as_str().into(),
         ..Default::default()
@@ -199,7 +205,7 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
             json(&serde_json::json!({ "class_id": entry.id.as_str() })),
         );
         let prefab_path = entry.dir.join(pulsar_class::PREFAB_FILE);
-        if prefab_path.is_file() {
+        if virtual_fs::is_file(&prefab_path) {
             // Slot ids are assigned by the load; cooking repairs the project's
             // prefab so the cooked ids match the project's.
             let (prefab, outcome) = pulsar_class::PrefabAsset::load_and_repair(&entry.dir)
@@ -254,6 +260,14 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         );
     }
 
+    // The plugins' folders (`plugins/<id>/`): a snapshot of what each
+    // enabled plugin provides now, which the game serves read-only
+    // (`engine_fs::virtual_fs::plugin_snapshot`), so the game does not depend
+    // on where a plugin got its files in the editor.
+    for (rel, bytes) in virtual_fs::plugin_snapshot(&project) {
+        files.insert(rel, bytes);
+    }
+
     // Levels: every `.level` file, plus the startup level.
     let startup = options
         .startup_level
@@ -267,13 +281,13 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
                 "scenes/default_level.json",
             ]
             .into_iter()
-            .find(|rel| project.join(rel).is_file())
+            .find(|rel| virtual_fs::is_file(&project.join(rel)))
             .map(str::to_owned)
         })
         .map(|rel| rel.replace('\\', "/"));
     let mut levels = cook::find_levels(&project, &[options.out.clone()]);
     if let Some(startup) = &startup {
-        if !project.join(startup).is_file() {
+        if !virtual_fs::is_file(&project.join(startup)) {
             return Err(PackageError::Project(format!(
                 "startup level {startup} does not exist"
             )));
@@ -286,7 +300,8 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     }
     for rel in &levels {
         let path = project.join(rel);
-        let bytes = std::fs::read(&path).map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
+        let bytes =
+            virtual_fs::read_file(&path).map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
         let value: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
         let (cooked, level_report) =
@@ -323,7 +338,7 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     let mut registry_out = AssetRegistry::new();
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for (id, source) in &assets.assets {
-        let bytes = std::fs::read(source)
+        let bytes = virtual_fs::read_file(source)
             .map_err(|e| PackageError::Cook(format!("asset {}: {e}", source.display())))?;
         registry_out.insert(cook::asset_record(id, source, &project, &bytes));
         asset_bytes.insert(id.clone(), bytes);
@@ -337,11 +352,7 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         }
     }
     let content_dir = options.out.join(CONTENT_DIR_NAME);
-    if content_dir.exists() {
-        std::fs::remove_dir_all(&content_dir)
-            .map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
-    }
-    std::fs::create_dir_all(&content_dir)
+    reset_output_dir(&content_dir)
         .map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
     if options.loose {
         for (rel, bytes) in files.iter().chain(asset_bytes.iter()) {
@@ -401,6 +412,18 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     Ok(report)
 }
 
+// std::fs allowed: the packaged game's output folder is the user's chosen real machine path,
+// not a project file (and not under the project's provider)
+#[allow(clippy::disallowed_methods)]
+fn reset_output_dir(content_dir: &Path) -> std::io::Result<()> {
+    if content_dir.exists() {
+        std::fs::remove_dir_all(content_dir)?;
+    }
+    std::fs::create_dir_all(content_dir)
+}
+
+// std::fs allowed: writes into the packaged game's output folder, a real machine path
+#[allow(clippy::disallowed_methods)]
 fn write_loose(content_dir: &Path, rel: &str, bytes: &[u8]) -> Result<(), PackageError> {
     let path = content_dir.join(rel);
     if let Some(parent) = path.parent() {
@@ -447,7 +470,7 @@ fn default_map(project: &Path) -> Option<String> {
         .as_str()
         .ok()?
         .to_owned();
-    (!map.is_empty() && project.join(&map).is_file()).then_some(map)
+    (!map.is_empty() && virtual_fs::is_file(&project.join(&map))).then_some(map)
 }
 
 fn project_name(project: &Path) -> String {
@@ -460,7 +483,7 @@ fn project_name(project: &Path) -> String {
 /// `cargo build --release` of the project's game binary, copied to `out`.
 fn build_game(project: &Path, out: &Path, target: Option<&str>) -> Result<PathBuf, PackageError> {
     let manifest = project.join("Cargo.toml");
-    let text = std::fs::read_to_string(&manifest).map_err(|e| {
+    let text = virtual_fs::read_to_string(&manifest).map_err(|e| {
         PackageError::Build(format!(
             "{}: {e} (is this a generated Pulsar project?)",
             manifest.display()
@@ -542,7 +565,14 @@ fn build_game(project: &Path, out: &Path, target: Option<&str>) -> Result<PathBu
     };
     let built = built.join(&exe_name);
     let dest = out.join(&exe_name);
-    std::fs::copy(&built, &dest)
+    copy_executable(&built, &dest)
         .map_err(|e| PackageError::Build(format!("copy {}: {e}", built.display())))?;
     Ok(dest)
+}
+
+// std::fs allowed: copies the built game executable from cargo's target dir into the output
+// folder, both real machine paths, not project files
+#[allow(clippy::disallowed_methods)]
+fn copy_executable(built: &Path, dest: &Path) -> std::io::Result<u64> {
+    std::fs::copy(built, dest)
 }

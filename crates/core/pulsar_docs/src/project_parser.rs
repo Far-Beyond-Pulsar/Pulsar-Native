@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 /// Parses Rust source files from a project directory at runtime to generate
 /// documentation from doc comments. Uses full AST parsing via syn for accuracy.
 use std::error::Error;
-use std::fs;
 use std::path::{Path, PathBuf};
 use syn::{Attribute, Item, Visibility};
-use walkdir::WalkDir;
 
 /// Project documentation structure
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -105,7 +103,7 @@ pub fn parse_project_docs(project_path: &Path) -> Result<ProjectDocumentation, B
         .to_string();
 
     let src_dir = project_path.join("src");
-    if !src_dir.exists() {
+    if !engine_fs::virtual_fs::exists(&src_dir).unwrap_or(false) {
         return Err("Project src directory not found".into());
     }
 
@@ -117,12 +115,9 @@ pub fn parse_project_docs(project_path: &Path) -> Result<ProjectDocumentation, B
     let mut constants = Vec::new();
 
     // Walk through all .rs files in src/
-    for entry in WalkDir::new(&src_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("rs"))
-    {
-        let file_path = entry.path();
+    for relative in engine_fs::virtual_fs::find_by_extension(&src_dir, "rs") {
+        let file_path_buf = src_dir.join(relative);
+        let file_path = file_path_buf.as_path();
 
         // Parse the file
         match parse_rust_file(file_path, &src_dir) {
@@ -163,7 +158,7 @@ struct FileDocumentation {
 
 /// Parse a single Rust file
 fn parse_rust_file(file_path: &Path, src_root: &Path) -> Result<FileDocumentation, Box<dyn Error>> {
-    let content = fs::read_to_string(file_path)?;
+    let content = engine_fs::virtual_fs::read_to_string(file_path)?;
     let ast = syn::parse_file(&content)?;
 
     // Build module path from file path

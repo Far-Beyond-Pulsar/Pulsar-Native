@@ -25,6 +25,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use engine_fs::virtual_fs;
 use parking_lot::RwLock;
 
 use crate::pak::{PakReader, PAK_FILE_NAME};
@@ -69,12 +70,12 @@ impl ContentRoot {
     pub fn packaged(dir: impl Into<PathBuf>) -> io::Result<Self> {
         let root = dir.into();
         let pak_path = root.join(PAK_FILE_NAME);
-        let pak = if pak_path.is_file() {
+        let pak = if virtual_fs::is_file(&pak_path) {
             Some(Arc::new(
                 PakReader::open(&pak_path).map_err(io::Error::from)?,
             ))
-        } else if root.join(crate::CLASS_INDEX_FILE).is_file()
-            || root.join(PROJECT_SETTINGS_FILE).is_file()
+        } else if virtual_fs::is_file(&root.join(crate::CLASS_INDEX_FILE))
+            || virtual_fs::is_file(&root.join(PROJECT_SETTINGS_FILE))
         {
             None
         } else {
@@ -97,7 +98,7 @@ impl ContentRoot {
         let dir = dir.into();
         if is_cooked(&dir) {
             Self::packaged(dir)
-        } else if dir.is_dir() {
+        } else if virtual_fs::is_dir(&dir) {
             Ok(Self::project(dir))
         } else {
             Err(io::Error::new(
@@ -184,12 +185,12 @@ impl ContentRoot {
                 return pak.read(rel).map_err(io::Error::from);
             }
         }
-        std::fs::read(self.path(rel))
+        virtual_fs::read_file(&self.path(rel)).map_err(io_error)
     }
 
     /// Whether content-relative `rel` exists (in the pak or loose).
     pub fn exists(&self, rel: &str) -> bool {
-        self.pak().is_some_and(|pak| pak.contains(rel)) || self.path(rel).is_file()
+        self.pak().is_some_and(|pak| pak.contains(rel)) || virtual_fs::is_file(&self.path(rel))
     }
 
     /// `Pulsar/project.json`, or the defaults when it is missing or
@@ -207,6 +208,9 @@ impl ContentRoot {
     /// Make this the process's content: [`current`] returns it and, for a
     /// pak, `engine_fs::virtual_fs` reads under the root come from it.
     pub fn install(&self) {
+        // A packaged game serves the plugins' folders from the snapshot the
+        // packager wrote into its content, not from the plugins.
+        engine_fs::virtual_fs::serve_packaged_folders(self.is_packaged());
         if let Some(pak) = self.pak() {
             engine_fs::virtual_fs::set_provider(Arc::new(crate::ContentFsProvider::new(
                 self.root.clone(),
@@ -239,6 +243,9 @@ impl ContentRoot {
     }
 
     /// [`asset_root`](Self::asset_root) with an explicit cache directory.
+    // std::fs allowed: unpacks into a cache directory on the real machine (the system temp
+    // directory by default) for loaders that open files by OS path; not a project file
+    #[allow(clippy::disallowed_methods)]
     pub fn asset_root_in(&self, base: &Path) -> io::Result<PathBuf> {
         let Some(pak) = self.pak() else {
             return Ok(self.root.clone());
@@ -269,12 +276,22 @@ impl ContentRoot {
 
 /// Whether `dir` holds cooked content.
 pub fn is_cooked(dir: &Path) -> bool {
-    dir.join(PAK_FILE_NAME).is_file() || dir.join(crate::CLASS_INDEX_FILE).is_file()
+    virtual_fs::is_file(&dir.join(PAK_FILE_NAME))
+        || virtual_fs::is_file(&dir.join(crate::CLASS_INDEX_FILE))
 }
 
 /// Whether `dir` is a Pulsar project root.
 pub fn is_project_root(dir: &Path) -> bool {
-    (dir.join("Pulsar").is_dir() || dir.join(".pulsar").is_dir()) && !is_cooked(dir)
+    (virtual_fs::is_dir(&dir.join("Pulsar")) || virtual_fs::is_dir(&dir.join(".pulsar")))
+        && !is_cooked(dir)
+}
+
+/// A `virtual_fs` error as an `io::Error`, keeping the kind (`NotFound`) when
+/// the provider reported one.
+fn io_error(error: anyhow::Error) -> io::Error {
+    error
+        .downcast::<io::Error>()
+        .unwrap_or_else(|other| io::Error::other(other.to_string()))
 }
 
 static CURRENT: RwLock<Option<ContentRoot>> = RwLock::new(None);

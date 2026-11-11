@@ -96,7 +96,7 @@ fn main() {
                     }
                     let json = serde_json::to_string_pretty(&result).unwrap_or_default();
                     if let Some(path) = report {
-                        if let Err(error) = std::fs::write(&path, &json) {
+                        if let Err(error) = write_report(&path, &json) {
                             eprintln!("error: cannot write {}: {error}", path.display());
                         }
                     }
@@ -147,4 +147,10 @@ fn main() {
         }
     };
     std::process::exit(code);
+}
+
+// std::fs allowed: the CLI writes its JSON report to the path the user gave, a real machine path
+#[allow(clippy::disallowed_methods)]
+fn write_report(path: &std::path::Path, json: &str) -> std::io::Result<()> {
+    std::fs::write(path, json)
 }

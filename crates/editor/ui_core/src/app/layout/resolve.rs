@@ -671,7 +671,7 @@ impl LeafSources for Resolver<'_> {
 
     fn open_file(&mut self, file: &str) -> FileStep<Self::Leaf> {
         let path = PathBuf::from(file);
-        if !path.exists() {
+        if !engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
             tracing::info!("layout: skipping {} (no longer exists)", path.display());
             return FileStep::Gone;
         }

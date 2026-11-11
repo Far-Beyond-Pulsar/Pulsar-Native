@@ -78,6 +78,8 @@ fn probe_module() -> Module {
     m
 }
 
+// Build script: writes into the build's OUT_DIR on the real machine.
+#[allow(clippy::disallowed_methods)]
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     let source = pulsar_script_codegen::actor::generate_actor("export_probe", &probe_module(), &[])

@@ -21,8 +21,9 @@ impl HelioViewport {
             return;
         }
         let path = PathBuf::from(&payload.engine_path);
-        if !path.exists()
-            || (payload.kind == AssetKind::Blueprint && !path.join("graph_save.json").exists())
+        if !engine_fs::virtual_fs::exists(&path).unwrap_or(false)
+            || (payload.kind == AssetKind::Blueprint
+                && !engine_fs::virtual_fs::exists(&path.join("graph_save.json")).unwrap_or(false))
         {
             return;
         }
@@ -338,7 +339,7 @@ impl HelioViewport {
         kind: AssetKind,
         shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if !path.exists() {
+        if !engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
             return Err(format!("File not found: {}", path.display()).into());
         }
 
@@ -396,12 +397,12 @@ impl HelioViewport {
                 }
             }
             AssetKind::Blueprint => {
-                if !path.is_dir() {
+                if !engine_fs::virtual_fs::is_dir(&path) {
                     return Err(
                         format!("Blueprint path is not a directory: {}", path.display()).into(),
                     );
                 }
-                if !path.join("graph_save.json").exists() {
+                if !engine_fs::virtual_fs::exists(&path.join("graph_save.json")).unwrap_or(false) {
                     return Err(format!(
                         "Not a valid blueprint class (missing graph_save.json): {}",
                         path.display()

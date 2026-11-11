@@ -17,8 +17,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 syn = { workspace = true, features = ["full", "parsing", "extra-traits", "visit"] }
 quote = { workspace = true }
-walkdir = { workspace = true }
 tracing = { workspace = true }
+engine_fs = { workspace = true }
 
 [build-dependencies]
 syn = { workspace = true, features = ["full", "parsing", "extra-traits", "visit"] }

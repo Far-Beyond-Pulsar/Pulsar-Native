@@ -405,21 +405,10 @@ pub(super) fn sync_file_types_into_drawer(app: &mut PulsarApp, cx: &mut Context<
     });
 }
 
-/// Pushes the project's user types and root path into the type-debugger and
-/// problems drawers. Only meaningful when a project is open; depends on
-/// `app.state` holding the drawers and the project path.
+/// Pushes the project root into the problems drawer. Only meaningful when a
+/// project is open; depends on `app.state` holding the drawer and the project
+/// path.
 pub(super) fn sync_project_into_drawers(app: &mut PulsarApp, cx: &mut Context<PulsarApp>) {
-    // Sync UserTypeRegistry to UI if we have a project
-    if let Some(engine_state) = engine_state::EngineContext::global() {
-        if let Some(user_types) = engine_state.user_types() {
-            let types = user_types.all();
-            tracing::debug!("📊 Syncing {} types to TypeDebuggerDrawer", types.len());
-            app.state.type_debugger_drawer.update(cx, |drawer, cx| {
-                drawer.set_types(types, cx);
-            });
-        }
-    }
-
     // Set project root for problems drawer to display relative paths
     app.state.problems_drawer.update(cx, |drawer, cx| {
         drawer.set_project_root(app.state.project_path.clone(), cx);

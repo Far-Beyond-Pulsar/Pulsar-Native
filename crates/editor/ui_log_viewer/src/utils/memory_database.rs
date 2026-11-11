@@ -148,7 +148,9 @@ pub fn query_top_allocations(
 /// Ensure memory database directory exists
 pub fn ensure_memory_db_dir() -> std::io::Result<PathBuf> {
     let db_dir = std::env::current_dir()?.join(".pulsar").join("memory");
-    std::fs::create_dir_all(&db_dir)?;
+    // The SQLite database is opened by path on the real machine: the local disk.
+    engine_fs::FsProvider::create_dir_all(&engine_fs::LocalFsProvider::new(), &db_dir)
+        .map_err(std::io::Error::other)?;
     Ok(db_dir)
 }
 

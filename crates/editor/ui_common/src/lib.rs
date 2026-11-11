@@ -51,6 +51,7 @@ pub mod shared_state;
 pub mod text_line_editor;
 mod texture_asset_editor;
 pub mod theme_dropdown;
+pub mod thumbnails;
 
 pub use asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 pub use inspector::{Inspector, InspectorCarry, InspectorRow};

@@ -823,7 +823,7 @@ impl MultiplayerWindow {
             }
         };
 
-        let Ok(data) = std::fs::read(&full_path) else {
+        let Ok(data) = engine_fs::virtual_fs::read_file(&full_path) else {
             return;
         };
         let Some(our_peer_id) = Self::read_own_peer_id(this, cx) else {

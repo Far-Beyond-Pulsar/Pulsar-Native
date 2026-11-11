@@ -9,7 +9,7 @@ This file is the one plan. When it lands it **replaces**
 Status: Phase 0 (audit) is this document's sections 1 to 5. Sections 6 and 7 are
 the plan. Phases 1 and 1b are built (p19): section 9 reviews the audit against the
 code, section 10 records the Q1-Q4 decisions, section 11 is what was built. A3, the
-kernel (#1605, p20), is section 12. Every row below is based on code read on `main` at 4327973b2 (SceneDB
+kernel (#1605, p20), is section 12. Traits, VFS and roles (T1-T4, p21) are section 13. Every row below is based on code read on `main` at 4327973b2 (SceneDB
 at the pinned rev `017252c`, read from the local cargo checkout). Anything not
 read is marked **UNVERIFIED**.
 
@@ -938,3 +938,172 @@ unchanged. Baseline: 56 dependency violations, 132 (file, kind) names. Now: **2*
 - **The baked-lighting plugin**: a new plugin repository, and the G-buffer's lightmap-UV target
   leaving the frame through a `GBufferContributor` (a Helio frame change with render
   acceptance). No engine path bakes today; only Helio's cathedral examples do.
+
+## 13. T1-T4 as built (p21)
+
+Branch `rewrite/p21-plugin-traits` in Pulsar-Native and every plugin repository it changed,
+cut from main after p20 (fcf5e934). T5 (catalog entries and the fixture plugin) is p22's,
+with phase 3. Docs: `.agents/FILESYSTEM.md` and `.agents/TRAITS.md` (rewritten),
+`PLUGIN_SYSTEM.md` ("Where a plugin meets the kernel"), `CRATES.md`.
+
+**Owners.** `engine_fs` is the filesystem library and nothing else; traits, the trait index
+and roles moved to a new kernel crate, `pulsar_traits` (a filesystem library is not the owner
+of gameplay contracts). Callers changed imports only.
+
+**T1, plugin folders** (`engine_fs::virtual_fs::mounts`; reworked before landing on Tristan's
+correction, 2026-11-10). A plugin that provides files registers an `engine_fs::FileProvider`
+(opt-in, origin-gated, category `fs.file_providers`) and every project shows
+`plugins/<plugin id>/` for it; a disabled or absent plugin's folder is gone. The engine calls
+the provider's `open` once with a `PluginFolder`, the capability to change that folder (only
+`engine_fs` constructs it; it goes to the owner alone), and gets back the folder's
+`FolderSource`, which the plugin implements over any source: embedded files (one option,
+`embedded_files!`), generated or downloaded data, its own cache. The plugin creates, writes
+and deletes files in its folder at runtime and reports each change with
+`PluginFolder::changed`, the file event the drawer and the watcher follow; `MemoryFolder` is
+the convenience source (embedded files plus `write`/`create_dir_all`/`delete`, reporting
+itself). One mechanism: the first draft's static `MountedContent` list is gone. `MountedFs` is
+a layer over the active provider (what `virtual_fs::provider()` returns and every free
+function goes through): every VFS write, create, append, delete or rename under `plugins/`
+fails with `engine_fs::ReadOnlyMount`, whoever calls it, so only the owner's capability
+changes a folder, never an origin string a caller supplies. Projects are mounted by
+`engine_state::set_project_path` and by the trait index (`TraitIndex::load/rebuild/live` call
+`mount_project`). An on-disk `plugins/` folder is shadowed and reported (`mount_problems`:
+logged, and a banner in the file drawer). The file drawer (`ui_file_manager`) marks items in
+plugin folders read-only (`FileItem::read_only_mount`, a lock and a tooltip, a context menu
+with Copy only); the trait editor opens their traits read-only. The VFS free functions now
+clone the layer out of its lock before calling it (a provider's events re-entering the VFS
+could deadlock on the non-reentrant lock). Unreal: `IPlatformFile` layers and per-plugin
+`RegisterMountPoint`, opt-in by `CanContainContent`; Unity: immutable `Packages/<name>`.
+
+**Where a plugin's runtime writes persist, and the rule.** `MemoryFolder` is gone at exit;
+`CacheFolder` keeps a plugin's runtime writes per project in `<project>/.pulsar/plugins/<id>/`
+(ignored by version control like the rest of `.pulsar/`), written through the project's own
+provider (the coordinator suggested `LocalFsProvider`; the project's provider also keeps a
+remote project's cache, and `.pulsar/plugins/` is outside the virtual `plugins/`, so the VFS
+serves it). A plugin folder is the plugin's content, not the project's: a user who wants to
+own or change a file copies it into the project. Sources never block: `FolderSource` answers
+from what it holds; a slow fetch runs on the plugin's task and announces its results through
+`PluginFolder::changed`; the VFS holds none of its locks while it calls a source (the project
+table is released before the folders are asked, and the layer is cloned out of its lock).
+
+**Packaging.** `FileProvider::in_game`: `InGame::Snapshot` (the default) or `InGame::Live`.
+The packager (`pulsar_package::package`) activates the project's plugin list and writes
+`virtual_fs::plugin_snapshot(project)` (every file of every snapshot folder, at
+`plugins/<id>/...`) into the package; a packaged game (`ContentRoot::install` ->
+`virtual_fs::serve_packaged_folders`) serves those folders from its content, read-only, and
+never asks the plugin, so a shipped game does not depend on where the editor's source got its
+files. The engine's own folder is `Live` (its traits are embedded in every binary).
+
+**Requirement handed to p22 and #1601.** A project asset that references a file in
+`plugins/<id>/` must survive the plugin being disabled or regenerating that file: give such
+references a stable id and a "missing" diagnostic, the way a disabled plugin's World Settings
+values and trait references are kept ("Missing trait"). Trait references already do (ids);
+asset references wait on #1601's one resolver. The capability prevents accidental writes; it
+is no sandbox: a native plugin runs in-process.
+
+**The engine's folder is `plugins/pulsar/`**, provided through the same API (the engine's
+`FileProvider`, a `MemoryFolder` of its embedded trait files). Not a top-level `pulsar/`:
+one virtual root for everything provided; the folder name is the owner's id and its trait
+namespace for every owner alike (`pulsar.GameMode`, `pulsar.lights.<Trait>`); and no second
+reserved name at the project root, which collided on a case-insensitive disk with any
+project folder named `pulsar` (the TypeScript plugin writes `Pulsar/types/pulsar.d.ts`).
+
+**Built-in traits** are files (`crates/core/pulsar_traits/content/traits/*.trait.json`, the
+same contracts as the old table) in the engine's folder at `plugins/pulsar/traits/`.
+`builtin_traits` (the Rust table, `ensure`, `sync_one`, `by_path`, the drift warnings, the
+adopt-a-hand-authored-file path) is deleted. An old project's copy (`types/traits/*.trait.json`
+with a `pulsar.` id) is refused as a reserved-namespace problem, left on disk, and the engine's
+folder serves; `assets/examples/voxel_desert`'s four copies are deleted.
+
+**T2, all file IO through `engine_fs`.** Added to `FsProvider`/`virtual_fs`: `append_file`,
+`copy`, `open_read` (`ReadSeek`), `open_write` (`FsWriter`, committed by `finish`),
+`read_to_string`, `is_file`, `is_dir`, `canonicalize`, `is_symlink`. The root `clippy.toml`
+lists `std::fs`'s functions, `File`/`OpenOptions` openers and the disk-asking `Path` methods
+as `disallowed-methods`; `[workspace.lints.clippy] disallowed_methods = "deny"`. Allowances
+are `#[allow(clippy::disallowed_methods)]` in files listed with their reason in
+`architecture/std-fs-allowed.txt`, shrink-only (`engine_fs/tests/std_fs_allow_list.rs`).
+**T2 count.** Section 0.11's grep count is replaced by clippy's: with the rule on, `cargo
+clippy --workspace` found **827 call sites in 199 files** (Pulsar's crates and plugins; the
+grep counted test code and every textual match). Six agents migrated them by crate group (no
+two groups shared a crate). After: project files go through `virtual_fs`; files of the
+**machine** (the user's config and credentials, logs, Downloads, libgit2's checkout) go
+through `engine_fs::LocalFsProvider` by name, the physical layer, so a remote or P2P
+project's provider never captures them; **57 files** keep `std::fs` behind a fn-level allow,
+listed with reasons (build scripts, proc macros, the engine's own install and per-user dirs,
+the OS loader's native libraries, the packager's output, profiling, CI inventories of the
+engine's source, Helio-layer format crates that take real paths from tools). Tests and
+examples are exempt (example crates carry a nested `clippy.toml`, as do the vendored trees
+under `crates/ui`, `crates/external` and `crates/third-party`). Along the way:
+`pulsar_plugins` reads no files (the project's plugin list is read by
+`engine_state::project_plugins` through the VFS); `FsMetadata` gained `modified_ns` (the local
+provider's full-precision mtime) so caches keyed on mtimes keep sub-second precision; the
+multiplayer file sync's chunk write at offset 0 now truncates (it left a longer old tail);
+crates in the migrated groups that lacked `[lints] workspace = true` gained it.
+
+**The `engine_fs` editor split.** The `editor` feature is deleted. Most of it had no live
+caller and is deleted: `EngineFs`, `ProjectScanner`, `AssetOperations`, `templates`,
+`AssetIndex`, `UserTypeRegistry` (with `engine_state`'s never-set `user_types` slot and
+`ui_core`'s dead type-debugger sync; the type debugger keeps its own `TypeInfo`) and the
+second watcher (`watchers::start_watcher`). The live pieces went to their one user:
+`thumbnails` -> `ui_common::thumbnails`, `tooling` -> `agent_chat_tools::fs_tools`. The
+project file index stays (runtime component crates resolve asset GUIDs through it,
+#1601): it gets file types from `engine_fs::FileTypeClassifier` registrations
+(`plugin_manager` submits the editor's; its lock test moved there), and its watcher, the
+live one, publishes asset updates for kinds plugins register (`engine_fs::AssetChangeKind`:
+the animation plugin's files, the materials plugin's images and materials), which the dead
+watcher had hard-coded. `cargo tree -p pulsar_game -e normal -i gpui-ce` prints nothing.
+
+**T3, the role registry** (`pulsar_traits::roles`). `RoleRegistration { origin, id, label,
+trait_id, setting_key, order, start }` (category `gameplay.roles`); the engine registers its
+four with the setting keys levels always used. `ROLES`, `EngineRole`, `RoleSpec`, the
+`WorldSettingsData` role fields and match arms are deleted. `WorldSettingsData` keeps the
+shell's simulation clock and render pipeline and stores everything else in a flattened
+`values` map (unknown keys round-trip: a disabled plugin's settings survive). World Settings
+builds one picker per registered role, and renders `ui_level_editor::extend::WorldSettingField`
+registrations by kind (toggle, number, vector, asset path): the input plugin registers the
+player input mapping and the physics plugin its toggle and gravity, so the shell's input
+section and physics rows are deleted (kind names 32 -> 22). `WorldRoles` carries the level's
+settings (`setting(key)`); the input plugin reads its own key through
+`PossessionContext::roles`. Lifecycle on the Gamma hub (`pulsar_events::builtin`):
+`RoleSpawned`, `GameBegan`, `PossessionChanged`, `GameEnded`, published by the driver.
+
+**T4, implementer sources.** `TraitImplementerSource { origin, kind, label, claims, scan,
+list }` (category `traits.implementer_sources`). The Blueprint plugin's root registers
+Blueprints (`pulsar.blueprints.blueprint`); the Blueprint-format code (which files, what they
+declare and provide, `check_blueprint`) moved from the kernel into the plugin
+(`features/traits/source.rs`). `pulsar_traits` registers native components
+(`pulsar.native.component`) over `NativeTraitImpl` registrations (`implements!`, from a
+plugin's root), bound onto `ComponentMethodRegistration` methods and checked by
+`conformance::check` with `ProvidedMethod`s from `MethodMetadata` (`native_conformance`).
+`BlueprintTraitIndex` became `TraitIndex` (`.pulsar/trait_index.json`, schema 3): it stores
+only the project's own files' traits and implementers; mounted traits and listed implementers
+are merged at every load, so a disabled plugin's traits vanish ("Missing trait").
+`TraitImplementer::kind` is the source kind. Each implementer carries a `Binding`
+(`ScriptClass { dir }` or `Component { class }`): the runtime reads no Blueprint.
+`RuntimeTraits::dispatch` is the one dispatcher for script handlers and native component
+methods; `call_trait_hook` is deleted. Plugin trait ids are `<plugin id>.<Trait>` with
+`meta.contractVersion`: a mounted trait outside its owner's namespace or unversioned, and a
+project trait in a reserved namespace, are refused as `TraitIndex::problems`.
+
+**Not done, with the reason.**
+- T5 (catalog entries for traits, roles, sources and implementers; the fixture plugin; cross-
+  plugin `requires`): p22 with phase 3, as planned. Roles, sources, native implementers and
+  mounted content are already `Contribution`s, so the catalog lists them by category.
+- A packaged game ships no `.pulsar/trait_index.json`, so its classes are `TraitCheck::Unknown`
+  (the role binding is trusted, as before when it shipped no Blueprints): shipping derived
+  editor data in the pak is the packager's design (#1601, how a packaged game resolves).
+
+**#1681 (the severity audit) carried into p21's homes.** Merged from main before landing; where
+p21 moved or deleted the code it patched, the fix moved with it:
+- trait assets replaced atomically during an index rebuild (was `engine_fs::blueprint_trait_index`):
+  `pulsar_traits::index::replace_file`, shared with the index write;
+- the VFS wrappers never call a provider under the read guard: already p21's `layer()` clone;
+- provider instances replaced atomically: `agent_chat_core` through `LocalFsProvider::write_file_atomically`
+  (machine config, not a project file);
+- chats written atomically, ids checked: `chat_storage` through `virtual_fs::write_file_atomically`;
+- folder copy never replaces a same-named file: `ui_file_manager::helpers::copy_file_new` through
+  `virtual_fs::create_file`; `same_file` canonicalizes through the VFS;
+- the owner-only credentials directory (`pulsar_auth::create_private_dir`) and the PIE temp copy's
+  drop are real-machine code with their allow;
+- `GeneralOperations`' `sqlite3` exit check: the code was dead and is deleted in p21 (nothing
+  creates a data table that way).

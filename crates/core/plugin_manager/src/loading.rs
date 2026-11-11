@@ -30,6 +30,9 @@ impl PluginManager {
     ///
     /// Plugins are loaded ONCE and NEVER unloaded. This is intentional and
     /// necessary for safety. See `PLUGIN_ARCHITECTURE.md` for details.
+    // Real machine: the engine's own install directory of native plugin libraries,
+    // outside any project and loaded by the OS loader from a real path.
+    #[allow(clippy::disallowed_methods)]
     pub fn load_plugins_from_dir(
         &mut self,
         dir: impl AsRef<Path>,
@@ -96,6 +99,9 @@ impl PluginManager {
     /// no UI. Finish each with [`PluginManager::install_prepared_plugin`], in
     /// the order returned: dependencies before the plugins that need them
     /// (see [`PluginManager::order_prepared_plugins`]).
+    // Real machine: the engine's own install directory of native plugin libraries,
+    // outside any project and loaded by the OS loader from a real path.
+    #[allow(clippy::disallowed_methods)]
     pub fn prepare_plugins_in_dir(
         dir: impl AsRef<Path>,
     ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
@@ -141,6 +147,9 @@ impl PluginManager {
     }
 
     /// Load the library at `path` and verify it against the integrity manifest.
+    // Real machine: the engine's own install directory of native plugin libraries,
+    // outside any project and loaded by the OS loader from a real path.
+    #[allow(clippy::disallowed_methods)]
     pub fn prepare_plugin(path: &Path) -> Result<PreparedPlugin, PluginManagerError> {
         // Resolve to an absolute path before handing it to the OS loader.
         // Windows `LoadLibraryExW` fails with ERROR_MOD_NOT_FOUND (126) for a
@@ -707,6 +716,9 @@ impl PluginManager {
     ///   (use with caution).
     ///
     /// Returns `Err` if no manifest file exists (verification is required).
+    // Real machine: the engine's own install directory of native plugin libraries,
+    // outside any project and loaded by the OS loader from a real path.
+    #[allow(clippy::disallowed_methods)]
     fn load_plugin_manifest(
         plugin_dir: &Path,
     ) -> Result<std::collections::HashMap<String, String>, PluginManagerError> {

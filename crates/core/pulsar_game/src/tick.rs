@@ -69,7 +69,7 @@ pub struct TickLoop {
     /// mode, player controller, player character, game state), resolved
     /// and checked but not spawned. Empty until a level is loaded; see
     /// [`world_roles`](Self::world_roles).
-    pub(crate) world_roles: engine_fs::world_roles::WorldRoles,
+    pub(crate) world_roles: pulsar_traits::WorldRoles,
     /// Whether a possessed pawn owns the local player's input; set by the
     /// script driver, read by the hosts' free cameras (see
     /// [`possession_gate`](Self::possession_gate)).
@@ -222,7 +222,7 @@ impl TickLoop {
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
-            world_roles: engine_fs::world_roles::WorldRoles::default(),
+            world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
             view_targets: crate::view_target::ViewTargets::new(),
             window_manager: None,
@@ -272,7 +272,7 @@ impl TickLoop {
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
             static_moves: None,
-            world_roles: engine_fs::world_roles::WorldRoles::default(),
+            world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
             view_targets: crate::view_target::ViewTargets::new(),
             window_manager: None,

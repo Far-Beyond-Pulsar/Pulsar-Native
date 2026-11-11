@@ -26,6 +26,9 @@
 //! | [`Hit`], [`BeginOverlap`], [`EndOverlap`] | the entity hit / overlapping | physics (see below) |
 //! | [`TimerFired`] | the timer owner's entity (global for unbound scripts) | `timer::set` timers |
 //! | [`Damage`] | the damaged entity | `game::apply_damage` |
+//! | [`GameBegan`] / [`GameEnded`] | global | the script driver, when play starts (after the roles spawned) and when it ends (before the roles go) |
+//! | [`RoleSpawned`] | global | the script driver, for each role entity it spawns (any registered role, the engine's or a plugin's) |
+//! | [`PossessionChanged`] | global | the script driver, when the local player's controller takes or releases its pawn |
 //!
 //! Physics: nothing publishes `Hit` / `BeginOverlap` / `EndOverlap` today;
 //! the physics plugin publishes its own contact events
@@ -167,6 +170,43 @@ pub struct Damage {
     pub instigator: u64,
 }
 
+/// Play started: every role the level selected was spawned (the player's
+/// character from the next frame) and the game mode heard
+/// `on_game_start`.
+#[pulsar_event(dynamic, name = "GameBegan", crate = gamma)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameBegan {
+    /// The level file (empty when unknown).
+    pub level: String,
+}
+
+/// Play is ending: possession ended and the game mode heard `on_game_end`;
+/// the role entities go next.
+#[pulsar_event(dynamic, name = "GameEnded", crate = gamma)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameEnded {
+    pub level: String,
+}
+
+/// The session spawned `entity` for the role `role` (a registered role's id,
+/// `pulsar.game_mode` or a plugin's).
+#[pulsar_event(dynamic, name = "RoleSpawned", crate = gamma)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct RoleSpawned {
+    pub role: String,
+    pub entity: u64,
+}
+
+/// The local player's controller took (`possessed`) or released its pawn.
+/// `controller` is 0 when the level has no controller role.
+#[pulsar_event(dynamic, name = "PossessionChanged", crate = gamma)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PossessionChanged {
+    pub controller: u64,
+    pub pawn: u64,
+    pub possessed: bool,
+}
+
 /// Every built-in event with its palette category, in a stable order.
 pub fn builtin_events() -> Vec<(EventDescriptor, EventCategory)> {
     fn d<T: Event>(category: EventCategory) -> (EventDescriptor, EventCategory) {
@@ -193,6 +233,10 @@ pub fn builtin_events() -> Vec<(EventDescriptor, EventCategory)> {
         d::<EndOverlap>(C::Physics),
         d::<TimerFired>(C::Gameplay),
         d::<Damage>(C::Gameplay),
+        d::<GameBegan>(C::Lifecycle),
+        d::<GameEnded>(C::Lifecycle),
+        d::<RoleSpawned>(C::Gameplay),
+        d::<PossessionChanged>(C::Gameplay),
     ]
 }
 
@@ -204,7 +248,9 @@ mod tests {
     #[test]
     fn descriptors_use_script_friendly_fields() {
         let events = builtin_events();
-        assert_eq!(events.len(), 16);
+        // 16 plus the four session events (GameBegan, GameEnded,
+        // RoleSpawned, PossessionChanged).
+        assert_eq!(events.len(), 20);
         let hit = &events.iter().find(|(d, _)| d.name == "Hit").unwrap().0;
         assert_eq!(hit.id, Hit::stable_type_id());
         assert_eq!(

@@ -1,0 +1,3 @@
+# Vendored and external code keeps its own rules: the root clippy.toml's
+# `disallowed-methods` (file IO through `engine_fs`) is for Pulsar's own crates
+# and plugins. Clippy reads the nearest clippy.toml, so this one stops it here.

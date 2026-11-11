@@ -12,6 +12,8 @@ struct GpuPolicyProbe {
     selected_gpu_name: Option<String>,
 }
 
+// std::fs allowed: reads the OS's /proc/version to detect WSL, not a project file
+#[allow(clippy::disallowed_methods)]
 /// Detect if running under WSL (Windows Subsystem for Linux).
 fn is_wsl() -> bool {
     #[cfg(target_os = "linux")]

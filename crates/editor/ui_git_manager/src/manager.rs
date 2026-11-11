@@ -10,6 +10,7 @@ use crate::{
     BranchRow, ChangeRow, DetailFocus, DiffViewMode, GitLayout, GitManager, ListState, PendingAuth,
     PendingAuthOp, RepoPhase, git_operations::*, models::*,
 };
+use engine_fs::{FsProvider as _, LocalFsProvider};
 use gpui::*;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -32,7 +33,8 @@ fn settings_path() -> Option<PathBuf> {
 
 pub(crate) fn load_layout() -> GitLayout {
     let stored = settings_path()
-        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|path| LocalFsProvider::new().read_file(&path).ok())
+        .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .and_then(|value| {
             value
@@ -50,14 +52,14 @@ fn save_layout(layout: GitLayout) {
     let Some(path) = settings_path() else {
         return;
     };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
     let name = match layout {
         GitLayout::Tree => "tree",
         GitLayout::Desktop => "desktop",
     };
-    let _ = std::fs::write(path, serde_json::json!({ "layout": name }).to_string());
+    let _ = LocalFsProvider::new().write_file(
+        &path,
+        serde_json::json!({ "layout": name }).to_string().as_bytes(),
+    );
 }
 
 fn fingerprint(state: &RepositoryState) -> u64 {
@@ -73,6 +75,9 @@ fn fingerprint(state: &RepositoryState) -> u64 {
     hasher.finish()
 }
 
+// Diff polling needs the working file's sub-second mtime, which `FsMetadata` (whole seconds)
+// cannot give; the working tree is libgit2's real checkout.
+#[allow(clippy::disallowed_methods)]
 fn file_stamp(path: &Path) -> Option<(std::time::SystemTime, u64)> {
     let meta = std::fs::metadata(path).ok()?;
     Some((meta.modified().ok()?, meta.len()))

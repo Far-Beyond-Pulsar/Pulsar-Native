@@ -112,7 +112,7 @@ impl PulsarApp {
                         return;
                     };
                     let engine_entry = source_root.join("crates/core/engine/src/main.rs");
-                    if engine_entry.is_file() {
+                    if engine_source_entry_exists(&engine_entry) {
                         this.open_path_with_project_root(engine_entry, source_root, window, cx);
                     } else {
                         tracing::error!(?source_root, "Engine source entry point was not found");
@@ -193,6 +193,16 @@ fn source_build_root() -> Option<PathBuf> {
     })
 }
 
+// Allowed std::fs: checks the engine's own source checkout on this machine,
+// which is outside any project.
+#[allow(clippy::disallowed_methods)]
+fn engine_source_entry_exists(entry: &std::path::Path) -> bool {
+    entry.is_file()
+}
+
+// Allowed std::fs: OS process plumbing. Copies the running executable into the
+// temp dir so the sidecar can replace it, and removes that copy on failure.
+#[allow(clippy::disallowed_methods)]
 fn start_engine_bootstrap_sidecar(workspace: &std::path::Path) -> std::io::Result<()> {
     const SIDECAR_ARG: &str = "--pulsar-bootstrap-sidecar-run";
 

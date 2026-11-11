@@ -62,6 +62,8 @@ pulsar_scene.workspace = true
 helio_component.workspace = true
 helio-pass-postprocess = { workspace = true, optional = true }
 engine_fs.workspace = true
+# The level's roles a game session hands its plugins (`game_hooks::PossessionContext`).
+pulsar_traits.workspace = true
 
 # Profiling - instrumentation-based
 profiling = { workspace = true }

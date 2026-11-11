@@ -74,6 +74,8 @@ fn fail(reason: &str) -> ! {
     std::process::exit(1);
 }
 
+// std::fs allowed: the Windows-on-ARM DXC install is the engine's own per-user tool cache, outside any project
+#[allow(clippy::disallowed_methods)]
 /// The directory holding both DLLs: beside the executable, else the cache
 /// (installed first if needed).
 fn ensure() -> Result<PathBuf> {
@@ -118,6 +120,8 @@ fn confirm_download() -> bool {
         == rfd::MessageDialogResult::Yes
 }
 
+// std::fs allowed: the Windows-on-ARM DXC install is the engine's own per-user tool cache, outside any project
+#[allow(clippy::disallowed_methods)]
 fn has_dlls(dir: &Path) -> bool {
     DLLS.iter().all(|d| dir.join(d).is_file())
 }
@@ -138,6 +142,8 @@ fn activate(dir: &Path) -> Result<()> {
     Ok(())
 }
 
+// std::fs allowed: the Windows-on-ARM DXC install is the engine's own per-user tool cache, outside any project
+#[allow(clippy::disallowed_methods)]
 fn install(final_dir: &Path) -> Result<()> {
     let tag_dir = final_dir.parent().context("cache path has no parent")?;
     std::fs::create_dir_all(tag_dir)?;
@@ -158,6 +164,8 @@ fn install(final_dir: &Path) -> Result<()> {
     result
 }
 
+// std::fs allowed: the Windows-on-ARM DXC install is the engine's own per-user tool cache, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Download `url` to `dest` and require its SHA-256 to be `expected`.
 fn download(url: &str, dest: &Path, expected: &str) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
@@ -187,6 +195,8 @@ fn download(url: &str, dest: &Path, expected: &str) -> Result<()> {
     Ok(())
 }
 
+// std::fs allowed: the Windows-on-ARM DXC install is the engine's own per-user tool cache, outside any project
+#[allow(clippy::disallowed_methods)]
 /// Copy `bin/<ARCH_DIR>/{dxcompiler,dxil}.dll` out of the release zip into
 /// `out`, flat. Entry names are only matched, never used as paths.
 fn extract(zip_path: &Path, out: &Path) -> Result<()> {

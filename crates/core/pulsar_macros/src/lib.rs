@@ -54,6 +54,8 @@ fn filename_to_pascal(filename: &str) -> String {
 /// generate_icon_enum!("../../../WGPUI-Component/assets/icons");
 /// ```
 #[proc_macro]
+// Proc macro: runs inside rustc at compile time and reads the crate's own source dir; it is not engine runtime code.
+#[allow(clippy::disallowed_methods)]
 pub fn generate_icon_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::LitStr);
     let relative_path = input.value();

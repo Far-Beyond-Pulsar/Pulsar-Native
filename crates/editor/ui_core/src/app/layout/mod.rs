@@ -496,7 +496,9 @@ impl PulsarApp {
         let popouts: Vec<SavedPopout> = captured.into_iter().map(|(p, _)| p).collect();
         // Tabs no plugin could build this session ride along unchanged, kept
         // only for pop-outs that are part of this save.
-        let mut dormant = dormant::prune(self.state.layout_dormant.clone(), |p| p.exists());
+        let mut dormant = dormant::prune(self.state.layout_dormant.clone(), |p| {
+            engine_fs::virtual_fs::exists(p).unwrap_or(false)
+        });
         let ghosts: Vec<SavedPopout> = self
             .state
             .layout_ghosts
@@ -587,7 +589,7 @@ impl PulsarApp {
             .file_manager_folder
             .as_deref()
             .map(|relative| root.join(relative))
-            .filter(|folder| folder.is_dir())
+            .filter(|folder| engine_fs::virtual_fs::is_dir(folder))
         {
             self.state
                 .file_manager_drawer

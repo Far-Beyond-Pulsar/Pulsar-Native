@@ -271,9 +271,11 @@ fn is_plumbing(symbol: &str) -> bool {
     // user type is always path-qualified (`crate::Type`), so one implementing
     // a std trait is still attributed to itself.
     symbol.starts_with('<')
-        && symbol[1..].split_once(" as ").is_some_and(|(ty, trait_path)| {
-            has_prefix(trait_path) && (!ty.contains("::") || has_prefix(ty))
-        })
+        && symbol[1..]
+            .split_once(" as ")
+            .is_some_and(|(ty, trait_path)| {
+                has_prefix(trait_path) && (!ty.contains("::") || has_prefix(ty))
+            })
 }
 
 /// The frame to attribute a stack to.

@@ -29,6 +29,7 @@ ui_friends.workspace = true
 
 # Engine
 engine_state.workspace = true
+engine_fs = { workspace = true }
 pulsar_settings.workspace = true
 engine_backend.workspace = true
 pulsar_reflection.workspace = true

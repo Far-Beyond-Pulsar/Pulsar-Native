@@ -290,16 +290,24 @@ struct ProviderInstanceFile {
     providers: Vec<ProviderInstanceConfig>,
 }
 
+use engine_fs::FsProvider as _;
+
+/// The saved instances are the machine's (the user's config dir), never a
+/// project's: they go to the physical disk whatever provider is active.
+fn machine() -> engine_fs::LocalFsProvider {
+    engine_fs::LocalFsProvider::new()
+}
+
 /// Read saved instances from `path`. A missing file is an empty list; an
 /// unreadable one is an error, so callers never overwrite it blindly.
 pub fn load_provider_instances(
     path: &std::path::Path,
 ) -> anyhow::Result<Vec<ProviderInstanceConfig>> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => Ok(serde_json::from_str::<ProviderInstanceFile>(&text)?.providers),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(e.into()),
+    if !machine().exists(path)? {
+        return Ok(Vec::new());
     }
+    let bytes = machine().read_file(path)?;
+    Ok(serde_json::from_slice::<ProviderInstanceFile>(&bytes)?.providers)
 }
 
 /// Write `instances` to `path`, creating its directory.
@@ -307,21 +315,13 @@ pub fn save_provider_instances(
     path: &std::path::Path,
     instances: &[ProviderInstanceConfig],
 ) -> anyhow::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     let file = ProviderInstanceFile {
         providers: instances.to_vec(),
     };
     let text = serde_json::to_string_pretty(&file)?;
-    // Written beside the store and renamed over it, so a crash or a full
-    // disk mid-write leaves the previous file rather than a truncated one.
-    let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    std::fs::write(&temp, text)?;
-    if let Err(error) = std::fs::rename(&temp, path) {
-        let _ = std::fs::remove_file(&temp);
-        return Err(error.into());
-    }
+    // Replaced atomically, so a crash or a full disk mid-write leaves the
+    // previous file rather than a truncated one.
+    machine().write_file_atomically(path, text.as_bytes())?;
     Ok(())
 }
 

@@ -5,7 +5,7 @@
 //! remote providers can continue to use their own manifest/query mechanisms.
 
 use anyhow::{Context, Result};
-use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
+use rusqlite::{params, params_from_iter, types::Value, Connection};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -915,53 +915,29 @@ impl ProjectFileIndex {
         if relative.is_empty() || is_cache_entry(&relative) {
             return Ok(());
         }
-        // File-index updates run synchronously from local provider callbacks,
-        // which can be emitted while the virtual-filesystem provider read lock
-        // is held. Read local metadata directly to avoid re-entering that lock.
-        let metadata = match std::fs::metadata(path) {
+        let metadata = match crate::virtual_fs::metadata(path) {
             Ok(metadata) => metadata,
             Err(_) => return self.remove_path(path),
         };
         let entry = ManifestEntry {
             path: relative,
-            is_dir: metadata.is_dir(),
-            size: metadata.len(),
-            modified: metadata
-                .modified()
-                .ok()
-                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|duration| duration.as_secs()),
+            is_dir: metadata.is_dir,
+            size: metadata.size,
+            modified: metadata.modified,
         };
         self.reconcile_one(&entry)?;
-        if metadata.is_dir() {
+        if metadata.is_dir {
             let relative_root = self.relative_path(path).unwrap_or_default();
             let mut children = Vec::new();
-            for child in walkdir::WalkDir::new(path).min_depth(1) {
-                let child = child?;
-                let metadata = child.metadata()?;
-                let child_relative = child
-                    .path()
-                    .strip_prefix(path)
-                    .context("walked file escaped refreshed directory")?;
-                let child_relative = normalize_relative_path(&child_relative.to_string_lossy());
-                let child_path = if relative_root.is_empty() {
-                    child_relative
+            for mut child in crate::virtual_fs::manifest(path)? {
+                child.path = if relative_root.is_empty() {
+                    normalize_relative_path(&child.path)
                 } else {
-                    format!("{relative_root}/{child_relative}")
+                    format!("{relative_root}/{}", normalize_relative_path(&child.path))
                 };
-                if is_cache_entry(&child_path) {
-                    continue;
+                if !is_cache_entry(&child.path) {
+                    children.push(child);
                 }
-                children.push(ManifestEntry {
-                    path: child_path,
-                    is_dir: metadata.is_dir(),
-                    size: metadata.len(),
-                    modified: metadata
-                        .modified()
-                        .ok()
-                        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-                        .map(|duration| duration.as_secs()),
-                });
             }
 
             // Preserve stable-ID rows for unchanged files. Only remove old
@@ -1151,7 +1127,7 @@ impl ProjectFileIndex {
         if !path.is_absolute() {
             return None;
         }
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let path = crate::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         if let Ok(relative) = path.strip_prefix(&self.project_root) {
             return Some(normalize_relative_path(&relative.to_string_lossy()));
         }
@@ -1195,12 +1171,15 @@ static SHARED_FILE_INDEXES: OnceLock<parking_lot::Mutex<HashMap<PathBuf, Arc<Pro
 /// the cache the first time it is requested. Remote and P2P projects return
 /// `Ok(None)` so callers can use their provider's native listing path.
 pub fn open_project_file_index(project_root: &Path) -> Result<Option<Arc<ProjectFileIndex>>> {
+    // The index lists the project as the VFS shows it, its `plugins/` folder
+    // included, whoever opens it first (the editor's loading screen opens it
+    // before the project is published).
+    crate::virtual_fs::mount_project(project_root);
     if crate::virtual_fs::is_remote() || crate::is_cloud_path(project_root) {
         return Ok(None);
     }
     let key = normalize_absolute_path(
-        project_root
-            .canonicalize()
+        crate::virtual_fs::canonicalize(project_root)
             .unwrap_or_else(|_| project_root.to_path_buf()),
     );
     let indexes = SHARED_FILE_INDEXES.get_or_init(|| parking_lot::Mutex::new(HashMap::new()));
@@ -1242,7 +1221,7 @@ pub fn project_file_index_for_path(path: &Path) -> Option<Arc<ProjectFileIndex>>
     if !path.is_absolute() {
         return None;
     }
-    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path = crate::virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let indexes = SHARED_FILE_INDEXES.get()?.lock();
     indexes
         .values()
@@ -1362,12 +1341,33 @@ fn write_durable_asset_id_manifest(path: &Path, manifest: &DurableAssetIdManifes
         .with_context(|| format!("write durable asset IDs to {}", path.display()))
 }
 
+/// Names a path's registered file type for the index's `file_type` column.
+/// The editor's file-type registry submits one (`plugin_manager`); without it
+/// (a game, a tool) files are indexed with no type. Must not block: an editor
+/// may refresh the index while holding the registry's lock.
+pub struct FileTypeClassifier {
+    pub origin: &'static str,
+    pub id: &'static str,
+    pub classify: fn(&Path) -> Option<String>,
+}
+
+impl pulsar_plugins::Contribution for FileTypeClassifier {
+    const CATEGORY: &'static str = "fs.file_types";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.id.to_owned()
+    }
+}
+
+pulsar_plugins::registration!(FileTypeClassifier);
+
 fn registered_file_type(path: &Path) -> Option<String> {
-    // Lock-free on purpose. `ui_core` creates editors while holding the plugin
-    // manager's write lock, and an editor may refresh this index from that same
-    // thread; taking the manager's lock here would wait on itself forever
-    // (`parking_lot` locks are not reentrant).
-    plugin_manager::file_type_for_path(path).map(|file_type| file_type.as_str().to_owned())
+    pulsar_plugins::registered::<FileTypeClassifier>()
+        .find_map(|classifier| (classifier.classify)(path))
 }
 
 #[cfg(test)]

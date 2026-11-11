@@ -29,21 +29,17 @@ fn skipped_dir(name: &str) -> bool {
 }
 
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+    let Ok(entries) = engine_fs::virtual_fs::list_dir(dir) else {
         return;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        match entry.file_type() {
-            Ok(kind) if kind.is_dir() => {
-                if !skipped_dir(&name) {
-                    collect(&path, out);
-                }
+    for entry in entries {
+        let path = dir.join(&entry.name);
+        if entry.is_dir {
+            if !skipped_dir(&entry.name) {
+                collect(&path, out);
             }
-            Ok(kind) if kind.is_file() => out.push(path),
-            _ => {}
+        } else {
+            out.push(path);
         }
     }
 }
@@ -85,8 +81,8 @@ impl OfferedOnce {
         }
         report.unlinked.retain(|_, sources| !sources.is_empty());
         report.out_of_date.retain(|record| {
-            let version = std::fs::metadata(project_root.join(&record.source))
-                .map(|meta| format!("{}:{:?}", meta.len(), meta.modified().ok()))
+            let version = engine_fs::virtual_fs::metadata(&project_root.join(&record.source))
+                .map(|meta| format!("{}:{:?}", meta.size, meta.modified_nanos()))
                 .unwrap_or_default();
             self.offered
                 .insert(format!("changed:{}:{version}", record.source))

@@ -73,6 +73,7 @@ name = "agent_chat_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "pulsar_plugins",
  "serde",
  "serde_json",
@@ -86,6 +87,7 @@ dependencies = [
  "anyhow",
  "engine_fs",
  "engine_state",
+ "parking_lot",
  "plugin_manager",
  "serde_json",
  "tool_registry",
@@ -591,6 +593,7 @@ dependencies = [
  "anyhow",
  "asset_import",
  "bytemuck",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
@@ -1252,6 +1255,7 @@ dependencies = [
  "pulsar_script_codegen",
  "pulsar_script_vm",
  "pulsar_std",
+ "pulsar_traits",
  "schemars",
  "serde",
  "serde_json",
@@ -3281,6 +3285,7 @@ name = "editor_table_plugin"
 version = "0.1.4"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -3491,6 +3496,7 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_script_object_model",
  "pulsar_settings",
+ "pulsar_traits",
  "pulsar_world_registry",
  "ropey 2.0.0-beta.1",
  "scenedb-inspector-agent",
@@ -3534,32 +3540,23 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
- "dashmap",
- "editor_task_queue",
  "futures",
- "image",
  "notify 8.2.0",
  "parking_lot",
- "plugin_editor_api",
- "plugin_manager",
- "profiling 0.1.0",
  "pulsar-multiplayer-core",
- "pulsar_reflection",
+ "pulsar_events",
+ "pulsar_plugins",
  "rusqlite",
  "serde",
  "serde_json",
- "smol",
  "tempfile",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
- "tool_registry",
- "tool_registry_macros",
  "tracing",
  "ui_types_common",
  "ureq 3.4.0",
  "urlencoding",
  "uuid",
- "walkdir",
 ]
 
 [[package]]
@@ -6874,6 +6871,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "helio",
@@ -7396,6 +7394,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "engine_class_derive",
+ "engine_fs",
  "gilrs",
  "gpui-ce",
  "inventory",
@@ -7411,6 +7410,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "ui_level_editor",
  "uuid",
 ]
 
@@ -8018,6 +8018,7 @@ dependencies = [
 name = "level_migrate"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "installed_plugins",
  "pulsar_class",
  "pulsar_reflection",
@@ -8604,6 +8605,7 @@ name = "materials_plugin"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "helio-mats",
  "helio_component",
@@ -8622,6 +8624,7 @@ dependencies = [
  "pulsar_world_registry",
  "serde_json",
  "tempfile",
+ "ui_types_common",
  "wgpu",
 ]
 
@@ -11235,6 +11238,7 @@ dependencies = [
  "skeletal_assets",
  "tracing",
  "ui",
+ "ui_level_editor",
  "wgpu",
 ]
 
@@ -11352,6 +11356,7 @@ dependencies = [
 name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_subsystems",
  "gamma",
  "gpui-ce",
@@ -11385,6 +11390,7 @@ name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "engine_fs",
  "engine_subsystems",
  "env_logger",
  "fixture_dep_base",
@@ -11415,6 +11421,7 @@ name = "plugin_matter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "gpui-ce",
  "image",
  "parking_lot",
@@ -11441,6 +11448,7 @@ dependencies = [
 name = "plugin_typescript"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "plugin_manager",
@@ -12227,6 +12235,7 @@ dependencies = [
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "prettyplease",
  "quote",
  "rust-embed",
@@ -12259,6 +12268,7 @@ dependencies = [
  "dirs 6.0.0",
  "dotenv",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "file-association-manager",
  "futures",
@@ -12300,7 +12310,7 @@ dependencies = [
  "window_manager",
  "windows 0.62.2",
  "winresource",
- "zip 2.4.2",
+ "zip 9.5.0",
 ]
 
 [[package]]
@@ -12355,6 +12365,7 @@ dependencies = [
  "pulsar_script_vm",
  "pulsar_settings",
  "pulsar_std",
+ "pulsar_traits",
  "pulsar_world_registry",
  "serde",
  "serde_json",
@@ -12408,6 +12419,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "helio_component",
  "installed_plugins",
@@ -12416,6 +12428,7 @@ dependencies = [
  "pulsar_content",
  "pulsar_events",
  "pulsar_game",
+ "pulsar_plugins",
  "pulsar_script_runtime",
  "pulsar_script_vm",
  "pulsar_settings",
@@ -12582,6 +12595,7 @@ dependencies = [
 name = "pulsar_script_runtime"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "glam 0.33.5",
  "profiling 0.1.0",
  "pulsar_scenedb",
@@ -12660,6 +12674,22 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_traits"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "inventory",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -14057,6 +14087,7 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -14647,6 +14678,7 @@ dependencies = [
  "skeletal_animation_editor",
  "skeletal_assets",
  "tempfile",
+ "ui_types_common",
 ]
 
 [[package]]
@@ -17192,6 +17224,7 @@ version = "0.1.0"
 dependencies = [
  "editor_task_queue",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "image",
@@ -17213,6 +17246,7 @@ name = "ui_common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "editor_task_queue",
  "engine_fs",
  "engine_state",
  "gpui-ce",
@@ -17251,6 +17285,7 @@ dependencies = [
  "dirs 6.0.0",
  "editor_task_queue",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -17295,6 +17330,7 @@ dependencies = [
 name = "ui_documentation"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "inventory",
@@ -17329,6 +17365,7 @@ name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
  "dirs 6.0.0",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "image",
@@ -17384,6 +17421,7 @@ dependencies = [
  "bytemuck",
  "crossbeam-queue",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "inventory",
@@ -17475,6 +17513,7 @@ dependencies = [
 name = "ui_keybindings"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "inventory",
@@ -17523,6 +17562,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_traits",
  "pulsar_world_registry",
  "raw-window-handle",
  "rfd",
@@ -17584,6 +17624,7 @@ dependencies = [
  "dashmap",
  "directories 6.0.0",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -17669,6 +17710,7 @@ dependencies = [
 name = "ui_problems"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "gpui-ce",
  "rust-i18n",
  "similar 3.2.0",
@@ -17695,7 +17737,6 @@ dependencies = [
 name = "ui_type_debugger"
 version = "0.1.0"
 dependencies = [
- "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "rust-i18n",

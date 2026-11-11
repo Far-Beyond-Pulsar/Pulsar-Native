@@ -55,7 +55,7 @@ fn layout_file() -> Option<PathBuf> {
 
 fn load_layout() -> SavedLayout {
     layout_file()
-        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|path| engine_fs::virtual_fs::read_to_string(&path).ok())
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default()
 }
@@ -185,11 +185,8 @@ impl FlamegraphWindow {
             bottom: saved(state.bottom_dock.as_ref()),
             right: saved(state.right_dock.as_ref()),
         };
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
         if let Ok(text) = serde_json::to_string_pretty(&layout) {
-            let _ = std::fs::write(path, text);
+            let _ = engine_fs::virtual_fs::write_file(&path, text.as_bytes());
         }
     }
 
@@ -247,7 +244,13 @@ impl FlamegraphWindow {
                         ExportKind::StatsCsv => export::stats_csv(&frame),
                         ExportKind::ChromeTrace => export::chrome_trace(&frame),
                     };
-                    std::fs::write(&path, text).map(|_| path)
+                    // The user picked this path in a native save dialog: a file on the real machine.
+                    engine_fs::FsProvider::write_file(
+                        &engine_fs::LocalFsProvider::new(),
+                        &path,
+                        text.as_bytes(),
+                    )
+                    .map(|_| path)
                 })
                 .await;
             cx.update(|cx| {

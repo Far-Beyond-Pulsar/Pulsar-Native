@@ -12,7 +12,7 @@ engine_backend.workspace = true
 engine_state.workspace = true
 plugin_manager.workspace = true
 plugin_editor_api.workspace = true
-engine_fs = { workspace = true, features = ["editor"] }
+engine_fs = { workspace = true }
 ui_file_manager.workspace = true
 directories.workspace = true
 tracing.workspace = true

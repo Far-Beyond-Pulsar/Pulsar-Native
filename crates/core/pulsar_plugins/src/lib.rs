@@ -320,16 +320,15 @@ impl ProjectPlugins {
         Ok(Self { listed })
     }
 
-    /// The list of the project at `project_root` (empty without a
-    /// `Pulsar.toml`).
-    pub fn read(project_root: &Path) -> Result<Self, String> {
-        let path = project_root.join(PROJECT_FILE);
-        match std::fs::read_to_string(&path) {
-            Ok(source) => {
-                Self::parse(&source).map_err(|error| format!("{}: {error}", path.display()))
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(error) => Err(format!("{}: {error}", path.display())),
+    /// The list in a project's `Pulsar.toml`, given its text, or `None` when
+    /// the project has no such file (the empty list). This crate reads no
+    /// files: the caller reads it through the filesystem library
+    /// (`engine_state::project_plugins`), so a remote project's list is read
+    /// like a local one's.
+    pub fn from_project_file(source: Option<&str>) -> Result<Self, String> {
+        match source {
+            Some(source) => Self::parse(source),
+            None => Ok(Self::default()),
         }
     }
 
@@ -489,12 +488,15 @@ pub fn deactivate() {
     GENERATION.fetch_add(1, Ordering::AcqRel);
 }
 
-/// Read the project at `project_root`'s list, resolve it against the
-/// installed plugins and activate the result (problems are logged and
-/// returned). An unreadable list activates every installed plugin's
-/// default.
-pub fn activate_project(project_root: &Path) -> Resolution {
-    let project = ProjectPlugins::read(project_root).unwrap_or_else(|error| {
+/// Resolve the project at `project_root`'s list (`project`, as its caller
+/// read it) against the installed plugins and activate the result (problems
+/// are logged and returned). An unreadable list activates every installed
+/// plugin's default.
+pub fn activate_project(
+    project_root: &Path,
+    project: Result<ProjectPlugins, String>,
+) -> Resolution {
+    let project = project.unwrap_or_else(|error| {
         tracing::error!("the project's plugin list: {error}; using every plugin's default");
         ProjectPlugins::default()
     });

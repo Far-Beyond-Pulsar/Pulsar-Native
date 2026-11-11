@@ -68,11 +68,11 @@ pub fn registry_for_class_dir(class_dir: &Path) -> ClassRegistry {
     }
     match class_dir.parent() {
         Some(parent) => {
-            let mut dirs: Vec<PathBuf> = std::fs::read_dir(parent)
+            let mut dirs: Vec<PathBuf> = engine_fs::virtual_fs::list_dir(parent)
                 .map(|entries| {
                     entries
-                        .flatten()
-                        .map(|e| e.path())
+                        .into_iter()
+                        .map(|e| parent.join(&e.name))
                         .filter(|p| pulsar_class::registry::is_class_dir(p))
                         .collect()
                 })
@@ -89,7 +89,8 @@ pub fn registry_for_class_dir(class_dir: &Path) -> ClassRegistry {
 }
 
 fn same_dir(a: &Path, b: &Path) -> bool {
-    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+    a == b
+        || matches!((engine_fs::virtual_fs::canonicalize(a), engine_fs::virtual_fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 // ── Rebuilding ──────────────────────────────────────────────────────────────
@@ -177,7 +178,7 @@ pub fn reload_class_instances(
         return Vec::new();
     }
     let registry = match &event.path {
-        Some(dir) if dir.is_dir() => registry_for_class_dir(dir),
+        Some(dir) if engine_fs::virtual_fs::is_dir(dir) => registry_for_class_dir(dir),
         _ => project_class_registry(),
     };
     // First fold every matching instance's live values into its overrides,

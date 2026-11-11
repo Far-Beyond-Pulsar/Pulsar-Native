@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use engine_fs::virtual_fs;
 use pulsar_class::{ClassId, ClassRegistry};
 use pulsar_content::{AssetKind, AssetRecord};
 use serde_json::Value;
@@ -48,6 +49,11 @@ pub struct AssetSet {
     pub unresolved: Vec<(String, String)>,
 }
 
+/// `path` canonicalized, or as given when it cannot be.
+fn canonical(path: &Path) -> PathBuf {
+    virtual_fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// Resolves asset references against the project and the engine's
 /// built-in assets.
 pub struct AssetResolver {
@@ -57,10 +63,8 @@ pub struct AssetResolver {
 
 impl AssetResolver {
     pub fn new(project: &Path, engine_assets: Option<PathBuf>) -> Self {
-        let project = project
-            .canonicalize()
-            .unwrap_or_else(|_| project.to_path_buf());
-        let engine_assets = engine_assets.map(|p| p.canonicalize().unwrap_or(p));
+        let project = canonical(project);
+        let engine_assets = engine_assets.map(|p| canonical(&p));
         Self {
             project,
             engine_assets,
@@ -88,8 +92,8 @@ impl AssetResolver {
             }
             c
         };
-        let file = candidates.into_iter().find(|p| p.is_file())?;
-        let file = file.canonicalize().unwrap_or(file);
+        let file = candidates.into_iter().find(|p| virtual_fs::is_file(p))?;
+        let file = canonical(&file);
         Some((self.content_id(&file), file))
     }
 
@@ -194,14 +198,12 @@ fn rewrite_one(text: &mut String, resolver: &AssetResolver, assets: &mut AssetSe
 /// project (a prefab's `blueprint_class.class_path`, a legacy
 /// `script_asset`) to its project-relative, content-relative form.
 pub fn relativize_project_paths(value: &mut Value, project: &Path) {
-    let project = project
-        .canonicalize()
-        .unwrap_or_else(|_| project.to_path_buf());
+    let project = canonical(project);
     fn walk(value: &mut Value, project: &Path) {
         match value {
             Value::String(text) if is_absolute_path(text) => {
                 let path = Path::new(text.as_str());
-                let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+                let path = canonical(path);
                 if let Ok(rel) = path.strip_prefix(project) {
                     *text = rel.to_string_lossy().replace('\\', "/");
                 }
@@ -327,7 +329,7 @@ pub fn cook_scripting_config(
     registry: &ClassRegistry,
 ) -> Result<Option<Value>, String> {
     let path = pulsar_game::scripting::scripting_config_path(project);
-    let Ok(bytes) = std::fs::read(&path) else {
+    let Ok(bytes) = virtual_fs::read_file(&path) else {
         return Ok(None);
     };
     let mut config: Value =
@@ -357,11 +359,7 @@ pub fn cook_scripting_config(
 /// The asset registry record of a collected asset.
 pub fn asset_record(id: &str, source: &Path, project: &Path, bytes: &[u8]) -> AssetRecord {
     let source = source
-        .strip_prefix(
-            project
-                .canonicalize()
-                .unwrap_or_else(|_| project.to_path_buf()),
-        )
+        .strip_prefix(canonical(project))
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| {
             format!(
@@ -388,13 +386,13 @@ pub fn find_levels(project: &Path, skip: &[PathBuf]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let mut stack = vec![project.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = virtual_fs::list_dir(&dir) else {
             continue;
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if path.is_dir() {
+        for entry in entries {
+            let path = dir.join(&entry.name);
+            let name = entry.name;
+            if entry.is_dir {
                 let skipped = matches!(
                     name.as_str(),
                     "target" | ".git" | "node_modules" | ".pulsar" | "scripts"

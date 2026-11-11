@@ -235,9 +235,9 @@ pub fn report_dir(project_root: &Path) -> PathBuf {
 /// Write `markdown` as a new report under `project_root`. Returns the path.
 pub fn write(project_root: &Path, unix_time: u64, markdown: &str) -> std::io::Result<PathBuf> {
     let dir = report_dir(project_root);
-    std::fs::create_dir_all(&dir)?;
+    engine_fs::virtual_fs::create_dir_all(&dir).map_err(std::io::Error::other)?;
     let path = dir.join(format!("memory_report_{unix_time}.md"));
-    std::fs::write(&path, markdown)?;
+    engine_fs::virtual_fs::write_file(&path, markdown.as_bytes()).map_err(std::io::Error::other)?;
     Ok(path)
 }
 

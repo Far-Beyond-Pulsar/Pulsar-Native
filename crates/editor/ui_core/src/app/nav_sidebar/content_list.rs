@@ -229,6 +229,7 @@ mod tests {
             modified: None,
             is_ghost: false,
             restore_commit: None,
+            read_only_mount: None,
         }
     }
 

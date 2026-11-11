@@ -1,0 +1,49 @@
+# Every file the engine, the editor and the plugins touch goes through the
+# Pulsar filesystem library (`engine_fs::virtual_fs`): it routes to the active
+# provider (local disk, a remote project, a peer-to-peer session) and serves the
+# read-only mounts (`pulsar/`, `plugins/<plugin id>/`), which a direct `std::fs`
+# call would bypass. `disallowed_methods` is denied in `[workspace.lints.clippy]`.
+#
+# Allowed only where code must touch the real disk: `engine_fs`'s providers,
+# build scripts, and tests (the `just clippy` gate lints the libraries and
+# binaries, not test targets). Each allowance is an
+# `#[allow(clippy::disallowed_methods)]` in a file listed, with its reason, in
+# `architecture/std-fs-allowed.txt`; that list only shrinks
+# (`engine_fs/tests/std_fs_allow_list.rs`).
+
+disallowed-methods = [
+    # Files and folders.
+    { path = "std::fs::read", reason = "use engine_fs::virtual_fs::read_file" },
+    { path = "std::fs::read_to_string", reason = "use engine_fs::virtual_fs::read_to_string" },
+    { path = "std::fs::write", reason = "use engine_fs::virtual_fs::write_file (or write_file_atomically)" },
+    { path = "std::fs::copy", reason = "use engine_fs::virtual_fs::copy" },
+    { path = "std::fs::rename", reason = "use engine_fs::virtual_fs::rename" },
+    { path = "std::fs::remove_file", reason = "use engine_fs::virtual_fs::delete_path" },
+    { path = "std::fs::remove_dir", reason = "use engine_fs::virtual_fs::delete_path" },
+    { path = "std::fs::remove_dir_all", reason = "use engine_fs::virtual_fs::delete_path" },
+    { path = "std::fs::create_dir", reason = "use engine_fs::virtual_fs::create_dir_all" },
+    { path = "std::fs::create_dir_all", reason = "use engine_fs::virtual_fs::create_dir_all" },
+    { path = "std::fs::read_dir", reason = "use engine_fs::virtual_fs::list_dir (or manifest)" },
+    { path = "std::fs::metadata", reason = "use engine_fs::virtual_fs::metadata" },
+    { path = "std::fs::symlink_metadata", reason = "use engine_fs::virtual_fs::is_symlink / metadata" },
+    { path = "std::fs::canonicalize", reason = "use engine_fs::virtual_fs::canonicalize" },
+    { path = "std::fs::hard_link", reason = "no engine_fs equivalent: the project tree holds no links" },
+    { path = "std::fs::read_link", reason = "no engine_fs equivalent: the project tree holds no links" },
+    { path = "std::fs::set_permissions", reason = "use engine_fs::virtual_fs::create_executable_file" },
+    # Streams.
+    { path = "std::fs::File::open", reason = "use engine_fs::virtual_fs::open_read" },
+    { path = "std::fs::File::create", reason = "use engine_fs::virtual_fs::open_write" },
+    { path = "std::fs::File::create_new", reason = "use engine_fs::virtual_fs::create_file" },
+    { path = "std::fs::File::options", reason = "use engine_fs::virtual_fs::open_write / append_file" },
+    { path = "std::fs::OpenOptions::open", reason = "use engine_fs::virtual_fs::open_write / append_file" },
+    # Paths asking the disk.
+    { path = "std::path::Path::exists", reason = "use engine_fs::virtual_fs::exists" },
+    { path = "std::path::Path::try_exists", reason = "use engine_fs::virtual_fs::exists" },
+    { path = "std::path::Path::is_file", reason = "use engine_fs::virtual_fs::is_file" },
+    { path = "std::path::Path::is_dir", reason = "use engine_fs::virtual_fs::is_dir" },
+    { path = "std::path::Path::metadata", reason = "use engine_fs::virtual_fs::metadata" },
+    { path = "std::path::Path::symlink_metadata", reason = "use engine_fs::virtual_fs::is_symlink" },
+    { path = "std::path::Path::read_dir", reason = "use engine_fs::virtual_fs::list_dir" },
+    { path = "std::path::Path::canonicalize", reason = "use engine_fs::virtual_fs::canonicalize" },
+    { path = "std::path::Path::read_link", reason = "no engine_fs equivalent: the project tree holds no links" },
+]

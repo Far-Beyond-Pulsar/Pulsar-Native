@@ -49,6 +49,8 @@ fn write_doc_comment(output: &mut String, doc: &str) -> std::fmt::Result {
 }
 
 /// Generate hierarchical documentation structure
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 pub fn generate_hierarchical_docs(
     docs: &CrateDocumentation,
     _crate_info: &CrateInfo,
@@ -76,6 +78,8 @@ pub fn generate_hierarchical_docs(
 }
 
 /// Generate crate index page
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_crate_index(crate_dir: &Path, docs: &CrateDocumentation) -> Result<(), Box<dyn Error>> {
     let mut md = String::new();
 
@@ -131,6 +135,8 @@ fn generate_crate_index(crate_dir: &Path, docs: &CrateDocumentation) -> Result<(
 }
 
 /// Generate JSON index for sidebar navigation
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_crate_json_index(
     crate_dir: &Path,
     docs: &CrateDocumentation,
@@ -296,6 +302,8 @@ fn generate_crate_json_index(
 }
 
 /// Generate struct pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_structs_pages(crate_dir: &Path, structs: &[StructDoc]) -> Result<(), Box<dyn Error>> {
     if structs.is_empty() {
         return Ok(());
@@ -372,6 +380,8 @@ fn generate_structs_pages(crate_dir: &Path, structs: &[StructDoc]) -> Result<(),
 }
 
 /// Generate enum pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_enums_pages(crate_dir: &Path, enums: &[EnumDoc]) -> Result<(), Box<dyn Error>> {
     if enums.is_empty() {
         return Ok(());
@@ -454,6 +464,8 @@ fn generate_enums_pages(crate_dir: &Path, enums: &[EnumDoc]) -> Result<(), Box<d
 }
 
 /// Generate trait pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_traits_pages(crate_dir: &Path, traits: &[TraitDoc]) -> Result<(), Box<dyn Error>> {
     if traits.is_empty() {
         return Ok(());
@@ -530,6 +542,8 @@ fn generate_traits_pages(crate_dir: &Path, traits: &[TraitDoc]) -> Result<(), Bo
 }
 
 /// Generate function pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_functions_pages(
     crate_dir: &Path,
     functions: &[FunctionDoc],
@@ -606,6 +620,8 @@ fn generate_functions_pages(
 }
 
 /// Generate macro pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_macros_pages(crate_dir: &Path, macros: &[MacroDoc]) -> Result<(), Box<dyn Error>> {
     if macros.is_empty() {
         return Ok(());
@@ -637,6 +653,8 @@ fn generate_macros_pages(crate_dir: &Path, macros: &[MacroDoc]) -> Result<(), Bo
 }
 
 /// Generate constant pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_constants_pages(
     crate_dir: &Path,
     constants: &[ConstantDoc],
@@ -673,6 +691,8 @@ fn generate_constants_pages(
 }
 
 /// Generate type alias pages
+// Build script: generates docs at compile time inside the build, reading and writing the real workspace and target dir, not a project.
+#[allow(clippy::disallowed_methods)]
 fn generate_type_aliases_pages(
     crate_dir: &Path,
     type_aliases: &[TypeAliasDoc],

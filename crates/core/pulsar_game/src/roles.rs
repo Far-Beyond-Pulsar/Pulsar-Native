@@ -1,10 +1,10 @@
-//! The engine roles of the loaded level (game mode, player controller,
-//! player character, game state).
+//! The roles of the loaded level: the engine's (game mode, player controller,
+//! player character, game state) and any plugin's.
 //!
-//! A level names, in its world settings, the Blueprint that plays each role
-//! (`engine_fs::world_roles`). The loop resolves those names when the level
-//! is loaded and keeps the result for the session start. Resolving only
-//! reads: nothing here creates an object.
+//! A level names, in its world settings, the implementer that plays each
+//! registered role (`pulsar_traits::roles`). The loop resolves those names
+//! when the level is loaded and keeps the result for the session start.
+//! Resolving only reads: nothing here creates an object.
 //!
 //! # Role entities
 //!
@@ -22,11 +22,11 @@
 //! re-binds it rather than spawning a second.
 //!
 //! The roles' trait methods are called through the trait
-//! (`pulsar.GameMode`, ...), see `scripting/traits.rs`.
+//! (`pulsar.GameMode`, ...) by the one dispatcher, see `scripting/traits.rs`.
 
 use std::path::Path;
 
-use engine_fs::world_roles::{EngineRole, WorldRoles};
+use pulsar_traits::WorldRoles;
 
 use crate::tick::TickLoop;
 
@@ -34,7 +34,8 @@ use crate::tick::TickLoop;
 /// role entities are not level data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RoleEntity {
-    pub role: EngineRole,
+    /// The role's id (`pulsar.game_mode`, a plugin's).
+    pub role: &'static str,
 }
 
 impl TickLoop {
@@ -59,7 +60,7 @@ impl TickLoop {
     /// them against the project at `project_root`. An unreadable level has
     /// no roles; selections that cannot be used are logged.
     pub fn load_world_roles(&mut self, level_path: &Path, project_root: &Path) {
-        let roles = match std::fs::read_to_string(level_path) {
+        let roles = match engine_fs::virtual_fs::read_to_string(level_path) {
             Ok(json) => WorldRoles::for_level(&json, project_root),
             Err(error) => {
                 tracing::debug!(level = %level_path.display(), "No world roles: {error}");
@@ -76,7 +77,8 @@ impl TickLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_fs::world_roles::{BindingStatus, EngineRole};
+    use pulsar_traits::builtin::GAME_MODE_ROLE;
+    use pulsar_traits::BindingStatus;
 
     #[test]
     fn a_loaded_level_selects_its_roles() {
@@ -90,7 +92,7 @@ mod tests {
         let mut game = TickLoop::new(pulsar_core::TickMode::default(), 1);
         assert!(game.world_roles().is_empty());
         game.load_world_roles(&level, dir.path());
-        let binding = game.world_roles().get(EngineRole::GameMode).unwrap();
+        let binding = game.world_roles().get(GAME_MODE_ROLE).unwrap();
         assert_eq!(binding.class_name(), Some("Mode"));
         // No trait index exists for this project, so the selection is
         // passed on unchecked rather than rejected.

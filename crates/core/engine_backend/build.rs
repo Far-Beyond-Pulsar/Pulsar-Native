@@ -36,6 +36,8 @@ const GAME_DEPENDENCIES: &[&str] = &[
     "winit",
 ];
 
+// std::fs allowed: build script: reads the engine source tree under the build, not a project file
+#[allow(clippy::disallowed_methods)]
 fn main() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     // engine_backend lives at crates/core/engine_backend → workspace root is
@@ -99,6 +101,8 @@ fn main() {
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", plugins_path.display()));
 }
 
+// std::fs allowed: build script: reads the engine source tree under the build, not a project file
+#[allow(clippy::disallowed_methods)]
 /// `game_plugins.rs`: `DESCRIPTORS` (each installed plugin's descriptor) and
 /// `DEPENDENCIES` (each runtime plugin's root crate spec, paths absolute;
 /// editor tools have none).
@@ -376,6 +380,8 @@ fn rewrite_paths(value: &toml::Value, workspace_root: &Path) -> toml::Value {
     }
 }
 
+// std::fs allowed: build script: reads the engine source tree under the build, not a project file
+#[allow(clippy::disallowed_methods)]
 /// Resolve `rel` against `workspace_root`, canonicalizing when possible, and
 /// return a forward-slashed string TOML/Cargo accepts on every platform.
 fn absolute_path(workspace_root: &Path, rel: &str) -> String {

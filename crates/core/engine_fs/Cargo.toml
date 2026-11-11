@@ -4,49 +4,27 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["editor", "remote", "p2p"]
-editor = [
-    "dep:ui_types_common",
-    "dep:pulsar_reflection",
-    "dep:dashmap",
-    "dep:plugin_manager",
-    "dep:plugin_editor_api",
-    "dep:notify",
-    "dep:walkdir",
-    "dep:profiling",
-    "dep:image",
-    "dep:tool_registry",
-    "dep:tool_registry_macros",
-    "dep:editor_task_queue",
-    "dep:smol",
-]
+default = ["remote", "p2p"]
 remote = ["dep:ureq", "dep:urlencoding", "dep:base64"]
 p2p = ["dep:futures", "dep:pulsar-multiplayer-core"]
 
 [dependencies]
-ui_types_common = { workspace = true, optional = true }
-pulsar_reflection = { workspace = true, optional = true }
+# Mounted content and the index's registrations are origin-gated contributions.
+pulsar_plugins = { workspace = true }
+# The watcher publishes asset updates (`AssetChangeKind`).
+pulsar_events = { workspace = true }
+ui_types_common = { workspace = true }
 uuid = { workspace = true }
-dashmap = { workspace = true, optional = true }
-plugin_manager = { workspace = true, optional = true }
-plugin_editor_api = { workspace = true, optional = true }
 anyhow = { workspace = true }
 rusqlite = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-notify = { workspace = true, optional = true }
-walkdir = { workspace = true, optional = true }
-profiling = { workspace = true, optional = true }
-image = { workspace = true, optional = true }
+notify = { workspace = true }
 parking_lot = { workspace = true }
 urlencoding = { workspace = true, optional = true }
 ureq = { version = "3.0", features = ["json"], optional = true }
 base64 = { workspace = true, optional = true }
-tool_registry = { workspace = true, optional = true }
-tool_registry_macros = { workspace = true, optional = true }
-editor_task_queue = { workspace = true, optional = true }
-smol = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true, optional = true }
 pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core", optional = true }

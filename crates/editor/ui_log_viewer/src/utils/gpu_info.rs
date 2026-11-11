@@ -200,6 +200,8 @@ fn platform_vram_used_mb() -> Option<u64> {
 // ═══════════════════════════════════════════════════════════════════
 
 #[cfg(target_os = "linux")]
+// Reads the Linux kernel's /proc and /sys driver files: the real OS, not a project.
+#[allow(clippy::disallowed_methods)]
 fn platform_driver_version(_gpu_name: &str) -> Option<String> {
     // NVIDIA: /proc/driver/nvidia/version
     if let Ok(content) = std::fs::read_to_string("/proc/driver/nvidia/version") {
@@ -229,6 +231,8 @@ fn platform_driver_version(_gpu_name: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "linux")]
+// Reads the Linux kernel's /proc and /sys driver files: the real OS, not a project.
+#[allow(clippy::disallowed_methods)]
 fn query_vram_total_mb() -> Option<u64> {
     let drm = std::path::Path::new("/sys/class/drm");
     for entry in std::fs::read_dir(drm).ok()?.flatten() {
@@ -245,6 +249,8 @@ fn query_vram_total_mb() -> Option<u64> {
 }
 
 #[cfg(target_os = "linux")]
+// Reads the Linux kernel's /proc and /sys driver files: the real OS, not a project.
+#[allow(clippy::disallowed_methods)]
 fn platform_vram_used_mb() -> Option<u64> {
     // AMD: sysfs
     let drm = std::path::Path::new("/sys/class/drm");

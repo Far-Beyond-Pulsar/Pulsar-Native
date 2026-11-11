@@ -97,6 +97,8 @@ pub struct PakWriter {
 }
 
 impl PakWriter {
+    // std::fs allowed: the pak is written with a header rewrite at the end (needs a seekable file; FsWriter is write-only), and it is the packaged game's output on the real machine
+    #[allow(clippy::disallowed_methods)]
     /// Start a pak at `path` (truncating any file there).
     pub fn create(path: impl AsRef<Path>) -> Result<Self, PakError> {
         let path = path.as_ref().to_path_buf();
@@ -167,7 +169,7 @@ impl PakWriter {
 /// An open pak: its table of contents, and reads by path.
 pub struct PakReader {
     path: PathBuf,
-    file: Mutex<File>,
+    file: Mutex<Box<dyn engine_fs::ReadSeek>>,
     entries: BTreeMap<String, PakEntry>,
     /// Hash of the table of contents: identifies this pak's contents.
     toc_hash: u128,
@@ -186,8 +188,13 @@ impl PakReader {
     /// Open the pak at `path` and load its table of contents.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, PakError> {
         let path = path.as_ref().to_path_buf();
-        let mut file = File::open(&path)?;
-        let file_len = file.metadata()?.len();
+        let mut file = engine_fs::virtual_fs::open_read(&path).map_err(|error| {
+            error
+                .downcast::<io::Error>()
+                .unwrap_or_else(|other| io::Error::other(other.to_string()))
+        })?;
+        let file_len = file.seek(SeekFrom::End(0))?;
+        file.seek(SeekFrom::Start(0))?;
         let mut header = [0u8; HEADER_LEN as usize];
         file.read_exact(&mut header)
             .map_err(|_| PakError::NotAPak)?;

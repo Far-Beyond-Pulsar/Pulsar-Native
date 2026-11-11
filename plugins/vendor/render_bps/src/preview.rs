@@ -87,7 +87,7 @@ impl PipelinePreview {
                     Ok(_) => resolve_level_assets(&mut store.world),
                     Err(error) => tracing::warn!("Preview scene did not load: {error}"),
                 }
-                let _ = std::fs::remove_file(path);
+                let _ = engine_fs::virtual_fs::delete_path(&path);
             }
             Err(error) => tracing::warn!("Preview scene could not be written: {error}"),
         }
@@ -249,7 +249,8 @@ fn write_test_scene() -> std::io::Result<PathBuf> {
         "pulsar_render_preview_{}.level.json",
         std::process::id()
     ));
-    std::fs::write(&path, TEST_SCENE)?;
+    engine_fs::virtual_fs::write_file(&path, TEST_SCENE.as_bytes())
+        .map_err(std::io::Error::other)?;
     Ok(path)
 }
 

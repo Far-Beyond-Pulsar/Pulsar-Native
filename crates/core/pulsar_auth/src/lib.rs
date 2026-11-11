@@ -259,6 +259,10 @@ pub fn clear_access_token() -> Result<()> {
     }
 }
 
+// Real machine: the signed-in user's credentials and profile live in this machine's
+// per-user data dir, outside any project; they must never route through a remote or P2P
+// project filesystem provider.
+#[allow(clippy::disallowed_methods)]
 pub fn save_cached_profile(profile: &AuthProfile) -> Result<()> {
     let path = profile_cache_path()?;
     if let Some(parent) = path.parent() {
@@ -274,12 +278,20 @@ pub fn save_cached_profile(profile: &AuthProfile) -> Result<()> {
         .with_context(|| format!("Failed to write auth profile cache: {}", path.display()))
 }
 
+// Real machine: the signed-in user's credentials and profile live in this machine's
+// per-user data dir, outside any project; they must never route through a remote or P2P
+// project filesystem provider.
+#[allow(clippy::disallowed_methods)]
 pub fn load_cached_profile() -> Option<AuthProfile> {
     let path = profile_cache_path().ok()?;
     let text = std::fs::read_to_string(path).ok()?;
     serde_json::from_str::<AuthProfile>(&text).ok()
 }
 
+// Real machine: the signed-in user's credentials and profile live in this machine's
+// per-user data dir, outside any project; they must never route through a remote or P2P
+// project filesystem provider.
+#[allow(clippy::disallowed_methods)]
 pub fn clear_cached_profile() -> Result<()> {
     let path = profile_cache_path()?;
     if path.exists() {
@@ -326,6 +338,10 @@ fn token_cache_path() -> Result<PathBuf> {
     Ok(dirs.data_dir().join(TOKEN_CACHE_FILE))
 }
 
+// Real machine: the signed-in user's credentials and profile live in this machine's
+// per-user data dir, outside any project; they must never route through a remote or P2P
+// project filesystem provider.
+#[allow(clippy::disallowed_methods)]
 fn save_token_to_cache(token: &str) -> Result<()> {
     use std::io::Write as _;
 
@@ -354,6 +370,8 @@ fn save_token_to_cache(token: &str) -> Result<()> {
 }
 
 /// `create_dir_all` that makes any new directory owner-only on Unix.
+// Real machine: the credentials directory (see below).
+#[allow(clippy::disallowed_methods)]
 fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -369,6 +387,10 @@ fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
     }
 }
 
+// Real machine: the signed-in user's credentials and profile live in this machine's
+// per-user data dir, outside any project; they must never route through a remote or P2P
+// project filesystem provider.
+#[allow(clippy::disallowed_methods)]
 fn load_token_from_cache() -> Result<Option<String>> {
     let path = token_cache_path()?;
     if path.exists() {
@@ -378,6 +400,10 @@ fn load_token_from_cache() -> Result<Option<String>> {
     }
 }
 
+// Real machine: the signed-in user's credentials and profile live in this machine's
+// per-user data dir, outside any project; they must never route through a remote or P2P
+// project filesystem provider.
+#[allow(clippy::disallowed_methods)]
 fn clear_token_cache() -> Result<()> {
     let path = token_cache_path()?;
     if path.exists() {

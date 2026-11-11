@@ -6,7 +6,6 @@
 
 use crate::DiscordPresence;
 use dashmap::DashMap;
-use engine_fs::UserTypeRegistry;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -128,7 +127,7 @@ impl NewProjectContent {
     pub fn install_assets(&self, project_root: &std::path::Path) {
         for (path, bytes) in &self.assets {
             let dst = project_root.join("assets").join(path);
-            if dst.exists() {
+            if engine_fs::virtual_fs::exists(&dst).unwrap_or(false) {
                 continue;
             }
             if let Some(parent) = dst.parent() {
@@ -279,13 +278,6 @@ impl EngineContext {
         }
     }
 
-    /// Set global user type registry
-    pub fn set_user_types(&self, user_types: Arc<UserTypeRegistry>) {
-        self.store
-            .get_or_init::<Option<Arc<UserTypeRegistry>>>()
-            .set(Some(user_types));
-    }
-
     /// Set authenticated user profile.
     pub fn set_auth_profile(&self, profile: AuthProfile) {
         self.store
@@ -302,14 +294,6 @@ impl EngineContext {
     pub fn auth_profile(&self) -> Option<AuthProfile> {
         self.store
             .get_or_init::<Option<AuthProfile>>()
-            .read()
-            .clone()
-    }
-
-    /// Get global user type registry
-    pub fn user_types(&self) -> Option<Arc<UserTypeRegistry>> {
-        self.store
-            .get_or_init::<Option<Arc<UserTypeRegistry>>>()
             .read()
             .clone()
     }

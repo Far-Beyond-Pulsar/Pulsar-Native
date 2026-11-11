@@ -46,7 +46,7 @@ impl FsMetadataManager {
 
     pub fn load_from_project_root(&mut self, project_path: &Path) {
         let meta_path = project_path.join(METADATA_FILE);
-        if let Ok(content) = std::fs::read_to_string(&meta_path) {
+        if let Ok(content) = engine_fs::virtual_fs::read_to_string(&meta_path) {
             if let Ok(meta) = serde_json::from_str::<Metadata>(&content) {
                 self.metadata = meta;
                 self.path = Some(project_path.to_path_buf());
@@ -60,7 +60,7 @@ impl FsMetadataManager {
         let mut current = Some(start_path);
         while let Some(dir) = current {
             let meta_path = dir.join(METADATA_FILE);
-            if let Ok(content) = std::fs::read_to_string(&meta_path) {
+            if let Ok(content) = engine_fs::virtual_fs::read_to_string(&meta_path) {
                 if let Ok(meta) = serde_json::from_str::<Metadata>(&content) {
                     self.metadata = meta;
                     self.path = Some(dir.to_path_buf());
@@ -75,7 +75,7 @@ impl FsMetadataManager {
         if let Some(ref path) = self.path {
             let meta_path = path.join(METADATA_FILE);
             if let Ok(content) = serde_json::to_string_pretty(&self.metadata) {
-                let _ = std::fs::write(&meta_path, content);
+                let _ = engine_fs::virtual_fs::write_file(&meta_path, content.as_bytes());
             }
         }
     }

@@ -1,12 +1,13 @@
 //! The trait database: every trait of a project and who implements it.
 //!
 //! [`TraitDb`] is the resolved, in-memory model behind
-//! [`BlueprintTraitIndex`](crate::BlueprintTraitIndex). It knows nothing
-//! about any one language: an *asset* is a project-relative path and a
-//! *trait* is a [`TraitRecord`]. Any plugin that reads assets can add its
-//! implementers to the index; Blueprints are the first. Plugins query it
-//! through `pulsar_reflection::TRAIT_REGISTRY` (see [`TraitDb::publish`]),
-//! which is the language-agnostic surface.
+//! [`TraitIndex`](crate::TraitIndex). It knows nothing about any one
+//! language: an *implementer* is an id (a project-relative asset path, or a
+//! native component's `component:<Class>`) of some source's kind, and a
+//! *trait* is a [`TraitRecord`]. Every implementer source feeds it
+//! ([`TraitImplementerSource`](crate::TraitImplementerSource)). Plugins
+//! query it through `pulsar_reflection::TRAIT_REGISTRY` (see
+//! [`TraitDb::publish`]), the language-agnostic surface.
 //!
 //! All lookups are map-based. Supertraits are modelled: an asset that
 //! implements a trait also implements everything that trait extends, and the
@@ -14,14 +15,23 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::trait_records::{
-    is_trait_asset, normalize_relative_path, TraitMethodRecord, TraitRecord,
-};
+use crate::records::{is_trait_asset, normalize_relative_path, TraitMethodRecord, TraitRecord};
 
-/// How an asset implements a trait.
+/// One implementer's declared traits, as [`TraitDb::build`] takes them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Declaration {
+    /// The implementer's id (see the module docs).
+    pub implementer: String,
+    /// Its source's kind ([`TraitImplementerSource::kind`](crate::TraitImplementerSource)).
+    pub kind: String,
+    /// The ids of the traits it declares.
+    pub trait_ids: Vec<String>,
+}
+
+/// How an implementer implements a trait.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Implementation<'a> {
-    /// Project-relative path of the implementing asset.
+    /// The implementer's id.
     pub asset: &'a str,
     /// `None` when the asset declares the trait itself; otherwise the id of
     /// the declared trait that extends it.
@@ -39,8 +49,10 @@ pub struct TraitDb {
     unresolved_supers: BTreeMap<String, Vec<String>>,
     /// Traits that extend themselves, directly or not.
     cyclic: BTreeSet<String>,
-    /// Asset -> declared trait ids.
+    /// Implementer -> declared trait ids.
     declared: BTreeMap<String, BTreeSet<String>>,
+    /// Implementer -> its source's kind.
+    kinds: BTreeMap<String, String>,
     /// Trait id -> asset -> via (`None` = declared).
     implementers: HashMap<String, BTreeMap<String, Option<String>>>,
     /// Asset -> effective trait ids.
@@ -54,7 +66,7 @@ impl TraitDb {
     /// with the smaller path wins (the index never produces that).
     pub fn build(
         records: impl IntoIterator<Item = TraitRecord>,
-        declarations: impl IntoIterator<Item = (String, Vec<String>)>,
+        declarations: impl IntoIterator<Item = Declaration>,
     ) -> Self {
         let mut db = Self::default();
         for record in records {
@@ -101,12 +113,15 @@ impl TraitDb {
             }
         }
 
-        for (asset, trait_ids) in declarations {
-            let ids: BTreeSet<String> = trait_ids
+        for declaration in declarations {
+            let ids: BTreeSet<String> = declaration
+                .trait_ids
                 .into_iter()
                 .filter(|id| db.traits.contains_key(id))
                 .collect();
-            db.declared.insert(asset, ids);
+            db.kinds
+                .insert(declaration.implementer.clone(), declaration.kind);
+            db.declared.insert(declaration.implementer, ids);
         }
         let declared: Vec<(String, Vec<String>)> = db
             .declared
@@ -122,17 +137,6 @@ impl TraitDb {
             }
         }
         db
-    }
-
-    /// A database of the engine's built-in traits alone: what a runtime has
-    /// when its content ships no trait index.
-    pub fn builtin() -> Self {
-        Self::build(
-            crate::builtin_traits::all()
-                .iter()
-                .map(|builtin| builtin.to_record()),
-            Vec::new(),
-        )
     }
 
     /// `ids` (those that exist) and every trait they extend: the traits an
@@ -349,15 +353,18 @@ impl TraitDb {
             .is_some_and(|ids| ids.contains(&record.id))
     }
 
+    /// The kind of the source an implementer comes from.
+    pub fn kind_of(&self, implementer: &str) -> Option<&str> {
+        self.kinds.get(implementer).map(String::as_str)
+    }
+
     /// Publish this database to `pulsar_reflection::TRAIT_REGISTRY` under
     /// the project's scope, replacing the previous snapshot.
-    #[cfg(feature = "editor")]
     pub fn publish(&self, project_root: &std::path::Path) {
         pulsar_reflection::TRAIT_REGISTRY.publish(&scope_key(project_root), self.snapshot());
     }
 
     /// This database as a reflection snapshot.
-    #[cfg(feature = "editor")]
     pub fn snapshot(&self) -> pulsar_reflection::TraitSnapshot {
         use pulsar_reflection::{
             TraitDescriptor, TraitImplementer, TraitMethodDescriptor, TraitParamDescriptor,
@@ -403,7 +410,7 @@ impl TraitDb {
                         trait_id.clone(),
                         TraitImplementer {
                             asset: asset.clone(),
-                            kind: "blueprint".to_owned(),
+                            kind: self.kinds.get(asset).cloned().unwrap_or_default(),
                             via: via.clone(),
                         },
                     )
@@ -416,7 +423,6 @@ impl TraitDb {
 
 /// The key a project's snapshot is published under (shared with plugins
 /// through `pulsar_reflection`).
-#[cfg(feature = "editor")]
 pub fn scope_key(project_root: &std::path::Path) -> String {
     pulsar_reflection::trait_scope_key(project_root)
 }
@@ -424,7 +430,7 @@ pub fn scope_key(project_root: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::trait_records::{TraitMethodRecord, TraitParamRecord};
+    use crate::records::{TraitMethodRecord, TraitParamRecord};
 
     fn record(id: &str, name: &str, supers: &[&str], methods: &[&str]) -> TraitRecord {
         TraitRecord {
@@ -461,11 +467,16 @@ mod tests {
                 record("c", "Leaf", &["types/traits/mid.trait.json"], &["leaf"]),
             ],
             vec![
-                ("bp/one/graph_save.json".into(), vec!["c".into()]),
-                (
-                    "bp/two/graph_save.json".into(),
-                    vec!["a".into(), "missing".into()],
-                ),
+                Declaration {
+                    implementer: "bp/one/graph_save.json".into(),
+                    kind: "test".into(),
+                    trait_ids: vec!["c".into()],
+                },
+                Declaration {
+                    implementer: "bp/two/graph_save.json".into(),
+                    kind: "test".into(),
+                    trait_ids: vec!["a".into(), "missing".into()],
+                },
             ],
         )
     }
@@ -526,7 +537,11 @@ mod tests {
                 record("b", "B", &["a"], &[]),
                 record("s", "Self", &["s"], &[]),
             ],
-            vec![("x".to_string(), vec!["a".to_string()])],
+            vec![Declaration {
+                implementer: "x".into(),
+                kind: "test".into(),
+                trait_ids: vec!["a".into()],
+            }],
         );
         assert!(db.is_cyclic("a") && db.is_cyclic("b") && db.is_cyclic("s"));
         assert!(db.implements("x", "b"));
@@ -561,7 +576,6 @@ mod tests {
         assert_eq!(db.id_for_path("types/traits/unique.trait.json"), Some("c"));
     }
 
-    #[cfg(feature = "editor")]
     #[test]
     fn publishes_to_the_reflection_registry() {
         let db = db();

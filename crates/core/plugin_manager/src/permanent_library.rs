@@ -224,6 +224,9 @@ impl PermanentLibrary {
     /// let lib = PermanentLibrary::new("plugins/example.dll")?;
     /// // Library is now loaded and will stay loaded until process exits
     /// ```
+    // Real machine: opens the native library file itself so it is hashed and loaded
+    // from the same handle (TOCTOU guard); the OS loader needs a real path.
+    #[allow(clippy::disallowed_methods)]
     pub fn new(path: impl AsRef<Path>) -> Result<Self, PermanentLibraryLoadError> {
         #[cfg(target_os = "windows")]
         set_safe_dll_search_path();
@@ -311,6 +314,9 @@ impl PermanentLibrary {
     /// This uses a streaming approach with `BufReader` to avoid reading the entire
     /// file into memory at once, which prevents Out-Of-Memory (OOM) errors for large
     /// plugin libraries.
+    // Real machine: opens the native library file itself so it is hashed and loaded
+    // from the same handle (TOCTOU guard); the OS loader needs a real path.
+    #[allow(clippy::disallowed_methods)]
     fn compute_file_hash(path: &Path) -> Result<[u8; 32], std::io::Error> {
         let file = std::fs::File::open(path)?;
         let mut reader = BufReader::new(file);

@@ -10,6 +10,7 @@ pulsar_plugins = { workspace = true }
 inventory = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
+engine_fs = { workspace = true }
 ui.workspace = true
 ui_common.workspace = true
 window_manager.workspace = true

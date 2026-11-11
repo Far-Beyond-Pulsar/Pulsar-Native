@@ -3,7 +3,7 @@
 //! A *trait* is an engine- or project-authored contract (`*.trait.json`)
 //! that assets of any language can implement: the role traits `GameMode`,
 //! `PlayerController`, `PlayerCharacter`, `GameState`, or a project's own. The
-//! host keeps one database of them (`engine_fs::TraitDb`) and publishes it
+//! host keeps one database of them (`pulsar_traits::TraitDb`) and publishes it
 //! to the reflection registry; this module is the plugin-side view.
 //!
 //! There is no new vtable and no host callback to link against: a plugin's

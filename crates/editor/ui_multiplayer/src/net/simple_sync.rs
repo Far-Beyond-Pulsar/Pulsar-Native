@@ -332,7 +332,7 @@ pub fn delete_files(project_root: &Path, file_paths: Vec<String>) -> Result<usiz
     for relative_path in file_paths {
         let full_path = project_relative(project_root, &relative_path)?;
 
-        if full_path.exists() {
+        if virtual_fs::exists(&full_path).unwrap_or(false) {
             virtual_fs::delete_path(&full_path)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             events::emit_remote(full_path.clone(), FsChangeKind::Deleted);

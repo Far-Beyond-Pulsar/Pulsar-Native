@@ -111,6 +111,7 @@ impl TraitEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let read_only = engine_fs::virtual_fs::mount_of(&file_path);
         Self {
             file_path,
             focus_handle: cx.focus_handle(),
@@ -140,7 +141,13 @@ impl TraitEditor {
                 .collect(),
             dirty: false,
             load_error,
-            save_status: None,
+            // A trait the engine or a plugin serves (its read-only mount)
+            // says so up front; saving it fails with the mount's error.
+            save_status: read_only.map(|mount| {
+                Err(format!(
+                    "Read-only: this trait is served by '{mount}'. Copy it into the project to make your own."
+                ))
+            }),
         }
     }
 

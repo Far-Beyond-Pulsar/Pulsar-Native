@@ -53,6 +53,8 @@ pulsar_settings = { workspace = true }
 # the executable), project settings, and virtual_fs reads of class modules.
 pulsar_content  = { workspace = true }
 engine_fs       = { workspace = true }
+# Traits and roles: the trait index, the role registry.
+pulsar_traits   = { workspace = true }
 
 # One-world play-mode scene state (Pulsar-Native#637): RuntimeLevel hydration
 # into SceneDb plus the GPU mirror the renderer reads.

@@ -86,27 +86,17 @@ impl TypeIndex {
         Self::default()
     }
 
-    /// Load index from file
-    pub fn load(path: &Path) -> Result<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-        let content = std::fs::read_to_string(path)?;
-        Ok(serde_json::from_str(&content)?)
+    /// Parse an index from its JSON text. This crate does no file IO (`engine_fs` depends on
+    /// it): read the file through `engine_fs::virtual_fs` and pass the text here.
+    pub fn from_json(text: &str) -> Result<Self> {
+        Ok(serde_json::from_str(text)?)
     }
 
-    /// Save index to file
-    pub fn save(&mut self, path: &Path) -> Result<()> {
+    /// Stamp the generation time and serialize the index to the JSON text to write to
+    /// [`IndexManager::index_path`] (through `engine_fs::virtual_fs`).
+    pub fn to_json(&mut self) -> Result<String> {
         self.generated_at = chrono::Utc::now().to_rfc3339();
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+        Ok(serde_json::to_string_pretty(self)?)
     }
 
     /// Add or update a type in the index
@@ -192,12 +182,9 @@ impl IndexManager {
         }
     }
 
-    pub fn load_index(&self) -> Result<TypeIndex> {
-        TypeIndex::load(&self.index_path)
-    }
-
-    pub fn save_index(&self, index: &mut TypeIndex) -> Result<()> {
-        index.save(&self.index_path)
+    /// Where the index file lives (`<project>/type-index/index.json`).
+    pub fn index_path(&self) -> &Path {
+        &self.index_path
     }
 
     pub fn get_type_dir(&self, kind: TypeKind, name: &str) -> PathBuf {
@@ -214,11 +201,5 @@ impl IndexManager {
 
     pub fn get_rs_path(&self, kind: TypeKind, name: &str) -> PathBuf {
         self.get_type_dir(kind, name).join("mod.rs")
-    }
-
-    pub fn ensure_type_dir(&self, kind: TypeKind, name: &str) -> Result<PathBuf> {
-        let dir = self.get_type_dir(kind, name);
-        std::fs::create_dir_all(&dir)?;
-        Ok(dir)
     }
 }

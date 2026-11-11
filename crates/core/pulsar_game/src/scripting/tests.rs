@@ -2193,16 +2193,57 @@ mod roles {
     use super::*;
     use crate::roles::RoleEntity;
     use crate::scripting::traits::HookOutcome;
-    use engine_fs::builtin_traits::{
-        GAME_MODE_TRAIT_ID, GAME_STATE_TRAIT_ID, PLAYER_CHARACTER_TRAIT_ID,
-        PLAYER_CONTROLLER_TRAIT_ID,
-    };
-    use engine_fs::world_roles::{EngineRole, RoleSelection, WorldRoles};
     use pulsar_events::entity_channel;
     use pulsar_events::gamma::DynValue;
     use pulsar_script_vm::{EventDecl, EventField, EventRef, Subscription, SubscriptionScope};
+    use pulsar_traits::builtin::{
+        GAME_MODE_ROLE, GAME_MODE_TRAIT_ID, GAME_STATE_ROLE, GAME_STATE_TRAIT_ID,
+        PLAYER_CHARACTER_ROLE, PLAYER_CHARACTER_TRAIT_ID, PLAYER_CONTROLLER_ROLE,
+        PLAYER_CONTROLLER_TRAIT_ID,
+    };
+    use pulsar_traits::{RoleSelection, WorldRoles};
 
     type Hook<'a> = (&'a str, Vec<Type>, &'a str);
+
+    // A stand-in for the Blueprint plugin's implementer source (an editor
+    // tool the game runtime never links): a class's `graph_save.json`
+    // declares its traits, and the class folder is the binding. With it the
+    // tests build the trait index the editor would have stored.
+    fn claims_graph(relative: &str) -> bool {
+        relative.ends_with("/graph_save.json")
+    }
+
+    fn scan_graph(relative: &str, bytes: &[u8]) -> Option<pulsar_traits::Scanned> {
+        let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+        let ids = value
+            .pointer("/blueprint_metadata/implemented_trait_ids")
+            .and_then(|ids| ids.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|id| id.as_str().map(str::to_owned))
+            .collect();
+        Some(pulsar_traits::Scanned {
+            id: relative.to_owned(),
+            declared: pulsar_traits::Declared {
+                ids,
+                paths: Vec::new(),
+            },
+            binding: Some(pulsar_traits::Binding::ScriptClass {
+                dir: relative.rsplit_once('/')?.0.to_owned(),
+            }),
+        })
+    }
+
+    inventory::submit! {
+        pulsar_traits::TraitImplementerSource {
+            origin: pulsar_traits::pulsar_plugins::engine_origin!(),
+            kind: "test.graph",
+            label: "Test classes",
+            claims: Some(claims_graph),
+            scan: Some(scan_graph),
+            list: None,
+        }
+    }
 
     /// A role class: one event `<Class>.<method>` per hook, each handled by a
     /// function that logs `label`. This is what compiling a Blueprint with
@@ -2319,6 +2360,8 @@ mod roles {
             Some(role_module("Opaque", &[])),
             None,
         );
+        // What the editor stores when it opens the project.
+        pulsar_traits::TraitIndex::rebuild(root).unwrap();
         dir
     }
 
@@ -2330,7 +2373,7 @@ mod roles {
         ]
     }
 
-    fn selection(pairs: &[(EngineRole, &str)]) -> RoleSelection {
+    fn selection(pairs: &[(&str, &str)]) -> RoleSelection {
         let mut selection = RoleSelection::default();
         for (role, class) in pairs {
             selection.set(*role, Some(format!("src/classes/{class}/graph_save.json")));
@@ -2341,10 +2384,10 @@ mod roles {
     fn all_roles() -> WorldRoles {
         WorldRoles::resolve(
             &selection(&[
-                (EngineRole::GameMode, "Mode"),
-                (EngineRole::GameState, "State"),
-                (EngineRole::PlayerController, "Pad"),
-                (EngineRole::PlayerCharacter, "Hero"),
+                (GAME_MODE_ROLE, "Mode"),
+                (GAME_STATE_ROLE, "State"),
+                (PLAYER_CONTROLLER_ROLE, "Pad"),
+                (PLAYER_CHARACTER_ROLE, "Hero"),
             ]),
             None,
         )
@@ -2358,7 +2401,7 @@ mod roles {
         game.scene_store.read().world.query::<&RoleEntity>().count()
     }
 
-    fn role_entities(game: &TickLoop) -> Vec<(EngineRole, Entity)> {
+    fn role_entities(game: &TickLoop) -> Vec<(&'static str, Entity)> {
         game.scripts
             .as_ref()
             .unwrap()
@@ -2399,10 +2442,10 @@ mod roles {
         assert_eq!(
             spawned.iter().map(|(role, _)| *role).collect::<Vec<_>>(),
             [
-                EngineRole::GameMode,
-                EngineRole::GameState,
-                EngineRole::PlayerController,
-                EngineRole::PlayerCharacter
+                GAME_MODE_ROLE,
+                GAME_STATE_ROLE,
+                PLAYER_CONTROLLER_ROLE,
+                PLAYER_CHARACTER_ROLE
             ]
         );
         let mut driver = game.scripts.as_ref().unwrap().lock().unwrap();
@@ -2413,7 +2456,11 @@ mod roles {
                 "{role:?} runs a script"
             );
             assert!(
-                driver.entity_implements(&store.world, *entity, role.spec().trait_id),
+                driver.entity_implements(
+                    &store.world,
+                    *entity,
+                    pulsar_traits::roles::role(role).unwrap().trait_id
+                ),
                 "{role:?} implements its trait"
             );
         }
@@ -2429,10 +2476,7 @@ mod roles {
         let level = level(project.path(), &[]);
         let (mut game, log) = standalone(project.path(), &level);
         game.set_world_roles(WorldRoles::resolve(
-            &selection(&[
-                (EngineRole::GameMode, "Mode"),
-                (EngineRole::GameState, "Ghost"),
-            ]),
+            &selection(&[(GAME_MODE_ROLE, "Mode"), (GAME_STATE_ROLE, "Ghost")]),
             None,
         ));
         game.tick_once();
@@ -2442,7 +2486,7 @@ mod roles {
                 .iter()
                 .map(|(role, _)| *role)
                 .collect::<Vec<_>>(),
-            [EngineRole::GameMode]
+            [GAME_MODE_ROLE]
         );
 
         // No roles at all: nothing runs and nothing is spawned.
@@ -2477,7 +2521,7 @@ mod roles {
             .unwrap()
             .lock()
             .unwrap()
-            .role_entity(EngineRole::PlayerController)
+            .role_entity(PLAYER_CONTROLLER_ROLE)
             .expect("the controller has an entity");
         let stable = game
             .scene_store
@@ -2610,7 +2654,7 @@ mod roles {
             TickLoop::with_scene_store(Arc::clone(&first.scene_store), TickMode::default(), 0);
         third.enable_scripting(project.path());
         third.set_world_roles(WorldRoles::resolve(
-            &selection(&[(EngineRole::GameMode, "Mode")]),
+            &selection(&[(GAME_MODE_ROLE, "Mode")]),
             None,
         ));
         third.tick_once();
@@ -2638,7 +2682,7 @@ mod roles {
             .to_string(),
         )
         .unwrap();
-        engine_fs::BlueprintTraitIndex::rebuild(root).unwrap();
+        pulsar_traits::TraitIndex::rebuild(root).unwrap();
     }
 
     fn driver_over(root: &Path) -> (ScriptDriver, Log) {
@@ -2728,7 +2772,7 @@ mod roles {
 
         let (mut driver, log) = driver_over(project.path());
         driver.set_world_roles(WorldRoles::resolve(
-            &selection(&[(EngineRole::PlayerCharacter, "Knight")]),
+            &selection(&[(PLAYER_CHARACTER_ROLE, "Knight")]),
             None,
         ));
         let mut world = World::new();
@@ -2740,10 +2784,10 @@ mod roles {
         assert_eq!(names(&log), ["hero:spawned", "hero:possessed"]);
         assert!(report.failures.is_empty(), "{:?}", report.failures);
 
-        let knight = driver.role_entity(EngineRole::PlayerCharacter).unwrap();
+        let knight = driver.role_entity(PLAYER_CHARACTER_ROLE).unwrap();
         let mut report = crate::scripting::DriverReport::default();
         let mut call = |driver: &mut ScriptDriver, method: &str, report: &mut _| {
-            driver.call_trait_hook(&mut world, knight, "test.pawn", method, &[], report)
+            driver.call_trait(&mut world, knight, "test.pawn", method, &[], report)
         };
         assert_eq!(
             call(&mut driver, "on_pong", &mut report),
@@ -2766,7 +2810,7 @@ mod roles {
         // A class that breaks the contract is reported, once, by name.
         let (mut driver, log) = driver_over(project.path());
         driver.set_world_roles(WorldRoles::resolve(
-            &selection(&[(EngineRole::PlayerCharacter, "Lacking")]),
+            &selection(&[(PLAYER_CHARACTER_ROLE, "Lacking")]),
             None,
         ));
         let mut world = World::new();
@@ -2784,7 +2828,7 @@ mod roles {
         // Squire declares `Pawn` and lacks the required `on_pong`.
         let (mut driver, _) = driver_over(project.path());
         driver.set_world_roles(WorldRoles::resolve(
-            &selection(&[(EngineRole::PlayerCharacter, "Squire")]),
+            &selection(&[(PLAYER_CHARACTER_ROLE, "Squire")]),
             None,
         ));
         let mut world = World::new();
@@ -2802,8 +2846,8 @@ mod roles {
         // Plain is selected as the character but declares no traits.
         driver.set_world_roles(WorldRoles::resolve(
             &selection(&[
-                (EngineRole::PlayerController, "Pad"),
-                (EngineRole::PlayerCharacter, "Plain"),
+                (PLAYER_CONTROLLER_ROLE, "Pad"),
+                (PLAYER_CHARACTER_ROLE, "Plain"),
             ]),
             None,
         ));
@@ -2821,8 +2865,8 @@ mod roles {
         let (mut driver, log) = driver_over(project.path());
         driver.set_world_roles(WorldRoles::resolve(
             &selection(&[
-                (EngineRole::PlayerController, "Pad"),
-                (EngineRole::PlayerCharacter, "Opaque"),
+                (PLAYER_CONTROLLER_ROLE, "Pad"),
+                (PLAYER_CHARACTER_ROLE, "Opaque"),
             ]),
             None,
         ));
@@ -2908,14 +2952,18 @@ mod roles {
     }
 
     fn roles_with_input(mapping: Option<&str>) -> WorldRoles {
-        let mut selection = selection(&[
-            (EngineRole::GameMode, "Mode"),
-            (EngineRole::GameState, "State"),
-            (EngineRole::PlayerController, "Pad"),
-            (EngineRole::PlayerCharacter, "Hero"),
+        let selection = selection(&[
+            (GAME_MODE_ROLE, "Mode"),
+            (GAME_STATE_ROLE, "State"),
+            (PLAYER_CONTROLLER_ROLE, "Pad"),
+            (PLAYER_CHARACTER_ROLE, "Hero"),
         ]);
-        selection.set_input_mapping(mapping.map(str::to_owned));
-        WorldRoles::resolve(&selection, None)
+        // The input plugin's World Settings field, beside the roles.
+        let settings = match mapping {
+            Some(path) => json!({ "player_input_mapping": path }),
+            None => json!({}),
+        };
+        WorldRoles::resolve(&selection, None).with_settings(settings)
     }
 
     /// Every `PlayerInputComponent` as `(owner, mapping)`.
@@ -2934,7 +2982,7 @@ mod roles {
             .unwrap()
             .lock()
             .unwrap()
-            .role_entity(EngineRole::PlayerCharacter)
+            .role_entity(PLAYER_CHARACTER_ROLE)
             .expect("the character has an entity")
     }
 
@@ -3094,8 +3142,8 @@ mod roles {
         let (mut driver, log) = driver_over(project.path());
         driver.set_world_roles(WorldRoles::resolve(
             &selection(&[
-                (EngineRole::PlayerController, "Lazy"),
-                (EngineRole::PlayerCharacter, "Hero"),
+                (PLAYER_CONTROLLER_ROLE, "Lazy"),
+                (PLAYER_CHARACTER_ROLE, "Hero"),
             ]),
             None,
         ));

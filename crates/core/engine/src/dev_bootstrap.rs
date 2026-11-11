@@ -229,6 +229,8 @@ fn choose(shared: &SharedState, choice: bool) {
     condition.notify_all();
 }
 
+// std::fs allowed: restart sidecar: truncates the bootstrap log in the OS temp dir (process plumbing, no project)
+#[allow(clippy::disallowed_methods)]
 fn run_bootstrap(args: &[OsString], stable_executable: Option<&Path>, shared: &SharedState) {
     let result = (|| -> Result<(), String> {
         let parent_pid = arg(args, 2)?
@@ -285,6 +287,8 @@ fn run_bootstrap(args: &[OsString], stable_executable: Option<&Path>, shared: &S
     }
 }
 
+// std::fs allowed: restart sidecar: restores the engine's own executable file (process plumbing, no project)
+#[allow(clippy::disallowed_methods)]
 fn show_failure_and_wait(
     shared: &SharedState,
     stable_executable: Option<&Path>,
@@ -350,6 +354,8 @@ fn show_failure_and_wait(
     }
 }
 
+// std::fs allowed: restart sidecar: opens the bootstrap log in the OS temp dir as cargo's output (process plumbing)
+#[allow(clippy::disallowed_methods)]
 fn run_cargo_build(
     workspace: &Path,
     target_dir: &Path,
@@ -474,6 +480,8 @@ fn bootstrap_log_path() -> PathBuf {
     std::env::temp_dir().join("pulsar-engine-bootstrap.log")
 }
 
+// std::fs allowed: restart sidecar: appends to the bootstrap log in the OS temp dir (process plumbing)
+#[allow(clippy::disallowed_methods)]
 fn append_log(message: &str) {
     if let Ok(mut log) = OpenOptions::new()
         .create(true)
@@ -484,6 +492,8 @@ fn append_log(message: &str) {
     }
 }
 
+// std::fs allowed: restart sidecar: removes the sidecar copy of the engine executable (process plumbing)
+#[allow(clippy::disallowed_methods)]
 fn schedule_sidecar_cleanup(sidecar: Option<PathBuf>) {
     let Some(sidecar) = sidecar else { return };
     #[cfg(windows)]

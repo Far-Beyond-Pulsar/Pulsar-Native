@@ -11,6 +11,8 @@ use super::ScriptDriver;
 /// Dynamic libraries in each native crate's direct Cargo profile directory.
 /// `deps/` is deliberately excluded: Cargo places transitive dependencies and
 /// proc-macro DLLs there, and they are not Pulsar native extensions.
+// Real machine: finds Cargo's built native cdylibs and compares their mtimes at full precision; the OS loader needs real paths.
+#[allow(clippy::disallowed_methods)]
 pub(super) fn project_native_library_artifacts(root: &Path) -> Vec<PathBuf> {
     fn visit_target(dir: &Path, out: &mut Vec<(String, PathBuf)>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -132,6 +134,8 @@ impl ScriptDriver {
     /// Load the project's built cdylibs from `native/<crate>/target/{debug,release}`.
     /// This layout keeps native extension artifacts separate from the engine's
     /// own Cargo target directory and works for a single native crate or many.
+    // Real machine: finds Cargo's built native cdylibs and compares their mtimes at full precision; the OS loader needs real paths.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn load_project_native_libraries(&mut self) {
         let native_root = self.project_root.join("native");
         for path in project_native_library_artifacts(&native_root) {
@@ -154,6 +158,8 @@ impl ScriptDriver {
     /// Pick up completed Cargo builds while the game or PIE session is running.
     /// A failed reload leaves the old library registered and is retried after
     /// the artifact changes again.
+    // Real machine: finds Cargo's built native cdylibs and compares their mtimes at full precision; the OS loader needs real paths.
+    #[allow(clippy::disallowed_methods)]
     pub(super) fn reload_changed_native_libraries(&mut self) {
         let native_root = self.project_root.join("native");
         let artifacts = project_native_library_artifacts(&native_root);

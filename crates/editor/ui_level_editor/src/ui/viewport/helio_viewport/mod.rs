@@ -378,7 +378,7 @@ impl Render for HelioViewport {
                         Ok(path) => path,
                         Err(error) => {
                             tracing::warn!("High-resolution screenshot capture failed: {error}");
-                            let _ = std::fs::remove_file(&temp_path);
+                            remove_temp_screenshot(&temp_path);
                             this.update_in(cx, |_, window, cx| {
                                 window.push_notification(
                                     Notification::error("Screenshot capture failed").message(error),
@@ -395,7 +395,7 @@ impl Render for HelioViewport {
                         .set_file_name("screenshot.png");
                     if let Some(file) = dialog.save_file().await {
                         let path = file.path().to_path_buf();
-                        if let Err(error) = std::fs::copy(&temp_path, &path) {
+                        if let Err(error) = copy_screenshot(&temp_path, &path) {
                             tracing::warn!("Failed to save high-resolution screenshot: {error}");
                             this.update_in(cx, |_, window, cx| {
                                 window.push_notification(
@@ -407,11 +407,7 @@ impl Render for HelioViewport {
                             .ok();
                         }
                     }
-                    if let Err(error) = std::fs::remove_file(&temp_path) {
-                        if error.kind() != std::io::ErrorKind::NotFound {
-                            tracing::warn!("Could not remove temporary screenshot: {error}");
-                        }
-                    }
+                    remove_temp_screenshot(&temp_path);
                 })
                 .detach();
             } else {
@@ -535,5 +531,23 @@ impl Render for HelioViewport {
                 )
             })
             .into_any_element()
+    }
+}
+
+// Allowed std::fs: the high-resolution screenshot is rendered to a temp file in
+// the OS temp dir and copied to a path the user picked in a native save dialog
+// on this machine; neither is a project file.
+#[allow(clippy::disallowed_methods)]
+fn copy_screenshot(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<u64> {
+    std::fs::copy(from, to)
+}
+
+// Allowed std::fs: removes the screenshot's temp file from the OS temp dir.
+#[allow(clippy::disallowed_methods)]
+fn remove_temp_screenshot(path: &std::path::Path) {
+    if let Err(error) = std::fs::remove_file(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!("Could not remove temporary screenshot: {error}");
+        }
     }
 }

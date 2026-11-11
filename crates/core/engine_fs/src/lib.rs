@@ -1,107 +1,49 @@
-//! Engine Filesystem Layer
+//! The Pulsar filesystem library: every file the engine, the editor and the
+//! plugins read or write goes through it.
 //!
-//! Centralized asset management and indexing system for Pulsar Engine.
-//! Handles all file operations and maintains up-to-date indexes for quick lookups.
+//! - [`virtual_fs`]: the free functions everything calls (`read_file`,
+//!   `write_file`, `open_read`, `manifest`, ...), routed to the active
+//!   [`FsProvider`] (local disk, a remote `pulsar-studio` project, a
+//!   peer-to-peer session) with the plugin folders composed over it
+//!   ([`virtual_fs::mounts`]: `plugins/<owner>/` in every project for each
+//!   plugin that provides files, and the engine's `plugins/pulsar/`; only
+//!   their owner changes them).
+//! - [`providers`]: the provider trait and its implementations.
+//! - [`events`]: change notifications for what the editor wrote.
+//! - [`file_index`]: the persistent, disposable SQLite index of a local
+//!   project's files and stable asset ids, and [`watchers`], which keeps it
+//!   current and publishes the asset updates plugins ask for.
+//! - [`import_options`]: per-asset import settings.
 //!
-//! ## Architecture
+//! `std::fs` is a disallowed method across the workspace (the root
+//! `clippy.toml`); only the providers here, build scripts and tests touch the
+//! disk directly (`architecture/std-fs-allowed.txt`, shrink-only).
 //!
-//! The crate is organized into several modules:
-//! - [`providers`] - Filesystem provider abstraction (local and remote)
-//! - [`virtual_fs`] - Global virtual filesystem with path utilities
-//! - [`operations`] - Asset CRUD operations (create, update, delete, move)
-//! - [`templates`] - Asset templates and template generation
-//! - [`watchers`] - File system watching for automatic updates
-//! - [`engine_fs`] - Main coordinator struct
-//! - [`scanner`] - Project scanning and indexing
-//!
-//! ## Remote file editing
-//!
-//! When the editor opens a cloud project the active provider is swapped to a
-//! [`RemoteFsProvider`] via [`virtual_fs::set_provider`].  All code that
-//! previously called `std::fs` can instead call the free functions in
-//! [`virtual_fs`] (or use [`virtual_fs::provider()`] for bulk access) and
-//! will automatically target the right backend.
+//! Traits and gameplay roles are `pulsar_traits`', not this crate's.
 
-// Module declarations
-#[cfg(feature = "editor")]
-pub mod asset_index;
-pub mod blueprint_trait_index;
-pub mod builtin_traits;
-#[cfg(feature = "editor")]
-mod engine_fs;
 pub mod events;
-#[cfg(feature = "editor")]
 pub mod file_index;
 pub mod import_options;
-#[cfg(feature = "editor")]
-pub mod operations;
 pub mod providers;
-#[cfg(feature = "editor")]
-mod scanner;
-#[cfg(feature = "editor")]
-pub mod templates;
-#[cfg(feature = "editor")]
-pub mod thumbnails;
-#[cfg(feature = "editor")]
-pub mod tooling;
-pub mod trait_conformance;
-mod trait_db;
-mod trait_records;
-#[cfg(feature = "editor")]
-pub mod user_types;
 pub mod virtual_fs;
-#[cfg(feature = "editor")]
 pub mod watchers;
-pub mod world_roles;
 
-// Re-export main types
-#[cfg(feature = "editor")]
-pub use asset_index::{AssetIndex, AssetInfo};
-#[cfg(feature = "editor")]
-pub use engine_fs::EngineFs;
-#[cfg(feature = "editor")]
 pub use file_index::{
-    open_project_file_index, project_file_index_for_path, update_open_project_file_indexes,
-    AssetDep, AssetDependent, FileIndexQuery, FileIndexSort, IndexedFile, ProjectFileIndex,
-};
-#[cfg(feature = "editor")]
-pub use user_types::{UserTypeInfo, UserTypeRegistry};
-
-// Re-export provider types
-pub use blueprint_trait_index::{
-    declared_traits, BlueprintTraitEntry, BlueprintTraitIndex, TRAIT_ASSET_KIND,
+    move_open_project_file_indexes, open_project_file_index, project_file_index_for_path,
+    update_open_project_file_indexes, AssetDep, AssetDependent, FileIndexQuery, FileIndexSort,
+    FileTypeClassifier, IndexedFile, ProjectFileIndex,
 };
 #[cfg(feature = "p2p")]
 pub use providers::P2pFsProvider;
-pub use providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};
+pub use providers::{
+    FsEntry, FsMetadata, FsProvider, FsWriter, LocalFsProvider, ManifestEntry, ReadSeek,
+};
 #[cfg(feature = "remote")]
 pub use providers::{RemoteConfig, RemoteFsProvider};
-#[cfg(feature = "editor")]
-pub use trait_db::scope_key as trait_scope_key;
-pub use trait_db::{Implementation, TraitDb};
-pub use trait_records::{TraitMethodRecord, TraitParamRecord, TraitRecord};
+pub use virtual_fs::{
+    cloud_join, is_cloud_path, CacheFolder, EmbeddedFile, FileProvider, FolderSource, InGame,
+    MemoryFolder, PluginFolder, ReadOnlyMount,
+};
+pub use watchers::AssetChangeKind;
 
-// Re-export operations
 pub use events::{emit, subscribe, FsChangeKind, FsEvent};
-#[cfg(feature = "editor")]
-pub use operations::AssetOperations;
-
-// Re-export template types
-#[cfg(feature = "editor")]
-pub use templates::{AssetCategory, AssetKind};
-
-// Re-export commonly used virtual_fs functions
-pub use virtual_fs::{cloud_join, is_cloud_path};
-
-#[cfg(all(test, feature = "editor"))]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_engine_fs_creation() {
-        let temp_dir = TempDir::new().unwrap();
-        let fs = EngineFs::new(temp_dir.path().to_path_buf());
-        assert!(fs.is_ok());
-    }
-}

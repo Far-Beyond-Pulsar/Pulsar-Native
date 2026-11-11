@@ -179,7 +179,7 @@ fn find_project_root(level: &Path) -> Option<PathBuf> {
     level
         .ancestors()
         .skip(1)
-        .find(|dir| dir.join("src").join("classes").is_dir())
+        .find(|dir| engine_fs::virtual_fs::is_dir(&dir.join("src").join("classes")))
         .map(Path::to_path_buf)
 }
 
@@ -216,22 +216,23 @@ fn migrate_classes(root: &mut Value, project: Option<&Path>) -> bool {
 }
 
 fn migrate_file(path: &Path, project: Option<&Path>) -> Result<(), String> {
-    if !path.is_file() {
+    if !engine_fs::virtual_fs::is_file(path) {
         return Err(format!("not a file: {}", path.display()));
     }
 
-    let content = std::fs::read_to_string(path).map_err(|e| format!("failed to read: {e}"))?;
+    let content =
+        engine_fs::virtual_fs::read_to_string(path).map_err(|e| format!("failed to read: {e}"))?;
     let mut root: Value =
         serde_json::from_str(&content).map_err(|e| format!("not valid JSON: {e}"))?;
 
     let backup_path = backup_path_for(path);
-    if backup_path.exists() {
+    if engine_fs::virtual_fs::exists(&backup_path).unwrap_or(false) {
         println!(
             "  backup already exists at {} -- leaving it alone",
             backup_path.display()
         );
     } else {
-        std::fs::copy(path, &backup_path)
+        engine_fs::virtual_fs::copy(path, &backup_path)
             .map_err(|e| format!("failed to create backup {}: {e}", backup_path.display()))?;
         println!("  backed up original to {}", backup_path.display());
     }
@@ -298,7 +299,7 @@ fn migrate_file(path: &Path, project: Option<&Path>) -> Result<(), String> {
     if report.migrated > 0 || classes_changed {
         let pretty = serde_json::to_string_pretty(&root)
             .map_err(|e| format!("failed to serialize result: {e}"))?;
-        std::fs::write(path, pretty)
+        engine_fs::virtual_fs::write_file(path, pretty.as_bytes())
             .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
         println!("  wrote repaired file to {}", path.display());
     } else {

@@ -5,6 +5,8 @@ use crate::events::ProfileEvent;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the SQLite trace database is opened by rusqlite on a real machine path, a developer-machine trace store, not a project asset
+#[allow(clippy::disallowed_methods)]
 /// Create the profiling database directory if it doesn't exist
 pub fn ensure_profiling_dir(project_path: &str) -> std::io::Result<PathBuf> {
     let profiling_dir = Path::new(project_path)
@@ -167,6 +169,8 @@ pub fn load_events(conn: &Connection) -> rusqlite::Result<Vec<ProfileEvent>> {
     Ok(events)
 }
 
+// std::fs allowed: profiling must not depend on engine_fs (Helio patches this crate); the SQLite trace database is opened by rusqlite on a real machine path, a developer-machine trace store, not a project asset
+#[allow(clippy::disallowed_methods)]
 /// List all profiling databases in the project
 pub fn list_profiling_sessions(project_path: &str) -> std::io::Result<Vec<PathBuf>> {
     let profiling_dir = Path::new(project_path)

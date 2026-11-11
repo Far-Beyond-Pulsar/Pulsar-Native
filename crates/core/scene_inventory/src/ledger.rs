@@ -127,6 +127,8 @@ pub struct SiteRow {
     pub d: Disposition,
 }
 
+// std::fs allowed: the inventory reads the engine's own source checkout (a CI/dev check), not a project
+#[allow(clippy::disallowed_methods)]
 pub fn load(path: &Path) -> Result<Ledger, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))

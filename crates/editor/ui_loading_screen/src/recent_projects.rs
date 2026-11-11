@@ -52,7 +52,7 @@ pub(crate) fn update_recent_projects(project_path: &Path) {
             .to_string(),
         path: project_path.to_string_lossy().to_string(),
         last_opened: Some(chrono::Local::now().to_rfc3339()),
-        is_git: project_path.join(".git").exists(),
+        is_git: engine_fs::virtual_fs::exists(&project_path.join(".git")).unwrap_or(false),
     });
     list.save(&recent_path);
 }

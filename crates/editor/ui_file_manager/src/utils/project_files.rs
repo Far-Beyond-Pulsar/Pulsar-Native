@@ -21,11 +21,7 @@ fn remote(path: &Path) -> bool {
 }
 
 fn exists(path: &Path) -> bool {
-    if remote(path) {
-        engine_fs::virtual_fs::exists(path).unwrap_or(false)
-    } else {
-        path.exists()
-    }
+    engine_fs::virtual_fs::exists(path).unwrap_or(false)
 }
 
 /// Whether `a` and `b` are one local file: on a case-insensitive filesystem
@@ -34,7 +30,10 @@ fn same_file(a: &Path, b: &Path) -> bool {
     if remote(a) || remote(b) {
         return false;
     }
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+    match (
+        engine_fs::virtual_fs::canonicalize(a),
+        engine_fs::virtual_fs::canonicalize(b),
+    ) {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     }

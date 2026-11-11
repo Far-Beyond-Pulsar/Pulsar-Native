@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+engine_fs = { workspace = true }
 anyhow = { workspace = true }
 # The providers register themselves (`AgentProviderRegistration`).
 pulsar_plugins = { workspace = true }
