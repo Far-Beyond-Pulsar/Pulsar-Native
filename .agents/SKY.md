@@ -35,6 +35,23 @@ weighted by its elevation, and `sky_darkness` maps that to 0..1 (full dark below
 dim moon light being up does not end the night. The panorama is not a daytime
 backdrop.
 
+## Stars and shooting stars
+
+Both live in `atmosphere_composite.wgsl` (`night_radiance`) and share one look:
+`point_light` (a core plus a faint halo, never drawn thinner than about a pixel,
+its light spread to match so sub-pixel sources don't blink), `star_color` (the
+blue-white to orange palette) and `star_brightness`.
+
+A shooting star (`meteor_radiance`) is a head crossing a short great-circle
+path (5 to 25 degrees, 0.35 to 1.1 s at speed 1), starting 8 to 80 degrees up
+and heading mostly downward. Its brightness follows a light curve that peaks
+late and burns out fast; most are as bright as a bright star, a few (a power
+law) far brighter. The train behind it glows as the head did when it passed and
+decays (to e^-2.5 at `shooting_star_length` behind the head), outliving the
+head briefly. Arrivals are a Poisson process at `shooting_star_rate` per
+minute: time slots of fixed candidates, each present by chance, so several can
+share the sky at irregular times and each pixel tests a bounded few.
+
 ## Data flow
 
 - The row carries `sky_texture_source` (`helio_pass_sky::sky_texture::source`:
