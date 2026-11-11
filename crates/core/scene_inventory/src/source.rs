@@ -390,7 +390,9 @@ pub fn declared_world_components(root: &Path) -> BTreeMap<String, String> {
 pub struct BufferGraph {
     /// buffer key -> type names whose `#[gpu(buffer = "…")]` writes it.
     pub producers: BTreeMap<String, BTreeSet<String>>,
-    /// buffer key -> packages that look it up with `BufferKey::of("…")`.
+    /// buffer key -> packages that look it up: `BufferKey::of("…")`, or
+    /// through the owner's constant (`BufferKey::of(KEY)`, `CONTRACT.key()`,
+    /// `CONTRACT.name()`, `CONTRACT.resolve(`).
     pub consumers: BTreeMap<String, BTreeSet<String>>,
     /// buffer key -> packages of the types that write it.
     pub producer_packages: BTreeMap<String, BTreeSet<String>>,
@@ -398,10 +400,58 @@ pub struct BufferGraph {
     pub buffers_of_type: BTreeMap<String, BTreeSet<String>>,
 }
 
+/// Buffer key constants in production source, by name: `const NAME: &str =
+/// "key"`, `const NAME: BufferKey = BufferKey::of("key")`, and contract
+/// constants (`BufferContract::new("key")` or `::new(OTHER_CONST)`).
+fn key_constants(root: &Path) -> HashMap<String, String> {
+    let literal = Regex::new(
+        r#"const\s+(\w+)\s*:\s*(?:&(?:'static\s+)?str|BufferKey|[\w:]*(?:Buffer|Pool)Contract<[^=]*>)\s*=\s*(?:[\w:]*BufferKey::of\(|[\w:]*(?:Buffer|Pool)Contract::new\()?\s*"([^"]+)""#,
+    )
+    .unwrap();
+    let alias = Regex::new(
+        r#"const\s+(\w+)\s*:\s*[\w:]*(?:Buffer|Pool)Contract<[^=]*>\s*=\s*[\w:]*(?:Buffer|Pool)Contract::new\(\s*(?:[\w:]+::)?(\w+)\s*\)"#,
+    )
+    .unwrap();
+    let mut keys = HashMap::new();
+    let mut aliases = Vec::new();
+    for file in production_files(root) {
+        for (index, (_, line)) in file.lines.iter().enumerate() {
+            if !line.contains("const ") {
+                continue;
+            }
+            // rustfmt wraps a long definition after its `=`.
+            let joined;
+            let line = if line.trim_end().ends_with('=') {
+                let next = file.lines.get(index + 1).map_or("", |(_, l)| l.as_str());
+                joined = format!("{line} {}", next.trim_start());
+                &joined
+            } else {
+                line
+            };
+            if let Some(caps) = literal.captures(line) {
+                keys.insert(caps[1].to_string(), caps[2].to_string());
+            } else if let Some(caps) = alias.captures(line) {
+                aliases.push((caps[1].to_string(), caps[2].to_string()));
+            }
+        }
+    }
+    for (name, target) in aliases {
+        if let Some(key) = keys.get(&target).cloned() {
+            keys.insert(name, key);
+        }
+    }
+    keys
+}
+
 pub fn buffer_graph(root: &Path) -> BufferGraph {
     let buffer = Regex::new(r#"#\[gpu\([^\]]*\bbuffer\s*=\s*"([^"]+)""#).unwrap();
     let structure = Regex::new(r"\bstruct\s+(\w+)").unwrap();
     let lookup = Regex::new(r#"BufferKey::of\(\s*"([^"]+)"\s*\)"#).unwrap();
+    let const_lookup = Regex::new(
+        r"BufferKey::of\(\s*(?:[\w:]+::)?([A-Z][A-Z0-9_]*)\s*\)|(?:[\w:]+::)?([A-Z][A-Z0-9_]*)\.(?:key|name|resolve)\(",
+    )
+    .unwrap();
+    let constants = key_constants(root);
     let mut graph = BufferGraph::default();
     for file in production_files(root) {
         let mut current_struct: Option<String> = None;
@@ -411,7 +461,9 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
                     current_struct = Some(caps[1].to_string());
                 }
             }
-            if !line.contains("#[gpu(") && !line.contains("BufferKey::of") {
+            let by_constant =
+                line.contains(".key()") || line.contains(".name()") || line.contains(".resolve(");
+            if !line.contains("#[gpu(") && !line.contains("BufferKey::of") && !by_constant {
                 continue;
             }
             if let Some(caps) = buffer.captures(line) {
@@ -445,6 +497,16 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
                     .entry(caps[1].to_string())
                     .or_default()
                     .insert(file.package.clone());
+            }
+            for caps in const_lookup.captures_iter(line) {
+                let name = caps.get(1).or_else(|| caps.get(2)).unwrap().as_str();
+                if let Some(key) = constants.get(name) {
+                    graph
+                        .consumers
+                        .entry(key.clone())
+                        .or_default()
+                        .insert(file.package.clone());
+                }
             }
         }
     }

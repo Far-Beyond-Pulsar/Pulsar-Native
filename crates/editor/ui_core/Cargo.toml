@@ -6,6 +6,8 @@ publish = false
 
 [dependencies]
 profiling = { workspace = true }
+# The level editor provider names the engine as its origin.
+pulsar_plugins = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true

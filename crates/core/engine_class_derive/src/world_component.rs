@@ -239,8 +239,9 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
 
         impl #self_ty {
             /// This class's `World` registration (`#[world_component]`):
-            /// what `pulsar_world_registry::submit_world_component!`
-            /// submits from the plugin's root crate.
+            /// what the plugin's root adds through its builder
+            /// (`p.components().class::<Self>(spec)`, which sets the
+            /// origin, requirements and presentation).
             #[doc(hidden)]
             pub const PULSAR_WORLD_COMPONENT: pulsar_world_registry::WorldComponentRegistration =
             pulsar_world_registry::WorldComponentRegistration {
@@ -257,7 +258,14 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
                 property_written: #property_written_fn_name,
+                requires: &[],
+                presentation: pulsar_world_registry::Presentation::Component,
             };
+        }
+
+        impl pulsar_world_registry::WorldComponentClass for #self_ty {
+            const REGISTRATION: pulsar_world_registry::WorldComponentRegistration =
+                <#self_ty>::PULSAR_WORLD_COMPONENT;
         }
 
         #submission

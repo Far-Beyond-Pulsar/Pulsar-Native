@@ -85,9 +85,13 @@ pub struct PluginDescriptor {
     /// Whether a project that does not name it has it.
     #[serde(default = "enabled_by_default")]
     pub enabled_by_default: bool,
-    /// The plugins it cannot work without (its crates link theirs).
+    /// The contracts it provides to other plugins ([`ProvidedContract`]).
     #[serde(default)]
-    pub requires: Vec<String>,
+    pub provides: Vec<ProvidedContract>,
+    /// The contracts it needs from other plugins ([`RequiredContract`]):
+    /// a plugin names what it uses, never another plugin.
+    #[serde(default)]
+    pub requires: Vec<RequiredContract>,
     /// Its root crate, by package name: the package at the plugin's
     /// directory, which registers everything the plugin contributes and is
     /// the origin of every registration ([`origin!`]).
@@ -116,6 +120,34 @@ impl PluginDescriptor {
                 descriptor.id
             ));
         }
+        for contract in &descriptor.provides {
+            let namespaced = contract
+                .id
+                .strip_prefix(descriptor.id.as_str())
+                .is_some_and(|rest| rest.starts_with('.') && rest.len() > 1);
+            if !namespaced {
+                return Err(format!(
+                    "plugin `{}` provides contract `{}` outside its namespace (`{}.<name>`)",
+                    descriptor.id, contract.id, descriptor.id
+                ));
+            }
+            if contract.kind != ContractKind::Trait && contract.members.is_empty() {
+                return Err(format!(
+                    "plugin `{}`'s {} contract `{}` lists no members",
+                    descriptor.id, contract.kind, contract.id
+                ));
+            }
+        }
+        if let Some(own) = descriptor
+            .requires
+            .iter()
+            .find(|required| descriptor.provided(&required.id).is_some())
+        {
+            return Err(format!(
+                "plugin `{}` requires its own contract `{}`",
+                descriptor.id, own.id
+            ));
+        }
         Ok(descriptor)
     }
 
@@ -129,32 +161,59 @@ impl PluginDescriptor {
     pub fn runtime(&self) -> bool {
         !self.editor_only
     }
+
+    /// The contract `id` it provides, if it does.
+    pub fn provided(&self, id: &str) -> Option<&ProvidedContract> {
+        self.provides.iter().find(|contract| contract.id == id)
+    }
+
+    /// The contract of `kind` that covers `member` (a buffer key, a crate,
+    /// a class or trait id), if it provides one.
+    pub fn provider_of(&self, kind: ContractKind, member: &str) -> Option<&ProvidedContract> {
+        self.provides
+            .iter()
+            .find(|contract| contract.kind == kind && contract.covers(member))
+    }
 }
 
 /// Cargo treats `-` and `_` in package names alike.
-fn same_package(a: &str, b: &str) -> bool {
+pub(crate) fn same_package(a: &str, b: &str) -> bool {
     a.len() == b.len()
         && a.bytes()
             .zip(b.bytes())
             .all(|(x, y)| x == y || (x == b'-' || x == b'_') && (y == b'-' || y == b'_'))
 }
 
-/// A plugin's descriptor, linked with its root crate ([`installed!`]).
+/// A plugin's descriptor and its root's `build`, linked with its root crate
+/// ([`installed!`]).
 pub struct InstalledPlugin {
     /// The descriptor's source.
     pub descriptor: &'static str,
+    /// The root crate's package name: the origin its registrations name.
+    pub root: &'static str,
+    /// The root's `build` ([`PluginBuilder`]): everything the plugin
+    /// registers.
+    pub build: Option<fn(&mut PluginBuilder)>,
 }
 
 inventory::collect!(InstalledPlugin);
 
 /// Carry this plugin's descriptor (at `path`, relative to the calling
 /// crate's manifest directory: `"pulsar-plugin.toml"` from the root crate)
-/// into whatever links the crate: the plugin is then installed there. The
-/// plugin's root crate calls it once, at its root; the crate then has
-/// `PLUGIN_DESCRIPTOR` (the source) and `plugin_descriptor()` (parsed).
+/// and its root's `build` ([`PluginBuilder`]) into whatever links the crate:
+/// the plugin is then installed there, and its build runs the first time a
+/// registry is read. The plugin's root crate calls it once, at its root;
+/// the crate then has `PLUGIN_DESCRIPTOR` (the source) and
+/// `plugin_descriptor()` (parsed).
 #[macro_export]
 macro_rules! installed {
+    ($path:literal, $build:path) => {
+        $crate::installed!(@descriptor $path, ::core::option::Option::Some($build));
+    };
     ($path:literal) => {
+        $crate::installed!(@descriptor $path, ::core::option::Option::None);
+    };
+    (@descriptor $path:literal, $build:expr) => {
         /// This plugin's descriptor (`pulsar-plugin.toml`).
         pub const PLUGIN_DESCRIPTOR: &str =
             include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $path));
@@ -168,6 +227,8 @@ macro_rules! installed {
         $crate::inventory::submit! {
             $crate::InstalledPlugin {
                 descriptor: PLUGIN_DESCRIPTOR,
+                root: env!("CARGO_PKG_NAME"),
+                build: $build,
             }
         }
     };
@@ -222,10 +283,18 @@ pub fn owner_of(origin: &'static str) -> Owner {
     }
 }
 
-mod contribution;
+mod builder;
+pub mod library;
+pub use builder::{add_foreign, builds, built, import_library, PluginBuilder};
+
+mod contracts;
+pub use contracts::{AbsentOptional, ContractKind, Problem, ProvidedContract, RequiredContract};
+
+#[doc(hidden)]
+pub mod contribution;
 pub use contribution::{
-    active_contributions, active_summaries, all_summaries, contributions, Contribution,
-    ContributionSource, Summary,
+    active_contributions, active_summaries, all_summaries, contributions, linked_contributions,
+    Contribution, ContributionSource, Summary,
 };
 
 /// A registration a plugin's root crate can submit (`inventory`): it names
@@ -261,24 +330,40 @@ macro_rules! registration {
                 category: <$ty as $crate::Contribution>::CATEGORY,
                 all: $crate::all_summaries::<$ty>,
                 active: $crate::active_summaries::<$ty>,
+                linked: $crate::contribution::linked_summaries::<$ty>,
             }
         }
+        $crate::importer!($ty);
     )*};
 }
 
-/// The linked registrations of type `T` that count: those whose origin's
-/// plugin is enabled ([`origin_enabled`]). What every registry iterates in
-/// place of `inventory::iter`.
-pub fn registered<T: Registration>() -> impl Iterator<Item = &'static T> {
+/// Every registration of type `T`: the engine's (link-time,
+/// `inventory::submit!`) and every plugin build's ([`PluginBuilder`]),
+/// whatever its plugin's state.
+pub fn all_registered<T: Registration>() -> impl Iterator<Item = &'static T> {
     inventory::iter::<T>
         .into_iter()
-        .filter(|registration| origin_enabled(registration.origin()))
+        .chain(builder::built::<T>())
 }
 
-/// The plugins this binary links, by id. A malformed descriptor is logged
-/// and skipped (a test of each plugin parses its own).
+/// The registrations of type `T` that count: those whose origin's plugin is
+/// enabled ([`origin_enabled`]). What every registry iterates in place of
+/// `inventory::iter`.
+pub fn registered<T: Registration>() -> impl Iterator<Item = &'static T> {
+    all_registered::<T>().filter(|registration| origin_enabled(registration.origin()))
+}
+
+/// The installed plugins, by id: those this binary links and those plugin
+/// libraries brought ([`library::import`]). A malformed descriptor is
+/// logged and skipped (a test of each plugin parses its own).
 pub fn installed() -> &'static [PluginDescriptor] {
-    static INSTALLED: OnceLock<Vec<PluginDescriptor>> = OnceLock::new();
+    *installed_set()
+        .read()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
+fn installed_set() -> &'static RwLock<&'static [PluginDescriptor]> {
+    static INSTALLED: OnceLock<RwLock<&'static [PluginDescriptor]>> = OnceLock::new();
     INSTALLED.get_or_init(|| {
         let mut plugins: BTreeMap<String, PluginDescriptor> = BTreeMap::new();
         for linked in inventory::iter::<InstalledPlugin> {
@@ -289,8 +374,27 @@ pub fn installed() -> &'static [PluginDescriptor] {
                 Err(error) => tracing::error!("skipping a plugin descriptor: {error}"),
             }
         }
-        plugins.into_values().collect()
+        RwLock::new(Box::leak(
+            plugins.into_values().collect::<Vec<_>>().into_boxed_slice(),
+        ))
     })
+}
+
+/// Add a plugin library's descriptor to the installed set (once per
+/// library: the previous set is kept alive, as libraries are never
+/// unloaded).
+pub(crate) fn add_installed(descriptor: PluginDescriptor) {
+    let mut set = installed_set()
+        .write()
+        .unwrap_or_else(|poison| poison.into_inner());
+    let mut plugins: Vec<PluginDescriptor> = set
+        .iter()
+        .filter(|plugin| plugin.id != descriptor.id)
+        .cloned()
+        .collect();
+    plugins.push(descriptor);
+    plugins.sort_by(|a, b| a.id.cmp(&b.id));
+    *set = Box::leak(plugins.into_boxed_slice());
 }
 
 /// A project's `[plugins]` list: the plugins it names, enabled or not.
@@ -346,9 +450,12 @@ impl ProjectPlugins {
 pub struct Resolution {
     /// Enabled plugin ids.
     pub enabled: BTreeSet<String>,
-    /// What did not go as the list says (a plugin it names that is not
-    /// installed, one disabled because a requirement is off).
-    pub problems: Vec<String>,
+    /// What did not go as the list says, each naming consumer, contract and
+    /// provider ([`Problem`]).
+    pub problems: Vec<Problem>,
+    /// Optional requirements of enabled plugins that nothing enabled
+    /// provides: the consumer runs without them.
+    pub absent_optional: Vec<AbsentOptional>,
 }
 
 impl Resolution {
@@ -366,27 +473,56 @@ impl Resolution {
             .map(|plugin| plugin.root.as_str())
             .collect()
     }
+
+    /// The problems that name plugin `id` (as consumer or provider).
+    pub fn problems_of<'a>(&'a self, id: &'a str) -> impl Iterator<Item = &'a Problem> + 'a {
+        self.problems
+            .iter()
+            .filter(move |problem| problem.plugins().contains(&id))
+    }
+}
+
+/// The installed providers of `required`, by id order, with the contract
+/// each provides.
+fn providers_of<'a>(
+    installed: &'a [PluginDescriptor],
+    required: &RequiredContract,
+) -> Vec<(&'a PluginDescriptor, &'a ProvidedContract)> {
+    installed
+        .iter()
+        .filter_map(|plugin| plugin.provided(&required.id).map(|c| (plugin, c)))
+        .collect()
+}
+
+/// Whether `contract` is the version `required` pins (any, when it pins none).
+fn compatible(required: &RequiredContract, contract: &ProvidedContract) -> bool {
+    required
+        .version
+        .is_none_or(|version| version == contract.version)
 }
 
 /// The plugins `project` has among `installed`. A plugin is enabled when the
-/// list says so, or by its default when the list does not name it; the
-/// plugins an enabled plugin requires are enabled with it (unless the list
-/// turns one off); a plugin whose requirement is off or not installed is
-/// disabled, and the resolution says why.
+/// list says so, or by its default when the list does not name it. Each
+/// enabled plugin's required contracts must be provided by an enabled
+/// plugin: a provider the list does not turn off is enabled with it; a
+/// plugin whose requirement cannot be met is disabled, and the resolution
+/// names consumer, contract and provider ([`Problem`]). An optional
+/// requirement nobody provides is recorded ([`Resolution::absent_optional`]).
 pub fn resolve(installed: &[PluginDescriptor], project: &ProjectPlugins) -> Resolution {
-    let by_id: BTreeMap<&str, &PluginDescriptor> = installed
-        .iter()
-        .map(|plugin| (plugin.id.as_str(), plugin))
-        .collect();
     let mut problems = Vec::new();
     for (id, enabled) in &project.listed {
-        if *enabled && !by_id.contains_key(id.as_str()) {
-            problems.push(format!(
-                "plugin `{id}` is enabled by the project but not installed"
-            ));
+        if *enabled && !installed.iter().any(|plugin| &plugin.id == id) {
+            problems.push(Problem::NotInstalled { plugin: id.clone() });
         }
     }
     let listed_off = |id: &str| project.listed.get(id) == Some(&false);
+    let met = |enabled: &BTreeSet<String>, required: &RequiredContract| {
+        providers_of(installed, required)
+            .iter()
+            .any(|(provider, contract)| {
+                enabled.contains(&provider.id) && compatible(required, contract)
+            })
+    };
     let mut enabled: BTreeSet<String> = installed
         .iter()
         .filter(|plugin| {
@@ -398,8 +534,9 @@ pub fn resolve(installed: &[PluginDescriptor], project: &ProjectPlugins) -> Reso
         })
         .map(|plugin| plugin.id.clone())
         .collect();
-    // Pull in requirements until stable, then drop what cannot have them
-    // (never pulling a dropped plugin in again), until nothing drops.
+    // Pull in providers until stable, then drop what cannot have its
+    // requirements (never pulling a dropped plugin in again), until nothing
+    // drops.
     let mut dropped: BTreeSet<String> = BTreeSet::new();
     loop {
         loop {
@@ -408,13 +545,19 @@ pub fn resolve(installed: &[PluginDescriptor], project: &ProjectPlugins) -> Reso
                 if !enabled.contains(&plugin.id) {
                     continue;
                 }
-                for required in &plugin.requires {
-                    if by_id.contains_key(required.as_str())
-                        && !listed_off(required)
-                        && !dropped.contains(required)
-                        && enabled.insert(required.clone())
-                    {
-                        pulled = true;
+                for required in plugin.requires.iter().filter(|r| !r.optional) {
+                    if met(&enabled, required) {
+                        continue;
+                    }
+                    let pick = providers_of(installed, required).into_iter().find(
+                        |(provider, contract)| {
+                            compatible(required, contract)
+                                && !listed_off(&provider.id)
+                                && !dropped.contains(&provider.id)
+                        },
+                    );
+                    if let Some((provider, _)) = pick {
+                        pulled |= enabled.insert(provider.id.clone());
                     }
                 }
             }
@@ -427,36 +570,90 @@ pub fn resolve(installed: &[PluginDescriptor], project: &ProjectPlugins) -> Reso
             if !enabled.contains(&plugin.id) {
                 continue;
             }
-            let missing = plugin.requires.iter().find(|required| {
-                !by_id.contains_key(required.as_str()) || !enabled.contains(required.as_str())
-            });
-            if let Some(required) = missing {
-                let why = if !by_id.contains_key(required.as_str()) {
-                    "which is not installed"
-                } else if listed_off(required) {
-                    "which the project disables"
-                } else {
-                    "which is disabled"
-                };
-                problems.push(format!(
-                    "plugin `{}` is disabled: it requires `{required}`, {why}",
-                    plugin.id
-                ));
-                enabled.remove(&plugin.id);
-                dropped.insert(plugin.id.clone());
-                dropped_any = true;
-            }
+            let Some(required) = plugin
+                .requires
+                .iter()
+                .filter(|r| !r.optional)
+                .find(|required| !met(&enabled, required))
+            else {
+                continue;
+            };
+            let candidates = providers_of(installed, required);
+            let consumer = plugin.id.clone();
+            let contract = required.id.clone();
+            let problem = match (
+                candidates.iter().find(|(_, c)| compatible(required, c)),
+                candidates.first(),
+                required.version,
+            ) {
+                (Some((provider, _)), _, _) => Problem::ProviderDisabled {
+                    consumer,
+                    contract,
+                    provider: provider.id.clone(),
+                    by_project: listed_off(&provider.id),
+                },
+                (None, Some((provider, provided)), Some(version)) => Problem::Incompatible {
+                    consumer,
+                    contract,
+                    provider: provider.id.clone(),
+                    provided: provided.version,
+                    required: version,
+                },
+                _ => Problem::Unprovided { consumer, contract },
+            };
+            problems.push(problem);
+            enabled.remove(&plugin.id);
+            dropped.insert(plugin.id.clone());
+            dropped_any = true;
         }
         if !dropped_any {
             break;
         }
     }
-    Resolution { enabled, problems }
+    // One enabled provider per contract.
+    let mut provided_by: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for plugin in installed.iter().filter(|p| enabled.contains(&p.id)) {
+        for contract in &plugin.provides {
+            provided_by
+                .entry(contract.id.as_str())
+                .or_default()
+                .push(plugin.id.clone());
+        }
+    }
+    for (contract, providers) in provided_by {
+        if providers.len() > 1 {
+            problems.push(Problem::Conflict {
+                contract: contract.to_string(),
+                providers,
+            });
+        }
+    }
+    let absent_optional = installed
+        .iter()
+        .filter(|plugin| enabled.contains(&plugin.id))
+        .flat_map(|plugin| {
+            plugin
+                .requires
+                .iter()
+                .filter(|required| required.optional && !met(&enabled, required))
+                .map(|required| AbsentOptional {
+                    consumer: plugin.id.clone(),
+                    contract: required.id.clone(),
+                })
+        })
+        .collect();
+    Resolution {
+        enabled,
+        problems,
+        absent_optional,
+    }
 }
 
 /// The activated set and the root -> plugin map the gate reads.
 struct Active {
-    enabled: BTreeSet<String>,
+    /// The resolution activated: its enabled set, problems and absent
+    /// optional contracts (the catalog shows them).
+    resolution: Resolution,
     /// Every installed plugin's root crate, to its id.
     root_plugin: HashMap<String, String>,
 }
@@ -476,15 +673,30 @@ pub fn activate(resolution: &Resolution) {
         .map(|plugin| (normalized(&plugin.root), plugin.id.clone()))
         .collect();
     *ACTIVE.write().unwrap_or_else(|poison| poison.into_inner()) = Some(Active {
-        enabled: resolution.enabled.clone(),
+        resolution: resolution.clone(),
         root_plugin,
     });
     GENERATION.fetch_add(1, Ordering::AcqRel);
 }
 
+/// The activated resolution (its problems and absent optional contracts),
+/// or `None` with nothing activated (every linked plugin enabled).
+pub fn active_resolution() -> Option<Resolution> {
+    ACTIVE
+        .read()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .as_ref()
+        .map(|active| active.resolution.clone())
+}
+
 /// Back to no activated set: every linked plugin enabled.
 pub fn deactivate() {
     *ACTIVE.write().unwrap_or_else(|poison| poison.into_inner()) = None;
+    bump_generation();
+}
+
+/// A new [`generation`]: the registrations that count changed.
+pub(crate) fn bump_generation() {
     GENERATION.fetch_add(1, Ordering::AcqRel);
 }
 
@@ -542,7 +754,7 @@ pub fn generation() -> u64 {
 pub fn is_enabled(id: &str) -> bool {
     let active = ACTIVE.read().unwrap_or_else(|poison| poison.into_inner());
     match active.as_ref() {
-        Some(active) => active.enabled.contains(id),
+        Some(active) => active.resolution.is_enabled(id),
         None => installed().iter().any(|plugin| plugin.id == id),
     }
 }
@@ -559,7 +771,7 @@ pub fn origin_enabled(origin: &str) -> bool {
         return true;
     };
     match active.root_plugin.get(&normalized(origin)) {
-        Some(plugin) => active.enabled.contains(plugin),
+        Some(plugin) => active.resolution.is_enabled(plugin),
         None => true,
     }
 }

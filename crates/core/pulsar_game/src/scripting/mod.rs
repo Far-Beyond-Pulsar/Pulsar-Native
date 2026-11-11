@@ -40,7 +40,7 @@ pub use driver::{
     SCRIPTING_CONFIG_FILE,
 };
 pub use events::{ScriptEventBridge, ScriptEvents};
-pub use traits::TraitCheck;
+pub use traits::{HookOutcome, TraitCheck};
 
 // Scene-object lookup for scripts. The result is `entity::none()` when no
 // object matches; component references built from it resolve to nothing.

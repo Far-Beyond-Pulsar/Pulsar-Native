@@ -70,6 +70,11 @@ pub trait Contribution {
     /// (`render.features`). One per type.
     const CATEGORY: &'static str;
 
+    /// The registration type's contract version: bumped when a change
+    /// breaks plugin libraries built against the old one (its layout
+    /// fingerprint, `crate::library::fingerprint`, carries it).
+    const VERSION: u32 = 1;
+
     /// The package that submitted it ([`crate::origin!`]).
     fn origin(&self) -> &'static str;
 
@@ -109,15 +114,36 @@ pub struct ContributionSource {
     pub all: fn() -> Vec<Summary>,
     /// The registrations its registry hands out: those passing the gate.
     pub active: fn() -> Vec<Summary>,
+    /// The registrations linked at compile time (`inventory::submit!`),
+    /// not added by a plugin's build: the engine's own. A plugin's here is
+    /// one that bypasses its root's build (`plugins/installed`'s
+    /// `installed_set` fails on it).
+    pub linked: fn() -> Vec<Summary>,
 }
 
 inventory::collect!(ContributionSource);
 
 /// Every linked registration of `T`, summarized.
 pub fn all_summaries<T: Registration>() -> Vec<Summary> {
+    crate::all_registered::<T>()
+        .map(Contribution::summary)
+        .collect()
+}
+
+/// The registrations of `T` linked at compile time (`inventory::submit!`).
+pub fn linked_summaries<T: Registration>() -> Vec<Summary> {
     inventory::iter::<T>
         .into_iter()
         .map(Contribution::summary)
+        .collect()
+}
+
+/// Every registration linked at compile time rather than added by a plugin
+/// build, summarized: the engine's own (each origin `engine:<package>`).
+pub fn linked_contributions() -> Vec<Summary> {
+    inventory::iter::<ContributionSource>
+        .into_iter()
+        .flat_map(|source| (source.linked)())
         .collect()
 }
 

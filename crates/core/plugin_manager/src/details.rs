@@ -1,16 +1,29 @@
-//! Read-only descriptions of installed plugins, for the plugin manager window.
+//! Read-only descriptions of the plugin libraries loaded at runtime, joined
+//! into the plugin catalog for the Extensions viewer.
 //!
-//! Entry points: [`PluginManager::plugin_details`], [`PluginManager::get_plugins`]
-//! and [`PluginManager::get_builtin_plugins`].
+//! Entry points: [`PluginManager::catalog`], [`PluginManager::library_details`]
+//! and [`PluginManager::get_plugins`].
 
+use crate::catalog::CatalogSnapshot;
 use crate::{DependencyState, DependencyStatus, LoadedPlugin, PluginDetails, PluginManager};
 use plugin_editor_api::*;
 
 impl PluginManager {
-    /// What the plugin manager window shows for every plugin, DLL and
-    /// built-in: identity, declared dependencies with their current state,
-    /// the plugins that depend on it, and what it contributes.
-    pub fn plugin_details(&self) -> Vec<PluginDetails> {
+    /// The plugin catalog ([`CatalogSnapshot::snapshot`]: every installed
+    /// plugin, its contributions and contracts, the activation) with the
+    /// plugin libraries this manager loaded: what the Extensions viewer
+    /// shows.
+    pub fn catalog(&self) -> CatalogSnapshot {
+        let mut catalog = CatalogSnapshot::snapshot();
+        catalog.libraries = self.library_details();
+        catalog
+    }
+
+    /// Every loaded plugin library: identity, declared dependencies with
+    /// their current state, the libraries that depend on it, and what it
+    /// contributes. (Linked plugins' editor providers are contributions of
+    /// their plugin in the catalog.)
+    pub fn library_details(&self) -> Vec<PluginDetails> {
         let manifests: Vec<(PluginManifest, &LoadedPlugin)> = self
             .plugins
             .values()
@@ -39,7 +52,7 @@ impl PluginManager {
             }
         };
 
-        let mut details: Vec<PluginDetails> = manifests
+        manifests
             .iter()
             .map(|(manifest, loaded)| {
                 let plugin = loaded.plugin;
@@ -60,8 +73,7 @@ impl PluginManager {
                 required_by.sort_by(|a, b| a.as_str().cmp(b.as_str()));
                 PluginDetails {
                     metadata: manifest.metadata(),
-                    builtin: false,
-                    library_path: Some(loaded.library.path().to_path_buf()),
+                    library_path: loaded.library.path().to_path_buf(),
                     dependencies,
                     required_by,
                     file_types: plugin
@@ -92,51 +104,12 @@ impl PluginManager {
                     subsystems: loaded.subsystem_ids.clone(),
                 }
             })
-            .collect();
-
-        details.extend(self.builtin_registry.providers().iter().map(|provider| {
-            let metadata = self
-                .get_builtin_plugins()
-                .into_iter()
-                .find(|m| m.id.as_str() == provider.provider_id())
-                .unwrap_or_else(|| PluginMetadata {
-                    id: PluginId::new(provider.provider_id()),
-                    name: provider.provider_id().to_string(),
-                    version: String::new(),
-                    author: "Pulsar Team".to_string(),
-                    description: String::new(),
-                });
-            PluginDetails {
-                metadata,
-                builtin: true,
-                library_path: None,
-                dependencies: Vec::new(),
-                required_by: Vec::new(),
-                file_types: provider
-                    .file_types()
-                    .into_iter()
-                    .map(|t| format!("{} (.{})", t.display_name, t.extension))
-                    .collect(),
-                editors: provider
-                    .editors()
-                    .into_iter()
-                    .map(|e| e.display_name)
-                    .collect(),
-                components: Vec::new(),
-                statusbar_buttons: Vec::new(),
-                ai_tools: provider
-                    .ai_tools()
-                    .into_iter()
-                    .map(|tool| tool.name)
-                    .collect(),
-                subsystems: Vec::new(),
-            }
-        }));
-        details
+            .collect()
     }
 
-    /// Changes whenever the set of plugins [`Self::plugin_details`] reports
-    /// changes: a dynamic plugin installed, a built-in provider registered.
+    /// Changes whenever the set of plugins [`Self::catalog`] reports from
+    /// this manager changes: a plugin library installed, a built-in editor
+    /// provider registered.
     /// Plugins are never unloaded, so the count of both is that revision. A
     /// view of the details (the Plugin Manager window) reloads when it
     /// differs from the one it drew.
@@ -147,51 +120,6 @@ impl PluginManager {
     /// Get all loaded plugins.
     pub fn get_plugins(&self) -> Vec<&PluginMetadata> {
         self.plugins.values().map(|p| &p.metadata).collect()
-    }
-
-    /// Get metadata entries for all registered built-in editor providers.
-    ///
-    /// Built-in providers are compiled into the engine and do not have plugin
-    /// manifests, so their display metadata is derived from their editor and
-    /// file-type registrations.
-    pub fn get_builtin_plugins(&self) -> Vec<PluginMetadata> {
-        self.builtin_registry
-            .providers()
-            .iter()
-            .map(|provider| {
-                let editors = provider.editors();
-                let file_types = provider.file_types();
-                let name = editors
-                    .iter()
-                    .map(|editor| editor.display_name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" · ");
-                let description = if file_types.is_empty() {
-                    "Built-in editor provider".to_string()
-                } else {
-                    format!(
-                        "Built-in editor for {}",
-                        file_types
-                            .iter()
-                            .map(|file_type| file_type.display_name.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
-
-                PluginMetadata {
-                    id: PluginId::new(provider.provider_id()),
-                    name: if name.is_empty() {
-                        provider.provider_id().to_string()
-                    } else {
-                        name
-                    },
-                    version: String::new(),
-                    author: "Pulsar Team".to_string(),
-                    description,
-                }
-            })
-            .collect()
     }
 }
 
@@ -209,7 +137,7 @@ mod tests {
     use crate::builtin::EditorContext;
     use ui::dock::PanelView;
 
-    use crate::{BuiltinEditorProvider, PluginManager};
+    use crate::{BuiltinEditorProvider, PluginEditorProvider, PluginManager};
 
     /// A built-in provider with one file type, one editor and one AI tool.
     struct Notes;
@@ -262,16 +190,23 @@ mod tests {
         }
     }
 
-    /// The Plugin Manager window's details page reads this: a built-in
-    /// provider is listed as built in, with what it brings, and registering
-    /// one changes the revision the window watches.
+    inventory::submit! {
+        PluginEditorProvider {
+            origin: pulsar_plugins::engine_origin!(),
+            id: "test.notes",
+            create: || Arc::new(Notes),
+        }
+    }
+
+    /// The Extensions viewer reads this: a linked provider is listed in the
+    /// catalog under its owner (here the engine) with the file types,
+    /// editors and AI tools it brings, and registering it changes the
+    /// revision the viewer watches.
     #[test]
-    fn plugin_details_list_a_built_in_provider_and_what_it_brings() {
+    fn the_catalog_lists_a_linked_provider_and_what_it_brings() {
         let mut manager = PluginManager::new();
         let before = manager.revision();
-        manager
-            .builtin_registry_mut()
-            .register_provider(Arc::new(Notes));
+        manager.builtin_registry_mut().register_linked();
         manager.register_builtin_editors();
         assert_ne!(
             manager.revision(),
@@ -279,16 +214,26 @@ mod tests {
             "a new provider is a new revision"
         );
 
-        let details = manager.plugin_details();
-        let notes = details
+        let catalog = manager.catalog();
+        assert!(catalog.libraries.is_empty(), "no library is loaded");
+        let notes = catalog
+            .engine
             .iter()
-            .find(|plugin| plugin.metadata.id.as_str() == "test.notes")
-            .expect("the provider is listed");
-        assert!(notes.builtin);
-        assert_eq!(notes.library_path, None);
-        assert_eq!(notes.file_types, ["Notes (.notes)"]);
-        assert_eq!(notes.editors, ["Notes Editor"]);
-        assert_eq!(notes.ai_tools, ["notes.append"]);
-        assert!(notes.dependencies.is_empty() && notes.required_by.is_empty());
+            .find(|summary| summary.category == "editor.provider" && summary.id == "test.notes")
+            .expect("the provider is listed as the engine's");
+        assert_eq!(notes.label, "Notes Editor");
+        let children: Vec<(&str, &str)> = notes
+            .children
+            .iter()
+            .map(|child| (child.category, child.label.as_str()))
+            .collect();
+        assert_eq!(
+            children,
+            [
+                ("editor.file_type", "Notes (.notes)"),
+                ("editor.editor", "Notes Editor"),
+                ("editor.ai_tool", "notes.append"),
+            ]
+        );
     }
 }

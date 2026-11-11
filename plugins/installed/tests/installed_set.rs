@@ -193,13 +193,6 @@ fn every_descriptor_is_installed_by_its_root_crate() {
             dir.display(),
             plugin.root
         );
-        for required in &plugin.requires {
-            assert!(
-                linked.contains(&required.as_str()),
-                "{} requires unknown `{required}`",
-                plugin.id
-            );
-        }
     }
 }
 
@@ -278,8 +271,10 @@ fn plugin_packages() -> Vec<(String, PathBuf)> {
 /// mirror hooks and reflection's method tables, name no origin: they are
 /// metadata of one type and stay with it, inert while the plugin is
 /// disabled because its classes are not registered.)
-const SUBMITTING: [&str; 3] = [
+const SUBMITTING: [&str; 5] = [
     "pulsar_plugins::origin!()",
+    "p.origin()",
+    "p.components()",
     "submit_world_component!",
     "pulsar_plugins::installed!",
 ];
@@ -327,8 +322,8 @@ fn a_plugin_registers_only_from_its_root_crate() {
             }
             assert!(
                 !source.contains("#[register_world_component"),
-                "{}: a plugin's component is `#[world_component]`, registered by its root \
-                 (`pulsar_world_registry::submit_world_component!`)",
+                "{}: a plugin's component is `#[world_component]`, registered by its root's \
+                 build (`p.components().class::<T>(spec)`)",
                 file.display()
             );
         }
@@ -368,8 +363,8 @@ fn every_contribution_from_a_plugin_comes_from_its_root() {
 }
 
 /// Every class a plugin defines with `#[world_component]` is registered by
-/// its root (`submit_world_component!`): a class the root forgot would load
-/// as unresolved while the plugin is enabled.
+/// its root's build (`p.components().class::<T>(spec)`): a class the root
+/// forgot would load as unresolved while the plugin is enabled.
 #[test]
 fn every_world_component_a_plugin_defines_is_registered_by_its_root() {
     let classes: Vec<(String, &'static str)> = pulsar_plugins::contributions()
@@ -401,7 +396,7 @@ fn every_world_component_a_plugin_defines_is_registered_by_its_root() {
                         .iter()
                         .any(|(id, origin)| *id == class && plugin.owns(origin)),
                     "{}: `{class}` is a `#[world_component]` that {}'s root `{}` does not \
-                     register (`pulsar_world_registry::submit_world_component!`)",
+                     register (`p.components().class::<T>(spec)` in its build)",
                     file.display(),
                     plugin.id,
                     plugin.root
@@ -410,4 +405,41 @@ fn every_world_component_a_plugin_defines_is_registered_by_its_root() {
         }
     }
     assert!(defined >= 20, "the plugins' classes are found ({defined})");
+}
+
+/// A plugin registers through its root's build, never at link time: every
+/// registration linked with `inventory::submit!` is the engine's (a plugin's
+/// would bypass the build, so a plugin library could not hand it over).
+#[test]
+fn every_linked_registration_is_the_engines() {
+    let plugins: Vec<_> = pulsar_plugins::linked_contributions()
+        .into_iter()
+        .filter(|summary| {
+            !matches!(
+                pulsar_plugins::owner_of(summary.origin),
+                pulsar_plugins::Owner::Engine(_)
+            )
+        })
+        .map(|summary| {
+            format!(
+                "{} `{}` from `{}`",
+                summary.category, summary.id, summary.origin
+            )
+        })
+        .collect();
+    assert!(
+        plugins.is_empty(),
+        "registered at link time instead of through a root's build:\n{}",
+        plugins.join("\n")
+    );
+    let (built, problems) = pulsar_plugins::builds();
+    assert!(problems.is_empty(), "{problems:?}");
+    for plugin in pulsar_plugins::installed() {
+        assert!(
+            built.iter().any(|root| plugin.owns(root)),
+            "{}'s root `{}` has no build (`installed!(\"pulsar-plugin.toml\", build)`)",
+            plugin.id,
+            plugin.root
+        );
+    }
 }

@@ -1,12 +1,27 @@
 use super::*;
 
+/// A plugin providing `<id>.rows` (a buffer contract) and requiring the
+/// `.rows` contract of each of `requires`.
 fn plugin(id: &str, requires: &[&str], by_default: bool) -> PluginDescriptor {
     PluginDescriptor {
         id: id.into(),
         name: id.into(),
         description: String::new(),
         enabled_by_default: by_default,
-        requires: requires.iter().map(|r| r.to_string()).collect(),
+        provides: vec![ProvidedContract {
+            id: format!("{id}.rows"),
+            kind: ContractKind::Buffer,
+            members: vec![format!("{id}_rows")],
+            version: 1,
+        }],
+        requires: requires
+            .iter()
+            .map(|r| RequiredContract {
+                id: format!("{r}.rows"),
+                optional: false,
+                version: None,
+            })
+            .collect(),
         root: format!("{}_plugin", id.trim_start_matches("p.")),
         editor_only: false,
     }
@@ -22,13 +37,42 @@ fn a_descriptor_parses() {
         r#"
         id = "pulsar.voxel"
         name = "Voxel worlds"
-        requires = ["pulsar.sky"]
         root = "voxel_plugin"
+        provides = [
+            { id = "pulsar.voxel.rows", kind = "buffer", members = ["voxel_volumes"] },
+            { id = "pulsar.voxel.Diggable", kind = "trait" },
+        ]
+        requires = [
+            { id = "pulsar.sky.atmosphere" },
+            { id = "pulsar.gi.probes", optional = true, version = 2 },
+        ]
         "#,
     )
     .unwrap();
     assert_eq!(descriptor.id, "pulsar.voxel");
     assert!(descriptor.enabled_by_default);
+    assert_eq!(
+        descriptor.provides[0].version, 1,
+        "contracts start at version 1"
+    );
+    assert_eq!(
+        descriptor
+            .provider_of(ContractKind::Buffer, "voxel_volumes")
+            .map(|c| c.id.as_str()),
+        Some("pulsar.voxel.rows")
+    );
+    assert!(
+        descriptor.provides[1].covers("pulsar.voxel.Diggable"),
+        "a trait contract with no members is its own trait id"
+    );
+    assert_eq!(
+        descriptor.requires[1],
+        RequiredContract {
+            id: "pulsar.gi.probes".into(),
+            optional: true,
+            version: Some(2)
+        }
+    );
     assert!(descriptor.runtime(), "a game links a plugin by default");
     assert!(descriptor.owns("voxel_plugin"));
     assert!(descriptor.owns("voxel-plugin"));
@@ -43,6 +87,34 @@ fn a_descriptor_parses() {
     )
     .unwrap();
     assert!(!tool.runtime(), "a game never links an editor tool");
+
+    // Contracts are namespaced by their provider and have members; a plugin
+    // does not require what it provides; requirements are contracts, never
+    // plugin ids.
+    let parse = |extra: &str| {
+        PluginDescriptor::parse(&format!(
+            "id = \"p.a\"\nname = \"a\"\nroot = \"a\"\n{extra}"
+        ))
+    };
+    let rows = r#"provides = [{ id = "p.a.rows", kind = "buffer", members = ["k"] }]"#;
+    assert!(parse(rows).is_ok());
+    assert!(
+        parse(r#"provides = [{ id = "p.b.rows", kind = "buffer", members = ["k"] }]"#)
+            .unwrap_err()
+            .contains("outside its namespace")
+    );
+    assert!(
+        parse(r#"provides = [{ id = "p.a.rows", kind = "buffer" }]"#)
+            .unwrap_err()
+            .contains("lists no members")
+    );
+    assert!(parse(r#"provides = [{ id = "p.a.rows", kind = "pipes", members = ["k"] }]"#).is_err());
+    assert!(
+        parse(&format!("{rows}\nrequires = [{{ id = \"p.a.rows\" }}]"))
+            .unwrap_err()
+            .contains("requires its own contract")
+    );
+    assert!(parse(r#"requires = ["p.b"]"#).is_err());
 }
 
 /// A registration type as an owning crate declares one.
@@ -68,18 +140,26 @@ inventory::submit! { Probe { origin: "probe_typo_crate", name: "unknown" } }
 
 #[test]
 fn every_declared_registration_type_is_a_contribution_source() {
-    let probes: Vec<Summary> = contributions()
+    // Another test imports this binary's own library export, adding its
+    // build's registration once more: each registration once here.
+    let mut probes: Vec<Summary> = contributions()
         .into_iter()
         .filter(|summary| summary.category == "test.probe")
         .collect();
+    probes.dedup();
     assert_eq!(
         probes,
         [
             Summary::new("test.probe", "engine", "engine", "engine:pulsar_plugins"),
+            Summary::new("test.probe", "built", "built", "probe_library_plugin"),
             Summary::new("test.probe", "unknown", "unknown", "probe_typo_crate"),
         ]
     );
-    assert_eq!(registered::<Probe>().count(), 2);
+    // Another test imports this binary's own library export, adding its
+    // build's registration once more: count names, not registrations.
+    let names: std::collections::BTreeSet<&str> =
+        registered::<Probe>().map(|probe| probe.name).collect();
+    assert_eq!(names, ["built", "engine", "unknown"].into_iter().collect());
 }
 
 #[test]
@@ -153,7 +233,30 @@ fn requirements_come_along_unless_the_list_turns_them_off() {
     );
     assert!(ids(&resolution).is_empty());
     assert_eq!(resolution.problems.len(), 2, "{:?}", resolution.problems);
-    assert!(resolution.problems[0].contains("requires `p.base`, which the project disables"));
+    assert_eq!(
+        resolution.problems[0],
+        Problem::ProviderDisabled {
+            consumer: "p.top".into(),
+            contract: "p.base.rows".into(),
+            provider: "p.base".into(),
+            by_project: true,
+        }
+    );
+    assert_eq!(
+        resolution.problems[0].to_string(),
+        "plugin p.top needs contract p.base.rows, provided by p.base, which the project \
+         disables; p.top is disabled"
+    );
+    assert_eq!(
+        resolution.problems[1],
+        Problem::ProviderDisabled {
+            consumer: "p.other".into(),
+            contract: "p.top.rows".into(),
+            provider: "p.top".into(),
+            by_project: false,
+        },
+        "a provider dropped for its own requirement is named as disabled"
+    );
 }
 
 #[test]
@@ -165,14 +268,76 @@ fn a_missing_requirement_or_plugin_is_a_problem() {
     );
     assert!(ids(&resolution).is_empty());
     assert_eq!(resolution.problems.len(), 2, "{:?}", resolution.problems);
-    assert!(resolution
-        .problems
-        .iter()
-        .any(|p| p.contains("`p.nowhere` is enabled by the project but not installed")));
-    assert!(resolution
-        .problems
-        .iter()
-        .any(|p| p.contains("which is not installed")));
+    assert!(resolution.problems.contains(&Problem::NotInstalled {
+        plugin: "p.nowhere".into()
+    }));
+    assert!(resolution.problems.contains(&Problem::Unprovided {
+        consumer: "p.a".into(),
+        contract: "p.gone.rows".into()
+    }));
+}
+
+#[test]
+fn an_incompatible_provider_is_named_with_both_versions() {
+    let mut consumer = plugin("p.a", &["p.b"], true);
+    consumer.requires[0].version = Some(2);
+    let installed = [consumer, plugin("p.b", &[], true)];
+    let resolution = resolve(&installed, &ProjectPlugins::default());
+    assert_eq!(ids(&resolution), ["p.b"]);
+    assert_eq!(
+        resolution.problems,
+        [Problem::Incompatible {
+            consumer: "p.a".into(),
+            contract: "p.b.rows".into(),
+            provider: "p.b".into(),
+            provided: 1,
+            required: 2,
+        }]
+    );
+    assert!(resolution.problems[0]
+        .to_string()
+        .contains("needs contract p.b.rows version 2, but p.b provides version 1"));
+}
+
+#[test]
+fn an_absent_optional_contract_is_recorded_not_an_error() {
+    let mut consumer = plugin("p.a", &["p.b"], true);
+    consumer.requires[0].optional = true;
+    let installed = [consumer, plugin("p.b", &[], false)];
+    let resolution = resolve(&installed, &ProjectPlugins::default());
+    assert_eq!(
+        ids(&resolution),
+        ["p.a"],
+        "an optional provider is not pulled in"
+    );
+    assert!(resolution.problems.is_empty());
+    assert_eq!(
+        resolution.absent_optional,
+        [AbsentOptional {
+            consumer: "p.a".into(),
+            contract: "p.b.rows".into()
+        }]
+    );
+    let with_b = resolve(&installed, &ProjectPlugins::default().with(&["p.b"], true));
+    assert!(with_b.absent_optional.is_empty());
+}
+
+#[test]
+fn two_enabled_providers_of_one_contract_conflict() {
+    let mut replacement = plugin("p.b2", &[], true);
+    replacement.provides[0].id = "p.b.rows".into();
+    let installed = [plugin("p.b", &[], true), replacement];
+    let resolution = resolve(&installed, &ProjectPlugins::default());
+    assert_eq!(
+        resolution.problems,
+        [Problem::Conflict {
+            contract: "p.b.rows".into(),
+            providers: vec!["p.b".into(), "p.b2".into()],
+        }]
+    );
+    // The project picks one by disabling the other.
+    let picked = resolve(&installed, &ProjectPlugins::default().with(&["p.b"], false));
+    assert!(picked.problems.is_empty());
 }
 
 #[test]
@@ -203,4 +368,111 @@ fn nothing_activated_lets_every_origin_through() {
     );
     assert!(!is_enabled("pulsar.voxel"));
     deactivate();
+}
+
+/// A plugin root's build in this test binary: what a library exports.
+fn probe_build(p: &mut PluginBuilder) {
+    p.add(Probe {
+        origin: "probe_library_plugin",
+        name: "built",
+    });
+    // Naming another origin is refused.
+    p.add(Probe {
+        origin: "someone_else",
+        name: "stolen",
+    });
+}
+
+inventory::submit! {
+    InstalledPlugin {
+        descriptor: "id = \"p.library\"\nname = \"Library\"\nroot = \"probe_library_plugin\"\n",
+        root: "probe_library_plugin",
+        build: Some(probe_build),
+    }
+}
+
+#[test]
+fn a_build_registers_under_its_root_and_refuses_another_origin() {
+    let built: Vec<&str> = registered::<Probe>().map(|probe| probe.name).collect();
+    assert!(built.contains(&"built"), "{built:?}");
+    assert!(!built.contains(&"stolen"));
+    let (roots, problems) = builds();
+    assert!(roots.contains(&"probe_library_plugin"));
+    assert!(
+        problems.iter().any(|p| p.contains("someone_else")),
+        "{problems:?}"
+    );
+}
+
+#[test]
+fn a_library_export_imports_by_category_and_layout() {
+    let exported = library::exported();
+    // SAFETY: this copy's own export, which lives for the process.
+    let imported = unsafe { library::import(&exported) }.unwrap();
+    assert_eq!(imported.plugins, ["p.library"]);
+    assert!(imported.refused.is_empty(), "{:?}", imported.refused);
+    assert!(installed().iter().any(|plugin| plugin.id == "p.library"));
+
+    // A registration built against another layout, and one of a category
+    // this engine does not have, are refused by name.
+    let plugin = unsafe { *exported.plugins };
+    let entry = unsafe { *plugin.entries };
+    let wrong = [
+        library::FfiEntry {
+            fingerprint: entry.fingerprint ^ 1,
+            ..entry
+        },
+        library::FfiEntry {
+            category: library::FfiStr {
+                ptr: "nowhere.kind".as_ptr(),
+                len: "nowhere.kind".len(),
+            },
+            ..entry
+        },
+    ];
+    let forged_plugin = [library::FfiPlugin {
+        entries: wrong.as_ptr(),
+        len: wrong.len(),
+        ..plugin
+    }];
+    let forged = library::FfiLibrary {
+        plugins: forged_plugin.as_ptr(),
+        len: 1,
+        ..exported
+    };
+    // SAFETY: the forged arrays outlive the call; the entries point to a
+    // live registration.
+    let refused = unsafe { library::import(&forged) }.unwrap().refused;
+    assert_eq!(refused.len(), 2, "{refused:?}");
+    assert!(refused[0].contains("another layout"), "{refused:?}");
+    assert!(refused[1].contains("nowhere.kind"), "{refused:?}");
+    // Another export layout is refused whole.
+    let other = library::FfiLibrary {
+        abi: 99,
+        ..exported
+    };
+    assert!(unsafe { library::import(&other) }.is_err());
+}
+
+#[test]
+fn a_layout_fingerprint_changes_with_the_type_and_its_version() {
+    struct Bumped;
+    impl Contribution for Bumped {
+        const CATEGORY: &'static str = "test.probe";
+        const VERSION: u32 = 2;
+        fn origin(&self) -> &'static str {
+            ""
+        }
+        fn id(&self) -> String {
+            String::new()
+        }
+    }
+    assert_eq!(
+        library::fingerprint::<Probe>(),
+        library::fingerprint::<Probe>()
+    );
+    assert_ne!(
+        library::fingerprint::<Probe>(),
+        library::fingerprint::<Bumped>()
+    );
 }

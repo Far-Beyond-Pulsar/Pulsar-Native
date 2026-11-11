@@ -21,7 +21,10 @@ pub struct RenderFeatureRegistration {
 
 /// The features' ids and, under each, the node kinds it registers (each
 /// feature registers into a registry of its own here, so a node shows under
-/// the feature that added it: `NodeRegistry::feature_nodes`).
+/// the feature that added it: `NodeRegistry::feature_nodes`) and the scene
+/// buffers its passes read (`FeatureRegistrar::consumes`, category
+/// `render.reads`, id the buffer key), which the catalog links to the plugin
+/// providing each.
 impl pulsar_plugins::Contribution for RenderFeatureRegistration {
     const CATEGORY: &'static str = "render.features";
 
@@ -40,7 +43,7 @@ impl pulsar_plugins::Contribution for RenderFeatureRegistration {
     fn children(&self) -> Vec<pulsar_plugins::Summary> {
         let features = (self.features)();
         let mut registry = helio_feature_api::NodeRegistry::new();
-        features.register_into(&mut registry);
+        let reads = features.register_into(&mut registry);
         let nodes = registry.feature_nodes();
         features
             .ids()
@@ -56,6 +59,19 @@ impl pulsar_plugins::Contribution for RenderFeatureRegistration {
                             .map_or_else(|| kind.to_string(), |node| node.title.clone());
                         pulsar_plugins::Summary::new("render.node", *kind, title, self.origin)
                     })
+                    .chain(
+                        reads
+                            .iter()
+                            .filter(|read| read.feature == feature)
+                            .map(|read| {
+                                pulsar_plugins::Summary::new(
+                                    "render.reads",
+                                    read.key,
+                                    format!("{} ({} B rows)", read.key, read.row_bytes),
+                                    self.origin,
+                                )
+                            }),
+                    )
                     .collect(),
                 ..pulsar_plugins::Summary::new("render.feature", feature, feature, self.origin)
             })
@@ -64,6 +80,47 @@ impl pulsar_plugins::Contribution for RenderFeatureRegistration {
 }
 
 pulsar_plugins::registration!(RenderFeatureRegistration);
+
+/// The scene buffers the frame defines ([`helio_frame_api::FRAME_BUFFERS`]),
+/// listed as the engine's so the plugin catalog links a feature's read of
+/// one to the frame, not to a kind's contract.
+pub struct FrameBuffersRegistration {
+    /// `pulsar_plugins::engine_origin!()`: the frame is the engine's.
+    pub origin: &'static str,
+    pub keys: &'static [&'static str],
+}
+
+impl pulsar_plugins::Contribution for FrameBuffersRegistration {
+    const CATEGORY: &'static str = "render.frame_buffers";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        "helio.frame".into()
+    }
+
+    fn label(&self) -> String {
+        "Frame buffers".into()
+    }
+
+    fn children(&self) -> Vec<pulsar_plugins::Summary> {
+        self.keys
+            .iter()
+            .map(|key| pulsar_plugins::Summary::new("render.frame_buffer", *key, *key, self.origin))
+            .collect()
+    }
+}
+
+pulsar_plugins::registration!(FrameBuffersRegistration);
+
+inventory::submit! {
+    FrameBuffersRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        keys: helio_frame_api::FRAME_BUFFERS,
+    }
+}
 
 /// Every registered plugin's features: the aggregate the engine builds its
 /// graphs over. It keeps no ownership; the plugin catalog

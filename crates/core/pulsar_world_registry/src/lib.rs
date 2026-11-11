@@ -337,6 +337,7 @@ pub mod object_feed;
 pub mod runtime;
 pub mod scene_payloads;
 pub mod scene_subsystems;
+pub mod systems;
 pub mod type_shims;
 pub mod unfinished;
 pub mod values;
@@ -363,8 +364,9 @@ pub use instances::{
     attach_component, attach_record, attach_record_or_unresolved, attach_records,
     attach_unresolved, attach_value, component_metadata_records, component_records,
     duplicate_instance, duplicate_instances, instance_engine_class, instance_metadata_record,
-    instance_record, replace_records, restore_instances, set_instance_value, snapshot_instance,
-    snapshot_instances, AttachError, ComponentPayload, InstanceSnapshot, InstanceValue,
+    instance_record, place_component, replace_records, restore_instances, set_instance_value,
+    snapshot_instance, snapshot_instances, AttachError, ComponentPayload, InstanceSnapshot,
+    InstanceValue,
 };
 pub use marshal::{any_to_json, json_to_any};
 pub use values::{
@@ -379,19 +381,17 @@ pub use change_watch::ComponentWatch;
 pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
 pub use scene_payloads::{scene_payloads, scene_settling, ScenePayloadRegistration, ScenePayloads};
 pub use scene_subsystems::{install_scene_subsystems, SceneSubsystemRegistration};
+pub use systems::{System, SystemContext, SystemRegistration};
 
 use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, World};
 use serde_json::Value;
 
-/// Register plugin component classes (`#[world_component]` types) from the
-/// plugin's root crate, the one place a plugin registers what it
-/// contributes. The registration names the root as its origin, so the
-/// plugin gate skips the classes while the plugin is disabled.
-///
-/// ```ignore
-/// pulsar_world_registry::submit_world_component!(fog_component::FogVolume);
-/// ```
+/// Register component classes at link time, for a plugin crate's own unit
+/// tests only: a test binary of a component crate links no plugin root, so
+/// nothing runs its build. A plugin registers its classes from its root's
+/// build (`p.components().class::<T>(spec)`); `plugins/installed`'s
+/// `installed_set` test fails on this macro outside `#[cfg(test)]`.
 #[macro_export]
 macro_rules! submit_world_component {
     ($($ty:ty),* $(,)?) => {$(
@@ -473,9 +473,42 @@ pub struct WorldComponentRegistration {
     /// mirror dispatch. Defaults to a no-op (`property_written = path`
     /// overrides it with a `fn(&mut Self, Option<&str>)`).
     pub property_written: fn(&mut dyn EngineClass, Option<&str>),
+    /// The classes placed with this one (`ClassSpec::requires`): attaching
+    /// it attaches each one the object lacks, as its own component-instance
+    /// entity nested under it ([`instances::place_component`]). Each must
+    /// come from a plugin whose class contract the registering plugin
+    /// requires ([`required_class`]).
+    pub requires: &'static [&'static str],
+    /// How the editor and scripts present it ([`Presentation`]).
+    pub presentation: Presentation,
+}
+
+/// How a class shows in the inspector, the component tree and to scripts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Presentation {
+    /// Its own card and its own entry.
+    #[default]
+    Component,
+    /// One card and one entry over itself and the classes it requires
+    /// (attached nested under it): a character that is one component to the
+    /// user and to scripts, built from a skeletal mesh, a controller and an
+    /// input binding. The members stay real components; the facade's
+    /// methods are the script surface.
+    Facade,
+}
+
+/// A world component class (`#[world_component]` implements it): its
+/// registration, which the plugin's root adds through its builder
+/// (`p.components().class::<T>(spec)`).
+pub trait WorldComponentClass {
+    const REGISTRATION: WorldComponentRegistration;
 }
 
 inventory::collect!(WorldComponentRegistration);
+
+// A plugin library's classes and systems are imported as these types
+// (`pulsar_plugins::library`).
+pulsar_plugins::importer!(WorldComponentRegistration, systems::SystemRegistration);
 
 impl pulsar_plugins::Contribution for WorldComponentRegistration {
     const CATEGORY: &'static str = "component.class";
@@ -501,6 +534,16 @@ fn all_class_summaries() -> Vec<pulsar_plugins::Summary> {
         .collect()
 }
 
+/// The classes registered at link time (`#[register_world_component]`, the
+/// engine's; a plugin's unit-test registration).
+fn linked_class_summaries() -> Vec<pulsar_plugins::Summary> {
+    use pulsar_plugins::Contribution as _;
+    inventory::iter::<WorldComponentRegistration>
+        .into_iter()
+        .map(|registration| registration.summary())
+        .collect()
+}
+
 fn active_class_summaries() -> Vec<pulsar_plugins::Summary> {
     use pulsar_plugins::Contribution as _;
     runtime::world_components()
@@ -514,6 +557,7 @@ inventory::submit! {
         category: "component.class",
         all: all_class_summaries,
         active: active_class_summaries,
+        linked: linked_class_summaries,
     }
 }
 
@@ -627,6 +671,97 @@ pub fn get_world_component_as_engine_class_mut<'w>(
     entity: Entity,
 ) -> Option<EngineClassMut<'w>> {
     (find(class_name)?.get_as_engine_class_mut)(world, entity)
+}
+
+/// The registered class `class_name`'s registration: its required classes
+/// and presentation.
+pub fn world_component(class_name: &str) -> Option<&'static WorldComponentRegistration> {
+    find(class_name)
+}
+
+/// Whether a class's `requires` entry is attached with it
+/// ([`required_class`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RequiredClass {
+    /// Attach it.
+    Attach,
+    /// Its plugin is absent and the requirer's plugin requires its contract
+    /// optionally: the class is placed without it.
+    Absent,
+    /// Refused, with the reason: its plugin is not one the requirer's plugin
+    /// requires (a `class` contract covering it), or it is required and not
+    /// registered.
+    Refused(String),
+}
+
+/// Whether `requirer` may attach class `required` when placed: only a class
+/// of a plugin whose `class` contract covering it the requirer's plugin
+/// requires (the engine's classes need none), so a plugin never places
+/// another plugin's component it did not declare it uses.
+pub fn required_class(requirer: &WorldComponentRegistration, required: &str) -> RequiredClass {
+    use pulsar_plugins::{ContractKind, Owner};
+    let requirer_plugin = match pulsar_plugins::owner_of(requirer.origin) {
+        Owner::Plugin(plugin) => Some(plugin),
+        _ => None,
+    };
+    // The installed plugin whose class contract covers `required`, and the
+    // requirer's requirement on it.
+    let provider = pulsar_plugins::installed().iter().find_map(|plugin| {
+        plugin
+            .provider_of(ContractKind::Class, required)
+            .map(|c| (plugin, c))
+    });
+    let requirement = provider.and_then(|(_, contract)| {
+        requirer_plugin.and_then(|plugin| plugin.requires.iter().find(|r| r.id == contract.id))
+    });
+    let registration = find(required);
+    if let (Some(registration), Some(plugin)) = (registration, requirer_plugin) {
+        let same_plugin = matches!(
+            pulsar_plugins::owner_of(registration.origin),
+            Owner::Plugin(owner) if owner.id == plugin.id
+        );
+        let engine = matches!(
+            pulsar_plugins::owner_of(registration.origin),
+            Owner::Engine(_)
+        );
+        if same_plugin || engine || requirement.is_some() {
+            return RequiredClass::Attach;
+        }
+    } else if registration.is_some() {
+        // An engine class requiring: no plugin to declare it.
+        return RequiredClass::Attach;
+    }
+    match (registration, provider, requirement) {
+        (None, Some(_), Some(requirement)) if requirement.optional => RequiredClass::Absent,
+        (None, _, _) => RequiredClass::Refused(format!(
+            "class {} requires class {required}, which is not registered (its plugin is disabled              or not installed)",
+            requirer.class_name
+        )),
+        (Some(_), Some((plugin, contract)), None) => RequiredClass::Refused(format!(
+            "class {} requires class {required} of plugin {}, but its plugin does not require              contract {}; {required} is not attached with it",
+            requirer.class_name, plugin.id, contract.id
+        )),
+        (Some(_), _, _) => RequiredClass::Refused(format!(
+            "class {} requires class {required}, which no installed plugin provides under a              class contract; it is not attached with it",
+            requirer.class_name
+        )),
+    }
+}
+
+/// Every registered class's refused requirements ([`required_class`]):
+/// what the loader reports when a project opens.
+pub fn class_problems() -> Vec<String> {
+    crate::runtime::world_components()
+        .iter()
+        .flat_map(|registration| {
+            registration.requires.iter().filter_map(move |required| {
+                match required_class(registration, required) {
+                    RequiredClass::Refused(problem) => Some(problem),
+                    _ => None,
+                }
+            })
+        })
+        .collect()
 }
 
 /// Every currently-registered `World`-backed class name (the add-component
@@ -938,6 +1073,8 @@ mod tests {
             get_as_engine_class: test_get,
             get_as_engine_class_mut: test_get_mut,
             property_written: test_property_written,
+            requires: &[],
+            presentation: Presentation::Component,
         }
     }
 

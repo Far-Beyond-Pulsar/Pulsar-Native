@@ -29,7 +29,7 @@ use ui_common::{AssetPicker, PropertyStateManager};
 use crate::state::LevelEditorState;
 
 mod icon_picker;
-mod property_renderer;
+pub(crate) mod property_renderer;
 
 /// Cached property metadata + default instance for a single component class.
 /// Populated lazily on first encounter and reused across frames to avoid the
@@ -41,10 +41,35 @@ pub(super) struct PropertyMetadataCacheEntry {
     pub _default_instance: Box<dyn pulsar_reflection::EngineClass>,
 }
 
-/// Which component instance a card of the flat list stands for.
+/// Which component instance a card of the flat list stands for; a facade's
+/// card (`pulsar_world_registry::Presentation::Facade`) also stands for the
+/// members nested under it, whose properties follow its own.
 pub(super) struct CardMeta {
     pub class_name: String,
     pub idx: usize,
+    pub members: Vec<CardMember>,
+}
+
+/// A facade member's properties within its facade's card, from `start`.
+pub(super) struct CardMember {
+    pub class_name: String,
+    pub idx: usize,
+    pub start: usize,
+}
+
+impl CardMeta {
+    /// The instance (class, index) property `prop_ix` of the card belongs
+    /// to, and its index among that class's properties.
+    pub fn resolve(&self, prop_ix: usize) -> (String, usize, usize) {
+        match self.members.iter().rev().find(|m| prop_ix >= m.start) {
+            Some(member) => (
+                member.class_name.clone(),
+                member.idx,
+                prop_ix - member.start,
+            ),
+            None => (self.class_name.clone(), self.idx, prop_ix),
+        }
+    }
 }
 
 /// Items before the card items in the virtual list: the object header, the

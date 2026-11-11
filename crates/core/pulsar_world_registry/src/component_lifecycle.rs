@@ -47,6 +47,10 @@ pub struct ComponentRuntimeState {
     /// take one from this session.
     removal_cursors: HashMap<ComponentId, ChangeCursor>,
     scratch: Vec<ComponentChange>,
+    /// The frame's order of systems and component lifecycles, for the
+    /// registered systems it was computed from (their list's address and
+    /// length: the registry rebuilds the list when the classes change).
+    order: Option<((usize, usize), Vec<crate::systems::Step>)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -183,8 +187,10 @@ fn registration_key(registration: &ComponentTickRegistration) -> RegistrationKey
     }
 }
 
-/// Run each registered component's live typed query and reconcile lifecycle
-/// transitions against the preceding tick.
+/// Run the frame's gameplay step: the registered classes' systems
+/// (`crate::systems`, in their labelled order) around each registered
+/// component's live typed query, reconciling lifecycle transitions against
+/// the preceding tick.
 ///
 /// Generated `tick` shims receive the previous live entity set and fill a
 /// fresh current set while they query the authoritative World. They invoke
@@ -222,7 +228,53 @@ pub fn tick_live_components(
             .or_insert_with(|| world.open_change_cursor_id(component_type));
     }
 
-    for registration in registrations {
+    // The registered classes' systems around the component lifecycles, in
+    // their labelled order (`crate::systems`).
+    let systems = crate::runtime::systems();
+    let key = (systems.as_ptr() as usize, systems.len());
+    if state
+        .order
+        .as_ref()
+        .is_none_or(|(cached, _)| *cached != key)
+    {
+        let (steps, problems) = crate::systems::order(systems);
+        for problem in problems {
+            tracing::error!("{problem}");
+        }
+        state.order = Some((key, steps));
+    }
+    let steps = state
+        .order
+        .as_ref()
+        .map(|(_, steps)| steps.clone())
+        .unwrap_or_default();
+    for step in steps {
+        match step {
+            crate::systems::Step::Components => {
+                tick_component_lifecycles(world, events, delta_seconds, &registrations, state)
+            }
+            crate::systems::Step::System(registration) => {
+                (registration.system.run)(&mut crate::systems::SystemContext {
+                    world: &mut *world,
+                    events,
+                    delta_seconds,
+                    runtime: &mut *state,
+                });
+            }
+        }
+    }
+}
+
+/// Every native component class's `begin_play`/`tick`/`end_play` over its
+/// enabled instances: the [`crate::systems::COMPONENTS`] step.
+fn tick_component_lifecycles(
+    world: &mut World,
+    events: &EventHub,
+    delta_seconds: f32,
+    registrations: &[&'static ComponentTickRegistration],
+    state: &mut ComponentRuntimeState,
+) {
+    for &registration in registrations {
         let key = registration_key(registration);
         let previous = state.active.get(&key).cloned().unwrap_or_default();
         let mut current = HashMap::new();

@@ -29,9 +29,10 @@ pub mod mounts;
 pub mod path_utils;
 
 pub use mounts::{
-    is_read_only, mount_of, mount_problems, mount_project, plugin_snapshot, serve_packaged_folders,
-    unmount_project, CacheFolder, EmbeddedFile, FileProvider, FolderSource, InGame, MemoryFolder,
-    MountedFs, PluginFolder, ReadOnlyMount, CACHE_FOLDER, ENGINE_FOLDER, PLUGINS_FOLDER,
+    is_read_only, mount_of, mount_problems, mount_project, plugin_snapshot, provided_files,
+    serve_packaged_folders, unmount_project, CacheFolder, EmbeddedFile, FileProvider, FolderSource,
+    InGame, MemoryFolder, MountedFs, PluginFolder, ReadOnlyMount, CACHE_FOLDER, ENGINE_FOLDER,
+    PLUGINS_FOLDER,
 };
 // Re-export commonly used path utilities
 pub use path_utils::{cloud_join, is_cloud_path, normalize_path};

@@ -52,10 +52,11 @@ impl BuiltinEditorProvider for RenderBpsBuiltinProvider {
     }
 }
 
-plugin_manager::inventory::submit! {
-    PluginEditorProvider {
-        origin: pulsar_plugins::origin!(),
+/// Registers the editor provider.
+pub(crate) fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    p.add(PluginEditorProvider {
+        origin: p.origin(),
         id: "com.pulsar.render-bps",
         create: || Arc::new(RenderBpsBuiltinProvider),
-    }
+    });
 }

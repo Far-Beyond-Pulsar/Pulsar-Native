@@ -71,15 +71,15 @@ impl BuiltinEditorProvider for TraitEditorBuiltinProvider {
 }
 
 // The plugin's descriptor: linking this crate installs it.
-pulsar_plugins::installed!("pulsar-plugin.toml");
+pulsar_plugins::installed!("pulsar-plugin.toml", build);
 
-// What the plugin registers: its editor provider.
-plugin_manager::inventory::submit! {
-    PluginEditorProvider {
-        origin: pulsar_plugins::origin!(),
+/// What the plugin registers: its editor provider.
+pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    p.add(PluginEditorProvider {
+        origin: p.origin(),
         id: "com.pulsar.trait-editor",
         create: || Arc::new(TraitEditorBuiltinProvider),
-    }
+    });
 }
 
 /// The type editor is also useful to project validation and plugin callers.

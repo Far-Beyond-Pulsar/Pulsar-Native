@@ -73,6 +73,39 @@ fn main() {
             other.abi ^= 1;
             println!("attached={}", attach(Box::leak(Box::new(other))));
         }
+        // The plugin loader's import: the library's plugins through their
+        // roots' builds, after attaching its world crates.
+        "import" => {
+            println!(
+                "attached={}",
+                attach(pulsar_world_registry::runtime::host())
+            );
+            // SAFETY: the export is `pulsar_plugins::library::ExportFn`.
+            let export = unsafe {
+                std::mem::transmute::<_, pulsar_plugins::library::ExportFn>(symbol(
+                    pulsar_plugins::library::EXPORT_SYMBOL,
+                ))
+            };
+            let mut out = std::mem::MaybeUninit::uninit();
+            // SAFETY: `out` is valid for a write; the library stays loaded.
+            assert!(unsafe { export(out.as_mut_ptr()) }, "the export panicked");
+            // SAFETY: written above; the library is never unloaded.
+            let imported = unsafe { pulsar_plugins::library::import(&out.assume_init()) }.unwrap();
+            pulsar_world_registry::runtime::import_builds();
+            println!("imported={}", imported.plugins.join(","));
+            println!("refused={}", imported.refused.len());
+            println!(
+                "installed_library={}",
+                pulsar_plugins::installed()
+                    .iter()
+                    .any(|plugin| plugin.id == "test.library_plugin")
+            );
+            println!(
+                "host_sees_library_class={}",
+                pulsar_world_registry::registered_world_component_classes()
+                    .any(|class| class == "LibraryWidget")
+            );
+        }
         _ => {}
     }
 

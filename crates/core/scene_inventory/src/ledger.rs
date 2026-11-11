@@ -412,6 +412,13 @@ pub fn check_schemas(
         }
     }
     for row in &ledger.schemas {
+        // A standalone host's row type (`host_rows`, behind its crate's
+        // `host-rows` feature) is linked only where a host links it (the
+        // meshes editor's thumbnail snapshot), so feature unification
+        // decides whether a given binary has it: its row may be unlinked.
+        if row.path.contains("::host_rows::") {
+            continue;
+        }
         if !linked.schemas.iter().any(|s| s.path == row.path) {
             problems.push(format!(
                 "schema row `{}` is not a linked GPU schema",

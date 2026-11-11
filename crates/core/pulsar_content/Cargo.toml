@@ -6,6 +6,8 @@ description = "Shipped game content (Pulsar-Native#926): the game.pak archive fo
 
 [dependencies]
 engine_fs  = { workspace = true }
+# The project file's name (`PROJECT_FILE`): what makes a folder a project.
+pulsar_plugins = { workspace = true }
 serde      = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 anyhow     = { workspace = true }

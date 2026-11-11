@@ -8,8 +8,9 @@ Pulsar has two kinds of plugin, which meet at one identity and one catalog:
   games; a project enables some of them in its `Pulsar.toml`. This is how every
   first-party plugin ships today.
 - **Dynamic editor plugins**: native `cdylib`s loaded at startup and never unloaded (the
-  permanent library pattern below). They join the catalog in phase 4 of
-  `PLUGIN_API_REFACTOR_PLAN.md`.
+  permanent library pattern below). A library that exports its plugins' builds
+  (`pulsar_plugins::export_library!`) joins the installed set and the catalog like a linked
+  plugin ("Plugin libraries" below).
 
 ## Project plugins
 
@@ -22,14 +23,19 @@ id = "pulsar.fog"                 # the one stable identity
 name = "Fog"
 description = "Global and local fog media ..."
 enabled_by_default = true
-requires = []                     # plugins it cannot work without
 root = "fog_plugin"               # its root crate: the package in this directory
 # editor_only = true              # an editor tool: a game never links it
+provides = [                      # contracts other plugins may require
+    { id = "pulsar.fog.rows", kind = "buffer", members = ["global_fog_media", "local_fog_media"] },
+]
+requires = [                      # contracts it uses: never another plugin's id
+    { id = "pulsar.lights.rows", optional = true },
+]
 ```
 
 A project lists what it enables (`[plugins] "pulsar.fog" = false` in `Pulsar.toml`);
-`pulsar_plugins::resolve` turns that and the descriptors into the enabled set and
-`activate_project` makes it the process's set. Every registration names its origin
+`pulsar_plugins::resolve` turns that and the descriptors into the enabled set ("Contracts"
+below) and `activate_project` makes it the process's set. Every registration names its origin
 (`pulsar_plugins::origin!()`, the submitting package); registries iterate
 `pulsar_plugins::registered::<T>()`, which skips a registration whose origin is a disabled
 plugin's root. A disabled plugin is absent: its classes, features, settings and editors are
@@ -38,8 +44,9 @@ not registered.
 ### The root crate
 
 Each plugin has one root crate, the package at its directory, and it is the **one place the
-plugin submits what it contributes**: every origin-gated registration, every component
-class, and the descriptor. The plugin's other crates hold the code and register nothing:
+plugin registers what it contributes**, through one function, `pub fn build(p: &mut
+pulsar_plugins::PluginBuilder)`: every registration, every component class, and (through
+`installed!`) the descriptor. The plugin's other crates hold the code and register nothing:
 
 | Crate | Holds | Depends on |
 |---|---|---|
@@ -57,9 +64,16 @@ Rules:
   feature. A game links the root without it; the editor (`installed_plugins` with
   `editor`) links it with.
 - A plugin's component classes use `#[world_component(...)]` at the type; the root
-  registers them with `pulsar_world_registry::submit_world_component!`.
-  (`#[register_world_component]` registers at the type and is for the engine's own
-  components.)
+  registers them in its build with `p.components().class::<T>(ClassSpec { .. })`
+  ("Component classes" below). (`#[register_world_component]` registers at the type and is
+  for the engine's own components; `submit_world_component!` only for a component crate's
+  own unit tests.)
+- `installed!("pulsar-plugin.toml", build)` carries the descriptor and the build into
+  whatever links the root. The first read of any registry runs every linked plugin's build
+  once (providers before the plugins requiring their contracts) into one store, which
+  `registered::<T>()` reads with the engine's own link-time registrations
+  (`inventory::submit!` with `engine_origin!()`). A build only adds; it never reads a
+  registry. `p.add(x)` refuses a registration naming another origin than the root.
 - Type attachments stay with their type: SceneDB's `GpuMirrorRegistration`,
   `GpuClearRegistration` and `HandleLedgerRegistration`, reflection's method tables and
   property hints, derive output. They name no origin and act only on entities of their
@@ -67,14 +81,15 @@ Rules:
   holds no statics); its attachments move to the root.
 - An editor tool (`editor_only = true`) is one crate, its own root; physics and input are
   single crates whose registrations live in `src/registrations.rs`.
-- `plugins/installed/tests/installed_set.rs` fails when a plugin registers outside its root
-  or when a linked contribution comes from a plugin crate that is not a root.
+- `plugins/installed/tests/installed_set.rs` fails when a plugin registers outside its root,
+  when a linked contribution comes from a plugin crate that is not a root, and when a
+  plugin's registration is linked at compile time instead of added by its build.
 
 Why one root: one file lists everything a plugin brings; every registration's origin is the
-root, so origin-to-plugin is exact; the host gets the plugin's registrations as one batch
-(phase 4 makes that batch explicit for dynamic plugins). This is Bevy's `Plugin::build`
-shape over Unreal's descriptor-and-modules model: the descriptor says what the plugin is and
-whether a project has it, the root says what it contributes.
+root, so origin-to-plugin is exact; the host gets the plugin's registrations as one batch,
+the same batch whether the root is linked or loaded as a library. This is Bevy's
+`Plugin::build` shape over Unreal's descriptor-and-modules model: the descriptor says what
+the plugin is and whether a project has it, the root says what it contributes.
 
 ### A complete example
 
@@ -127,11 +142,17 @@ ui_level_editor = { workspace = true, optional = true }
 ```rust
 // fog/src/lib.rs: the root. Its docs list everything the plugin contributes.
 //! Fog (`pulsar.fog`): the plugin's root crate, the one place it registers
-//! what it contributes. [`runtime`]: the classes, the scene rows, the
-//! feature. `editor`: the environment mixer's entries.
+//! what it contributes, through its `build`.
 
-// The descriptor: linking the root installs the plugin.
-pulsar_plugins::installed!("pulsar-plugin.toml");
+// The descriptor and the build: linking the root installs the plugin.
+pulsar_plugins::installed!("pulsar-plugin.toml", build);
+
+/// Everything the plugin registers (runtime always, editor with `editor`).
+pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    runtime::build(p);
+    #[cfg(feature = "editor")]
+    editor::build(p);
+}
 
 // Hosts and tests reach the plugin's crates through its root.
 pub use fog_component;
@@ -145,31 +166,30 @@ pub mod editor;
 
 ```rust
 // fog/src/runtime.rs: what a game links, grouped by engine seam.
-use engine_backend::scene::SceneRowsRegistration;
+use engine_backend::scene::{ClassSpec, ComponentsBuilder, SceneRowsRegistration};
 use engine_backend::subsystems::render::RenderFeatureRegistration;
 use fog_component::{GlobalFogComponent, LocalFogVolumeComponent};
 
-// ── Component classes ──
-pulsar_world_registry::submit_world_component!(GlobalFogComponent, LocalFogVolumeComponent);
+pub(crate) fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    // ── Component classes ──
+    p.components()
+        .class::<GlobalFogComponent>(ClassSpec::default())
+        .class::<LocalFogVolumeComponent>(ClassSpec::default());
 
-// ── Rendering ──
-// The media's source rows and the row join that places a local volume at its owner.
-inventory::submit! {
-    SceneRowsRegistration {
-        origin: pulsar_plugins::origin!(),     // the root: the gate's key
+    // ── Rendering ──
+    // The media's source rows and the row join that places a local volume at its owner.
+    p.add(SceneRowsRegistration {
+        origin: p.origin(),                    // the root: the gate's key (checked by `add`)
         name: "fog.rows",                      // the catalog id, kind-prefixed
         register_columns: fog_component::register_columns,
-        derivation: fog_component::derivation,
-    }
-}
-
-// The volumetric medium and its composite.
-inventory::submit! {
-    RenderFeatureRegistration {
-        origin: pulsar_plugins::origin!(),
+        derivation: Some(fog_component::derivation),
+    });
+    // The volumetric medium and its composite.
+    p.add(RenderFeatureRegistration {
+        origin: p.origin(),
         features: fog_component::render_features,
         configure: |config| config,
-    }
+    });
 }
 ```
 
@@ -178,12 +198,12 @@ inventory::submit! {
 use fog_editor::level_editor;
 use ui_level_editor::extend::{CreateEntry, EnvironmentListing};
 
-// The environment mixer's global fog. Behaviour (and any label using the editor
-// crate's `rust_i18n::t!`, which resolves to the calling crate) is a named function
-// in the editor crate.
-inventory::submit! {
-    CreateEntry {
-        origin: pulsar_plugins::origin!(),
+pub(crate) fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    // The environment mixer's global fog. Behaviour (and any label using the editor
+    // crate's `rust_i18n::t!`, which resolves to the calling crate) is a named function
+    // in the editor crate.
+    p.add(CreateEntry {
+        origin: p.origin(),
         id: "environment_global_fog",
         menu_label: None,
         environment_label: Some("Global Fog"),
@@ -191,22 +211,79 @@ inventory::submit! {
         offered: None,
         order: 410,
         create: level_editor::add_global_fog,
-    }
-}
-
-inventory::submit! {
-    EnvironmentListing {
-        origin: pulsar_plugins::origin!(),
+    });
+    p.add(EnvironmentListing {
+        origin: p.origin(),
         class_name: "GlobalFogComponent",
         label: "Global Fog",
         order: 10,
         create_entry: Some("environment_global_fog"),
-    }
+    });
 }
 ```
 
 The kind's integration tests (`<kind>/tests/`) are the root's: they test the plugin as a
-game links it (`use fog_plugin as _;` links its registrations).
+game links it (`use fog_plugin as _;` links its descriptor and build).
+
+### Contracts
+
+A plugin depends on **contracts**, never on another plugin by id. `provides` lists what it
+offers others: `{ id, kind, members, version }`, the id namespaced by the plugin
+(`pulsar.lights.rows`). Kinds:
+
+| Kind | Members | Reached through |
+|---|---|---|
+| `buffer` | Helio scene buffer keys its components publish | the provider's api crate (a Cargo edge) |
+| `api` | packages other plugins link (keys, row ABIs, WGSL, data types) | a Cargo edge |
+| `class` | component classes others place or require | the class name (no edge) |
+| `trait` | gameplay trait ids (`<plugin id>.<Trait>`) | the trait id (no edge) |
+
+`requires` lists what it uses: `{ id, optional, version }`. Resolution
+(`pulsar_plugins::resolve`) enables a provider of each required contract the project does
+not turn off, and disables a plugin whose requirement cannot be met with a problem naming
+consumer, contract and provider (`pulsar_plugins::Problem`: `plugin pulsar.asset_viewer
+needs contract pulsar.meshes.api, provided by pulsar.meshes, which the project disables;
+pulsar.asset_viewer is disabled`). An optional contract nobody enabled provides is recorded
+(`Resolution::absent_optional`): the plugin runs without it, on the frame's stand-ins. A
+`version` pins one contract version (no ranges): a mismatch is `Incompatible`. Two enabled
+providers of one contract are a `Conflict`; a replacement plugin provides the same ids and
+the project disables the original (there is no `replaces =`).
+
+What keeps descriptors honest (`plugins/installed/tests/contracts.rs`): the providers of a
+plugin's linked (`buffer`, `api`) requirements are exactly the plugins its crates depend on
+(normal Cargo edges); an `api` contract names its provider's packages; every scene buffer a
+feature reads (`FeatureRegistrar::consumes`, which every feature calls for each buffer its
+passes read) is covered by a provider's `buffer` contract the reader requires, or is a
+frame buffer (`helio_frame_api::FRAME_BUFFERS`); a use of another plugin's trait (a role, a
+native implementer) is a requirement of its `trait` contract; a class requirement
+(`ClassSpec::requires`) is one of its `class` contract.
+
+### Component classes
+
+`p.components().class::<T>(ClassSpec { requires, systems, gpu, presentation })`
+(`engine_backend::scene::class_spec`):
+
+- **requires**: classes placed with it. Placing it (`pulsar_world_registry::place_component`:
+  the editor's Add Component and Create entries, a script's `attach_class`) attaches each
+  one the object lacks as its own component instance, nested under it. Loading never
+  places. The loader accepts a requirement only of a class whose plugin provides it in a
+  `class` contract the requirer's plugin requires (`required_class`; an optional one whose
+  plugin is absent is skipped); refusals are `class_problems()`.
+- **systems**: per-frame work, `System::new(label, run).after(&[..]).before(&[..])`,
+  ordered around the engine's component lifecycles (`systems::COMPONENTS`) every frame by
+  `tick_live_components`. They run while the class is registered. A label no registered
+  system has orders nothing (an optional plugin's); a cycle is reported.
+- **gpu**: the class's source rows and their join (a `SceneRowsRegistration`).
+- **presentation**: `Facade` shows one card in the inspector and one entry in the
+  component tree over the class and its nested members (each member's properties a section
+  of the card); the members stay real components of their own plugins. The script surface
+  is the facade's properties and methods.
+
+A disabled plugin's classes load as `UnresolvedComponent`s with their data kept and save
+back unchanged. The proof is `plugins/vendor/character` (`pulsar.character`, a facade over
+a skeletal mesh, an animator, a character controller and the player's input, whose system
+`pulsar.character.move` drives the controller after input and before physics) and
+`plugins/installed/tests/character.rs`.
 
 ### Where a plugin meets the kernel
 
@@ -266,14 +343,23 @@ declared with `pulsar_plugins::registration!(T)`, which also lists it as a
 without depending on any of their crates, and the summaries come from the registrations
 themselves.
 
-`plugin_manager::catalog::PluginCatalog::snapshot()` joins:
+`plugin_manager::CatalogSnapshot::snapshot()` (with the loaded plugin libraries:
+`PluginManager::catalog()`) joins:
 
 - each installed plugin's descriptor, whether the project enables it, its root crate, and
-  its contributions (a render feature registration carries each feature and the nodes it
-  registered: `CatalogPlugin::feature_nodes`, from Helio's `NodeRegistry::feature_nodes`);
-- `unattributed`: registrations no plugin root submitted (the engine's own), each with its
-  origin as provenance;
-- `problems`: two registrations of one category with one id from one origin.
+  its contributions (a render feature registration carries each feature, the nodes it
+  registered, `CatalogPlugin::feature_nodes`, and the scene buffers it reads,
+  `render.reads`); each requirement with the plugin meeting it or the named activation
+  problem; who requires it; each read linked to its provider (`ContractLink`);
+- `engine`: the engine's own registrations (`engine:<package>` origins), labelled as the
+  engine's; `unknown`: any other origin, each a problem;
+- `problems`: unknown origins, duplicate ids, reads of a buffer nobody provides or the
+  reader does not require, undeclared trait uses and definitions;
+- `activation`: the project's resolution (its problems and absent optional contracts).
+
+The Extensions viewer (`ui_plugin_manager`) reads only this snapshot, through its GPUI-free
+model (`ui_plugin_manager::model::Extensions`): its list, counts, filters, dependencies and
+enabled states cannot disagree.
 
 `pulsar_plugins::contributions()` lists every linked registration;
 `active_contributions()` lists those the registries hand out now (with a plugin disabled,
@@ -283,6 +369,29 @@ uses `registration!`; `Registration` is never implemented by hand.
 The registration matrix, the raw `inventory` paths and the plugin-to-plugin edges are in
 `PLUGIN_API_REFACTOR_PLAN.md` (the audit, sections 0-3; its review, section 9; phase 1 as
 built, section 11), which is also the roadmap.
+
+## Plugin libraries
+
+A plugin built as a library exports its root's `build`, the same function a static build
+links: the crate built as `cdylib` (a plugin's root, or a bundle crate linking several roots)
+calls `pulsar_plugins::export_library!()` once, and the library exports, as plain data
+(`pulsar_plugins::library::FfiLibrary`), every linked root's descriptor and the
+registrations its build added in the library's copy. The plugin loader imports it after
+attaching the library's world crates (`plugin_manager::attach::import_plugins`): each
+descriptor joins the installed set, each registration the store, taken as the host's type
+of its category when both copies agree on the type's **layout fingerprint**
+(`library::fingerprint`: type name, size, alignment, category and the type's contract
+`VERSION`). A registration of another layout, or of a category the host does not have, is
+refused by name. Proof: `plugin_manager/tests/world_component_plugins.rs`
+(`a_library_registers_through_its_root_build`, built together and separately).
+
+Known limits: libraries are never unloaded; host and library must come from the same
+compiler (the rustc hash check); the fingerprint sees size, alignment and name, so a change
+keeping all three (fields of one size reordered) must bump the type's `VERSION`; a library
+links its own copy of every crate, and only the world crates share their process-wide state
+(their runtimes): a renderer feature in a library would use its own copy of Helio's state,
+so the first-party render plugins stay linked (bundling them into libraries waits on a Helio
+runtime attach, `PLUGIN_API_REFACTOR_PLAN.md` section 14).
 
 ## Dynamic editor plugins
 

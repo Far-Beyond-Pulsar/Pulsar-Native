@@ -228,11 +228,16 @@ impl ComponentHierarchyPanel {
         _selected_component: Option<usize>,
         state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Vec<ComponentItem> {
+        // A facade's members are the facade, to the user: not listed.
+        let facades = super::object_type_fields::property_renderer::facade_members(components);
         components
             .iter()
             .enumerate()
             .map(|(idx, instance)| {
-                let children_indices = Self::get_children(components, idx);
+                let mut children_indices = Self::get_children(components, idx);
+                if let Some(members) = facades.get(&idx) {
+                    children_indices.retain(|child| !members.contains(child));
+                }
                 ComponentItem {
                     index: idx,
                     instance: instance.clone(),

@@ -31,7 +31,7 @@ use std::any::Any;
 use std::sync::Arc;
 use ui::{button::ButtonVariants as _, h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
-use super::{CardMeta, ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
+use super::{CardMember, CardMeta, ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
 use crate::core::commands::{execute_command, SceneCommand};
 use ui_common::inspector_model::{CardDesc, PropDesc};
 
@@ -142,8 +142,13 @@ impl ObjectTypeFieldsSection {
     pub(super) fn rebuild_layout(&mut self, attached: &[ComponentInstance]) {
         let mut cards: Vec<CardDesc> = Vec::new();
         self.card_meta.clear();
+        let members = facade_members(attached);
         for (idx, component) in attached.iter().enumerate() {
             let class_name = &component.class_name;
+            if members.values().flatten().any(|member| *member == idx) {
+                // Shown inside its facade's card.
+                continue;
+            }
             if class_name == pulsar_class::CLASS_INSTANCE {
                 if let Some(view) = &self.class_view {
                     cards.push(CardDesc {
@@ -156,6 +161,7 @@ impl ObjectTypeFieldsSection {
                     self.card_meta.push(CardMeta {
                         class_name: class_name.clone(),
                         idx,
+                        members: Vec::new(),
                     });
                 }
                 continue;
@@ -166,22 +172,53 @@ impl ObjectTypeFieldsSection {
             let Some(entry) = self.property_metadata_cache.get(class_name.as_str()) else {
                 continue;
             };
+            let mut props: Vec<PropDesc> = entry
+                .properties
+                .iter()
+                .map(|p| PropDesc {
+                    name: p.name.to_string(),
+                    display_name: p.display_name.to_string(),
+                    category: p.category.map(str::to_string),
+                    category_color: p.category_color.map(str::to_string),
+                    category_default_collapsed: p.category_default_collapsed,
+                    category_order: p.category_order,
+                    extra_rows: 0,
+                })
+                .collect();
+            // A facade's members: their properties in its card, each member
+            // a section titled by its class.
+            let mut card_members = Vec::new();
+            for &member in members.get(&idx).into_iter().flatten() {
+                let member_class = attached[member].class_name.clone();
+                if self.ensure_metadata_cached(&member_class).is_none() {
+                    continue;
+                }
+                let Some(member_entry) = self.property_metadata_cache.get(member_class.as_str())
+                else {
+                    continue;
+                };
+                card_members.push(CardMember {
+                    class_name: member_class.clone(),
+                    idx: member,
+                    start: props.len(),
+                });
+                props.extend(member_entry.properties.iter().map(|p| PropDesc {
+                    name: p.name.to_string(),
+                    display_name: p.display_name.to_string(),
+                    category: Some(match p.category {
+                        Some(category) => format!("{member_class} · {category}"),
+                        None => member_class.clone(),
+                    }),
+                    category_color: p.category_color.map(str::to_string),
+                    category_default_collapsed: true,
+                    category_order: p.category_order,
+                    extra_rows: 0,
+                }));
+            }
             cards.push(CardDesc {
                 key: format!("{class_name}#{idx}"),
                 title: class_name.clone(),
-                props: entry
-                    .properties
-                    .iter()
-                    .map(|p| PropDesc {
-                        name: p.name.to_string(),
-                        display_name: p.display_name.to_string(),
-                        category: p.category.map(str::to_string),
-                        category_color: p.category_color.map(str::to_string),
-                        category_default_collapsed: p.category_default_collapsed,
-                        category_order: p.category_order,
-                        extra_rows: 0,
-                    })
-                    .collect(),
+                props,
                 custom: false,
                 note: pulsar_world_registry::unfinished_component(class_name)
                     .map(|u| format!("Unfinished: {}. Tracked in {}.", u.reason, u.issue)),
@@ -189,6 +226,7 @@ impl ObjectTypeFieldsSection {
             self.card_meta.push(CardMeta {
                 class_name: class_name.clone(),
                 idx,
+                members: card_members,
             });
         }
 
@@ -263,8 +301,8 @@ impl ObjectTypeFieldsSection {
         let Some(meta) = self.card_meta.get(card_ix) else {
             return empty();
         };
-        let class_name = meta.class_name.clone();
-        let idx = meta.idx;
+        // A facade's card holds its members' properties after its own.
+        let (class_name, idx, prop_ix) = meta.resolve(prop_ix);
         let Some(properties) = self
             .property_metadata_cache
             .get(class_name.as_str())
@@ -790,4 +828,42 @@ mod slot_override_tests {
         assert_eq!(long.chars().count(), 48);
         assert!(long.ends_with('…'));
     }
+}
+
+/// For each attached facade (`Presentation::Facade`), by index, the
+/// attached instances nested under it whose class it requires: shown in its
+/// card, not as cards of their own.
+pub(crate) fn facade_members(
+    attached: &[ComponentInstance],
+) -> std::collections::BTreeMap<usize, Vec<usize>> {
+    let mut members = std::collections::BTreeMap::new();
+    for (idx, component) in attached.iter().enumerate() {
+        let Some(registration) = pulsar_world_registry::world_component(&component.class_name)
+        else {
+            continue;
+        };
+        if registration.presentation != pulsar_world_registry::Presentation::Facade {
+            continue;
+        }
+        let nested: Vec<usize> = attached
+            .iter()
+            .enumerate()
+            .filter(|(_, other)| {
+                parent_index(other) == Some(idx)
+                    && registration.requires.contains(&other.class_name.as_str())
+            })
+            .map(|(member, _)| member)
+            .collect();
+        members.insert(idx, nested);
+    }
+    members
+}
+
+/// The index of the instance `component` is nested under, if any.
+pub(crate) fn parent_index(component: &ComponentInstance) -> Option<usize> {
+    component
+        .data
+        .get("__parent_index")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
 }

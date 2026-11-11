@@ -1,0 +1,5 @@
+# A consumer built against a version of the lights' rows that the installed lights do not provide (tests/contracts.rs).
+id = "pulsar.test_incompatible"
+name = "Incompatible provider fixture"
+root = "test_incompatible_plugin"
+requires = [{ id = "pulsar.lights.rows", version = 2 }]
