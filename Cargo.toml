@@ -449,6 +449,7 @@ ui_helio_viewport     = { path = "crates/editor/ui_helio_viewport" }
 ui_settings           = { path = "crates/editor/ui_settings" }
 ui_multiplayer        = { path = "crates/editor/ui_multiplayer" }
 pulsar_install_layout = { path = "crates/core/pulsar_install_layout" }
+pulsar_dialog_embed    = { path = "crates/core/pulsar_dialog_embed" }
 pulsar_studio_client  = { path = "crates/core/pulsar_studio_client" }
 ui_problems           = { path = "crates/editor/ui_problems" }
 ui_flamegraph         = { path = "crates/editor/ui_flamegraph" }
@@ -622,7 +623,7 @@ rfd = "0.17"
 # Pulsar's dialogs: the request/response types and the client of the pulsar-dialog
 # helper (Pulsar-Dialog). `native-fallback` shows the platform's own box when the
 # helper is not there, so a prompt is never lost.
-pulsar_dialog_protocol = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog", rev = "f884a5b505d5d0a28293700934b7231418945942", features = ["native-fallback"] }
+pulsar_dialog_protocol = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog", rev = "bd0004f0b2f574d6ab833f144d8dd9058f69035d", features = ["native-fallback"] }
 thiserror = "2.0"
 pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 dashmap = "6.1.0"

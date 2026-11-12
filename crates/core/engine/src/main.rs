@@ -179,6 +179,14 @@ fn main() {
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // The dialog helper rides inside this executable; put it beside us if it is
+    // not there, before the first prompt that might need it. Failing is fine:
+    // dialogs then fall back to the platform's own boxes.
+    match pulsar_dialog_embed::ensure_helper() {
+        Ok(placement) => tracing::debug!(?placement, "dialog helper"),
+        Err(error) => tracing::warn!(%error, "could not place the dialog helper"),
+    }
+
     // Before any wgpu instance: never run on FXC.
     #[cfg(all(windows, target_arch = "aarch64"))]
     dxc::require_or_exit();

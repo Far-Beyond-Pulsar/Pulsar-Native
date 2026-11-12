@@ -1,0 +1,21 @@
+[package]
+name = "pulsar_dialog_embed"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The pulsar-dialog helper (Pulsar-Dialog), built by this crate's build script and embedded in the engine's executable, which puts it beside itself when it is missing"
+build = "build.rs"
+
+[dependencies]
+pulsar_dialog_protocol = { workspace = true }
+pulsar_install_layout = { workspace = true }
+tracing = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }
+
+[dev-dependencies]
+sha2 = { workspace = true }
+
+[lints]
+workspace = true
