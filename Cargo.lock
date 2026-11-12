@@ -12291,6 +12291,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_dialog_protocol"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog?rev=f884a5b505d5d0a28293700934b7231418945942#f884a5b505d5d0a28293700934b7231418945942"
+dependencies = [
+ "rfd",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
@@ -12339,6 +12349,7 @@ dependencies = [
  "profiling 0.1.0",
  "profiling 1.0.18",
  "pulsar_auth",
+ "pulsar_dialog_protocol",
  "pulsar_error",
  "pulsar_install_layout",
  "pulsar_std",

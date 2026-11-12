@@ -4,12 +4,29 @@
 //! rendering performance. It probes available GPUs, prompts the user if no discrete
 //! GPU is available, and configures WGPU environment variables accordingly.
 
+use pulsar_dialog_protocol::{client, ButtonKind, DialogButton, DialogRequest, DialogResponse, Severity};
 use wgpu::{Backends, DeviceType, Instance, InstanceDescriptor};
 
 #[derive(Debug, Clone)]
 struct GpuPolicyProbe {
     has_discrete_gpu: bool,
     selected_gpu_name: Option<String>,
+    /// Every adapter found, as `"name (integrated GPU)"`, for the prompt.
+    adapters: Vec<String>,
+}
+
+/// The ids of the prompt's buttons.
+const CONTINUE: &str = "continue";
+const QUIT: &str = "quit";
+
+fn device_kind(device_type: DeviceType) -> &'static str {
+    match device_type {
+        DeviceType::DiscreteGpu => "discrete GPU",
+        DeviceType::IntegratedGpu => "integrated GPU",
+        DeviceType::VirtualGpu => "virtual GPU",
+        DeviceType::Cpu => "software renderer",
+        DeviceType::Other => "other",
+    }
 }
 
 // std::fs allowed: reads the OS's /proc/version to detect WSL, not a project file
@@ -41,9 +58,15 @@ fn probe_gpu_policy() -> GpuPolicyProbe {
     let adapters = futures::executor::block_on(instance.enumerate_adapters(Backends::all()));
     let mut has_discrete_gpu = false;
     let mut selected_gpu_name = None;
+    let mut found = Vec::new();
 
     for adapter in adapters {
         let info = adapter.get_info();
+        let described = format!("{} ({})", info.name, device_kind(info.device_type));
+        // One line per adapter: the same card shows up once per graphics API.
+        if !found.contains(&described) {
+            found.push(described);
+        }
         if info.device_type == DeviceType::DiscreteGpu {
             has_discrete_gpu = true;
             if selected_gpu_name.is_none() {
@@ -55,40 +78,74 @@ fn probe_gpu_policy() -> GpuPolicyProbe {
     GpuPolicyProbe {
         has_discrete_gpu,
         selected_gpu_name,
+        adapters: found,
+    }
+}
+
+/// The question: continue on the GPU that is there, or quit. "Don't ask
+/// again" sets the existing Automatic GPU preference.
+fn prompt_request(adapters: &[String]) -> DialogRequest {
+    let mut request = DialogRequest::new(
+        "No Discrete GPU Detected",
+        "Pulsar is set to prefer a dedicated GPU for the best performance, and none was \
+         detected.\n\nContinue anyway, using the GPU that is available?",
+    )
+    .severity(Severity::Warning)
+    .button(DialogButton::new(CONTINUE, "Continue").kind(ButtonKind::Primary).default())
+    .button(DialogButton::new(QUIT, "Quit").cancel())
+    .checkbox("Don't ask again (set the GPU preference to Automatic)", false);
+    if !adapters.is_empty() {
+        request = request.detail(format!("Available: {}", adapters.join(", ")));
+    }
+    request
+}
+
+/// What an answer means: `(continue, remember)`. Closing the dialog is
+/// declining; no dialog at all (no display, no helper) is carrying on, as
+/// the prompt always did on a headless machine.
+fn decide(answer: &DialogResponse) -> (bool, bool) {
+    use pulsar_dialog_protocol::Outcome;
+    match answer.outcome {
+        Outcome::Unavailable => (true, false),
+        Outcome::Dismissed => (false, false),
+        Outcome::Answered if answer.is(CONTINUE) => (true, answer.checkbox == Some(true)),
+        Outcome::Answered => (false, false),
+    }
+}
+
+/// Persist "Automatic" as the GPU preference, so the prompt stops appearing.
+fn remember_automatic_preference() {
+    use engine_state::settings::{ConfigValue, GlobalSettings};
+    match GlobalSettings::new().set_and_save(
+        "renderer",
+        "gpu_preference",
+        ConfigValue::String("auto".to_owned()),
+    ) {
+        Ok(()) => tracing::info!("GPU preference set to Automatic at the user's request"),
+        Err(error) => tracing::warn!(%error, "Could not save the GPU preference"),
     }
 }
 
 /// Prompt the user whether to continue without a discrete GPU.
 ///
-/// On headless systems (WSL without WSLg, SSH sessions), the dialog cannot
-/// display — fall back to a stderr warning and continue automatically.
-fn prompt_continue_without_discrete_gpu() -> bool {
-    let description = "No discrete GPU was detected.\n\nPulsar is configured to prefer dGPU for best performance.\n\nContinue anyway using the available GPU?";
-
-    // On headless Linux/WSL without a display server, rfd cannot show a dialog.
-    // Check for DISPLAY/WAYLAND_DISPLAY before attempting the GUI prompt.
-    #[cfg(target_os = "linux")]
-    {
-        let has_display = std::env::var("DISPLAY").is_ok()
-            || std::env::var("WAYLAND_DISPLAY").is_ok()
-            || std::env::var("WLR_RDP_BACKENDS").is_ok();
-
-        if !has_display {
-            eprintln!(
-                "[gpu_policy] No display server detected (headless/WSL). Continuing with available GPU."
-            );
-            return true;
-        }
+/// The question is shown by the `pulsar-dialog` helper (its own process, so a
+/// broken graphics setup here cannot take the prompt down with it), in the
+/// engine's look. If the helper cannot run, the platform's own message box is
+/// used; with no display at all (WSL without WSLg, SSH sessions) the answer is
+/// "continue" with a note on stderr.
+fn prompt_continue_without_discrete_gpu(adapters: &[String]) -> bool {
+    let answer = client::show(&prompt_request(adapters));
+    if client::is_unavailable(&answer) {
+        eprintln!(
+            "[gpu_policy] The dialog could not be shown (no display or helper). \
+             Continuing with the available GPU."
+        );
     }
-
-    let choice = rfd::MessageDialog::new()
-        .set_title("No Discrete GPU Detected")
-        .set_description(description)
-        .set_level(rfd::MessageLevel::Warning)
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show();
-
-    matches!(choice, rfd::MessageDialogResult::Yes)
+    let (continue_anyway, remember) = decide(&answer);
+    if continue_anyway && remember {
+        remember_automatic_preference();
+    }
+    continue_anyway
 }
 
 /// Enforce discrete GPU policy or exit if user declines to continue
@@ -144,10 +201,46 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
     }
 
     tracing::warn!("No discrete GPU detected; prompting user for continue/exit decision");
-    if !prompt_continue_without_discrete_gpu() {
+    if !prompt_continue_without_discrete_gpu(&probe.adapters) {
         tracing::error!("Startup aborted by user because no discrete GPU is available");
         std::process::exit(1);
     }
 
     tracing::warn!("User chose to continue without a discrete GPU");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decide, prompt_request, CONTINUE, QUIT};
+    use pulsar_dialog_protocol::{DialogResponse, Outcome};
+
+    #[test]
+    fn continue_carries_on_and_remembers_only_when_the_box_is_ticked() {
+        assert_eq!(decide(&DialogResponse::answered(CONTINUE, Some(false))), (true, false));
+        assert_eq!(decide(&DialogResponse::answered(CONTINUE, None)), (true, false));
+        assert_eq!(decide(&DialogResponse::answered(CONTINUE, Some(true))), (true, true));
+    }
+
+    #[test]
+    fn quit_and_closing_the_dialog_decline_and_never_remember() {
+        assert_eq!(decide(&DialogResponse::answered(QUIT, Some(true))), (false, false));
+        assert_eq!(decide(&DialogResponse::dismissed(Some(true))), (false, false));
+    }
+
+    #[test]
+    fn no_dialog_at_all_carries_on_as_a_headless_machine_always_did() {
+        let silence = DialogResponse::unavailable();
+        assert_eq!(silence.outcome, Outcome::Unavailable);
+        assert_eq!(decide(&silence), (true, false));
+    }
+
+    #[test]
+    fn the_prompt_continues_on_enter_quits_on_escape_and_lists_the_adapters() {
+        let request = prompt_request(&["Adreno X1 (integrated GPU)".to_owned()]);
+        assert_eq!(request.default_button().unwrap().id, CONTINUE);
+        assert_eq!(request.cancel_button().unwrap().id, QUIT);
+        assert!(request.detail.as_deref().unwrap().contains("Adreno X1"));
+        assert!(request.checkbox.as_ref().is_some_and(|c| !c.checked));
+        assert!(prompt_request(&[]).detail.is_none());
+    }
 }

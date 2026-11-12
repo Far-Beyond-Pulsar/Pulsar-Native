@@ -20,6 +20,7 @@ pulsar_error = { path = "../pulsar_error" }
 
 wgpu.workspace = true
 rfd = { workspace = true }
+pulsar_dialog_protocol = { workspace = true }
 file-association-manager = { git = "https://github.com/Far-Beyond-Pulsar/file-association-manager", rev = "6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3" }
 
 # Engine crates
