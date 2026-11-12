@@ -73,17 +73,46 @@ schedule.run(&mut world, time);
 
 ## Actors
 
+SceneDB has no actor trait or registry of its own (removed, P5b). `TickLoop`
+has no registry: a boxed gameplay actor runs through the component lifecycle.
+
 ```rust
-pub trait Actor: Send + Sync + 'static {
-    fn begin_play(&mut self, _entity: Entity, _world: &mut World) {}
-    fn end_play(&mut self, _entity: Entity, _world: &mut World) {}
-    fn tick(&mut self, _entity: Entity, _world: &mut World) {}
+// pulsar_game::lifecycle
+pub trait NativeActor: Send + 'static {
+    fn begin_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut ActorCx<'_>) {}
+    fn tick(&mut self, _entity: Entity, _world: &mut World, _cx: &mut ActorCx<'_>, _dt: f32) {}
+    fn end_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut ActorCx<'_>) {}
 }
 ```
 
-`ActorRegistry::register` spawns the actor's entity and calls `begin_play`;
-`tick_all` ticks every actor. `pulsar_game`'s tick loop owns one registry
-next to its `Schedule`.
+`TickLoop::register_native_actor(actor)` spawns an owner entity (stamped with a
+`ScriptTag`, the identity PIE hot reload matches on) and an instance entity
+carrying an `ActorCarrier` component linked to it by `ComponentOwner`; the
+carrier's table (`EngineActor`, class `NativeActorCarrier`) calls into the box,
+which the session scope holds in an `ActorBank` resource. So the actor gets
+`begin_play` on the first frame it is ticked, `tick` per frame, and `end_play`
+when its instance is removed or disabled **and at the session end** (before a
+PIE snapshot restore; SceneDB's registry never ended actors at shutdown).
+Hot reload re-attaches: the same class registered again on a surviving tagged
+owner gets a fresh instance entity, the old behavior is dropped at the session
+end while its code is still loaded. Generated Rust Blueprint actors implement
+`NativeActor` by its full path.
+
+## Component lifecycle (`Actor` on a component)
+
+`NativeActor` above is the boxed, entity-owning object. A component class
+gets lifecycle events through `pulsar_component_lifecycle::Actor`, reachable as
+`pulsar_game::Actor`, `pulsar_game::prelude::Actor` and
+`pulsar_game::lifecycle::Actor`: `impl Actor for T` and
+`ClassSpec { actor: Some(ActorTable::of::<T>()), .. }` from the plugin root.
+`tick_live_components` drives these tables in one `Step::Components`:
+`begin_play` when an enabled instance is first seen, `tick` each frame,
+`end_play` (owner-only) on disable, removal, despawn or session end.
+`#[register_component_runtime]` is the same registration: its expansion is an
+`ActorTable` (with native `#[bp_handler]` events, subscribed at `begin_play`
+and delivered before `tick`) submitted as an `EngineActor`; the old raw
+`inventory` tick registration is retired (P6). Plan:
+`COMPONENT_LIFECYCLE_PLAN.md`.
 
 ## Components
 

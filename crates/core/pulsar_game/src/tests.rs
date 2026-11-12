@@ -101,41 +101,77 @@ mod actors {
     use std::sync::{Arc, Mutex};
 
     struct Counter(Arc<Mutex<Vec<&'static str>>>);
-    impl Actor for Counter {
-        fn begin_play(&mut self, _e: Entity, _w: &mut World) {
+    impl crate::lifecycle::NativeActor for Counter {
+        fn begin_play(
+            &mut self,
+            _e: Entity,
+            _w: &mut World,
+            _cx: &mut crate::lifecycle::ActorCx<'_>,
+        ) {
             self.0.lock().unwrap().push("begin");
         }
-        // `Actor::tick` (from `pulsar_scenedb`) is deliberately time-free as
-        // of the 2026-08-15 rev bump (Pulsar-Native#561 Phase D) -- see that
-        // trait's own doc: per-frame timing is the engine's concern, not
-        // the data layer's. No `GameTime` parameter anymore.
-        fn tick(&mut self, _e: Entity, _w: &mut World) {
+        fn tick(
+            &mut self,
+            _e: Entity,
+            _w: &mut World,
+            _cx: &mut crate::lifecycle::ActorCx<'_>,
+            _dt: f32,
+        ) {
             self.0.lock().unwrap().push("tick");
         }
-        fn end_play(&mut self, _e: Entity, _w: &mut World) {
+        fn end_play(
+            &mut self,
+            _e: Entity,
+            _w: &mut World,
+            _cx: &mut crate::lifecycle::ActorCx<'_>,
+        ) {
             self.0.lock().unwrap().push("end");
         }
     }
 
+    /// begin_play on the first frame (not at registration), tick per frame,
+    /// end_play at the session end.
     #[test]
     fn lifecycle_order() {
         let log = Arc::new(Mutex::new(Vec::new()));
         let mut tick_loop = TickLoop::new(TickMode::default(), 0);
         // #634: actors register into the loop's SHARED scene store (the one
         // renderers read), not a private world.
-        let entity = {
-            let mut store = tick_loop.scene_store.write();
-            tick_loop
-                .actors
-                .register(Counter(log.clone()), &mut store.world)
-        };
+        tick_loop.register_native_actor(Counter(log.clone()));
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "nothing before the first frame"
+        );
+        tick_loop.tick_once();
+        tick_loop.tick_once();
+        tick_loop.end_session();
+        let events = log.lock().unwrap().clone();
+        assert_eq!(events, vec!["begin", "tick", "tick", "end"]);
+        // Idempotent: a second end finds nothing live.
+        tick_loop.end_session();
+        assert_eq!(log.lock().unwrap().len(), 4);
+    }
+
+    /// Despawning an actor's carrier ends the actor.
+    #[test]
+    fn removing_the_carrier_ends_the_actor() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut tick_loop = TickLoop::new(TickMode::default(), 0);
+        tick_loop.register_native_actor(Counter(log.clone()));
         tick_loop.tick_once();
         {
             let mut store = tick_loop.scene_store.write();
-            tick_loop.actors.deregister(entity, &mut store.world);
+            let carriers: Vec<Entity> = store
+                .world
+                .query::<&crate::lifecycle::ActorCarrier>()
+                .map(|(e, _)| e)
+                .collect();
+            assert_eq!(carriers.len(), 1);
+            store.world.despawn(carriers[0]);
         }
-        let events = log.lock().unwrap().clone();
-        assert_eq!(events, vec!["begin", "tick", "end"]);
+        tick_loop.tick_once();
+        tick_loop.tick_once();
+        assert_eq!(log.lock().unwrap().clone(), vec!["begin", "tick", "end"]);
     }
 
     /// #634: a mutation an actor/system makes through the shared store is
@@ -151,11 +187,9 @@ mod actors {
                 .world
                 .spawn_object(engine_backend::scene::SpawnObject::new("Runtime"))
                 .unwrap();
-            tick_loop
-                .actors
-                .register(Counter(Arc::new(Mutex::new(Vec::new()))), &mut store.world);
             e
         };
+        tick_loop.register_native_actor(Counter(Arc::new(Mutex::new(Vec::new()))));
 
         tick_loop.tick_once();
 

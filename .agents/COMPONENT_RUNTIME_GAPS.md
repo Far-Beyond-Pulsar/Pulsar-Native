@@ -230,11 +230,13 @@ than pretending each event is an ordinary callable method.
 ### Live component callbacks and lifecycle
 
 `#[register_component_runtime(enabled = enabled)]` on an inherent component
-impl registers typed lifecycle shims in `pulsar_world_registry`. A component
+impl registers the class's lifecycle table (`pulsar_component_lifecycle::ActorTable`,
+submitted as an `EngineActor`); the old raw-`inventory` runtime registration is
+retired (P6 of `COMPONENT_LIFECYCLE_PLAN.md`). A component
 can define `begin_play(&mut self, ctx: &mut ComponentContext<'_>)`,
 `tick(&mut self, ctx: &mut ComponentContext<'_>, dt: f32)`, and optionally
-`end_play(entity, events)`. The generated shim uses a typed `World` query and
-mutates the row already owned by SceneDB. It holds no component copy and does
+`end_play(entity, ctx)`. The generated callbacks borrow the typed row already
+owned by SceneDB for each instance. It holds no component copy and does
 not call the renderer sync path.
 
 `ComponentRuntimeState` stores only each active entity's generation-bearing

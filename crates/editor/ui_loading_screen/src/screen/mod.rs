@@ -56,33 +56,40 @@ impl LoadingScreen {
 
         let project_path_for_thread = project_path.clone();
         let tasks_for_thread = Arc::clone(&tasks);
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui loading screen: new with on complete", editor_task_queue::ThreadRole::Io).owner("ui_loading_screen"), move || {
-            let project = project_path_for_thread.as_path();
-            for (idx, task) in tasks_for_thread.iter().enumerate() {
-                let label = &task.label;
-                let result = task.run(project);
-                tracing::info!(
-                    "[Loading] {:>3}ms  {}{}",
-                    result.elapsed.as_millis(),
-                    label,
-                    result
-                        .detail
-                        .as_deref()
-                        .map(|d| format!(" — {d}"))
-                        .unwrap_or_default(),
-                );
-                if tx
-                    .send(LoadingEvent::TaskDone {
-                        idx,
-                        elapsed: result.elapsed,
-                        detail: result.detail,
-                    })
-                    .is_err()
-                {
-                    break;
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui loading screen: new with on complete",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_loading_screen"),
+            move || {
+                let project = project_path_for_thread.as_path();
+                for (idx, task) in tasks_for_thread.iter().enumerate() {
+                    let label = &task.label;
+                    let result = task.run(project);
+                    tracing::info!(
+                        "[Loading] {:>3}ms  {}{}",
+                        result.elapsed.as_millis(),
+                        label,
+                        result
+                            .detail
+                            .as_deref()
+                            .map(|d| format!(" — {d}"))
+                            .unwrap_or_default(),
+                    );
+                    if tx
+                        .send(LoadingEvent::TaskDone {
+                            idx,
+                            elapsed: result.elapsed,
+                            detail: result.detail,
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
-            }
-        });
+            },
+        );
 
         let mut statuses = vec![TaskStatus::Pending; n];
         statuses[0] = TaskStatus::Running;

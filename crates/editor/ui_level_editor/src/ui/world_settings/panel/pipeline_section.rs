@@ -72,13 +72,10 @@ impl WorldSettingsPanelImpl {
                 cx,
             )
         });
-        let subscription = cx.subscribe(
-            &picker,
-            |panel, picker, _: &AssetPickedEvent, cx| {
-                let id = picker.read(cx).selected_path().to_owned();
-                panel.world_settings.select_pipeline(Some(id), cx);
-            },
-        );
+        let subscription = cx.subscribe(&picker, |panel, picker, _: &AssetPickedEvent, cx| {
+            let id = picker.read(cx).selected_path().to_owned();
+            panel.world_settings.select_pipeline(Some(id), cx);
+        });
         self.pipeline_picker = Some(PipelinePicker {
             picker: picker.clone(),
             offered,
@@ -176,12 +173,7 @@ impl WorldSettingsPanelImpl {
                             }),
                     ),
             )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(detail_color)
-                    .child(detail),
-            )
+            .child(div().text_xs().text_color(detail_color).child(detail))
             .into_any_element()
     }
 

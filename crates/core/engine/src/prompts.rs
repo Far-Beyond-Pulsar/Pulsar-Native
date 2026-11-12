@@ -36,7 +36,11 @@ pub fn confirm(
 ) -> bool {
     let request = DialogRequest::new(title, message)
         .severity(severity)
-        .button(DialogButton::new(YES, yes).kind(ButtonKind::Primary).default())
+        .button(
+            DialogButton::new(YES, yes)
+                .kind(ButtonKind::Primary)
+                .default(),
+        )
         .button(DialogButton::new(NO, no).cancel());
     answer_is_yes(&client::show(&request), if_unavailable)
 }

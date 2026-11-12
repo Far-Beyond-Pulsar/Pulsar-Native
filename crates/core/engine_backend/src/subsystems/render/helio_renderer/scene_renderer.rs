@@ -58,6 +58,9 @@ pub struct SceneRendererOptions {
     /// Applied to the plugins' render-host parts when they are made
     /// (tests, tools: a plugin's settings in place of the project's).
     pub host_part_setups: Vec<HostPartSetup>,
+    /// The editor's `construct` pump, run each frame before the change
+    /// window closes (`crate::scene::construct_pump`). `None` for a game.
+    pub construct_pump: Option<crate::scene::EditorConstructPump>,
 }
 
 impl SceneRendererOptions {
@@ -69,6 +72,7 @@ impl SceneRendererOptions {
             // The level's pipeline (World Settings).
             pipeline: super::pipelines::level_pipeline(),
             host_part_setups: Vec::new(),
+            construct_pump: None,
         }
     }
 }
@@ -138,6 +142,8 @@ pub struct SceneRenderer {
     /// What the host publishes for this view's passes besides the scene's
     /// payloads ([`Self::set_view_payload`]).
     view_payloads: Vec<(&'static str, super::ViewPayload)>,
+    /// The editor's construct pump ([`SceneRendererOptions::construct_pump`]).
+    construct_pump: Option<crate::scene::EditorConstructPump>,
 }
 
 impl SceneRenderer {
@@ -217,9 +223,13 @@ impl SceneRenderer {
         // The renderer is built with no pipeline; the level's is assigned below.
         // There is no default: none, a missing or an invalid one shows Helio's
         // status screen with the reason.
-        let renderer = builder
-            .with_status_hint(PIPELINE_HINT)
-            .build(device, queue.clone(), width, height, format);
+        let renderer = builder.with_status_hint(PIPELINE_HINT).build(
+            device,
+            queue.clone(),
+            width,
+            height,
+            format,
+        );
         let mut this = Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),
@@ -232,8 +242,11 @@ impl SceneRenderer {
             host_parts,
             pipeline: super::pipelines::PipelineState::Unassigned,
             view_payloads: Vec::new(),
+            construct_pump: options.construct_pump.clone(),
         };
-        this.set_pipeline_state(super::pipelines::pipeline_state(options.pipeline.as_deref()));
+        this.set_pipeline_state(super::pipelines::pipeline_state(
+            options.pipeline.as_deref(),
+        ));
         this
     }
 
@@ -490,6 +503,11 @@ impl SceneRenderer {
         // this frame (a gizmo drag, a script, a tool) must reach the GPU
         // before the frame reads them.
         crate::scene::pump_assets(&self.scene);
+        // The editor's `construct`s for what this frame wrote, before the
+        // change window closes below (`scene::construct_pump`).
+        if let Some(pump) = &self.construct_pump {
+            pump.pump(&self.scene);
+        }
         profiling::profile_scope!("helio_flush_gpu_mirror");
         let store = self.scene.read();
         store.world.flush_gpu_mirror(&self.queue);

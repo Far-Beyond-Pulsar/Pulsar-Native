@@ -3509,6 +3509,7 @@ dependencies = [
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_component_lifecycle",
  "pulsar_error",
  "pulsar_events",
  "pulsar_lsp",
@@ -7502,6 +7503,7 @@ dependencies = [
  "image",
  "input_plugin",
  "lens_plugin",
+ "lifecycle_fixture_plugin",
  "lights_plugin",
  "materials_plugin",
  "meshes_plugin",
@@ -8157,6 +8159,21 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "lifecycle_fixture_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -12250,6 +12267,7 @@ dependencies = [
  "engine_fs",
  "glam 0.33.5",
  "inventory",
+ "pulsar_component_lifecycle",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -12260,6 +12278,16 @@ dependencies = [
  "tempfile",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "pulsar_component_lifecycle"
+version = "0.1.0"
+dependencies = [
+ "pulsar_events",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+ "serde_json",
 ]
 
 [[package]]
@@ -12434,6 +12462,7 @@ dependencies = [
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_component_lifecycle",
  "pulsar_content",
  "pulsar_core",
  "pulsar_events",
@@ -12617,7 +12646,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=017252c3c84331a29e53eaa627185597954a3241#017252c3c84331a29e53eaa627185597954a3241"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=f6769f61518e1e68475bb9b6191fa26a29cc09f6#f6769f61518e1e68475bb9b6191fa26a29cc09f6"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -12633,7 +12662,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=017252c3c84331a29e53eaa627185597954a3241#017252c3c84331a29e53eaa627185597954a3241"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=f6769f61518e1e68475bb9b6191fa26a29cc09f6#f6769f61518e1e68475bb9b6191fa26a29cc09f6"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -12808,6 +12837,7 @@ dependencies = [
  "glam 0.33.5",
  "inventory",
  "pollster 1.0.1",
+ "pulsar_component_lifecycle",
  "pulsar_events",
  "pulsar_plugins",
  "pulsar_reflection",

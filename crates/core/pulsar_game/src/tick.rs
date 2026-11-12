@@ -3,7 +3,7 @@ use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle,
 
 use parking_lot::RwLock;
 use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
-use pulsar_scenedb::{ActorRegistry, Schedule};
+use pulsar_scenedb::Schedule;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 ///
 /// Drives:
 /// 1. A `Schedule` — ordered set of ECS systems.
-/// 2. An `ActorRegistry` — object lifecycle callbacks.
+/// 2. The component lifecycle — native script actors and components
+///    (`begin_play`, `tick`, `end_play`; see [`crate::lifecycle`]).
 /// 3. A `TaskPool` — background async tasks.
 ///
 /// All three run against ONE authoritative world state:
@@ -45,12 +46,18 @@ pub struct TickLoop {
     /// per phase; anything they spawn/mutate is globally visible.
     pub scene_store: engine_backend::scene::SharedScene,
     pub schedule: Schedule,
-    pub actors: ActorRegistry,
+    /// The native script actors this loop runs through the component
+    /// lifecycle (`crate::lifecycle`); the session scope holds a handle.
+    pub(crate) actor_bank: crate::lifecycle::ActorBank,
     pub tasks: Arc<TaskPool>,
     /// The script phase: the script runtime, following the world's class
     /// instances (see `crate::scripting::ScriptDriver`). `None` runs no
     /// scripts; [`enable_scripting`](Self::enable_scripting) creates it.
     pub scripts: Option<Arc<Mutex<crate::scripting::ScriptDriver>>>,
+    /// The script driver's inbox, registered in the session's scope so the
+    /// component lifecycle reaches it (`pulsar_class::lifecycle`); put back
+    /// each tick, since a session end or a replaced world drops resources.
+    class_inbox: Option<pulsar_class::ClassInbox>,
     /// The session's engine event hub (`pulsar_events::EventHub`): built-in
     /// events, script events and plugin events, flushed at four fixed
     /// points of every tick (see [`tick_once`](Self::tick_once)). The
@@ -90,9 +97,6 @@ pub struct TickLoop {
     /// Surviving [`ScriptTag`]s collected by `begin_script_reload`, consumed
     /// one-per-registration until empty.
     pub(crate) pending_rebinds: Vec<crate::scripts::RebindTarget>,
-    /// Actor shells rebound onto existing entities this session; ticked right
-    /// after the registry phase.
-    pub(crate) rebinding: Vec<crate::scripts::ReboundActor>,
     /// Set once a reload has been armed, even after every tag is claimed.
     pub(crate) reload_armed: bool,
     // ── Pause / step (Play-in-Editor simulate controls, #925) ───────────────
@@ -216,11 +220,14 @@ impl TickLoop {
         Self {
             scene_store,
             schedule: Schedule::new(),
-            actors: ActorRegistry::new(),
+            actor_bank: crate::lifecycle::ActorBank::default(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
+            class_inbox: None,
             events: new_component_event_hub(),
-            component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
+            component_runtime: pulsar_world_registry::Session::new(
+                pulsar_world_registry::SessionKind::Standalone,
+            ),
             static_moves: None,
             world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
@@ -231,7 +238,6 @@ impl TickLoop {
             running: running.clone(),
             running_flag: running,
             pending_rebinds: Vec::new(),
-            rebinding: Vec::new(),
             reload_armed: false,
             paused: false,
             pending_steps: 0,
@@ -266,11 +272,14 @@ impl TickLoop {
         Self {
             scene_store,
             schedule: Schedule::new(),
-            actors: ActorRegistry::new(),
+            actor_bank: crate::lifecycle::ActorBank::default(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
+            class_inbox: None,
             events: new_component_event_hub(),
-            component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
+            component_runtime: pulsar_world_registry::Session::new(
+                pulsar_world_registry::SessionKind::PlayInEditor,
+            ),
             static_moves: None,
             world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
@@ -281,7 +290,6 @@ impl TickLoop {
             running: running.clone(),
             running_flag: running,
             pending_rebinds: Vec::new(),
-            rebinding: Vec::new(),
             reload_armed: false,
             paused: false,
             pending_steps: 0,
@@ -452,6 +460,19 @@ impl TickLoop {
         // while its component borrow is held.
         {
             let scene_identity = Arc::as_ptr(&self.scene_store) as usize;
+            self.ensure_actor_bank();
+            if let Some(inbox) = &self.class_inbox {
+                if self
+                    .component_runtime
+                    .scope()
+                    .resource::<pulsar_class::ClassInbox>()
+                    .is_none()
+                {
+                    self.component_runtime
+                        .scope_mut()
+                        .insert_resource(inbox.clone());
+                }
+            }
             let mut store = self.scene_store.write();
             pulsar_world_registry::tick_live_components(
                 &mut store.world,
@@ -462,19 +483,12 @@ impl TickLoop {
             );
         }
 
-        // Phase 2: actor lifecycle ticks (`Actor::tick` is deliberately
-        // time-free -- see `pulsar_scenedb::actor`'s trait doc). Separate
-        // lock acquisition from phase 1 on purpose: a system that queued
-        // work for actors can't starve the render thread for two phases'
-        // worth of mutation, and vice versa. Hot-reload-rebound shells
-        // (#653) tick in the same phase and scope, right after the registry
-        // — same callbacks, same world, one lock acquisition.
+        // Phase 2: native script actors tick in phase 1b, through the component
+        // lifecycle (`crate::lifecycle`), as every component does. This phase is
+        // what remains of the old actor registry's: flush what the actors and
+        // components queued. Separate lock acquisition from phase 1 on purpose.
         {
             let mut store = self.scene_store.write();
-            self.actors.tick_all(&mut store.world);
-            for shell in &mut self.rebinding {
-                shell.tick(&mut store.world);
-            }
             // World-mutating component methods append to per-owner outboxes.
             // Move them onto Gamma's deferred queue only after actors have
             // released their component/World borrows; the following flush
@@ -486,9 +500,9 @@ impl TickLoop {
         // tick. End their owner-scoped lifecycle now, before SceneDB's
         // end-of-window cleanup drains the independent removal journal.
         {
-            let store = self.scene_store.read();
-            pulsar_world_registry::process_component_removals(
-                &store.world,
+            let mut store = self.scene_store.write();
+            pulsar_world_registry::process_component_removals_mut(
+                &mut store.world,
                 &self.events,
                 &mut self.component_runtime,
             );
@@ -531,9 +545,9 @@ impl TickLoop {
         // native component and actor phases. Drain those lifecycle endings
         // before closing the SceneDB change window as well.
         {
-            let store = self.scene_store.read();
-            pulsar_world_registry::process_component_removals(
-                &store.world,
+            let mut store = self.scene_store.write();
+            pulsar_world_registry::process_component_removals_mut(
+                &mut store.world,
                 &self.events,
                 &mut self.component_runtime,
             );
@@ -616,11 +630,9 @@ impl TickLoop {
             }
         }
 
-        // Loop is shutting down — give script instances a chance to run
-        // their `end_play` teardown logic, mirroring `ActorRegistry`'s
-        // begin_play/end_play contract for native actors.
-        self.end_scripts();
-        self.end_component_runtime();
+        // Loop is shutting down: end the session (components, then scripts;
+        // see `end_session`).
+        self.end_session();
     }
 
     /// Turn on the script phase for the project at `project_root`: a script
@@ -633,15 +645,21 @@ impl TickLoop {
     ) -> Arc<Mutex<crate::scripting::ScriptDriver>> {
         let project_root = project_root.into();
         let events = self.events.clone();
-        Arc::clone(self.scripts.get_or_insert_with(|| {
+        let mut class_inbox = None;
+        let driver = Arc::clone(self.scripts.get_or_insert_with(|| {
             tracing::info!(project = %project_root.display(), "Script driver enabled");
             let mut driver = crate::scripting::new_driver(project_root);
             driver.attach_events(events);
             driver.set_world_roles(self.world_roles.clone());
             driver.set_possession_gate(self.possession.clone());
             driver.set_view_targets(self.view_targets.clone());
+            class_inbox = Some(driver.attach_session());
             Arc::new(Mutex::new(driver))
-        }))
+        }));
+        if class_inbox.is_some() {
+            self.class_inbox = class_inbox;
+        }
+        driver
     }
 
     /// Turn on the script phase for the game's content: the content root
@@ -671,6 +689,7 @@ impl TickLoop {
         driver.set_world_roles(self.world_roles.clone());
         driver.set_possession_gate(self.possession.clone());
         driver.set_view_targets(self.view_targets.clone());
+        self.class_inbox = Some(driver.attach_session());
         let driver = Arc::new(Mutex::new(driver));
         self.scripts = Some(Arc::clone(&driver));
         Ok(driver)
@@ -691,11 +710,99 @@ impl TickLoop {
         self.events.drain_queued();
     }
 
-    /// End active macro-registered native component lifecycles. Removal and
-    /// disable teardown callbacks receive the stable owner identity because
-    /// the SceneDB row has already been removed by that point.
+    /// End active native component lifecycles with the world alive: every
+    /// live instance gets `end_play` (the world-form ones with `&mut World`,
+    /// the component still in it), then the session's resources are dropped.
+    /// Idempotent: a second call finds nothing live.
+    ///
+    /// Then the native script actors are dropped and their carrier entities
+    /// despawned, while the code that made them is still loaded: a hot reload
+    /// keeps the world and its [`ScriptTag`](crate::scripts::ScriptTag)ged
+    /// owners, never a behavior from the old library.
     pub fn end_component_runtime(&mut self) {
-        pulsar_world_registry::end_live_components(&mut self.component_runtime, &self.events);
+        let mut store = self.scene_store.write();
+        pulsar_world_registry::end_session(
+            &mut store.world,
+            &self.events,
+            &mut self.component_runtime,
+        );
+        self.actor_bank.clear();
+        let carriers: Vec<_> = store
+            .world
+            .query::<&crate::lifecycle::ActorCarrier>()
+            .map(|(instance, _)| instance)
+            .collect();
+        for instance in carriers {
+            store.world.despawn(instance);
+        }
+    }
+
+    /// Give a registered native actor to the lifecycle: the bank owns it and
+    /// the session scope holds a handle to it.
+    pub(crate) fn bank_actor(
+        &mut self,
+        instance: pulsar_scenedb::Entity,
+        actor: Box<dyn crate::lifecycle::NativeActor>,
+    ) {
+        self.actor_bank.insert(instance, actor);
+        self.ensure_actor_bank();
+    }
+
+    /// Put the actor bank's handle in the session scope when it is not there
+    /// (a session end or a replaced world drops the scope's resources).
+    fn ensure_actor_bank(&mut self) {
+        if self.actor_bank.len() == 0 {
+            return;
+        }
+        if self
+            .component_runtime
+            .scope()
+            .resource::<crate::lifecycle::ActorBank>()
+            .is_none()
+        {
+            self.component_runtime
+                .scope_mut()
+                .insert_resource(self.actor_bank.clone());
+        }
+    }
+
+    /// End the session, in the one order the guarantee needs: `end_play` for
+    /// every live component instance **while the world is alive**
+    /// ([`end_component_runtime`](Self::end_component_runtime)), then every
+    /// script ([`end_scripts`](Self::end_scripts), which also runs the game
+    /// session hooks and drains the hub), then the host gets control back.
+    /// PIE's host restores the editor's snapshot only after this returned
+    /// (`PieSession::shutdown`, then `pie_shutdown`). Idempotent.
+    pub fn end_session(&mut self) {
+        self.end_component_runtime();
+        self.end_scripts();
+    }
+
+    /// What kind of session this loop is: [`Standalone`](pulsar_world_registry::SessionKind::Standalone)
+    /// from [`new`](Self::new), [`PlayInEditor`](pulsar_world_registry::SessionKind::PlayInEditor)
+    /// from [`with_scene_store`](Self::with_scene_store).
+    pub fn session_kind(&self) -> pulsar_world_registry::SessionKind {
+        self.component_runtime.kind()
+    }
+
+    /// Set the kind the host says this session is (`embed.rs` passes the
+    /// PIE ABI's; a headless run says `Headless`).
+    pub fn set_session_kind(&mut self, kind: pulsar_world_registry::SessionKind) {
+        self.component_runtime.set_kind(kind);
+    }
+
+    /// The session's own lifecycle state: resources, settings, construct
+    /// statistics.
+    pub fn session(&self) -> &pulsar_world_registry::Session {
+        &self.component_runtime
+    }
+
+    pub fn session_mut(&mut self) -> &mut pulsar_world_registry::Session {
+        &mut self.component_runtime
+    }
+
+    pub(crate) fn set_session_settings(&mut self, settings: serde_json::Value) {
+        self.component_runtime.set_settings(settings);
     }
 
     /// Signal the loop to stop after the current tick.
@@ -852,11 +959,15 @@ impl SharedTickLoop {
     pub fn spawn_thread(&self, name: impl Into<String>) -> std::thread::JoinHandle<()> {
         let shared = self.0.clone();
         let name = name.into();
-        editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service).owner("pulsar_game"), move || {
+        editor_task_queue::spawn_thread(
+            editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service)
+                .owner("pulsar_game"),
+            move || {
                 let mut guard = shared.lock().unwrap();
                 guard.run_blocking();
-            })
-            .expect("failed to spawn tick thread")
+            },
+        )
+        .expect("failed to spawn tick thread")
     }
 
     /// Signal the loop to stop after the current tick. Never locks the

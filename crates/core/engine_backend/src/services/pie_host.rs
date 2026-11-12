@@ -363,6 +363,10 @@ impl PieHost {
                 present: 1,
                 _reserved: 0,
             }),
+            // The game is a session of its own on the editor's world: the
+            // host says so (ABI v5), the guest never guesses.
+            session_kind: pulsar_pie_abi::session_kind::PLAY_IN_EDITOR,
+            _reserved: 0,
         });
 
         let ok = init(&mut *ctx as *mut PieContext);

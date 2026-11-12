@@ -1,25 +1,32 @@
 //! The script driver: the script runtime follows the world (#922).
 //!
-//! A placed class is an entity carrying a [`ClassInstance`] component. The
-//! [`ScriptDriver`] watches that component through a SceneDB change journal
-//! and keeps exactly one script instance per class instance:
+//! A placed class is an entity carrying a [`ClassInstance`] component, and
+//! `ClassInstance` is a normal component of the component lifecycle
+//! (`pulsar_class::lifecycle`, `pulsar_component_lifecycle`): the session
+//! delivers `begin_play`, `construct` and `end_play` for it like for any
+//! other class, and posts them to the [`ClassInbox`] the driver drains. The
+//! driver follows nothing of the world itself (no journal cursors, no scan);
+//! it keeps exactly one script instance per class instance:
 //!
-//! - **added** (level load, editor placement during Play-in-Editor, a
-//!   script's `world::spawn`): the class's compiled module is loaded if it
-//!   is not yet, a script instance is spawned bound to the entity with the
-//!   instance's `variable_overrides`, its component-slot handles are bound
-//!   ([`bind_class_slots`]) and its `begin_play` is queued;
-//! - **removed**, or its entity despawned: `end_play` runs (if `begin_play`
-//!   did) and the instance is dropped with its waiting calls;
-//! - **re-written** with the same class (the editor rebuilding the
-//!   instance's components): the slot handles are bound again, and the
-//!   script keeps its state; with a different class, the old instance ends
-//!   and a new one starts.
+//! - **begin** (level load, editor placement during Play-in-Editor, a
+//!   script's `world::spawn`, an enabled instance): the class's compiled
+//!   module is loaded if it is not yet, a script instance is spawned bound
+//!   to the entity with the instance's `variable_overrides`, its
+//!   component-slot handles are bound ([`bind_class_slots`]) and its
+//!   `begin_play` is queued;
+//! - **end** (the instance disabled or removed, its entity despawned, the
+//!   session ended): `end_play` runs (if `begin_play` did) and the instance
+//!   is dropped with its waiting calls;
+//! - **construct** (the component re-written: the editor rebuilding the
+//!   instance's components): with the same class the slot handles are bound
+//!   again and the script keeps its state; with a different class, the old
+//!   instance ends and a new one starts, once.
 //!
-//! The first reconcile opens the journal and scans every `ClassInstance`,
-//! which is how a level's instances start, whether the level was loaded
-//! before the driver existed (Play-in-Editor adopts the editor's world) or
-//! after (standalone). A journal overflow rescans the same way.
+//! The component lifecycle's first pump finds every instance already in the
+//! world, which is how a level's instances start, whether the level was
+//! loaded before the session existed (Play-in-Editor adopts the editor's
+//! world) or after (standalone). A driver used without a tick loop pumps a
+//! lifecycle of its own ([`ScriptDriver::attach_session`]).
 //!
 //! # One frame
 //!
@@ -45,15 +52,13 @@
 //!
 //! - **Global scripts** ([`ScriptingConfig::global_scripts`]) start first,
 //!   in the order the config lists them.
-//! - **Instances found by a scan** (the level, or a rescan) start by
-//!   hierarchy depth (parents before children), then by StableId.
-//! - **Instances added later** start in the order the world recorded them,
-//!   so objects spawned by scripts start at the next frame's reconcile in
-//!   spawn order.
+//! - **Instances the lifecycle began in one frame** (the level, or objects
+//!   spawned by scripts) start by hierarchy depth (parents before
+//!   children), then by StableId.
 //! - `end_play` for `world::destroy` runs before the object's components
 //!   are removed. When something else despawns an entity (the editor
 //!   deleting it during Play-in-Editor), the journal only reports it after
-//!   the fact, so that `end_play` runs at the next reconcile with `self`
+//!   the fact, so that `end_play` runs at the next frame with `self`
 //!   already dead: component access resolves to nothing (#888), it never
 //!   panics.
 //!
@@ -85,8 +90,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use pulsar_class::{ClassId, ClassRegistry};
-use pulsar_scenedb::{ChangeCursor, ComponentChange, Entity, World};
+use pulsar_class::{ClassId, ClassInbox, ClassRegistry};
+use pulsar_scenedb::{Entity, World};
 use pulsar_script_runtime::{InstanceRuntimeStats, ScriptRuntime};
 use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
 
@@ -122,15 +127,18 @@ pub struct ScriptDriver {
     /// created after startup). Off for a registry given by the caller.
     rescan_registry: bool,
     config: ScriptingConfig,
-    cursor: Option<ChangeCursor>,
-    /// `ComponentOwner` changes: an instance enabled or disabled. Opened
-    /// with `cursor`.
-    owner_cursor: Option<ChangeCursor>,
+    /// What the component lifecycle told the driver about placed classes
+    /// (`pulsar_class::lifecycle`). The session scope holds a clone as a
+    /// resource, so the lifecycle callbacks reach the driver without locking
+    /// it.
+    inbox: ClassInbox,
+    /// The lifecycle the driver pumps itself, when no host session does (a
+    /// tool or test driving `run_frame` directly). `None` once a tick loop
+    /// attached its session ([`attach_session`](Self::attach_session)).
+    own_lifecycle: Option<reconcile::OwnLifecycle>,
+    /// The objects whose class the driver runs (a script, or a class
+    /// without a compiled module), by object entity.
     tracked: HashMap<Entity, Tracked>,
-    /// Each tracked object's `ClassInstance` component instance -> the
-    /// object, so a change on an instance already despawned still names
-    /// its object (Pulsar-Native#1035).
-    holders: HashMap<Entity, Entity>,
     by_instance: HashMap<String, Entity>,
     /// Class GUID → the runtime's class name (the module name).
     loaded: HashMap<ClassId, String>,
@@ -167,7 +175,6 @@ pub struct ScriptDriver {
     noted: HashSet<String>,
     spawn_serial: u64,
     reloads: ReloadRequests,
-    scratch: Vec<ComponentChange>,
     /// Event hub integration, once attached.
     events: Option<ScriptEvents>,
     /// Level name reported by `LevelLoaded`.
@@ -204,10 +211,9 @@ impl ScriptDriver {
             registry,
             rescan_registry: false,
             config,
-            cursor: None,
-            owner_cursor: None,
+            inbox: ClassInbox::default(),
+            own_lifecycle: Some(reconcile::OwnLifecycle::new()),
             tracked: HashMap::new(),
-            holders: HashMap::new(),
             by_instance: HashMap::new(),
             loaded: HashMap::new(),
             templates: HashMap::new(),
@@ -227,11 +233,19 @@ impl ScriptDriver {
             noted: HashSet::new(),
             spawn_serial: 0,
             reloads: Arc::new(Mutex::new(Vec::new())),
-            scratch: Vec::new(),
             events: None,
             level: String::new(),
             native_libraries: HashMap::new(),
         }
+    }
+
+    /// A host session drives the component lifecycle from now on: returns
+    /// the inbox it must register in its session scope as a resource
+    /// (`SessionScope::insert_resource`). The driver stops pumping a
+    /// lifecycle of its own.
+    pub fn attach_session(&mut self) -> ClassInbox {
+        self.own_lifecycle = None;
+        self.inbox.clone()
     }
 
     pub fn runtime(&self) -> &ScriptRuntime {

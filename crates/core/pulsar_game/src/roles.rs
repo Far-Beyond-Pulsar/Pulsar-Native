@@ -53,6 +53,9 @@ impl TickLoop {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .set_world_roles(roles.clone());
         }
+        // The level's settings are the session's too: a plugin reads them
+        // through `cx.session` (`pulsar_component_lifecycle::SessionScope`).
+        self.set_session_settings(roles.settings().clone());
         self.world_roles = roles;
     }
 

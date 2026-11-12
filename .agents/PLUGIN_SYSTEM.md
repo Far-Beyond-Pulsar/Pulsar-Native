@@ -370,6 +370,22 @@ The registration matrix, the raw `inventory` paths and the plugin-to-plugin edge
 `PLUGIN_API_REFACTOR_PLAN.md` (the audit, sections 0-3; its review, section 9; phase 1 as
 built, section 11), which is also the roadmap.
 
+## Component lifecycle registrations
+
+A class's lifecycle is a registration of its own, never reflected methods:
+`ClassSpec::actor` makes `Components::class` add an `ActorRegistration`
+(category `component.lifecycle`, origin the plugin root), gated with the class
+(`class_enabled`: a disabled plugin's table is not handed out or driven) and
+carried across plugin libraries by the world runtime (`ABI_VERSION` 6, the
+fingerprint covers `ActorRegistration` and `ActorTable`). A class that uses
+`#[register_component_runtime]` gets its table from the macro instead
+(`EngineActor`, link-time, still gated by the class name; the raw `inventory`
+tick registration no longer exists). The audit
+`pulsar_world_registry::find_lifecycle_problems` (run over every installed
+class in `plugins/installed/tests/lifecycle.rs`) fails when a reflected
+method or script native is named `construct`, `begin_play`, `tick` or
+`end_play`.
+
 ## Plugin libraries
 
 A plugin built as a library exports its root's `build`, the same function a static build

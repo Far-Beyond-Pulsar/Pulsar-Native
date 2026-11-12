@@ -107,15 +107,22 @@ fn command(invocation: &Invocation, project_root: &Path) -> Command {
 /// Kill `child`, and everything it started, if `cancel` is raised before
 /// `done` is. Returns when either is.
 fn watch_for_cancel(child: Arc<Mutex<Child>>, cancel: Arc<AtomicBool>, done: Arc<AtomicBool>) {
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: watch for cancel", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
-        while !done.load(Ordering::Acquire) {
-            if cancel.load(Ordering::Acquire) {
-                super::process_tree::kill_tree(&mut child.lock());
-                return;
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui build: watch for cancel",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_build"),
+        move || {
+            while !done.load(Ordering::Acquire) {
+                if cancel.load(Ordering::Acquire) {
+                    super::process_tree::kill_tree(&mut child.lock());
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
             }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-    });
+        },
+    );
 }
 
 /// Pull `Updating …` / `Locking …` out of cargo's stderr for the status line.
@@ -272,17 +279,24 @@ pub fn run_compiling(
 
     // stderr carries registry activity and, when there is no JSON, the failure.
     let stderr_progress = progress.clone();
-    let stderr_thread = editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: run compiling", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
-        let mut text = String::new();
-        for line in stderr.lines().map_while(Result::ok) {
-            if let Some(activity) = registry_activity(&line) {
-                stderr_progress.status(activity);
+    let stderr_thread = editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui build: run compiling",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_build"),
+        move || {
+            let mut text = String::new();
+            for line in stderr.lines().map_while(Result::ok) {
+                if let Some(activity) = registry_activity(&line) {
+                    stderr_progress.status(activity);
+                }
+                text.push_str(&line);
+                text.push('\n');
             }
-            text.push_str(&line);
-            text.push('\n');
-        }
-        text
-    });
+            text
+        },
+    );
 
     // Artifacts fill 10–94 %; the first 10 % is dependency resolution and the
     // last 6 % linking, which produces no messages.

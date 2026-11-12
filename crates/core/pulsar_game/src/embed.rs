@@ -33,6 +33,7 @@ use crate::camera_selection::{select_world_camera, view_target_drives_camera};
 use crate::freecam::FreeCam;
 use crate::tick::TickLoop;
 use pulsar_core::TickMode;
+use pulsar_world_registry::SessionKind;
 
 /// Events the PIE session's debug tap keeps.
 const PIE_EVENT_TAP_CAPACITY: usize = 256;
@@ -193,11 +194,15 @@ impl PieSession {
         self.tick_loop.events.export_raw()
     }
 
-    /// End the session: `end_play` for every script while the world still
-    /// holds their objects; script subscriptions, queued handler calls,
-    /// timers and queued events are dropped (see `TickLoop::end_scripts`).
+    /// End the session, explicitly and in order, while the world is still
+    /// the game's: `end_play` for every live native component instance
+    /// (with the world alive), then for every script; script subscriptions,
+    /// queued handler calls, timers and queued events are dropped, and the
+    /// session's resources with them (see `TickLoop::end_session`). Only
+    /// after this returns may the host restore the editor's snapshot
+    /// (`pie_shutdown` is what the host calls, then drops the game).
     pub fn shutdown(&mut self) {
-        self.tick_loop.end_scripts();
+        self.tick_loop.end_session();
         self._class_reloads = None;
     }
 }
@@ -240,6 +245,20 @@ impl EmbeddedGame {
     /// Route a log line back to the editor's log viewer.
     fn log(&self, level: u32, msg: &str) {
         (self.log)(self.userdata, level, msg.as_ptr(), msg.len());
+    }
+}
+
+/// The component lifecycle's [`SessionKind`] for the PIE ABI's
+/// [`pulsar_pie_abi::session_kind`] value. An embedded game is a play
+/// session; the editor's own kind (and any value this guest does not know)
+/// is refused.
+pub(crate) fn session_kind_from_abi(value: u32) -> Option<SessionKind> {
+    use pulsar_pie_abi::session_kind;
+    match value {
+        session_kind::PLAY_IN_EDITOR => Some(SessionKind::PlayInEditor),
+        session_kind::STANDALONE => Some(SessionKind::Standalone),
+        session_kind::HEADLESS => Some(SessionKind::Headless),
+        _ => None,
     }
 }
 
@@ -382,10 +401,20 @@ impl EmbeddedGame {
         // one strong count that this `from_raw` reclaims exactly once.
         let host_store = unsafe { Arc::from_raw(host_world) };
         let mut tick_loop = TickLoop::with_scene_store(host_store, TickMode::default(), threads);
+        // The host says what kind of session this is (ABI v5); never guessed.
+        match session_kind_from_abi(ctx.session_kind) {
+            Some(kind) => tick_loop.set_session_kind(kind),
+            None => {
+                return Err(format!(
+                    "PiE: the host passed session kind {}, which an embedded game cannot be",
+                    ctx.session_kind
+                ))
+            }
+        }
         // Native hot reload (#653): when the host stopped a still-running
         // game to swap in this fresh build, the shared world carries the
         // previous session's entities. Arm rebinding BEFORE project setup so
-        // `TickLoop::register_actor` re-binds script actors to their existing
+        // `TickLoop::register_native_actor` re-binds script actors to their existing
         // entities instead of spawning duplicates — the native equivalent of
         // D3's `reload_blueprint` for VM instances.
         if ctx.session_flags & pulsar_pie_abi::session_flags::RELOAD != 0 {
@@ -857,4 +886,37 @@ pub fn format_to_u32(format: wgpu::TextureFormat) -> Option<u32> {
         F::Bgra8UnormSrgb => 3,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod session_kind_tests {
+    use super::*;
+    use pulsar_pie_abi::session_kind;
+
+    /// The host's word maps to the lifecycle's kind; an embedded game is
+    /// never the editor's own session and an unknown value is refused.
+    #[test]
+    fn the_abi_session_kind_maps_and_refuses_what_a_game_cannot_be() {
+        assert_eq!(
+            session_kind_from_abi(session_kind::PLAY_IN_EDITOR),
+            Some(SessionKind::PlayInEditor)
+        );
+        assert_eq!(
+            session_kind_from_abi(session_kind::STANDALONE),
+            Some(SessionKind::Standalone)
+        );
+        assert_eq!(
+            session_kind_from_abi(session_kind::HEADLESS),
+            Some(SessionKind::Headless)
+        );
+        assert_eq!(session_kind_from_abi(session_kind::EDITOR), None);
+        assert_eq!(session_kind_from_abi(99), None);
+    }
+
+    /// The version a v4 library reports is refused by this host's gate, and
+    /// this guest refuses a context from another version.
+    #[test]
+    fn the_abi_version_is_five() {
+        assert_eq!(PIE_ABI_VERSION, 5);
+    }
 }

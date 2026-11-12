@@ -137,8 +137,8 @@ the reflected getters and setters. See
 [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
 
 Component lifecycles (`begin_play`, `tick`, events, `end_play`) are
-`ComponentTickRegistration`s generated for the component and run on the live
-value; see [`COMPONENT_RUNTIME_GAPS.md`](COMPONENT_RUNTIME_GAPS.md).
+lifecycle tables (`ActorTable`) generated for the component by
+`#[register_component_runtime]` and run on the live value; see [`COMPONENT_RUNTIME_GAPS.md`](COMPONENT_RUNTIME_GAPS.md).
 
 `pulsar_reflection` still defines `ComponentRuntimeBehavior`,
 `RuntimeBehaviorRegistration` and `apply_runtime_behavior_for_class` (the

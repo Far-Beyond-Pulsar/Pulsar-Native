@@ -29,13 +29,22 @@ fn names_follow_the_project_conventions() {
 }
 
 #[test]
-fn the_actor_forwards_the_pinned_time_free_callbacks() {
+fn the_actor_forwards_the_native_actor_callbacks() {
     let source = generate_actor("PlayerController", &empty_class("PlayerController"), &[]).unwrap();
     assert!(source.contains("pub struct PlayerController {"));
-    assert!(source.contains("fn begin_play(&mut self, _entity: Entity, _world: &mut World)"));
-    assert!(source.contains("fn tick(&mut self, _entity: Entity, _world: &mut World)"));
-    assert!(source.contains("fn end_play(&mut self, _entity: Entity, _world: &mut World)"));
-    assert!(source.contains("impl Actor for PlayerController"));
+    assert!(source.contains(
+        "fn begin_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>)"
+    ));
+    assert!(source.contains(
+        "fn tick(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>, _delta_seconds: f32)"
+    ));
+    assert!(source.contains(
+        "fn end_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>)"
+    ));
+    // The impl names the trait by its full path, so it does not depend on
+    // whatever `Actor` the prelude exports (SceneDB's, for the deprecation window).
+    assert!(source.contains("impl pulsar_game::lifecycle::NativeActor for PlayerController"));
+    assert!(!source.contains("impl Actor for"));
     assert!(!source.contains("GameTime"));
     // State is per actor; nothing is process-global.
     assert!(

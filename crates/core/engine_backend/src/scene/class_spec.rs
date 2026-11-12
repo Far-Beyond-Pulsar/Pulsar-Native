@@ -1,5 +1,5 @@
 //! A plugin's component classes, as its root registers them:
-//! `p.components().class::<T>(ClassSpec { requires, systems, gpu,
+//! `p.components().class::<T>(ClassSpec { requires, systems, actor, gpu,
 //! presentation })`.
 //!
 //! - **requires**: the classes placed with it. Placing the class (the
@@ -11,6 +11,9 @@
 //!   (`pulsar_world_registry::required_class`).
 //! - **systems**: per-frame work ordered by labels
 //!   (`pulsar_world_registry::systems`), run while the class is registered.
+//! - **actor**: its lifecycle events, a capability table of its own
+//!   (`pulsar_component_lifecycle`), never reflected methods: not reachable
+//!   from Blueprints.
 //! - **gpu**: the source rows the class derives and their join
 //!   ([`SceneRowsRegistration`]).
 //! - **presentation**: its own card, or a facade: one card and one script
@@ -28,6 +31,11 @@
 //! identity, data and plugin: a disabled plugin's member loads unresolved
 //! with its data, the rest keep working.
 
+use pulsar_component_lifecycle::ActorRegistration;
+pub use pulsar_component_lifecycle::{
+    Actor, ActorCx, ActorTable, ConstructInfo, ConstructReason, SessionKind, SessionScope,
+    WorldActor,
+};
 use pulsar_plugins::PluginBuilder;
 use pulsar_world_registry::{
     Presentation, System, SystemRegistration, WorldComponentClass, WorldComponentRegistration,
@@ -40,6 +48,10 @@ pub struct ClassSpec {
     pub requires: &'static [&'static str],
     /// Its per-frame systems, ordered by label.
     pub systems: &'static [System],
+    /// Its lifecycle events (`begin_play`, `tick`, `end_play`): the
+    /// capability registry's table, `ActorTable::of::<T>()`
+    /// (`pulsar_component_lifecycle`).
+    pub actor: Option<ActorTable>,
     /// The source rows it derives for its plugin's passes.
     #[cfg(feature = "render")]
     pub gpu: Option<ClassRows>,
@@ -87,6 +99,13 @@ impl Components<'_> {
                 origin,
                 class_name,
                 system: *system,
+            });
+        }
+        if let Some(table) = spec.actor {
+            self.builder.add(ActorRegistration {
+                origin,
+                class_name,
+                table,
             });
         }
         #[cfg(feature = "render")]

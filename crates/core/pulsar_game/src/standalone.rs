@@ -329,6 +329,8 @@ pub fn run_headless(
     frames: u64,
 ) -> Result<HeadlessReport, String> {
     prepare_engine(content)?;
+    // No window, no renderer: a headless session, whatever built the loop.
+    game.set_session_kind(pulsar_world_registry::SessionKind::Headless);
     let settings = content.settings();
     let level = startup_level(content);
     if let Some(path) = &level {
@@ -381,7 +383,8 @@ pub fn run_headless(
             });
         }
     }
-    game.end_scripts();
+    // Components end first, while the world is alive, then scripts.
+    game.end_session();
     report.problems.extend(game.take_script_problems());
     tracing::info!(
         frames,

@@ -13,6 +13,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend, Subsystem lifecycle |
 | `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
 | `.agents/PLUGIN_API_REFACTOR_PLAN.md` | The plugin API plan (#1608): the phase 0 audit (registration matrix, raw `inventory` paths, plugin-to-plugin edges), its review, the Q1-Q4 decisions, phases, as built |
+| `.agents/COMPONENT_LIFECYCLE_PLAN.md` | The component lifecycle plan: audit of SceneDB `Actor`/`ActorRegistry`, `ComponentTickRegistration` and the script driver, the target (capability registry, `construct`, session scope, physics, Blueprint class instances), decisions, phases P1-P6, risks |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |

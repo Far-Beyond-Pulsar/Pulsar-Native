@@ -51,11 +51,11 @@ pub mod thumbnails;
 
 pub use asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 pub use inspector::{Inspector, InspectorCarry, InspectorRow};
-pub use ui_shell::open_window;
-pub use ui_shell::PulsarWindowExt;
 pub use property_editor_registry::{
     BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, PROPERTY_EDITOR_REGISTRY,
 };
+pub use ui_shell::open_window;
+pub use ui_shell::PulsarWindowExt;
 
 pub use shared_state::SharedState;
 
@@ -71,14 +71,14 @@ pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use locale_picker::LocalePicker;
 pub use menu::{AppTitleBar, AppTitleBarEvent};
 pub use panel::{PanelBase, PanelEvent};
-pub use ui_shell::{editor_tools, profile_dropdown, theme_dropdown};
-pub use ui_shell::{ProfileDropdown, ProfileDropdownEvent};
 pub use reflected_properties_panel::{
     decorate_property_override, render_property_row_runtime, PropertyOverride,
     PropertyStateManager, ReflectedPropertiesPanelConfig,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
 pub use ui_shell::ThemePicker;
+pub use ui_shell::{editor_tools, profile_dropdown, theme_dropdown};
+pub use ui_shell::{ProfileDropdown, ProfileDropdownEvent};
 
 // Re-export diagnostics from ui crate
 pub use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};

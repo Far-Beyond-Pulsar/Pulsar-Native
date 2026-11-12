@@ -172,9 +172,16 @@ impl FabSearchWindow {
         cx.notify();
 
         let (tx, rx) = smol::channel::bounded::<Result<Box<crate::parser::SketchfabMe>, String>>(1);
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: fetch me", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-            smol::block_on(tx.send(fetch_sketchfab_me(&token)));
-        });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui fab search: fetch me",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_fab_search"),
+            move || {
+                smol::block_on(tx.send(fetch_sketchfab_me(&token)));
+            },
+        );
 
         cx.spawn(async move |this, cx| {
             if let Ok(result) = rx.recv().await {
@@ -255,10 +262,17 @@ impl FabSearchWindow {
         self.image_inflight += 1;
         let (tx, rx) = smol::channel::bounded::<Option<Arc<gpui::RenderImage>>>(1);
         let url_thread = url.clone();
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: start image fetch", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-            let maybe = crate::image_loader::fetch_and_decode(&url_thread).ok();
-            smol::block_on(tx.send(maybe));
-        });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui fab search: start image fetch",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_fab_search"),
+            move || {
+                let maybe = crate::image_loader::fetch_and_decode(&url_thread).ok();
+                smol::block_on(tx.send(maybe));
+            },
+        );
 
         cx.spawn(async move |this, cx| {
             if let Ok(maybe) = rx.recv().await {

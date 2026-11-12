@@ -267,7 +267,9 @@ impl LevelEditorPanel {
         let scene_store = state.scene.shared_scene();
 
         // Create the GPU render engine sharing the scene store Arc.
-        let renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
+        let renderer_builder = GpuRendererBuilder::new(1600, 900)
+            .scene_db(scene_store.clone())
+            .construct_pump(state.scene.construct_pump.clone());
         let gpu_engine = Arc::new(Mutex::new(renderer_builder.build()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 

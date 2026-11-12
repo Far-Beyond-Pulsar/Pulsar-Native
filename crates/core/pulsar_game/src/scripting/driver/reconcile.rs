@@ -1,12 +1,13 @@
-//! Keeping script instances in step with the world's `ClassInstance`s:
-//! journal reconcile, rescans, starting and stopping instances and globals.
+//! Keeping script instances in step with the world's `ClassInstance`s: the
+//! component lifecycle's `begin_play`, `construct` and `end_play` start,
+//! rebind and stop them; globals start here too.
 //! Entry points: [`ScriptDriver::reconcile`], `end_play_all`.
 
 use engine_backend::scene::SceneWorldExt;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
-use pulsar_class::{ClassEntry, ClassInstance};
-use pulsar_scenedb::{ChangeRead, Entity, World};
+use pulsar_class::{ClassEntry, ClassEvent, ClassInbox, ClassInstance};
+use pulsar_scenedb::{Entity, World};
 use pulsar_script_runtime::RuntimeError;
 use pulsar_world_registry::pulsar_scene_model::attachments;
 use serde_json::Value;
@@ -19,7 +20,7 @@ use crate::scripting::commands::CommandScope;
 use pulsar_events::builtin::{EndPlay, EntityDestroyed};
 use pulsar_events::entity_channel;
 
-/// Scan order: hierarchy depth, then StableId (then entity bits, for
+/// Start order: hierarchy depth, then StableId (then entity bits, for
 /// objects without one).
 pub(super) fn sort_roots(roots: &mut [(usize, String, Entity)]) {
     roots.sort_by(|a, b| (a.0, &a.1, a.2.bits()).cmp(&(b.0, &b.1, b.2.bits())));
@@ -38,6 +39,27 @@ pub(super) fn depth(world: &World, entity: Entity) -> usize {
     }
     depth
 }
+/// The scene identity of a driver's own lifecycle (it has one world).
+const OWN_SCENE: usize = 1;
+
+/// The lifecycle a driver pumps when no host session does: a session of its
+/// own and a private event hub.
+pub(super) struct OwnLifecycle {
+    session: pulsar_world_registry::Session,
+    hub: pulsar_events::EventHub,
+}
+
+impl OwnLifecycle {
+    pub(super) fn new() -> Self {
+        Self {
+            session: pulsar_world_registry::Session::new(
+                pulsar_world_registry::SessionKind::Headless,
+            ),
+            hub: pulsar_events::EventHub::new(),
+        }
+    }
+}
+
 impl ScriptDriver {
     /// Bring the script instances in line with the world's
     /// `ClassInstance`s without running any event. World commands queued by
@@ -60,6 +82,14 @@ impl ScriptDriver {
     /// a stopped session leaves nothing behind on the hub.
     pub fn end_play_all(&mut self, world: &mut World) -> Vec<RuntimeError> {
         let scope = CommandScope::begin();
+        // A driver pumping its own lifecycle ends it here, with the world
+        // alive. Either way the ends the lifecycle posted are dropped: the
+        // runtime ends every instance below, in start order, and nothing
+        // starts at shutdown.
+        if let Some(own) = self.own_lifecycle.as_mut() {
+            pulsar_world_registry::end_session(world, &own.hub, &mut own.session);
+        }
+        self.inbox.take();
         // The game ends while the roles' scripts still live: the player lets
         // go of their pawn, then the game mode hears the game end.
         let mut report = DriverReport::default();
@@ -122,131 +152,146 @@ impl ScriptDriver {
             self.roles_started = true;
             self.start_roles(world, report);
         }
-        let dirty = match (self.cursor.as_mut(), self.owner_cursor.as_mut()) {
-            (Some(cursor), Some(owner_cursor)) => {
-                self.scratch.clear();
-                let instances = world.read_changes(cursor, &mut self.scratch);
-                let changed_instances = self.scratch.len();
-                let owners = world.read_changes(owner_cursor, &mut self.scratch);
-                match (instances, owners) {
-                    (ChangeRead::Complete, ChangeRead::Complete) => {
-                        let mut seen = HashSet::new();
-                        Some(
-                            self.scratch
-                                .iter()
-                                .enumerate()
-                                // An owner change concerns a script only on a
-                                // `ClassInstance` holder (enabled/disabled).
-                                .filter(|(i, change)| {
-                                    *i < changed_instances
-                                        || world.get::<ClassInstance>(change.entity).is_some()
-                                        || self.holders.contains_key(&change.entity)
-                                })
-                                .map(|(_, change)| self.object_of_holder(world, change.entity))
-                                .filter(|entity| seen.insert(*entity))
-                                .collect::<Vec<_>>(),
-                        )
-                    }
-                    _ => {
-                        tracing::info!(
-                            "A ClassInstance or ComponentOwner journal overflowed; rescanning"
-                        );
-                        None
-                    }
-                }
-            }
-            _ => {
-                // Opened before the scan under the same world borrow: every
-                // later change is in the journal, nothing is missed.
-                self.cursor = Some(world.open_change_cursor::<ClassInstance>());
-                self.owner_cursor = Some(world.open_change_cursor::<attachments::ComponentOwner>());
-                None
-            }
+        self.pump_own_lifecycle(world);
+        self.apply_lifecycle(world, report);
+    }
+
+    /// Without a host session, deliver the component lifecycle ourselves.
+    fn pump_own_lifecycle(&mut self, world: &mut World) {
+        let Some(own) = self.own_lifecycle.as_mut() else {
+            return;
         };
-        match dirty {
-            Some(entities) => {
-                for entity in entities {
-                    self.sync_entity(world, entity, report);
+        if own.session.scope().resource::<ClassInbox>().is_none() {
+            own.session.scope_mut().insert_resource(self.inbox.clone());
+        }
+        pulsar_world_registry::tick_live_components(
+            world,
+            &own.hub,
+            self.frame_delta as f32,
+            OWN_SCENE,
+            &mut own.session,
+        );
+    }
+
+    /// Run what the component lifecycle delivered since the last frame:
+    /// ends first, then constructs, then the instances that began, by
+    /// hierarchy depth, then StableId.
+    fn apply_lifecycle(&mut self, world: &mut World, report: &mut DriverReport) {
+        let mut ends = Vec::new();
+        let mut constructs = Vec::new();
+        let mut begins: HashMap<Entity, Entity> = HashMap::new();
+        for event in self.inbox.take() {
+            match event {
+                ClassEvent::End { object, .. } => ends.push(object),
+                ClassEvent::Construct { object, instance } => constructs.push((object, instance)),
+                ClassEvent::Begin { object, instance } => {
+                    begins.insert(object, instance);
                 }
             }
-            None => self.rescan(world, report),
         }
-    }
-
-    /// The object a `ClassInstance` change on `holder` concerns: the
-    /// holder's owner, or for a holder already gone, the object it was
-    /// tracked for.
-    pub(super) fn object_of_holder(&self, world: &World, holder: Entity) -> Entity {
-        if world.is_alive(holder) {
-            return attachments::object_of(world, holder);
+        for object in ends {
+            self.stop(world, object, report);
         }
-        self.holders.get(&holder).copied().unwrap_or(holder)
-    }
-
-    /// Stop instances whose object is gone and start or refresh every live
-    /// `ClassInstance`, by depth then StableId.
-    pub(super) fn rescan(&mut self, world: &mut World, report: &mut DriverReport) {
-        let mut objects = HashSet::new();
-        let mut roots: Vec<(usize, String, Entity)> = world
-            .query::<&ClassInstance>()
-            .map(|(holder, _)| attachments::object_of(world, holder))
-            .filter(|object| objects.insert(*object))
-            .collect::<Vec<_>>()
-            .into_iter()
-            .map(|entity| {
+        for (object, instance) in constructs {
+            self.construct_object(world, object, instance, report);
+        }
+        let mut roots: Vec<(usize, String, Entity)> = begins
+            .keys()
+            .map(|&entity| {
                 let stable = world.stable_id_of(entity).unwrap_or_default().to_owned();
                 (depth(world, entity), stable, entity)
             })
             .collect();
         sort_roots(&mut roots);
-        let live: HashSet<Entity> = roots.iter().map(|root| root.2).collect();
-        let mut gone: Vec<Entity> = self
-            .tracked
-            .keys()
-            .copied()
-            .filter(|e| !live.contains(e))
-            .collect();
-        gone.sort_by_key(|entity| entity.bits());
-        for entity in gone {
-            self.stop(world, entity, report);
-        }
-        for (_, _, entity) in roots {
-            self.sync_entity(world, entity, report);
+        for (_, _, object) in roots {
+            self.begin_object(world, object, begins[&object], report);
         }
     }
 
-    pub(super) fn sync_entity(
+    /// The enabled `ClassInstance` on component instance `holder`. A disabled
+    /// one runs no script, like an absent one.
+    fn live_instance(world: &World, holder: Entity) -> Option<ClassInstance> {
+        (world.is_alive(holder) && attachments::is_enabled(world, holder))
+            .then(|| world.get::<ClassInstance>(holder).cloned())
+            .flatten()
+    }
+
+    /// Start the script of `entity` now, ahead of the lifecycle's own
+    /// `begin_play` (the roles begin in role order, before the level's own
+    /// objects); that `begin_play` then finds it running.
+    pub(super) fn start_now(
         &mut self,
         world: &mut World,
         entity: Entity,
         report: &mut DriverReport,
     ) {
-        let holder = world
+        if let Some(holder) = world
             .is_alive(entity)
             .then(|| pulsar_class::world::class_instance_entity(world, entity))
-            .flatten();
-        // A disabled `ClassInstance` runs no script, like an absent one.
-        let Some(instance) = holder
-            .filter(|holder| attachments::is_enabled(world, *holder))
-            .and_then(|holder| world.get::<ClassInstance>(holder).cloned())
-        else {
-            self.stop(world, entity, report);
+            .flatten()
+        {
+            self.begin_object(world, entity, holder, report);
+        }
+    }
+
+    /// `begin_play` of a `ClassInstance`: start its script, unless the roles
+    /// already did.
+    fn begin_object(
+        &mut self,
+        world: &mut World,
+        object: Entity,
+        holder: Entity,
+        report: &mut DriverReport,
+    ) {
+        if !world.is_alive(object) {
+            return;
+        }
+        let Some(instance) = Self::live_instance(world, holder) else {
             return;
         };
-        self.holders.retain(|_, object| *object != entity);
-        self.holders.insert(holder.expect("resolved above"), entity);
+        if self.tracked.contains_key(&object) {
+            self.sync_tracked(world, object, &instance, report);
+        } else {
+            self.start(world, object, &instance, report);
+        }
+    }
+
+    /// `construct` of a `ClassInstance`: restart a script whose class
+    /// changed, bind the slots again for the same class. An object that has
+    /// not begun is left to its `begin_play`.
+    fn construct_object(
+        &mut self,
+        world: &mut World,
+        object: Entity,
+        holder: Entity,
+        report: &mut DriverReport,
+    ) {
+        if !self.tracked.contains_key(&object) {
+            return;
+        }
+        if let Some(instance) = Self::live_instance(world, holder) {
+            self.sync_tracked(world, object, &instance, report);
+        }
+    }
+
+    fn sync_tracked(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        instance: &ClassInstance,
+        report: &mut DriverReport,
+    ) {
         let Some(tracked) = self.tracked.get(&entity).cloned() else {
-            self.start(world, entity, &instance, report);
             return;
         };
-        let entry = self.resolve(&instance);
+        let entry = self.resolve(instance);
         let same_class = match &entry {
             Some(entry) => entry.id == tracked.class,
             None => instance.class == tracked.class && instance.class_name == tracked.class_name,
         };
         if !same_class {
             self.stop(world, entity, report);
-            self.start(world, entity, &instance, report);
+            self.start(world, entity, instance, report);
         } else if let Some(id) = &tracked.instance {
             // Same class, rewritten: its components may have been rebuilt.
             bind_class_slots(&mut self.runtime, id, world, entity);
@@ -363,7 +408,6 @@ impl ScriptDriver {
     }
 
     pub(super) fn stop(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
-        self.holders.retain(|_, object| *object != entity);
         let Some(tracked) = self.tracked.remove(&entity) else {
             return;
         };
