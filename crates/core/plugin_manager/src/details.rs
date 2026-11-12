@@ -101,7 +101,6 @@ impl PluginManager {
                         .into_iter()
                         .map(|tool| tool.name)
                         .collect(),
-                    subsystems: loaded.subsystem_ids.clone(),
                 }
             })
             .collect()

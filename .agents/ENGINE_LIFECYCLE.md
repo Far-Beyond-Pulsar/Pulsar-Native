@@ -44,7 +44,7 @@ main()
     3. SETTINGS          — Load engine config from PulsarConfig
     4. RUNTIME           — Tokio async runtime (multi-threaded)
     5. BACKEND           — EngineBackend::init()
-                          Creates SubsystemRegistry, registers physics, rendering, etc.
+                          Plugin components arrive later through `inject_plugin_components`
                           Sets up the GPUI app and hot-reload watchers
     6. ENGINE_CONTEXT    — EngineContext::new()
                           Creates StateStore, KeyedStore, handles URI project paths
@@ -76,36 +76,17 @@ main()
 ```rust
 // From crates/core/engine_backend/src/lib.rs
 pub struct EngineBackend {
-    pub subsystems: SubsystemRegistry,
     pub gpui_app: Option<Application>,
     watchers: Vec<tokio::task::JoinHandle<()>>,
     shutdown: Option<tokio::sync::oneshot::Sender<()>>,
 }
 ```
 
-`EngineBackend::init()` creates the `SubsystemRegistry` and registers:
-- `HelioRenderer` — the wgpu-based renderer
-- `MeshCache` / `SceneObjectCache` — asset caching
-- `LiveKeySet` — stale cleanup tracker
-- Project scanner for filesystem changes
-
-## Subsystem lifecycle
-
-The `Subsystem` trait (`crates/core/engine_subsystems/src/lib.rs`) defines the
-lifecycle for pluggable runtime services:
-
-```rust
-pub trait Subsystem: Send + Sync + 'static {
-    fn name(&self) -> &'static str;
-    fn init(&mut self, _cx: &mut SubsystemContext) -> Result<(), Box<dyn Error>>;
-    fn tick(&mut self, _dt: f32) {}
-    fn shutdown(&mut self) {}
-}
-```
-
-- `init()` is called once during startup
-- `tick(dt)` is called each frame with delta time
-- `shutdown()` is called during graceful exit
+`EngineBackend` has no subsystem registry (removed: nothing implemented or
+ticked it). Background work is a thread in the engine's thread registry
+(`editor_task_queue::spawn_service`, `.agents/EDITOR_TASKS.md`); a plugin's
+part in each frame is a SceneDB scene subsystem (`SceneSubsystemRegistration`)
+or a class `System` (`.agents/PLUGIN_SYSTEM.md`, "Component classes").
 
 ## EngineContext
 

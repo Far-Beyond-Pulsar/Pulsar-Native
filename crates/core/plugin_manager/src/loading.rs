@@ -295,7 +295,6 @@ impl PluginManager {
 
         self.register_file_types_and_editors(plugin, &plugin_id);
         self.register_statusbar_buttons(plugin, &plugin_id);
-        let subsystem_ids = self.collect_subsystems(plugin);
         self.collect_component_factories(plugin, &plugin_id);
         let editor_factories = Self::collect_editor_factories(plugin, &plugin_id);
 
@@ -307,7 +306,6 @@ impl PluginManager {
             library,
             metadata: metadata.clone(),
             editor_factories,
-            subsystem_ids,
         };
 
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
@@ -539,25 +537,6 @@ impl PluginManager {
                 }
             });
         }
-    }
-
-    /// Step 4c of install: queue the plugin's subsystems for the engine
-    /// backend (see `drain_subsystems`); returns their ids for the details view.
-    fn collect_subsystems(&mut self, plugin: &'static dyn EditorPluginFull) -> Vec<String> {
-        // Collect plugin subsystems
-        let subsystems = plugin.subsystems();
-        let subsystem_ids: Vec<String> = subsystems.iter().map(|ss| ss.id().to_string()).collect();
-        if !subsystems.is_empty() {
-            tracing::debug!(
-                "  🧩 Registering {} subsystem(s) from plugin",
-                subsystems.len()
-            );
-            for ss in &subsystems {
-                tracing::debug!("    - Subsystem: {}", ss.id());
-            }
-            self.plugin_subsystems.extend(subsystems);
-        }
-        subsystem_ids
     }
 
     /// Step 4d of install: queue the plugin's component factories for the

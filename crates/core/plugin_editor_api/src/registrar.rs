@@ -37,7 +37,6 @@ use crate::manifest::PluginManifest;
 use crate::metadata::{EditorMetadata, PluginMetadata};
 use crate::plugin::EditorPlugin;
 use crate::statusbar::{EditorPluginStatusbar, StatusbarButtonDefinition};
-use crate::subsystems::{EditorPluginSubsystems, Subsystem};
 
 /// A plugin written against the registrar API.
 ///
@@ -68,7 +67,6 @@ pub struct Registration {
     component_definitions: Vec<ComponentDefinition>,
     component_makers: Vec<(String, ComponentMaker)>,
     statusbar_buttons: Vec<StatusbarButtonDefinition>,
-    subsystems: Mutex<Vec<Box<dyn Subsystem>>>,
 }
 
 /// Handed to [`Plugin::build`]. One accessor per kind of thing a plugin
@@ -97,10 +95,6 @@ impl PluginBuilder {
 
     pub fn statusbar(&mut self) -> StatusbarSection<'_> {
         StatusbarSection(&mut self.registration)
-    }
-
-    pub fn subsystems(&mut self) -> SubsystemsSection<'_> {
-        SubsystemsSection(&mut self.registration)
     }
 
     pub fn finish(self) -> Registration {
@@ -155,19 +149,6 @@ pub struct StatusbarSection<'a>(&'a mut Registration);
 impl StatusbarSection<'_> {
     pub fn button(&mut self, button: StatusbarButtonDefinition) -> &mut Self {
         self.0.statusbar_buttons.push(button);
-        self
-    }
-}
-
-pub struct SubsystemsSection<'a>(&'a mut Registration);
-
-impl SubsystemsSection<'_> {
-    pub fn subsystem(&mut self, subsystem: Box<dyn Subsystem>) -> &mut Self {
-        self.0
-            .subsystems
-            .get_mut()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(subsystem);
         self
     }
 }
@@ -257,18 +238,6 @@ impl<P: Plugin> EditorPluginComponents for PluginAdapter<P> {
                 (name.clone(), Box::new(move || make()) as ComponentFactory)
             })
             .collect()
-    }
-}
-
-impl<P: Plugin> EditorPluginSubsystems for PluginAdapter<P> {
-    fn subsystems(&self) -> Vec<Box<dyn Subsystem>> {
-        std::mem::take(
-            &mut *self
-                .registration()
-                .subsystems
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()),
-        )
     }
 }
 

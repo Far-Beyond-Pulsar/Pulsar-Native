@@ -516,13 +516,12 @@ Extension traits (all have default implementations):
 - **`EditorPluginStatusbar`** — `statusbar_buttons()`, `accepted_drop_kinds()`
 - **`EditorPluginAi`** — `ai_tools()`, `execute_ai_tool()`, `capabilities_for_file()`
 - **`EditorPluginComponents`** — custom `EngineClass` definitions and factories
-- **`EditorPluginSubsystems`** — custom engine `Subsystem`s
 
 **`EditorPluginFull`** is the combined super-trait that the DLL exports:
 ```rust
 pub trait EditorPluginFull: EditorPlugin + EditorPluginEditor
     + EditorPluginStatusbar + EditorPluginAi
-    + EditorPluginComponents + EditorPluginSubsystems {}
+    + EditorPluginComponents {}
 ```
 
 ### Plugin components and the World

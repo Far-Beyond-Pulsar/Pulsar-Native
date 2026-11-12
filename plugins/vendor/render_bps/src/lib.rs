@@ -158,11 +158,6 @@ impl EditorPluginComponents for RenderBpsPlugin {
         Vec::new()
     }
 }
-impl EditorPluginSubsystems for RenderBpsPlugin {
-    fn subsystems(&self) -> Vec<Box<dyn Subsystem>> {
-        Vec::new()
-    }
-}
 impl EditorPluginScripting for RenderBpsPlugin {}
 
 #[cfg(feature = "builtin")]

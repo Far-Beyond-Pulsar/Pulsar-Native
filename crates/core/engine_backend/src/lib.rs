@@ -28,7 +28,6 @@ pub use services::GpuRenderer;
 #[cfg(feature = "editor-ui")]
 pub use services::RustAnalyzerManager;
 use std::sync::{Arc, OnceLock};
-pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
 #[cfg(feature = "render")]
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
 pub use subsystems::world::World;
@@ -47,75 +46,19 @@ pub use scene::{ComponentInstance, EditorObjectId};
 static GLOBAL_BACKEND: OnceLock<engine_state::ResourceHandle<EngineBackend>> = OnceLock::new();
 
 pub struct EngineBackend {
-    subsystems: SubsystemRegistry,
     plugin_components: component_registry::PluginComponentRegistry,
 }
 
 impl EngineBackend {
-    /// Initialize engine backend with empty subsystem registry.
-    ///
-    /// All subsystems are
-    /// registered later via the plugin pipeline so that everything — built-in
-    /// and DLL-provided — goes through the same injection and initialization
-    /// path. See `inject_plugin_subsystems()` and `inject_plugin_components()`.
+    /// Initialize the engine backend; plugin components arrive later through
+    /// `inject_plugin_components()`.
     pub async fn init() -> Self {
         profiling::profile_scope!("EngineBackend::Init");
-        tracing::debug!("Initializing Engine Backend (empty subsystem registry)");
+        tracing::debug!("Initializing Engine Backend");
 
         EngineBackend {
-            subsystems: SubsystemRegistry::new(),
             plugin_components: component_registry::PluginComponentRegistry::new(),
         }
-    }
-
-    /// Inject and initialize subsystems provided by plugins.
-    ///
-    /// Called once by `ui_core` after `PluginManager` has loaded all DLLs.
-    /// Plugin subsystems are merged into the existing registry — if a plugin
-    /// provides a subsystem with the same ID as a built-in one, the built-in
-    /// wins (first-registered-wins from `register_boxed`).
-    ///
-    /// Each plugin subsystem is initialized individually after registration.
-    pub fn inject_plugin_subsystems(
-        &mut self,
-        subsystems: Vec<Box<dyn engine_subsystems::Subsystem>>,
-    ) -> Result<(), SubsystemError> {
-        profiling::profile_scope!("EngineBackend::InjectPluginSubsystems");
-
-        if subsystems.is_empty() {
-            return Ok(());
-        }
-
-        tracing::info!(
-            "Injecting {} plugin subsystem(s) into engine backend",
-            subsystems.len()
-        );
-
-        let context = SubsystemContext::new();
-
-        for mut ss in subsystems {
-            let id = ss.id();
-            match self.subsystems.register_boxed(ss) {
-                Ok(()) => {
-                    // Initialize just this new subsystem; it joins the init
-                    // order so it is ticked and shut down with the others.
-                    self.subsystems.init_one(id, &context)?;
-                    tracing::debug!("  ✅ Plugin subsystem initialized: {}", id);
-                }
-                Err(SubsystemError::AlreadyRegistered(_)) => {
-                    tracing::debug!(
-                        "  ⏭️  Plugin subsystem '{}' already registered (built-in wins)",
-                        id
-                    );
-                }
-                Err(e) => {
-                    tracing::error!("  ❌ Failed to register plugin subsystem '{}': {}", id, e);
-                }
-            }
-        }
-
-        tracing::info!("✅ Plugin subsystems injected");
-        Ok(())
     }
 
     /// Inject plugin-provided component factories into the engine backend.
@@ -143,23 +86,6 @@ impl EngineBackend {
     /// Get the plugin component registry.
     pub fn plugin_components(&self) -> &component_registry::PluginComponentRegistry {
         &self.plugin_components
-    }
-
-    /// Get a reference to the subsystem registry
-    pub fn subsystems(&self) -> &SubsystemRegistry {
-        &self.subsystems
-    }
-
-    /// Get a mutable reference to the subsystem registry
-    pub fn subsystems_mut(&mut self) -> &mut SubsystemRegistry {
-        &mut self.subsystems
-    }
-
-    /// Shutdown all subsystems gracefully
-    pub fn shutdown(&mut self) -> Result<(), SubsystemError> {
-        profiling::profile_scope!("EngineBackend::Shutdown");
-        tracing::info!("Shutting down Engine Backend");
-        self.subsystems.shutdown_all()
     }
 
     /// Set as global instance (for access from other parts of the engine)

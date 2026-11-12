@@ -46,7 +46,6 @@ The heart of the engine.
 | `engine_fs` | The filesystem library every file goes through: `virtual_fs` (local, remote, P2P providers, with the plugin folders composed over them: `plugins/<id>/`, provided and changed only by their owner), the project file index and its watcher. `std::fs` is a disallowed method elsewhere (root `clippy.toml`) |
 | `pulsar_traits` | Traits and gameplay roles: trait records and database, the one trait index over every implementer source (`TraitImplementerSource`, `NativeTraitImpl`), conformance, the role registry (`RoleRegistration`), the engine's trait files (its `plugins/pulsar/` folder) and roles |
 | `engine_state` | Typed resource system — `StateStore`, `ResourceHandle`, `EngineContext` |
-| `engine_subsystems` | Subsystem trait and registry |
 | `friends_engine` | Multiplayer friends backend |
 | `plugin_editor_api` | Plugin SDK — traits, types, `export_plugin!` macro |
 | `plugin_manager` | Plugin host — DLL loading, registries, tool bridge |
@@ -208,7 +207,6 @@ simulates (physics, input, animation) is its plugin's.
 
 | Crate | Responsibility |
 |---|---|
-| `engine_subsystems` | Lifecycle orchestration — the `Subsystem` trait and `SubsystemRegistry` |
 | `pulsar_scene` | Scene graph — transforms, prefab instantiation, object hierarchy |
 
 ## agent-providers/ — AI providers

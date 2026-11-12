@@ -3488,7 +3488,6 @@ dependencies = [
  "editor_task_queue",
  "engine_fs",
  "engine_state",
- "engine_subsystems",
  "flume",
  "glam 0.33.5",
  "gpui-ce",
@@ -3609,15 +3608,6 @@ dependencies = [
  "ui_types_common",
  "uuid",
  "wgpu",
-]
-
-[[package]]
-name = "engine_subsystems"
-version = "0.1.0"
-dependencies = [
- "profiling 0.1.0",
- "thiserror 2.0.20",
- "tracing",
 ]
 
 [[package]]
@@ -8844,7 +8834,6 @@ dependencies = [
  "engine_class_derive",
  "engine_fs",
  "engine_state",
- "engine_subsystems",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -11274,6 +11263,7 @@ name = "physics_plugin"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "editor_task_queue",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
@@ -11418,7 +11408,6 @@ name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
  "engine_fs",
- "engine_subsystems",
  "gamma",
  "gpui-ce",
  "inventory",
@@ -11453,7 +11442,6 @@ dependencies = [
  "arc-swap",
  "editor_task_queue",
  "engine_fs",
- "engine_subsystems",
  "env_logger",
  "fixture_dep_base",
  "fixture_dep_orphan",

@@ -168,7 +168,6 @@ pub struct PluginDetails {
     pub components: Vec<String>,
     pub statusbar_buttons: Vec<String>,
     pub ai_tools: Vec<String>,
-    pub subsystems: Vec<String>,
 }
 
 struct LoadedPlugin {
@@ -192,9 +191,6 @@ struct LoadedPlugin {
 
     /// Editor factories registered by this plugin (populated at load time).
     editor_factories: EditorFactoryRegistry,
-    /// Subsystem ids submitted by this plugin before they are injected into
-    /// the engine backend.
-    subsystem_ids: Vec<String>,
 }
 
 // ============================================================================
@@ -252,10 +248,6 @@ pub struct PluginManager {
     /// Stored with plugin ownership tracking for proper cleanup
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
 
-    /// Subsystems provided by plugins, collected at load time.
-    /// Merged into the engine's SubsystemRegistry at startup.
-    plugin_subsystems: Vec<Box<dyn engine_subsystems::Subsystem>>,
-
     /// Component factories from plugins, collected at load time.
     /// Each entry is (class_name, factory).
     plugin_component_registrations: Vec<(String, plugin_editor_api::ComponentFactory)>,
@@ -286,7 +278,6 @@ impl PluginManager {
             editor_settings: EditorSettingsSnapshot::default(),
             editor_services: WeakEditorServices::default(),
             statusbar_buttons: Vec::new(),
-            plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
         }
     }

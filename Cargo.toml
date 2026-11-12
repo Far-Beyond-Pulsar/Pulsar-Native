@@ -395,7 +395,6 @@ ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
 # plugins). Hosts link the set, never a plugin by name.
 installed_plugins                  = { path = "plugins/installed", default-features = false }
 engine_state                       = { path = "crates/core/engine_state" }
-engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
 pulsar_auth                        = { path = "crates/core/pulsar_auth" }
 pulsar_settings                    = { path = "crates/core/pulsar_settings" }
 engine_backend                     = { path = "crates/core/engine_backend" }

@@ -394,7 +394,6 @@ fn library_entry(library: &PluginDetails) -> Entry {
             &library.statusbar_buttons,
         ),
         group("editor.ai_tool", "AI tools", &library.ai_tools),
-        group("engine.subsystem", "Engine subsystems", &library.subsystems),
     ]
     .into_iter()
     .filter(|group| !group.items.is_empty())
