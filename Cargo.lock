@@ -5490,8 +5490,8 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
- "helio-pass-debug-overlay",
  "helio-pass-postprocess",
+ "helio-pass-status-screen",
  "helio-pass-tsr",
  "helio-settings",
  "helio-xr",
@@ -6391,6 +6391,16 @@ dependencies = [
  "helio-frame-api",
  "helio-pass-hiz",
  "log",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-status-screen"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "helio-pass-debug-overlay",
  "wgpu",
 ]
 
