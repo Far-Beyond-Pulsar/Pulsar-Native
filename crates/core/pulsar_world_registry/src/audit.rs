@@ -66,7 +66,7 @@ pub fn find_overloaded_methods() -> Vec<MetadataAuditError> {
 }
 
 /// One lifecycle-isolation violation: something that would make a lifecycle
-/// function reachable from Blueprints, or a class with two lifecycles.
+/// function reachable from Blueprints.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, thiserror::Error)]
 pub enum LifecycleAuditError {
     /// A reflected method of a class is named like a lifecycle event
@@ -77,10 +77,6 @@ pub enum LifecycleAuditError {
     /// A script native is named like `Class::<lifecycle name>`.
     #[error("script native '{native}' is named like a lifecycle event")]
     Native { native: String },
-    /// A class registers its lifecycle twice (the legacy macro and an
-    /// `ActorTable`).
-    #[error("{0}")]
-    Registered(String),
 }
 
 /// The pure half of [`find_lifecycle_problems`]: reflected `(class, method)`
@@ -130,11 +126,6 @@ pub fn find_lifecycle_problems() -> Vec<LifecycleAuditError> {
     }
     let natives: Vec<String> = crate::script_natives::native_names();
     let mut problems = lifecycle_leaks(&methods, &natives);
-    problems.extend(
-        crate::lifecycle_conflicts()
-            .into_iter()
-            .map(LifecycleAuditError::Registered),
-    );
     problems.sort();
     problems
 }

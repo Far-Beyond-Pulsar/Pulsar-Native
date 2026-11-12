@@ -200,6 +200,9 @@ pub type TickFn = fn(&mut World, &mut ActorCx<'_>, Entity, f32);
 pub type EndFn = fn(&mut ActorCx<'_>);
 /// `end_play` of the world form.
 pub type WorldEndFn = fn(&mut World, &mut ActorCx<'_>);
+/// A native handler event delivered to one instance: the instance entity, the
+/// event's name and its wire fields.
+pub type EventFn = fn(&mut World, &mut ActorCx<'_>, Entity, &str, &[pulsar_events::gamma::DynValue]);
 
 /// A class's lifecycle: function pointers shaped by the framework, so a table
 /// crosses the plugin library boundary like the other registries.
@@ -220,6 +223,13 @@ pub struct ActorTable {
     /// End with the world ([`WorldActor::end_play`]). A class sets one of the
     /// two ends; if both are set the world one runs where a world exists.
     pub end_play_world: Option<WorldEndFn>,
+    /// Gamma events (full names) the class handles natively: the framework
+    /// subscribes each live instance to them on its owner's channel at
+    /// `begin_play` and drops the subscriptions at `end_play`.
+    pub handler_events: &'static [&'static str],
+    /// Delivers one queued handler event to an instance, before that frame's
+    /// `tick`. Set together with `handler_events`.
+    pub event: Option<EventFn>,
 }
 
 impl ActorTable {
@@ -257,6 +267,8 @@ impl ActorTable {
             tick: Some(tick::<T>),
             end_play: Some(T::end_play),
             end_play_world: None,
+            handler_events: &[],
+            event: None,
         }
     }
 
@@ -279,6 +291,8 @@ impl ActorTable {
             tick: Some(T::tick),
             end_play: None,
             end_play_world: Some(T::end_play),
+            handler_events: &[],
+            event: None,
         }
     }
 }

@@ -59,6 +59,9 @@
 // crate without that crate needing its own direct `inventory` dependency --
 // the same pattern `pulsar_reflection` uses for its own registrations.
 pub use inventory;
+/// Re-exported so `#[register_component_runtime]`'s expansion can name the
+/// lifecycle table types without its own dependency.
+pub use pulsar_component_lifecycle;
 /// Re-exported so generated component code can name the instance types
 /// (`ComponentOwner`) without its own dependency.
 pub use pulsar_scene_model;
@@ -70,41 +73,11 @@ pub use unfinished::{
 
 mod component_lifecycle;
 pub use component_lifecycle::{
-    end_live_components, end_session, lifecycle_conflicts, process_component_removals,
+    end_live_components, end_session, process_component_removals,
     process_component_removals_mut, pump_construct, tick_live_components, ComponentInstanceKey,
     ComponentRuntimeState, ConstructStats, Session,
 };
 pub use pulsar_component_lifecycle::{ConstructInfo, ConstructReason, SessionKind, SessionScope};
-
-/// Generated native component lifecycle entry. The callback runs on the
-/// live typed SceneDB value and never deserializes or stores a shadow.
-pub struct ComponentTickRegistration {
-    /// Rust type name used only for deterministic local callback ordering;
-    /// it is not an event id and is never sent across the DLL boundary.
-    pub type_name: &'static str,
-    pub class_name: &'static str,
-    /// Event names with generated native `#[bp_handler]` adapters. Only
-    /// these are subscribed for each active component instance.
-    pub handler_events: &'static [&'static str],
-    pub component_type: fn() -> ComponentId,
-    /// Runs callbacks on every enabled instance of the class, reporting the
-    /// active set: instance entity -> owner object (the actor whose event
-    /// channel the instance uses). The previous set lets generated shims
-    /// invoke `begin_play` only on activation.
-    pub tick: fn(
-        &mut World,
-        &pulsar_events::EventHub,
-        f32,
-        &std::collections::HashMap<Entity, Entity>,
-        &mut std::collections::HashMap<Entity, Entity>,
-        &mut ComponentRuntimeState,
-    ),
-    /// Owner-only teardown after the instance has already been
-    /// removed/disabled; called with its owner object.
-    pub end_play: Option<fn(Entity, &pulsar_events::EventHub)>,
-}
-
-inventory::collect!(ComponentTickRegistration);
 
 /// A stable Gamma event descriptor registered by a component event macro.
 pub struct ComponentEventRegistration {

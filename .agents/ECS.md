@@ -107,11 +107,13 @@ SceneDB's `Actor` above is the boxed, entity-owning object. A component class
 gets lifecycle events through `pulsar_component_lifecycle::Actor` (a different
 trait, reachable as `pulsar_game::lifecycle::Actor` until SceneDB's is removed and the prelude name flips): `impl Actor for T` and
 `ClassSpec { actor: Some(ActorTable::of::<T>()), .. }` from the plugin root.
-`tick_live_components` drives these tables and the legacy
-`#[register_component_runtime]` shims together in one `Step::Components`:
+`tick_live_components` drives these tables in one `Step::Components`:
 `begin_play` when an enabled instance is first seen, `tick` each frame,
-`end_play` (owner-only) on disable, removal, despawn or session end. A class
-registered both ways is an error (`lifecycle_conflicts`). Plan:
+`end_play` (owner-only) on disable, removal, despawn or session end.
+`#[register_component_runtime]` is the same registration: its expansion is an
+`ActorTable` (with native `#[bp_handler]` events, subscribed at `begin_play`
+and delivered before `tick`) submitted as an `EngineActor`; the old raw
+`inventory` tick registration is retired (P6). Plan:
 `COMPONENT_LIFECYCLE_PLAN.md`.
 
 ## Components

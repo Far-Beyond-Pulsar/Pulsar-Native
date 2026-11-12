@@ -1,6 +1,15 @@
 # Component lifecycle refactor: audit and plan
 
-Status: **Phase 0 (this document): design record and audit. No code changes.**
+**Status (current).** P1-P4, P5a and P6 are built (each has an "As built"
+paragraph in section 5). **P5b is the one open item**: delete SceneDB's own
+`Actor`/`ActorRegistry`. It is gated on a release window and the user's
+authorization to push to the SceneDB repo; the checklist is the "P5b checklist"
+in section 5 (SceneDB repo change, bump the rev in all three manifests, remove
+the `lifecycle::Legacy` shim and `register_actor`, flip the prelude, docs, grep).
+Everything below was written as the Phase 0 record; sections 2 and 5 describe the
+design, and the "As built" paragraphs say where the code differs.
+
+Phase 0 status: **design record and audit. No code changes.**
 Every claim about current code below was read in this change, with `file:line`
 (lines are at the commit this branch is based on, `d100b68a3`). Anything not
 read is marked **UNVERIFIED** (section 7). The decisions in section 4 are
@@ -983,6 +992,52 @@ authorization to push to SceneDB):**
   plugin suites pass; the leak audit still green; the ABI fingerprint test.
 - **Parallel**: after P1; independent of P3-P5 except the shared derive file and
   the ABI version (serialize ABI bumps: P1 -> 4, P2/P6 -> 5, 6).
+
+**As built (P6).** `#[register_component_runtime]` keeps its source syntax
+(`enabled = field`, `class = "Name"`, `#[bp_handler]` methods, `tick`,
+`begin_play`, `end_play(entity, ctx)`); `engine_class_derive/src/component_runtime.rs`
+now expands to per-class callbacks plus an `ActorTable` submitted as a
+`pulsar_component_lifecycle::EngineActor` (P4's seam), not to a
+`ComponentTickRegistration`. Why `EngineActor` and not a new macro-submitted
+registration with an origin: the gate is by class name (`class_enabled`,
+`runtime.rs`), not by the table's origin, so a table is gated with its class
+whichever seam submitted it; the macro has no plugin root to name as an
+origin; and the seam already exists and is collected at link time like the old
+`inventory` registration. The origin shown in the catalog for such a table is
+therefore `engine:lifecycle` (a cosmetic loss; the table's class is right).
+`Registrations::collected()` now hands a plugin library's `EngineActor`s to the
+host (as it did the old ticks), so a macro class in a DLL still registers.
+
+Handler events moved into the table: `ActorTable` gained `handler_events`
+(the full event names) and `event: Option<EventFn>`
+(`fn(&mut World, &mut ActorCx, instance, name, &[DynValue])`).
+`tick_actor_class` subscribes each live instance (`Session::subscribe_instance`,
+the existing inbox) before its `begin_play`, hands the queued events to
+`event` after `begin_play` and before `tick` (the old order), and the existing
+end paths unsubscribe (they already called `unsubscribe_instance` for every
+class). The generated `event` function is the old dispatch match with
+`continue` turned into `return`. A class with an `enabled` field filters in its
+generated `instances` function. Deleted: `ComponentTickRegistration` and its
+`inventory::collect!`, `TICKS`, `Runtime::ticks`/`Registrations::ticks`, the
+fingerprint term, `Lifecycle::Legacy` (the `Lifecycle` type is now a newtype
+over the table), the macro's `previous/current` shim, `lifecycle_conflicts()`,
+`LifecycleAuditError::Registered` and the session's `conflicts_reported`.
+Kept: `ComponentInstanceKey` (the event inbox and subscriptions still key on
+it, now for tables), the orchestrator's own `previous/current` set difference
+(it is how ends are found for every table), and the `ComponentRuntimeState`
+alias of `Session` (about forty callers and tests use it; nothing about it was
+legacy-only). `ABI_VERSION` 5 -> 6 (`Runtime` lost a field, `ActorTable` gained
+two); the fingerprint drops `ComponentTickRegistration`. `pulsar_world_registry`
+re-exports `pulsar_component_lifecycle` for the expansion. No plugin source
+changed: voxel (`component_runtime.rs:16`), skm_editor (`component.rs:1574`)
+and the engine tests compile unchanged.
+
+Behavior notes: the table's `type_name` is `stringify!(Type)` as before, so
+the per-frame class order is unchanged; handler events and `begin_play` now
+run through the session's `ActorCx` scope too (no visible difference). A class
+that is both a macro class and given a `ClassSpec::actor` table is no longer
+detected (two tables for one class would both run); one lifecycle per class is
+now by convention, not by a runtime check.
 
 ## 6. Risks
 

@@ -61,7 +61,7 @@ views (see [Observers](#observers)).
   `declare_unfinished_component!` (reason and tracking issue) and is
   reported when attached, instead of looking supported.
 - Native component lifecycles (`begin_play`, `tick`, events, `end_play`)
-  run from `ComponentTickRegistration` on the live typed value.
+  run from the component's lifecycle table (`ActorTable`) on the live typed value.
 
 ## JSON
 
