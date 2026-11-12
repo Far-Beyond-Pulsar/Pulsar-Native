@@ -273,10 +273,7 @@ fn devices_by_backend() -> Vec<(wgpu::Backend, Arc<wgpu::Device>, Arc<wgpu::Queu
 #[test]
 fn the_editor_renderer_builds_and_draws_on_every_backend() {
     let _one = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
-    let _project = open_project(
-        "# a test project
-",
-    );
+    let _project = open_project("# a test project\n");
     let devices = devices_by_backend();
     if devices.is_empty() {
         eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: editor renderer backends");

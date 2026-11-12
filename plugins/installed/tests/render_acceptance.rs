@@ -40,6 +40,23 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// Frames rendered per observation, so uploads, the object batch's async
 /// draw-count readback and temporal filters settle. `RENDER_ACCEPTANCE_SETTLE_FRAMES`
 /// overrides it.
+
+/// The pipeline a level that names none runs: Helio's old default id, which
+/// the render pipelines plugin's migration makes its deferred graph
+/// (`plugins/pulsar.render_pipelines/Deferred.rendergraph`, made for the open
+/// project's plugins).
+///
+/// Pipelines are project files, so a test that opened no project opens this
+/// crate as one first (as the tests that hydrate meshes do).
+fn shipped_pipeline() -> String {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    if engine_state::get_project_path().is_none() {
+        engine_state::EngineContext::new().set_global();
+        engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    }
+    pipelines::migrate_pipeline_id(pipelines::LEGACY_DEFAULT_PIPELINE.to_string())
+}
+
 fn settle_frames() -> usize {
     std::env::var("RENDER_ACCEPTANCE_SETTLE_FRAMES")
         .ok()
@@ -208,6 +225,9 @@ impl Harness {
     fn renderer(&self, state: &LevelEditorState) -> HelioRenderer {
         let mut renderer = HelioRenderer::new(state.scene.shared_scene());
         renderer.set_editor_camera_state(self.camera);
+        renderer
+            .editor_mailbox()
+            .set_render_pipeline(Some(shipped_pipeline()));
         renderer
     }
 

@@ -25,6 +25,15 @@ const SIZE: u32 = 192;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const FRAMES: usize = 6;
 
+/// The pipeline a level that names none runs: Helio's old default id, which
+/// the render pipelines plugin's migration makes its deferred graph
+/// (`plugins/pulsar.render_pipelines/Deferred.rendergraph`, made for the open
+/// project's plugins).
+fn shipped_pipeline() -> String {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    pipelines::migrate_pipeline_id(pipelines::LEGACY_DEFAULT_PIPELINE.to_string())
+}
+
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -104,7 +113,10 @@ fn game_renderer(target: &Target, scene: &SharedScene, owner: DeviceOwner) -> Sc
         SIZE,
         SIZE,
         FORMAT,
-        SceneRendererOptions::game(owner, false),
+        SceneRendererOptions {
+            pipeline: Some(shipped_pipeline()),
+            ..SceneRendererOptions::game(owner, false)
+        },
     )
 }
 
@@ -147,6 +159,9 @@ fn render(runtime: Runtime, target: &Target, scene: &SharedScene, distance: f32)
     match runtime {
         Runtime::Editor => {
             let mut renderer = HelioRenderer::new(Arc::clone(scene));
+            renderer
+                .editor_mailbox()
+                .set_render_pipeline(Some(shipped_pipeline()));
             renderer.set_editor_camera_state(EditorCameraState {
                 position: [eye.x as f64, eye.y as f64, eye.z as f64],
                 yaw: 0.0,

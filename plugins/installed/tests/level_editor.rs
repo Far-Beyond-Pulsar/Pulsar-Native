@@ -429,9 +429,23 @@ fn a_level_save_keeps_the_renderers_voxel_chunks() {
         terrain
     };
 
-    // The editor's viewport renderer, settled on the dig.
+    // The editor's viewport renderer, settled on the dig, running the
+    // pipeline a level that names none runs (the render pipelines plugin's
+    // deferred graph, registered for the open project).
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("Pulsar.toml"), "# a test project\n").unwrap();
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(project.path().display().to_string());
     let scene = state.read().scene.shared_scene();
     let mut renderer = HelioRenderer::new(scene.clone());
+    {
+        use engine_backend::subsystems::render::helio_renderer::pipelines;
+        renderer
+            .editor_mailbox()
+            .set_render_pipeline(Some(pipelines::migrate_pipeline_id(
+                pipelines::LEGACY_DEFAULT_PIPELINE.to_string(),
+            )));
+    }
     renderer.set_editor_camera_state(EditorCameraState {
         position: [0.0, 14.0, 0.0],
         yaw: 0.0,

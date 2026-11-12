@@ -610,7 +610,10 @@ impl RenderRuntimes {
             let mut drew = false;
             for runtime in &runtimes {
                 match self.step(runtime, now) {
-                    Step::Drew => drew = true,
+                    Step::Drew(at) => {
+                        drew = true;
+                        next = next.min(at);
+                    }
                     Step::DueAt(at) => next = next.min(at),
                     Step::Idle => {}
                 }
@@ -741,7 +744,8 @@ impl RenderRuntimes {
             return Step::DueAt(now + interval / 4);
         }
         self.draw(runtime, &output, now);
-        Step::Drew
+        // Next due one frame on, at its output's pace.
+        Step::Drew(now + interval)
     }
 
     fn build_in_background(&self, runtime: &Arc<Runtime>, output: &Arc<dyn FrameTarget>) {
@@ -827,6 +831,7 @@ impl RenderRuntimes {
             return;
         };
         let started = Instant::now();
+        tracing::trace!(target: "render_runtimes", runtime = runtime.id, "draw: renderer locked");
         if runtime.reset_history.swap(false, Ordering::AcqRel) {
             renderer.reset_taa();
         }
@@ -838,6 +843,7 @@ impl RenderRuntimes {
         {
             callback();
         }
+        tracing::trace!(target: "render_runtimes", runtime = runtime.id, "draw: input latched");
         let (device, queue, format) = (output.device(), output.queue(), output.format());
         let (width, height) = output.size();
         // A pipeline swap or project-setting rebuild happens here, at a frame
@@ -845,9 +851,15 @@ impl RenderRuntimes {
         if !renderer.prepare_for_render(&device, &queue, width, height, format) {
             return;
         }
+        tracing::trace!(target: "render_runtimes", runtime = runtime.id, "draw: prepared");
         let published = output.draw(&mut |view, width, height| {
-            renderer.render_frame_to_surface(&device, &queue, view, width, height, format)
+            tracing::trace!(target: "render_runtimes", "draw: output acquired");
+            let submitted =
+                renderer.render_frame_to_surface(&device, &queue, view, width, height, format);
+            tracing::trace!(target: "render_runtimes", "draw: rendered");
+            submitted
         });
+        tracing::trace!(target: "render_runtimes", runtime = runtime.id, published, "draw: done");
         drop(renderer);
         let took = started.elapsed();
         runtime
@@ -1030,7 +1042,8 @@ fn owner_label(origin: &'static str) -> String {
 pub const RUNTIME_CATEGORY: &str = editor_task_queue::categories::RENDER_RUNTIME;
 
 enum Step {
-    Drew,
+    /// Drew a frame; the next is due at the instant given.
+    Drew(Instant),
     DueAt(Instant),
     Idle,
 }

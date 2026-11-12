@@ -49,6 +49,15 @@ const PLANET_RADIUS: f64 = 6_371_000.0;
 /// How high above the ground the near-ground pose is.
 const EYE_HEIGHT: f64 = 2.0;
 
+/// The pipeline a level that names none runs: Helio's old default id, which
+/// the render pipelines plugin's migration makes its deferred graph
+/// (`plugins/pulsar.render_pipelines/Deferred.rendergraph`, made for the open
+/// project's plugins).
+fn shipped_pipeline() -> String {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    pipelines::migrate_pipeline_id(pipelines::LEGACY_DEFAULT_PIPELINE.to_string())
+}
+
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -220,6 +229,9 @@ fn editor() -> HelioRenderer {
     RuntimeLevel::load_into(&level_path(), &mut scene.write().world)
         .expect("the example planet loads");
     let mut renderer = HelioRenderer::new(scene);
+    renderer
+        .editor_mailbox()
+        .set_render_pipeline(Some(shipped_pipeline()));
     renderer.set_viewport_realtime(false);
     renderer.set_frame_delta_override(Some(FRAME_DELTA));
     renderer.set_camera_jitter_override(Some([0.0, 0.0]));
@@ -400,7 +412,10 @@ fn game_frame(
         WIDTH,
         HEIGHT,
         FORMAT,
-        SceneRendererOptions::game(owner, false),
+        SceneRendererOptions {
+            pipeline: Some(shipped_pipeline()),
+            ..SceneRendererOptions::game(owner, false)
+        },
     );
     renderer.renderer.set_frame_clock_delta(Some(0.0));
     renderer
@@ -565,6 +580,12 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
 
 #[test]
 fn a_played_voxel_world_renders_as_the_editor_shows_it() {
+    // A project, so the render pipelines plugin's folder is mounted and the
+    // engine registers its graphs.
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("Pulsar.toml"), "# a test project\n").unwrap();
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(project.path().display().to_string());
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;

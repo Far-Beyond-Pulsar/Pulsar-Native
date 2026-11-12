@@ -200,6 +200,7 @@ pub fn pipeline_state(requested: Option<&str>) -> PipelineState {
 /// or one that is not registered (there is no default to fall back to).
 pub fn create_pipeline(requested: Option<&str>) -> Option<Box<dyn IntoGraph>> {
     let id = requested.filter(|id| !id.is_empty())?;
+    ensure_project_pipelines();
     registry().read().ok().and_then(|r| r.create(id))
 }
 
