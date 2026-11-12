@@ -232,7 +232,9 @@ pub fn log_routing(pipeline: &str, issues: &[helio::RoutingIssue]) {
             "render pipeline `{pipeline}`: {errors} routing error(s), {warnings} warning(s); the final output may stay black (see `helio::routing`)"
         );
     } else if warnings > 0 {
-        tracing::warn!("render pipeline `{pipeline}`: {warnings} routing warning(s) (see `helio::routing`)");
+        tracing::warn!(
+            "render pipeline `{pipeline}`: {warnings} routing warning(s) (see `helio::routing`)"
+        );
     }
 }
 
@@ -440,10 +442,17 @@ pub fn graph_pin_probe() -> Option<Arc<helio_graph_asset::Probe>> {
 /// Starts [`graph_pin_probe`] on a background thread, so the pins are ready
 /// when an editor first asks for the node registry.
 pub fn start_graph_pin_probe() {
-    editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("render-graph-pin-probe", editor_task_queue::ThreadRole::Other).owner("engine_backend"), || {
+    editor_task_queue::spawn_thread(
+        editor_task_queue::ThreadSpec::new(
+            "render-graph-pin-probe",
+            editor_task_queue::ThreadRole::Other,
+        )
+        .owner("engine_backend"),
+        || {
             graph_pin_probe();
-        })
-        .ok();
+        },
+    )
+    .ok();
 }
 
 /// The node types render-graph assets can use: the core resource nodes,
@@ -510,9 +519,9 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
             asset.to_json().hash(&mut hasher);
             hasher.finish()
         };
-        let changed = content_hashes()
-            .lock()
-            .map_or(true, |mut hashes| hashes.insert(id.clone(), content) != Some(content));
+        let changed = content_hashes().lock().map_or(true, |mut hashes| {
+            hashes.insert(id.clone(), content) != Some(content)
+        });
         let label = if asset.name.trim().is_empty() {
             relative
                 .file_stem()

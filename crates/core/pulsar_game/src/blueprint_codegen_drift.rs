@@ -61,11 +61,30 @@ pub(crate) mod reference_actor {
     impl pulsar_game::lifecycle::NativeActor for DriftProbeReference {
         // MUST stay byte-identical to REFERENCE_*_SIGNATURE above: the
         // emission assertions compare generator output against these lines.
-        fn begin_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>) {}
+        fn begin_play(
+            &mut self,
+            _entity: Entity,
+            _world: &mut World,
+            _cx: &mut pulsar_game::lifecycle::ActorCx<'_>,
+        ) {
+        }
 
-        fn tick(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>, _delta_seconds: f32) {}
+        fn tick(
+            &mut self,
+            _entity: Entity,
+            _world: &mut World,
+            _cx: &mut pulsar_game::lifecycle::ActorCx<'_>,
+            _delta_seconds: f32,
+        ) {
+        }
 
-        fn end_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>) {}
+        fn end_play(
+            &mut self,
+            _entity: Entity,
+            _world: &mut World,
+            _cx: &mut pulsar_game::lifecycle::ActorCx<'_>,
+        ) {
+        }
     }
 
     /// Proves the mirrored shape is behaviorally correct against the real

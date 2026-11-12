@@ -504,14 +504,21 @@ pub fn serve_in(
         ring_capacity,
     };
     let stop = Arc::new(AtomicBool::new(false));
-    let thread = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("pulsar-profiler-publisher", editor_task_queue::ThreadRole::Service).owner("src"), {
+    let thread = editor_task_queue::spawn_thread(
+        editor_task_queue::ThreadSpec::new(
+            "pulsar-profiler-publisher",
+            editor_task_queue::ThreadRole::Service,
+        )
+        .owner("src"),
+        {
             let stop = Arc::clone(&stop);
             move || {
                 // The mapping lives as long as the thread uses it.
                 let _map = map;
                 publish_loop(&region, &stop);
             }
-        })?;
+        },
+    )?;
     Ok(Publisher {
         stop,
         thread: Some(thread),

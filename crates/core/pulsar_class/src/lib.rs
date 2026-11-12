@@ -41,8 +41,8 @@ pub mod template;
 pub mod world;
 
 pub use component::ClassInstance;
-pub use lifecycle::{ClassEvent, ClassInbox};
 pub use id::{ClassId, ClassMeta, CLASS_META_FILE};
+pub use lifecycle::{ClassEvent, ClassInbox};
 pub use native_script::NativeScriptComponent;
 pub use plan::{
     migrate_slot_keys, plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent,

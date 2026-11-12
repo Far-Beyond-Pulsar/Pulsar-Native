@@ -33,10 +33,10 @@ pub mod component_events;
 // A plugin's component classes, registered from its root's build.
 pub mod class_spec;
 pub mod construct_pump;
-pub use construct_pump::EditorConstructPump;
 #[cfg(feature = "render")]
 pub use class_spec::ClassRows;
 pub use class_spec::{ClassSpec, ComponentsBuilder};
+pub use construct_pump::EditorConstructPump;
 pub mod game_hooks;
 pub use component_events::{
     component_asset_events, ComponentEventCatalog, ComponentEventsRegistration,

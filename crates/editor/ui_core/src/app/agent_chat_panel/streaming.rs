@@ -297,7 +297,14 @@ impl AgentChatPanel {
             cancel_rx,
             completion_sent: completion_sent.clone(),
         };
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui core: launch provider request", editor_task_queue::ThreadRole::Io).owner("ui_core"), move || run_agent_loop(worker));
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui core: launch provider request",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_core"),
+            move || run_agent_loop(worker),
+        );
 
         Self::spawn_request_watchdog(tx, completion_sent, cx);
         Self::spawn_stream_event_pump(rx, message_ix, cx);

@@ -138,9 +138,9 @@ impl LevelEditorPanel {
             .scene
             .select_object(Some(action.object_id.clone()));
         self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
-        // Selection is observed by the hierarchy and properties panels' own
-        // frame pumps. Notifying this root view rebuilds the entire dock tree
-        // for a change those panels can handle locally.
+                                    // Selection is observed by the hierarchy and properties panels' own
+                                    // frame pumps. Notifying this root view rebuilds the entire dock tree
+                                    // for a change those panels can handle locally.
     }
 
     pub(in crate::ui::panel) fn on_toggle_object_expanded(

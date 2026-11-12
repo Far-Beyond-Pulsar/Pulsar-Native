@@ -130,7 +130,10 @@ fn a_disabled_plugins_table_is_not_returned_or_driven() {
 
     assert!(handed_out.is_empty(), "{handed_out:?}");
     assert_eq!(listed.len(), 1, "the catalog still lists it, to diagnose");
-    assert!(driven.is_empty(), "a disabled plugin's class ran: {driven:?}");
+    assert!(
+        driven.is_empty(),
+        "a disabled plugin's class ran: {driven:?}"
+    );
 }
 
 #[test]
@@ -184,7 +187,11 @@ mod session {
         let pump = EditorConstructPump::new();
         assert_eq!(pump.kind(), SessionKind::Editor);
 
-        assert_eq!(pump.pump(&scene), 1, "the first pump constructs what exists");
+        assert_eq!(
+            pump.pump(&scene),
+            1,
+            "the first pump constructs what exists"
+        );
         assert_eq!(take_constructs()[0].reason, ConstructReason::Rescan);
         assert_eq!(pump.pump(&scene), 0, "idle frames deliver nothing");
 
@@ -245,7 +252,11 @@ mod session {
             pulsar_world_registry::end_session(&mut world, &events, &mut state);
             assert_eq!(
                 take_kinds(),
-                [("construct", kind), ("begin_play", kind), ("end_play", kind)],
+                [
+                    ("construct", kind),
+                    ("begin_play", kind),
+                    ("end_play", kind)
+                ],
                 "{kind:?}"
             );
         }

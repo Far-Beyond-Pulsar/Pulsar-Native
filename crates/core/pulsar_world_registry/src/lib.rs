@@ -73,9 +73,9 @@ pub use unfinished::{
 
 mod component_lifecycle;
 pub use component_lifecycle::{
-    end_live_components, end_session, process_component_removals,
-    process_component_removals_mut, pump_construct, tick_live_components, ComponentInstanceKey,
-    ComponentRuntimeState, ConstructStats, Session,
+    end_live_components, end_session, process_component_removals, process_component_removals_mut,
+    pump_construct, tick_live_components, ComponentInstanceKey, ComponentRuntimeState,
+    ConstructStats, Session,
 };
 pub use pulsar_component_lifecycle::{ConstructInfo, ConstructReason, SessionKind, SessionScope};
 

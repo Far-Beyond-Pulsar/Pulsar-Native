@@ -40,8 +40,8 @@ pub use pulsar_component_lifecycle::{
     Actor, ActorCx, ActorTable, ConstructInfo, ConstructReason, EngineActor, SessionKind,
     SessionScope, WorldActor,
 };
-pub(crate) use pulsar_world_registry::pulsar_scene_model::ComponentOwner;
 use pulsar_scenedb::{Entity, World};
+pub(crate) use pulsar_world_registry::pulsar_scene_model::ComponentOwner;
 
 /// A boxed gameplay actor: state of its own and the live world in every
 /// callback. Generated Rust Blueprint actors implement it
@@ -121,7 +121,9 @@ impl ActorBank {
     }
 
     fn lock(&self) -> MutexGuard<'_, HashMap<Entity, Box<dyn NativeActor>>> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
 

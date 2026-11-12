@@ -77,10 +77,12 @@ fn buffer(device: &wgpu::Device, label: &str, size: u64) -> wgpu::Buffer {
 
 /// Every node of the asset, main graph and sections.
 fn all_nodes(asset: &GraphAsset) -> impl Iterator<Item = &helio_graph_asset::NodeInstance> {
-    asset
-        .nodes
-        .iter()
-        .chain(asset.sections.iter().flat_map(|section| section.nodes.iter()))
+    asset.nodes.iter().chain(
+        asset
+            .sections
+            .iter()
+            .flat_map(|section| section.nodes.iter()),
+    )
 }
 
 /// The pass names a graph builds, in order.

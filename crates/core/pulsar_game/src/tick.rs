@@ -225,7 +225,9 @@ impl TickLoop {
             scripts: None,
             class_inbox: None,
             events: new_component_event_hub(),
-            component_runtime: pulsar_world_registry::Session::new(pulsar_world_registry::SessionKind::Standalone),
+            component_runtime: pulsar_world_registry::Session::new(
+                pulsar_world_registry::SessionKind::Standalone,
+            ),
             static_moves: None,
             world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
@@ -275,7 +277,9 @@ impl TickLoop {
             scripts: None,
             class_inbox: None,
             events: new_component_event_hub(),
-            component_runtime: pulsar_world_registry::Session::new(pulsar_world_registry::SessionKind::PlayInEditor),
+            component_runtime: pulsar_world_registry::Session::new(
+                pulsar_world_registry::SessionKind::PlayInEditor,
+            ),
             static_moves: None,
             world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
@@ -955,11 +959,15 @@ impl SharedTickLoop {
     pub fn spawn_thread(&self, name: impl Into<String>) -> std::thread::JoinHandle<()> {
         let shared = self.0.clone();
         let name = name.into();
-        editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service).owner("pulsar_game"), move || {
+        editor_task_queue::spawn_thread(
+            editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service)
+                .owner("pulsar_game"),
+            move || {
                 let mut guard = shared.lock().unwrap();
                 guard.run_blocking();
-            })
-            .expect("failed to spawn tick thread")
+            },
+        )
+        .expect("failed to spawn tick thread")
     }
 
     /// Signal the loop to stop after the current tick. Never locks the

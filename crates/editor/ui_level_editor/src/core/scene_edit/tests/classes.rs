@@ -876,5 +876,10 @@ fn play_suspends_the_construct_pump_and_stop_resumes_it_with_a_rescan() {
         "the restore is one rescan"
     );
     // The domain's clones (the tool-query copy) share the one pump.
-    assert!(state.scene.clone_for_tool_query().construct_pump.kind().is_editor());
+    assert!(state
+        .scene
+        .clone_for_tool_query()
+        .construct_pump
+        .kind()
+        .is_editor());
 }

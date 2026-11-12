@@ -157,9 +157,12 @@ impl InstallLayout {
                 manifest.0.remove(&old.file);
             }
         }
-        manifest.0.insert(record.file.clone(), record.sha256.clone());
+        manifest
+            .0
+            .insert(record.file.clone(), record.sha256.clone());
         write_json(&self.integrity_manifest_path(), &manifest)?;
-        lock.plugins.retain(|existing| existing.repo_url != record.repo_url);
+        lock.plugins
+            .retain(|existing| existing.repo_url != record.repo_url);
         lock.plugins.push(record.clone());
         write_json(&self.plugin_lock_path(), &lock)?;
         Ok(record)
@@ -242,12 +245,18 @@ pub struct ThemeLayout {
 impl ThemeLayout {
     /// The per-user shared themes directory.
     pub fn shared() -> Self {
-        Self { dir: themes_dir(), lock: themes_lock_path() }
+        Self {
+            dir: themes_dir(),
+            lock: themes_lock_path(),
+        }
     }
 
     /// A themes directory and lock of your choosing (tests).
     pub fn at(dir: impl Into<PathBuf>, lock: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into(), lock: lock.into() }
+        Self {
+            dir: dir.into(),
+            lock: lock.into(),
+        }
     }
 
     pub fn dir(&self) -> &Path {
@@ -372,7 +381,10 @@ mod tests {
     #[test]
     fn a_theme_is_recorded_beside_not_inside_the_themes_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let themes = ThemeLayout::at(dir.path().join("themes"), dir.path().join("themes.lock.json"));
+        let themes = ThemeLayout::at(
+            dir.path().join("themes"),
+            dir.path().join("themes.lock.json"),
+        );
         std::fs::create_dir_all(themes.dir()).unwrap();
         std::fs::write(themes.dir().join("nord.json"), b"{}").unwrap();
         let recorded = themes

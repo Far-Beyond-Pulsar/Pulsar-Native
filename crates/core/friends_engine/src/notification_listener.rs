@@ -47,15 +47,22 @@ pub fn start() {
     let hs = home_server.clone();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
-    let thread = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("notification-listener", editor_task_queue::ThreadRole::Service).owner("friends_engine"), move || {
+    let thread = editor_task_queue::spawn_thread(
+        editor_task_queue::ThreadSpec::new(
+            "notification-listener",
+            editor_task_queue::ThreadRole::Service,
+        )
+        .owner("friends_engine"),
+        move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("failed to build tokio runtime for notification listener");
 
             rt.block_on(run_loop(&hs, &token, &username, shutdown_rx));
-        })
-        .expect("failed to spawn notification listener thread");
+        },
+    )
+    .expect("failed to spawn notification listener thread");
 
     *guard = Some(ListenerHandle {
         shutdown: shutdown_tx,

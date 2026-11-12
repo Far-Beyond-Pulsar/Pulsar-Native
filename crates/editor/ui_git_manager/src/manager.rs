@@ -395,10 +395,17 @@ impl GitManager {
 
         let email_key = email.to_string();
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui git manager: ensure avatar loaded", editor_task_queue::ThreadRole::Io).owner("ui_git_manager"), move || {
-            let result = crate::avatar_loader::fetch_avatar(&url);
-            let _ = smol::block_on(tx.send(result.ok()));
-        });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui git manager: ensure avatar loaded",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_git_manager"),
+            move || {
+                let result = crate::avatar_loader::fetch_avatar(&url);
+                let _ = smol::block_on(tx.send(result.ok()));
+            },
+        );
         cx.spawn(async move |this, cx| {
             if let Ok(maybe) = rx.recv().await {
                 cx.update(|cx| {

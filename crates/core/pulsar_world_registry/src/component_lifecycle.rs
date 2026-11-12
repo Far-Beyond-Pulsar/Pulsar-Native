@@ -401,7 +401,10 @@ impl Lifecycle {
             let Some(world) = world else {
                 return false;
             };
-            end_play(world, &mut ActorCx::new(owner, Some(instance), events, scope));
+            end_play(
+                world,
+                &mut ActorCx::new(owner, Some(instance), events, scope),
+            );
         } else if let Some(end_play) = table.end_play {
             end_play(&mut ActorCx::new(owner, None, events, scope));
         }
@@ -604,7 +607,13 @@ fn tick_actor_class(
         }
         if let Some(event) = table.event {
             for queued_event in queued {
-                event(world, &mut cx, instance, &queued_event.name, &queued_event.fields);
+                event(
+                    world,
+                    &mut cx,
+                    instance,
+                    &queued_event.name,
+                    &queued_event.fields,
+                );
             }
         }
         if let Some(tick) = table.tick {
@@ -1099,7 +1108,9 @@ mod tests {
         impl<const N: usize> Actor for Probe<N> {
             fn construct(&mut self, cx: &mut ActorCx<'_>) {
                 note(N, "construct");
-                INFO.lock().unwrap().push((N, cx.construct.clone().unwrap()));
+                INFO.lock()
+                    .unwrap()
+                    .push((N, cx.construct.clone().unwrap()));
                 if SELF_WRITE[N].load(Ordering::SeqCst) {
                     self.value += 1;
                 }
@@ -1142,7 +1153,8 @@ mod tests {
                 let owner = self.world.spawn();
                 let instance = self.world.spawn();
                 self.world.insert(instance, Probe::<N> { value: 0 });
-                self.world.insert(instance, ComponentOwner::new(owner, true));
+                self.world
+                    .insert(instance, ComponentOwner::new(owner, true));
                 instance
             }
 
@@ -1172,7 +1184,13 @@ mod tests {
             assert_eq!(f.pump(), 1);
             assert_eq!(take(0), ["construct"]);
             assert_eq!(f.pump(), 0, "nothing changed since");
-            let reason = INFO.lock().unwrap().iter().rev().find(|(n, _)| *n == 0).cloned();
+            let reason = INFO
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|(n, _)| *n == 0)
+                .cloned();
             assert!(matches!(
                 reason.unwrap().1.reason,
                 ConstructReason::Changed | ConstructReason::Rescan
@@ -1375,7 +1393,10 @@ mod tests {
                 let present = world.get::<Resident<N>>(instance).is_some();
                 // The resource is still there while ends run.
                 let resource = cx.session().resource::<Guard>().is_some();
-                note(100 + N, format!("end_play:present={present}:resource={resource}"));
+                note(
+                    100 + N,
+                    format!("end_play:present={present}:resource={resource}"),
+                );
             }
         }
 
@@ -1432,7 +1453,10 @@ mod tests {
             f.frame();
             take(101);
             f.world.remove::<Resident<1>>(instance);
-            assert_eq!(process_component_removals(&f.world, &f.events, &mut f.state), 1);
+            assert_eq!(
+                process_component_removals(&f.world, &f.events, &mut f.state),
+                1
+            );
             assert!(take(101).is_empty(), "deferred");
             f.frame();
             assert_eq!(take(101), ["end_play:present=false:resource=true"]);

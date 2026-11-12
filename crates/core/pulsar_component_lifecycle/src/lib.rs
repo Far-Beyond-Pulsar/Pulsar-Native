@@ -202,7 +202,8 @@ pub type EndFn = fn(&mut ActorCx<'_>);
 pub type WorldEndFn = fn(&mut World, &mut ActorCx<'_>);
 /// A native handler event delivered to one instance: the instance entity, the
 /// event's name and its wire fields.
-pub type EventFn = fn(&mut World, &mut ActorCx<'_>, Entity, &str, &[pulsar_events::gamma::DynValue]);
+pub type EventFn =
+    fn(&mut World, &mut ActorCx<'_>, Entity, &str, &[pulsar_events::gamma::DynValue]);
 
 /// A class's lifecycle: function pointers shaped by the framework, so a table
 /// crosses the plugin library boundary like the other registries.

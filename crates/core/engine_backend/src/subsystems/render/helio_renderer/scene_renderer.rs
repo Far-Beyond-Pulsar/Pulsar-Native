@@ -223,9 +223,13 @@ impl SceneRenderer {
         // The renderer is built with no pipeline; the level's is assigned below.
         // There is no default: none, a missing or an invalid one shows Helio's
         // status screen with the reason.
-        let renderer = builder
-            .with_status_hint(PIPELINE_HINT)
-            .build(device, queue.clone(), width, height, format);
+        let renderer = builder.with_status_hint(PIPELINE_HINT).build(
+            device,
+            queue.clone(),
+            width,
+            height,
+            format,
+        );
         let mut this = Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),
@@ -240,7 +244,9 @@ impl SceneRenderer {
             view_payloads: Vec::new(),
             construct_pump: options.construct_pump.clone(),
         };
-        this.set_pipeline_state(super::pipelines::pipeline_state(options.pipeline.as_deref()));
+        this.set_pipeline_state(super::pipelines::pipeline_state(
+            options.pipeline.as_deref(),
+        ));
         this
     }
 

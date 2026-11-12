@@ -1247,9 +1247,10 @@ pub fn open_project_file_index(project_root: &Path) -> Result<Option<Arc<Project
             index
         }
         Err(error) => {
-            failures
-                .lock()
-                .insert(key.clone(), (std::time::Instant::now(), format!("{error:#}")));
+            failures.lock().insert(
+                key.clone(),
+                (std::time::Instant::now(), format!("{error:#}")),
+            );
             return Err(error);
         }
     };

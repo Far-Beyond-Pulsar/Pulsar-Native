@@ -268,7 +268,11 @@ mod tests {
         }
 
         g.tick_once();
-        assert_eq!(new_counter.load(Ordering::SeqCst), 1, "the new behavior ticks");
+        assert_eq!(
+            new_counter.load(Ordering::SeqCst),
+            1,
+            "the new behavior ticks"
+        );
         assert_eq!(old_counter.load(Ordering::SeqCst), 1, "the old one is gone");
     }
 
@@ -289,7 +293,11 @@ mod tests {
         g.tick_once();
         g.tick_once();
 
-        assert_eq!(old_counter.load(Ordering::SeqCst), 1, "the replaced actor stops");
+        assert_eq!(
+            old_counter.load(Ordering::SeqCst),
+            1,
+            "the replaced actor stops"
+        );
         assert_eq!(new_counter.load(Ordering::SeqCst), 2);
     }
 

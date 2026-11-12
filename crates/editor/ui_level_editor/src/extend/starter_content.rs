@@ -299,7 +299,13 @@ pub fn start(id: &str) -> Result<Arc<InstallJob>, String> {
         jobs.insert(pack.id, job.clone());
     }
     let worker = job.clone();
-    editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new(format!("starter-content-{}", pack.id), editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || match run(pack, &root, &worker) {
+    editor_task_queue::spawn_thread(
+        editor_task_queue::ThreadSpec::new(
+            format!("starter-content-{}", pack.id),
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_level_editor"),
+        move || match run(pack, &root, &worker) {
             Ok(files) => tracing::info!(
                 "added {}: {}",
                 pack.title,
@@ -311,11 +317,12 @@ pub fn start(id: &str) -> Result<Arc<InstallJob>, String> {
             ),
             Err(InstallError::Cancelled) => tracing::info!("cancelled adding {}", pack.title),
             Err(error) => tracing::warn!("could not add {}: {error}", pack.title),
-        })
-        .map_err(|e| {
-            job.set(Phase::Failed(e.to_string()));
-            format!("Could not start the download: {e}")
-        })?;
+        },
+    )
+    .map_err(|e| {
+        job.set(Phase::Failed(e.to_string()));
+        format!("Could not start the download: {e}")
+    })?;
     Ok(job)
 }
 
@@ -474,29 +481,43 @@ mod tests {
     fn serve(body: Vec<u8>, slow: bool) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/pack.bin", listener.local_addr().unwrap());
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui level editor: serve", editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || {
-            for stream in listener.incoming() {
-                let Ok(mut stream) = stream else { continue };
-                let body = body.clone();
-                editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui level editor: serve", editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || {
-                    let mut request = [0u8; 1024];
-                    let _ = stream.read(&mut request);
-                    let head = format!(
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui level editor: serve",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_level_editor"),
+            move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { continue };
+                    let body = body.clone();
+                    editor_task_queue::spawn_named(
+                        editor_task_queue::ThreadSpec::new(
+                            "ui level editor: serve",
+                            editor_task_queue::ThreadRole::Io,
+                        )
+                        .owner("ui_level_editor"),
+                        move || {
+                            let mut request = [0u8; 1024];
+                            let _ = stream.read(&mut request);
+                            let head = format!(
                         "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                         body.len()
                     );
-                    let _ = stream.write_all(head.as_bytes());
-                    for chunk in body.chunks(64 << 10) {
-                        if stream.write_all(chunk).is_err() {
-                            return;
-                        }
-                        if slow {
-                            std::thread::sleep(std::time::Duration::from_millis(50));
-                        }
-                    }
-                });
-            }
-        });
+                            let _ = stream.write_all(head.as_bytes());
+                            for chunk in body.chunks(64 << 10) {
+                                if stream.write_all(chunk).is_err() {
+                                    return;
+                                }
+                                if slow {
+                                    std::thread::sleep(std::time::Duration::from_millis(50));
+                                }
+                            }
+                        },
+                    );
+                }
+            },
+        );
         url
     }
 
@@ -584,12 +605,19 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let job = Arc::new(InstallJob::new());
         let stopper = job.clone();
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui level editor: cancelling mid download stops it and writes nothing", editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || {
-            while !matches!(stopper.phase(), Phase::Downloading { done, .. } if done > 0) {
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-            stopper.cancel();
-        });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui level editor: cancelling mid download stops it and writes nothing",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_level_editor"),
+            move || {
+                while !matches!(stopper.phase(), Phase::Downloading { done, .. } if done > 0) {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                stopper.cancel();
+            },
+        );
         assert_eq!(
             run(&pack, root.path(), &job).unwrap_err(),
             InstallError::Cancelled

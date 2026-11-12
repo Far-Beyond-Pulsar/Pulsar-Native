@@ -6,8 +6,8 @@
 
 pulsar_plugins::installed!("pulsar-plugin.toml", build);
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use engine_backend::scene::class_spec::{Actor, ActorCx, ActorTable, ConstructInfo, SessionKind};
 use engine_backend::scene::{ClassSpec, ComponentsBuilder};

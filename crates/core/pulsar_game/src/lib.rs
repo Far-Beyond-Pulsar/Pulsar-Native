@@ -23,8 +23,7 @@ pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool,
 // longer has an actor trait of its own.
 pub use lifecycle::Actor;
 pub use pulsar_scenedb::{
-    Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter, Schedule, World,
-    WorldQuery,
+    Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter, Schedule, World, WorldQuery,
 };
 
 // The component lifecycle traits and the native script actors that run
@@ -172,6 +171,7 @@ mod test_probe;
 
 /// Convenience prelude — glob-import this to get the whole public API.
 pub mod prelude {
+    pub use crate::lifecycle::Actor;
     pub use crate::{
         freecam::FreeCam,
         scripting::ScriptRuntime,
@@ -179,6 +179,5 @@ pub mod prelude {
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
-    pub use crate::lifecycle::Actor;
     pub use pulsar_scenedb::{Component, Entity, QueryIter, Schedule, World, WorldQuery};
 }

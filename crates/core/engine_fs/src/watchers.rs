@@ -45,7 +45,13 @@ pub fn start_file_index_watcher(
         return Err(error.into());
     }
 
-    let thread = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("Project File Index Watcher".to_owned(), editor_task_queue::ThreadRole::Service).owner("engine_fs"), move || {
+    let thread = editor_task_queue::spawn_thread(
+        editor_task_queue::ThreadSpec::new(
+            "Project File Index Watcher".to_owned(),
+            editor_task_queue::ThreadRole::Service,
+        )
+        .owner("engine_fs"),
+        move || {
             while let Ok(event) = rx.recv() {
                 if matches!(
                     event.kind,
@@ -73,7 +79,8 @@ pub fn start_file_index_watcher(
                 }
             }
             drop(watcher);
-        });
+        },
+    );
     if let Err(error) = thread {
         watched.lock().remove(&project_root);
         return Err(error.into());

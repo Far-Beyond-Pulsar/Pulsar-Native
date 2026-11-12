@@ -102,7 +102,12 @@ mod actors {
 
     struct Counter(Arc<Mutex<Vec<&'static str>>>);
     impl crate::lifecycle::NativeActor for Counter {
-        fn begin_play(&mut self, _e: Entity, _w: &mut World, _cx: &mut crate::lifecycle::ActorCx<'_>) {
+        fn begin_play(
+            &mut self,
+            _e: Entity,
+            _w: &mut World,
+            _cx: &mut crate::lifecycle::ActorCx<'_>,
+        ) {
             self.0.lock().unwrap().push("begin");
         }
         fn tick(
@@ -114,7 +119,12 @@ mod actors {
         ) {
             self.0.lock().unwrap().push("tick");
         }
-        fn end_play(&mut self, _e: Entity, _w: &mut World, _cx: &mut crate::lifecycle::ActorCx<'_>) {
+        fn end_play(
+            &mut self,
+            _e: Entity,
+            _w: &mut World,
+            _cx: &mut crate::lifecycle::ActorCx<'_>,
+        ) {
             self.0.lock().unwrap().push("end");
         }
     }
@@ -128,7 +138,10 @@ mod actors {
         // #634: actors register into the loop's SHARED scene store (the one
         // renderers read), not a private world.
         tick_loop.register_native_actor(Counter(log.clone()));
-        assert!(log.lock().unwrap().is_empty(), "nothing before the first frame");
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "nothing before the first frame"
+        );
         tick_loop.tick_once();
         tick_loop.tick_once();
         tick_loop.end_session();

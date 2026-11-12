@@ -331,23 +331,30 @@ pub(super) fn execute_tool_calls(
             let registry = tool_registry.clone();
             let ctx = tool_context.clone();
             let tx = tx.clone();
-            editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui core: execute tool calls", editor_task_queue::ThreadRole::Io).owner("ui_core"), move || {
-                let result = registry.execute(&name, args, &ctx);
-                let (tool_result, is_error) = match result {
-                    Ok(value) => (value.to_string(), false),
-                    Err(err) => (format!("Tool error: {}", err), true),
-                };
-                let result_preview =
-                    AgentChatPanel::format_tool_result_preview(&name, &tool_result);
-                let _ = tx.try_send(StreamEvent::ToolCallResult {
-                    id: id.clone(),
-                    tool_name: name.clone(),
-                    result_preview,
-                    result_full: tool_result.clone(),
-                    is_error,
-                });
-                (id, name, tool_result)
-            })
+            editor_task_queue::spawn_named(
+                editor_task_queue::ThreadSpec::new(
+                    "ui core: execute tool calls",
+                    editor_task_queue::ThreadRole::Io,
+                )
+                .owner("ui_core"),
+                move || {
+                    let result = registry.execute(&name, args, &ctx);
+                    let (tool_result, is_error) = match result {
+                        Ok(value) => (value.to_string(), false),
+                        Err(err) => (format!("Tool error: {}", err), true),
+                    };
+                    let result_preview =
+                        AgentChatPanel::format_tool_result_preview(&name, &tool_result);
+                    let _ = tx.try_send(StreamEvent::ToolCallResult {
+                        id: id.clone(),
+                        tool_name: name.clone(),
+                        result_preview,
+                        result_full: tool_result.clone(),
+                        is_error,
+                    });
+                    (id, name, tool_result)
+                },
+            )
         })
         .collect();
 

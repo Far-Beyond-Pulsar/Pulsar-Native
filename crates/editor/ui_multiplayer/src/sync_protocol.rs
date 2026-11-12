@@ -461,35 +461,45 @@ impl MultiplayerWindow {
         // Create manifest in background thread
         let client_clone = client.clone();
         let session_id_clone = req_session_id.clone();
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui multiplayer: host serve manifest", editor_task_queue::ThreadRole::Io).owner("ui_multiplayer"), move || {
-            tracing::debug!("HOST: Creating file manifest for {:?}", project_root);
-            match simple_sync::create_manifest(&project_root) {
-                Ok(manifest) => {
-                    tracing::debug!("HOST: Created manifest with {} files", manifest.files.len());
-                    match serde_json::to_string(&manifest) {
-                        Ok(manifest_json) => {
-                            tracing::debug!(
-                                "HOST: Serialized manifest to {} bytes",
-                                manifest_json.len()
-                            );
-                            tokio::runtime::Runtime::new().unwrap().block_on(async {
-                                let client_guard = client_clone.read().await;
-                                let _ = client_guard
-                                    .send(ClientMessage::FileManifest {
-                                        session_id: session_id_clone,
-                                        peer_id: our_peer_id,
-                                        manifest_json,
-                                    })
-                                    .await;
-                                tracing::debug!("HOST: Sent file manifest");
-                            });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui multiplayer: host serve manifest",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_multiplayer"),
+            move || {
+                tracing::debug!("HOST: Creating file manifest for {:?}", project_root);
+                match simple_sync::create_manifest(&project_root) {
+                    Ok(manifest) => {
+                        tracing::debug!(
+                            "HOST: Created manifest with {} files",
+                            manifest.files.len()
+                        );
+                        match serde_json::to_string(&manifest) {
+                            Ok(manifest_json) => {
+                                tracing::debug!(
+                                    "HOST: Serialized manifest to {} bytes",
+                                    manifest_json.len()
+                                );
+                                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                    let client_guard = client_clone.read().await;
+                                    let _ = client_guard
+                                        .send(ClientMessage::FileManifest {
+                                            session_id: session_id_clone,
+                                            peer_id: our_peer_id,
+                                            manifest_json,
+                                        })
+                                        .await;
+                                    tracing::debug!("HOST: Sent file manifest");
+                                });
+                            }
+                            Err(e) => tracing::error!("HOST: Failed to serialize manifest: {}", e),
                         }
-                        Err(e) => tracing::error!("HOST: Failed to serialize manifest: {}", e),
                     }
+                    Err(e) => tracing::error!("HOST: Failed to create manifest: {}", e),
                 }
-                Err(e) => tracing::error!("HOST: Failed to create manifest: {}", e),
-            }
-        });
+            },
+        );
     }
 
     /// Reads the requested files on a background thread and sends them as one `FilesChunk`.
@@ -511,33 +521,40 @@ impl MultiplayerWindow {
         // Read files in background thread
         let client_clone = client.clone();
         let session_id_clone = req_session_id.clone();
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui multiplayer: host serve files", editor_task_queue::ThreadRole::Io).owner("ui_multiplayer"), move || {
-            tracing::debug!("HOST: Reading {} files", file_paths.len());
-            match simple_sync::read_files(&project_root, file_paths.clone()) {
-                Ok(files_data) => {
-                    // Serialize files data
-                    match serde_json::to_string(&files_data) {
-                        Ok(files_json) => {
-                            tokio::runtime::Runtime::new().unwrap().block_on(async {
-                                let client_guard = client_clone.read().await;
-                                let _ = client_guard
-                                    .send(ClientMessage::FilesChunk {
-                                        session_id: session_id_clone,
-                                        peer_id: our_peer_id,
-                                        files_json,
-                                        chunk_index: 0,
-                                        total_chunks: 1,
-                                    })
-                                    .await;
-                                tracing::debug!("HOST: Sent {} files", file_paths.len());
-                            });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui multiplayer: host serve files",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_multiplayer"),
+            move || {
+                tracing::debug!("HOST: Reading {} files", file_paths.len());
+                match simple_sync::read_files(&project_root, file_paths.clone()) {
+                    Ok(files_data) => {
+                        // Serialize files data
+                        match serde_json::to_string(&files_data) {
+                            Ok(files_json) => {
+                                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                    let client_guard = client_clone.read().await;
+                                    let _ = client_guard
+                                        .send(ClientMessage::FilesChunk {
+                                            session_id: session_id_clone,
+                                            peer_id: our_peer_id,
+                                            files_json,
+                                            chunk_index: 0,
+                                            total_chunks: 1,
+                                        })
+                                        .await;
+                                    tracing::debug!("HOST: Sent {} files", file_paths.len());
+                                });
+                            }
+                            Err(e) => tracing::error!("HOST: Failed to serialize files: {}", e),
                         }
-                        Err(e) => tracing::error!("HOST: Failed to serialize files: {}", e),
                     }
+                    Err(e) => tracing::error!("HOST: Failed to read files: {}", e),
                 }
-                Err(e) => tracing::error!("HOST: Failed to read files: {}", e),
-            }
-        });
+            },
+        );
     }
 
     /// Reads one file and sends it to the requester in `FILE_CHUNK_SIZE` chunks.

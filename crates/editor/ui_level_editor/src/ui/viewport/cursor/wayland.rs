@@ -142,12 +142,16 @@ fn init(window: &gpui::Window) -> Option<&'static Shared> {
         return None;
     }
 
-    let spawned = editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("Wayland Input", editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || loop {
+    let spawned = editor_task_queue::spawn_thread(
+        editor_task_queue::ThreadSpec::new("Wayland Input", editor_task_queue::ThreadRole::Io)
+            .owner("ui_level_editor"),
+        move || loop {
             if let Err(e) = queue.blocking_dispatch(&mut state) {
                 tracing::warn!("[VIEWPORT] Wayland input dispatch ended: {e}");
                 return;
             }
-        });
+        },
+    );
     if let Err(e) = spawned {
         tracing::warn!("[VIEWPORT] Wayland: could not start input thread: {e}");
         return None;

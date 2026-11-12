@@ -51,10 +51,22 @@ const LAYOUTS: [(&str, usize); 15] = [
     ("ActorTable", size_of::<ActorTable>()),
     // The session a system and a lifecycle callback receive by reference.
     ("Session", size_of::<crate::Session>()),
-    ("SessionScope", size_of::<pulsar_component_lifecycle::SessionScope>()),
-    ("ActorCx", size_of::<pulsar_component_lifecycle::ActorCx<'static>>()),
-    ("pulsar_reflection", pulsar_reflection::runtime::ABI_VERSION as usize),
-    ("pulsar_scenedb", pulsar_scenedb::runtime::ABI_VERSION as usize),
+    (
+        "SessionScope",
+        size_of::<pulsar_component_lifecycle::SessionScope>(),
+    ),
+    (
+        "ActorCx",
+        size_of::<pulsar_component_lifecycle::ActorCx<'static>>(),
+    ),
+    (
+        "pulsar_reflection",
+        pulsar_reflection::runtime::ABI_VERSION as usize,
+    ),
+    (
+        "pulsar_scenedb",
+        pulsar_scenedb::runtime::ABI_VERSION as usize,
+    ),
     (
         "pulsar_scene_model",
         pulsar_scene_model::runtime::ABI_VERSION as usize,
@@ -306,11 +318,10 @@ pub fn import_builds() {
             .filter(|built| !SYSTEMS.get().iter().any(|r| std::ptr::eq(*r, *built)))
             .collect();
     SYSTEMS.extend(&new_systems);
-    let new_actors: Vec<&'static ActorRegistration> =
-        pulsar_plugins::built::<ActorRegistration>()
-            .into_iter()
-            .filter(|built| !ACTORS.get().iter().any(|r| std::ptr::eq(*r, *built)))
-            .collect();
+    let new_actors: Vec<&'static ActorRegistration> = pulsar_plugins::built::<ActorRegistration>()
+        .into_iter()
+        .filter(|built| !ACTORS.get().iter().any(|r| std::ptr::eq(*r, *built)))
+        .collect();
     ACTORS.extend(&new_actors);
 }
 
@@ -518,8 +529,16 @@ mod tests {
     /// library built against another layout of them is refused.
     #[test]
     fn the_fingerprint_covers_the_lifecycle_types() {
-        let layout = |name: &str| LAYOUTS.iter().find(|(n, _)| *n == name).map(|(_, size)| *size);
-        assert_eq!(layout("ActorRegistration"), Some(size_of::<ActorRegistration>()));
+        let layout = |name: &str| {
+            LAYOUTS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, size)| *size)
+        };
+        assert_eq!(
+            layout("ActorRegistration"),
+            Some(size_of::<ActorRegistration>())
+        );
         assert_eq!(layout("ActorTable"), Some(size_of::<ActorTable>()));
         // P2: the session handed to systems and callbacks is covered too.
         assert_eq!(layout("Session"), Some(size_of::<crate::Session>()));

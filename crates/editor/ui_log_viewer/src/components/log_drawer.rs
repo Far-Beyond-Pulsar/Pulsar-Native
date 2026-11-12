@@ -1,8 +1,6 @@
 use editor_task_queue::TaskLog;
 use gpui::{prelude::*, *};
-use std::{
-    cell::RefCell, collections::VecDeque, ops::Range, rc::Rc, sync::Arc, time::Duration,
-};
+use std::{cell::RefCell, collections::VecDeque, ops::Range, rc::Rc, sync::Arc, time::Duration};
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -704,14 +702,13 @@ impl LogDrawer {
                 }
                 batch.extend(read.lines);
                 if !batch.is_empty() {
-                    let alive = cx
-                        .update(|cx| {
-                            let Some(this) = this.upgrade() else {
-                                return false;
-                            };
-                            this.update(cx, |drawer, cx| drawer.ingest_lines(batch, cx));
-                            true
-                        });
+                    let alive = cx.update(|cx| {
+                        let Some(this) = this.upgrade() else {
+                            return false;
+                        };
+                        this.update(cx, |drawer, cx| drawer.ingest_lines(batch, cx));
+                        true
+                    });
                     if !alive {
                         break;
                     }

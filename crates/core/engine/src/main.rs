@@ -94,10 +94,10 @@ pub mod discord; // Discord Rich Presence integration
 mod dxc; // Install and select DXC: Windows on ARM has no static DXC and FXC rejects our shaders
 pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
-mod prompts; // Startup prompts, shown by the pulsar-dialog helper
 pub mod init; // Initialization dependency graph
 pub mod logging; // Logging setup and configuration
 pub mod macos_permissions;
+mod prompts; // Startup prompts, shown by the pulsar-dialog helper
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
 mod steps;

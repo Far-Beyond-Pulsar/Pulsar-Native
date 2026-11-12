@@ -149,7 +149,9 @@ fn recover(
         match restore_and_relaunch(stable_executable, args) {
             Ok(()) => return,
             Err(error) => {
-                append_log(&format!("Could not restore the last stable engine: {error}\n"));
+                append_log(&format!(
+                    "Could not restore the last stable engine: {error}\n"
+                ));
                 relaunch = ask_after_restore_failure(&error);
             }
         }
@@ -158,7 +160,9 @@ fn recover(
 
 fn recovery_buttons(relaunch_label: &str) -> Vec<DialogButton> {
     vec![
-        DialogButton::new(RELAUNCH, relaunch_label).kind(ButtonKind::Primary).default(),
+        DialogButton::new(RELAUNCH, relaunch_label)
+            .kind(ButtonKind::Primary)
+            .default(),
         DialogButton::new(QUIT, "Quit").cancel(),
     ]
 }
@@ -189,11 +193,8 @@ fn ask_after_failure(window: Option<ProgressWindow>, failure: &str) -> bool {
 }
 
 fn ask_after_restore_failure(error: &str) -> bool {
-    let mut request = DialogRequest::new(
-        "Could not restore the last stable engine",
-        error,
-    )
-    .severity(Severity::Error);
+    let mut request = DialogRequest::new("Could not restore the last stable engine", error)
+        .severity(Severity::Error);
     for button in recovery_buttons("Try again") {
         request = request.button(button);
     }
