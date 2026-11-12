@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "name": "Default",
+      "collides_with": [
+        "Default",
+        "World",
+        "Props",
+        "Triggers"
+      ],
+      "color": "#9aa0a6",
+      "description": "Everything unlabelled"
+    },
+    {
+      "name": "World",
+      "collides_with": [
+        "Default",
+        "World",
+        "Props"
+      ],
+      "color": "#6b7280",
+      "description": "Ground and walls"
+    },
+    {
+      "name": "Props",
+      "collides_with": [
+        "Default",
+        "World",
+        "Props",
+        "Triggers"
+      ],
+      "color": "#f59e0b",
+      "description": "Dynamic things"
+    },
+    {
+      "name": "Triggers",
+      "collides_with": [
+        "Default",
+        "Props"
+      ],
+      "color": "#22c55e",
+      "description": "Overlap volumes: see Props only"
+    }
+  ]
+}
