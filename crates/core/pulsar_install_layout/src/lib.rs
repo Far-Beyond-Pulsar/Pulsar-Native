@@ -39,6 +39,13 @@ pub fn themes_dir() -> PathBuf {
     appdata_dir().join("themes")
 }
 
+/// What the Hub installed into [`themes_dir`] and from where. Kept beside the
+/// directory, not in it: the engine's theme watcher parses every `*.json`
+/// there as a theme.
+pub fn themes_lock_path() -> PathBuf {
+    appdata_dir().join("themes.lock.json")
+}
+
 /// Where plugin and theme registries are cloned.
 pub fn registries_dir() -> PathBuf {
     appdata_dir().join("registries")
@@ -206,6 +213,74 @@ pub struct PluginLock {
     pub plugins: Vec<PluginRecord>,
 }
 
+/// A theme file the Hub installed into the shared themes directory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemeRecord {
+    /// The theme file's display name (its `name` field).
+    pub name: String,
+    /// The file's name inside [`themes_dir`].
+    pub file: String,
+    pub sha256: String,
+    /// The registry it came from.
+    #[serde(default)]
+    pub registry_url: String,
+    pub installed_at: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThemeLock {
+    pub themes: Vec<ThemeRecord>,
+}
+
+/// The themes the Hub installed, all engine installs sharing one directory.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ThemeLayout {
+    dir: PathBuf,
+    lock: PathBuf,
+}
+
+impl ThemeLayout {
+    /// The per-user shared themes directory.
+    pub fn shared() -> Self {
+        Self { dir: themes_dir(), lock: themes_lock_path() }
+    }
+
+    /// A themes directory and lock of your choosing (tests).
+    pub fn at(dir: impl Into<PathBuf>, lock: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into(), lock: lock.into() }
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub fn load_lock(&self) -> ThemeLock {
+        read_json(&self.lock).unwrap_or_default()
+    }
+
+    /// Record a theme file already written to [`Self::dir`].
+    pub fn register_theme(&self, mut record: ThemeRecord) -> io::Result<ThemeRecord> {
+        record.sha256 = hash_file(&self.dir.join(&record.file))?;
+        let mut lock = self.load_lock();
+        lock.themes.retain(|existing| existing.file != record.file);
+        lock.themes.push(record.clone());
+        write_json(&self.lock, &lock)?;
+        Ok(record)
+    }
+
+    /// Delete an installed theme file and drop it from the lock.
+    pub fn unregister_theme(&self, file: &str) -> io::Result<()> {
+        let mut lock = self.load_lock();
+        lock.themes.retain(|existing| existing.file != file);
+        match std::fs::remove_file(self.dir.join(file)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        write_json(&self.lock, &lock)
+    }
+}
+
 /// The lower-case sha-256 hex digest of a file.
 pub fn hash_file(path: &Path) -> io::Result<String> {
     use io::Read as _;
@@ -292,5 +367,28 @@ mod tests {
         assert!(layout.load_plugin_lock().plugins.is_empty());
         assert!(layout.load_integrity_manifest().0.is_empty());
         assert!(!layout.plugins_dir().join("a_2.dll").exists());
+    }
+
+    #[test]
+    fn a_theme_is_recorded_beside_not_inside_the_themes_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let themes = ThemeLayout::at(dir.path().join("themes"), dir.path().join("themes.lock.json"));
+        std::fs::create_dir_all(themes.dir()).unwrap();
+        std::fs::write(themes.dir().join("nord.json"), b"{}").unwrap();
+        let recorded = themes
+            .register_theme(ThemeRecord {
+                name: "Nord".into(),
+                file: "nord.json".into(),
+                sha256: String::new(),
+                registry_url: String::new(),
+                installed_at: "now".into(),
+            })
+            .unwrap();
+        assert_eq!(recorded.sha256.len(), 64);
+        assert_eq!(themes.load_lock().themes.len(), 1);
+        assert!(!themes.dir().join("themes.lock.json").exists());
+        themes.unregister_theme("nord.json").unwrap();
+        assert!(themes.load_lock().themes.is_empty());
+        assert!(!themes.dir().join("nord.json").exists());
     }
 }
