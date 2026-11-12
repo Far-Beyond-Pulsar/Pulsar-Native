@@ -28,8 +28,8 @@ use std::sync::{Arc, Mutex};
 
 use engine_backend::scene::{SceneWorldExt, Transform};
 use installed_plugins::physics_plugin::{
-    simulated_counts, simulation_running, wait_idle, BodyType, ColliderComponent,
-    ColliderShape, RigidBodyComponent, COLLISION_ENTER, TRIGGER_ENTER,
+    simulated_counts, simulation_running, wait_idle, BodyType, ColliderComponent, ColliderShape,
+    RigidBodyComponent, COLLISION_ENTER, TRIGGER_ENTER,
 };
 use pulsar_content::ContentRoot;
 use pulsar_core::TickMode;
@@ -104,7 +104,10 @@ fn cook(dir: &Path, level: &Value) -> std::path::PathBuf {
     options.loose = true;
     options.skip_build = true;
     let report = package(&options).unwrap_or_else(|e| panic!("cooking failed: {e}"));
-    assert_eq!(report.startup_level.as_deref(), Some("scenes/default.level"));
+    assert_eq!(
+        report.startup_level.as_deref(),
+        Some("scenes/default.level")
+    );
     out.join("Content")
 }
 
@@ -236,7 +239,10 @@ fn a_cooked_level_runs_its_physics_headless_and_ends_the_session() {
     let cooked: Value =
         serde_json::from_slice(&std::fs::read(content.join("scenes/default.level")).unwrap())
             .unwrap();
-    assert_eq!(cooked["world_settings"]["gravity"], json!([0.0, -9.81, 0.0]));
+    assert_eq!(
+        cooked["world_settings"]["gravity"],
+        json!([0.0, -9.81, 0.0])
+    );
     assert!(cooked.get("editor").is_none(), "editor data is dropped");
     let classes: Vec<_> = cooked["objects"]
         .as_array()
@@ -250,14 +256,19 @@ fn a_cooked_level_runs_its_physics_headless_and_ends_the_session() {
         4
     );
     assert_eq!(
-        classes.iter().filter(|c| *c == "RigidBodyComponent").count(),
+        classes
+            .iter()
+            .filter(|c| *c == "RigidBodyComponent")
+            .count(),
         3
     );
     assert_eq!(
         cooked["objects"][2]["component_instances"][0]["data"]["is_trigger"],
         json!(true)
     );
-    assert!(!cooked.to_string().contains(&dir.path().display().to_string()));
+    assert!(!cooked
+        .to_string()
+        .contains(&dir.path().display().to_string()));
 
     let seen = run_cooked(&content, 300);
 
@@ -268,7 +279,10 @@ fn a_cooked_level_runs_its_physics_headless_and_ends_the_session() {
         "the level's settings are the session's before its first tick"
     );
     // Running: the simulation thread exists and holds every body and collider.
-    assert!(seen.running_while_running, "physics started in the packaged run");
+    assert!(
+        seen.running_while_running,
+        "physics started in the packaged run"
+    );
     assert_eq!(seen.counts_while_running, (3, 4));
     assert!(seen.live_threads_while_running >= 1);
     // The crate fell onto the slab (top 0.5, half-height 0.5) and rested.
@@ -287,7 +301,10 @@ fn a_cooked_level_runs_its_physics_headless_and_ends_the_session() {
     );
     // The session ended: the resource is gone and the thread is joined.
     assert!(!seen.running_after);
-    assert_eq!(seen.live_threads_after, 0, "no Pulsar-Physics thread leaked");
+    assert_eq!(
+        seen.live_threads_after, 0,
+        "no Pulsar-Physics thread leaked"
+    );
 }
 
 #[test]

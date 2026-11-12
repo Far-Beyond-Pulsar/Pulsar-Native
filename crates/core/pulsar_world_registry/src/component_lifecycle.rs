@@ -923,10 +923,8 @@ pub fn pump_construct(world: &mut World, events: &EventHub, state: &mut Session)
                 changed,
             });
             {
-                let _scope = profiling::interned_scope(
-                    "Lifecycle::construct::",
-                    registration.class_name,
-                );
+                let _scope =
+                    profiling::interned_scope("Lifecycle::construct::", registration.class_name);
                 construct(world, &mut cx, instance);
             }
             delivered += 1;
@@ -1159,7 +1157,11 @@ mod tests {
                 "Session::end",
                 "Session::drop_resources",
             ] {
-                assert!(count(name) >= 1, "no `{name}` scope in {:?}", names(&recorded));
+                assert!(
+                    count(name) >= 1,
+                    "no `{name}` scope in {:?}",
+                    names(&recorded)
+                );
             }
             // The first tick ran off: the second tick ticked its three
             // instances, and ending the session ended them (one scope each,

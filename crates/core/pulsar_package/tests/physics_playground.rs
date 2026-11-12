@@ -110,9 +110,8 @@ impl Obj {
     }
     fn with(mut self, class: &str, data: Value) -> Self {
         let index = self.components.len();
-        self.components.push(
-            json!({ "index": index, "class_name": class, "enabled": true, "data": data }),
-        );
+        self.components
+            .push(json!({ "index": index, "class_name": class, "enabled": true, "data": data }));
         self
     }
     fn typed(self, class: &str, value: &impl serde::Serialize) -> Self {
@@ -254,14 +253,34 @@ fn build_level() -> Value {
     // Ground and boundary walls: static boxes.
     let concrete = || look([0.42, 0.44, 0.40, 1.0], 0.9, 0.0, 0.0);
     objects.push(static_box(
-        "ground", "Ground", [0.0, -0.5, 0.0], [40.0, 0.5, 40.0], GROUND_MAT, concrete(),
+        "ground",
+        "Ground",
+        [0.0, -0.5, 0.0],
+        [40.0, 0.5, 40.0],
+        GROUND_MAT,
+        concrete(),
     ));
     let wall = || look([0.55, 0.52, 0.48, 1.0], 0.8, 0.0, 0.0);
     for (id, name, at, half) in [
-        ("wall_north", "Wall North", [0.0, 2.0, -40.5], [41.0, 2.0, 0.5]),
-        ("wall_south", "Wall South", [0.0, 2.0, 40.5], [41.0, 2.0, 0.5]),
+        (
+            "wall_north",
+            "Wall North",
+            [0.0, 2.0, -40.5],
+            [41.0, 2.0, 0.5],
+        ),
+        (
+            "wall_south",
+            "Wall South",
+            [0.0, 2.0, 40.5],
+            [41.0, 2.0, 0.5],
+        ),
         ("wall_east", "Wall East", [40.5, 2.0, 0.0], [0.5, 2.0, 40.0]),
-        ("wall_west", "Wall West", [-40.5, 2.0, 0.0], [0.5, 2.0, 40.0]),
+        (
+            "wall_west",
+            "Wall West",
+            [-40.5, 2.0, 0.0],
+            [0.5, 2.0, 40.0],
+        ),
     ] {
         objects.push(static_box(id, name, at, half, GROUND_MAT, wall()));
     }
@@ -283,10 +302,14 @@ fn build_level() -> Value {
             let mut crate_collider = box_collider([0.5; 3], WOOD_MAT, "Props");
             crate_collider.half_extents = [0.5, 0.5, 0.5];
             objects.push(
-                Obj::new(&format!("crate_{n}"), &format!("Pyramid Crate {n}"), [x, y, -6.0])
-                    .mesh(CUBE, [1.0; 3], tint, true, 1.0)
-                    .typed("ColliderComponent", &crate_collider)
-                    .typed("RigidBodyComponent", &body(BodyType::Dynamic, 5.0)),
+                Obj::new(
+                    &format!("crate_{n}"),
+                    &format!("Pyramid Crate {n}"),
+                    [x, y, -6.0],
+                )
+                .mesh(CUBE, [1.0; 3], tint, true, 1.0)
+                .typed("ColliderComponent", &crate_collider)
+                .typed("RigidBodyComponent", &body(BodyType::Dynamic, 5.0)),
             );
         }
     }
@@ -328,20 +351,41 @@ fn build_level() -> Value {
         o.parent = Some("capsule".into());
         objects.push(o);
     };
-    part("capsule_shaft", "Capsule Shaft", CYLINDER, [0.0; 3], [0.8, 1.2, 0.8]);
-    part("capsule_cap_top", "Capsule Cap Top", SPHERE, [0.0, 0.6, 0.0], [0.8; 3]);
-    part("capsule_cap_bottom", "Capsule Cap Bottom", SPHERE, [0.0, -0.6, 0.0], [0.8; 3]);
+    part(
+        "capsule_shaft",
+        "Capsule Shaft",
+        CYLINDER,
+        [0.0; 3],
+        [0.8, 1.2, 0.8],
+    );
+    part(
+        "capsule_cap_top",
+        "Capsule Cap Top",
+        SPHERE,
+        [0.0, 0.6, 0.0],
+        [0.8; 3],
+    );
+    part(
+        "capsule_cap_bottom",
+        "Capsule Cap Bottom",
+        SPHERE,
+        [0.0, -0.6, 0.0],
+        [0.8; 3],
+    );
 
     // A ramp (a rotated static box, ice) and the ball that rolls down it
     // through a trigger volume. +Z rotation lifts the +X end.
-    objects.push(static_box(
-        "ramp",
-        "Ramp",
-        [16.0, 2.5, 8.0],
-        [5.0, 0.25, 2.5],
-        ICE_MAT,
-        look([0.6, 0.85, 0.95, 1.0], 0.15, 0.0, 0.0),
-    ).rotate([0.0, 0.0, 20.0]));
+    objects.push(
+        static_box(
+            "ramp",
+            "Ramp",
+            [16.0, 2.5, 8.0],
+            [5.0, 0.25, 2.5],
+            ICE_MAT,
+            look([0.6, 0.85, 0.95, 1.0], 0.15, 0.0, 0.0),
+        )
+        .rotate([0.0, 0.0, 20.0]),
+    );
     objects.push(dynamic_ball(
         "rolling_ball",
         "Rolling Ball",
@@ -358,7 +402,13 @@ fn build_level() -> Value {
     zone.physics_material = String::new();
     objects.push(
         Obj::new("finish_zone", "Finish Trigger Zone", [9.0, 1.5, 8.0])
-            .mesh(CUBE, [4.0, 3.0, 5.0], look([0.1, 0.9, 0.3, 1.0], 0.5, 0.0, 1.5), false, 0.25)
+            .mesh(
+                CUBE,
+                [4.0, 3.0, 5.0],
+                look([0.1, 0.9, 0.3, 1.0], 0.5, 0.0, 1.5),
+                false,
+                0.25,
+            )
             .typed("ColliderComponent", &zone)
             .typed("RigidBodyComponent", &body(BodyType::Static, 0.0)),
     );
@@ -366,7 +416,13 @@ fn build_level() -> Value {
     // Force fields: an updraft that holds a light ball, a radial well.
     objects.push(
         Obj::new("updraft", "Updraft Field", [-14.0, 0.2, 8.0])
-            .mesh(CYLINDER, [8.0, 0.2, 8.0], look([0.5, 0.8, 1.0, 1.0], 0.6, 0.0, 0.6), false, 0.35)
+            .mesh(
+                CYLINDER,
+                [8.0, 0.2, 8.0],
+                look([0.5, 0.8, 1.0, 1.0], 0.6, 0.0, 0.6),
+                false,
+                0.35,
+            )
             .typed(
                 "ForceFieldComponent",
                 &ForceFieldComponent {
@@ -390,7 +446,13 @@ fn build_level() -> Value {
     ));
     objects.push(
         Obj::new("well", "Gravity Well", [-14.0, 0.6, -14.0])
-            .mesh(SPHERE, [0.6; 3], look([0.7, 0.2, 0.9, 1.0], 0.4, 0.0, 2.0), false, 1.0)
+            .mesh(
+                SPHERE,
+                [0.6; 3],
+                look([0.7, 0.2, 0.9, 1.0], 0.4, 0.0, 2.0),
+                false,
+                1.0,
+            )
             .typed(
                 "ForceFieldComponent",
                 &ForceFieldComponent {
@@ -467,7 +529,13 @@ fn build_level() -> Value {
     door_collider.center = [0.0; 3];
     objects.push(
         Obj::new("swing_door", "Swing Door", [-4.3, 2.0, 14.0])
-            .mesh(CUBE, [3.0, 3.0, 0.2], look([0.3, 0.5, 0.8, 1.0], 0.6, 0.0, 0.0), true, 1.0)
+            .mesh(
+                CUBE,
+                [3.0, 3.0, 0.2],
+                look([0.3, 0.5, 0.8, 1.0], 0.6, 0.0, 0.0),
+                true,
+                1.0,
+            )
             .typed("ColliderComponent", &door_collider)
             .typed("RigidBodyComponent", &body(BodyType::Dynamic, 8.0))
             .typed(
@@ -554,17 +622,73 @@ fn physics_assets() -> Vec<(&'static str, String)> {
         l
     };
     layers.layers = vec![
-        layer("Default", &["Default", "World", "Props", "Triggers"], "#9aa0a6", "Everything unlabelled"),
-        layer("World", &["Default", "World", "Props"], "#6b7280", "Ground and walls"),
-        layer("Props", &["Default", "World", "Props", "Triggers"], "#f59e0b", "Dynamic things"),
-        layer("Triggers", &["Default", "Props"], "#22c55e", "Overlap volumes: see Props only"),
+        layer(
+            "Default",
+            &["Default", "World", "Props", "Triggers"],
+            "#9aa0a6",
+            "Everything unlabelled",
+        ),
+        layer(
+            "World",
+            &["Default", "World", "Props"],
+            "#6b7280",
+            "Ground and walls",
+        ),
+        layer(
+            "Props",
+            &["Default", "World", "Props", "Triggers"],
+            "#f59e0b",
+            "Dynamic things",
+        ),
+        layer(
+            "Triggers",
+            &["Default", "Props"],
+            "#22c55e",
+            "Overlap volumes: see Props only",
+        ),
     ];
     assert!(layers.validate().is_empty(), "{:?}", layers.validate());
     vec![
-        ("concrete.physmat", material(0.8, 0.0, 2400.0, SurfaceType::Concrete, "Ground, walls and posts: grippy, dead")),
-        ("wood.physmat", material(0.6, 0.1, 600.0, SurfaceType::Wood, "Crates, the door: moderate grip, barely bounces")),
-        ("rubber.physmat", material(0.9, 0.85, 1100.0, SurfaceType::Rubber, "Balls and the capsule: grippy and very bouncy")),
-        ("ice.physmat", material(0.03, 0.05, 900.0, SurfaceType::Ice, "The ramp: almost frictionless")),
+        (
+            "concrete.physmat",
+            material(
+                0.8,
+                0.0,
+                2400.0,
+                SurfaceType::Concrete,
+                "Ground, walls and posts: grippy, dead",
+            ),
+        ),
+        (
+            "wood.physmat",
+            material(
+                0.6,
+                0.1,
+                600.0,
+                SurfaceType::Wood,
+                "Crates, the door: moderate grip, barely bounces",
+            ),
+        ),
+        (
+            "rubber.physmat",
+            material(
+                0.9,
+                0.85,
+                1100.0,
+                SurfaceType::Rubber,
+                "Balls and the capsule: grippy and very bouncy",
+            ),
+        ),
+        (
+            "ice.physmat",
+            material(
+                0.03,
+                0.05,
+                900.0,
+                SurfaceType::Ice,
+                "The ramp: almost frictionless",
+            ),
+        ),
         ("playground.physlayers", layers.to_text()),
     ]
 }
@@ -712,18 +836,28 @@ fn the_example_cooks_and_runs_its_physics() {
     assert_eq!(report.startup_level.as_deref(), Some("scene/default.level"));
     assert!(
         // The sun light's default disk texture is the string "None": an engine quirk, harmless.
-        report.warnings.iter().all(|w| w.contains("emitter_disk.texture")),
+        report
+            .warnings
+            .iter()
+            .all(|w| w.contains("emitter_disk.texture")),
         "level warnings: {:?}",
         report.warnings
     );
     let content = out.path().join("Content");
-    for file in ["scene/default.level", "Pulsar/project.json", "assets/meshes/primitives/SM_Cube.fbx"] {
+    for file in [
+        "scene/default.level",
+        "Pulsar/project.json",
+        "assets/meshes/primitives/SM_Cube.fbx",
+    ] {
         assert!(content.join(file).is_file(), "Content/{file} is cooked");
     }
     let cooked: Value =
         serde_json::from_slice(&std::fs::read(content.join("scene/default.level")).unwrap())
             .unwrap();
-    assert_eq!(cooked["world_settings"]["gravity"], json!([0.0, -9.81, 0.0]));
+    assert_eq!(
+        cooked["world_settings"]["gravity"],
+        json!([0.0, -9.81, 0.0])
+    );
     assert_eq!(cooked["world_settings"]["physics_enabled"], json!(true));
 
     // 600 ticks: 10 s of simulated time.
@@ -739,16 +873,26 @@ fn the_example_cooks_and_runs_its_physics() {
             "crate {} settled above the ground (centre y >= 0.5 - skin): {p:?}",
             n + 1
         );
-        assert!(p[0].abs() < 14.0 && p[2].abs() < 14.0, "crate {} stayed in the arena: {p:?}", n + 1);
+        assert!(
+            p[0].abs() < 14.0 && p[2].abs() < 14.0,
+            "crate {} stayed in the arena: {p:?}",
+            n + 1
+        );
     }
     for (id, p) in &seen.others {
         assert!(finite(p), "{id} position {p:?}");
         assert!(p[1] > -0.2, "{id} fell through the ground: {p:?}");
-        assert!(p[0].abs() < 40.0 && p[2].abs() < 40.0, "{id} left the arena: {p:?}");
+        assert!(
+            p[0].abs() < 40.0 && p[2].abs() < 40.0,
+            "{id} left the arena: {p:?}"
+        );
     }
 
     // Events: a ball hit something, the rolling ball went through the trigger.
-    assert!(seen.ball_collisions >= 1, "collision_enter for a bouncy ball");
+    assert!(
+        seen.ball_collisions >= 1,
+        "collision_enter for a bouncy ball"
+    );
     assert!(
         seen.triggers.contains(&seen.rolling_ball_bits),
         "trigger_enter reported the rolling ball: {:?}",
@@ -756,7 +900,12 @@ fn the_example_cooks_and_runs_its_physics() {
     );
 
     // The pendulum held: the bob is still 3.96 m from its pivot (14, 9, -10).
-    let bob = seen.others.iter().find(|(id, _)| id == "pendulum_bob").unwrap().1;
+    let bob = seen
+        .others
+        .iter()
+        .find(|(id, _)| id == "pendulum_bob")
+        .unwrap()
+        .1;
     let reach = ((bob[0] - 14.0).powi(2) + (bob[1] - 9.0).powi(2) + (bob[2] + 10.0).powi(2)).sqrt();
     assert!(
         (reach - 3.96).abs() < 0.3,
@@ -766,5 +915,8 @@ fn the_example_cooks_and_runs_its_physics() {
 
     // The session ended and the physics thread was joined.
     assert!(!seen.running_after);
-    assert_eq!(seen.live_threads_after, 0, "no Pulsar-Physics thread leaked");
+    assert_eq!(
+        seen.live_threads_after, 0,
+        "no Pulsar-Physics thread leaked"
+    );
 }
