@@ -67,6 +67,7 @@ editor = [
     "portals_plugin/editor",
     "post_plugin/editor",
     "dep:render_bps_plugin",
+    "render_pipelines_plugin/editor",
     "sky_plugin/editor",
     "splines_plugin/editor",
     "sprites_plugin/editor",

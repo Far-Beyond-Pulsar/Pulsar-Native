@@ -200,7 +200,7 @@ fn export_the_default_render_graph() {
     let text = engine_fs::virtual_fs::read_to_string(&path).expect("read the graph back");
     let document =
         render_bps_plugin::document::decode(&text, &registry).expect("the editor loads it");
-    let reloaded = document.buildable_asset(&registry);
+    let reloaded = document.as_ref().buildable_asset(&registry);
     let revalidation = helio_graph_asset::validate(&reloaded, &registry);
     assert!(
         !revalidation.has_errors(),

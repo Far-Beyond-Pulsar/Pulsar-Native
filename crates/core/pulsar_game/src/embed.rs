@@ -456,7 +456,7 @@ impl EmbeddedGame {
         // drops with it at shutdown.
         host_count.armed = false;
 
-        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::new(
+        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::register(
             engine_backend::services::render_runtimes::RuntimeDescription {
                 label: "Play in Editor".into(),
                 origin: pulsar_plugins::engine_origin!(),

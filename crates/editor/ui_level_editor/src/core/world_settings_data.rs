@@ -149,10 +149,14 @@ mod tests {
             r#"{"world_settings":{"time_scale":2.0}}"#,
             r#"{"world_settings":{"render_pipeline":null}}"#,
         ] {
+            // The old default, as the enabled plugins name it now (the render
+            // pipelines plugin's `Deferred.rendergraph` when it is linked).
             let settings = migrate(legacy);
             assert_eq!(
-                settings.render_pipeline.as_deref(),
-                Some(pipelines::LEGACY_DEFAULT_PIPELINE),
+                settings.render_pipeline,
+                Some(pipelines::migrate_pipeline_id(
+                    pipelines::LEGACY_DEFAULT_PIPELINE.to_string()
+                )),
                 "{legacy}"
             );
             assert_eq!(settings.pipeline_version, pipelines::PIPELINE_VERSION);

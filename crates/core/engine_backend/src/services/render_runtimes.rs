@@ -915,7 +915,7 @@ impl Drop for DrivenFrame<'_> {
 impl DrivenRuntime {
     /// Registers a host-driven runtime.
     #[track_caller]
-    pub fn new(description: RuntimeDescription) -> Self {
+    pub fn register(description: RuntimeDescription) -> Self {
         let task = editor_task_queue::global().persistent_task(
             editor_task_queue::TaskDescription::persistent(
                 format!("Helio runtime: {}", description.label),
@@ -1285,7 +1285,7 @@ mod tests {
 
     #[test]
     fn a_paused_driven_runtime_draws_nothing() {
-        let runtime = DrivenRuntime::new(description("unit: driven", UpdateMode::Always));
+        let runtime = DrivenRuntime::register(description("unit: driven", UpdateMode::Always));
         {
             let _frame = runtime.begin_frame().expect("running");
         }

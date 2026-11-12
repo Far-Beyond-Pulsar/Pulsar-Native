@@ -11683,6 +11683,7 @@ dependencies = [
  "pulsar_settings",
  "pulsar_world_registry",
  "ui_level_editor",
+ "wgpu",
 ]
 
 [[package]]

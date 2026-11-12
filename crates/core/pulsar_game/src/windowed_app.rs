@@ -129,7 +129,7 @@ impl GameWindow {
         // (the render graph pin probe) uses it, not a second one.
         engine_backend::services::render_runtimes::global()
             .offer_device((*device).clone(), (*queue).clone());
-        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::new(
+        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::register(
             engine_backend::services::render_runtimes::RuntimeDescription {
                 label: format!("Game window {}", handle.id()),
                 origin: pulsar_plugins::engine_origin!(),

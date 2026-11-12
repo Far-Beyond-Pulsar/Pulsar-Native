@@ -5,6 +5,11 @@ edition = "2024"
 publish = false
 description = "Render Pipelines (`pulsar.render_pipelines`): the shipped render pipelines as .rendergraph assets in the plugin's folder, made from Helio's presets for the enabled plugins"
 
+[features]
+# The editor's registrations: none (the files and the id migration are the
+# game's too). Present because every installed root has it.
+editor = []
+
 [dependencies]
 # The plugin gate and the builder its registrations go through.
 pulsar_plugins = { workspace = true }
