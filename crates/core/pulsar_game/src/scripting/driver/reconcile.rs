@@ -81,6 +81,7 @@ impl ScriptDriver {
     /// handler call and timer is dropped and the hub's queue drained, so
     /// a stopped session leaves nothing behind on the hub.
     pub fn end_play_all(&mut self, world: &mut World) -> Vec<RuntimeError> {
+        profiling::profile_scope!("Script::end_play");
         let scope = CommandScope::begin();
         // A driver pumping its own lifecycle ends it here, with the world
         // alive. Either way the ends the lifecycle posted are dropped: the
@@ -177,6 +178,7 @@ impl ScriptDriver {
     /// ends first, then constructs, then the instances that began, by
     /// hierarchy depth, then StableId.
     fn apply_lifecycle(&mut self, world: &mut World, report: &mut DriverReport) {
+        profiling::profile_scope!("Script::apply_lifecycle");
         let mut ends = Vec::new();
         let mut constructs = Vec::new();
         let mut begins: HashMap<Entity, Entity> = HashMap::new();

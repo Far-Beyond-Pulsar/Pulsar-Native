@@ -12541,6 +12541,7 @@ name = "pulsar_package"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -12549,6 +12550,7 @@ dependencies = [
  "plugin_editor_api",
  "pulsar_class",
  "pulsar_content",
+ "pulsar_core",
  "pulsar_events",
  "pulsar_game",
  "pulsar_plugins",
@@ -12837,6 +12839,7 @@ dependencies = [
  "glam 0.33.5",
  "inventory",
  "pollster 1.0.1",
+ "profiling 0.1.0",
  "pulsar_component_lifecycle",
  "pulsar_events",
  "pulsar_plugins",
