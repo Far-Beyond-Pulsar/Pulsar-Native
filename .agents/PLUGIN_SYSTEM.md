@@ -415,6 +415,28 @@ plugin_editor_api (SDK)         plugin_manager (host)
          └─────── DLL boundary ──────┘
 ```
 
+### Where the libraries live (the install contract)
+
+The Hub installs engines and the plugins and themes they load; both sides name
+paths through `pulsar_install_layout` (`crates/core/pulsar_install_layout`), so
+a plugin the Hub installs is where the engine looks for it.
+
+```
+<app data>/themes/              one themes directory, shared by every install
+<install root>/plugins/editor/  this install's libraries (per install)
+    <plugin>.dll|so|dylib
+    plugin_integrity.json       { file name: sha-256 hex }; the engine loads no library it does not list
+    plugins.lock.json           what the Hub installed here: name, repo, version, file, registry
+```
+
+Plugins are per install because a library only loads into the engine build it
+was compiled against; themes are shared. The install root is
+`PULSAR_INSTALL_DIR`, else the executable's directory (a development build
+that has `plugins/editor` only in the working directory falls back to it).
+`InstallLayout::register_plugin` hashes a library into the manifest and the
+lock together; the engine rejects a library the manifest does not list, so
+never copy one in without it.
+
 ### The permanent library pattern
 
 The engine wraps `libloading::Library` in `ManuallyDrop` so `dlclose` /

@@ -8,11 +8,10 @@ publish = false
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
-ui_common.workspace = true
+ui_shell.workspace = true
 window_manager.workspace = true
 # Engine
 engine_state.workspace = true
-pulsar_std.workspace = true
 # Logging
 tracing.workspace = true
 

@@ -9,6 +9,7 @@ version = "0.2.42"
 name = "pulsar_engine"
 path = "src/main.rs"
 [dependencies]
+pulsar_install_layout = { workspace = true }
 # horizon.workspace = true
 anyhow.workspace = true
 gpui-ce.workspace = true
@@ -19,6 +20,9 @@ pulsar_error = { path = "../pulsar_error" }
 
 wgpu.workspace = true
 rfd = { workspace = true }
+pulsar_dialog_protocol = { workspace = true }
+# The dialog helper, built by this crate and embedded in the engine's executable.
+pulsar_dialog_embed = { workspace = true }
 file-association-manager = { git = "https://github.com/Far-Beyond-Pulsar/file-association-manager", rev = "6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3" }
 
 # Engine crates

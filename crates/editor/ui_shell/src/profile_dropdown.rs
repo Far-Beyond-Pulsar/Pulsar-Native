@@ -28,6 +28,9 @@ pub enum ProfileDropdownEvent {
 /// [`ProfileDropdownEvent::SignInRequested`] to begin the sign-in flow for that
 /// screen (entry screen uses device-flow; editor uses launcher).
 pub struct ProfileDropdown {
+    /// The host's extra account-menu entries (the editor lists its tools',
+    /// the Hub its own), asked each time the menu renders.
+    menu_items: fn() -> Vec<AccountMenuItem>,
     pub avatar_image: Option<Arc<RenderImage>>,
     pub avatar_url_loaded: Option<String>,
     /// Whether the dropdown panel is currently visible.
@@ -36,9 +39,26 @@ pub struct ProfileDropdown {
 
 impl EventEmitter<ProfileDropdownEvent> for ProfileDropdown {}
 
+/// One host-supplied entry of the account menu.
+#[derive(Clone)]
+pub struct AccountMenuItem {
+    /// The section heading it is listed under.
+    pub section: String,
+    pub label: String,
+    pub icon: IconName,
+    /// What the entry opens.
+    pub open: fn(&mut Window, &mut App),
+}
+
 impl ProfileDropdown {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        Self::with_menu_items(|| Vec::new(), cx)
+    }
+
+    /// A dropdown that also lists `menu_items()`, grouped by section.
+    pub fn with_menu_items(menu_items: fn() -> Vec<AccountMenuItem>, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
+            menu_items,
             avatar_image: None,
             avatar_url_loaded: None,
             is_open: false,
@@ -454,15 +474,11 @@ fn tool_sections(
     padded: bool,
     cx: &mut Context<ProfileDropdown>,
 ) -> Vec<AnyElement> {
-    let mut sections: Vec<(
-        String,
-        Vec<&'static crate::editor_tools::AccountMenuItemRegistration>,
-    )> = Vec::new();
-    for item in crate::editor_tools::account_menu_items() {
-        let heading = (item.section)();
-        match sections.iter_mut().find(|(name, _)| *name == heading) {
+    let mut sections: Vec<(String, Vec<AccountMenuItem>)> = Vec::new();
+    for item in (cx.entity().read(cx).menu_items)() {
+        match sections.iter_mut().find(|(name, _)| *name == item.section) {
             Some((_, items)) => items.push(item),
-            None => sections.push((heading, vec![item])),
+            None => sections.push((item.section.clone(), vec![item])),
         }
     }
     let mut out = Vec::new();
@@ -475,7 +491,7 @@ fn tool_sections(
             let open = item.open;
             column = column.child(menu_row(
                 item.icon.clone(),
-                &(item.label)(),
+                &item.label,
                 false,
                 cx.listener(move |this, _: &ClickEvent, window, cx| {
                     this.is_open = false;

@@ -1,0 +1,23 @@
+[package]
+name = "ui_shell"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The shell pieces every Pulsar app window uses (opening windows, the account menu and theme picker, the editor-tool registrations). UI framework, window manager and engine_state only: the editor and the Hub share them"
+
+[dependencies]
+gpui-ce.workspace = true
+ui.workspace = true
+window_manager.workspace = true
+pulsar_plugins = { workspace = true }
+engine_state.workspace = true
+pulsar_auth.workspace = true
+editor_task_queue = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "rustls-no-provider", "system-proxy"] }
+image.workspace = true
+smallvec.workspace = true
+smol = { workspace = true }
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -5490,8 +5490,8 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
- "helio-pass-debug-overlay",
  "helio-pass-postprocess",
+ "helio-pass-status-screen",
  "helio-pass-tsr",
  "helio-settings",
  "helio-xr",
@@ -6391,6 +6391,16 @@ dependencies = [
  "helio-frame-api",
  "helio-pass-hiz",
  "log",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-status-screen"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "helio-pass-debug-overlay",
  "wgpu",
 ]
 
@@ -12293,6 +12303,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_dialog_embed"
+version = "0.1.0"
+dependencies = [
+ "pulsar_dialog_protocol",
+ "pulsar_install_layout",
+ "sha2 0.11.0",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_dialog_protocol"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog?rev=85544da6ff4e4e31a65524782a9e9916a07ca63e#85544da6ff4e4e31a65524782a9e9916a07ca63e"
+dependencies = [
+ "rfd",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
@@ -12341,7 +12371,10 @@ dependencies = [
  "profiling 0.1.0",
  "profiling 1.0.18",
  "pulsar_auth",
+ "pulsar_dialog_embed",
+ "pulsar_dialog_protocol",
  "pulsar_error",
+ "pulsar_install_layout",
  "pulsar_std",
  "reqwest 0.13.4",
  "rfd",
@@ -12450,6 +12483,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "pulsar_install_layout"
+version = "0.1.0"
+dependencies = [
+ "directories 6.0.0",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
 ]
 
 [[package]]
@@ -12739,6 +12783,21 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_studio_client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-tungstenite",
+ "futures",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -17373,6 +17432,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_auth",
+ "ui_shell",
  "ui_types_common",
  "window_manager",
 ]
@@ -17398,6 +17458,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_events",
+ "pulsar_install_layout",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_settings",
@@ -17565,7 +17626,7 @@ dependencies = [
  "smol",
  "tracing",
  "ui",
- "ui_common",
+ "ui_shell",
 ]
 
 [[package]]
@@ -17606,7 +17667,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "ui",
- "ui_common",
+ "ui_shell",
  "window_manager",
 ]
 
@@ -17778,6 +17839,7 @@ dependencies = [
  "gpui-ce",
  "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "pulsar_studio_client",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -17840,10 +17902,27 @@ version = "0.1.0"
 dependencies = [
  "engine_state",
  "gpui-ce",
- "pulsar_std",
  "tracing",
  "ui",
- "ui_common",
+ "ui_shell",
+ "window_manager",
+]
+
+[[package]]
+name = "ui_shell"
+version = "0.1.0"
+dependencies = [
+ "editor_task_queue",
+ "engine_state",
+ "gpui-ce",
+ "image",
+ "pulsar_auth",
+ "pulsar_plugins",
+ "reqwest 0.13.4",
+ "smallvec",
+ "smol",
+ "tracing",
+ "ui",
  "window_manager",
 ]
 

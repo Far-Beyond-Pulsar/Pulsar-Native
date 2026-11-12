@@ -1,0 +1,18 @@
+[package]
+name = "pulsar_install_layout"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Where the Hub puts an engine install's files and where the engine looks for them: the per-install plugin directory and its integrity manifest, the shared themes directory, the per-user app-data directory"
+
+[dependencies]
+directories = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

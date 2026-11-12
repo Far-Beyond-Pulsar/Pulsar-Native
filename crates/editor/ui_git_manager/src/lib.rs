@@ -635,7 +635,7 @@ impl GitManagerWindow {
     /// Call once during app startup (parameterised windows are not
     /// auto-registered by `#[register_window]`).
     pub fn init(cx: &mut gpui::App) {
-        use ui_common::PulsarWindowExt;
+        use ui_shell::PulsarWindowExt;
         <Self as PulsarWindowExt>::register(cx);
     }
 
@@ -643,7 +643,7 @@ impl GitManagerWindow {
     ///
     /// Focuses the existing window if one is already open.
     pub fn open_scoped(project_path: Option<PathBuf>, cx: &mut gpui::App) {
-        use ui_common::PulsarWindowExt;
+        use ui_shell::PulsarWindowExt;
         Self::open(GitManagerParams { project_path }, cx);
     }
 }

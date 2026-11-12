@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+pulsar_install_layout = { workspace = true }
 profiling = { workspace = true }
 # The level editor provider names the engine as its origin.
 pulsar_plugins = { workspace = true }

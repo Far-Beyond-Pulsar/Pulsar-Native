@@ -125,7 +125,7 @@ impl PipelineState {
             Self::NotFound(id) => Some((
                 id.clone(),
                 helio::PipelineFailure::new(format!("Render pipeline `{id}` was not found"))
-                    .with_details([
+                    .with_errors([
                         "The level names a pipeline no provider offers and no project render graph has."
                             .to_string(),
                     ]),
@@ -133,7 +133,7 @@ impl PipelineState {
             Self::Invalid { id, reason } => Some((
                 id.clone(),
                 helio::PipelineFailure::new(format!("Render pipeline `{id}` is invalid"))
-                    .with_details([reason.clone()]),
+                    .with_errors([reason.clone()]),
             )),
             Self::Assigned { .. } | Self::Unassigned => None,
         }

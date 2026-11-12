@@ -41,6 +41,23 @@ pub fn run(_ctx: &mut InitContext) -> Result<(), InitError> {
 
     pulsar_std::set_unsafe_process_allowed(allow_unsafe);
 
+    // The settings screen (`ui_settings`, which the Hub embeds too) only writes
+    // the config; the engine applies the change to the running process.
+    if let Some(handle) = engine_state::settings::global_config()
+        .owner_handle(engine_state::settings::NS_EDITOR, "advanced")
+    {
+        match handle.on_change("allow_unsafe_process", |event| {
+            if let Ok(allowed) = event.new_value.as_bool() {
+                pulsar_std::set_unsafe_process_allowed(allowed);
+            }
+        }) {
+            // The listener is removed when its id drops; it lives as long as
+            // the process.
+            Ok(id) => std::mem::forget(id),
+            Err(error) => tracing::warn!(%error, "Could not watch the unsafe-process setting"),
+        }
+    }
+
     Ok(())
 }
 

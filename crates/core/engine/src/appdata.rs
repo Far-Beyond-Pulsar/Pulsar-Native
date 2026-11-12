@@ -3,7 +3,6 @@
 // This module handles creation and management of app data directories, themes, and config files.
 
 use crate::settings::EngineSettings;
-use directories::ProjectDirs;
 use rust_embed::RustEmbed;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -37,10 +36,9 @@ pub struct AppDataPaths {
 #[allow(clippy::disallowed_methods)]
 /// Set up app data directories and copy bundled resources if needed.
 pub fn setup_appdata() -> AppDataPaths {
-    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
-        .expect("Could not determine app data directory");
-    let appdata_dir = proj_dirs.data_dir().to_path_buf();
-    let themes_dir = appdata_dir.join("themes");
+    // The layout the Hub installs into (`pulsar_install_layout`).
+    let appdata_dir = pulsar_install_layout::appdata_dir();
+    let themes_dir = pulsar_install_layout::themes_dir();
     let config_dir = appdata_dir.join("configs");
     let config_file = config_dir.join("engine.toml");
 
