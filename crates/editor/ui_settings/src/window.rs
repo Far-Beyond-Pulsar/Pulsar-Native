@@ -65,7 +65,7 @@ impl SettingsWindow {
     /// Call once during app startup (parameterised windows are not
     /// auto-registered by `#[register_window]`).
     pub fn init(cx: &mut App) {
-        use ui_common::PulsarWindowExt;
+        use ui_shell::PulsarWindowExt;
         <Self as PulsarWindowExt>::register(cx);
     }
 
@@ -73,7 +73,7 @@ impl SettingsWindow {
     ///
     /// Focuses the existing settings window if one is already open.
     pub fn open_scoped(project_path: Option<PathBuf>, cx: &mut App) {
-        use ui_common::PulsarWindowExt;
+        use ui_shell::PulsarWindowExt;
         Self::open(SettingsParams { project_path }, cx);
     }
 

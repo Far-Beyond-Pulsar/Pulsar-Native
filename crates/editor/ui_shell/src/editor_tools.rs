@@ -185,12 +185,12 @@ pub fn account_menu_items() -> Vec<&'static AccountMenuItemRegistration> {
     items
 }
 
-/// The account menu's entries as the shared dropdown (`ui_account`) takes
+/// The account menu's entries as the shared dropdown (`ui_shell`) takes
 /// them: the registered ones, enabled by the project's plugins.
-pub fn account_menu_entries() -> Vec<ui_account::AccountMenuItem> {
+pub fn account_menu_entries() -> Vec<crate::AccountMenuItem> {
     account_menu_items()
         .into_iter()
-        .map(|item| ui_account::AccountMenuItem {
+        .map(|item| crate::AccountMenuItem {
             section: (item.section)(),
             label: (item.label)(),
             icon: item.icon.clone(),

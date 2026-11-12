@@ -1,4 +1,4 @@
-//! What the git tool adds to the editor shell (`ui_common::editor_tools`):
+//! What the git tool adds to the editor shell (`ui_shell::editor_tools`):
 //! its status-bar button, its window's startup, the project's sync state in
 //! the title bar (with auto-fetch while the project is open), the Git
 //! Settings entry of the account menu, and the project's configured hooks
@@ -11,7 +11,7 @@ use gpui::{
     App, Context, IntoElement, Render, Task, UpdateGlobal as _, Window, div, prelude::*, px,
 };
 use ui::{ActiveTheme as _, Icon, IconName, h_flex};
-use ui_common::editor_tools::{
+use ui_shell::editor_tools::{
     AccountMenuItemRegistration, EditorToolRegistration, ProjectOpenedRegistration,
     TitleBarItemRegistration,
 };

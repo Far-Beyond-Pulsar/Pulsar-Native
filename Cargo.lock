@@ -17307,22 +17307,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ui_account"
-version = "0.1.0"
-dependencies = [
- "editor_task_queue",
- "engine_state",
- "gpui-ce",
- "image",
- "pulsar_auth",
- "reqwest 0.13.4",
- "smallvec",
- "smol",
- "tracing",
- "ui",
-]
-
-[[package]]
 name = "ui_auth"
 version = "0.1.0"
 dependencies = [
@@ -17380,8 +17364,8 @@ dependencies = [
  "smol",
  "tracing",
  "ui",
- "ui_account",
  "ui_auth",
+ "ui_shell",
  "ui_types_common",
  "window_manager",
 ]
@@ -17574,7 +17558,7 @@ dependencies = [
  "smol",
  "tracing",
  "ui",
- "ui_common",
+ "ui_shell",
 ]
 
 [[package]]
@@ -17615,7 +17599,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "ui",
- "ui_common",
+ "ui_shell",
  "window_manager",
 ]
 
@@ -17847,10 +17831,27 @@ version = "0.1.0"
 dependencies = [
  "engine_state",
  "gpui-ce",
- "pulsar_std",
  "tracing",
  "ui",
- "ui_common",
+ "ui_shell",
+ "window_manager",
+]
+
+[[package]]
+name = "ui_shell"
+version = "0.1.0"
+dependencies = [
+ "editor_task_queue",
+ "engine_state",
+ "gpui-ce",
+ "image",
+ "pulsar_auth",
+ "pulsar_plugins",
+ "reqwest 0.13.4",
+ "smallvec",
+ "smol",
+ "tracing",
+ "ui",
  "window_manager",
 ]
 

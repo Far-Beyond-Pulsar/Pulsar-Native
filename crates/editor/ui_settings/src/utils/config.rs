@@ -245,9 +245,6 @@ pub fn item_from_info(
                         if let Some(h) = global_config().owner_handle(&ns2, &owner2) {
                             let _ = h.set(&key2, ConfigValue::Bool(val));
                         }
-                        if key2 == "allow_unsafe_process" {
-                            pulsar_std::set_unsafe_process_allowed(val);
-                        }
                         notify(cx);
                     },
                 ),
