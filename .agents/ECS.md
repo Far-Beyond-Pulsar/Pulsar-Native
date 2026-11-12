@@ -73,23 +73,39 @@ schedule.run(&mut world, time);
 
 ## Actors
 
+SceneDB's own `Actor`/`ActorRegistry` still exist in the pinned SceneDB, but
+no Pulsar code path uses them except the deprecated shim
+(`TickLoop::register_actor`, see below). `TickLoop` has no registry any more:
+a boxed gameplay actor runs through the component lifecycle.
+
 ```rust
-pub trait Actor: Send + Sync + 'static {
-    fn begin_play(&mut self, _entity: Entity, _world: &mut World) {}
-    fn end_play(&mut self, _entity: Entity, _world: &mut World) {}
-    fn tick(&mut self, _entity: Entity, _world: &mut World) {}
+// pulsar_game::lifecycle
+pub trait NativeActor: Send + 'static {
+    fn begin_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut ActorCx<'_>) {}
+    fn tick(&mut self, _entity: Entity, _world: &mut World, _cx: &mut ActorCx<'_>, _dt: f32) {}
+    fn end_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut ActorCx<'_>) {}
 }
 ```
 
-`ActorRegistry::register` spawns the actor's entity and calls `begin_play`;
-`tick_all` ticks every actor. `pulsar_game`'s tick loop owns one registry
-next to its `Schedule`.
+`TickLoop::register_native_actor(actor)` spawns an owner entity (stamped with a
+`ScriptTag`, the identity PIE hot reload matches on) and an instance entity
+carrying an `ActorCarrier` component linked to it by `ComponentOwner`; the
+carrier's table (`EngineActor`, class `NativeActorCarrier`) calls into the box,
+which the session scope holds in an `ActorBank` resource. So the actor gets
+`begin_play` on the first frame it is ticked, `tick` per frame, and `end_play`
+when its instance is removed or disabled **and at the session end** (before a
+PIE snapshot restore; SceneDB's registry never ended actors at shutdown).
+Hot reload re-attaches: the same class registered again on a surviving tagged
+owner gets a fresh instance entity, the old behavior is dropped at the session
+end while its code is still loaded. Generated Rust Blueprint actors implement
+`NativeActor` by its full path. `register_actor` (SceneDB's trait, wrapped into
+the same shell) is `#[deprecated]` and goes with SceneDB's trait.
 
 ## Component lifecycle (`Actor` on a component)
 
 SceneDB's `Actor` above is the boxed, entity-owning object. A component class
 gets lifecycle events through `pulsar_component_lifecycle::Actor` (a different
-trait, path-qualified until SceneDB's is removed): `impl Actor for T` and
+trait, reachable as `pulsar_game::lifecycle::Actor` until SceneDB's is removed and the prelude name flips): `impl Actor for T` and
 `ClassSpec { actor: Some(ActorTable::of::<T>()), .. }` from the plugin root.
 `tick_live_components` drives these tables and the legacy
 `#[register_component_runtime]` shims together in one `Step::Components`:

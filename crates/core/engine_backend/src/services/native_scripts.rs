@@ -13,7 +13,8 @@
 //!   path-deps into the game manifest and `register_scripts` calls into
 //!   `engine_main.rs`;
 //! * the level editor — needs the ACTOR TYPES (scanned from
-//!   `register_actor::<Type>(...)` calls, the documented authoring
+//!   `register_native_actor::<Type>(...)` calls (or the deprecated
+//!   `register_actor::<Type>(...)`), the documented authoring
 //!   convention) to offer Rust actors in the add-object flow.
 //!
 //! Scanning is deliberately textual and cheap: script crates are tiny,
@@ -33,7 +34,7 @@ pub struct ScriptCrate {
 }
 
 /// One actor type a script crate registers, as declared by a
-/// `game.register_actor::<Type>(...)` call in its sources.
+/// `game.register_native_actor::<Type>(...)` call in its sources.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScriptActorType {
     /// Package name of the declaring crate.
@@ -134,15 +135,20 @@ fn read_package_name(manifest: &str) -> Option<String> {
     None
 }
 
-/// Capture every `<ident>` appearing as `register_actor::<ident>(` in `text`,
+/// Capture every `<ident>` appearing as `register_native_actor::<ident>(` (or the
+/// deprecated `register_actor::<ident>(`) in `text`,
 /// tolerating whitespace inside the turbofish. This IS the authoring contract:
 /// the scaffolded `lib.rs` demonstrates it and the tutorial documents it.
 fn scan_registered_types(text: &str) -> Vec<String> {
-    const NEEDLE: &str = "register_actor::<";
+    const NEEDLES: [&str; 2] = ["register_native_actor::<", "register_actor::<"];
     let mut out = Vec::new();
     let mut rest = text;
-    while let Some(pos) = rest.find(NEEDLE) {
-        let tail = rest[pos + NEEDLE.len()..].trim_start();
+    while let Some((pos, needle)) = NEEDLES
+        .iter()
+        .filter_map(|needle| rest.find(needle).map(|pos| (pos, *needle)))
+        .min_by_key(|(pos, _)| *pos)
+    {
+        let tail = rest[pos + needle.len()..].trim_start();
         let ident: String = tail
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')

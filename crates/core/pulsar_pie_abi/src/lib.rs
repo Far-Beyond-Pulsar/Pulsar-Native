@@ -124,7 +124,7 @@ pub mod session_flags {
     /// The loaded session is a NATIVE HOT RELOAD (#653): the shared world
     /// already holds this game's entities/components from the previous
     /// session. Project setup must re-bind script/actor registrations to
-    /// their existing entities (`TickLoop::register_actor` does the matching)
+    /// their existing entities (`TickLoop::register_native_actor` does the matching)
     /// instead of spawning duplicates. The host sets this when it stops a
     /// still-running game before loading the freshly built library.
     pub const RELOAD: u64 = 1 << 0;

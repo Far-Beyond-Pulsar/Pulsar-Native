@@ -54,7 +54,7 @@ The heart of the engine.
 | `pulsar_core` | Core types, math, utilities |
 | `pulsar_docs` | Doc generation from reflected types |
 | `pulsar_events` | Event bus |
-| `pulsar_game` | The game runtime: tick loop, scripting, possession (plugins join through `game_hooks::GameSessionRegistration`), cameras and view targets |
+| `pulsar_game` | The game runtime: tick loop, scripting, native script actors on the component lifecycle (`lifecycle::NativeActor`, `register_native_actor`), possession (plugins join through `game_hooks::GameSessionRegistration`), cameras and view targets |
 | `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
@@ -66,7 +66,7 @@ The heart of the engine.
 | `pulsar_script_vm` | Language-neutral script bytecode: module format, verifier, linker, VM, natives, shared `exec` semantics, `compiled` code contract, `migrate` planner |
 | `pulsar_script_runtime` | Runs script classes on entities: lifecycle, events, transactional hot reload with state migration, saved state |
 | `pulsar_script_math` | glam math types (Vec2/3/4, DVec3, Quat, Mat4) as script value types with natives |
-| `pulsar_script_codegen` | Rust export: generates compiled step functions (and the `Actor` wrapper) from a script module |
+| `pulsar_script_codegen` | Rust export: generates compiled step functions (and the `pulsar_game::lifecycle::NativeActor` wrapper) from a script module |
 | `pulsar_script_conformance` | Runs modules interpreted and as generated Rust and compares everything observable (`just conformance`) |
 | `pulsar_script_ts` | TypeScript subset compiled to script modules (oxc parser, type checking against the native registry, `.d.ts` generation, field identity) |
 | `pulsar_std` | Blueprint standard library (kind-neutral domains; a kind's script API is its component methods) |

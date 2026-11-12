@@ -890,22 +890,25 @@ fn strip_windows_prefix(text: &str) -> String {
 
 /// The starter `lib.rs`: one documented example actor + THE registration
 /// entry point generated `engine_main.rs` calls. Doubles as the authoring
-/// contract: register every actor type here via `register_actor::<T>`, which
+/// contract: register every actor type here via `register_native_actor::<T>`, which
 /// is also what makes the type discoverable by the editor's add-object flow.
 fn starter_lib_rs() -> String {
     r#"//! <project>_scripts — your gameplay code, hot-reloadable in Play-In-Editor.
 //!
 //! Register every actor type in [`register_scripts`] via
-//! `game.register_actor::<Type>(...)`. That call stamps the entity with the
-//! type identity PIE hot reload matches on (#653): press Play again while a
+//! `game.register_native_actor::<Type>(...)`. That call stamps the entity with
+//! the type identity PIE hot reload matches on (#653): press Play again while a
 //! game runs and your actors re-bind to their existing entities instead of
-//! spawning duplicates.
+//! spawning duplicates. An actor implements `NativeActor`: `begin_play` on the
+//! first frame, `tick` every frame, `end_play` when it is removed or the
+//! session ends.
 
 use pulsar_game::scene::Transform;
 use pulsar_game::tick::TickLoop;
 // Re-exports: script crates need no direct scenedb dependency — everything
 // gameplay-facing rides on `pulsar_game`.
-use pulsar_game::{Actor, Entity, World};
+use pulsar_game::lifecycle::{ActorCx, NativeActor};
+use pulsar_game::{Entity, World};
 
 /// Turns its object forever. Spawned at the world origin on Play; give it
 /// something to show (a mesh from the Add menu) in the level, or attach a
@@ -918,17 +921,16 @@ pub struct Spinner {
     degrees_per_second: f32,
 }
 
-impl Actor for Spinner {
-    fn begin_play(&mut self, entity: Entity, world: &mut World) {
+impl NativeActor for Spinner {
+    fn begin_play(&mut self, entity: Entity, world: &mut World, _cx: &mut ActorCx<'_>) {
         if world.get::<Transform>(entity).is_none() {
             world.insert(entity, Transform::default());
         }
     }
 
-    fn tick(&mut self, entity: Entity, world: &mut World) {
-        // Fixed-step approximation; see the tutorial for a time-driven variant.
+    fn tick(&mut self, entity: Entity, world: &mut World, _cx: &mut ActorCx<'_>, delta_seconds: f32) {
         if let Some(mut transform) = world.get_mut::<Transform>(entity) {
-            transform.rotation[1] += self.degrees_per_second * 0.016;
+            transform.rotation[1] += self.degrees_per_second * delta_seconds;
         }
     }
 }
@@ -938,7 +940,7 @@ impl Actor for Spinner {
 /// The explicit turbofish is REQUIRED by convention: it is the marker the
 /// level editor scans to offer your types in the add-object flow.
 pub fn register_scripts(game: &mut TickLoop) -> Result<(), String> {
-    game.register_actor::<Spinner>(Spinner {
+    game.register_native_actor::<Spinner>(Spinner {
         degrees_per_second: 45.0,
     });
     Ok(())
@@ -1131,8 +1133,8 @@ pub unsafe extern "C" fn pulsar_pie_event_bus(out: *mut std::ffi::c_void, out_si
 ///
 /// Produces a `pub fn setup(game: &mut TickLoop)` function that:
 /// 1. Spawns native actor classes declared in `Pulsar/level.json` into the
-///    `TickLoop`'s `ActorRegistry` and shared scene store so they receive
-///    `tick` every frame (the store is the ONE SceneDB world, also read by
+///    `TickLoop`'s component lifecycle (as `NativeActor`s on the shared scene
+///    store) so they receive `tick` every frame (the store is the ONE SceneDB world, also read by
 ///    renderers -- Pulsar-Native#634).
 /// 2. Enables the script driver (`TickLoop::enable_scripting`): every placed
 ///    class instance in the world runs its class's compiled script
@@ -1163,8 +1165,8 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
         LevelConfig::default()
     };
 
-    // Build native actor spawn statements — actors go directly into
-    // game.actors, registered against the shared scene store's World.
+    // Build native actor spawn statements: each actor registers through the
+    // tick loop's component lifecycle, against the shared scene store's World.
     let spawn_stmts: String = level_config
         .prefabs
         .iter()
@@ -1179,12 +1181,12 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
                 };
                 format!(
                     "    {{\n        tracing::info!(\"Spawning {class}{note}\");\n        \
-                     // Registered through `register_actor` (#653): the entity is\n        \
+                     // Registered through `register_native_actor` (#653): the entity is\n        \
                      // stamped with the class's type identity, so a PIE hot reload\n        \
                      // re-binds THIS class to its existing entities instead of\n        \
                      // spawning duplicates. begin_play hydrates declared components\n        \
                      // absent-only, so scene-provided values always win.\n        \
-                     game.register_actor(classes::{class}::new());\n    }}\n"
+                     game.register_native_actor(classes::{class}::new());\n    }}\n"
                 )
             })
         })
@@ -1215,7 +1217,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
     } else {
         format!(
             "    // ── Gameplay script crates (scripts/) ──────────────────────────────\n\
-             // Each crate registers its actors through TickLoop::register_actor,\n\
+             // Each crate registers its actors through TickLoop::register_native_actor,\n\
              // which stamps entity identities PIE hot reload re-binds to (#653).\n{script_calls}"
         )
     };
@@ -1238,7 +1240,7 @@ use pulsar_game::prelude::*;
 ///
 /// Called once from `main()` before `game.run_blocking()`.
 /// - Native actors + script-crate actors are registered into the tick loop's
-///   shared world and receive `tick` every frame (via `register_actor`, which
+///   shared world and receive `tick` every frame (via `register_native_actor`, which
 ///   also makes them hot-reload-safe in Play-In-Editor).
 /// - The script driver runs one script instance per placed class instance
 ///   (and per global script); the `TickLoop` runs their events every frame.

@@ -873,6 +873,96 @@ unchanged, plus `session_lifecycle` and `component_event_routing`; the audit
   (it only deletes code the engine would no longer use) but cannot merge before
   P4 and the shim decision land, since `pulsar_game` still uses it until then.
 
+**As built (P5a).** P5 is split. P5a repoints every Pulsar consumer and
+touches neither the SceneDB repo nor any `pulsar_scenedb` rev; P5b (below)
+deletes SceneDB's trait. New `pulsar_game/src/lifecycle.rs`: the lifecycle
+traits re-exported (`pulsar_game::lifecycle::{Actor, WorldActor, ActorCx,
+ActorTable, EngineActor, SessionKind, SessionScope, ..}`), the new
+`NativeActor` trait, `ActorCarrier` (a component on an instance entity linked
+to the actor's owner by `ComponentOwner`), its world-form table registered
+through `EngineActor` (class `NativeActorCarrier`), and `ActorBank`, a handle
+the session scope holds as a resource (the `TickLoop` keeps the other handle
+and puts it back when a session end or a replaced world dropped the scope's
+resources, as P4 does for the script inbox). `scripts.rs`: `register_native_actor`
+is the entry point; `register_actor` keeps accepting SceneDB's `Actor` through a
+`Legacy` wrapper and is `#[deprecated]`; `ReboundActor` and `TickLoop::
+rebinding` are gone. Hot reload (#653) is "same class on the same owner
+re-attaches": `begin_script_reload` still collects the `ScriptTag`s, a
+registration that claims one spawns a new instance entity on that owner (a
+live carrier of the same class on it is despawned, which ends it) and spawns no
+owner. `tick.rs`: `actors: ActorRegistry` and the rebound-shell loop in phase 2
+are removed (phase 2 keeps the component-event flush);
+`end_component_runtime` ends the session, then drops the boxed actors and
+despawns the carriers while the code that made them is still loaded, so a
+hot reload keeps the world and the tagged owners and never a behavior of the
+old library. Codegen: generated Rust Blueprint actors emit `impl
+pulsar_game::lifecycle::NativeActor` by full path (so they do not depend on the
+prelude's `Actor`); the drift guards (`blueprint_codegen_drift.rs`,
+`export_probe.rs`, the `build.rs` doc, `tests/actor.rs`) pin that impl line and
+the three signatures; the scaffolded `Spinner` and the `engine_main` generation
+use `NativeActor`/`register_native_actor`, and `native_scripts.rs` scans both
+`register_native_actor::<T>(` and the deprecated `register_actor::<T>(`.
+`pulsar_game::Actor`, `pulsar_game::prelude::Actor` and `ActorRegistry` stay
+SceneDB's (`#[deprecated]` does not apply to a re-export, so the deprecation
+is on `register_actor` and a comment at the re-export). Docs: `ECS.md`,
+`CRATES.md`, `SCRIPTING_EPIC.md` (historical notes), the `blueprint-system`
+command.
+
+**Behavior change (call out in release notes):** a native script actor now gets
+`end_play` at the session end (stop of PIE or a standalone run), before the
+PIE snapshot restore; SceneDB's `ActorRegistry` never did (finding 3). It also
+gets `begin_play` on the first frame its session ticks it, not at
+registration, so `begin_play` sees the whole level in the world (as
+Blueprint instances do); code that relied on `begin_play` having run when
+`register_actor` returned must move. `TickLoop::actors` no longer exists.
+
+Deviations: (1) generated actors and `register_native_actor` take a new
+`NativeActor` trait, not `lifecycle::Actor`/`WorldActor`: those are a
+component's own methods (`end_play` has no `self`, `Actor` has no world), but
+a generated actor owns script state it must reach in `end_play` and needs
+the live world in every callback. The carrier boxes such an object; `NativeActor`
+is that boxed form (entity, world and the lifecycle context in every callback).
+(2) The actors' tick order is entity order within the carrier class, not
+registration order. (3) A session end only ends actors through a world; the
+world-less `end_all` skips them (their boxes are dropped by
+`end_component_runtime` regardless). (4) Added `lifecycle::with_scratch_cx`
+so a generated project's probe can drive an actor by hand. Tests:
+`pulsar_game` `tests::actors::{lifecycle_order, removing_the_carrier_ends_the_actor,
+a_scenedb_actor_still_runs_through_the_shim}`, `scripts::tests::{fresh_registration_spawns_tags_and_ticks,
+reload_rebinds_to_the_existing_entity_without_state_loss,
+a_reattach_replaces_the_live_actor_of_the_same_class,
+two_instances_rebind_one_to_one_in_registration_order,
+reload_spawns_new_types_and_leaves_removed_ones_orphaned,
+the_session_end_ends_actors_and_clears_their_carriers}`, the drift guards
+`export_probe::emitted_actor_signatures_match_the_native_actor_trait` and
+`blueprint_codegen_drift::reference_actor::..`, `pulsar_script_codegen`
+`the_actor_forwards_the_native_actor_callbacks`, and
+`generated_project_compiles` (probe now drives `NativeActor`).
+
+**P5b checklist (not done; gated on a release window and the user's
+authorization to push to SceneDB):**
+
+1. SceneDB repo: remove `actor.rs`, the root re-export of `Actor` and
+   `ActorRegistry`, docs and tests; merge to SceneDB main.
+2. Bump the rev in all three manifests: root `Cargo.toml` (`pulsar_scenedb` and
+   `pulsar_scenedb_derive`, and the `[patch]` entries), and
+   `crates/renderer/helio/Cargo.toml` (Helio PR first, then re-pin).
+3. Remove the shim: `TickLoop::register_actor`, `lifecycle::Legacy`, the
+   `pulsar_game::{Actor, ActorRegistry}` and prelude re-exports,
+   `scripts.rs`'s `use pulsar_scenedb::Actor`, the `a_scenedb_actor_still_runs_through_the_shim`
+   test, and the `register_actor::<` needle in `native_scripts.rs`.
+4. Flip the prelude: export `lifecycle::{Actor, WorldActor}` (and decide
+   whether `NativeActor` joins them) as `pulsar_game::prelude::Actor`; check
+   the Helio clash (Helio's own `Actor` was deleted in P1, so none is
+   expected) and glob imports in generated code (they name the trait by full
+   path already).
+5. Update `.agents/ECS.md`, the plan's findings, release notes (the
+   `begin_play`-on-first-frame and `end_play`-at-session-end changes).
+6. Grep: no `pulsar_scenedb::Actor`, `ActorRegistry` or `impl Actor for`
+   against SceneDB's trait left in the tree (`rg "ActorRegistry|pulsar_scenedb::Actor"`).
+7. Run `cargo test -p pulsar_game` including `generated_project_compiles`
+   against the baked rev, and `just arch`.
+
 ### P6. Retire the raw `inventory` lifecycle registration
 
 - **Scope**: `#[register_component_runtime]` emits an `ActorTable` registration

@@ -3,7 +3,9 @@
 //! The Pulsar game runtime crate.  Provides:
 //!
 //! - **Archetypal ECS** — `World`, `Entity`, `Component`, queries.
-//! - **Actor lifecycle** — `Actor` trait with `begin_play` / `end_play` / `tick`.
+//! - **Component lifecycle** — [`lifecycle::Actor`] / [`lifecycle::WorldActor`]
+//!   with `construct` / `begin_play` / `tick` / `end_play`, and
+//!   [`lifecycle::NativeActor`] for boxed script actors.
 //! - **System schedule** — ordered `Schedule` of ECS `SystemFn`s.
 //! - **Tick loop** — `TickLoop` with fixed or variable timestep.
 //! - **Async task pool** — smol-backed `TaskPool` for background work.
@@ -16,10 +18,21 @@ pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool,
 
 // Generated actors address the live world through `pulsar_world_registry`'s
 // dispatcher.
+//
+// `Actor` and `ActorRegistry` here are SceneDB's OLD trait and registry, kept
+// for one deprecation window so hand-written crates that `impl Actor` still
+// compile (through `TickLoop::register_actor`, itself deprecated). The
+// component lifecycle's trait of the same name is `lifecycle::Actor`; this
+// name flips to it in the release that deletes SceneDB's. (`#[deprecated]`
+// has no effect on a re-export, so the deprecation sits on `register_actor`.)
 pub use pulsar_scenedb::{
     Actor, ActorRegistry, Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter,
     Schedule, World, WorldQuery,
 };
+
+// The component lifecycle traits and the native script actors that run
+// through it (P5a of the component lifecycle plan).
+pub mod lifecycle;
 
 // Script classes on the engine script VM (module.json builds).
 pub mod scripting;
@@ -58,7 +71,7 @@ pub mod time;
 
 // Gameplay script-crate actors: identity-tagged registration + native hot
 // reload (#653). Generated projects and scripts/ crates register through
-// `TickLoop::register_actor`.
+// `TickLoop::register_native_actor`.
 pub mod scripts;
 
 // Cross-object reference resolution for blueprint graphs (#654): the one
@@ -169,6 +182,8 @@ pub mod prelude {
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
+    // `Actor`/`ActorRegistry`: SceneDB's old trait, for the deprecation
+    // window; the lifecycle's is `pulsar_game::lifecycle::Actor`.
     pub use pulsar_scenedb::{
         Actor, ActorRegistry, Component, Entity, QueryIter, Schedule, World, WorldQuery,
     };

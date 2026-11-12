@@ -414,7 +414,7 @@ impl EmbeddedGame {
         // Native hot reload (#653): when the host stopped a still-running
         // game to swap in this fresh build, the shared world carries the
         // previous session's entities. Arm rebinding BEFORE project setup so
-        // `TickLoop::register_actor` re-binds script actors to their existing
+        // `TickLoop::register_native_actor` re-binds script actors to their existing
         // entities instead of spawning duplicates — the native equivalent of
         // D3's `reload_blueprint` for VM instances.
         if ctx.session_flags & pulsar_pie_abi::session_flags::RELOAD != 0 {

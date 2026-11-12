@@ -20,7 +20,7 @@ pub struct NativeScriptComponent {
     /// Cargo package name of the script crate under `<project>/scripts/`.
     #[property]
     pub script_crate: String,
-    /// Actor type the crate registers (`register_actor::<Type>`), short name.
+    /// Actor type the crate registers (`register_native_actor::<Type>`), short name.
     #[property]
     pub actor_type: String,
 }

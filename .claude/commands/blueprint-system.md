@@ -81,7 +81,7 @@ it once the game calls `enable_project_scripting()`.
 `pulsar_script_codegen::actor::generate_actor`:
 
 - `events/events.rs`: a `#[derive(EngineClass)]` struct holding a
-  `pulsar_game::scripting::export::ExportedScript`, with `impl Actor`
+  `pulsar_game::scripting::export::ExportedScript`, with `impl pulsar_game::lifecycle::NativeActor` (full path; the prelude's `Actor` is SceneDB's deprecated trait)
 - `events/mod.rs`, `<class>/mod.rs`, and `vars/mod.rs` (from `vars_save.json`)
 - `pub mod <Name>;` appended to the parent `mod.rs` (normally `src/classes/mod.rs`)
 

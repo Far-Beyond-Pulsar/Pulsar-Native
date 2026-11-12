@@ -249,7 +249,8 @@ fn exported_class_variables_are_per_actor_in_debug_and_release() {
         r#"
 #[path = "../classes/mod.rs"]
 mod classes;
-use pulsar_game::prelude::{Actor, Entity, World};
+use pulsar_game::lifecycle::{with_scratch_cx, NativeActor};
+use pulsar_game::prelude::{Entity, World};
 fn count(actor: &classes::counter::Counter) -> String {
     format!("{:?}", actor.variable("count"))
 }
@@ -257,15 +258,17 @@ fn main() {
     let mut world = World::new();
     let mut first = classes::counter::Counter::default();
     let mut second = classes::counter::Counter::default();
-    first.begin_play(Entity::DANGLING, &mut world);
-    second.begin_play(Entity::DANGLING, &mut world);
-    first.tick(Entity::DANGLING, &mut world);
-    println!("after_first={}", count(&first));
-    second.tick(Entity::DANGLING, &mut world);
-    println!("second={}", count(&second));
-    first.tick(Entity::DANGLING, &mut world);
-    println!("after_first_again={}", count(&first));
-    println!("second_again={}", count(&second));
+    with_scratch_cx(|cx| {
+        first.begin_play(Entity::DANGLING, &mut world, cx);
+        second.begin_play(Entity::DANGLING, &mut world, cx);
+        first.tick(Entity::DANGLING, &mut world, cx, 0.016);
+        println!("after_first={}", count(&first));
+        second.tick(Entity::DANGLING, &mut world, cx, 0.016);
+        println!("second={}", count(&second));
+        first.tick(Entity::DANGLING, &mut world, cx, 0.016);
+        println!("after_first_again={}", count(&first));
+        println!("second_again={}", count(&second));
+    });
 }
 "#,
     )

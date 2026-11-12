@@ -12462,6 +12462,7 @@ dependencies = [
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_component_lifecycle",
  "pulsar_content",
  "pulsar_core",
  "pulsar_events",

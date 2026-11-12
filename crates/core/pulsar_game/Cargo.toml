@@ -9,6 +9,7 @@ editor_task_queue = { workspace = true }
 # Core primitives (extracted)
 pulsar_core  = { workspace = true }
 pulsar_scenedb   = { workspace = true }
+pulsar_component_lifecycle = { workspace = true }
 
 # Play-In-Editor embedding ABI (host <-> embedded game dylib)
 pulsar_pie_abi = { workspace = true }
