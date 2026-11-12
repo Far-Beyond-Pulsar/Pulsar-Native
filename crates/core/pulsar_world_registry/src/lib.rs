@@ -165,6 +165,7 @@ static REFUSED_EVENTS_WARNED: std::sync::Mutex<std::collections::BTreeSet<String
 /// (once per event name): nothing registers events between phases, so
 /// keeping it queued would only retry, and warn, every tick forever.
 pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) -> usize {
+    profiling::profile_scope!("Lifecycle::flush_component_events");
     let entities: Vec<_> = world
         .query::<&ComponentEventOutbox>()
         .map(|(entity, _)| entity)

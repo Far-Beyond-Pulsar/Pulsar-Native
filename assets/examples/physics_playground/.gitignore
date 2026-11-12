@@ -1,0 +1,13 @@
+# What the editor writes while the example is open: its caches and layout.
+/.pulsar/
+# What the editor and `pulsar package` generate so the project can build as a
+# game (regenerated every time, never authored): the manifest, its launcher
+# sources and the build output.
+/Cargo.toml
+/Cargo.lock
+/target/
+/src/main.rs
+/src/lib.rs
+/src/plugins.rs
+/src/engine_main.rs
+/Pulsar/level.json

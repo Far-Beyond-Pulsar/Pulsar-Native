@@ -132,6 +132,7 @@ struct RegistrationKey {
 
 impl Session {
     pub fn new(kind: SessionKind) -> Self {
+        profiling::profile_scope!("Session::begin");
         Self {
             scope: SessionScope::new(kind),
             construct: ConstructState::default(),
@@ -304,6 +305,7 @@ impl Session {
     /// scene (the old world is no longer there to hand out) and the fallback
     /// of `TickLoop`'s drop; a session ends through [`Self::end_session`].
     pub fn end_all(&mut self, events: &EventHub) {
+        profiling::profile_scope!("Session::end_all");
         self.end_instances(None, events);
         self.reset();
     }
@@ -315,6 +317,7 @@ impl Session {
     /// (scripts, game hooks) next, and returns control to its host only then.
     /// Nothing is live afterwards; the session may be reused.
     pub fn end_session(&mut self, world: &mut World, events: &EventHub) {
+        profiling::profile_scope!("Session::end");
         self.run_deferred_ends(world, events);
         self.end_instances(Some(world), events);
         self.reset();
@@ -322,6 +325,7 @@ impl Session {
 
     /// Run the world-form ends a `&World` path queued.
     fn run_deferred_ends(&mut self, world: &mut World, events: &EventHub) {
+        profiling::profile_scope!("Lifecycle::deferred_ends");
         for (lifecycle, instance, owner) in std::mem::take(&mut self.deferred_ends) {
             lifecycle.end_play(Some(&mut *world), instance, owner, events, &mut self.scope);
         }
@@ -368,7 +372,10 @@ impl Session {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = EventInbox::default();
         // Resources belong to the world they served; their `Drop` is the
         // plugin's shutdown (a service thread joins there).
-        self.scope.clear_resources();
+        {
+            profiling::profile_scope!("Session::drop_resources");
+            self.scope.clear_resources();
+        }
         self.scene_identity = None;
     }
 }
@@ -397,6 +404,7 @@ impl Lifecycle {
         scope: &mut SessionScope,
     ) -> bool {
         let table = &self.0.table;
+        let _scope = profiling::interned_scope("Lifecycle::end_play::", self.0.class_name);
         if let Some(end_play) = table.end_play_world {
             let Some(world) = world else {
                 return false;
@@ -446,6 +454,7 @@ pub fn tick_live_components(
     scene_identity: usize,
     state: &mut ComponentRuntimeState,
 ) {
+    profiling::profile_scope!("Lifecycle::tick_live_components");
     if state
         .scene_identity
         .is_some_and(|identity| identity != scene_identity)
@@ -494,12 +503,15 @@ pub fn tick_live_components(
     for step in steps {
         match step {
             crate::systems::Step::Components => {
+                profiling::profile_scope!("Lifecycle::Step::pulsar.components");
                 // The fixed pump point: every `construct` of the frame's
                 // writes, before any `begin_play` or `tick`.
                 pump_construct(world, events, state);
                 tick_component_lifecycles(world, events, delta_seconds, &registrations, state)
             }
             crate::systems::Step::System(registration) => {
+                let _scope =
+                    profiling::interned_scope("Lifecycle::System::", registration.system.label);
                 (registration.system.run)(&mut crate::systems::SystemContext {
                     world: &mut *world,
                     events,
@@ -520,6 +532,7 @@ fn tick_component_lifecycles(
     registrations: &[Lifecycle],
     state: &mut ComponentRuntimeState,
 ) {
+    profiling::profile_scope!("Lifecycle::tick_component_lifecycles");
     for &lifecycle in registrations {
         let key = lifecycle.key();
         let registration = lifecycle.0;
@@ -602,11 +615,15 @@ fn tick_actor_class(
         let mut cx = ActorCx::new(owner, Some(instance), events, &mut state.scope);
         if !previous.contains_key(&instance) {
             if let Some(begin_play) = table.begin_play {
+                let _scope =
+                    profiling::interned_scope("Lifecycle::begin_play::", registration.class_name);
                 begin_play(world, &mut cx, instance);
             }
         }
         if let Some(event) = table.event {
             for queued_event in queued {
+                let _scope =
+                    profiling::interned_scope("Lifecycle::event::", registration.class_name);
                 event(
                     world,
                     &mut cx,
@@ -617,6 +634,7 @@ fn tick_actor_class(
             }
         }
         if let Some(tick) = table.tick {
+            let _scope = profiling::interned_scope("Lifecycle::tick::", registration.class_name);
             tick(world, &mut cx, instance, delta_seconds);
         }
     }
@@ -640,6 +658,7 @@ pub fn process_component_removals(
     events: &EventHub,
     state: &mut ComponentRuntimeState,
 ) -> usize {
+    profiling::profile_scope!("Lifecycle::process_component_removals");
     let removals = collect_removals(world, state);
     end_removed(None, events, state, removals)
 }
@@ -651,6 +670,7 @@ pub fn process_component_removals_mut(
     events: &EventHub,
     state: &mut ComponentRuntimeState,
 ) -> usize {
+    profiling::profile_scope!("Lifecycle::process_component_removals");
     state.run_deferred_ends(world, events);
     let removals = collect_removals(world, state);
     end_removed(Some(world), events, state, removals)
@@ -682,6 +702,7 @@ fn end_removed(
     if removals.is_empty() {
         return 0;
     }
+    profiling::profile_scope!("Lifecycle::end_removed");
 
     let registrations = lifecycles();
     let mut ended = 0;
@@ -833,6 +854,7 @@ pub fn pump_construct(world: &mut World, events: &EventHub, state: &mut Session)
     if state.construct.suspended {
         return 0;
     }
+    profiling::profile_scope!("Lifecycle::pump_construct");
     let registrations = constructible();
     if registrations.is_empty() {
         return 0;
@@ -900,7 +922,11 @@ pub fn pump_construct(world: &mut World, events: &EventHub, state: &mut Session)
                 reason: pending.reason,
                 changed,
             });
-            construct(world, &mut cx, instance);
+            {
+                let _scope =
+                    profiling::interned_scope("Lifecycle::construct::", registration.class_name);
+                construct(world, &mut cx, instance);
+            }
             delivered += 1;
             state.construct.stats.delivered += 1;
             // Its own writes are not changes (D4): read them past. Others'
@@ -1065,6 +1091,101 @@ mod tests {
             tick_live_components(&mut world, &events, 0.0, 1, &mut state);
             assert_eq!(take(), ["end_play"]);
             assert!(!state.has_active_components());
+        }
+    }
+
+    /// Every piece of lifecycle execution is a profiler scope with a stable,
+    /// per-class name (never per entity), and nothing is recorded while the
+    /// profiler is off.
+    mod profiler_scopes {
+        use super::*;
+        use pulsar_component_lifecycle::{Actor, ActorRegistration, ActorTable};
+        use pulsar_scene_model::ComponentOwner;
+
+        struct Scoped;
+
+        impl Actor for Scoped {
+            fn begin_play(&mut self, _: &mut ActorCx<'_>) {}
+            fn tick(&mut self, _: &mut ActorCx<'_>, _: f32) {}
+            fn end_play(_: &mut ActorCx<'_>) {}
+        }
+
+        #[test]
+        fn a_lifecycle_run_records_its_scopes_and_an_idle_profiler_records_none() {
+            crate::runtime::register_actor_for_test(Box::leak(Box::new(ActorRegistration {
+                origin: "test",
+                class_name: "ScopedProbe",
+                table: ActorTable::of::<Scoped>(),
+            })));
+            let mut world = World::new();
+            world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+            let events = EventHub::new();
+            let mut state = ComponentRuntimeState::default();
+            for _ in 0..3 {
+                let owner = world.spawn();
+                let instance = world.spawn();
+                world.insert(instance, Scoped);
+                world.insert(instance, ComponentOwner::new(owner, true));
+            }
+
+            // Off: a tick records nothing of its own.
+            profiling::disable_profiling();
+            profiling::clear_events();
+            tick_live_components(&mut world, &events, 0.016, 1, &mut state);
+            let idle: Vec<_> = profiling::collect_events()
+                .into_iter()
+                .filter(|event| event.name.starts_with("Lifecycle::"))
+                .collect();
+            assert!(idle.is_empty(), "recorded while off: {idle:?}");
+
+            profiling::enable_profiling();
+            tick_live_components(&mut world, &events, 0.016, 1, &mut state);
+            crate::flush_component_events(&mut world, &events);
+            process_component_removals_mut(&mut world, &events, &mut state);
+            end_session(&mut world, &events, &mut state);
+            profiling::disable_profiling();
+
+            let recorded = profiling::collect_events();
+            let count = |name: &str| recorded.iter().filter(|e| e.name == name).count();
+            for name in [
+                "Lifecycle::tick_live_components",
+                "Lifecycle::Step::pulsar.components",
+                "Lifecycle::tick_component_lifecycles",
+                "Lifecycle::pump_construct",
+                "Lifecycle::process_component_removals",
+                "Lifecycle::flush_component_events",
+                "Session::end",
+                "Session::drop_resources",
+            ] {
+                assert!(
+                    count(name) >= 1,
+                    "no `{name}` scope in {:?}",
+                    names(&recorded)
+                );
+            }
+            // The first tick ran off: the second tick ticked its three
+            // instances, and ending the session ended them (one scope each,
+            // named by class, not by entity).
+            assert_eq!(count("Lifecycle::tick::ScopedProbe"), 3);
+            assert_eq!(count("Lifecycle::end_play::ScopedProbe"), 3);
+            // `begin_play` happened during the off tick; nothing is recorded for it.
+            assert_eq!(count("Lifecycle::begin_play::ScopedProbe"), 0);
+            // Low cardinality: no scope name carries an entity.
+            assert!(
+                recorded
+                    .iter()
+                    .filter(|e| e.name.starts_with("Lifecycle::") && e.name.contains("Scoped"))
+                    .all(|e| e.name.ends_with("::ScopedProbe")),
+                "{:?}",
+                names(&recorded)
+            );
+        }
+
+        fn names(events: &[profiling::ProfileEvent]) -> Vec<&str> {
+            let mut names: Vec<&str> = events.iter().map(|e| e.name.as_str()).collect();
+            names.sort_unstable();
+            names.dedup();
+            names
         }
     }
 

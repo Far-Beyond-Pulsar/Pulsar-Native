@@ -1097,3 +1097,45 @@ now by convention, not by a runtime check.
   skimmed for session end; `run_blocking` and `Drop` were read.
 - Did not read the SceneDB repo's own consumers of `Actor` (its tests/examples),
   which the P5 SceneDB PR must also update.
+
+## 8. Follow-ups as built
+
+### Profiler scopes
+
+Every piece of lifecycle execution is a `profiling` scope (the editor flamegraph
+and the standalone game's `--pulsar-profile` show them), named
+`<Group>::<what>[::<Class or label>]` with a **fixed, low-cardinality** set of
+names: never an entity, a path or any per-frame value. A literal name uses
+`profiling::profile_scope!`; a name that is a class name or a system label uses
+`profiling::interned_scope(prefix, name)`, which builds `prefix + name` once,
+reuses it, and costs one atomic load when the profiler is off (no format, no
+allocation per call). One scope wraps one call into a class (so a class's
+`tick` over N instances is N scopes of the same name), not a string per entity.
+
+| Group | Scopes |
+|---|---|
+| `TickLoop::` | `tick`, `flush_after_input`, `before_systems`, `schedule`, `component_phase`, `flush_component_events`, `removals_after_components`, `flush_after_systems`, `script_phase`, `removals_after_scripts`, `after_scripts`, `flush_after_scripts`, `pump_assets`, `end_session`, `end_component_runtime`, `end_scripts` |
+| `Lifecycle::` | `tick_live_components`, `Step::pulsar.components`, `System::<label>` (each ordered system, e.g. `System::pulsar.physics.step`), `tick_component_lifecycles`, `pump_construct`, `construct::<Class>`, `begin_play::<Class>`, `event::<Class>`, `tick::<Class>`, `end_play::<Class>`, `process_component_removals`, `end_removed`, `deferred_ends`, `flush_component_events` |
+| `Session::` | `begin`, `end` (end_play over every live instance, then the resources), `end_all` (no world), `drop_resources` |
+| `Script::` | `run_frame`, `reconcile`, `begin_play`, `tick`, `tick_read`, `tick_write`, `apply_lifecycle`, `end_play` |
+| `PIE::` | `pie_tick`, `pie_shutdown` |
+| `Physics::` | `Begin`, `End` (registration at `begin_play`/`end_play`), plus the plugin's `Tick`, `Moves`, `Apply`, `Read`, `Frame`, `Publish` |
+
+A new lifecycle piece takes the same shape: a literal group and a class or label
+as the last segment. The test is `profiler_scopes` in
+`pulsar_world_registry::component_lifecycle` (it enables the global profiler,
+runs a lifecycle, and reads `profiling::collect_events`).
+
+### Packaged game
+
+`pulsar_package/tests/packaged_physics.rs` cooks a level through the real cook
+path (`package` with `loose` and `skip_build`) and runs it through
+`standalone::run_headless_with` with every installed plugin linked without its
+`editor` feature. Found and fixed on the way: the windowed game never installed
+the level's roles and `world_settings` into its session (gravity and
+`physics_enabled` were ignored; now `standalone::adopt_level` is called by both
+host paths), and the windowed game exited without waiting for its tick thread,
+so the session's end (`end_play`, the physics thread's join) could be cut off
+by process exit (the app now joins the thread). Not covered: opening a window
+and a GPU.
+

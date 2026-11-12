@@ -52,6 +52,9 @@ installed_plugins = { workspace = true }
 
 [dev-dependencies]
 helio_component = { workspace = true }
+# The packaged-game test (`tests/packaged_physics.rs`) watches the threads and the clock.
+editor_task_queue = { workspace = true }
+pulsar_core = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

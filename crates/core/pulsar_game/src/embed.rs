@@ -693,6 +693,7 @@ where
 /// `dt` is retained for ABI stability; the frame's simulation step is the
 /// tick loop's own clocked tick.
 pub fn pie_tick(dt: f32) {
+    profiling::profile_scope!("PIE::pie_tick");
     let _ = dt;
     GAME.with(|g| {
         if let Some(game) = g.borrow_mut().as_mut() {
@@ -833,6 +834,7 @@ pub unsafe fn pie_events_snapshot(out: *mut u8, capacity: usize) -> usize {
 /// Tear down the embedded game, dropping its world + renderer before the host
 /// unloads the library.
 pub fn pie_shutdown() {
+    profiling::profile_scope!("PIE::pie_shutdown");
     GAME.with(|g| {
         if let Some(mut game) = g.borrow_mut().take() {
             game.log(LOG_INFO, "PiE game shutting down");

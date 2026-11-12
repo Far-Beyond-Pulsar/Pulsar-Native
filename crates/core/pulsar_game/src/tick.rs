@@ -428,7 +428,10 @@ impl TickLoop {
         // Flush 1 (after input): input published since the last tick
         // (`publish_input`, PIE input forwarding) and anything else queued
         // between ticks.
-        self.events.flush(pulsar_events::FlushPoint::AfterInput);
+        {
+            profiling::profile_scope!("TickLoop::flush_after_input");
+            self.events.flush(pulsar_events::FlushPoint::AfterInput);
+        }
 
         // Phase 0: animation. Every live skeletal mesh component advances its
         // animation instance and publishes its pose and GPU palettes *before* the
@@ -436,6 +439,7 @@ impl TickLoop {
         // Parameters and Montage commands written by scripts later in the frame
         // apply at the next frame's animation phase.
         {
+            profiling::profile_scope!("TickLoop::before_systems");
             let mut store = self.scene_store.write();
             for phase in engine_backend::scene::game_hooks::tick_phases() {
                 if let Some(before_systems) = phase.before_systems {
@@ -448,6 +452,7 @@ impl TickLoop {
         // same lock every frame to step the scene and flush its GPU mirror, so
         // nothing here may hold it across phases.
         {
+            profiling::profile_scope!("TickLoop::schedule");
             let mut store = self.scene_store.write();
             self.schedule.run(&mut store.world, scenedb_time);
         }
@@ -459,6 +464,7 @@ impl TickLoop {
         // component copies. The callback contract forbids re-entering World
         // while its component borrow is held.
         {
+            profiling::profile_scope!("TickLoop::component_phase");
             let scene_identity = Arc::as_ptr(&self.scene_store) as usize;
             self.ensure_actor_bank();
             if let Some(inbox) = &self.class_inbox {
@@ -488,6 +494,7 @@ impl TickLoop {
         // what remains of the old actor registry's: flush what the actors and
         // components queued. Separate lock acquisition from phase 1 on purpose.
         {
+            profiling::profile_scope!("TickLoop::flush_component_events");
             let mut store = self.scene_store.write();
             // World-mutating component methods append to per-owner outboxes.
             // Move them onto Gamma's deferred queue only after actors have
@@ -500,6 +507,7 @@ impl TickLoop {
         // tick. End their owner-scoped lifecycle now, before SceneDB's
         // end-of-window cleanup drains the independent removal journal.
         {
+            profiling::profile_scope!("TickLoop::removals_after_components");
             let mut store = self.scene_store.write();
             pulsar_world_registry::process_component_removals_mut(
                 &mut store.world,
@@ -513,7 +521,10 @@ impl TickLoop {
         // hits and overlaps (and whatever systems and actors published)
         // are delivered before the script phase, which runs the script
         // handlers they queued.
-        self.events.flush(pulsar_events::FlushPoint::AfterSystems);
+        {
+            profiling::profile_scope!("TickLoop::flush_after_systems");
+            self.events.flush(pulsar_events::FlushPoint::AfterSystems);
+        }
 
         // Phase 3: the script phase, AFTER ECS + actor updates: the driver
         // starts/stops script instances to match the world's class
@@ -524,6 +535,7 @@ impl TickLoop {
         // scene: `tick_once` only runs after `spawn_ecs_thread`, once the
         // window is ready. Errors are per instance and logged.
         if let Some(driver) = &self.scripts {
+            profiling::profile_scope!("TickLoop::script_phase");
             let mut driver = driver
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -545,6 +557,7 @@ impl TickLoop {
         // native component and actor phases. Drain those lifecycle endings
         // before closing the SceneDB change window as well.
         {
+            profiling::profile_scope!("TickLoop::removals_after_scripts");
             let mut store = self.scene_store.write();
             pulsar_world_registry::process_component_removals_mut(
                 &mut store.world,
@@ -557,6 +570,7 @@ impl TickLoop {
         // scripts have released the world. A notify aimed at a class variable
         // resolves it from the owner's current script instance.
         {
+            profiling::profile_scope!("TickLoop::after_scripts");
             let mut store = self.scene_store.write();
             let driver = self
                 .scripts
@@ -580,13 +594,19 @@ impl TickLoop {
         // handlers are queued for the next script phase. Flush 4 (end of
         // frame) delivers anything published after that, e.g. by host
         // handlers of flush 3 on another thread.
-        self.events.flush(pulsar_events::FlushPoint::AfterScripts);
-        self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
+        {
+            profiling::profile_scope!("TickLoop::flush_after_scripts");
+            self.events.flush(pulsar_events::FlushPoint::AfterScripts);
+            self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
+        }
 
         // Assets this tick referenced (a spawned actor's mesh) start loading,
         // and the finished ones bind, also in a headless run with no render
         // loop to do it (SceneDB#84). An already-loaded mesh binds here.
-        engine_backend::scene::pump_assets(&self.scene_store);
+        {
+            profiling::profile_scope!("TickLoop::pump_assets");
+            engine_backend::scene::pump_assets(&self.scene_store);
+        }
 
         // The world's change history only covers the current frame, so the
         // frame's moves are checked before it closes. Anything this tick
@@ -700,6 +720,7 @@ impl TickLoop {
     /// hub's queue is drained (see `EventHub::drain_queued`): a stopped
     /// session leaves nothing on its hub.
     pub fn end_scripts(&mut self) {
+        profiling::profile_scope!("TickLoop::end_scripts");
         if let Some(driver) = &self.scripts {
             let mut driver = driver
                 .lock()
@@ -720,6 +741,7 @@ impl TickLoop {
     /// keeps the world and its [`ScriptTag`](crate::scripts::ScriptTag)ged
     /// owners, never a behavior from the old library.
     pub fn end_component_runtime(&mut self) {
+        profiling::profile_scope!("TickLoop::end_component_runtime");
         let mut store = self.scene_store.write();
         pulsar_world_registry::end_session(
             &mut store.world,
@@ -774,6 +796,7 @@ impl TickLoop {
     /// PIE's host restores the editor's snapshot only after this returned
     /// (`PieSession::shutdown`, then `pie_shutdown`). Idempotent.
     pub fn end_session(&mut self) {
+        profiling::profile_scope!("TickLoop::end_session");
         self.end_component_runtime();
         self.end_scripts();
     }
@@ -929,6 +952,9 @@ impl TickLoop {
 
         // The event loop has exited (all windows closed) — stop the ECS thread.
         running_flag.store(false, Ordering::SeqCst);
+        // The tick thread ends the session (components, scripts, the physics
+        // thread) on its way out: wait for it before the process may exit.
+        app.join_ecs_thread(&running_flag);
     }
 }
 

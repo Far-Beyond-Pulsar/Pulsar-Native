@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "friction": 0.029999999329447746,
+  "restitution": 0.05000000074505806,
+  "friction_combine": "average",
+  "restitution_combine": "average",
+  "density": 900.0,
+  "surface": "ice",
+  "description": "The ramp: almost frictionless"
+}
