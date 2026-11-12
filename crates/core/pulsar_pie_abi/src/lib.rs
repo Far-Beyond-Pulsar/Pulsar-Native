@@ -108,7 +108,13 @@ use core::ffi::c_void;
 /// apart from a fresh play session.
 /// v4 appends [`EngineContext::view`]: the editor camera at Play, with an f64
 /// eye, which the game's free camera starts from.
-pub const PIE_ABI_VERSION: u64 = 4;
+/// v5 appends [`EngineContext::session_kind`] (see [`session_kind`]): the host,
+/// not the guest, says what kind of session the game is, so the component
+/// lifecycle's `SessionKind` is never guessed. A game library built against
+/// v4 reports its version through [`SYM_ABI_VERSION`] and the host refuses it
+/// ("Rebuild the project"); a v5 library started by a v4 host fails the
+/// guest's own `abi_version` check.
+pub const PIE_ABI_VERSION: u64 = 5;
 
 /// Bit flags carried in [`EngineContext::session_flags`].
 ///
@@ -236,6 +242,25 @@ pub struct EngineContext {
     /// Where the editor camera was when Play was pressed; the game's free
     /// camera starts there.
     pub view: PieView,
+
+    // ── ABI v5 additions: the session kind ─────────────────────────────────
+    /// One of the [`session_kind`] constants: what kind of session the host
+    /// is starting. The embedded game today is always
+    /// [`session_kind::PLAY_IN_EDITOR`]; the guest rejects a value it does
+    /// not know instead of guessing.
+    pub session_kind: u32,
+    pub _reserved: u32,
+}
+
+/// Values of [`EngineContext::session_kind`], mirroring
+/// `pulsar_component_lifecycle::SessionKind` (this crate is `no_std` and
+/// depends on nothing, so the mapping lives in the guest's `embed.rs`).
+/// Never renumber: append.
+pub mod session_kind {
+    pub const EDITOR: u32 = 0;
+    pub const PLAY_IN_EDITOR: u32 = 1;
+    pub const STANDALONE: u32 = 2;
+    pub const HEADLESS: u32 = 3;
 }
 
 /// A camera pose handed host → game ([`EngineContext::view`]).

@@ -70,9 +70,11 @@ pub use unfinished::{
 
 mod component_lifecycle;
 pub use component_lifecycle::{
-    end_live_components, lifecycle_conflicts, process_component_removals, tick_live_components,
-    ComponentInstanceKey, ComponentRuntimeState,
+    end_live_components, end_session, lifecycle_conflicts, process_component_removals,
+    process_component_removals_mut, pump_construct, tick_live_components, ComponentInstanceKey,
+    ComponentRuntimeState, ConstructStats, Session,
 };
+pub use pulsar_component_lifecycle::{ConstructInfo, ConstructReason, SessionKind, SessionScope};
 
 /// Generated native component lifecycle entry. The callback runs on the
 /// live typed SceneDB value and never deserializes or stores a shadow.

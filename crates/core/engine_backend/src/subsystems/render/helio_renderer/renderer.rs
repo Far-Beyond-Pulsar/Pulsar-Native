@@ -604,6 +604,8 @@ pub struct HelioRenderer {
     /// The pipeline the level asks for (World Settings); see
     /// [`HelioEditorMailbox::set_render_pipeline`].
     requested_pipeline: super::pipelines::RequestedPipeline,
+    /// The editor's `construct` pump, run by the scene renderer each frame.
+    construct_pump: Option<crate::scene::EditorConstructPump>,
     /// What `inner` was built from: the pipeline, or why none runs.
     applied_pipeline: Option<super::pipelines::PipelineState>,
 
@@ -747,6 +749,13 @@ impl HelioRenderer {
         self.host_part_setups.push((key, setup));
     }
 
+    /// Run the editor's `construct` pump (`crate::scene::construct_pump`) each
+    /// frame, before the frame's change window closes. Set before the first
+    /// frame: the scene renderer is built then.
+    pub fn set_construct_pump(&mut self, pump: crate::scene::EditorConstructPump) {
+        self.construct_pump = Some(pump);
+    }
+
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         Self {
@@ -784,6 +793,7 @@ impl HelioRenderer {
             applied_graph_settings: None,
             graph_settings_cache: ProjectGraphSettingsCache::new(),
             requested_pipeline: Default::default(),
+            construct_pump: None,
             applied_pipeline: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam: FlyCamera::new(DVec3::new(8.0, 6.0, 12.0), -0.5, -0.3),
@@ -1027,6 +1037,7 @@ impl HelioRenderer {
                             editor_mode: true,
                             device: DeviceOwner::Host,
                             pipeline: self.requested_pipeline.get(),
+                            construct_pump: self.construct_pump.clone(),
                             host_part_setups: self.host_part_setups.clone(),
                         },
                     );

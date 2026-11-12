@@ -845,3 +845,36 @@ fn instances_are_built_from_the_typed_template() {
     classes::rebuild_instance(world, &id, &registry).unwrap();
     assert_eq!(light(world, &id).intensity.intensity, 9.0);
 }
+
+/// Phase 2 (the world-ownership rule): Play hands the shared world to the
+/// game's session, so the editor's construct pump is suspended; Stop
+/// restores the snapshot and resumes it with one rescan (the restore's mass
+/// component add/remove is not a storm of `construct`s). A second Play while
+/// running (a hot reload) keeps it suspended. The lifecycle half, with a
+/// class that has a `construct`, is `plugins/installed/tests/lifecycle.rs`.
+#[test]
+fn play_suspends_the_construct_pump_and_stop_resumes_it_with_a_rescan() {
+    use crate::state::LevelEditorState;
+
+    let (_project, dir) = project_with_lamp(1.0);
+    let mut state = LevelEditorState::new();
+    place(&mut state.scene.world_mut(), &dir, 0.0);
+    let pump = state.scene.construct_pump.clone();
+    assert!(!pump.is_suspended());
+    assert_eq!(pump.kind(), pulsar_world_registry::SessionKind::Editor);
+    assert!(!pump.with_session(|s| s.rescan_pending()));
+
+    state.scene.enter_play_mode();
+    assert!(pump.is_suspended(), "the game's session owns the world");
+    state.scene.enter_play_mode();
+    assert!(pump.is_suspended(), "a hot reload keeps it suspended");
+
+    state.scene.exit_play_mode();
+    assert!(!pump.is_suspended());
+    assert!(
+        pump.with_session(|s| s.rescan_pending()),
+        "the restore is one rescan"
+    );
+    // The domain's clones (the tool-query copy) share the one pump.
+    assert!(state.scene.clone_for_tool_query().construct_pump.kind().is_editor());
+}

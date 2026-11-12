@@ -220,7 +220,7 @@ impl TickLoop {
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
             events: new_component_event_hub(),
-            component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
+            component_runtime: pulsar_world_registry::Session::new(pulsar_world_registry::SessionKind::Standalone),
             static_moves: None,
             world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
@@ -270,7 +270,7 @@ impl TickLoop {
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
             events: new_component_event_hub(),
-            component_runtime: pulsar_world_registry::ComponentRuntimeState::default(),
+            component_runtime: pulsar_world_registry::Session::new(pulsar_world_registry::SessionKind::PlayInEditor),
             static_moves: None,
             world_roles: pulsar_traits::WorldRoles::default(),
             possession: crate::possession::PossessionGate::new(),
@@ -486,9 +486,9 @@ impl TickLoop {
         // tick. End their owner-scoped lifecycle now, before SceneDB's
         // end-of-window cleanup drains the independent removal journal.
         {
-            let store = self.scene_store.read();
-            pulsar_world_registry::process_component_removals(
-                &store.world,
+            let mut store = self.scene_store.write();
+            pulsar_world_registry::process_component_removals_mut(
+                &mut store.world,
                 &self.events,
                 &mut self.component_runtime,
             );
@@ -531,9 +531,9 @@ impl TickLoop {
         // native component and actor phases. Drain those lifecycle endings
         // before closing the SceneDB change window as well.
         {
-            let store = self.scene_store.read();
-            pulsar_world_registry::process_component_removals(
-                &store.world,
+            let mut store = self.scene_store.write();
+            pulsar_world_registry::process_component_removals_mut(
+                &mut store.world,
                 &self.events,
                 &mut self.component_runtime,
             );
@@ -616,11 +616,9 @@ impl TickLoop {
             }
         }
 
-        // Loop is shutting down — give script instances a chance to run
-        // their `end_play` teardown logic, mirroring `ActorRegistry`'s
-        // begin_play/end_play contract for native actors.
-        self.end_scripts();
-        self.end_component_runtime();
+        // Loop is shutting down: end the session (components, then scripts;
+        // see `end_session`).
+        self.end_session();
     }
 
     /// Turn on the script phase for the project at `project_root`: a script
@@ -691,11 +689,56 @@ impl TickLoop {
         self.events.drain_queued();
     }
 
-    /// End active macro-registered native component lifecycles. Removal and
-    /// disable teardown callbacks receive the stable owner identity because
-    /// the SceneDB row has already been removed by that point.
+    /// End active native component lifecycles with the world alive: every
+    /// live instance gets `end_play` (the world-form ones with `&mut World`,
+    /// the component still in it), then the session's resources are dropped.
+    /// Idempotent: a second call finds nothing live.
     pub fn end_component_runtime(&mut self) {
-        pulsar_world_registry::end_live_components(&mut self.component_runtime, &self.events);
+        let mut store = self.scene_store.write();
+        pulsar_world_registry::end_session(
+            &mut store.world,
+            &self.events,
+            &mut self.component_runtime,
+        );
+    }
+
+    /// End the session, in the one order the guarantee needs: `end_play` for
+    /// every live component instance **while the world is alive**
+    /// ([`end_component_runtime`](Self::end_component_runtime)), then every
+    /// script ([`end_scripts`](Self::end_scripts), which also runs the game
+    /// session hooks and drains the hub), then the host gets control back.
+    /// PIE's host restores the editor's snapshot only after this returned
+    /// (`PieSession::shutdown`, then `pie_shutdown`). Idempotent.
+    pub fn end_session(&mut self) {
+        self.end_component_runtime();
+        self.end_scripts();
+    }
+
+    /// What kind of session this loop is: [`Standalone`](pulsar_world_registry::SessionKind::Standalone)
+    /// from [`new`](Self::new), [`PlayInEditor`](pulsar_world_registry::SessionKind::PlayInEditor)
+    /// from [`with_scene_store`](Self::with_scene_store).
+    pub fn session_kind(&self) -> pulsar_world_registry::SessionKind {
+        self.component_runtime.kind()
+    }
+
+    /// Set the kind the host says this session is (`embed.rs` passes the
+    /// PIE ABI's; a headless run says `Headless`).
+    pub fn set_session_kind(&mut self, kind: pulsar_world_registry::SessionKind) {
+        self.component_runtime.set_kind(kind);
+    }
+
+    /// The session's own lifecycle state: resources, settings, construct
+    /// statistics.
+    pub fn session(&self) -> &pulsar_world_registry::Session {
+        &self.component_runtime
+    }
+
+    pub fn session_mut(&mut self) -> &mut pulsar_world_registry::Session {
+        &mut self.component_runtime
+    }
+
+    pub(crate) fn set_session_settings(&mut self, settings: serde_json::Value) {
+        self.component_runtime.set_settings(settings);
     }
 
     /// Signal the loop to stop after the current tick.

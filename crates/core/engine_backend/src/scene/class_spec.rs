@@ -31,7 +31,10 @@
 //! identity, data and plugin: a disabled plugin's member loads unresolved
 //! with its data, the rest keep working.
 
-pub use pulsar_component_lifecycle::{Actor, ActorCx, ActorTable, WorldActor};
+pub use pulsar_component_lifecycle::{
+    Actor, ActorCx, ActorTable, ConstructInfo, ConstructReason, SessionKind, SessionScope,
+    WorldActor,
+};
 use pulsar_component_lifecycle::ActorRegistration;
 use pulsar_plugins::PluginBuilder;
 use pulsar_world_registry::{

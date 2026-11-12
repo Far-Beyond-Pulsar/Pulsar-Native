@@ -26,11 +26,11 @@ use crate::{ComponentEventRegistration, ComponentTickRegistration, WorldComponen
 
 /// Version of [`WorldRuntimes`]' and [`Runtime`]'s ABI. Bump it on any
 /// change to their fields or to a type passed through them.
-pub const ABI_VERSION: u64 = 4;
+pub const ABI_VERSION: u64 = 5;
 
 /// The layouts the fingerprint covers, by name: every type passed through
 /// [`WorldRuntimes`] and [`Runtime`].
-const LAYOUTS: [(&str, usize); 13] = [
+const LAYOUTS: [(&str, usize); 16] = [
     ("WorldRuntimes", size_of::<WorldRuntimes>()),
     ("Runtime", size_of::<Runtime>()),
     ("Registrations", size_of::<Registrations>()),
@@ -53,6 +53,10 @@ const LAYOUTS: [(&str, usize); 13] = [
     ("SystemRegistration", size_of::<SystemRegistration>()),
     ("ActorRegistration", size_of::<ActorRegistration>()),
     ("ActorTable", size_of::<ActorTable>()),
+    // The session a system and a lifecycle callback receive by reference.
+    ("Session", size_of::<crate::Session>()),
+    ("SessionScope", size_of::<pulsar_component_lifecycle::SessionScope>()),
+    ("ActorCx", size_of::<pulsar_component_lifecycle::ActorCx<'static>>()),
     ("pulsar_reflection", pulsar_reflection::runtime::ABI_VERSION as usize),
     ("pulsar_scenedb", pulsar_scenedb::runtime::ABI_VERSION as usize),
     (
@@ -532,9 +536,12 @@ mod tests {
         let layout = |name: &str| LAYOUTS.iter().find(|(n, _)| *n == name).map(|(_, size)| *size);
         assert_eq!(layout("ActorRegistration"), Some(size_of::<ActorRegistration>()));
         assert_eq!(layout("ActorTable"), Some(size_of::<ActorTable>()));
+        // P2: the session handed to systems and callbacks is covered too.
+        assert_eq!(layout("Session"), Some(size_of::<crate::Session>()));
+        assert!(layout("SessionScope").is_some() && layout("ActorCx").is_some());
         // `Runtime` carries the table accessor, `Registrations` the list.
         assert!(size_of::<Runtime>() >= 8 * 7);
-        assert_eq!(ABI_VERSION, 4);
+        assert_eq!(ABI_VERSION, 5);
     }
 
     #[test]

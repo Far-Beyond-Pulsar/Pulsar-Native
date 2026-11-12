@@ -12,12 +12,14 @@
 //! are borrowed by each generated typed query for callbacks.
 
 use crate::{ComponentTickRegistration, QueuedComponentEvent};
-use pulsar_component_lifecycle::{ActorCx, ActorRegistration};
+use pulsar_component_lifecycle::{
+    ActorCx, ActorRegistration, ConstructInfo, ConstructReason, SessionKind, SessionScope,
+};
 use pulsar_events::EventHub;
 use pulsar_scenedb::{
     ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, ComponentId, Entity, World,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
@@ -36,14 +38,65 @@ pub struct ComponentInstanceKey {
     pub entity: Entity,
 }
 
-/// Lifecycle bookkeeping for one running game session.
+/// What the construct pump did since the session began.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ConstructStats {
+    /// `construct` calls delivered.
+    pub delivered: u64,
+    /// Full scans: the first pump, a requested rescan (a restore) and an
+    /// overflowed change journal each count once, however many classes and
+    /// instances they covered.
+    pub rescans: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PendingConstruct {
+    entity: Entity,
+    reason: ConstructReason,
+}
+
+/// The construct pump's bookkeeping (D4).
+#[derive(Default)]
+struct ConstructState {
+    /// This session's own cursor per class with a `construct`, over the
+    /// writes of its component: separate from the removal cursors, so the
+    /// two readers never take entries from each other.
+    cursors: HashMap<ComponentId, ChangeCursor>,
+    /// Instances to construct at the next pump, deduplicated: a hundred
+    /// writes to one component are one entry. Keyed by entity bits (a
+    /// deterministic order).
+    pending: HashMap<ComponentId, BTreeMap<u64, PendingConstruct>>,
+    /// A restore or an undo replaced the world's content: scan everything
+    /// once at the next pump instead of reading N changes.
+    rescan: bool,
+    /// The pump is not delivering (a play session owns the world).
+    suspended: bool,
+    /// Properties a writer named for an instance, delivered with its
+    /// construct.
+    named: HashMap<Entity, BTreeSet<String>>,
+    stats: ConstructStats,
+}
+
+/// A session: one running (or edited) world and everything the lifecycle
+/// keeps for it.
+///
+/// It is the evolution of `ComponentRuntimeState` (still its name, as a type
+/// alias): the same identity bookkeeping plus a [`SessionScope`] (kind, the
+/// level's settings, resources a plugin registers by type) and the construct
+/// pump's state. It is owned by whoever drives the world: the `TickLoop` for
+/// play, the editor's pump for [`SessionKind::Editor`].
 ///
 /// The maps contain only stable SceneDB identities, never cloned component
 /// data. They must live beside the `TickLoop` that drives these components;
 /// keeping them global would let independent PIE/game worlds share runtime
 /// activation state accidentally.
-#[derive(Default)]
-pub struct ComponentRuntimeState {
+pub struct Session {
+    scope: SessionScope,
+    construct: ConstructState,
+    /// Ends of world-form classes read from the removal journal through a
+    /// `&World` (`process_component_removals`), to run at the next point
+    /// that has a mutable world.
+    deferred_ends: Vec<(Lifecycle, Entity, Entity)>,
     scene_identity: Option<usize>,
     /// Per class: active instance entity -> its owner object.
     active: HashMap<RegistrationKey, HashMap<Entity, Entity>>,
@@ -63,13 +116,107 @@ pub struct ComponentRuntimeState {
     conflicts_reported: bool,
 }
 
+/// The session's old name, kept so every existing user compiles.
+pub type ComponentRuntimeState = Session;
+
+impl Default for Session {
+    /// A session with no host: [`SessionKind::Headless`].
+    fn default() -> Self {
+        Self::new(SessionKind::Headless)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct RegistrationKey {
     component_type: ComponentId,
     type_name: &'static str,
 }
 
-impl ComponentRuntimeState {
+impl Session {
+    pub fn new(kind: SessionKind) -> Self {
+        Self {
+            scope: SessionScope::new(kind),
+            construct: ConstructState::default(),
+            deferred_ends: Vec::new(),
+            scene_identity: None,
+            active: HashMap::new(),
+            inbox: Arc::default(),
+            subscriptions: HashMap::new(),
+            removal_cursors: HashMap::new(),
+            scratch: Vec::new(),
+            order: None,
+            conflicts_reported: false,
+        }
+    }
+
+    /// What kind of session this is.
+    pub fn kind(&self) -> SessionKind {
+        self.scope.kind()
+    }
+
+    pub fn set_kind(&mut self, kind: SessionKind) {
+        self.scope.set_kind(kind);
+    }
+
+    /// The data a callback reaches through `cx.session`: settings and
+    /// resources.
+    pub fn scope(&self) -> &SessionScope {
+        &self.scope
+    }
+
+    pub fn scope_mut(&mut self) -> &mut SessionScope {
+        &mut self.scope
+    }
+
+    /// The level's settings (`world_settings`), filled by the host.
+    pub fn set_settings(&mut self, settings: serde_json::Value) {
+        self.scope.set_settings(settings);
+    }
+
+    /// What the construct pump did so far.
+    pub fn construct_stats(&self) -> ConstructStats {
+        self.construct.stats
+    }
+
+    /// The world's content was replaced wholesale (a snapshot restore, an
+    /// undo of many objects, a level load): the next pump scans every live
+    /// instance once and constructs each once, instead of reading N changes.
+    pub fn request_rescan(&mut self) {
+        self.construct.rescan = true;
+    }
+
+    /// Stop or resume delivering `construct` (the world-ownership rule: the
+    /// editor's pump is suspended while a play session owns the world).
+    /// Resuming requests a rescan, since the world changed under it.
+    pub fn set_construct_suspended(&mut self, suspended: bool) {
+        if self.construct.suspended && !suspended {
+            self.construct.rescan = true;
+        }
+        self.construct.suspended = suspended;
+    }
+
+    /// Whether a rescan is waiting for the next pump (a restore, or a
+    /// resume after a play session).
+    pub fn rescan_pending(&self) -> bool {
+        self.construct.rescan
+    }
+
+    pub fn construct_suspended(&self) -> bool {
+        self.construct.suspended
+    }
+
+    /// A writer that knows which property it changed (an inspector edit)
+    /// says so; the instance's next `construct` carries the names in
+    /// `cx.construct.changed`. Writing without this is fine: the names are
+    /// then empty (unknown).
+    pub fn note_changed(&mut self, instance: Entity, property: impl Into<String>) {
+        self.construct
+            .named
+            .entry(instance)
+            .or_default()
+            .insert(property.into());
+    }
+
     /// Subscribe a live component instance to its generated native handler
     /// events. Gamma callbacks only copy wire-safe dynamic fields into this
     /// host-owned inbox; they never access World or component memory.
@@ -154,16 +301,50 @@ impl ComponentRuntimeState {
         self.active.values().any(|entities| !entities.is_empty())
     }
 
-    /// End all active component lifecycles and forget the current scene.
-    /// This is used for explicit runtime shutdown and `TickLoop` drop.
+    /// End all active component lifecycles **without a world** and forget
+    /// the current scene: the entity-only ends run (the legacy macro's, and
+    /// [`pulsar_component_lifecycle::Actor::end_play`]); a world-form class's
+    /// `end_play` cannot, and is skipped. This is the path for a replaced
+    /// scene (the old world is no longer there to hand out) and the fallback
+    /// of `TickLoop`'s drop; a session ends through [`Self::end_session`].
     pub fn end_all(&mut self, events: &EventHub) {
+        self.end_instances(None, events);
+        self.reset();
+    }
+
+    /// End the session while its world is alive: `end_play` for every live
+    /// instance of every class, in the frame's order (class type name, then
+    /// entity), the world-form ones with `&mut World`; then drop the
+    /// session's resources and bookkeeping. The caller ends what comes after
+    /// (scripts, game hooks) next, and returns control to its host only then.
+    /// Nothing is live afterwards; the session may be reused.
+    pub fn end_session(&mut self, world: &mut World, events: &EventHub) {
+        self.run_deferred_ends(world, events);
+        self.end_instances(Some(world), events);
+        self.reset();
+    }
+
+    /// Run the world-form ends a `&World` path queued.
+    fn run_deferred_ends(&mut self, world: &mut World, events: &EventHub) {
+        for (lifecycle, instance, owner) in std::mem::take(&mut self.deferred_ends) {
+            lifecycle.end_play(Some(&mut *world), instance, owner, events, &mut self.scope);
+        }
+    }
+
+    fn end_instances(&mut self, mut world: Option<&mut World>, events: &EventHub) {
         for lifecycle in lifecycles() {
             let key = lifecycle.key();
             if let Some(entities) = self.active.remove(&key) {
                 let mut entities: Vec<_> = entities.into_iter().collect();
                 entities.sort_by_key(|(entity, _)| entity.bits());
-                for &(_, owner) in &entities {
-                    lifecycle.end_play(owner, events);
+                for &(instance, owner) in &entities {
+                    lifecycle.end_play(
+                        world.as_deref_mut(),
+                        instance,
+                        owner,
+                        events,
+                        &mut self.scope,
+                    );
                 }
                 for (entity, _) in entities {
                     self.unsubscribe_instance(ComponentInstanceKey {
@@ -173,14 +354,25 @@ impl ComponentRuntimeState {
                 }
             }
         }
+    }
+
+    /// Forget the scene and everything of its life.
+    fn reset(&mut self) {
         self.active.clear();
         self.subscriptions.clear();
+        self.deferred_ends.clear();
         // Cursors of the replaced world; the next tick opens fresh ones.
         self.removal_cursors.clear();
+        self.construct.cursors.clear();
+        self.construct.pending.clear();
+        self.construct.named.clear();
         *self
             .inbox
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = EventInbox::default();
+        // Resources belong to the world they served; their `Drop` is the
+        // plugin's shutdown (a service thread joins there).
+        self.scope.clear_resources();
         self.scene_identity = None;
     }
 }
@@ -203,18 +395,35 @@ impl Lifecycle {
         }
     }
 
-    /// The owner-only teardown, if the class has one.
-    fn end_play(self, owner: Entity, events: &EventHub) {
+    /// The teardown, if the class has one. A world-form `end_play` needs
+    /// `world`; without one it does not run and this returns `false` (the
+    /// caller may queue it for a point that has one).
+    fn end_play(
+        self,
+        world: Option<&mut World>,
+        instance: Entity,
+        owner: Entity,
+        events: &EventHub,
+        scope: &mut SessionScope,
+    ) -> bool {
         match self {
             Self::Legacy(registration) => {
                 if let Some(end_play) = registration.end_play {
                     end_play(owner, events);
                 }
+                true
             }
             Self::Actor(registration) => {
-                if let Some(end_play) = registration.table.end_play {
-                    end_play(&mut ActorCx::new(owner, None, events));
+                let table = &registration.table;
+                if let Some(end_play) = table.end_play_world {
+                    let Some(world) = world else {
+                        return false;
+                    };
+                    end_play(world, &mut ActorCx::new(owner, Some(instance), events, scope));
+                } else if let Some(end_play) = table.end_play {
+                    end_play(&mut ActorCx::new(owner, None, events, scope));
                 }
+                true
             }
         }
     }
@@ -301,13 +510,19 @@ pub fn tick_live_components(
     }
     state.scene_identity = Some(scene_identity);
 
+    // An editing session never plays: it only constructs (the editor pump).
+    if !state.kind().is_playing() {
+        pump_construct(world, events, state);
+        return;
+    }
+
     if !state.conflicts_reported {
         state.conflicts_reported = true;
         for problem in lifecycle_conflicts() {
             tracing::error!("{problem}");
         }
     }
-    process_component_removals(world, events, state);
+    process_component_removals_mut(world, events, state);
 
     let registrations = lifecycles();
     for lifecycle in &registrations {
@@ -341,6 +556,9 @@ pub fn tick_live_components(
     for step in steps {
         match step {
             crate::systems::Step::Components => {
+                // The fixed pump point: every `construct` of the frame's
+                // writes, before any `begin_play` or `tick`.
+                pump_construct(world, events, state);
                 tick_component_lifecycles(world, events, delta_seconds, &registrations, state)
             }
             crate::systems::Step::System(registration) => {
@@ -372,14 +590,23 @@ fn tick_component_lifecycles(
             Lifecycle::Legacy(registration) => {
                 (registration.tick)(world, events, delta_seconds, &previous, &mut current, state)
             }
-            Lifecycle::Actor(registration) => tick_actor_class(
-                world,
-                events,
-                delta_seconds,
-                registration,
-                &previous,
-                &mut current,
-            ),
+            Lifecycle::Actor(registration) => {
+                tick_actor_class(
+                    world,
+                    events,
+                    delta_seconds,
+                    registration,
+                    &previous,
+                    &mut current,
+                    &mut state.scope,
+                );
+                // What `begin_play` and `tick` wrote to their own components
+                // is not a change for `construct` (D4): read it past.
+                if registration.table.construct.is_some() {
+                    let own: HashSet<Entity> = current.keys().copied().collect();
+                    absorb_construct_changes(world, state, registration, Some(&own));
+                }
+            }
         }
 
         let mut ended: Vec<(Entity, Entity)> = previous
@@ -388,8 +615,8 @@ fn tick_component_lifecycles(
             .map(|(entity, owner)| (*entity, *owner))
             .collect();
         ended.sort_by_key(|(entity, _)| entity.bits());
-        for &(_, owner) in &ended {
-            lifecycle.end_play(owner, events);
+        for &(instance, owner) in &ended {
+            lifecycle.end_play(Some(&mut *world), instance, owner, events, &mut state.scope);
         }
         for (entity, _) in ended {
             state.unsubscribe_instance(ComponentInstanceKey {
@@ -410,6 +637,7 @@ fn tick_actor_class(
     registration: &ActorRegistration,
     previous: &HashMap<Entity, Entity>,
     current: &mut HashMap<Entity, Entity>,
+    scope: &mut SessionScope,
 ) {
     let table = &registration.table;
     let mut instances = Vec::new();
@@ -427,7 +655,7 @@ fn tick_actor_class(
         }
         let owner = link.entity();
         current.insert(instance, owner);
-        let mut cx = ActorCx::new(owner, Some(instance), events);
+        let mut cx = ActorCx::new(owner, Some(instance), events, scope);
         if !previous.contains_key(&instance) {
             if let Some(begin_play) = table.begin_play {
                 begin_play(world, &mut cx, instance);
@@ -446,11 +674,34 @@ fn tick_actor_class(
 /// after the native component phase has already run. An overflowed or
 /// replaced history ends nothing here; the next tick's reconciliation ends
 /// whatever is no longer live.
+///
+/// With only a `&World` this cannot run a world-form class's
+/// [`pulsar_component_lifecycle::WorldActor::end_play`]: that end is queued
+/// and runs at the next call with a mutable world
+/// ([`process_component_removals_mut`], the next tick, or the session end).
+/// A `TickLoop` calls the mutable form.
 pub fn process_component_removals(
     world: &World,
     events: &EventHub,
     state: &mut ComponentRuntimeState,
 ) -> usize {
+    let removals = collect_removals(world, state);
+    end_removed(None, events, state, removals)
+}
+
+/// [`process_component_removals`] with a mutable world: the queued world-form
+/// ends run first, and a removal's world-form `end_play` runs now.
+pub fn process_component_removals_mut(
+    world: &mut World,
+    events: &EventHub,
+    state: &mut ComponentRuntimeState,
+) -> usize {
+    state.run_deferred_ends(world, events);
+    let removals = collect_removals(world, state);
+    end_removed(Some(world), events, state, removals)
+}
+
+fn collect_removals(world: &World, state: &mut Session) -> Vec<(Entity, ComponentId)> {
     let mut removals = Vec::new();
     for (&component_type, cursor) in &mut state.removal_cursors {
         state.scratch.clear();
@@ -464,6 +715,15 @@ pub fn process_component_removals(
             );
         }
     }
+    removals
+}
+
+fn end_removed(
+    mut world: Option<&mut World>,
+    events: &EventHub,
+    state: &mut Session,
+    removals: Vec<(Entity, ComponentId)>,
+) -> usize {
     if removals.is_empty() {
         return 0;
     }
@@ -484,7 +744,15 @@ pub fn process_component_removals(
             .get_mut(&key)
             .and_then(|entities| entities.remove(&entity));
         if let Some(owner) = ended_owner {
-            lifecycle.end_play(owner, events);
+            if !lifecycle.end_play(
+                world.as_deref_mut(),
+                entity,
+                owner,
+                events,
+                &mut state.scope,
+            ) {
+                state.deferred_ends.push((lifecycle, entity, owner));
+            }
             state.unsubscribe_instance(ComponentInstanceKey {
                 component_type,
                 entity,
@@ -498,11 +766,202 @@ pub fn process_component_removals(
 /// End the running callbacks for every live registered component while the
 /// SceneDB allocation is still available, then clear its activation state.
 ///
-/// This can end subscriptions and other runtime-owned state using the
-/// owner identity, but by definition cannot borrow component data that was
-/// already removed from SceneDB.
+/// This has **no world**: only the entity-only ends run (see
+/// [`Session::end_all`]). A session ending with its world alive calls
+/// [`end_session`].
 pub fn end_live_components(state: &mut ComponentRuntimeState, events: &EventHub) {
     state.end_all(events);
+}
+
+/// End the session with its world alive: `end_play` for every live instance
+/// (world-form ones with `&mut World`), then its resources and bookkeeping
+/// are dropped. See [`Session::end_session`].
+pub fn end_session(world: &mut World, events: &EventHub, state: &mut ComponentRuntimeState) {
+    state.end_session(world, events);
+}
+
+// ── The construct pump (D4) ─────────────────────────────────────────────────
+
+/// The classes with a `construct`, in the frame's order.
+fn constructible() -> Vec<&'static ActorRegistration> {
+    lifecycles()
+        .into_iter()
+        .filter_map(|lifecycle| match lifecycle {
+            Lifecycle::Actor(registration) if registration.table.construct.is_some() => {
+                Some(registration)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every enabled instance of `registration`'s class is to construct.
+fn full_scan(world: &mut World, state: &mut Session, registration: &ActorRegistration) {
+    let table = &registration.table;
+    let mut instances = Vec::new();
+    (table.instances)(world, &mut instances);
+    let pending = state
+        .construct
+        .pending
+        .entry((table.component_type)())
+        .or_default();
+    pending.clear();
+    for entity in instances {
+        pending.insert(
+            entity.bits(),
+            PendingConstruct {
+                entity,
+                reason: ConstructReason::Rescan,
+            },
+        );
+    }
+}
+
+/// Read the class's construct cursor into the pending set, skipping what
+/// `own` names (the framework's own callbacks' writes). Returns whether the
+/// journal overflowed, which needs a full scan.
+fn absorb_construct_changes(
+    world: &World,
+    state: &mut Session,
+    registration: &ActorRegistration,
+    own: Option<&HashSet<Entity>>,
+) -> bool {
+    let component_type = (registration.table.component_type)();
+    let construct = &mut state.construct;
+    let Some(cursor) = construct.cursors.get_mut(&component_type) else {
+        return false;
+    };
+    state.scratch.clear();
+    if world.read_changes(cursor, &mut state.scratch) == ChangeRead::Overflowed {
+        return true;
+    }
+    let pending = construct.pending.entry(component_type).or_default();
+    for change in &state.scratch {
+        match change.kind {
+            ComponentChangeKind::Removed => {
+                pending.remove(&change.entity.bits());
+            }
+            kind => {
+                if own.is_some_and(|own| own.contains(&change.entity)) {
+                    continue;
+                }
+                let reason = if kind == ComponentChangeKind::Inserted {
+                    ConstructReason::Added
+                } else {
+                    ConstructReason::Changed
+                };
+                pending
+                    .entry(change.entity.bits())
+                    .and_modify(|entry| entry.reason = entry.reason.max(reason))
+                    .or_insert(PendingConstruct {
+                        entity: change.entity,
+                        reason,
+                    });
+            }
+        }
+    }
+    false
+}
+
+/// Deliver `construct` for what was written since the last pump: the one
+/// fixed pump point. Per instance, once: a hundred writes to one component
+/// since the last pump are one call. A write a `construct` makes to its own
+/// component is read past, not delivered again. The first pump of a session,
+/// a requested rescan ([`Session::request_rescan`]) and an overflowed change
+/// journal each scan every live instance once; that is one rescan
+/// ([`ConstructStats::rescans`]), whatever the instance count.
+///
+/// Returns the `construct` calls made. Nothing is delivered while the pump is
+/// suspended ([`Session::set_construct_suspended`]).
+///
+/// The editor drives it each frame for a [`SessionKind::Editor`] session
+/// (`engine_backend::scene::construct_pump`); a play session's
+/// [`tick_live_components`] calls it at the start of the `pulsar.components`
+/// step.
+pub fn pump_construct(world: &mut World, events: &EventHub, state: &mut Session) -> usize {
+    if state.construct.suspended {
+        return 0;
+    }
+    let registrations = constructible();
+    if registrations.is_empty() {
+        return 0;
+    }
+
+    let mut scanned = false;
+    if std::mem::take(&mut state.construct.rescan) {
+        // The content changed wholesale: forget what was pending and read
+        // fresh from the head of every journal.
+        state.construct.cursors.clear();
+        state.construct.pending.clear();
+        state.construct.named.clear();
+    }
+    for &registration in &registrations {
+        let component_type = (registration.table.component_type)();
+        if !state.construct.cursors.contains_key(&component_type) {
+            // Open before scanning: a write between the two is read next
+            // pump (a harmless second construct), never lost.
+            let cursor = world.open_change_cursor_id(component_type);
+            state.construct.cursors.insert(component_type, cursor);
+            full_scan(world, state, registration);
+            scanned = true;
+        } else if absorb_construct_changes(world, state, registration, None) {
+            full_scan(world, state, registration);
+            scanned = true;
+        }
+    }
+    if scanned {
+        state.construct.stats.rescans += 1;
+    }
+
+    let mut delivered = 0;
+    for registration in registrations {
+        let table = &registration.table;
+        let Some(construct) = table.construct else {
+            continue;
+        };
+        let component_type = (table.component_type)();
+        let batch = match state.construct.pending.get_mut(&component_type) {
+            Some(pending) if !pending.is_empty() => std::mem::take(pending),
+            _ => continue,
+        };
+        let mut enabled = Vec::new();
+        (table.instances)(world, &mut enabled);
+        let enabled: HashSet<Entity> = enabled.into_iter().collect();
+        for pending in batch.into_values() {
+            let instance = pending.entity;
+            if !enabled.contains(&instance) {
+                continue;
+            }
+            let Some(link) = world
+                .get::<crate::pulsar_scene_model::ComponentOwner>(instance)
+                .copied()
+            else {
+                continue;
+            };
+            let changed = state
+                .construct
+                .named
+                .remove(&instance)
+                .map(|names| names.into_iter().collect())
+                .unwrap_or_default();
+            let mut cx = ActorCx::new(link.entity(), Some(instance), events, &mut state.scope);
+            cx.construct = Some(ConstructInfo {
+                reason: pending.reason,
+                changed,
+            });
+            construct(world, &mut cx, instance);
+            delivered += 1;
+            state.construct.stats.delivered += 1;
+            // Its own writes are not changes (D4): read them past. Others'
+            // writes it made stay pending for the next pump.
+            let own = HashSet::from([instance]);
+            if absorb_construct_changes(world, state, registration, Some(&own)) {
+                full_scan(world, state, registration);
+                state.construct.stats.rescans += 1;
+            }
+        }
+    }
+    delivered
 }
 
 fn all_actor_summaries() -> Vec<pulsar_plugins::Summary> {
@@ -708,6 +1167,397 @@ mod tests {
             assert_eq!(conflicts.len(), 1, "{conflicts:?}");
             assert!(conflicts[0].contains("`Dual`"));
             assert!(conflicts_of(&[], &[table]).is_empty());
+        }
+    }
+
+    /// P2: `construct` (D4), the session scope and the session end.
+    mod session {
+        use super::*;
+        use pulsar_component_lifecycle::{Actor, ActorRegistration, ActorTable, WorldActor};
+        use pulsar_scene_model::ComponentOwner;
+        use std::sync::atomic::AtomicBool;
+
+        /// One probe class per test (`Probe<N>`): the registry is global to
+        /// the test binary, so each test owns a distinct component type.
+        struct Probe<const N: usize> {
+            value: u32,
+        }
+
+        static SELF_WRITE: [AtomicBool; 16] = [const { AtomicBool::new(false) }; 16];
+        static LOG: Mutex<Vec<(usize, String)>> = Mutex::new(Vec::new());
+        static INFO: Mutex<Vec<(usize, ConstructInfo)>> = Mutex::new(Vec::new());
+
+        fn note(n: usize, what: impl Into<String>) {
+            LOG.lock().unwrap().push((n, what.into()));
+        }
+
+        fn take(n: usize) -> Vec<String> {
+            let mut log = LOG.lock().unwrap();
+            let mine = log.iter().filter(|(m, _)| *m == n).map(|(_, w)| w.clone());
+            let mine = mine.collect();
+            log.retain(|(m, _)| *m != n);
+            mine
+        }
+
+        fn count(n: usize, what: &str) -> usize {
+            LOG.lock()
+                .unwrap()
+                .iter()
+                .filter(|(m, w)| *m == n && w == what)
+                .count()
+        }
+
+        impl<const N: usize> Actor for Probe<N> {
+            fn construct(&mut self, cx: &mut ActorCx<'_>) {
+                note(N, "construct");
+                INFO.lock().unwrap().push((N, cx.construct.clone().unwrap()));
+                if SELF_WRITE[N].load(Ordering::SeqCst) {
+                    self.value += 1;
+                }
+            }
+            fn begin_play(&mut self, cx: &mut ActorCx<'_>) {
+                note(N, format!("begin_play:{:?}", cx.kind()));
+            }
+            fn tick(&mut self, _: &mut ActorCx<'_>, _: f32) {
+                note(N, "tick");
+                self.value += 1;
+            }
+            fn end_play(cx: &mut ActorCx<'_>) {
+                note(N, format!("end_play:{:?}", cx.kind()));
+            }
+        }
+
+        struct Fixture {
+            world: World,
+            events: EventHub,
+            state: Session,
+        }
+
+        impl Fixture {
+            fn new<const N: usize>(kind: SessionKind) -> Self {
+                crate::runtime::register_actor_for_test(Box::leak(Box::new(ActorRegistration {
+                    origin: "test",
+                    class_name: Box::leak(format!("Probe{N}").into_boxed_str()),
+                    table: ActorTable::of::<Probe<N>>(),
+                })));
+                let mut world = World::new();
+                world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+                Self {
+                    world,
+                    events: EventHub::new(),
+                    state: Session::new(kind),
+                }
+            }
+
+            fn spawn<const N: usize>(&mut self) -> Entity {
+                let owner = self.world.spawn();
+                let instance = self.world.spawn();
+                self.world.insert(instance, Probe::<N> { value: 0 });
+                self.world.insert(instance, ComponentOwner::new(owner, true));
+                instance
+            }
+
+            fn pump(&mut self) -> usize {
+                pump_construct(&mut self.world, &self.events, &mut self.state)
+            }
+
+            fn frame(&mut self) {
+                tick_live_components(&mut self.world, &self.events, 0.016, 1, &mut self.state);
+            }
+        }
+
+        fn write<const N: usize>(world: &mut World, instance: Entity, value: u32) {
+            world.get_mut::<Probe<N>>(instance).unwrap().value = value;
+        }
+
+        /// Exit criterion 2: a hundred writes in one frame are one construct.
+        #[test]
+        fn a_hundred_writes_in_one_frame_are_one_construct() {
+            let mut f = Fixture::new::<0>(SessionKind::Editor);
+            let instance = f.spawn::<0>();
+            assert_eq!(f.pump(), 1, "the first pump constructs what exists");
+            assert_eq!(take(0), ["construct"]);
+            for value in 0..100 {
+                write::<0>(&mut f.world, instance, value);
+            }
+            assert_eq!(f.pump(), 1);
+            assert_eq!(take(0), ["construct"]);
+            assert_eq!(f.pump(), 0, "nothing changed since");
+            let reason = INFO.lock().unwrap().iter().rev().find(|(n, _)| *n == 0).cloned();
+            assert!(matches!(
+                reason.unwrap().1.reason,
+                ConstructReason::Changed | ConstructReason::Rescan
+            ));
+        }
+
+        /// Exit criterion 3: a write inside `construct` does not re-enter it.
+        #[test]
+        fn a_write_inside_construct_does_not_re_enter_it() {
+            SELF_WRITE[1].store(true, Ordering::SeqCst);
+            let mut f = Fixture::new::<1>(SessionKind::Editor);
+            let instance = f.spawn::<1>();
+            assert_eq!(f.pump(), 1);
+            assert_eq!(f.world.get::<Probe<1>>(instance).unwrap().value, 1);
+            assert_eq!(f.pump(), 0, "its own write is not a change");
+            assert_eq!(f.pump(), 0);
+            // Someone else writes: one construct, whose own write is again
+            // read past.
+            write::<1>(&mut f.world, instance, 10);
+            assert_eq!(f.pump(), 1);
+            assert_eq!(f.world.get::<Probe<1>>(instance).unwrap().value, 11);
+            assert_eq!(f.pump(), 0);
+            assert_eq!(take(1).len(), 2);
+        }
+
+        /// Exit criterion 4: a restore is one rescan, each instance once, not
+        /// N constructs.
+        #[test]
+        fn a_restore_is_one_rescan_not_n_constructs() {
+            let mut f = Fixture::new::<2>(SessionKind::Editor);
+            let instances: Vec<Entity> = (0..4).map(|_| f.spawn::<2>()).collect();
+            f.pump();
+            take(2);
+            let before = f.state.construct_stats();
+
+            // The restore touched every instance many times over.
+            for round in 0..5 {
+                for &instance in &instances {
+                    write::<2>(&mut f.world, instance, round);
+                }
+            }
+            f.state.request_rescan();
+            assert_eq!(f.pump(), 4, "each live instance once");
+            assert_eq!(take(2).len(), 4);
+            let after = f.state.construct_stats();
+            assert_eq!(after.rescans - before.rescans, 1, "one rescan");
+            assert_eq!(after.delivered - before.delivered, 4);
+            assert!(INFO
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(n, _)| *n == 2)
+                .rev()
+                .take(4)
+                .all(|(_, info)| info.reason == ConstructReason::Rescan));
+            assert_eq!(f.pump(), 0);
+        }
+
+        /// Without a rescan request, a restore's mass remove/insert still
+        /// constructs each instance once (the pending set is per instance).
+        #[test]
+        fn mass_changes_are_coalesced_per_instance() {
+            let mut f = Fixture::new::<3>(SessionKind::Editor);
+            let instances: Vec<Entity> = (0..3).map(|_| f.spawn::<3>()).collect();
+            f.pump();
+            take(3);
+            for round in 0..10 {
+                for &instance in &instances {
+                    write::<3>(&mut f.world, instance, round);
+                }
+            }
+            assert_eq!(f.pump(), 3);
+        }
+
+        /// An editing session constructs and never plays; a play session
+        /// constructs first, then begins, then ticks.
+        #[test]
+        fn construct_comes_before_begin_play_and_the_editor_never_plays() {
+            let mut editor = Fixture::new::<4>(SessionKind::Editor);
+            editor.spawn::<4>();
+            editor.frame();
+            editor.frame();
+            assert_eq!(take(4), ["construct"], "no begin_play, tick or end_play");
+
+            let mut play = Fixture::new::<5>(SessionKind::Standalone);
+            play.spawn::<5>();
+            play.frame();
+            assert_eq!(take(5), ["construct", "begin_play:Standalone", "tick"]);
+            play.frame();
+            // `tick` wrote to its own component: not a construct.
+            assert_eq!(take(5), ["tick"]);
+        }
+
+        /// A write by someone else during play is delivered once at the next
+        /// pump point, before that frame's tick.
+        #[test]
+        fn a_write_during_play_constructs_at_the_next_frame() {
+            let mut f = Fixture::new::<6>(SessionKind::PlayInEditor);
+            let instance = f.spawn::<6>();
+            f.frame();
+            take(6);
+            for value in 0..50 {
+                write::<6>(&mut f.world, instance, value);
+            }
+            f.frame();
+            assert_eq!(take(6), ["construct", "tick"]);
+        }
+
+        /// Exit criterion 5 (the lifecycle half): the kind a callback sees
+        /// is the session's.
+        #[test]
+        fn a_callback_sees_the_sessions_kind() {
+            for (n, kind) in [
+                (7, SessionKind::PlayInEditor),
+                (8, SessionKind::Standalone),
+                (9, SessionKind::Headless),
+            ] {
+                let mut f = match n {
+                    7 => Fixture::new::<7>(kind),
+                    8 => Fixture::new::<8>(kind),
+                    _ => Fixture::new::<9>(kind),
+                };
+                match n {
+                    7 => drop(f.spawn::<7>()),
+                    8 => drop(f.spawn::<8>()),
+                    _ => drop(f.spawn::<9>()),
+                };
+                assert_eq!(f.state.kind(), kind);
+                f.frame();
+                assert!(
+                    take(n).contains(&format!("begin_play:{kind:?}")),
+                    "{kind:?}"
+                );
+            }
+            assert_eq!(Session::default().kind(), SessionKind::Headless);
+        }
+
+        /// Exit criterion 6 (the pump half): suspended while a play session
+        /// owns the world, resumed with one rescan after.
+        #[test]
+        fn a_suspended_pump_delivers_nothing_and_resumes_with_a_rescan() {
+            let mut f = Fixture::new::<10>(SessionKind::Editor);
+            let instance = f.spawn::<10>();
+            f.pump();
+            take(10);
+
+            f.state.set_construct_suspended(true);
+            assert!(f.state.construct_suspended());
+            write::<10>(&mut f.world, instance, 5);
+            assert_eq!(f.pump(), 0);
+            assert!(take(10).is_empty());
+
+            let rescans = f.state.construct_stats().rescans;
+            f.state.set_construct_suspended(false);
+            assert_eq!(f.pump(), 1);
+            assert_eq!(f.state.construct_stats().rescans - rescans, 1);
+        }
+
+        /// A writer that names its properties gets them delivered.
+        #[test]
+        fn named_properties_reach_construct() {
+            let mut f = Fixture::new::<11>(SessionKind::Editor);
+            let instance = f.spawn::<11>();
+            f.pump();
+            f.state.note_changed(instance, "value");
+            f.state.note_changed(instance, "angle");
+            write::<11>(&mut f.world, instance, 3);
+            assert_eq!(f.pump(), 1);
+            let info = INFO
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .find(|(n, _)| *n == 11)
+                .cloned()
+                .unwrap()
+                .1;
+            assert_eq!(info.changed, ["angle", "value"]);
+        }
+
+        // ── the session end ────────────────────────────────────────────────
+
+        /// A world-form class: it sees the world at its end.
+        struct Resident<const N: usize>;
+        struct Guard(usize);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                GUARD_DROPPED[self.0 - 100].fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        static GUARD_DROPPED: [AtomicUsize; 4] = [const { AtomicUsize::new(0) }; 4];
+
+        impl<const N: usize> WorldActor for Resident<N> {
+            fn begin_play(_: &mut World, cx: &mut ActorCx<'_>, _: Entity) {
+                cx.session().insert_resource(Guard(100 + N));
+                note(100 + N, "begin_play");
+            }
+            fn end_play(world: &mut World, cx: &mut ActorCx<'_>) {
+                let instance = cx.instance.expect("the world form is told the instance");
+                let present = world.get::<Resident<N>>(instance).is_some();
+                // The resource is still there while ends run.
+                let resource = cx.session().resource::<Guard>().is_some();
+                note(100 + N, format!("end_play:present={present}:resource={resource}"));
+            }
+        }
+
+        fn resident_fixture<const N: usize>() -> (Fixture, Entity) {
+            crate::runtime::register_actor_for_test(Box::leak(Box::new(ActorRegistration {
+                origin: "test",
+                class_name: Box::leak(format!("Resident{N}").into_boxed_str()),
+                table: ActorTable::of_world::<Resident<N>>(),
+            })));
+            let mut world = World::new();
+            world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+            let mut f = Fixture {
+                world,
+                events: EventHub::new(),
+                state: Session::new(SessionKind::Standalone),
+            };
+            let owner = f.world.spawn();
+            let instance = f.world.spawn();
+            f.world.insert(instance, Resident::<N>);
+            f.world.insert(instance, ComponentOwner::new(owner, true));
+            (f, instance)
+        }
+
+        /// The end guarantee: every live instance ends while the world is
+        /// alive and the component is still there, then the resources go.
+        #[test]
+        fn ending_the_session_ends_every_instance_with_the_world_then_drops_resources() {
+            let (mut f, _) = resident_fixture::<0>();
+            let mut other = Fixture::new::<12>(SessionKind::Standalone);
+            other.spawn::<12>();
+            f.frame();
+            other.frame();
+            assert_eq!(take(100), ["begin_play"]);
+            take(12);
+            assert!(f.state.scope().resource::<Guard>().is_some());
+
+            let dropped = GUARD_DROPPED[0].load(Ordering::SeqCst);
+            end_session(&mut f.world, &f.events, &mut f.state);
+            assert_eq!(take(100), ["end_play:present=true:resource=true"]);
+            assert_eq!(GUARD_DROPPED[0].load(Ordering::SeqCst), dropped + 1);
+            assert!(!f.state.has_active_components());
+
+            // The world-less form ends too, with its own kind of session.
+            end_session(&mut other.world, &other.events, &mut other.state);
+            assert_eq!(count(12, "end_play:Standalone"), 1);
+        }
+
+        /// A removal read through `&World` cannot run a world-form end; it is
+        /// queued and runs at the next mutable-world call, and the session
+        /// end runs whatever is left.
+        #[test]
+        fn a_removal_read_without_a_world_runs_its_world_end_later() {
+            let (mut f, instance) = resident_fixture::<1>();
+            f.frame();
+            take(101);
+            f.world.remove::<Resident<1>>(instance);
+            assert_eq!(process_component_removals(&f.world, &f.events, &mut f.state), 1);
+            assert!(take(101).is_empty(), "deferred");
+            f.frame();
+            assert_eq!(take(101), ["end_play:present=false:resource=true"]);
+        }
+
+        #[test]
+        fn a_deferred_end_still_runs_at_the_session_end() {
+            let (mut f, instance) = resident_fixture::<2>();
+            f.frame();
+            take(102);
+            f.world.remove::<Resident<2>>(instance);
+            process_component_removals(&f.world, &f.events, &mut f.state);
+            end_session(&mut f.world, &f.events, &mut f.state);
+            assert_eq!(take(102), ["end_play:present=false:resource=true"]);
         }
     }
 }

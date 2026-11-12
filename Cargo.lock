@@ -12286,6 +12286,7 @@ dependencies = [
  "pulsar_events",
  "pulsar_plugins",
  "pulsar_scenedb",
+ "serde_json",
 ]
 
 [[package]]
