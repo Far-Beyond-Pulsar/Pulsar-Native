@@ -76,6 +76,15 @@ fn world_component_natives() -> Vec<NativeFn> {
     natives
 }
 
+/// The names of the natives the world classes register, for the lifecycle
+/// leak audit (`crate::audit`).
+pub(crate) fn native_names() -> Vec<String> {
+    world_component_natives()
+        .into_iter()
+        .map(|native| native.name)
+        .collect()
+}
+
 /// The component-instance entity a script component reference names: the
 /// instance itself, or its owner object's first instance of `class`.
 fn instance_of(

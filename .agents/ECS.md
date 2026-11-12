@@ -85,6 +85,19 @@ pub trait Actor: Send + Sync + 'static {
 `tick_all` ticks every actor. `pulsar_game`'s tick loop owns one registry
 next to its `Schedule`.
 
+## Component lifecycle (`Actor` on a component)
+
+SceneDB's `Actor` above is the boxed, entity-owning object. A component class
+gets lifecycle events through `pulsar_component_lifecycle::Actor` (a different
+trait, path-qualified until SceneDB's is removed): `impl Actor for T` and
+`ClassSpec { actor: Some(ActorTable::of::<T>()), .. }` from the plugin root.
+`tick_live_components` drives these tables and the legacy
+`#[register_component_runtime]` shims together in one `Step::Components`:
+`begin_play` when an enabled instance is first seen, `tick` each frame,
+`end_play` (owner-only) on disable, removal, despawn or session end. A class
+registered both ways is an error (`lifecycle_conflicts`). Plan:
+`COMPONENT_LIFECYCLE_PLAN.md`.
+
 ## Components
 
 Engine component classes are plain typed components registered with

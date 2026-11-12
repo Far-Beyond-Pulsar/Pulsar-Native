@@ -1,10 +1,18 @@
-//! Per-game lifecycle reconciliation for macro-registered live components.
+//! Per-game lifecycle reconciliation for live components.
+//!
+//! Two registrations feed it, driven together in one `Step::Components`: the
+//! legacy macro's [`ComponentTickRegistration`] (a whole-class loop shim) and
+//! the capability registry's per-class `ActorTable`
+//! ([`pulsar_component_lifecycle`]), which this module drives instance by
+//! instance. A class in both is an error ([`lifecycle_conflicts`]); the
+//! legacy one runs.
 //!
 //! This state stores identities, event subscriptions, and transient payload
 //! inboxes only. The authoritative component values remain in SceneDB and
 //! are borrowed by each generated typed query for callbacks.
 
 use crate::{ComponentTickRegistration, QueuedComponentEvent};
+use pulsar_component_lifecycle::{ActorCx, ActorRegistration};
 use pulsar_events::EventHub;
 use pulsar_scenedb::{
     ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, ComponentId, Entity, World,
@@ -51,6 +59,8 @@ pub struct ComponentRuntimeState {
     /// registered systems it was computed from (their list's address and
     /// length: the registry rebuilds the list when the classes change).
     order: Option<((usize, usize), Vec<crate::systems::Step>)>,
+    /// Whether this session has logged [`lifecycle_conflicts`].
+    conflicts_reported: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -147,18 +157,13 @@ impl ComponentRuntimeState {
     /// End all active component lifecycles and forget the current scene.
     /// This is used for explicit runtime shutdown and `TickLoop` drop.
     pub fn end_all(&mut self, events: &EventHub) {
-        let mut registrations: Vec<_> = crate::runtime::ticks().iter().copied().collect();
-        registrations.sort_by_key(|registration| registration.type_name);
-
-        for registration in registrations {
-            let key = registration_key(registration);
+        for lifecycle in lifecycles() {
+            let key = lifecycle.key();
             if let Some(entities) = self.active.remove(&key) {
                 let mut entities: Vec<_> = entities.into_iter().collect();
                 entities.sort_by_key(|(entity, _)| entity.bits());
-                if let Some(end_play) = registration.end_play {
-                    for &(_, owner) in &entities {
-                        end_play(owner, events);
-                    }
+                for &(_, owner) in &entities {
+                    lifecycle.end_play(owner, events);
                 }
                 for (entity, _) in entities {
                     self.unsubscribe_instance(ComponentInstanceKey {
@@ -178,6 +183,86 @@ impl ComponentRuntimeState {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = EventInbox::default();
         self.scene_identity = None;
     }
+}
+
+/// One class's lifecycle, from either registration.
+#[derive(Clone, Copy)]
+enum Lifecycle {
+    Legacy(&'static ComponentTickRegistration),
+    Actor(&'static ActorRegistration),
+}
+
+impl Lifecycle {
+    fn key(self) -> RegistrationKey {
+        match self {
+            Self::Legacy(registration) => registration_key(registration),
+            Self::Actor(registration) => RegistrationKey {
+                component_type: (registration.table.component_type)(),
+                type_name: registration.table.type_name,
+            },
+        }
+    }
+
+    /// The owner-only teardown, if the class has one.
+    fn end_play(self, owner: Entity, events: &EventHub) {
+        match self {
+            Self::Legacy(registration) => {
+                if let Some(end_play) = registration.end_play {
+                    end_play(owner, events);
+                }
+            }
+            Self::Actor(registration) => {
+                if let Some(end_play) = registration.table.end_play {
+                    end_play(&mut ActorCx::new(owner, None, events));
+                }
+            }
+        }
+    }
+}
+
+/// Classes registered both through the legacy macro and with an `ActorTable`
+/// (`ClassSpec::actor`): each is an error, one lifecycle per class.
+pub fn lifecycle_conflicts() -> Vec<String> {
+    conflicts_of(crate::runtime::ticks(), crate::runtime::actors())
+}
+
+fn conflicts_of(
+    legacy: &[&'static ComponentTickRegistration],
+    actors: &[&'static ActorRegistration],
+) -> Vec<String> {
+    let mut conflicts: Vec<String> = actors
+        .iter()
+        .filter(|actor| legacy.iter().any(|l| l.class_name == actor.class_name))
+        .map(|actor| {
+            format!(
+                "class `{}` registers a lifecycle twice (a `ComponentTickRegistration` and an \
+                 `ActorTable`); the legacy one runs",
+                actor.class_name
+            )
+        })
+        .collect();
+    conflicts.sort();
+    conflicts
+}
+
+/// Every class's lifecycle in the frame's deterministic order (type name):
+/// the legacy registrations and the tables, minus a table whose class is
+/// also legacy ([`lifecycle_conflicts`]).
+fn lifecycles() -> Vec<Lifecycle> {
+    let legacy = crate::runtime::ticks();
+    let mut all: Vec<Lifecycle> = legacy.iter().copied().map(Lifecycle::Legacy).collect();
+    all.extend(
+        crate::runtime::actors()
+            .iter()
+            .filter(|actor| !legacy.iter().any(|l| l.class_name == actor.class_name))
+            .copied()
+            .map(Lifecycle::Actor),
+    );
+    all.sort_by_key(|lifecycle| {
+        let key = lifecycle.key();
+        (key.type_name, key.component_type)
+    });
+    all
 }
 
 fn registration_key(registration: &ComponentTickRegistration) -> RegistrationKey {
@@ -216,12 +301,17 @@ pub fn tick_live_components(
     }
     state.scene_identity = Some(scene_identity);
 
+    if !state.conflicts_reported {
+        state.conflicts_reported = true;
+        for problem in lifecycle_conflicts() {
+            tracing::error!("{problem}");
+        }
+    }
     process_component_removals(world, events, state);
 
-    let mut registrations: Vec<_> = crate::runtime::ticks().iter().copied().collect();
-    registrations.sort_by_key(|registration| registration.type_name);
-    for registration in &registrations {
-        let component_type = (registration.component_type)();
+    let registrations = lifecycles();
+    for lifecycle in &registrations {
+        let component_type = lifecycle.key().component_type;
         state
             .removal_cursors
             .entry(component_type)
@@ -271,14 +361,26 @@ fn tick_component_lifecycles(
     world: &mut World,
     events: &EventHub,
     delta_seconds: f32,
-    registrations: &[&'static ComponentTickRegistration],
+    registrations: &[Lifecycle],
     state: &mut ComponentRuntimeState,
 ) {
-    for &registration in registrations {
-        let key = registration_key(registration);
+    for &lifecycle in registrations {
+        let key = lifecycle.key();
         let previous = state.active.get(&key).cloned().unwrap_or_default();
         let mut current = HashMap::new();
-        (registration.tick)(world, events, delta_seconds, &previous, &mut current, state);
+        match lifecycle {
+            Lifecycle::Legacy(registration) => {
+                (registration.tick)(world, events, delta_seconds, &previous, &mut current, state)
+            }
+            Lifecycle::Actor(registration) => tick_actor_class(
+                world,
+                events,
+                delta_seconds,
+                registration,
+                &previous,
+                &mut current,
+            ),
+        }
 
         let mut ended: Vec<(Entity, Entity)> = previous
             .iter()
@@ -286,10 +388,8 @@ fn tick_component_lifecycles(
             .map(|(entity, owner)| (*entity, *owner))
             .collect();
         ended.sort_by_key(|(entity, _)| entity.bits());
-        if let Some(end_play) = registration.end_play {
-            for &(_, owner) in &ended {
-                end_play(owner, events);
-            }
+        for &(_, owner) in &ended {
+            lifecycle.end_play(owner, events);
         }
         for (entity, _) in ended {
             state.unsubscribe_instance(ComponentInstanceKey {
@@ -298,6 +398,44 @@ fn tick_component_lifecycles(
             });
         }
         state.active.insert(key, current);
+    }
+}
+
+/// One `ActorTable` class over its enabled instances, in entity order:
+/// `begin_play` for those absent from `previous`, then `tick`.
+fn tick_actor_class(
+    world: &mut World,
+    events: &EventHub,
+    delta_seconds: f32,
+    registration: &ActorRegistration,
+    previous: &HashMap<Entity, Entity>,
+    current: &mut HashMap<Entity, Entity>,
+) {
+    let table = &registration.table;
+    let mut instances = Vec::new();
+    (table.instances)(world, &mut instances);
+    instances.sort_by_key(|instance| instance.bits());
+    for instance in instances {
+        let Some(link) = world
+            .get::<crate::pulsar_scene_model::ComponentOwner>(instance)
+            .copied()
+        else {
+            continue;
+        };
+        if !link.is_enabled() {
+            continue;
+        }
+        let owner = link.entity();
+        current.insert(instance, owner);
+        let mut cx = ActorCx::new(owner, Some(instance), events);
+        if !previous.contains_key(&instance) {
+            if let Some(begin_play) = table.begin_play {
+                begin_play(world, &mut cx, instance);
+            }
+        }
+        if let Some(tick) = table.tick {
+            tick(world, &mut cx, instance, delta_seconds);
+        }
     }
 }
 
@@ -330,26 +468,23 @@ pub fn process_component_removals(
         return 0;
     }
 
-    let mut registrations: Vec<_> = crate::runtime::ticks().iter().copied().collect();
-    registrations.sort_by_key(|registration| registration.type_name);
+    let registrations = lifecycles();
     let mut ended = 0;
     for (entity, component_type) in removals {
-        let Some(registration) = registrations
+        let Some(lifecycle) = registrations
             .iter()
             .copied()
-            .find(|registration| (registration.component_type)() == component_type)
+            .find(|lifecycle| lifecycle.key().component_type == component_type)
         else {
             continue;
         };
-        let key = registration_key(registration);
+        let key = lifecycle.key();
         let ended_owner = state
             .active
             .get_mut(&key)
             .and_then(|entities| entities.remove(&entity));
         if let Some(owner) = ended_owner {
-            if let Some(end_play) = registration.end_play {
-                end_play(owner, events);
-            }
+            lifecycle.end_play(owner, events);
             state.unsubscribe_instance(ComponentInstanceKey {
                 component_type,
                 entity,
@@ -368,6 +503,34 @@ pub fn process_component_removals(
 /// already removed from SceneDB.
 pub fn end_live_components(state: &mut ComponentRuntimeState, events: &EventHub) {
     state.end_all(events);
+}
+
+fn all_actor_summaries() -> Vec<pulsar_plugins::Summary> {
+    use pulsar_plugins::Contribution as _;
+    crate::runtime::all_actors()
+        .iter()
+        .map(|registration| registration.summary())
+        .collect()
+}
+
+fn active_actor_summaries() -> Vec<pulsar_plugins::Summary> {
+    use pulsar_plugins::Contribution as _;
+    crate::runtime::actors()
+        .iter()
+        .map(|registration| registration.summary())
+        .collect()
+}
+
+// Tables are gated with their class (across plugin libraries, like the
+// classes and systems), so their catalog source reads the registry.
+inventory::submit! {
+    pulsar_plugins::ContributionSource {
+        category: "component.lifecycle",
+        all: all_actor_summaries,
+        active: active_actor_summaries,
+        // Tables come only from a class's spec, through a plugin's build.
+        linked: Vec::new,
+    }
 }
 
 #[cfg(test)]
@@ -428,5 +591,123 @@ mod tests {
         drop(tracker.drain_component_removals());
         assert_eq!(process_component_removals(&world, &events, &mut state), 1);
         assert_eq!(ENDED.load(Ordering::SeqCst) - before, 1);
+    }
+
+    mod actor {
+        use super::*;
+        use pulsar_component_lifecycle::{Actor, ActorRegistration, ActorTable};
+        use pulsar_scene_model::ComponentOwner;
+
+        static LOG: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+        struct Played;
+
+        impl Actor for Played {
+            fn begin_play(&mut self, cx: &mut ActorCx<'_>) {
+                assert!(cx.instance.is_some());
+                LOG.lock().unwrap().push("begin_play");
+            }
+            fn tick(&mut self, _: &mut ActorCx<'_>, _: f32) {
+                LOG.lock().unwrap().push("tick");
+            }
+            fn end_play(cx: &mut ActorCx<'_>) {
+                assert!(cx.instance.is_none());
+                LOG.lock().unwrap().push("end_play");
+            }
+        }
+
+        fn take() -> Vec<&'static str> {
+            std::mem::take(&mut *LOG.lock().unwrap())
+        }
+
+        /// The legacy test's order for a table class: `begin_play` on the
+        /// first frame, `tick` each frame, `end_play` on disable, removal and
+        /// despawn.
+        #[test]
+        fn a_table_class_gets_begin_tick_and_end_in_order() {
+            crate::runtime::register_actor_for_test(Box::leak(Box::new(ActorRegistration {
+                origin: "test",
+                class_name: "Played",
+                table: ActorTable::of::<Played>(),
+            })));
+            let mut world = World::new();
+            world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+            let events = EventHub::new();
+            let mut state = ComponentRuntimeState::default();
+            let owner = world.spawn();
+            let instance = world.spawn();
+            world.insert(instance, Played);
+            world.insert(instance, ComponentOwner::new(owner, true));
+
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert_eq!(take(), ["begin_play", "tick"]);
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert_eq!(take(), ["tick"]);
+
+            // Disabled: ended, not ticked.
+            world.get_mut::<ComponentOwner>(instance).unwrap().enabled = 0;
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert_eq!(take(), ["end_play"]);
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert!(take().is_empty());
+
+            // Enabled again: a new life.
+            world.get_mut::<ComponentOwner>(instance).unwrap().enabled = 1;
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert_eq!(take(), ["begin_play", "tick"]);
+
+            // Removed: ended from the journal.
+            world.remove::<Played>(instance);
+            assert_eq!(process_component_removals(&world, &events, &mut state), 1);
+            assert_eq!(take(), ["end_play"]);
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert!(take().is_empty());
+
+            // Despawned: ended.
+            world.insert(instance, Played);
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert_eq!(take(), ["begin_play", "tick"]);
+            world.despawn(instance);
+            tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+            assert_eq!(take(), ["end_play"]);
+            assert!(!state.has_active_components());
+        }
+
+        /// A class registered in both paths is an error, naming the class.
+        #[test]
+        fn a_class_in_both_paths_is_a_conflict() {
+            fn tick(
+                _: &mut World,
+                _: &EventHub,
+                _: f32,
+                _: &HashMap<Entity, Entity>,
+                _: &mut HashMap<Entity, Entity>,
+                _: &mut ComponentRuntimeState,
+            ) {
+            }
+            let legacy: &'static ComponentTickRegistration =
+                Box::leak(Box::new(ComponentTickRegistration {
+                    type_name: "Dual",
+                    class_name: "Dual",
+                    handler_events: &[],
+                    component_type: pulsar_scenedb::component_id::<Played>,
+                    tick,
+                    end_play: None,
+                }));
+            let table: &'static ActorRegistration = Box::leak(Box::new(ActorRegistration {
+                origin: "test",
+                class_name: "Dual",
+                table: ActorTable::of::<Played>(),
+            }));
+            let other: &'static ActorRegistration = Box::leak(Box::new(ActorRegistration {
+                origin: "test",
+                class_name: "Only",
+                table: ActorTable::of::<Played>(),
+            }));
+            let conflicts = conflicts_of(&[legacy], &[table, other]);
+            assert_eq!(conflicts.len(), 1, "{conflicts:?}");
+            assert!(conflicts[0].contains("`Dual`"));
+            assert!(conflicts_of(&[], &[table]).is_empty());
+        }
     }
 }

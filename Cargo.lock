@@ -3509,6 +3509,7 @@ dependencies = [
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_component_lifecycle",
  "pulsar_error",
  "pulsar_events",
  "pulsar_lsp",
@@ -7502,6 +7503,7 @@ dependencies = [
  "image",
  "input_plugin",
  "lens_plugin",
+ "lifecycle_fixture_plugin",
  "lights_plugin",
  "materials_plugin",
  "meshes_plugin",
@@ -8157,6 +8159,21 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "lifecycle_fixture_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -12263,6 +12280,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_component_lifecycle"
+version = "0.1.0"
+dependencies = [
+ "pulsar_events",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+]
+
+[[package]]
 name = "pulsar_content"
 version = "0.1.0"
 dependencies = [
@@ -12808,6 +12834,7 @@ dependencies = [
  "glam 0.33.5",
  "inventory",
  "pollster 1.0.1",
+ "pulsar_component_lifecycle",
  "pulsar_events",
  "pulsar_plugins",
  "pulsar_reflection",

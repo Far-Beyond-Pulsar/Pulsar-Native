@@ -60,6 +60,7 @@ The heart of the engine.
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
 | `pulsar_scene_model` | Scene object components (`StableId`, `Name`, `Transform`, `Visibility`, hierarchy), component-instance entities (`attachments`) and sublevel placements (`sublevels`) |
+| `pulsar_component_lifecycle` | The component lifecycle capability registry (L1): the `Actor`/`WorldActor` traits (`construct`, `begin_play`, `tick`, `end_play`), `ActorTable`, `ActorRegistration` (category `component.lifecycle`), `ActorIndex`. Depends on SceneDB, events and the plugin gate only, never reflection or the script VM, so no lifecycle function is reachable from Blueprints (its `crate_edges` test pins it; `just arch` checks layers, not crate pairs) |
 | `pulsar_world_registry` | Typed component classes in SceneDB's `World`: registration, boundary decode, object feeds, change watches, component lifecycles |
 | `pulsar_settings` | Settings store (wraps `pulsar-config`) |
 | `pulsar_script_vm` | Language-neutral script bytecode: module format, verifier, linker, VM, natives, shared `exec` semantics, `compiled` code contract, `migrate` planner |

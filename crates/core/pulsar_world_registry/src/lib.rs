@@ -70,8 +70,8 @@ pub use unfinished::{
 
 mod component_lifecycle;
 pub use component_lifecycle::{
-    end_live_components, process_component_removals, tick_live_components, ComponentInstanceKey,
-    ComponentRuntimeState,
+    end_live_components, lifecycle_conflicts, process_component_removals, tick_live_components,
+    ComponentInstanceKey, ComponentRuntimeState,
 };
 
 /// Generated native component lifecycle entry. The callback runs on the
@@ -376,7 +376,10 @@ pub use values::{
 };
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
-pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
+pub use audit::{
+    find_lifecycle_problems, find_overloaded_methods, lifecycle_leaks, metadata_snapshot_json,
+    LifecycleAuditError, MetadataAuditError,
+};
 pub use change_watch::ComponentWatch;
 pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
 pub use scene_payloads::{scene_payloads, scene_settling, ScenePayloadRegistration, ScenePayloads};

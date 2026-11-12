@@ -17,6 +17,7 @@ use std::fmt;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use pulsar_component_lifecycle::{ActorRegistration, ActorTable};
 use pulsar_scenedb::runtime::{AppendList, AttachError};
 
 use crate::systems::SystemRegistration;
@@ -25,27 +26,48 @@ use crate::{ComponentEventRegistration, ComponentTickRegistration, WorldComponen
 
 /// Version of [`WorldRuntimes`]' and [`Runtime`]'s ABI. Bump it on any
 /// change to their fields or to a type passed through them.
-pub const ABI_VERSION: u64 = 3;
+pub const ABI_VERSION: u64 = 4;
+
+/// The layouts the fingerprint covers, by name: every type passed through
+/// [`WorldRuntimes`] and [`Runtime`].
+const LAYOUTS: [(&str, usize); 13] = [
+    ("WorldRuntimes", size_of::<WorldRuntimes>()),
+    ("Runtime", size_of::<Runtime>()),
+    ("Registrations", size_of::<Registrations>()),
+    (
+        "WorldComponentRegistration",
+        size_of::<WorldComponentRegistration>(),
+    ),
+    (
+        "ComponentTickRegistration",
+        size_of::<ComponentTickRegistration>(),
+    ),
+    (
+        "ComponentEventRegistration",
+        size_of::<ComponentEventRegistration>(),
+    ),
+    (
+        "UnfinishedComponentRegistration",
+        size_of::<UnfinishedComponentRegistration>(),
+    ),
+    ("SystemRegistration", size_of::<SystemRegistration>()),
+    ("ActorRegistration", size_of::<ActorRegistration>()),
+    ("ActorTable", size_of::<ActorTable>()),
+    ("pulsar_reflection", pulsar_reflection::runtime::ABI_VERSION as usize),
+    ("pulsar_scenedb", pulsar_scenedb::runtime::ABI_VERSION as usize),
+    (
+        "pulsar_scene_model",
+        pulsar_scene_model::runtime::ABI_VERSION as usize,
+    ),
+];
 
 const FINGERPRINT: u64 = {
-    let parts = [
-        ABI_VERSION as usize,
-        size_of::<WorldRuntimes>(),
-        size_of::<Runtime>(),
-        size_of::<Registrations>(),
-        size_of::<WorldComponentRegistration>(),
-        size_of::<ComponentTickRegistration>(),
-        size_of::<ComponentEventRegistration>(),
-        size_of::<UnfinishedComponentRegistration>(),
-        size_of::<SystemRegistration>(),
-        pulsar_reflection::runtime::ABI_VERSION as usize,
-        pulsar_scenedb::runtime::ABI_VERSION as usize,
-        pulsar_scene_model::runtime::ABI_VERSION as usize,
-    ];
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    hash ^= ABI_VERSION;
+    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     let mut index = 0;
-    while index < parts.len() {
-        hash ^= parts[index] as u64;
+    while index < LAYOUTS.len() {
+        hash ^= LAYOUTS[index].1 as u64;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         index += 1;
     }
@@ -76,6 +98,7 @@ pub struct Runtime {
     events: fn() -> &'static [&'static ComponentEventRegistration],
     unfinished: fn() -> &'static [&'static UnfinishedComponentRegistration],
     systems: fn() -> &'static [&'static SystemRegistration],
+    actors: fn() -> &'static [&'static ActorRegistration],
     add_registrations: fn(&Registrations),
 }
 
@@ -86,6 +109,7 @@ pub struct Registrations {
     events: Vec<&'static ComponentEventRegistration>,
     unfinished: Vec<&'static UnfinishedComponentRegistration>,
     systems: Vec<&'static SystemRegistration>,
+    actors: Vec<&'static ActorRegistration>,
 }
 
 impl Registrations {
@@ -102,6 +126,7 @@ impl Registrations {
                 .into_iter()
                 .collect(),
             systems: pulsar_plugins::built::<SystemRegistration>(),
+            actors: pulsar_plugins::built::<ActorRegistration>(),
         }
     }
 }
@@ -119,6 +144,8 @@ static WORLD_COMPONENTS: AppendList<WorldComponentRegistration> =
     AppendList::new(world_component_registrations);
 static SYSTEMS: AppendList<SystemRegistration> =
     AppendList::new(pulsar_plugins::built::<SystemRegistration>);
+static ACTORS: AppendList<ActorRegistration> =
+    AppendList::new(pulsar_plugins::built::<ActorRegistration>);
 static TICKS: AppendList<ComponentTickRegistration> = AppendList::new(|| {
     inventory::iter::<ComponentTickRegistration>
         .into_iter()
@@ -164,8 +191,13 @@ static OWN: Runtime = Runtime {
         static GATED: Gated<SystemRegistration> = Gated::new();
         GATED.get(SYSTEMS.get(), |r| class_enabled(r.class_name))
     },
+    actors: || {
+        static GATED: Gated<ActorRegistration> = Gated::new();
+        GATED.get(ACTORS.get(), |r| class_enabled(r.class_name))
+    },
     add_registrations: |r| {
         SYSTEMS.extend(&r.systems);
+        ACTORS.extend(&r.actors);
         WORLD_COMPONENTS.extend(&r.world_components);
         TICKS.extend(&r.ticks);
         EVENTS.extend(&r.events);
@@ -285,6 +317,29 @@ pub fn import_builds() {
             .filter(|built| !SYSTEMS.get().iter().any(|r| std::ptr::eq(*r, *built)))
             .collect();
     SYSTEMS.extend(&new_systems);
+    let new_actors: Vec<&'static ActorRegistration> =
+        pulsar_plugins::built::<ActorRegistration>()
+            .into_iter()
+            .filter(|built| !ACTORS.get().iter().any(|r| std::ptr::eq(*r, *built)))
+            .collect();
+    ACTORS.extend(&new_actors);
+}
+
+/// Register a lifecycle table in this test binary, as a plugin build would.
+#[cfg(test)]
+pub(crate) fn register_actor_for_test(registration: &'static ActorRegistration) {
+    ACTORS.extend(&[registration]);
+}
+
+/// Every lifecycle table the linked plugins register, whatever their state.
+pub(crate) fn all_actors() -> &'static [&'static ActorRegistration] {
+    ACTORS.get()
+}
+
+/// The lifecycle tables of the registered classes
+/// ([`pulsar_component_lifecycle`]), gated with their class.
+pub(crate) fn actors() -> &'static [&'static ActorRegistration] {
+    (runtime().actors)()
 }
 
 /// The systems of the registered classes ([`crate::systems`]).
@@ -469,6 +524,18 @@ macro_rules! export_world_runtime_attach {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The fingerprint covers the lifecycle registry's types: a plugin
+    /// library built against another layout of them is refused.
+    #[test]
+    fn the_fingerprint_covers_the_lifecycle_types() {
+        let layout = |name: &str| LAYOUTS.iter().find(|(n, _)| *n == name).map(|(_, size)| *size);
+        assert_eq!(layout("ActorRegistration"), Some(size_of::<ActorRegistration>()));
+        assert_eq!(layout("ActorTable"), Some(size_of::<ActorTable>()));
+        // `Runtime` carries the table accessor, `Registrations` the list.
+        assert!(size_of::<Runtime>() >= 8 * 7);
+        assert_eq!(ABI_VERSION, 4);
+    }
 
     #[test]
     fn a_mismatched_runtime_is_refused_before_anything_attaches() {

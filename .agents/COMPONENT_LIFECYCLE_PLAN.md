@@ -604,6 +604,57 @@ then the Pulsar PR. Cross-checks to run in every phase: `just arch`,
 - **Parallel**: nothing in P1 is parallel with another code phase; the doc and the
   Spinner template notice (D3) can be written alongside.
 
+**As built (P1).** New crate `crates/core/pulsar_component_lifecycle` (kernel
+layer; deps: `pulsar_scenedb`, `pulsar_events`, `pulsar_plugins`): the `Actor`
+(`&mut self`, no world) and `WorldActor` (`&mut World` + instance entity) traits,
+`ActorCx { entity, instance, events }`, `ActorTable` (`of::<T>()`, `of_world::<T>()`,
+public fields to mix forms per event), `ActorRegistration` (category
+`component.lifecycle`, `pulsar_plugins::importer!`), `ActorIndex` (sorted by
+component id for binary-search lookup, by type name for the frame order) and
+`RESERVED_METHODS`. `ClassSpec::actor` and `Components::class`
+(`engine_backend/src/scene/class_spec.rs`, which also re-exports the traits)
+add the registration. `pulsar_world_registry`: `runtime.rs` carries the actors
+list (`ACTORS`, gated by `class_enabled`, imported with plugin builds, handed
+across DLLs); `ABI_VERSION` 3 -> 4, the fingerprint now hashes a named `LAYOUTS`
+table that includes `ActorRegistration` and `ActorTable`; `component_lifecycle.rs`
+drives legacy `ComponentTickRegistration` and tables through one `Lifecycle`
+enum in one `Step::Components` (deterministic order by type name; removals,
+`end_all` and the set-difference end path are shared); `lifecycle_conflicts()`
+reports a class in both paths (logged once per session; the legacy one runs);
+`audit.rs` adds `find_lifecycle_problems`/`lifecycle_leaks`/`LifecycleAuditError`
+(reflected methods, `Class::<name>` natives, double registration). The catalog
+source `component.lifecycle` is submitted from `component_lifecycle.rs`.
+Helio: `helio-core/src/actor.rs` and its re-exports deleted (submodule branch
+`feature/component-lifecycle`, not pushed). Docs: `CRATES.md`, `ECS.md`,
+`PLUGIN_SYSTEM.md`, `layers.toml` (explicit crate entry plus comment).
+Tests: `pulsar_component_lifecycle` (`lookup_finds_by_component_id_and_orders_by_type_name`,
+`crate_edges`); `pulsar_world_registry` (`component_lifecycle::tests::actor::
+a_table_class_gets_begin_tick_and_end_in_order`, `a_class_in_both_paths_is_a_conflict`,
+`runtime::tests::the_fingerprint_covers_the_lifecycle_types`,
+`audit::tests::a_reserved_name_is_a_leak`, `this_binarys_registry_is_isolated`);
+`plugins/installed/tests/lifecycle.rs` over a new fixture plugin
+(`tests/fixtures/lifecycle_plugin`, `pulsar.test_lifecycle`): order on
+disable/removal/despawn, the plugin gate and catalog, and the leak audit over
+every installed class.
+
+Deviations: (1) `end_play` is entity-only in both forms in P1 (no `&mut World`):
+`end_all` and `process_component_removals(&World)` have no mutable world;
+P2's session end must pass one if the world form needs it at end. (2) No deferred
+`commands` on `ActorCx` yet (2.5); `events` is the hub directly. (3)
+`layers.toml` is layer-based and cannot express a crate-pair rule, so the
+"must not depend on reflection/script VM" edge is enforced by the
+`crate_edges` test (direct deps only: SceneDB itself depends on
+`pulsar_reflection`), and `script_natives` has no edge to the new crate's
+tables (it never names them). (4) The gate test uses a real fixture plugin
+rather than the catalog fixture, so no other test binary sees the new class.
+(5) The ABI-fingerprint test checks that the new types are in the named layout
+table and the version is 4. `construct` is declared on both traits and in the
+table, never delivered. For P2: the orchestrator is
+`tick_actor_class`/`tick_component_lifecycles` in `component_lifecycle.rs`;
+`ComponentRuntimeState` is still the session; a future `Session` should replace
+the unused-by-actors `subscribe_instance` bookkeeping only if handler events
+are added to tables.
+
 ### P2. `construct`, the editor pump, the session scope
 
 - **Scope**: `Session` (kind, resources, settings, end guarantee) evolving

@@ -273,8 +273,8 @@ pub const WORLD_STATE_SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/core/pulsar_world_registry/src/runtime.rs",
-        13,
-        "the runtime itself: registration lists (classes, ticks, events, unfinished reports, and the classes' systems), OWN, ATTACHED, the host table, and each list's plugin gate (a disabled plugin's registrations skipped)",
+        15,
+        "the runtime itself: registration lists (classes, ticks, events, unfinished reports, and the classes' systems and lifecycle tables), OWN, ATTACHED, the host table, and each list's plugin gate (a disabled plugin's registrations skipped)",
     ),
     (
         "crates/core/pulsar_world_registry/src/scene_payloads.rs",

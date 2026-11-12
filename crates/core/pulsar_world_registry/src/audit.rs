@@ -65,6 +65,80 @@ pub fn find_overloaded_methods() -> Vec<MetadataAuditError> {
     violations
 }
 
+/// One lifecycle-isolation violation: something that would make a lifecycle
+/// function reachable from Blueprints, or a class with two lifecycles.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, thiserror::Error)]
+pub enum LifecycleAuditError {
+    /// A reflected method of a class is named like a lifecycle event
+    /// (`pulsar_component_lifecycle::RESERVED_METHODS`): the script surface
+    /// would register it as the Blueprint native `Class::<name>`.
+    #[error("class '{class_name}' reflects a method named '{method}', a reserved lifecycle name")]
+    ReflectedMethod { class_name: String, method: String },
+    /// A script native is named like `Class::<lifecycle name>`.
+    #[error("script native '{native}' is named like a lifecycle event")]
+    Native { native: String },
+    /// A class registers its lifecycle twice (the legacy macro and an
+    /// `ActorTable`).
+    #[error("{0}")]
+    Registered(String),
+}
+
+/// The pure half of [`find_lifecycle_problems`]: reflected `(class, method)`
+/// pairs and script native names (`Class::method`) against the reserved
+/// lifecycle names.
+pub fn lifecycle_leaks(
+    methods: &[(String, String)],
+    natives: &[String],
+) -> Vec<LifecycleAuditError> {
+    use pulsar_component_lifecycle::RESERVED_METHODS;
+    let mut violations: Vec<LifecycleAuditError> = methods
+        .iter()
+        .filter(|(_, method)| RESERVED_METHODS.contains(&method.as_str()))
+        .map(|(class, method)| LifecycleAuditError::ReflectedMethod {
+            class_name: class.clone(),
+            method: method.clone(),
+        })
+        .collect();
+    violations.extend(
+        natives
+            .iter()
+            .filter(|native| {
+                native
+                    .rsplit("::")
+                    .next()
+                    .is_some_and(|name| RESERVED_METHODS.contains(&name))
+            })
+            .map(|native| LifecycleAuditError::Native {
+                native: native.clone(),
+            }),
+    );
+    violations.sort();
+    violations
+}
+
+/// Sweep every registered class for lifecycle leaks into the Blueprint
+/// surface, and for classes with two lifecycles. Empty = isolated. The
+/// reflection registry has no hidden flag, so this sweep (run by a crate that
+/// links the real classes, `plugins/installed/tests`) is the guard that a
+/// future `#[component_methods] fn tick` cannot become a Blueprint node.
+pub fn find_lifecycle_problems() -> Vec<LifecycleAuditError> {
+    let mut methods = Vec::new();
+    for class_name in REGISTRY.get_class_names() {
+        for method in REGISTRY.get_methods(class_name).unwrap_or_default() {
+            methods.push((class_name.to_string(), method.name.to_string()));
+        }
+    }
+    let natives: Vec<String> = crate::script_natives::native_names();
+    let mut problems = lifecycle_leaks(&methods, &natives);
+    problems.extend(
+        crate::lifecycle_conflicts()
+            .into_iter()
+            .map(LifecycleAuditError::Registered),
+    );
+    problems.sort();
+    problems
+}
+
 /// Deterministic JSON snapshot of every registered class's full reflected
 /// surface: properties (name/display/category/type) and methods
 /// (name/display/category/params/return/`flags`). Sorted at every
@@ -146,6 +220,37 @@ mod tests {
             violations.is_empty(),
             "overload policy violated: {violations:?}"
         );
+    }
+
+    /// A reflected method or a native named like a lifecycle event is
+    /// reported, others are not.
+    #[test]
+    fn a_reserved_name_is_a_leak() {
+        let methods = vec![
+            ("Body".to_string(), "apply_force".to_string()),
+            ("Body".to_string(), "begin_play".to_string()),
+        ];
+        let natives = vec!["Body::apply_force".to_string(), "Body::tick".to_string()];
+        assert_eq!(
+            lifecycle_leaks(&methods, &natives),
+            [
+                LifecycleAuditError::ReflectedMethod {
+                    class_name: "Body".into(),
+                    method: "begin_play".into()
+                },
+                LifecycleAuditError::Native {
+                    native: "Body::tick".into()
+                },
+            ]
+        );
+        assert!(lifecycle_leaks(&methods[..1], &natives[..1]).is_empty());
+    }
+
+    /// The registry of this test binary is isolated (the plugin-aware test
+    /// crate runs the same sweep over every installed class).
+    #[test]
+    fn this_binarys_registry_is_isolated() {
+        assert_eq!(find_lifecycle_problems(), []);
     }
 
     /// The snapshot is stable: two consecutive calls produce byte-identical
