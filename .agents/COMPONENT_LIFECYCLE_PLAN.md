@@ -680,6 +680,41 @@ are added to tables.
 - **Parallel**: needs P1. Can run in parallel with P5's SceneDB-side prerequisite
   (see P5) because that is an external repo.
 
+**As built (P2).** `pulsar_component_lifecycle/src/session.rs`: `SessionKind`
+(`Editor`, `PlayInEditor`, `Standalone`, `Headless`; `is_playing`) and
+`SessionScope` (kind, the level's settings as JSON, resources by type:
+`get_or_insert_with`, `resource`, `remove_resource`, `clear_resources`; a
+resource's `Drop` is its shutdown). `ActorCx` gains `session: &mut SessionScope`
+and `construct: Option<ConstructInfo>` (`ConstructReason::{Changed, Added,
+Rescan}`, the named changed properties). `pulsar_world_registry/src/
+component_lifecycle.rs`: `Session` (alias `ComponentRuntimeState`) owns the
+scope plus the construct state, `end_session(world, events)` (deferred world-form
+ends, `end_play` for every live instance with `&mut World`, then the resources
+are dropped), `pump_construct` (coalesced to once per frame per instance, one
+rescan for a restore, an overflowed journal or the first pump, the framework's
+own writes read past), `request_rescan`, `set_construct_suspended`,
+`note_changed`, `process_component_removals_mut`; a session of an editing kind
+only pumps. `engine_backend/src/scene/construct_pump.rs` is the editor pump
+(`EditorConstructPump`, called once per viewport frame from
+`SceneRenderer::upload` before `end_change_window`; suspended while a play
+session owns the world, resumed with one rescan on Stop; `pie_host.rs` wires
+it). `pulsar_game`: `TickLoop::end_session` and `PieSession::shutdown` end the
+session (every `end_play`) before the host restores its snapshot; the session
+settings are filled from `WorldRoles::settings()` (`roles.rs`, `pulsar_traits`
+`roles.rs`); the standalone path passes its kind. `pulsar_pie_abi` ABI 4 -> 5:
+`EngineContext::session_kind` (`session_kind::{EDITOR, PLAY_IN_EDITOR,
+STANDALONE, HEADLESS}`), the guest refuses an unknown or editor kind
+(`embed.rs`). Tests written: `session.rs` unit tests,
+`pulsar_game/tests/session_lifecycle.rs`, the `component_lifecycle` construct
+tests, `ui_level_editor` `scene_edit/tests/classes.rs` (the PIE flow check) and
+`plugins/installed/tests/lifecycle.rs` (extended fixture plugin).
+
+**P2's own tests were not run when the session was stopped**: the touched
+crates compiled with their tests (`cargo check`), and that is all that was
+verified at the P2 commit (`6437860cd`, "unverified"). P3 ran only the
+physics and `installed_plugins` `lifecycle`/`character` suites, so the P2 suites
+above still need one run.
+
 ### P3. Migrate physics
 
 - **Scope**: body/collider/joint/force-field/character `begin_play`/`end_play`
@@ -702,6 +737,45 @@ are added to tables.
   removing the last body shuts the thread down and the next one restarts it; no
   global `SESSIONS` left (grep).
 - **Parallel**: with P4 once P2 is merged (different repos and crates).
+
+**As built (P3).** In `plugins/vendor/physics_plugin` (local branch
+`feature/component-lifecycle`, commit `fc31dae`, not pushed): new `src/lifecycle.rs`
+implements `WorldActor` (`begin_play` -> `runtime::begin`, `end_play` ->
+`runtime::end`) for the body, collider, joint, character controller and force
+field; `registrations.rs` registers each class's `ActorTable::of_world` through
+`ClassSpec::actor` (no inventory); `runtime.rs` loses `SESSIONS`, `key_of`,
+`IDLE_SESSION` and the prune: `PhysicsSession` (thread, mailboxes, member set,
+journal streams) is a resource of the session scope. The first `begin` creates it
+(reading `gravity` and `physics_enabled` from `cx.session().setting`; disabled
+registers nothing), the last `end` removes it (joining the thread), the session
+end drops it, and the next `begin` makes a fresh one (fresh streams, so a full
+rescan). `run` is a no-op without the resource. `Sim::with_gravity`, `Sim::gravity`
+replace the `GRAVITY` constant in the step and the character controller.
+`simulated_counts(&ComponentRuntimeState)`, `wait_idle(&ComponentRuntimeState)`
+and the new `simulation_running` take the session. No descriptor change: the
+plugin needs no `pulsar.component.lifecycle` requirement (the registry is core).
+README "How it works" and "Threading" updated. Tests (`runtime.rs`): the nine
+existing ones unchanged in intent, plus `the_levels_gravity_changes_the_motion`,
+`physics_disabled_registers_nothing`,
+`two_sessions_in_one_process_do_not_share_a_simulation`,
+`ending_the_session_joins_the_simulation_thread`,
+`the_last_component_ends_the_thread_and_the_next_one_restarts_it`. Run once at the
+end: `physics_plugin --lib` 63 passed; `installed_plugins --test lifecycle`
+7 passed, `--test character` 5 passed. `grep SESSIONS` in the plugin: none.
+
+Deviations: (1) existence still also comes from the journals' `read_rows`
+(`replace`/`remove`); only the thread's and resource's lifetime moved to
+lifecycle, so `read_parts` was not slimmed (rows are re-read per behavior, which
+keeps the behavior hooks unchanged). (2) Gravity and `physics_enabled` are read
+once at the first `begin_play`; a mid-play change is ignored. (3) The legacy
+`PhysicsComponent`/`RigidbodyComponent` classes have no lifecycle. For P4/P5:
+a world-form `end_play` gets `cx.instance = Some(instance)` and the component may
+be gone; the session resource is the pattern for the script driver
+(`get_or_insert_with`, `remove_resource` when empty); `end_session` drops
+resources after the ends, and `end_all` (no world) skips world-form ends but
+still drops resources. Pin: Pulsar-Native commits the submodule pointer to
+`fc31dae`, which is not on `Plugin_Physics` main, so `just check-submodule-pins`
+fails until the physics PR merges and the pin moves.
 
 ### P4. Blueprint class-instance lifecycle through the component
 
