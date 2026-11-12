@@ -16,6 +16,7 @@ engine_state.workspace = true
 engine_fs.workspace = true
 serde_json = { workspace = true }
 futures = { workspace = true }
+pulsar_studio_client = { workspace = true }
 # The relay client (`net::multiuser`) and the file sync (`net::simple_sync`).
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

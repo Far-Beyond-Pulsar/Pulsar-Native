@@ -459,7 +459,12 @@ impl AppTitleBar {
         let locale_picker = cx.new(|cx| crate::locale_picker::LocalePicker::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_picker = cx.new(|cx| crate::theme_dropdown::ThemePicker::new(window, cx));
-        let profile_dropdown = cx.new(crate::profile_dropdown::ProfileDropdown::new);
+        let profile_dropdown = cx.new(|cx| {
+            crate::profile_dropdown::ProfileDropdown::with_menu_items(
+                crate::editor_tools::account_menu_entries,
+                cx,
+            )
+        });
 
         let subscriptions = vec![cx.subscribe(
             &profile_dropdown,

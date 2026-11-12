@@ -40,7 +40,6 @@ pub mod menu;
 pub mod open_window;
 pub mod panel;
 pub mod popout_decorations;
-pub mod profile_dropdown;
 pub mod properties_inspector;
 pub mod property_editor_registry;
 pub mod radial_menu;
@@ -50,7 +49,6 @@ pub mod shared;
 pub mod shared_state;
 pub mod text_line_editor;
 mod texture_asset_editor;
-pub mod theme_dropdown;
 pub mod thumbnails;
 
 pub use asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
@@ -74,13 +72,14 @@ pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use locale_picker::LocalePicker;
 pub use menu::{AppTitleBar, AppTitleBarEvent};
 pub use panel::{PanelBase, PanelEvent};
-pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
+pub use ui_account::{profile_dropdown, theme_dropdown};
+pub use ui_account::{ProfileDropdown, ProfileDropdownEvent};
 pub use reflected_properties_panel::{
     decorate_property_override, render_property_row_runtime, PropertyOverride,
     PropertyStateManager, ReflectedPropertiesPanelConfig,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
-pub use theme_dropdown::ThemePicker;
+pub use ui_account::ThemePicker;
 
 // Re-export diagnostics from ui crate
 pub use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};

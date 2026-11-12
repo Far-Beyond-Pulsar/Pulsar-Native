@@ -1,0 +1,21 @@
+[package]
+name = "ui_account"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The account and theme widgets every Pulsar window shows (profile dropdown, theme picker). UI framework and engine_state only: the Hub and the editor share them"
+
+[dependencies]
+gpui-ce.workspace = true
+ui.workspace = true
+engine_state.workspace = true
+pulsar_auth.workspace = true
+editor_task_queue = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "rustls-no-provider", "system-proxy"] }
+image.workspace = true
+smallvec.workspace = true
+smol = { workspace = true }
+tracing.workspace = true
+
+[lints]
+workspace = true

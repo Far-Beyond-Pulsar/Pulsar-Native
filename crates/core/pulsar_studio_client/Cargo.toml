@@ -1,0 +1,20 @@
+[package]
+name = "pulsar_studio_client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "WebSocket client of the Pulsar studio relay: the multiuser session protocol and connection, with no UI or engine dependency"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+async-tungstenite = { version = "0.35", features = ["tokio-runtime"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
+uuid = { workspace = true, features = ["v4"] }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

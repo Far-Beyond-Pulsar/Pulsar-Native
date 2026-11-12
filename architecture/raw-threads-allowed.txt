@@ -19,7 +19,7 @@ crates/editor/ui_fab_search/src/image_loader.rs | legacy: builds its own tokio r
 crates/editor/ui_fab_search/src/search_index.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
 crates/editor/ui_log_viewer/src/utils/memory_database.rs | legacy: raw thread; move to spawn_thread or spawn_service
 crates/editor/ui_log_viewer/src/utils/type_tracking.rs | legacy: raw thread; move to spawn_thread or spawn_service
-crates/editor/ui_multiplayer/src/net/multiuser.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
+crates/core/pulsar_studio_client/src/lib.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
 crates/editor/ui_multiplayer/src/peer_state.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
 crates/editor/ui_multiplayer/src/sync_protocol.rs | legacy: builds its own tokio runtime or rayon pool; use editor_task_queue::pools::tokio_handle or the global pool
 plugins/vendor/asset_viewer/src/editor/panel.rs | legacy: raw thread; move to spawn_thread or spawn_service

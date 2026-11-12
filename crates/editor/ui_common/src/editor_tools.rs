@@ -184,3 +184,17 @@ pub fn account_menu_items() -> Vec<&'static AccountMenuItemRegistration> {
     items.sort_by_key(|item| item.id);
     items
 }
+
+/// The account menu's entries as the shared dropdown (`ui_account`) takes
+/// them: the registered ones, enabled by the project's plugins.
+pub fn account_menu_entries() -> Vec<ui_account::AccountMenuItem> {
+    account_menu_items()
+        .into_iter()
+        .map(|item| ui_account::AccountMenuItem {
+            section: (item.section)(),
+            label: (item.label)(),
+            icon: item.icon.clone(),
+            open: item.open,
+        })
+        .collect()
+}

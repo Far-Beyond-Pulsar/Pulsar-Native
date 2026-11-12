@@ -12739,6 +12739,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_studio_client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-tungstenite",
+ "futures",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "pulsar_traits"
 version = "0.1.0"
 dependencies = [
@@ -17292,6 +17307,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_account"
+version = "0.1.0"
+dependencies = [
+ "editor_task_queue",
+ "engine_state",
+ "gpui-ce",
+ "image",
+ "pulsar_auth",
+ "reqwest 0.13.4",
+ "smallvec",
+ "smol",
+ "tracing",
+ "ui",
+]
+
+[[package]]
 name = "ui_auth"
 version = "0.1.0"
 dependencies = [
@@ -17349,6 +17380,7 @@ dependencies = [
  "smol",
  "tracing",
  "ui",
+ "ui_account",
  "ui_auth",
  "ui_types_common",
  "window_manager",
@@ -17752,6 +17784,7 @@ dependencies = [
  "gpui-ce",
  "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
  "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e36ce16e76716b7494a7388e3ba51505111246b8)",
+ "pulsar_studio_client",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
