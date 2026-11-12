@@ -12303,7 +12303,7 @@ dependencies = [
 [[package]]
 name = "pulsar_dialog_protocol"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog?rev=bd0004f0b2f574d6ab833f144d8dd9058f69035d#bd0004f0b2f574d6ab833f144d8dd9058f69035d"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog?rev=85544da6ff4e4e31a65524782a9e9916a07ca63e#85544da6ff4e4e31a65524782a9e9916a07ca63e"
 dependencies = [
  "rfd",
  "serde",

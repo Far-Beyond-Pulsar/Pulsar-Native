@@ -623,7 +623,7 @@ rfd = "0.17"
 # Pulsar's dialogs: the request/response types and the client of the pulsar-dialog
 # helper (Pulsar-Dialog). `native-fallback` shows the platform's own box when the
 # helper is not there, so a prompt is never lost.
-pulsar_dialog_protocol = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog", rev = "bd0004f0b2f574d6ab833f144d8dd9058f69035d", features = ["native-fallback"] }
+pulsar_dialog_protocol = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog", rev = "85544da6ff4e4e31a65524782a9e9916a07ca63e", features = ["native-fallback"] }
 thiserror = "2.0"
 pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 dashmap = "6.1.0"

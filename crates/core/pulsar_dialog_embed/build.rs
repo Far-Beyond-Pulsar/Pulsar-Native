@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The Pulsar-Dialog revision the engine ships. Bump it to ship a newer helper.
-const DIALOG_REV: &str = "bd0004f0b2f574d6ab833f144d8dd9058f69035d";
+const DIALOG_REV: &str = "85544da6ff4e4e31a65524782a9e9916a07ca63e";
 const DIALOG_REPO: &str = "https://github.com/Far-Beyond-Pulsar/Pulsar-Dialog";
 
 fn main() {
