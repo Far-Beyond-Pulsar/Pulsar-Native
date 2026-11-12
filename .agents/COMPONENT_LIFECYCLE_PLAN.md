@@ -795,6 +795,56 @@ fails until the physics PR merges and the pin moves.
   `has_begun` instances and re-fires nothing.
 - **Parallel**: with P3; both need P2.
 
+**As built (P4).** `ClassInstance` (`pulsar_class/src/lifecycle.rs`) implements
+`WorldActor` natively. The engine has no plugin root, so the table is registered
+through a new engine seam: `pulsar_component_lifecycle::EngineActor`
+(`inventory::submit!`, table built lazily because `ActorTable::of_world` is not
+`const`), turned into `ActorRegistration`s (origin `engine:lifecycle`) by
+`pulsar_world_registry::runtime::actor_registrations`; no `ClassSpec` change.
+The callbacks run no script: they post `ClassEvent::{Begin, Construct, End}`
+to `ClassInbox`, a shared queue the script driver registers in the session scope
+as a resource (`ScriptDriver::attach_session`, done by
+`TickLoop::enable_scripting*`; `run_tick` puts it back when a session end or a
+replaced world dropped resources). Without an inbox (the editor, a game without
+scripting) the events are dropped. `ScriptDriver` drains it at the start of the
+script phase (`apply_lifecycle`): ends, then constructs (a different class
+restarts the script once, the same class rebinds slots), then the begun
+instances by hierarchy depth then StableId (the tests assert that order, the
+lifecycle's own is entity order). Deleted from the driver: both change cursors,
+`rescan`, `sync_entity`, `holders`, `object_of_holder`, the scratch buffer.
+Kept: `tracked` (object -> class and script instance id; `instance_of`,
+`entity_variable`, roles and class reload read it, the lifecycle does not
+carry that), globals, roles (`start_now` starts a role object ahead of its own
+`begin_play`, which then finds it running), possession, class reload, spawn and
+destroy queues, problems. A driver used without a tick loop (the
+`scripting/tests.rs` harness, `plugins/installed/tests/traits.rs`) pumps a
+lifecycle of its own (`OwnLifecycle`: a `Headless` `Session` and a private hub,
+inside `reconcile_into` and ended by `end_play_all`), so those tests are
+unchanged. The script handlers still run in the script phase after
+`AfterSystems`; the VM's `begin_play` is still queued by `ScriptRuntime::spawn`.
+
+Deviations: (1) the session resource is the driver's inbox, not the
+`Arc<Mutex<ScriptDriver>>`: a callback runs inside the components phase with
+the scene lock held, and the hosts share the driver, so the callbacks never
+lock it; the driver still applies the events in its own phase. (2) At session
+end the `End` events the components posted are dropped and
+`ScriptRuntime::end_play_all` ends every instance, in start order as before
+(the `EndPlay` hub event is not published there, also as before); the session
+end therefore ends every Blueprint instance before the host restores its
+snapshot. (3) A world swapped in place with an instance at the same entity
+bits as one in the old world is not seen as new by the lifecycle (it diffs by
+entity), where the driver's old rescan stopped and restarted it; instances that
+differ are ended by the lifecycle's diff. For P5: generated Rust Blueprint
+actors still `impl pulsar_scenedb::Actor` and tick through `ActorRegistry`
+(`tick.rs` phase 2) and the rebound shells (`pending_rebinds`, `rebinding`,
+#653) untouched; hot reload ends the old session (every `ClassInstance` gets
+`end_play`) and a new one begins them again, so native script actors rebound by
+#653 are still separate from the `ClassInstance` path and should move to
+`WorldActor`/`Actor` tables registered through `ClassSpec::actor` with their
+rebinding done in `begin_play`. Tests: the `scripting/tests.rs` suite, run
+unchanged, plus `session_lifecycle` and `component_event_routing`; the audit
+(`pulsar_world_registry audit`) covers the new table.
+
 ### P5. Remove `Actor`/`ActorRegistry` from SceneDB
 
 - **Scope**: external repo `Far-Beyond-Pulsar/SceneDB` first (remove

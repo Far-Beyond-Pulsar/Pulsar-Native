@@ -51,6 +51,10 @@ pub struct TickLoop {
     /// instances (see `crate::scripting::ScriptDriver`). `None` runs no
     /// scripts; [`enable_scripting`](Self::enable_scripting) creates it.
     pub scripts: Option<Arc<Mutex<crate::scripting::ScriptDriver>>>,
+    /// The script driver's inbox, registered in the session's scope so the
+    /// component lifecycle reaches it (`pulsar_class::lifecycle`); put back
+    /// each tick, since a session end or a replaced world drops resources.
+    class_inbox: Option<pulsar_class::ClassInbox>,
     /// The session's engine event hub (`pulsar_events::EventHub`): built-in
     /// events, script events and plugin events, flushed at four fixed
     /// points of every tick (see [`tick_once`](Self::tick_once)). The
@@ -219,6 +223,7 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
+            class_inbox: None,
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::Session::new(pulsar_world_registry::SessionKind::Standalone),
             static_moves: None,
@@ -269,6 +274,7 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             scripts: None,
+            class_inbox: None,
             events: new_component_event_hub(),
             component_runtime: pulsar_world_registry::Session::new(pulsar_world_registry::SessionKind::PlayInEditor),
             static_moves: None,
@@ -452,6 +458,18 @@ impl TickLoop {
         // while its component borrow is held.
         {
             let scene_identity = Arc::as_ptr(&self.scene_store) as usize;
+            if let Some(inbox) = &self.class_inbox {
+                if self
+                    .component_runtime
+                    .scope()
+                    .resource::<pulsar_class::ClassInbox>()
+                    .is_none()
+                {
+                    self.component_runtime
+                        .scope_mut()
+                        .insert_resource(inbox.clone());
+                }
+            }
             let mut store = self.scene_store.write();
             pulsar_world_registry::tick_live_components(
                 &mut store.world,
@@ -631,15 +649,21 @@ impl TickLoop {
     ) -> Arc<Mutex<crate::scripting::ScriptDriver>> {
         let project_root = project_root.into();
         let events = self.events.clone();
-        Arc::clone(self.scripts.get_or_insert_with(|| {
+        let mut class_inbox = None;
+        let driver = Arc::clone(self.scripts.get_or_insert_with(|| {
             tracing::info!(project = %project_root.display(), "Script driver enabled");
             let mut driver = crate::scripting::new_driver(project_root);
             driver.attach_events(events);
             driver.set_world_roles(self.world_roles.clone());
             driver.set_possession_gate(self.possession.clone());
             driver.set_view_targets(self.view_targets.clone());
+            class_inbox = Some(driver.attach_session());
             Arc::new(Mutex::new(driver))
-        }))
+        }));
+        if class_inbox.is_some() {
+            self.class_inbox = class_inbox;
+        }
+        driver
     }
 
     /// Turn on the script phase for the game's content: the content root
@@ -669,6 +693,7 @@ impl TickLoop {
         driver.set_world_roles(self.world_roles.clone());
         driver.set_possession_gate(self.possession.clone());
         driver.set_view_targets(self.view_targets.clone());
+        self.class_inbox = Some(driver.attach_session());
         let driver = Arc::new(Mutex::new(driver));
         self.scripts = Some(Arc::clone(&driver));
         Ok(driver)

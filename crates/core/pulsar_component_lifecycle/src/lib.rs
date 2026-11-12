@@ -326,6 +326,33 @@ impl pulsar_plugins::Contribution for ActorRegistration {
 // (`pulsar_plugins::library`).
 pulsar_plugins::importer!(ActorRegistration);
 
+/// An engine class's table: the engine has no plugin root to register
+/// through, so a core crate submits one of these (`inventory::submit!`) next
+/// to its `#[register_world_component]` class. The table is built lazily
+/// (`ActorTable::of_world` is not a `const fn`); the registry turns each
+/// into an [`ActorRegistration`] whose origin is the engine's, which is
+/// always enabled.
+pub struct EngineActor {
+    pub class_name: &'static str,
+    pub table: fn() -> ActorTable,
+}
+
+pulsar_plugins::inventory::collect!(EngineActor);
+
+/// The engine's own tables, as registrations (origin `engine:<crate>`).
+pub fn engine_registrations() -> Vec<&'static ActorRegistration> {
+    pulsar_plugins::inventory::iter::<EngineActor>
+        .into_iter()
+        .map(|engine| {
+            &*Box::leak(Box::new(ActorRegistration {
+                origin: "engine:lifecycle",
+                class_name: engine.class_name,
+                table: (engine.table)(),
+            }))
+        })
+        .collect()
+}
+
 /// The names a table reserves: a reflected method of any class must not use
 /// one, or it would be a Blueprint-callable native
 /// (`pulsar_world_registry::audit`).

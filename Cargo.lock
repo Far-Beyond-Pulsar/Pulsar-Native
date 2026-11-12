@@ -12267,6 +12267,7 @@ dependencies = [
  "engine_fs",
  "glam 0.33.5",
  "inventory",
+ "pulsar_component_lifecycle",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene_model",

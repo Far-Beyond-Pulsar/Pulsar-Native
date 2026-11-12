@@ -148,8 +148,15 @@ static WORLD_COMPONENTS: AppendList<WorldComponentRegistration> =
     AppendList::new(world_component_registrations);
 static SYSTEMS: AppendList<SystemRegistration> =
     AppendList::new(pulsar_plugins::built::<SystemRegistration>);
-static ACTORS: AppendList<ActorRegistration> =
-    AppendList::new(pulsar_plugins::built::<ActorRegistration>);
+/// The tables of this copy: plugin builds' (`ClassSpec::actor`) and the
+/// engine's own (`pulsar_component_lifecycle::EngineActor`, link-time).
+fn actor_registrations() -> Vec<&'static ActorRegistration> {
+    let mut all = pulsar_component_lifecycle::engine_registrations();
+    all.extend(pulsar_plugins::built::<ActorRegistration>());
+    all
+}
+
+static ACTORS: AppendList<ActorRegistration> = AppendList::new(actor_registrations);
 static TICKS: AppendList<ComponentTickRegistration> = AppendList::new(|| {
     inventory::iter::<ComponentTickRegistration>
         .into_iter()

@@ -9,6 +9,7 @@ pulsar_scenedb        = { workspace = true }
 pulsar_scene_model    = { workspace = true }
 pulsar_reflection     = { workspace = true }
 pulsar_world_registry = { workspace = true }
+pulsar_component_lifecycle = { workspace = true }
 engine_class_derive   = { workspace = true }
 inventory             = { workspace = true }
 # Plugins' record migrations are gated by their origin.
