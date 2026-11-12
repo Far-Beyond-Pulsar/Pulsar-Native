@@ -9,9 +9,11 @@
 </p>
 
 <div align="center">
-  <a href="https://pulsarnative.com/">
-    <h1>Pulsar Engine</h1>
-  </a>
+  <h1>
+    <a href="https://pulsarnative.com/">
+      Pulsar Engine
+    </a>
+  </h1>
 </div>
 
 <p align="center">
