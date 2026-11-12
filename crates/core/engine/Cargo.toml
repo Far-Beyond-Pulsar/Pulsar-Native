@@ -9,6 +9,7 @@ version = "0.2.42"
 name = "pulsar_engine"
 path = "src/main.rs"
 [dependencies]
+pulsar_install_layout = { workspace = true }
 # horizon.workspace = true
 anyhow.workspace = true
 gpui-ce.workspace = true

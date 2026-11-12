@@ -12340,6 +12340,7 @@ dependencies = [
  "profiling 1.0.18",
  "pulsar_auth",
  "pulsar_error",
+ "pulsar_install_layout",
  "pulsar_std",
  "reqwest 0.13.4",
  "rfd",
@@ -12447,6 +12448,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "pulsar_install_layout"
+version = "0.1.0"
+dependencies = [
+ "directories 6.0.0",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
 ]
 
 [[package]]
@@ -17391,6 +17403,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_events",
+ "pulsar_install_layout",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_settings",

@@ -15,7 +15,11 @@ use plugin_manager::PluginManager;
 
 use super::PulsarApp;
 
-const PLUGINS_DIR: &str = "plugins/editor";
+/// This install's plugin libraries: where the Hub put them
+/// (`pulsar_install_layout`), not wherever the process happened to start.
+fn plugins_dir() -> std::path::PathBuf {
+    pulsar_install_layout::InstallLayout::of_running_engine().plugins_dir()
+}
 
 impl PulsarApp {
     /// Load the editor plugins into `manager` in the background (none when the
@@ -41,7 +45,7 @@ impl PulsarApp {
                     Some(prepared) => prepared,
                     None => {
                         cx.background_executor()
-                            .spawn(async { PluginManager::prepare_plugins_in_dir(PLUGINS_DIR) })
+                            .spawn(async { PluginManager::prepare_plugins_in_dir(plugins_dir()) })
                             .await
                     }
                 };

@@ -448,6 +448,7 @@ ui_level_editor       = { path = "crates/editor/ui_level_editor" }
 ui_helio_viewport     = { path = "crates/editor/ui_helio_viewport" }
 ui_settings           = { path = "crates/editor/ui_settings" }
 ui_multiplayer        = { path = "crates/editor/ui_multiplayer" }
+pulsar_install_layout = { path = "crates/core/pulsar_install_layout" }
 pulsar_studio_client  = { path = "crates/core/pulsar_studio_client" }
 ui_problems           = { path = "crates/editor/ui_problems" }
 ui_flamegraph         = { path = "crates/editor/ui_flamegraph" }
