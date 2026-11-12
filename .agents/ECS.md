@@ -105,9 +105,18 @@ gets lifecycle events through `pulsar_component_lifecycle::Actor`, reachable as
 `pulsar_game::Actor`, `pulsar_game::prelude::Actor` and
 `pulsar_game::lifecycle::Actor`: `impl Actor for T` and
 `ClassSpec { actor: Some(ActorTable::of::<T>()), .. }` from the plugin root.
-`tick_live_components` drives these tables in one `Step::Components`:
-`begin_play` when an enabled instance is first seen, `tick` each frame,
-`end_play` (owner-only) on disable, removal, despawn or session end.
+`WorldActor` is the same with `&mut World` and the instance entity in each callback (no
+component borrow; physics). `tick_live_components` drives these tables in one
+`Step::Components`: `begin_play` when an enabled instance is first seen, `tick` each frame,
+`end_play` on disable, removal, despawn or session end (owner-only for `Actor`; the world
+form also gets the world, and the component may be gone). `construct` runs when the
+component is added or changed, in the editor too, coalesced to once per frame
+(`pump_construct`; `engine_backend/src/scene/construct_pump.rs` is the editor's pump).
+Every callback gets an `ActorCx` with the session's `SessionScope`: its `SessionKind`
+(`Editor`, `PlayInEditor`, `Standalone`, `Headless`; only `construct` runs in `Editor`),
+the level's `world_settings`, and typed resources whose `Drop` is the shutdown hook.
+A reflected method named like a lifecycle event fails the leak audit
+(`pulsar_world_registry::audit::find_lifecycle_problems`).
 `#[register_component_runtime]` is the same registration: its expansion is an
 `ActorTable` (with native `#[bp_handler]` events, subscribed at `begin_play`
 and delivered before `tick`) submitted as an `EngineActor`; the old raw

@@ -16,9 +16,9 @@ Pulsar-Native is the workspace; most other repositories are git submodules insid
 | **Helio** | `crates/renderer/helio` | GPU-driven renderer |
 | **WGPUI / WGPUI-Component** | `crates/ui/wgpui`, `crates/ui/wgpui-component` | UI framework (`gpui-ce`) and component library (`ui`) |
 | **Pulsar-Reflection** | `crates/external/pulsar-reflection` | `EngineClass` reflection and derives |
-| **SceneDB** | git dependency (`pulsar_scenedb`) | Entity/component world store |
+| **SceneDB** | git dependency (`pulsar_scenedb`), pinned by `rev =` in the root `Cargo.toml` (twice) and `crates/renderer/helio/Cargo.toml` (`/bump-deps`) | Entity/component world store (ECS); no actor or lifecycle of its own |
 
-Other editor plugins live beside the Blueprint editor in `plugins/vendor/`.
+Every other plugin (object kinds, physics, animation, input, editor tools) lives beside the Blueprint editor in `plugins/vendor/<dir>`, each its own repository with a `pulsar-plugin.toml`; see `/add-plugin`.
 
 Submodules are pinned to commits on their upstream default branch (`just check-submodule-pins`).
 To land a change in one: merge its PR, re-pin the submodule, then merge the Pulsar-Native PR. See
@@ -38,6 +38,9 @@ Pulsar-Native/
 │   │   ├── pulsar_script_vm/     Script module format + VM (every language compiles to it)
 │   │   ├── pulsar_script_runtime/ ScriptRuntime: script classes bound to entities
 │   │   ├── pulsar_script_codegen/ Exports a script module as a Rust actor
+│   │   ├── pulsar_plugins/       Plugin descriptors, `installed!`, `PluginBuilder`, the gate and the catalog
+│   │   ├── pulsar_world_registry/ World component classes, systems, `tick_live_components` (drives the lifecycle)
+│   │   ├── pulsar_component_lifecycle/ `Actor`/`WorldActor`, `ActorTable`, `SessionScope` (`/add-component`)
 │   │   ├── engine_backend/       Editor services; services/core_project_builder.rs scaffolds game projects
 │   │   ├── engine_class_derive/  proc-macro: #[derive(EngineClass)]
 │   │   ├── engine/               The editor binary (links the built-in plugins)
@@ -51,7 +54,8 @@ Pulsar-Native/
 │   ├── external/pulsar-reflection/
 │   ├── third-party/              graphy, pulsar-config, psgc, toolbelt
 │   └── subsystems/, graphics/, profiling/, agent-providers/
-├── plugins/vendor/               Editor plugins (submodules)
+├── plugins/vendor/               Plugins (submodules): kinds, physics, animation, input, editor tools
+├── plugins/installed/            The generated installed set; its tests/ hold every cross-plugin test
 ├── tools/                        Standalone CLI tools
 ├── scripts/                      CI checks (fmt-check.sh, plugin-pins.sh, submodule-pins.sh, …)
 └── Cargo.toml                    Workspace root: [workspace.dependencies] and the [patch] tables
@@ -111,3 +115,9 @@ exec pins; non-intrinsic flow nodes run as selector natives that report which la
 
 ### Blueprint class files
 Written by the Blueprint plugin's compiler; see the layout in `/blueprint-system`.
+
+### Plugins and components
+A plugin's root crate registers everything in one `build` (`/add-plugin`); a world component is a
+class registered from that build with a `ClassSpec`, and its lifecycle is a registry table, not
+reflected methods (`/add-component`). Neither core nor editor may depend on a plugin
+(`just arch`).

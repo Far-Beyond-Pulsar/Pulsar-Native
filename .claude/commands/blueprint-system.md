@@ -81,12 +81,25 @@ it once the game calls `enable_project_scripting()`.
 `pulsar_script_codegen::actor::generate_actor`:
 
 - `events/events.rs`: a `#[derive(EngineClass)]` struct holding a
-  `pulsar_game::scripting::export::ExportedScript`, with `impl pulsar_game::lifecycle::NativeActor` (full path; the prelude's `Actor` is SceneDB's deprecated trait)
+  `pulsar_game::scripting::export::ExportedScript`, with `impl pulsar_game::lifecycle::NativeActor` (by full path: `NativeActor` is the boxed, entity-owning form whose callbacks get the entity, the world and the lifecycle context; a component class uses `lifecycle::Actor`/`WorldActor` instead, see `/add-component`). `TickLoop::register_native_actor` runs it through the component lifecycle (`.agents/ECS.md`, "Actors")
 - `events/mod.rs`, `<class>/mod.rs`, and `vars/mod.rs` (from `vars_save.json`)
 - `pub mod <Name>;` appended to the parent `mod.rs` (normally `src/classes/mod.rs`)
 
 The graph needs at least one event node. Classes with component-scoped event subscriptions are
 refused ("Use the VM compile target for this class").
+
+## 4c. How a class instance gets `begin_play`/`tick`/`end_play`
+
+A Blueprint class on an object is a `ClassInstance` component whose lifecycle is the engine's
+component lifecycle (`crates/core/pulsar_class/src/lifecycle.rs`, a `WorldActor` table submitted
+as an `EngineActor`; `.agents/COMPONENT_LIFECYCLE_PLAN.md`, "As built (P4)"). Its callbacks run no
+script: they post `ClassEvent::{Begin, Construct, End}` to a `ClassInbox` the `ScriptDriver` holds
+in the session scope, and the driver applies them at the start of the script phase. The session
+end ends every instance before the host restores its snapshot.
+
+Lifecycle events are not Blueprint-callable by construction: a component's `begin_play`/`tick`/
+`end_play`/`construct` live in the lifecycle registry, never as reflected methods, and an audit
+fails a class that names a reflected method like one (`/add-component`).
 
 ---
 

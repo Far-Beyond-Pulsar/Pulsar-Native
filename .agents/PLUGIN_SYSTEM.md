@@ -260,7 +260,7 @@ native implementer) is a requirement of its `trait` contract; a class requiremen
 
 ### Component classes
 
-`p.components().class::<T>(ClassSpec { requires, systems, gpu, presentation })`
+`p.components().class::<T>(ClassSpec { requires, systems, actor, gpu, presentation })`
 (`engine_backend::scene::class_spec`):
 
 - **requires**: classes placed with it. Placing it (`pulsar_world_registry::place_component`:
@@ -273,6 +273,9 @@ native implementer) is a requirement of its `trait` contract; a class requiremen
   ordered around the engine's component lifecycles (`systems::COMPONENTS`) every frame by
   `tick_live_components`. They run while the class is registered. A label no registered
   system has orders nothing (an optional plugin's); a cycle is reported.
+- **actor**: its lifecycle (`construct`, `begin_play`, `tick`, `end_play`), `Some(ActorTable::of::<T>())`
+  or `of_world::<T>()`; a registry of its own, never reflected methods ("Component lifecycle
+  registrations" below, `.agents/ECS.md`).
 - **gpu**: the class's source rows and their join (a `SceneRowsRegistration`).
 - **presentation**: `Facade` shows one card in the inspector and one entry in the
   component tree over the class and its nested members (each member's properties a section

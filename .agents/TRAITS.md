@@ -183,6 +183,12 @@ implementer kind fills it.
 
 ## Trait methods are event nodes
 
+A component's own lifecycle (`construct`, `begin_play`, `tick`, `end_play`) is not a trait
+and not an event node: it is a capability table in `pulsar_component_lifecycle`, outside the
+reflection registry and the trait DB on purpose, so scripts cannot call it
+(`COMPONENT_LIFECYCLE_PLAN.md`, `/add-component`). Role lifecycle on the hub (below) is a
+different thing.
+
 When a Blueprint declares a trait, each required method (supertraits included)
 appears in the node Add menu under `Events/Trait/<Trait>` as an `On <Class>.<method>`
 entry point (an ordinary engine event node, `event::on::<Class>.<method>`); its

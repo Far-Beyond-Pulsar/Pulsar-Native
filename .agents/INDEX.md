@@ -5,13 +5,14 @@
   INDEX.md           ← This file
   ROADMAP.md         Project philosophy, core insights, position
   CRATES.md          Crate layout — all 80+ crates organized by category
-  ENGINE_LIFECYCLE.md Startup, InitGraph, EngineBackend, subsystems
+  ENGINE_LIFECYCLE.md Startup, InitGraph, EngineBackend, EngineContext
   PLUGIN_SYSTEM.md   Plugins — descriptors, root crates, the gate, the catalog; DLL plugins
   PLUGIN_API_REFACTOR_PLAN.md  The plugin API plan (#1608): the phase 0 audit, the review, Q1-Q4, what is built
   EDITOR_TASKS.md    Editor tasks — async tracked work, per-task logs through tracing spans, stall diagnosis, the Tasks window
   FILESYSTEM.md      Virtual filesystem — engine_fs, providers, asset index
   REFLECTION.md      Type system — Reflectable, RuntimeTypeInfo, EngineClass
-  ECS.md             Archetype ECS — World, Query, Schedule, Actor
+  ECS.md             Archetype ECS — World, Query, Schedule, native actors, component lifecycle
+  COMPONENT_LIFECYCLE_PLAN.md Component lifecycle: Actor/WorldActor, session scope, as built
   COMPONENT_RUNTIME_GAPS.md Current component runtime and proposed Rust lifecycle/events
   THEMING.md         Theme JSON schema, syntax highlighting, window backgrounds
   LENS.md            Camera lens — pass, components, prescriptions, masks, overscan

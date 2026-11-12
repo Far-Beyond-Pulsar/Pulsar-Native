@@ -17,6 +17,14 @@ issues for its letter.
 > follow components through change-journal cursors (`ComponentWatch`), views
 > through object subscriptions. See [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
 
+> **Historical: lifecycle and subsystems.** This file is the record of the
+> scripting epic as it was built. Its mentions of SceneDB's `Actor`/`ActorRegistry`,
+> `register_actor`, the SceneDB `Subsystem` API and `ComponentTickRegistration` describe
+> code that no longer exists: native actors are `pulsar_game::lifecycle::NativeActor`
+> (`register_native_actor`) on the component lifecycle, component lifecycles are
+> `ActorTable`s in `pulsar_component_lifecycle`, and there is no subsystem registry. See
+> [COMPONENT_LIFECYCLE_PLAN.md](COMPONENT_LIFECYCLE_PLAN.md) and [ECS.md](ECS.md).
+
 ## Architecture target (invariant across all agents)
 
 Gameplay logic — Rust crates or Blueprint graphs, compiled to VM bytecode or

@@ -41,7 +41,7 @@ The heart of the engine.
 | `asset_import` | Source-asset import (FBX, OBJ, …): import database, project scan, per-format importers, conversions as editor tasks (see below) |
 | `editor_task_queue` | The editor's task system behind the Tasks window: async/blocking/inline tasks, per-task span-scoped logs (`TaskLogLayer`), progress, phases, cancellation, stall diagnosis. Tab creation and Helio init are enforced through it (`.agents/EDITOR_TASKS.md`) |
 | `engine` | Binary entry point, startup graph, GPUI `App` creation |
-| `engine_backend` | Window and rendering backend; subsystem lifecycle; the plugins' engine seams (render features, scene rows, game hooks, level rules) |
+| `engine_backend` | Window and rendering backend; the plugins' engine seams (render features, scene rows, game hooks, level rules) |
 | `engine_class_derive` | `#[derive(EngineClass)]` proc macro |
 | `engine_fs` | The filesystem library every file goes through: `virtual_fs` (local, remote, P2P providers, with the plugin folders composed over them: `plugins/<id>/`, provided and changed only by their owner), the project file index and its watcher. `std::fs` is a disallowed method elsewhere (root `clippy.toml`) |
 | `pulsar_traits` | Traits and gameplay roles: trait records and database, the one trait index over every implementer source (`TraitImplementerSource`, `NativeTraitImpl`), conformance, the role registry (`RoleRegistration`), the engine's trait files (its `plugins/pulsar/` folder) and roles |
@@ -57,7 +57,7 @@ The heart of the engine.
 | `pulsar_game` | The game runtime: tick loop, scripting, native script actors on the component lifecycle (`lifecycle::NativeActor`, `register_native_actor`), possession (plugins join through `game_hooks::GameSessionRegistration`), cameras and view targets |
 | `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
 | `pulsar_macros` | Various derive macros |
-| `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
+| `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
 | `pulsar_scene_model` | Scene object components (`StableId`, `Name`, `Transform`, `Visibility`, hierarchy), component-instance entities (`attachments`) and sublevel placements (`sublevels`) |
 | `pulsar_component_lifecycle` | The component lifecycle capability registry (L1): the `Actor`/`WorldActor` traits (`construct`, `begin_play`, `tick`, `end_play`), `ActorTable`, `ActorRegistration` (category `component.lifecycle`), `ActorIndex`. Depends on SceneDB, events and the plugin gate only, never reflection or the script VM, so no lifecycle function is reachable from Blueprints (its `crate_edges` test pins it; `just arch` checks layers, not crate pairs) |
@@ -203,7 +203,7 @@ pulsar_reflection::inventory::submit! {
 
 ## subsystems/ — Integration crates
 
-Kernel crates for subsystem lifecycle and scene management. What a kind
+Kernel crates for scene management (there is no subsystem registry: `engine_subsystems` is gone). What a kind
 simulates (physics, input, animation) is its plugin's.
 
 | Crate | Responsibility |
