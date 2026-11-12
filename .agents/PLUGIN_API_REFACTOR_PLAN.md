@@ -1263,7 +1263,7 @@ Vulkan (Helio's examples, the headless tests) accepts the shader, which is why t
 its owner (the shader returns after `discard`), and the copied render loop that turned one failed
 build into a permanent black viewport is gone (the runtime is `Failed` with its reason in the
 Tasks window, and a new output builds it again). Test: `installed_plugins`
-`render_pipelines::the_editor_renderer_builds_and_draws_on_every_backend` (Vulkan and D3D12).
+`default_pipelines::the_editor_renderer_builds_and_draws_on_every_backend` (Vulkan and D3D12).
 
 Found on the way, also the black screen's neighbours:
 - **The pin probe always failed** ("the final output is never written"): routing validation ran on
@@ -1278,19 +1278,39 @@ Found on the way, also the black screen's neighbours:
   current ("Render pipeline assets" service); registering never waits for the pin probe, and the
   probe's completion registers wired graphs again.
 
-**The shipped pipelines are a plugin (`pulsar.render_pipelines`, in-tree at
-`plugins/vendor/render_pipelines`).** Its `FileProvider` serves `plugins/pulsar.render_pipelines/`
-(`Deferred`, `DeferredFxaa`, `Forward`, and each lighting model's pipeline, the lights' `HLFS` and
-`HLFS_FXAA`), each made with `helio_presets::graphs::graph_asset` over the enabled plugins' nodes, so a
-project that disables a kind gets graphs without its nodes instead of graphs that no longer validate;
-the folder is made again when the plugin set changes. Its `PipelineIdMigration` rewrites Helio's old
-ids (`helio.deferred`, `helio.fxaa`, `helio.forward_*`, `helio.deferred_graph`, model pipeline ids)
-when a level loads, in the editor and the game; a legacy level that named none migrates to
-`helio.deferred` and then to `Deferred.rendergraph`. Requires: none (a kind's nodes join by placement;
-an `api` requirement would demand a Cargo link the plugin does not have). Helio lost
-`helio_presets::pipelines`, the golden files, `RenderPipelineRegistry`'s default and `PipelineOrigin`.
-Presets are config-free (the anti-aliasing node follows the project's TSR setting), so one file is the
-pipeline for every project setting. The picker names a plugin-folder pipeline's provider from its path.
+**The shipped pipelines are a plugin (`pulsar.default_pipelines`, repository
+Plugin_DefaultPipelines, vendored at `plugins/vendor/default_pipelines`).** Its `FileProvider`
+serves `plugins/pulsar.default_pipelines/` (`Deferred`, `DeferredFxaa`, `Forward`, and each
+lighting model's pipeline, the lights' `HLFS` and `HLFS_FXAA`), each made with
+`helio_presets::graphs::graph_asset` over the enabled plugins' nodes, and made again when the
+plugin set changes. Its `PipelineIdMigration` rewrites Helio's old ids (`helio.deferred`,
+`helio.fxaa`, `helio.forward_*`, `helio.deferred_graph`, model pipeline ids) when a level loads,
+in the editor and the game; a legacy level that named none migrates to `helio.deferred` and then
+to `Deferred.rendergraph`. Requires: none (a kind's nodes join by placement). Helio lost its
+built-in registrations, default and golden files.
+
+- **Made, not authored (decided).** A kind's passes join where its feature placed them, so a
+  plugin this repository has never heard of joins the shipped pipelines, and the frame's
+  structure has one owner (Helio's presets). An authored, fully expanded file could drop an
+  absent kind's nodes but never pick up a new one's, and would be a second copy of the
+  structure. Deleted with the losing path: `installed_plugins/tests/export_default_graph.rs`
+  (the hand-run exporter that wrote the wired default graph into a project); its checks moved
+  into `installed_plugins/tests/default_pipelines.rs`.
+- **Wired and readable.** With the probe's pins (`pipelines::current_node_registry`) each file
+  is the wired form (every pass wired to its inputs, lanes and sections) with its pins recorded
+  (`GraphAsset::pins`), so a game validates it without probing; before the probe it is the
+  chain form, which builds the same pipeline, and the swap rebuilds no renderer (the
+  engine's revisions follow `Validation::build_key`). The render graph editor waits for the
+  probe before reading, so it always shows the wired form.
+- **Make your own.** The render graph editor opens a plugin folder's file read-only (it names
+  the folder) and its Save is **Save a copy to the project**: the graph, edits included, goes
+  to `<project>/render_graphs/<Name>.rendergraph` and the editor goes on with the copy; World
+  Settings offers it; a level that picks it runs it.
+- Found on the way: `render_features::disabled_feature_nodes` and
+  `helio_component::install_asset_loaders` iterated `inventory` (link-time registrations only)
+  for registration types plugins add through their builder, so a disabled plugin's nodes were
+  never recorded absent and the materials plugin's asset loader was never installed; both read
+  `pulsar_plugins::all_registered` now.
 
 **Engine-owned render runtimes (`engine_backend::services::render_runtimes`).** One scheduler
 service draws every runtime in priority order, each at its output's pace, never waiting on a consumer;

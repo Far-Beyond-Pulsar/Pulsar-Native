@@ -430,7 +430,7 @@ fn a_level_save_keeps_the_renderers_voxel_chunks() {
     };
 
     // The editor's viewport renderer, settled on the dig, running the
-    // pipeline a level that names none runs (the render pipelines plugin's
+    // pipeline a level that names none runs (the default pipelines plugin's
     // deferred graph, registered for the open project).
     let project = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("Pulsar.toml"), "# a test project\n").unwrap();

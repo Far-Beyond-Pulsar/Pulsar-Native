@@ -1,6 +1,6 @@
 //! The shipped render pipelines as the editor and the game see them: the
-//! `pulsar.render_pipelines` plugin's files in every project's
-//! `plugins/pulsar.render_pipelines/` folder, registered by the engine before
+//! `pulsar.default_pipelines` plugin's files in every project's
+//! `plugins/pulsar.default_pipelines/` folder, registered by the engine before
 //! a renderer asks, made for the project's plugins, and the migration of a
 //! level that names Helio's old default (or none, from before pipelines were
 //! explicit) to them.
@@ -20,7 +20,7 @@ use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, Sce
 // Every installed plugin is linked, as the editor links them.
 use installed_plugins as _;
 
-const DEFERRED: &str = "plugins/pulsar.render_pipelines/Deferred.rendergraph";
+const DEFERRED: &str = "plugins/pulsar.default_pipelines/Deferred.rendergraph";
 
 /// The process's project and plugin set are global: one test at a time.
 static PROJECT: Mutex<()> = Mutex::new(());
@@ -77,7 +77,7 @@ fn the_shipped_pipelines_are_the_plugins_files_and_old_levels_run_them() {
         .map(|pipeline| pipeline.id)
         .collect();
     for stem in ["Deferred", "DeferredFxaa", "Forward", "HLFS", "HLFS_FXAA"] {
-        let id = format!("plugins/pulsar.render_pipelines/{stem}.rendergraph");
+        let id = format!("plugins/pulsar.default_pipelines/{stem}.rendergraph");
         assert!(listed.contains(&id), "{id} in {listed:?}");
     }
 
@@ -95,7 +95,7 @@ fn the_shipped_pipelines_are_the_plugins_files_and_old_levels_run_them() {
     }
     assert_eq!(
         pipelines::migrate_pipeline_id("helio.hlfs".into()),
-        "plugins/pulsar.render_pipelines/HLFS.rendergraph"
+        "plugins/pulsar.default_pipelines/HLFS.rendergraph"
     );
     // A project's own graph keeps its id.
     assert_eq!(
@@ -123,7 +123,7 @@ fn without_a_kind_the_shipped_graph_has_none_of_its_nodes_and_still_runs() {
 #[test]
 fn with_the_plugin_disabled_an_old_level_says_its_pipeline_is_missing() {
     let _one = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
-    let _project = open_project("[plugins]\n\"pulsar.render_pipelines\" = false\n");
+    let _project = open_project("[plugins]\n\"pulsar.default_pipelines\" = false\n");
     assert_eq!(
         pipelines::render_pipeline_of_level(r#"{"version":"2.1"}"#).as_deref(),
         Some(pipelines::LEGACY_DEFAULT_PIPELINE)
@@ -320,4 +320,173 @@ fn the_editor_renderer_builds_and_draws_on_every_backend() {
             "{backend:?}: the GPU rejected what the renderer built"
         );
     }
+}
+
+/// The node registry a game has: every enabled plugin's nodes, no probe.
+fn unprobed_registry() -> helio_graph_asset::NodeRegistry {
+    helio_presets::graphs::registry_with(&render_features::plugin_features())
+}
+
+/// Once the engine's probe has found the pins, the shipped Deferred is the
+/// readable form: every pass wired to what supplies it, in lanes and sections,
+/// with the pins it was wired from recorded. It is the pipeline without errors,
+/// routing included; a game, which runs no probe, validates it from its record;
+/// it builds what the chain form builds (one build key, so the engine does not
+/// rebuild a renderer for the swap); and the render graph editor loads it.
+#[test]
+fn the_shipped_deferred_is_wired_once_probed_and_a_game_reads_it() {
+    let _one = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
+    let project = open_project("# a test project\n");
+    if device().is_none() {
+        eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: wired shipped pipelines");
+        return;
+    }
+    // What the render graph editor waits for before it reads a graph.
+    let probed = pipelines::graph_node_registry();
+    assert!(probed.has_generated_pins(), "the probe ran");
+
+    let text = engine_fs::virtual_fs::read_to_string(&project.path().join(DEFERRED))
+        .expect("the plugin serves the file");
+    let wired = helio_graph_asset::GraphAsset::from_json(&text).unwrap();
+    assert!(!wired.pins.is_empty(), "the file records its pins");
+    assert!(!wired.sections.is_empty(), "laid out in sections");
+    let data_wires = wired
+        .connections
+        .iter()
+        .chain(wired.sections.iter().flat_map(|s| s.connections.iter()))
+        .filter(|c| c.from.pin != "out" || c.to.pin != "in")
+        .count();
+    assert!(
+        data_wires > 50,
+        "every pass wired to its inputs: {data_wires}"
+    );
+
+    let validation = helio_graph_asset::validate(&wired, &probed);
+    let errors: Vec<String> = validation.errors().map(|e| e.to_string()).collect();
+    assert!(errors.is_empty(), "{errors:#?}");
+    for warning in validation
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == helio_graph_asset::Severity::Warning)
+    {
+        eprintln!("DEFERRED_WARNING {warning}");
+    }
+
+    // A game: no probe, the file's record.
+    let game = unprobed_registry();
+    assert!(!game.has_generated_pins());
+    let in_game = helio_graph_asset::validate(&wired, &game);
+    let errors: Vec<String> = in_game.errors().map(|e| e.to_string()).collect();
+    assert!(
+        errors.is_empty(),
+        "a game validates the wired file: {errors:#?}"
+    );
+
+    // The chain form builds the same pipeline.
+    let chain = helio_presets::graphs::graph_asset(Preset::Deferred, &game);
+    assert!(chain.pins.is_empty());
+    assert_eq!(
+        helio_graph_asset::validate(&chain, &game).build_key(&game),
+        validation.build_key(&probed),
+        "the wired and the chain form build the same passes"
+    );
+
+    // The render graph editor loads it and would build what it saves.
+    let document =
+        render_bps_plugin::document::decode(&text, &probed).expect("the editor loads it");
+    let reloaded = document.as_ref().buildable_asset(&probed);
+    assert!(!helio_graph_asset::validate(&reloaded, &probed).has_errors());
+}
+
+/// A project makes its own pipeline from a shipped one: the shipped file is
+/// read-only, the render graph editor saves a copy into the project, the copy
+/// is edited (the lens flare switched off), selected for a level, and the
+/// engine builds the edited graph: the shipped passes without the flare.
+#[test]
+fn a_copy_of_the_shipped_deferred_is_the_projects_own_pipeline() {
+    let _one = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
+    let project = open_project("# a test project\n");
+    let Some((device, queue)) = device() else {
+        eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: a copy of the shipped pipeline");
+        return;
+    };
+    let registry = pipelines::graph_node_registry();
+    let shipped = project.path().join(DEFERRED);
+    let text = engine_fs::virtual_fs::read_to_string(&shipped).unwrap();
+
+    // The plugin's file cannot be written.
+    let refused = engine_fs::virtual_fs::write_file_atomically(&shipped, b"{}").unwrap_err();
+    assert!(engine_fs::virtual_fs::is_read_only(&refused), "{refused:#}");
+    assert_eq!(
+        engine_fs::virtual_fs::mount_of(&shipped).as_deref(),
+        Some("plugins/pulsar.default_pipelines")
+    );
+
+    // Opened in the editor and saved as a copy.
+    let document = render_bps_plugin::document::decode(&text, &registry).unwrap();
+    let copy = render_bps_plugin::document::save_copy_to_project(
+        &shipped,
+        document.as_ref().to_asset(&registry),
+    )
+    .expect("the copy is written");
+    assert_eq!(
+        copy,
+        project.path().join("render_graphs/Deferred.rendergraph")
+    );
+    assert_eq!(
+        engine_fs::virtual_fs::mount_of(&copy),
+        None,
+        "the project's own"
+    );
+    // A second copy gets a name of its own.
+    let second = render_bps_plugin::document::save_copy_to_project(
+        &shipped,
+        document.as_ref().to_asset(&registry),
+    )
+    .unwrap();
+    assert_eq!(
+        second,
+        project.path().join("render_graphs/Deferred2.rendergraph")
+    );
+    std::fs::remove_file(&second).unwrap();
+
+    // Edited: the lens flare off.
+    let mut asset =
+        helio_graph_asset::GraphAsset::from_json(&std::fs::read_to_string(&copy).unwrap()).unwrap();
+    let flare = asset
+        .nodes
+        .iter_mut()
+        .chain(asset.sections.iter_mut().flat_map(|s| s.nodes.iter_mut()))
+        .find(|node| node.kind == "helio.pass.lens_flare")
+        .expect("the shipped deferred has the lens flare");
+    flare
+        .params
+        .insert("enabled".into(), serde_json::Value::Bool(false));
+    engine_fs::virtual_fs::write_file_atomically(&copy, asset.to_json().as_bytes()).unwrap();
+
+    // Registered (the engine's watcher does this on the save; here directly),
+    // and offered beside the shipped ones.
+    let report = pipelines::refresh_project_pipelines(project.path());
+    let id = "render_graphs/Deferred.rendergraph";
+    assert!(report.registered.iter().any(|r| r == id), "{report:?}");
+    assert!(pipelines::list_pipelines().iter().any(|p| p.id == id));
+
+    // A level that picks it runs the edited graph.
+    assert!(matches!(
+        pipelines::pipeline_state(Some(id)),
+        pipelines::PipelineState::Assigned { .. }
+    ));
+    let edited = passes(
+        pipelines::create_pipeline(Some(id)).expect("registered"),
+        &device,
+        &queue,
+    );
+    let original = passes(
+        pipelines::create_pipeline(Some(DEFERRED)).expect("registered"),
+        &device,
+        &queue,
+    );
+    assert!(original.iter().any(|p| p == "LensFlare"), "{original:?}");
+    let without_flare: Vec<String> = original.into_iter().filter(|p| p != "LensFlare").collect();
+    assert_eq!(edited, without_flare);
 }

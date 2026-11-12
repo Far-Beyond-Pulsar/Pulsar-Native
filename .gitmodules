@@ -98,3 +98,6 @@
 [submodule "plugins/vendor/character"]
 	path = plugins/vendor/character
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Character
+[submodule "plugins/vendor/default_pipelines"]
+	path = plugins/vendor/default_pipelines
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_DefaultPipelines

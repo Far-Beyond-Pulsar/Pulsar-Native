@@ -82,7 +82,7 @@ pulsar_plugins::registration!(AssetLoaderRegistration);
 pub fn install_asset_loaders() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
-        for registration in inventory::iter::<AssetLoaderRegistration> {
+        for registration in pulsar_plugins::all_registered::<AssetLoaderRegistration>() {
             let (origin, load) = (registration.origin, registration.load);
             pulsar_scenedb::register_loader(registration.kind, move |source| {
                 if !pulsar_plugins::origin_enabled(origin) {

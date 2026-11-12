@@ -50,8 +50,8 @@ const PLANET_RADIUS: f64 = 6_371_000.0;
 const EYE_HEIGHT: f64 = 2.0;
 
 /// The pipeline a level that names none runs: Helio's old default id, which
-/// the render pipelines plugin's migration makes its deferred graph
-/// (`plugins/pulsar.render_pipelines/Deferred.rendergraph`, made for the open
+/// the default pipelines plugin's migration makes its deferred graph
+/// (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, made for the open
 /// project's plugins).
 fn shipped_pipeline() -> String {
     use engine_backend::subsystems::render::helio_renderer::pipelines;
@@ -580,7 +580,7 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
 
 #[test]
 fn a_played_voxel_world_renders_as_the_editor_shows_it() {
-    // A project, so the render pipelines plugin's folder is mounted and the
+    // A project, so the default pipelines plugin's folder is mounted and the
     // engine registers its graphs.
     let project = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("Pulsar.toml"), "# a test project\n").unwrap();

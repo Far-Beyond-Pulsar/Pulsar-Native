@@ -127,8 +127,8 @@ members = [
     "plugins/vendor/sky/feature",
     "plugins/vendor/sky/editor",
     "plugins/vendor/sky/examples",
-    # The shipped render pipelines (`pulsar.render_pipelines`): in-tree.
-    "plugins/vendor/render_pipelines",
+    # The shipped render pipelines (`pulsar.default_pipelines`, Plugin_DefaultPipelines).
+    "plugins/vendor/default_pipelines",
     # The meshes (phase B, batch 4): every mesh crate that left Helio (api,
     # the feature's batch, culling, drawers and virtual geometry, the VG
     # asset crates, asset import), the standalone hosts' components and
@@ -366,7 +366,7 @@ foliage_editor                     = { path = "plugins/vendor/foliage/editor" }
 gi_plugin                          = { path = "plugins/vendor/gi" }
 sky_component                      = { path = "plugins/vendor/sky/component" }
 sky_plugin                         = { path = "plugins/vendor/sky" }
-render_pipelines_plugin            = { path = "plugins/vendor/render_pipelines" }
+default_pipelines_plugin            = { path = "plugins/vendor/default_pipelines" }
 sky_editor                         = { path = "plugins/vendor/sky/editor" }
 meshes_component                   = { path = "plugins/vendor/meshes/component" }
 meshes_plugin                      = { path = "plugins/vendor/meshes" }

@@ -139,7 +139,7 @@ pub fn plugin_features() -> FeatureSet {
 /// so it is never listed.)
 pub fn disabled_feature_nodes() -> Vec<(String, &'static str)> {
     let mut absent = Vec::new();
-    for registration in inventory::iter::<RenderFeatureRegistration> {
+    for registration in pulsar_plugins::all_registered::<RenderFeatureRegistration>() {
         if pulsar_plugins::origin_enabled(registration.origin) {
             continue;
         }

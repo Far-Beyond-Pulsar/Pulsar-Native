@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use gpui::*;
-use graphy::{Connection, ConnectionType, GraphCommand, GraphDescription, NodeInstance, Position};
+use graphy::{GraphCommand, GraphDescription, Position};
 use graphy_gpui::canvas::{system_fonts, CanvasEvent, GraphCanvas};
-use graphy_gpui::{Action, GraphProfile as _, MenuItem, MenuTarget};
+use graphy_gpui::{Action, GraphProfile as _, MenuTarget};
 use graphy_render::Vec2;
 use plugin_editor_api::{DocumentId, History, SharedHistory, UndoEntry, UndoService};
 use serde_json::Value;
@@ -72,6 +72,10 @@ pub struct GraphTab {
 
 pub struct RenderGraphEditor {
     pub(crate) file: PathBuf,
+    /// The plugin folder serving `file` when the project cannot change it
+    /// (`plugins/pulsar.default_pipelines`): saving writes a copy into the
+    /// project instead ([`Self::save_copy`]).
+    pub(crate) read_only: Option<String>,
     pub(crate) load_error: Option<String>,
     pub(crate) loading: bool,
     format_version: u32,
@@ -140,8 +144,16 @@ impl RenderGraphEditor {
                 }
             },
         ));
+        let read_only = engine_fs::virtual_fs::mount_of(&file);
         let editor = Self {
             file: file.clone(),
+            status: read_only.as_ref().map(|mount| Status {
+                is_error: false,
+                text: format!(
+                    "Read-only: served by '{mount}'. Save a copy to the project to make your own pipeline."
+                ),
+            }),
+            read_only,
             load_error: None,
             loading: true,
             format_version: helio_graph_asset::FORMAT_VERSION,
@@ -152,7 +164,6 @@ impl RenderGraphEditor {
             active: 0,
             profile: None,
             section_names: Arc::new(RwLock::new(HashMap::new())),
-            status: None,
             undo_service: None,
             workspace: None,
             preview: None,
@@ -944,8 +955,14 @@ impl RenderGraphEditor {
         }
     }
 
-    /// Writes the document to its file. The preview follows what is saved.
+    /// Writes the document to its file. The preview follows what is saved. A
+    /// read-only file (a plugin's) is not written: it saves a copy into the
+    /// project instead ([`Self::save_copy`]).
     pub fn save(&mut self, cx: &mut Context<Self>) {
+        if self.read_only.is_some() {
+            self.save_copy(cx);
+            return;
+        }
         if let Some(error) = &self.load_error {
             self.status = Some(Status {
                 is_error: true,
@@ -985,6 +1002,48 @@ impl RenderGraphEditor {
             }
             Err(error) => {
                 tracing::error!("Render graph save failed: {error}");
+                self.status = Some(Status {
+                    is_error: true,
+                    text: error,
+                });
+            }
+        }
+        cx.notify();
+    }
+}
+
+impl RenderGraphEditor {
+    /// Writes the document into the open project as a graph of its own
+    /// ([`document::save_copy_to_project`]) and goes on editing the copy, as
+    /// a "Save As" does: from here on Save writes the project's file. Pick it
+    /// in World Settings to run it.
+    pub fn save_copy(&mut self, cx: &mut Context<Self>) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        let registry = model::registry();
+        let asset = self.with_doc(cx, |doc| doc.to_asset(registry));
+        match document::save_copy_to_project(&self.file, asset) {
+            Ok(path) => {
+                for tab in &self.tabs {
+                    plugin_editor_api::undo::lock(&tab.history).mark_saved();
+                }
+                let shown = engine_state::get_project_path()
+                    .and_then(|root| {
+                        path.strip_prefix(root)
+                            .ok()
+                            .map(|p| p.display().to_string())
+                    })
+                    .unwrap_or_else(|| path.display().to_string());
+                self.file = path;
+                self.read_only = None;
+                self.status = Some(Status {
+                    is_error: false,
+                    text: format!("Saved a copy: {shown}. Pick it in World Settings to run it."),
+                });
+            }
+            Err(error) => {
+                tracing::error!("Render graph copy failed: {error}");
                 self.status = Some(Status {
                     is_error: true,
                     text: error,

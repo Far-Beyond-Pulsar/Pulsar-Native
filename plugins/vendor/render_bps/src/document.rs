@@ -154,9 +154,11 @@ impl RenderDocument {
 }
 
 impl DocRef<'_> {
-    /// The asset to write: every node, reroutes and sections included.
+    /// The asset to write: every node, reroutes and sections included, and
+    /// the pins of its generated nodes ([`GraphAsset::cache_pins`]), so the
+    /// file validates and builds where nothing has probed (a game).
     pub fn to_asset(&self, registry: &NodeRegistry) -> GraphAsset {
-        GraphAsset {
+        let mut asset = GraphAsset {
             format_version: self.format_version,
             name: self.name.to_string(),
             description: self.description.to_string(),
@@ -177,7 +179,10 @@ impl DocRef<'_> {
                     zip_ties: zip_ties_out(section.graph),
                 })
                 .collect(),
-        }
+            pins: Default::default(),
+        };
+        asset.cache_pins(registry);
+        asset
     }
 
     /// The asset to check and build: as [`to_asset`](Self::to_asset), with the
@@ -663,4 +668,43 @@ pub fn decode(text: &str, registry: &NodeRegistry) -> Result<RenderDocument, Str
 /// The text of a document, as written to its file.
 pub fn encode(doc: &DocRef<'_>, registry: &NodeRegistry) -> String {
     doc.to_asset(registry).to_json()
+}
+
+/// The folder of the open project that copies of read-only graphs go to.
+pub const COPIES_FOLDER: &str = "render_graphs";
+
+/// Writes `asset`, opened from `source` (a file the project cannot change: a
+/// plugin's, such as the shipped pipelines), into the open project as its own
+/// graph: `<project>/render_graphs/<stem>.rendergraph`, numbered when that
+/// name is taken, and named after its file. World Settings offers it as a
+/// pipeline like any project graph. Returns the copy's path.
+pub fn save_copy_to_project(
+    source: &std::path::Path,
+    mut asset: GraphAsset,
+) -> Result<std::path::PathBuf, String> {
+    let project = engine_state::get_project_path()
+        .ok_or_else(|| "No project is open to save a copy into".to_string())?;
+    let folder = std::path::Path::new(&project).join(COPIES_FOLDER);
+    let stem = source.file_stem().map_or_else(
+        || "RenderGraph".to_string(),
+        |s| s.to_string_lossy().into_owned(),
+    );
+    let (name, path) = (1..)
+        .map(|n| {
+            let name = if n == 1 {
+                stem.clone()
+            } else {
+                format!("{stem}{n}")
+            };
+            let path = folder.join(format!("{name}.{}", helio_graph_asset::EXTENSION));
+            (name, path)
+        })
+        .find(|(_, path)| !engine_fs::virtual_fs::exists(path).unwrap_or(false))
+        .expect("an unbounded range has a free name");
+    asset.name = name;
+    engine_fs::virtual_fs::create_dir_all(&folder)
+        .map_err(|error| format!("Failed to create {}: {error:#}", folder.display()))?;
+    engine_fs::virtual_fs::write_file_atomically(&path, (asset.to_json() + "\n").as_bytes())
+        .map_err(|error| format!("Failed to write {}: {error:#}", path.display()))?;
+    Ok(path)
 }

@@ -26,8 +26,8 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const FRAMES: usize = 6;
 
 /// The pipeline a level that names none runs: Helio's old default id, which
-/// the render pipelines plugin's migration makes its deferred graph
-/// (`plugins/pulsar.render_pipelines/Deferred.rendergraph`, made for the open
+/// the default pipelines plugin's migration makes its deferred graph
+/// (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, made for the open
 /// project's plugins).
 fn shipped_pipeline() -> String {
     use engine_backend::subsystems::render::helio_renderer::pipelines;

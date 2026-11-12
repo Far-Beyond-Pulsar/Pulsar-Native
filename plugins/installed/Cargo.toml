@@ -29,7 +29,7 @@ physics_plugin = { workspace = true }
 portals_plugin = { workspace = true }
 post_plugin = { workspace = true }
 render_bps_plugin = { workspace = true, optional = true }
-render_pipelines_plugin = { workspace = true }
+default_pipelines_plugin = { workspace = true }
 sky_plugin = { workspace = true }
 splines_plugin = { workspace = true }
 sprites_plugin = { workspace = true }
@@ -67,7 +67,7 @@ editor = [
     "portals_plugin/editor",
     "post_plugin/editor",
     "dep:render_bps_plugin",
-    "render_pipelines_plugin/editor",
+    "default_pipelines_plugin/editor",
     "sky_plugin/editor",
     "splines_plugin/editor",
     "sprites_plugin/editor",
@@ -92,7 +92,7 @@ pulsar_scenedb = { workspace = true }
 helio = { workspace = true }
 helio-core = { workspace = true }
 helio-presets = { workspace = true }
-# The default render graph exporter (tests/export_default_graph.rs).
+# The shipped pipelines as the editor and a game read them (tests/default_pipelines.rs).
 helio-graph-asset = { workspace = true }
 engine_fs = { workspace = true }
 render_bps_plugin = { workspace = true }

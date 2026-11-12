@@ -1,8 +1,8 @@
 //! The render pipelines the engine can run.
 //!
 //! A pipeline is a `.rendergraph` asset in the project, a plugin's folder
-//! included: the shipped ones are the `pulsar.render_pipelines` plugin's files
-//! (`plugins/pulsar.render_pipelines/Deferred.rendergraph`, ...). One
+//! included: the shipped ones are the `pulsar.default_pipelines` plugin's files
+//! (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, ...). One
 //! process-wide [`RenderPipelineRegistry`] holds every asset compiled into a
 //! pipeline, by its project-relative path ([`refresh_project_pipelines`]), and
 //! the editors' private preview pipelines. The engine registers the open
@@ -438,7 +438,7 @@ pub fn start_graph_pin_probe() {
 /// second or more on a cold driver: every pass builds once); a graph wired to
 /// pins that are not known yet is registered when the probe finishes
 /// ([`start_graph_pin_probe`]).
-fn current_node_registry() -> helio_graph_asset::NodeRegistry {
+pub fn current_node_registry() -> helio_graph_asset::NodeRegistry {
     // `try_lock`: while the probe runs it holds the lock, and this must not wait.
     let probed = PROBE.try_lock().ok().and_then(|cached| {
         cached
@@ -516,16 +516,13 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
             report.failed.push((id, error.to_string()));
             continue;
         }
-        // A saved graph that did not change keeps its revision, so the
-        // renderers running it are not rebuilt because another graph saved.
-        let content = {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            asset.to_json().hash(&mut hasher);
-            hasher.finish()
-        };
-        let changed = content_hashes().lock().map_or(true, |mut hashes| {
-            hashes.insert(id.clone(), content) != Some(content)
+        // Renderers running a graph rebuild only when what it builds changed
+        // (its passes, their order or parameters): not because another graph
+        // saved, nor for a moved node, a comment or a wire that keeps the
+        // order (the shipped files' swap to their wired form).
+        let built = validation.build_key(&nodes).unwrap_or_default();
+        let changed = build_keys().lock().map_or(true, |mut keys| {
+            keys.insert(id.clone(), built) != Some(built)
         });
         let label = if asset.name.trim().is_empty() {
             relative
@@ -560,17 +557,18 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
     if let Ok(mut failures) = failures().lock() {
         *failures = failed_now;
     }
-    // A graph whose file is gone forgets its hash, so a new file of that path is new.
-    if let Ok(mut hashes) = content_hashes().lock() {
-        hashes.retain(|id, _| report.registered.contains(id));
+    // A graph whose file is gone forgets its key, so a new file of that path is new.
+    if let Ok(mut keys) = build_keys().lock() {
+        keys.retain(|id, _| report.registered.contains(id));
     }
     report
 }
 
-/// Hash of each registered project graph's text, to tell a saved change from a reload.
-fn content_hashes() -> &'static Mutex<HashMap<String, u64>> {
-    static HASHES: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
-    HASHES.get_or_init(Default::default)
+/// Each registered project graph's build key (`Validation::build_key`), to
+/// tell a change to what it builds from a reload or an edit of its layout.
+fn build_keys() -> &'static Mutex<HashMap<String, u64>> {
+    static KEYS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    KEYS.get_or_init(Default::default)
 }
 
 /// Forgets every project pipeline (a project closed or is reloading).
@@ -698,7 +696,7 @@ pub fn level_pipeline() -> Option<String> {
 }
 
 /// A plugin's rewrite of pipeline ids it replaced: a level that names `id`
-/// runs what `migrate` returns (the `pulsar.render_pipelines` plugin maps
+/// runs what `migrate` returns (the `pulsar.default_pipelines` plugin maps
 /// Helio's old built-in ids to its files). Applied when a level loads, in the
 /// editor and the game ([`migrated_render_pipeline`]).
 pub struct PipelineIdMigration {

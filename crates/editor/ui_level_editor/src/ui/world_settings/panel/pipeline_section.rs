@@ -1,7 +1,7 @@
 //! The level's render pipeline: an asset picked in World Settings, first
 //! section. The picker is the editor's shared [`AssetPicker`]: the project's
 //! `.rendergraph` assets, plus the ones plugins provide in their folders (the
-//! shipped pipelines are `plugins/pulsar.render_pipelines/*.rendergraph`).
+//! shipped pipelines are `plugins/pulsar.default_pipelines/*.rendergraph`).
 //! "None" is a valid choice, and the default of a new level: nothing runs,
 //! and the viewport says so.
 
