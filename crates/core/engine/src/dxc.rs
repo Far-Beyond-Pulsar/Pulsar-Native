@@ -66,11 +66,14 @@ fn fail(reason: &str) -> ! {
          ({DXC_TAG}, arm64) next to pulsar_engine.exe.",
     );
     eprintln!("{message}");
-    rfd::MessageDialog::new()
-        .set_level(rfd::MessageLevel::Error)
-        .set_title("Pulsar Engine")
-        .set_description(&message)
-        .show();
+    crate::prompts::notify(
+        "Pulsar Engine",
+        "Pulsar Engine needs Microsoft's DirectX Shader Compiler (DXC) on this PC and could not \
+         set it up.\n\nConnect to the internet and start Pulsar again, or copy dxcompiler.dll \
+         and dxil.dll next to pulsar_engine.exe.",
+        pulsar_dialog_protocol::Severity::Error,
+        Some(format!("{reason}\n\nDXC {DXC_TAG}, arm64")),
+    );
     std::process::exit(1);
 }
 
@@ -105,19 +108,22 @@ fn ensure() -> Result<PathBuf> {
 
 /// Ask before downloading anything. One time: afterwards the cache is used.
 fn confirm_download() -> bool {
-    rfd::MessageDialog::new()
-        .set_level(rfd::MessageLevel::Info)
-        .set_title("Pulsar Engine: one-time setup")
-        .set_description(format!(
+    // Declining means Pulsar cannot run here, so the buttons say so; with no
+    // way to ask, nothing is downloaded.
+    crate::prompts::confirm(
+        "Pulsar Engine: one-time setup",
+        format!(
             "Pulsar needs Microsoft's DirectX Shader Compiler ({DXC_TAG}) to run on this PC.\n\n\
              It will be downloaded once (about {} MB) from github.com/microsoft/DirectXShaderCompiler, \
              checked against its published SHA-256 and kept in your local app data folder.\n\n\
              Download it now?",
             DXC_ZIP_BYTES / 1_000_000
-        ))
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show()
-        == rfd::MessageDialogResult::Yes
+        ),
+        pulsar_dialog_protocol::Severity::Question,
+        "Download",
+        "Quit",
+        false,
+    )
 }
 
 // std::fs allowed: the Windows-on-ARM DXC install is the engine's own per-user tool cache, outside any project

@@ -19,6 +19,17 @@ struct GpuPolicyProbe {
 const CONTINUE: &str = "continue";
 const QUIT: &str = "quit";
 
+/// Whether an adapter counts as a discrete GPU for the policy.
+///
+/// Drivers say `DiscreteGpu` for a card on a PCIe slot. NVIDIA's RTX Spark
+/// systems are a full Blackwell GPU sharing the CPU's memory, so their driver
+/// reports `IntegratedGpu` (and a duplicate `Other` entry on some APIs), yet
+/// they are discrete GPUs and the machine's high-performance adapter. Any
+/// adapter whose name contains "RTX Spark" counts.
+fn counts_as_discrete(device_type: DeviceType, name: &str) -> bool {
+    device_type == DeviceType::DiscreteGpu || name.to_lowercase().contains("rtx spark")
+}
+
 fn device_kind(device_type: DeviceType) -> &'static str {
     match device_type {
         DeviceType::DiscreteGpu => "discrete GPU",
@@ -67,7 +78,7 @@ fn probe_gpu_policy() -> GpuPolicyProbe {
         if !found.contains(&described) {
             found.push(described);
         }
-        if info.device_type == DeviceType::DiscreteGpu {
+        if counts_as_discrete(info.device_type, &info.name) {
             has_discrete_gpu = true;
             if selected_gpu_name.is_none() {
                 selected_gpu_name = Some(info.name);
@@ -211,8 +222,27 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
 
 #[cfg(test)]
 mod tests {
-    use super::{decide, prompt_request, CONTINUE, QUIT};
+    use super::{counts_as_discrete, decide, prompt_request, CONTINUE, QUIT};
     use pulsar_dialog_protocol::{DialogResponse, Outcome};
+    use wgpu::DeviceType;
+
+    #[test]
+    fn any_adapter_named_rtx_spark_counts_as_discrete_however_it_is_reported() {
+        let name = "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)";
+        assert!(counts_as_discrete(DeviceType::IntegratedGpu, name));
+        assert!(counts_as_discrete(DeviceType::Other, &format!("{name}/PCIe")));
+        assert!(counts_as_discrete(DeviceType::Other, "nvidia rtx spark"));
+    }
+
+    #[test]
+    fn ordinary_discrete_cards_still_count_and_other_integrated_gpus_do_not() {
+        assert!(counts_as_discrete(DeviceType::DiscreteGpu, "AMD Radeon RX"));
+        assert!(!counts_as_discrete(DeviceType::IntegratedGpu, "AMD Radeon Graphics"));
+        assert!(!counts_as_discrete(DeviceType::IntegratedGpu, "Qualcomm Adreno X1"));
+        assert!(!counts_as_discrete(DeviceType::Cpu, "Microsoft Basic Render Driver"));
+        // The name has to say RTX Spark: "Spark" alone is not enough.
+        assert!(!counts_as_discrete(DeviceType::IntegratedGpu, "Spark Graphics"));
+    }
 
     #[test]
     fn continue_carries_on_and_remembers_only_when_the_box_is_ticked() {

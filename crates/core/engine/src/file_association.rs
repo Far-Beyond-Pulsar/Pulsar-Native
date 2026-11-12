@@ -8,6 +8,7 @@
 
 use crate::consts;
 use file_association_manager::{AssociationError, AssociationRequest, FileAssociationManager};
+use pulsar_dialog_protocol::Severity;
 
 pub const PROJECT_ASSOC_EXTENSION: &str = "Pulsar.toml";
 pub const PROJECT_ASSOC_MIME: &str = "application/x-pulsar-project";
@@ -39,12 +40,12 @@ pub fn maybe_prompt_project_file_association() {
                 "Pulsar could not check or set project file associations because a required tool is missing.\n\nInstall the required association tool and relaunch Pulsar."
             };
 
-            let _ = rfd::MessageDialog::new()
-                .set_title("Pulsar Project Association")
-                .set_description(message)
-                .set_level(rfd::MessageLevel::Warning)
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
+            crate::prompts::notify(
+                "Pulsar Project Association",
+                message,
+                Severity::Warning,
+                None,
+            );
             return;
         }
         Err(err) => {
@@ -59,14 +60,12 @@ pub fn maybe_prompt_project_file_association() {
             tracing::debug!("No file association request is available for this platform");
             #[cfg(target_os = "macos")]
             {
-                let _ = rfd::MessageDialog::new()
-                    .set_title("Pulsar Project Association")
-                    .set_description(
-                        "Pulsar could not determine a valid TOML UTI on this macOS installation, so association was skipped.",
-                    )
-                    .set_level(rfd::MessageLevel::Warning)
-                    .set_buttons(rfd::MessageButtons::Ok)
-                    .show();
+                crate::prompts::notify(
+                    "Pulsar Project Association",
+                    "Pulsar could not determine a valid TOML UTI on this macOS installation, so association was skipped.",
+                    Severity::Warning,
+                    None,
+                );
             }
             return;
         }
@@ -88,18 +87,21 @@ pub fn maybe_prompt_project_file_association() {
         return;
     }
 
-    let should_associate = rfd::MessageDialog::new()
-        .set_title("Associate Pulsar Project Files")
-        .set_description(format!(
+    // A convenience, not a requirement: with no way to ask, leave it alone.
+    let should_associate = crate::prompts::confirm(
+        "Associate Pulsar Project Files",
+        format!(
             "Pulsar can associate project descriptor files ({}) with this running engine build (v{}).\n\nOn macOS this is applied via the TOML UTI mapping.\n\nAssociate now?",
             PROJECT_ASSOC_EXTENSION,
             consts::ENGINE_VERSION,
-        ))
-        .set_level(rfd::MessageLevel::Info)
-        .set_buttons(rfd::MessageButtons::YesNo)
-        .show();
+        ),
+        Severity::Question,
+        "Associate",
+        "Not now",
+        false,
+    );
 
-    if !matches!(should_associate, rfd::MessageDialogResult::Yes) {
+    if !should_associate {
         tracing::debug!("User declined Pulsar project file association prompt");
         return;
     }
@@ -107,26 +109,21 @@ pub fn maybe_prompt_project_file_association() {
     match manager.set(request) {
         Ok(()) => {
             tracing::info!("Project descriptor file association updated successfully");
-            let _ = rfd::MessageDialog::new()
-                .set_title("Pulsar Project Association")
-                .set_description(
-                    "Pulsar project descriptor association was updated for this engine build.",
-                )
-                .set_level(rfd::MessageLevel::Info)
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
+            crate::prompts::notify(
+                "Pulsar Project Association",
+                "Pulsar project descriptor association was updated for this engine build.",
+                Severity::Info,
+                None,
+            );
         }
         Err(err) => {
             tracing::warn!("Failed to update project file association: {}", err);
-            let _ = rfd::MessageDialog::new()
-                .set_title("Pulsar Project Association")
-                .set_description(format!(
-                    "Pulsar could not update file associations automatically.\n\n{}",
-                    err
-                ))
-                .set_level(rfd::MessageLevel::Warning)
-                .set_buttons(rfd::MessageButtons::Ok)
-                .show();
+            crate::prompts::notify(
+                "Pulsar Project Association",
+                "Pulsar could not update file associations automatically.",
+                Severity::Warning,
+                Some(err.to_string()),
+            );
         }
     }
 }
