@@ -1,0 +1,32 @@
+[package]
+name = "render_pipelines_plugin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Render Pipelines (`pulsar.render_pipelines`): the shipped render pipelines as .rendergraph assets in the plugin's folder, made from Helio's presets for the enabled plugins"
+
+[dependencies]
+# The plugin gate and the builder its registrations go through.
+pulsar_plugins = { workspace = true }
+# The plugin's folder (`plugins/pulsar.render_pipelines/`).
+engine_fs = { workspace = true }
+# The engine's render seams: the enabled plugins' features (the nodes the
+# graphs are made of) and the pipeline-id migration.
+engine_backend = { path = "../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+# The presets the files are made from, and the graph asset format.
+helio-presets = { workspace = true }
+helio-graph-asset = { workspace = true }
+helio-frame-api = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+pollster = "=0.4.0"
+helio = { workspace = true }
+helio-core = { workspace = true }
+wgpu = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

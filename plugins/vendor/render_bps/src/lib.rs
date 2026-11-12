@@ -42,16 +42,13 @@ const FILE_TYPE: &str = "rendergraph";
 const EDITOR: &str = "render-graph-editor";
 
 /// Starts learning the pins of Helio's nodes from their passes, once, in the
-/// background, on the editor's own device when there is one (so no second device
-/// is made), so they are ready by the time a graph is opened.
-fn start_pin_probe(window: Option<&Window>) {
+/// background, on the engine's device (the window's: the render runtimes'
+/// `RenderRuntimes::device`, so no second device is made), so they are ready by
+/// the time a graph is opened.
+fn start_pin_probe() {
     static START: std::sync::Once = std::sync::Once::new();
     START.call_once(|| {
-        use engine_backend::subsystems::render::helio_renderer::pipelines;
-        if let Some((device, queue)) = window.and_then(Window::gpu_device_and_queue) {
-            pipelines::offer_probe_device(device, queue);
-        }
-        pipelines::start_graph_pin_probe();
+        engine_backend::subsystems::render::helio_renderer::pipelines::start_graph_pin_probe();
     });
 }
 
@@ -61,7 +58,7 @@ pub(crate) fn open_editor(
     window: &mut Window,
     cx: &mut App,
 ) -> Entity<editor::RenderGraphEditor> {
-    start_pin_probe(Some(&*window));
+    start_pin_probe();
     cx.new(|cx| editor::RenderGraphEditor::open(file_path, window, cx))
 }
 
@@ -122,7 +119,7 @@ impl EditorPlugin for RenderBpsPlugin {
     }
 
     fn on_load(&mut self) {
-        start_pin_probe(None);
+        start_pin_probe();
         log::info!("Render Graph Editor plugin loaded");
     }
 }

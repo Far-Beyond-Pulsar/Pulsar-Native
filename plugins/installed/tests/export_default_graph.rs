@@ -4,10 +4,10 @@
 //! It builds the node registry as the editor does (`graph_node_registry`: the
 //! core nodes, Helio's features and every installed plugin's nodes, with the
 //! pins a probe found on a real device), makes the wired, sectioned, laid-out
-//! default deferred graph from it (`deferred_graph_asset_for`), validates it
+//! default deferred graph from it (`deferred_graph_asset`), validates it
 //! (routing included; any error fails the export, warnings are printed),
 //! compiles it on the GPU and checks its pass list against the
-//! `helio.deferred` preset's, writes it through `engine_fs`, then reads the
+//! deferred preset's, writes it through `engine_fs`, then reads the
 //! file back through the render graph editor's loader and checks it again.
 //!
 //! Ignored: it writes a file. Re-run it whenever a plugin adds nodes:
@@ -17,9 +17,10 @@
 //!     --test export_default_graph -- --ignored --nocapture
 //! ```
 //!
-//! `PULSAR_EXPORT_NAME` (default `DefaultRenderGraph`) names the file and
-//! `PULSAR_EXPORT_AA` (`fxaa`, the default, or `tsr`) picks the last stage of
-//! the scene-linear chain, as the preset does for the project's config.
+//! `PULSAR_EXPORT_NAME` (default `DefaultRenderGraph`) names the file. The graph's
+//! anti-aliasing node follows the project's TSR setting; `PULSAR_EXPORT_AA`
+//! (`fxaa`, the default, or `tsr`) picks the config it is compiled and checked
+//! with.
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -77,10 +78,12 @@ fn buffer(device: &wgpu::Device, label: &str, size: u64) -> wgpu::Buffer {
 
 /// Every node of the asset, main graph and sections.
 fn all_nodes(asset: &GraphAsset) -> impl Iterator<Item = &helio_graph_asset::NodeInstance> {
-    asset
-        .nodes
-        .iter()
-        .chain(asset.sections.iter().flat_map(|section| section.nodes.iter()))
+    asset.nodes.iter().chain(
+        asset
+            .sections
+            .iter()
+            .flat_map(|section| section.nodes.iter()),
+    )
 }
 
 /// The pass names a graph builds, in order.
@@ -124,13 +127,12 @@ fn export_the_default_render_graph() {
         config = config.with_tsr_quality(helio::TsrQuality::Quality);
     }
 
-    // The graph, wired, sectioned and laid out.
-    let mut asset = helio_presets::graphs::deferred_graph_asset_for(&registry, &config);
+    // The graph, wired, sectioned and laid out. Its anti-aliasing node
+    // follows the project's TSR setting; `PULSAR_EXPORT_AA` picks the config
+    // the export is compiled and checked with.
+    let mut asset = helio_presets::graphs::deferred_graph_asset(&registry);
     asset.name = "Default Render Graph".into();
-    asset.description = format!(
-        "The default deferred pipeline: every pass of the engine's deferred preset and of the installed plugins, wired and sectioned ({}).",
-        if tsr { "TSR" } else { "FXAA" }
-    );
+    asset.description = "The default deferred pipeline: every pass of the engine's deferred preset and of the installed plugins, wired and sectioned.".into();
 
     // Validate: routing included. Errors fail the export; warnings are listed.
     let validation = helio_graph_asset::validate(&asset, &registry);
@@ -188,7 +190,7 @@ fn export_the_default_render_graph() {
     );
     assert_eq!(
         compiled, preset,
-        "the default graph and the helio.deferred preset build different pass lists"
+        "the default graph and the deferred preset build different pass lists"
     );
 
     // Write it, then read it back as the render graph editor does.

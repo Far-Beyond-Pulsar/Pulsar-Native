@@ -29,7 +29,6 @@ plugins/vendor/meshes/component/src/virtual_geometry_host.rs | legacy: raw threa
 plugins/vendor/meshes/vg/stream/src/proxy.rs | legacy: raw thread; move to spawn_thread or spawn_service
 plugins/vendor/meshes/web-demos/src/bin/web.rs | legacy: raw thread; move to spawn_thread or spawn_service
 plugins/vendor/physics_plugin/src/runtime.rs | legacy: raw thread; move to spawn_thread or spawn_service
-plugins/vendor/render_bps/src/preview.rs | legacy: raw thread; move to spawn_thread or spawn_service
 plugins/vendor/skm_editor/editor/src/anim_editors/pose_db_build/tests.rs | legacy: raw thread; move to spawn_thread or spawn_service
 plugins/vendor/sky/feature/src/sky_texture.rs | legacy: raw thread; move to spawn_thread or spawn_service
 plugins/vendor/voxel/component/src/runtime.rs | legacy: raw thread; move to spawn_thread or spawn_service

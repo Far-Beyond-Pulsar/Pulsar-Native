@@ -45,6 +45,14 @@ impl ViewportPanelWrapper {
         }
     }
 
+    /// The level editor's tab was shown or hidden (a split-off viewport is
+    /// inside it).
+    pub(crate) fn set_editor_tab_active(&mut self, active: bool, cx: &mut App) {
+        self.viewport_panel
+            .helio_viewport()
+            .update(cx, |viewport, _| viewport.set_tab_active(true, active));
+    }
+
     /// Mark this as a viewport added by a split.
     pub(crate) fn split_off(mut self) -> Self {
         self.split_off = true;
@@ -118,6 +126,12 @@ impl Panel for ViewportPanelWrapper {
         }
         .to_string()
         .into_any_element()
+    }
+
+    fn set_active(&mut self, active: bool, _window: &mut Window, cx: &mut App) {
+        self.viewport_panel
+            .helio_viewport()
+            .update(cx, |viewport, _| viewport.set_tab_active(false, active));
     }
 
     fn dump(&self, _cx: &App) -> PanelState {

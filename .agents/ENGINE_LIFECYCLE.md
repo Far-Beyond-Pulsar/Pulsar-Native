@@ -116,7 +116,6 @@ pub trait Subsystem: Send + Sync + 'static {
 pub struct EngineContext {
     pub windows: Arc<DashMap<WindowId, WindowContext>>,
     pub multiuser: ResourceHandle<Option<MultiuserContext>>,
-    pub renderers: TypedRendererRegistry,
     pub store: StateStore,                     // TypeId-keyed resources
     pub window_state: KeyedStore<WindowId>,    // Per-window resources
 }

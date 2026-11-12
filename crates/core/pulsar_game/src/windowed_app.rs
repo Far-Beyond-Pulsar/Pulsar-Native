@@ -38,6 +38,9 @@ struct GameWindow {
     queue: Arc<wgpu::Queue>,
     /// The scene's renderer, as the editor viewport builds it.
     renderer: SceneRenderer,
+    /// The renderer as an engine runtime the window's event loop drives: listed
+    /// with its frame time, and a paused one draws nothing.
+    runtime: engine_backend::services::render_runtimes::DrivenRuntime,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
     /// Whether the OS says this window has input focus.
@@ -122,6 +125,20 @@ impl GameWindow {
             surface_format,
             SceneRendererOptions::game(DeviceOwner::Renderer, editor_mode),
         );
+        // The game's device is the engine's: GPU work with no window of its own
+        // (the render graph pin probe) uses it, not a second one.
+        engine_backend::services::render_runtimes::global()
+            .offer_device((*device).clone(), (*queue).clone());
+        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::new(
+            engine_backend::services::render_runtimes::RuntimeDescription {
+                label: format!("Game window {}", handle.id()),
+                origin: pulsar_plugins::engine_origin!(),
+                scene_label: "game".into(),
+                priority: 10,
+                mode: engine_backend::services::render_runtimes::UpdateMode::Always,
+            },
+        );
+        runtime.set_size(surface_config.width, surface_config.height);
 
         Self {
             handle,
@@ -131,6 +148,7 @@ impl GameWindow {
             device,
             queue,
             renderer,
+            runtime,
             freecam: FreeCam::default(),
             focused: true,
             next_redraw: Instant::now(),
@@ -146,6 +164,7 @@ impl GameWindow {
         self.surface_config.height = height;
         self.surface.configure(device, &self.surface_config);
         self.renderer.renderer.set_render_size(width, height);
+        self.runtime.set_size(width, height);
     }
 
     fn acquire_after_surface_recovery(&self) -> Option<wgpu::SurfaceTexture> {
@@ -168,6 +187,11 @@ impl GameWindow {
     /// `ecs_camera` is whatever the ECS thread last wrote via
     /// `WindowManager::set_camera`.  If `None`, the built-in freecam is used.
     fn render(&mut self, ecs_camera: Option<RenderCamera>) {
+        // A paused runtime draws nothing; the frame's logs are its task's.
+        let Some(_frame) = self.runtime.begin_frame() else {
+            return;
+        };
+        let _span = self.runtime.task().span().entered();
         let cam = ecs_camera.unwrap_or_else(|| {
             // The freecam stands on the ground's local vertical and
             // flies faster the higher it is, as the editor camera does.
@@ -657,8 +681,15 @@ impl PulsarApp {
 
     fn spawn_ecs_thread(&mut self) {
         if let Some(mut tick_loop) = self.tick_loop.take() {
-            editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new("pulsar-ecs", editor_task_queue::ThreadRole::Service).owner("pulsar_game"), move || tick_loop.run_blocking())
-                .expect("Failed to spawn ECS tick thread");
+            editor_task_queue::spawn_thread(
+                editor_task_queue::ThreadSpec::new(
+                    "pulsar-ecs",
+                    editor_task_queue::ThreadRole::Service,
+                )
+                .owner("pulsar_game"),
+                move || tick_loop.run_blocking(),
+            )
+            .expect("Failed to spawn ECS tick thread");
             tracing::info!("ECS tick thread started");
         }
     }

@@ -35,7 +35,7 @@ impl PulsarApp {
         Self::new_internal(Some(project_path), None, None, true, window, cx)
     }
 
-    /// Create a new PulsarApp with window_id for GPU renderer registration
+    /// Create a new PulsarApp for the window `window_id`
     pub fn new_with_project_and_window_id(
         project_path: PathBuf,
         window_id: u64,
@@ -108,8 +108,7 @@ impl PulsarApp {
         let weak_dock = dock_area.downgrade();
         publish_project_path(project_path.as_deref());
 
-        let center_dock_item =
-            build_center_dock(create_level_editor, window_id, &weak_dock, window, cx);
+        let center_dock_item = build_center_dock(create_level_editor, &weak_dock, window, cx);
         let center_tabs = persistent_center_tabs(&center_dock_item, cx);
         install_docks(&dock_area, center_dock_item, &center_tabs, window, cx);
 

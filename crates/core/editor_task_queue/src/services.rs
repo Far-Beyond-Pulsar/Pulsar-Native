@@ -145,6 +145,57 @@ impl TaskQueue {
     }
 }
 
+/// A persistent task with no thread of its own: something that lives as long
+/// as what it serves while another loop drives it (a render runtime, which
+/// the runtimes' scheduler draws). Its owner beats, names phases, logs (enter
+/// [`TaskContext::span`]) and publishes details through
+/// [`context`](Self::context); dropping it ends the task.
+pub struct PersistentTask {
+    ctx: TaskContext,
+}
+
+impl PersistentTask {
+    pub fn context(&self) -> &TaskContext {
+        &self.ctx
+    }
+}
+
+impl Drop for PersistentTask {
+    fn drop(&mut self) {
+        self.ctx
+            .inner
+            .finish(&self.ctx.shared, crate::Outcome::Succeeded);
+    }
+}
+
+impl TaskQueue {
+    /// A persistent task driven by its owner's loop rather than a thread of
+    /// its own (see [`PersistentTask`]). `heartbeat` is the longest silence
+    /// before it is reported stalled while not idle; `None` turns the check
+    /// off.
+    #[track_caller]
+    pub fn persistent_task(
+        &self,
+        description: TaskDescription,
+        heartbeat: Option<Duration>,
+    ) -> PersistentTask {
+        let origin = Location::caller();
+        let shared = self
+            .inner
+            .create(&description, TaskModel::Persistent, false, origin);
+        shared.beat_timeout_ms.store(
+            heartbeat.map_or(0, |every| every.as_millis() as u64),
+            std::sync::atomic::Ordering::Release,
+        );
+        let ctx = TaskContext {
+            inner: Arc::clone(&self.inner),
+            shared,
+        };
+        ctx.inner.mark_started(&ctx.shared);
+        PersistentTask { ctx }
+    }
+}
+
 /// [`TaskQueue::spawn_service`] on the global queue.
 #[track_caller]
 pub fn spawn_service<T: TaskOutcome + Send + 'static>(

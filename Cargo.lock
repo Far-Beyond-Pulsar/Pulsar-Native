@@ -7527,6 +7527,7 @@ dependencies = [
  "pulsar_traits",
  "pulsar_world_registry",
  "render_bps_plugin",
+ "render_pipelines_plugin",
  "script_editor_plugin",
  "serde_json",
  "skeletal_animation_plugin",
@@ -12417,6 +12418,7 @@ dependencies = [
  "pulsar_core",
  "pulsar_events",
  "pulsar_pie_abi",
+ "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
@@ -13364,6 +13366,26 @@ dependencies = [
  "ui",
  "ui_helio_viewport",
  "uuid",
+ "wgpu",
+]
+
+[[package]]
+name = "render_pipelines_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_backend",
+ "engine_fs",
+ "helio",
+ "helio-core",
+ "helio-frame-api",
+ "helio-graph-asset",
+ "helio-presets",
+ "parking_lot",
+ "pollster 0.4.0",
+ "pulsar_plugins",
+ "tempfile",
+ "tracing",
  "wgpu",
 ]
 
@@ -17591,8 +17613,11 @@ dependencies = [
 name = "ui_helio_viewport"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
  "gpui-ce",
+ "profiling 0.1.0",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]

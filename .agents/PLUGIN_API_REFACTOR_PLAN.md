@@ -1246,3 +1246,78 @@ from the roots' builds.
 **Where this meets #1601/#1602.** A class requirement and a trait use name classes and traits by id,
 never asset paths, so neither depends on the resolver; a plugin folder's files referenced from project
 assets still wait on #1601's stable ids (section 13).
+
+## 15. p23 as built: the black viewport, the shipped pipelines as a plugin, engine-owned render runtimes
+
+Branch `rewrite/p23-render-runtimes` in Pulsar-Native and Helio, cut from main after Tristan's
+render-graph work (541d40a9b, e78e741af). Docs: `.agents/RENDER_RUNTIMES.md` (new),
+`RENDER_GRAPH.md`, `EDITOR_TASKS.md`; Helio `docs/architecture/plugin-migration.md` ("As built, p23").
+
+**The black editor viewport (cause, from main's log on a fresh `voxel_planet` copy).** The editor
+runs wgpui's device on D3D12; Helio's status screen (the renderer's graph while no pipeline is
+assigned, which is how every viewport starts, before its level loads) draws its text with the debug
+overlay pass, whose fragment shader ended in `discard;` with no return. DXC rejects a non-void HLSL
+function whose end is reachable, so the editor's first renderer build panicked ("Initialize Helio
+renderer" failed), the viewport's render loop returned for good, and every viewport stayed black.
+Vulkan (Helio's examples, the headless tests) accepts the shader, which is why they drew. Fixed at
+its owner (the shader returns after `discard`), and the copied render loop that turned one failed
+build into a permanent black viewport is gone (the runtime is `Failed` with its reason in the
+Tasks window, and a new output builds it again). Test: `installed_plugins`
+`render_pipelines::the_editor_renderer_builds_and_draws_on_every_backend` (Vulkan and D3D12).
+
+Found on the way, also the black screen's neighbours:
+- **The pin probe always failed** ("the final output is never written"): routing validation ran on
+  the probe's graph, which is a set of nodes with no output. The probe now checks structure only
+  (`helio-graph-asset` `Purpose::Probe`).
+- **Probed pins dropped the flow pins** of a pass node that built nothing under the probe's config
+  (SSR off, GI mesh rays), so a chain graph naming it stopped validating once pins arrived.
+- **Project render graphs registered with absolute ids** (`find_by_extension` returns full paths),
+  so a level's project-relative id never matched. Ids are project-relative now.
+- **Project render graphs registered only when the World Settings panel existed.** The engine
+  registers them itself (`pipelines::ensure_project_pipelines`, before a renderer asks) and keeps them
+  current ("Render pipeline assets" service); registering never waits for the pin probe, and the
+  probe's completion registers wired graphs again.
+
+**The shipped pipelines are a plugin (`pulsar.render_pipelines`, in-tree at
+`plugins/vendor/render_pipelines`).** Its `FileProvider` serves `plugins/pulsar.render_pipelines/`
+(`Deferred`, `DeferredFxaa`, `Forward`, and each lighting model's pipeline, the lights' `HLFS` and
+`HLFS_FXAA`), each made with `helio_presets::graphs::graph_asset` over the enabled plugins' nodes, so a
+project that disables a kind gets graphs without its nodes instead of graphs that no longer validate;
+the folder is made again when the plugin set changes. Its `PipelineIdMigration` rewrites Helio's old
+ids (`helio.deferred`, `helio.fxaa`, `helio.forward_*`, `helio.deferred_graph`, model pipeline ids)
+when a level loads, in the editor and the game; a legacy level that named none migrates to
+`helio.deferred` and then to `Deferred.rendergraph`. Requires: none (a kind's nodes join by placement;
+an `api` requirement would demand a Cargo link the plugin does not have). Helio lost
+`helio_presets::pipelines`, the golden files, `RenderPipelineRegistry`'s default and `PipelineOrigin`.
+Presets are config-free (the anti-aliasing node follows the project's TSR setting), so one file is the
+pipeline for every project setting. The picker names a plugin-folder pipeline's provider from its path.
+
+**Engine-owned render runtimes (`engine_backend::services::render_runtimes`).** One scheduler
+service draws every runtime in priority order, each at its output's pace, never waiting on a consumer;
+first builds run as pooled tasks, one at a time. States: starting, running, paused, stopped (GPU
+resources freed, description kept), lost, failed. Update modes: always, when visible, on demand,
+disabled. Outputs: `ui_helio_viewport::SurfaceTarget` (wgpui's triple buffer) and `OffscreenTarget`
+(async readback). Origin-tagged: a disabled plugin's runtimes are destroyed. Each runtime is a
+threadless persistent task (`editor_task_queue::PersistentTask`) with details the Tasks window's new
+**Renderers** view lists. Moved onto it: the level editor's viewport and every split viewport
+(visibility from the level editor's tab and each viewport's dock tab: hidden tabs draw nothing), the
+render graph editor's preview, PIE and the standalone game's windows (host-driven `DrivenRuntime`s:
+listed, pausable). The render-graph pin probe runs on the engine's device
+(`RenderRuntimes::device`), not a second one.
+
+**Deleted.** `ui_level_editor` `render_thread.rs` (the copied loop), `init_queue.rs` (its build lane),
+`frame_pacer.rs`, the dead `record_frame_diagnostics`; `ui_helio_viewport::FramePacer` and
+`wait_for_frame_consumed` with their tests; the preview's raw thread and its
+`raw-threads-allowed.txt` line; `engine_state::TypedRendererRegistry` (`renderers_typed.rs`,
+`EngineContext::renderers`), `LevelEditorPanel::new_with_window_id`; `pipelines::offer_probe_device`
+and the probe's headless device; Helio's built-in pipeline registrations, golden graphs,
+`deferred_graph_asset_for`, `template_config(_tsr)`.
+
+**Not moved, with the reason.** The materials graph editor's preview and the SKM editor's viewport
+draw editor-specific content (a graph's preview program over a backdrop; bones, x-ray ghosts,
+onion skins, ribbons, gizmos) with their own wgpu code on the window's device. Making them Helio
+runtimes on private scenes needs those overlays as Helio content (debug-draw or plugin passes) and a
+transient material from an unsaved graph; each is a port of its own, proposed as a follow-up session.
+Matter's canvas is a 2D painting surface (grid and paint layers), not a scene: it stays a canvas
+renderer. `helio-snapshot`'s device-creating `render_snapshot` serves standalone tools only (the
+editor's thumbnails use its CPU `render_preview`), so it is a host of its own, not an engine renderer.

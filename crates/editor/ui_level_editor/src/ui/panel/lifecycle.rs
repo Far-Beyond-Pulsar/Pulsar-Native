@@ -2,13 +2,7 @@ use super::*;
 
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let panel = Self::new_internal(None, window, cx);
-        Self::spawn_level_load(window, cx);
-        panel
-    }
-
-    pub fn new_with_window_id(window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let panel = Self::new_internal(Some(window_id), window, cx);
+        let panel = Self::new_internal(window, cx);
         Self::spawn_level_load(window, cx);
         panel
     }
@@ -104,7 +98,7 @@ impl LevelEditorPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Result<Self, String> {
-        let panel = Self::new_internal(None, window, cx);
+        let panel = Self::new_internal(window, cx);
         // Not now: the caller may still have synchronous construction to do
         // before the window paints, and a load that starts (and can finish)
         // before the first frame never shows its progress bar.
@@ -246,11 +240,7 @@ impl LevelEditorPanel {
         .detach();
     }
 
-    pub(super) fn new_internal(
-        window_id: Option<u64>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub(super) fn new_internal(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let _horizontal_resizable_state = ResizableState::new(cx);
         let _vertical_resizable_state = ResizableState::new(cx);
 
@@ -270,21 +260,6 @@ impl LevelEditorPanel {
         let renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
         let gpu_engine = Arc::new(Mutex::new(renderer_builder.build()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
-
-        // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
-        // The render loop will associate it with the correct window when it first renders
-        if let Some(engine_context) = engine_state::EngineContext::global() {
-            if let Some(wid) = window_id {
-                // We have the actual window ID - register directly!
-                let handle = engine_state::TypedRendererHandle::helio(wid, gpu_engine.clone());
-                engine_context.renderers.register(wid, handle);
-            } else {
-                // Fallback: Use a sentinel value (0) to mark this renderer as pending association with a window
-                // The main render loop will detect windows with viewports and claim this renderer
-                let handle = engine_state::TypedRendererHandle::helio(0, gpu_engine.clone());
-                engine_context.renderers.register(0, handle);
-            }
-        }
 
         // The scene and HelioRenderer share the same store `Arc`, so every
         // add/remove/update made through the scene is visible to the
@@ -307,6 +282,8 @@ impl LevelEditorPanel {
                 gpu_engine.clone(),
                 shared_state.clone(),
                 debug_replace_with_yellow,
+                "Level viewport",
+                10,
                 cx,
             )
         });

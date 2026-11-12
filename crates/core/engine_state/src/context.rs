@@ -197,9 +197,6 @@ pub struct EngineContext {
     /// instead of a single-consumer channel.
     pub multiuser: crate::resource::ResourceHandle<Option<crate::multiuser::MultiuserContext>>,
 
-    /// Typed renderer registry (replaces old Arc<dyn Any> system)
-    pub renderers: crate::renderers_typed::TypedRendererRegistry,
-
     /// Generic, type-safe global resource table.
     ///
     /// This is the extension point for new engine-wide singleton state.
@@ -223,7 +220,6 @@ impl EngineContext {
         Self {
             windows: Arc::new(DashMap::new()),
             multiuser,
-            renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             window_state: crate::keyed_store::KeyedStore::new(),
             store,
         }

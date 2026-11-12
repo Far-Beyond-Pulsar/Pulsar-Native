@@ -753,3 +753,37 @@ fn editor_task_workers_are_registered_and_show_their_task() {
     release.send(()).unwrap();
     wait_for(&queue, id, TaskStatus::Succeeded);
 }
+
+#[test]
+fn a_threadless_persistent_task_beats_from_its_owners_loop_and_ends_when_dropped() {
+    let queue = TaskQueue::new();
+    let task = queue.persistent_task(
+        TaskDescription::persistent("Driven", crate::categories::RENDER_RUNTIME),
+        Some(Duration::from_millis(40)),
+    );
+    let id = task.context().id();
+    assert_eq!(status(&queue, id), TaskStatus::Running);
+    task.context()
+        .set_details(vec![("Owner".into(), "test".into())]);
+    task.context().tick(Duration::from_millis(1));
+    let snap = snapshot(&queue, id);
+    assert_eq!(snap.category, crate::categories::RENDER_RUNTIME);
+    assert_eq!(
+        snap.details,
+        vec![("Owner".to_string(), "test".to_string())]
+    );
+    assert_eq!(snap.beats, 1);
+
+    // Its owner stops beating: a stall, unless it is idle on purpose.
+    let start = Instant::now();
+    while snapshot(&queue, id).stall.is_none() {
+        assert!(start.elapsed() < TIMEOUT, "no stall");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    task.context().set_idle(true);
+    std::thread::sleep(Duration::from_millis(80));
+    assert!(snapshot(&queue, id).stall.is_none());
+
+    drop(task);
+    assert_eq!(status(&queue, id), TaskStatus::Succeeded);
+}

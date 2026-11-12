@@ -29,6 +29,7 @@ physics_plugin = { workspace = true }
 portals_plugin = { workspace = true }
 post_plugin = { workspace = true }
 render_bps_plugin = { workspace = true, optional = true }
+render_pipelines_plugin = { workspace = true }
 sky_plugin = { workspace = true }
 splines_plugin = { workspace = true }
 sprites_plugin = { workspace = true }

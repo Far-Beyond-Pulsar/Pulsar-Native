@@ -211,6 +211,10 @@ pub struct EmbeddedGame {
     session: PieSession,
     /// The scene's renderer, as the editor viewport builds it.
     renderer: SceneRenderer,
+    /// The renderer as an engine runtime the session's tick drives: listed in
+    /// the editor's Renderers view with its frame time, and a paused one
+    /// draws nothing while the game keeps simulating.
+    runtime: engine_backend::services::render_runtimes::DrivenRuntime,
     device: Arc<wgpu::Device>,
     #[allow(dead_code)]
     queue: Arc<wgpu::Queue>,
@@ -452,9 +456,21 @@ impl EmbeddedGame {
         // drops with it at shutdown.
         host_count.armed = false;
 
+        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::new(
+            engine_backend::services::render_runtimes::RuntimeDescription {
+                label: "Play in Editor".into(),
+                origin: pulsar_plugins::engine_origin!(),
+                scene_label: "game".into(),
+                priority: 20,
+                mode: engine_backend::services::render_runtimes::UpdateMode::Always,
+            },
+        );
+        runtime.set_size(width, height);
+
         Ok(Self {
             session,
             renderer,
+            runtime,
             device,
             queue,
             color_format,
@@ -535,6 +551,10 @@ impl EmbeddedGame {
         // 4. Render into the offscreen target the editor samples. ABI v2
         //    requires the host's authoritative SceneDB-backed store above, so
         //    simulation and rendering observe the same hydrated world.
+        let Some(_frame) = self.runtime.begin_frame() else {
+            return;
+        };
+        let _span = self.runtime.task().span().entered();
         if let Err(e) = self.renderer.render(&frame.camera, &self.out_view) {
             tracing::error!("PiE render error: {:?}", e);
         }
@@ -552,6 +572,7 @@ impl EmbeddedGame {
         self.out_texture = tex;
         self.out_view = view;
         self.renderer.renderer.set_render_size(width, height);
+        self.runtime.set_size(width, height);
     }
 
     fn input(&mut self, ev: &InputEvent) {

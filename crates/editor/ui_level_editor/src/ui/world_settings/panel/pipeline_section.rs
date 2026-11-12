@@ -1,11 +1,11 @@
 //! The level's render pipeline: an asset picked in World Settings, first
 //! section. The picker is the editor's shared [`AssetPicker`]: the project's
-//! `.rendergraph` assets, plus the pipelines providers offer (Helio's shipped
-//! ones) listed by id. "None" is a valid choice, and the default of a new
-//! level: nothing runs, and the viewport says so.
+//! `.rendergraph` assets, plus the ones plugins provide in their folders (the
+//! shipped pipelines are `plugins/pulsar.render_pipelines/*.rendergraph`).
+//! "None" is a valid choice, and the default of a new level: nothing runs,
+//! and the viewport says so.
 
 use gpui::{prelude::*, *};
-use helio::PipelineOrigin;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -22,28 +22,37 @@ use engine_backend::subsystems::render::helio_renderer::pipelines;
 /// since an [`AssetPicker`] reads its items when it is created.
 pub(super) struct PipelinePicker {
     picker: Entity<AssetPicker>,
-    /// Ids providers offer, listed beside the project's render graphs.
+    /// The registered pipelines in plugin folders, listed beside the project's
+    /// own render graphs.
     offered: Vec<String>,
     /// [`WorldSettingsPanelImpl::render_graph_epoch`] it was made at.
     epoch: u64,
     _subscription: Subscription,
 }
 
+/// The plugin whose folder holds the pipeline `id`, if one does.
+fn provider_of(id: &str) -> Option<&str> {
+    id.strip_prefix(engine_fs::virtual_fs::PLUGINS_FOLDER)?
+        .strip_prefix('/')?
+        .split('/')
+        .next()
+}
+
 /// Where a pipeline came from, as the panel says it.
-fn origin_text(origin: PipelineOrigin) -> &'static str {
-    match origin {
-        PipelineOrigin::BuiltIn => "Offered by Helio",
-        PipelineOrigin::Project => "Project render graph",
+fn origin_text(id: &str) -> String {
+    match provider_of(id) {
+        Some(plugin) => format!("Provided by the {plugin} plugin"),
+        None => "Project render graph".to_string(),
     }
 }
 
 impl WorldSettingsPanelImpl {
-    /// The pipelines providers offer (not project assets: the picker finds
-    /// those in the project), by id.
+    /// The pipelines plugins provide in their folders, by id (the picker
+    /// lists the project's own render graphs itself).
     fn offered_pipeline_ids() -> Vec<String> {
         pipelines::list_pipelines()
             .into_iter()
-            .filter(|pipeline| pipeline.origin == PipelineOrigin::BuiltIn)
+            .filter(|pipeline| provider_of(&pipeline.id).is_some())
             .map(|pipeline| pipeline.id)
             .collect()
     }
@@ -72,13 +81,10 @@ impl WorldSettingsPanelImpl {
                 cx,
             )
         });
-        let subscription = cx.subscribe(
-            &picker,
-            |panel, picker, _: &AssetPickedEvent, cx| {
-                let id = picker.read(cx).selected_path().to_owned();
-                panel.world_settings.select_pipeline(Some(id), cx);
-            },
-        );
+        let subscription = cx.subscribe(&picker, |panel, picker, _: &AssetPickedEvent, cx| {
+            let id = picker.read(cx).selected_path().to_owned();
+            panel.world_settings.select_pipeline(Some(id), cx);
+        });
         self.pipeline_picker = Some(PipelinePicker {
             picker: picker.clone(),
             offered,
@@ -118,7 +124,7 @@ impl WorldSettingsPanelImpl {
         let detail = match (&problem, &info) {
             (Some(reason), _) => reason.clone(),
             (None, Some(info)) => {
-                format!("{}. {}", origin_text(info.origin), info.description)
+                format!("{}. {}", origin_text(&info.id), info.description)
             }
             (None, None) => String::new(),
         };
@@ -176,44 +182,30 @@ impl WorldSettingsPanelImpl {
                             }),
                     ),
             )
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(detail_color)
-                    .child(detail),
-            )
+            .child(div().text_xs().text_color(detail_color).child(detail))
             .into_any_element()
     }
 
-    /// Compiles the project's `.rendergraph` assets into pipelines, now and
-    /// whenever one changes, so a saved graph reaches every viewport running it
-    /// at the next frame boundary. Scanning reads the project through the VFS,
-    /// off the UI thread; the picker follows on the next render.
+    /// Remakes the picker when a `.rendergraph` changes. The engine compiles
+    /// the project's render graphs into pipelines itself
+    /// (`pipelines::ensure_project_pipelines`, and its watcher), before any
+    /// renderer asks for one; the picker only follows. Registering reads the
+    /// project through the VFS, off the UI thread.
     pub(super) fn watch_render_graphs(&self, cx: &mut Context<WorldSettingsPanel>) {
         let mut events = engine_fs::subscribe();
         cx.spawn(async move |this, cx| {
             let mut reload = true;
             loop {
                 if reload {
-                    if let Some(root) =
-                        engine_state::get_project_path().map(std::path::PathBuf::from)
-                    {
-                        let report = cx
-                            .background_executor()
-                            .spawn(async move { pipelines::refresh_project_pipelines(&root) })
-                            .await;
-                        for (path, error) in &report.failed {
-                            tracing::warn!(
-                                "Render graph {path} is not offered as a pipeline: {error}"
-                            );
-                        }
-                        cx.update(|cx| {
-                            let _ = this.update(cx, |panel, cx| {
-                                panel.world_settings.render_graph_epoch += 1;
-                                cx.notify();
-                            });
+                    cx.background_executor()
+                        .spawn(async move { pipelines::ensure_project_pipelines() })
+                        .await;
+                    cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            panel.world_settings.render_graph_epoch += 1;
+                            cx.notify();
                         });
-                    }
+                    });
                 }
                 let Ok(event) = events.recv().await else {
                     reload = false;
