@@ -4,10 +4,8 @@
 //! [`Actor`], [`WorldActor`], [`ActorCx`] and the rest are the component
 //! lifecycle traits of `pulsar_component_lifecycle` (`construct`, `begin_play`,
 //! `tick`, `end_play`), re-exported here because game crates depend only on
-//! `pulsar_game`. `pulsar_game::Actor` and `pulsar_game::prelude::Actor` are
-//! still **SceneDB's** old trait for one deprecation window (the name flips in
-//! the release that deletes it from SceneDB); the new one is reachable only as
-//! `pulsar_game::lifecycle::Actor`.
+//! `pulsar_game`. [`Actor`] is also `pulsar_game::Actor` and
+//! `pulsar_game::prelude::Actor`.
 //!
 //! None of this is reflected: a lifecycle callback is a table entry, never a
 //! Blueprint node (`pulsar_component_lifecycle`, "Not reachable from
@@ -34,9 +32,6 @@
 //! disabled, **and when the session ends**, before the host restores a
 //! snapshot. Hot reload re-expresses as "the same class on the same owner
 //! re-attaches" (`scripts.rs`).
-//!
-//! The deprecated [`TickLoop::register_actor`](crate::tick::TickLoop::register_actor)
-//! wraps a SceneDB actor into the same shell.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -86,23 +81,6 @@ pub fn with_scratch_cx<R>(f: impl FnOnce(&mut ActorCx<'_>) -> R) -> R {
     let mut session = SessionScope::new(SessionKind::Headless);
     let mut cx = ActorCx::new(Entity::DANGLING, None, &events, &mut session);
     f(&mut cx)
-}
-
-/// The deprecated shim: SceneDB's own trait, run through the same shell.
-pub(crate) struct Legacy<A>(pub(crate) A);
-
-impl<A: pulsar_scenedb::Actor> NativeActor for Legacy<A> {
-    fn begin_play(&mut self, entity: Entity, world: &mut World, _cx: &mut ActorCx<'_>) {
-        self.0.begin_play(entity, world);
-    }
-
-    fn tick(&mut self, entity: Entity, world: &mut World, _cx: &mut ActorCx<'_>, _dt: f32) {
-        self.0.tick(entity, world);
-    }
-
-    fn end_play(&mut self, entity: Entity, world: &mut World, _cx: &mut ActorCx<'_>) {
-        self.0.end_play(entity, world);
-    }
 }
 
 /// The component on a native actor's instance entity. It carries only the

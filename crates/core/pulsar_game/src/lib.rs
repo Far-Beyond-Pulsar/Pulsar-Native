@@ -19,15 +19,12 @@ pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool,
 // Generated actors address the live world through `pulsar_world_registry`'s
 // dispatcher.
 //
-// `Actor` and `ActorRegistry` here are SceneDB's OLD trait and registry, kept
-// for one deprecation window so hand-written crates that `impl Actor` still
-// compile (through `TickLoop::register_actor`, itself deprecated). The
-// component lifecycle's trait of the same name is `lifecycle::Actor`; this
-// name flips to it in the release that deletes SceneDB's. (`#[deprecated]`
-// has no effect on a re-export, so the deprecation sits on `register_actor`.)
+// `Actor` is the component lifecycle's trait (`lifecycle::Actor`); SceneDB no
+// longer has an actor trait of its own.
+pub use lifecycle::Actor;
 pub use pulsar_scenedb::{
-    Actor, ActorRegistry, Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter,
-    Schedule, World, WorldQuery,
+    Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter, Schedule, World,
+    WorldQuery,
 };
 
 // The component lifecycle traits and the native script actors that run
@@ -182,9 +179,6 @@ pub mod prelude {
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
-    // `Actor`/`ActorRegistry`: SceneDB's old trait, for the deprecation
-    // window; the lifecycle's is `pulsar_game::lifecycle::Actor`.
-    pub use pulsar_scenedb::{
-        Actor, ActorRegistry, Component, Entity, QueryIter, Schedule, World, WorldQuery,
-    };
+    pub use crate::lifecycle::Actor;
+    pub use pulsar_scenedb::{Component, Entity, QueryIter, Schedule, World, WorldQuery};
 }

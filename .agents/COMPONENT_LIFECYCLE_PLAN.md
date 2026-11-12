@@ -1,13 +1,13 @@
 # Component lifecycle refactor: audit and plan
 
-**Status (current).** P1-P4, P5a and P6 are built (each has an "As built"
-paragraph in section 5). **P5b is the one open item**: delete SceneDB's own
-`Actor`/`ActorRegistry`. It is gated on a release window and the user's
-authorization to push to the SceneDB repo; the checklist is the "P5b checklist"
-in section 5 (SceneDB repo change, bump the rev in all three manifests, remove
-the `lifecycle::Legacy` shim and `register_actor`, flip the prelude, docs, grep).
-Everything below was written as the Phase 0 record; sections 2 and 5 describe the
-design, and the "As built" paragraphs say where the code differs.
+**Status (current).** P1-P6 are all built, P5b included (each has an "As built"
+paragraph in section 5). SceneDB no longer has `Actor`/`ActorRegistry`
+(`feature/remove-actor`, pinned rev `f6769f6`), the `pulsar_game::lifecycle::Legacy`
+shim and the deprecated `register_actor` are gone, and `pulsar_game::Actor` /
+`pulsar_game::prelude::Actor` are the component lifecycle's trait. Everything
+below was written as the Phase 0 record; sections 2 and 5 describe the design,
+and the "As built" paragraphs say where the code differs. Mentions of SceneDB's
+`Actor`/`ActorRegistry` below are historical.
 
 Phase 0 status: **design record and audit. No code changes.**
 Every claim about current code below was read in this change, with `file:line`
@@ -948,8 +948,7 @@ the_session_end_ends_actors_and_clears_their_carriers}`, the drift guards
 `the_actor_forwards_the_native_actor_callbacks`, and
 `generated_project_compiles` (probe now drives `NativeActor`).
 
-**P5b checklist (not done; gated on a release window and the user's
-authorization to push to SceneDB):**
+**P5b checklist (done, see "As built (P5b)" below):**
 
 1. SceneDB repo: remove `actor.rs`, the root re-export of `Actor` and
    `ActorRegistry`, docs and tests; merge to SceneDB main.
@@ -971,6 +970,22 @@ authorization to push to SceneDB):**
    against SceneDB's trait left in the tree (`rg "ActorRegistry|pulsar_scenedb::Actor"`).
 7. Run `cargo test -p pulsar_game` including `generated_project_compiles`
    against the baked rev, and `just arch`.
+
+**As built (P5b).** SceneDB branch `feature/remove-actor` (one commit on the
+previously pinned `017252c`, pushed, not merged to SceneDB `main`) deletes
+`actor.rs`, the `Actor`/`ActorRegistry` re-exports and the two stress-test
+sections that used them; the rest is byte-identical. The rev is
+`f6769f61518e1e68475bb9b6191fa26a29cc09f6` in the root `Cargo.toml` (workspace
+entries and `[patch]`) and `crates/renderer/helio/Cargo.toml` (Helio commit
+`0ea8cab`, pushed on its `feature/component-lifecycle`). In `pulsar_game`:
+`lifecycle::Legacy`, `TickLoop::register_actor`, the SceneDB re-exports and the
+shim test are deleted; `pulsar_game::Actor` and `pulsar_game::prelude::Actor`
+are `lifecycle::Actor` (which still works). The `register_actor::<` needle in
+`native_scripts.rs` is gone (only `register_native_actor::<` is scanned). The
+Spinner template and generated code already named the lifecycle traits by full
+path, so they did not change. Docs: `.agents/ECS.md`. Merge order: SceneDB
+`feature/remove-actor` must reach SceneDB `main` (and Pulsar be re-pinned if
+its sha changes on a squash) before the Pulsar PR merges.
 
 ### P6. Retire the raw `inventory` lifecycle registration
 

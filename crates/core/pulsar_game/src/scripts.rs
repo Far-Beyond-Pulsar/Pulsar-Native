@@ -25,13 +25,10 @@
 //! one type rebind to their own two entities in registration order); re-attach
 //! never despawns the owner or mutates its components; fresh sessions behave
 //! exactly like a plain registration plus the tag.
-//!
-//! [`TickLoop::register_actor`] is the deprecated shim for SceneDB's own
-//! `Actor` trait; it wraps the actor into the same shell.
 
-use pulsar_scenedb::{Actor, Entity};
+use pulsar_scenedb::Entity;
 
-use crate::lifecycle::{ActorCarrier, Legacy, NativeActor};
+use crate::lifecycle::{ActorCarrier, NativeActor};
 
 /// Marker component stamped on an actor's owner entity at registration time.
 ///
@@ -67,23 +64,6 @@ impl crate::tick::TickLoop {
     /// `register_*actor` entry point for the reload guarantee to apply.
     pub fn register_native_actor<A: NativeActor>(&mut self, actor: A) -> Entity {
         self.attach_native_actor(std::any::type_name::<A>().to_string(), Box::new(actor))
-    }
-
-    /// [`Self::register_native_actor`] for a SceneDB [`Actor`].
-    ///
-    /// Deprecated with SceneDB's trait: implement
-    /// [`NativeActor`](crate::lifecycle::NativeActor) instead. The actor runs
-    /// through the component lifecycle like any other, so `begin_play` now
-    /// fires on the first frame rather than at registration, and `end_play`
-    /// fires at the session end.
-    #[deprecated(
-        note = "implement `pulsar_game::lifecycle::NativeActor` and call `register_native_actor`; SceneDB's `Actor` is removed in the next release"
-    )]
-    pub fn register_actor<A: Actor>(&mut self, actor: A) -> Entity {
-        self.attach_native_actor(
-            std::any::type_name::<A>().to_string(),
-            Box::new(Legacy(actor)),
-        )
     }
 
     fn attach_native_actor(&mut self, type_path: String, actor: Box<dyn NativeActor>) -> Entity {

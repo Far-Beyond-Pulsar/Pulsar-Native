@@ -13,9 +13,8 @@
 //!   path-deps into the game manifest and `register_scripts` calls into
 //!   `engine_main.rs`;
 //! * the level editor — needs the ACTOR TYPES (scanned from
-//!   `register_native_actor::<Type>(...)` calls (or the deprecated
-//!   `register_actor::<Type>(...)`), the documented authoring
-//!   convention) to offer Rust actors in the add-object flow.
+//!   `register_native_actor::<Type>(...)` calls, the documented
+//!   authoring convention) to offer Rust actors in the add-object flow.
 //!
 //! Scanning is deliberately textual and cheap: script crates are tiny,
 //! the patterns are conventions this engine scaffolds and documents, and a
@@ -135,12 +134,11 @@ fn read_package_name(manifest: &str) -> Option<String> {
     None
 }
 
-/// Capture every `<ident>` appearing as `register_native_actor::<ident>(` (or the
-/// deprecated `register_actor::<ident>(`) in `text`,
+/// Capture every `<ident>` appearing as `register_native_actor::<ident>(` in `text`,
 /// tolerating whitespace inside the turbofish. This IS the authoring contract:
 /// the scaffolded `lib.rs` demonstrates it and the tutorial documents it.
 fn scan_registered_types(text: &str) -> Vec<String> {
-    const NEEDLES: [&str; 2] = ["register_native_actor::<", "register_actor::<"];
+    const NEEDLES: [&str; 1] = ["register_native_actor::<"];
     let mut out = Vec::new();
     let mut rest = text;
     while let Some((pos, needle)) = NEEDLES
@@ -182,12 +180,12 @@ mod tests {
                 "game_scripts",
                 "game_scripts",
                 "pub fn register_scripts(game: &mut TickLoop) {\n    \
-                 game.register_actor::< Spinner >(Spinner::default());\n}\n",
+                 game.register_native_actor::< Spinner >(Spinner::default());\n}\n",
             ),
             (
                 "extra",
                 "extra_scripts",
-                "// game.register_actor::<Hidden>(x); in a comment still matches —\n\
+                "// game.register_native_actor::<Hidden>(x); in a comment still matches —\n\
                  // acceptable: discovery is advisory.\n",
             ),
         ] {

@@ -73,10 +73,8 @@ schedule.run(&mut world, time);
 
 ## Actors
 
-SceneDB's own `Actor`/`ActorRegistry` still exist in the pinned SceneDB, but
-no Pulsar code path uses them except the deprecated shim
-(`TickLoop::register_actor`, see below). `TickLoop` has no registry any more:
-a boxed gameplay actor runs through the component lifecycle.
+SceneDB has no actor trait or registry of its own (removed, P5b). `TickLoop`
+has no registry: a boxed gameplay actor runs through the component lifecycle.
 
 ```rust
 // pulsar_game::lifecycle
@@ -98,14 +96,14 @@ PIE snapshot restore; SceneDB's registry never ended actors at shutdown).
 Hot reload re-attaches: the same class registered again on a surviving tagged
 owner gets a fresh instance entity, the old behavior is dropped at the session
 end while its code is still loaded. Generated Rust Blueprint actors implement
-`NativeActor` by its full path. `register_actor` (SceneDB's trait, wrapped into
-the same shell) is `#[deprecated]` and goes with SceneDB's trait.
+`NativeActor` by its full path.
 
 ## Component lifecycle (`Actor` on a component)
 
-SceneDB's `Actor` above is the boxed, entity-owning object. A component class
-gets lifecycle events through `pulsar_component_lifecycle::Actor` (a different
-trait, reachable as `pulsar_game::lifecycle::Actor` until SceneDB's is removed and the prelude name flips): `impl Actor for T` and
+`NativeActor` above is the boxed, entity-owning object. A component class
+gets lifecycle events through `pulsar_component_lifecycle::Actor`, reachable as
+`pulsar_game::Actor`, `pulsar_game::prelude::Actor` and
+`pulsar_game::lifecycle::Actor`: `impl Actor for T` and
 `ClassSpec { actor: Some(ActorTable::of::<T>()), .. }` from the plugin root.
 `tick_live_components` drives these tables in one `Step::Components`:
 `begin_play` when an enabled instance is first seen, `tick` each frame,

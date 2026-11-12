@@ -119,18 +119,6 @@ mod actors {
         }
     }
 
-    /// The deprecated shim: a SceneDB `Actor` still runs, through the same
-    /// shell. `Actor::tick` there is deliberately time-free.
-    struct Legacy(Arc<Mutex<Vec<&'static str>>>);
-    impl Actor for Legacy {
-        fn tick(&mut self, _e: Entity, _w: &mut World) {
-            self.0.lock().unwrap().push("tick");
-        }
-        fn end_play(&mut self, _e: Entity, _w: &mut World) {
-            self.0.lock().unwrap().push("end");
-        }
-    }
-
     /// begin_play on the first frame (not at registration), tick per frame,
     /// end_play at the session end.
     #[test]
@@ -171,17 +159,6 @@ mod actors {
         tick_loop.tick_once();
         tick_loop.tick_once();
         assert_eq!(log.lock().unwrap().clone(), vec!["begin", "tick", "end"]);
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn a_scenedb_actor_still_runs_through_the_shim() {
-        let log = Arc::new(Mutex::new(Vec::new()));
-        let mut tick_loop = TickLoop::new(TickMode::default(), 0);
-        tick_loop.register_actor(Legacy(log.clone()));
-        tick_loop.tick_once();
-        tick_loop.end_session();
-        assert_eq!(log.lock().unwrap().clone(), vec!["tick", "end"]);
     }
 
     /// #634: a mutation an actor/system makes through the shared store is
