@@ -188,6 +188,15 @@ fn diff(a: &[u8], b: &[u8]) -> Diff {
     }
 }
 
+/// Pixels that are not fully opaque. The frame's alpha is the scene's
+/// coverage (`helio_frame_api::color`): a scene with ground and sky covers
+/// every pixel, and the editor composites its viewport by alpha, so anything
+/// below 255 shows the UI through the frame (TSR once put its transparency
+/// coverage there and every editor frame came out transparent).
+fn not_opaque(frame: &[u8]) -> usize {
+    frame.chunks_exact(4).filter(|p| p[3] != 255).count()
+}
+
 /// Distinct colours, coarsely: a frame of one flat colour (nothing drawn)
 /// has one.
 fn colours(frame: &[u8]) -> usize {
@@ -542,6 +551,11 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
         colours(&editor.frame) > 32,
         "the editor drew nothing at {name}"
     );
+    assert_eq!(
+        not_opaque(&editor.frame),
+        0,
+        "the editor's frame at {name} is not opaque: the viewport would show the UI through it"
+    );
     // The noise floor: the editor again, the same construction run twice.
     let again = editor_frame(target, pose);
     let floor = report(
@@ -555,6 +569,11 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
         ("embedded", DeviceOwner::Host),
     ] {
         let game = game_frame(target, owner, pose, &editor);
+        assert_eq!(
+            not_opaque(&game.frame),
+            0,
+            "the {runtime} game's frame at {name} is not opaque"
+        );
         let d = report(
             out,
             &format!("{name}_{runtime}"),

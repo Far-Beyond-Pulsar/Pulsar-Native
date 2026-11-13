@@ -1312,6 +1312,17 @@ built-in registrations, default and golden files.
   never recorded absent and the materials plugin's asset loader was never installed; both read
   `pulsar_plugins::all_registered` now.
 
+**The black voxel viewport (second cause, after the D3D12 shader).** Voxel scenes still showed the
+UI's background in the editor's viewport while the runtime published frames: TSR's transparency
+coverage path wrote its coverage mask into its output's alpha, the tone map forwarded it, and every
+frame came out with alpha ~0, which the editor composites by alpha (a game's opaque swapchain and
+the RGB-only parity tests did not see it). It reached the editor on 2026-11-06 (water asks every
+graph for the reactive mask, the spine's TSR node honours it) and only where TSR runs, which with the
+"Automatic" setting is voxel scenes. Fixed at TSR (opaque output; coverage stays in its history), the
+alpha contract written in `helio_frame_api::color`, and covered by `installed_plugins/tests/
+default_pipelines.rs::every_shipped_pipeline_draws_an_opaque_frame` (every shipped file, with and
+without TSR) and `voxel_render_parity` (every editor and game frame opaque).
+
 **Engine-owned render runtimes (`engine_backend::services::render_runtimes`).** One scheduler
 service draws every runtime in priority order, each at its output's pace, never waiting on a consumer;
 first builds run as pooled tasks, one at a time. States: starting, running, paused, stopped (GPU
