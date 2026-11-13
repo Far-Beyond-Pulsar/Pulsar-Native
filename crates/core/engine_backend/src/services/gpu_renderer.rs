@@ -17,15 +17,26 @@ use std::time::Instant;
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
     scene_store: Option<crate::scene::SharedScene>,
+    construct_pump: Option<crate::scene::EditorConstructPump>,
 }
 
 impl GpuRendererBuilder {
     pub fn new(_width: u32, _height: u32) -> Self {
-        Self { scene_store: None }
+        Self {
+            scene_store: None,
+            construct_pump: None,
+        }
     }
 
     pub fn scene_db(mut self, store: crate::scene::SharedScene) -> Self {
         self.scene_store = Some(store);
+        self
+    }
+
+    /// The editor's `construct` pump, run once per rendered frame
+    /// (`crate::scene::construct_pump`).
+    pub fn construct_pump(mut self, pump: crate::scene::EditorConstructPump) -> Self {
+        self.construct_pump = Some(pump);
         self
     }
 
@@ -34,7 +45,13 @@ impl GpuRendererBuilder {
             .scene_store
             .unwrap_or_else(|| Arc::new(RwLock::new(crate::scene::new_scene())));
         GpuRenderer {
-            helio_renderer: Some(HelioRenderer::new(scene_store)),
+            helio_renderer: Some({
+                let mut renderer = HelioRenderer::new(scene_store);
+                if let Some(pump) = self.construct_pump {
+                    renderer.set_construct_pump(pump);
+                }
+                renderer
+            }),
             frame_count: 0,
             start_time: Instant::now(),
             fps_window_start: Instant::now(),

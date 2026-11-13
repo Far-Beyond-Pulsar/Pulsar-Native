@@ -19,107 +19,114 @@ pub fn prepare_relative_mouse_mode() -> bool {
         //         `'static` (`CLASS_NAME`) or to a local that lives across the call (`class`,
         //         `device`, `message`). The window class and message-only window are created and
         //         pumped on this same thread, as Win32 requires for a window's message loop.
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui level editor: prepare relative mouse mode", editor_task_queue::ThreadRole::Io).owner("ui_level_editor"), move || unsafe {
-            use std::mem::{size_of, zeroed};
-            use std::ptr::{null, null_mut};
-            use winapi::shared::minwindef::{ATOM, LPARAM, LRESULT, UINT, WPARAM};
-            use winapi::shared::windef::HWND;
-            use winapi::um::libloaderapi::GetModuleHandleW;
-            use winapi::um::winuser::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
-                RegisterRawInputDevices, TranslateMessage, HWND_MESSAGE, MSG, RAWINPUTDEVICE,
-                RIDEV_INPUTSINK, WM_INPUT, WNDCLASSW,
-            };
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui level editor: prepare relative mouse mode",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_level_editor"),
+            move || unsafe {
+                use std::mem::{size_of, zeroed};
+                use std::ptr::{null, null_mut};
+                use winapi::shared::minwindef::{ATOM, LPARAM, LRESULT, UINT, WPARAM};
+                use winapi::shared::windef::HWND;
+                use winapi::um::libloaderapi::GetModuleHandleW;
+                use winapi::um::winuser::{
+                    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
+                    RegisterRawInputDevices, TranslateMessage, HWND_MESSAGE, MSG, RAWINPUTDEVICE,
+                    RIDEV_INPUTSINK, WM_INPUT, WNDCLASSW,
+                };
 
-            const CLASS_NAME: &[u16] = &[
-                b'P' as u16,
-                b'u' as u16,
-                b'l' as u16,
-                b's' as u16,
-                b'a' as u16,
-                b'r' as u16,
-                b'R' as u16,
-                b'a' as u16,
-                b'w' as u16,
-                b'M' as u16,
-                b'o' as u16,
-                b'u' as u16,
-                b's' as u16,
-                b'e' as u16,
-                0,
-            ];
+                const CLASS_NAME: &[u16] = &[
+                    b'P' as u16,
+                    b'u' as u16,
+                    b'l' as u16,
+                    b's' as u16,
+                    b'a' as u16,
+                    b'r' as u16,
+                    b'R' as u16,
+                    b'a' as u16,
+                    b'w' as u16,
+                    b'M' as u16,
+                    b'o' as u16,
+                    b'u' as u16,
+                    b's' as u16,
+                    b'e' as u16,
+                    0,
+                ];
 
-            unsafe extern "system" fn raw_mouse_window_proc(
-                hwnd: HWND,
-                message: UINT,
-                wparam: WPARAM,
-                lparam: LPARAM,
-            ) -> LRESULT {
-                if message == WM_INPUT {
-                    read_raw_mouse_input(lparam as winapi::um::winuser::HRAWINPUT);
+                unsafe extern "system" fn raw_mouse_window_proc(
+                    hwnd: HWND,
+                    message: UINT,
+                    wparam: WPARAM,
+                    lparam: LPARAM,
+                ) -> LRESULT {
+                    if message == WM_INPUT {
+                        read_raw_mouse_input(lparam as winapi::um::winuser::HRAWINPUT);
+                    }
+                    DefWindowProcW(hwnd, message, wparam, lparam)
                 }
-                DefWindowProcW(hwnd, message, wparam, lparam)
-            }
 
-            let instance = GetModuleHandleW(null());
-            let class = WNDCLASSW {
-                style: 0,
-                lpfnWndProc: Some(raw_mouse_window_proc),
-                cbClsExtra: 0,
-                cbWndExtra: 0,
-                hInstance: instance,
-                hIcon: null_mut(),
-                hCursor: null_mut(),
-                hbrBackground: null_mut(),
-                lpszMenuName: null(),
-                lpszClassName: CLASS_NAME.as_ptr(),
-            };
-            let atom: ATOM = RegisterClassW(&class);
-            if atom == 0 {
-                let _ = ready_tx.send(false);
-                return;
-            }
+                let instance = GetModuleHandleW(null());
+                let class = WNDCLASSW {
+                    style: 0,
+                    lpfnWndProc: Some(raw_mouse_window_proc),
+                    cbClsExtra: 0,
+                    cbWndExtra: 0,
+                    hInstance: instance,
+                    hIcon: null_mut(),
+                    hCursor: null_mut(),
+                    hbrBackground: null_mut(),
+                    lpszMenuName: null(),
+                    lpszClassName: CLASS_NAME.as_ptr(),
+                };
+                let atom: ATOM = RegisterClassW(&class);
+                if atom == 0 {
+                    let _ = ready_tx.send(false);
+                    return;
+                }
 
-            let hwnd = CreateWindowExW(
-                0,
-                CLASS_NAME.as_ptr(),
-                CLASS_NAME.as_ptr(),
-                0,
-                0,
-                0,
-                0,
-                0,
-                HWND_MESSAGE,
-                null_mut(),
-                instance,
-                null_mut(),
-            );
-            if hwnd.is_null() {
-                let _ = ready_tx.send(false);
-                return;
-            }
+                let hwnd = CreateWindowExW(
+                    0,
+                    CLASS_NAME.as_ptr(),
+                    CLASS_NAME.as_ptr(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    HWND_MESSAGE,
+                    null_mut(),
+                    instance,
+                    null_mut(),
+                );
+                if hwnd.is_null() {
+                    let _ = ready_tx.send(false);
+                    return;
+                }
 
-            let device = RAWINPUTDEVICE {
-                usUsagePage: 0x01,
-                usUsage: 0x02,
-                dwFlags: RIDEV_INPUTSINK,
-                hwndTarget: hwnd,
-            };
-            if RegisterRawInputDevices(&device, 1, size_of::<RAWINPUTDEVICE>() as UINT) == 0 {
-                let _ = ready_tx.send(false);
-                return;
-            }
+                let device = RAWINPUTDEVICE {
+                    usUsagePage: 0x01,
+                    usUsage: 0x02,
+                    dwFlags: RIDEV_INPUTSINK,
+                    hwndTarget: hwnd,
+                };
+                if RegisterRawInputDevices(&device, 1, size_of::<RAWINPUTDEVICE>() as UINT) == 0 {
+                    let _ = ready_tx.send(false);
+                    return;
+                }
 
-            if ready_tx.send(true).is_err() {
-                return;
-            }
+                if ready_tx.send(true).is_err() {
+                    return;
+                }
 
-            let mut message: MSG = zeroed();
-            while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
-                TranslateMessage(&message);
-                DispatchMessageW(&message);
-            }
-        });
+                let mut message: MSG = zeroed();
+                while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            },
+        );
 
         ready_rx.recv().unwrap_or(false)
     });

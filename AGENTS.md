@@ -10,9 +10,10 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
 | `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
-| `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend, Subsystem lifecycle |
+| `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend (no subsystem registry), EngineContext |
 | `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
 | `.agents/PLUGIN_API_REFACTOR_PLAN.md` | The plugin API plan (#1608): the phase 0 audit (registration matrix, raw `inventory` paths, plugin-to-plugin edges), its review, the Q1-Q4 decisions, phases, as built |
+| `.agents/COMPONENT_LIFECYCLE_PLAN.md` | The component lifecycle plan: audit of SceneDB `Actor`/`ActorRegistry`, `ComponentTickRegistration` and the script driver, the target (capability registry, `construct`, session scope, physics, Blueprint class instances), decisions, phases P1-P6, risks |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
@@ -35,6 +36,17 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/EDITOR_TASKS.md` | Editor tasks and threads: every async/background job is a task, every thread is registered (services with heartbeats, rayon/tokio pools engine-owned), each with span-scoped logs and stall diagnosis; the Tasks window has Tasks/Threads/Services views; a raw-thread ratchet. Every async/background editor job is a task with its own span-scoped log, stall diagnosis and a Tasks-window audit view; tab creation and Helio init are enforced. Read before adding any spawn, background job or editor/renderer init |
 | `.agents/KEYBINDINGS.md` | Keyboard Shortcuts window, `.pulsar/keybindings.json` overrides, how unbinding reaches the keymap |
 | `.agents/ANIMATION.md` | Animation assets (`.animseq` v5, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
+
+## Skills (`.claude/commands/`)
+
+| Skill | When |
+|---|---|
+| `/add-plugin` | create a project plugin: descriptor, contracts, root crate and `build`, tests, pins |
+| `/add-component` | create a world component: class, `ClassSpec`, `Actor`/`WorldActor` lifecycle, session scope, script methods and events |
+| `/add-blueprint-node`, `/blueprint-system` | add a `pulsar_std` node; how a Blueprint compiles and runs |
+| `/add-editor-panel`, `/gpui-patterns` | add a dockable editor panel; GPUI idioms |
+| `/bump-deps` | move a submodule pin, a plugin's Pulsar rev or the SceneDB rev (three manifests) |
+| `/debug-compile-errors`, `/repo-map` | duplicate-crate and Blueprint compile errors; where things live |
 
 ## Project data (`.pulsar/`)
 

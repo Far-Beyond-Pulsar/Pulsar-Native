@@ -94,6 +94,12 @@ pub struct SceneDomain {
     /// The host's undo histories, when the editor was given them: the
     /// level's history is registered there under its file.
     pub undo_service: Option<UndoService>,
+    /// The editor's `construct` pump: an editing session over this scene,
+    /// run once per viewport frame (`engine_backend::scene::construct_pump`).
+    /// Suspended while a Play-in-Editor game owns the world (the world's one
+    /// owner at a time, `.agents/COMPONENT_LIFECYCLE_PLAN.md` 2.4) and resumed
+    /// with one rescan when [`Self::exit_play_mode`] restored the snapshot.
+    pub construct_pump: engine_backend::scene::EditorConstructPump,
 }
 
 /// One undoable change to a level.
@@ -140,6 +146,7 @@ impl Default for SceneDomain {
             pending_selection_sync: false,
             history: new_history(),
             undo_service: None,
+            construct_pump: engine_backend::scene::EditorConstructPump::new(),
         }
     }
 }
@@ -165,6 +172,7 @@ impl SceneDomain {
             pending_selection_sync: self.pending_selection_sync,
             history: new_history(),
             undo_service: self.undo_service.clone(),
+            construct_pump: self.construct_pump.clone(),
         }
     }
 
@@ -421,6 +429,8 @@ impl SceneDomain {
         match result {
             Ok(()) => {
                 self.rebuild_epoch = self.rebuild_epoch.wrapping_add(1);
+                // Every object came back: one rescan for the construct pump.
+                self.construct_pump.request_rescan();
                 true
             }
             Err(error) => {
@@ -466,6 +476,10 @@ impl SceneDomain {
                 .collect();
             self.play_entities = Some(live);
         }
+        // The game's session owns the shared world from here: the editor's
+        // construct pump delivers nothing until Stop (the game's own session
+        // constructs, once per frame, during Play).
+        self.construct_pump.suspend_for_play();
         self.editor_mode = EditorMode::Play;
     }
 
@@ -505,6 +519,11 @@ impl SceneDomain {
                 tracing::error!("failed to restore the editor scene after play mode");
             }
         }
+        // The play session ended before this ran (`end_pie`: the game's
+        // `end_play`s precede the restore) and the world is the editor's
+        // again: resume the pump with one rescan, not one construct per
+        // component the restore touched.
+        self.construct_pump.resume_after_play();
         self.editor_mode = EditorMode::Edit;
     }
 }

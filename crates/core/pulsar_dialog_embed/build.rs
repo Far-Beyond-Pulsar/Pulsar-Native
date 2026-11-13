@@ -43,7 +43,10 @@ fn main() {
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
     let bytes = match produce() {
         Ok(Some(exe)) => fs::read(&exe).unwrap_or_else(|error| {
-            println!("cargo:warning=pulsar-dialog helper not embedded: {}: {error}", exe.display());
+            println!(
+                "cargo:warning=pulsar-dialog helper not embedded: {}: {error}",
+                exe.display()
+            );
             Vec::new()
         }),
         Ok(None) => Vec::new(),
@@ -70,7 +73,9 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn set(name: &str) -> Option<String> {
-    env::var(name).ok().filter(|value| !value.is_empty() && value != "0")
+    env::var(name)
+        .ok()
+        .filter(|value| !value.is_empty() && value != "0")
 }
 
 /// The helper executable to embed, if there is one.
@@ -152,15 +157,28 @@ fn checkout(source: &Path, repo: &str, rev: &str) -> Result<(), String> {
     let staging = source.with_extension(format!("staging-{}", std::process::id()));
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(|e| format!("{}: {e}", staging.display()))?;
-    let fetched = run(Command::new("git").arg("init").arg("-q").arg(&staging), "git init")
-        .and_then(|_| run(git(&staging).args(["remote", "add", "origin", repo]), "git remote add"))
-        .and_then(|_| {
-            run(
-                git(&staging).args(["fetch", "-q", "--depth", "1", "origin", rev]),
-                "git fetch",
-            )
-        })
-        .and_then(|_| run(git(&staging).args(["checkout", "-q", "FETCH_HEAD"]), "git checkout"));
+    let fetched = run(
+        Command::new("git").arg("init").arg("-q").arg(&staging),
+        "git init",
+    )
+    .and_then(|_| {
+        run(
+            git(&staging).args(["remote", "add", "origin", repo]),
+            "git remote add",
+        )
+    })
+    .and_then(|_| {
+        run(
+            git(&staging).args(["fetch", "-q", "--depth", "1", "origin", rev]),
+            "git fetch",
+        )
+    })
+    .and_then(|_| {
+        run(
+            git(&staging).args(["checkout", "-q", "FETCH_HEAD"]),
+            "git checkout",
+        )
+    });
     if let Err(error) = fetched {
         let _ = fs::remove_dir_all(&staging);
         return Err(format!("{error} (is git installed and {repo} reachable?)"));
@@ -169,7 +187,10 @@ fn checkout(source: &Path, repo: &str, rev: &str) -> Result<(), String> {
         // Another build got there first.
         let _ = fs::remove_dir_all(&staging);
         if !source.join(".git").is_dir() {
-            return Err(format!("could not place the checkout at {}", source.display()));
+            return Err(format!(
+                "could not place the checkout at {}",
+                source.display()
+            ));
         }
     }
     Ok(())
@@ -181,7 +202,15 @@ fn build(source: &Path, target_dir: &Path, target: &str) -> Result<Option<PathBu
     let mut command = Command::new(cargo);
     command
         .current_dir(source)
-        .args(["build", "--release", "--locked", "-p", "pulsar-dialog", "--target", target])
+        .args([
+            "build",
+            "--release",
+            "--locked",
+            "-p",
+            "pulsar-dialog",
+            "--target",
+            target,
+        ])
         .arg("--target-dir")
         .arg(target_dir);
     // The parent build's flags and wrappers belong to the engine, not the
@@ -198,11 +227,14 @@ fn build(source: &Path, target_dir: &Path, target: &str) -> Result<Option<PathBu
         command.env_remove(variable);
     }
     run(&mut command, "building the pulsar-dialog helper")?;
-    let exe = target_dir.join(target).join("release").join(if target.contains("windows") {
-        "pulsar-dialog.exe"
-    } else {
-        "pulsar-dialog"
-    });
+    let exe = target_dir
+        .join(target)
+        .join("release")
+        .join(if target.contains("windows") {
+            "pulsar-dialog.exe"
+        } else {
+            "pulsar-dialog"
+        });
     if exe.is_file() {
         Ok(Some(exe))
     } else {

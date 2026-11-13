@@ -108,11 +108,15 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     fn sha(bytes: &[u8]) -> String {
-        Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+        Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("pulsar-dialog-embed-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pulsar-dialog-embed-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -146,7 +150,11 @@ mod tests {
     fn no_temporary_file_is_left_behind() {
         let dir = scratch("tidy");
         place(&dir, "pulsar-dialog", b"abc", &sha(b"abc")).unwrap();
-        let names: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        let names: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
         assert_eq!(names.len(), 1, "{names:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }

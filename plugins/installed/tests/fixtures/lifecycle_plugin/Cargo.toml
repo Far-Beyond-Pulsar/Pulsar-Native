@@ -1,0 +1,23 @@
+[package]
+name = "lifecycle_fixture_plugin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The component lifecycle proof's fixture plugin: a class with an ActorTable (plugins/installed/tests/lifecycle.rs)"
+
+[dependencies]
+pulsar_plugins = { workspace = true }
+# `p.components().class::<T>(ClassSpec { actor, .. })`: the game's slim
+# feature set, as the vendor plugins link it.
+engine_backend = { path = "../../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
+# The engine-class derive logs through it and decodes with serde.
+tracing = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

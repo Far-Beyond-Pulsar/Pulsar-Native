@@ -27,7 +27,14 @@ impl TaskPool {
                 let ex = executor.clone();
                 let stop = stop_rx.clone();
                 let ready = ready_tx.clone();
-                editor_task_queue::spawn_thread(editor_task_queue::ThreadSpec::new(format!("pulsar-task-{i}"), editor_task_queue::ThreadRole::Compute).pool("pulsar-task").owner("pulsar_core"), move || {
+                editor_task_queue::spawn_thread(
+                    editor_task_queue::ThreadSpec::new(
+                        format!("pulsar-task-{i}"),
+                        editor_task_queue::ThreadRole::Compute,
+                    )
+                    .pool("pulsar-task")
+                    .owner("pulsar_core"),
+                    move || {
                         // Parks the thread while there is no work (a spinning
                         // worker burns a whole core per thread, per process);
                         // returns once the pool is dropped.
@@ -43,8 +50,9 @@ impl TaskPool {
                             drop(ready);
                             let _ = closed.await;
                         }));
-                    })
-                    .expect("failed to spawn task pool thread")
+                    },
+                )
+                .expect("failed to spawn task pool thread")
             })
             .collect();
 

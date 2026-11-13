@@ -102,16 +102,6 @@ impl PluginManager {
         all_defs
     }
 
-    /// Drain all plugin-provided subsystems (consumes them for engine registration).
-    ///
-    /// Called once by `EngineBackend::init()` after it has built its initial
-    /// registry of built-in subsystems. Plugin subsystems are merged into the
-    /// engine's `SubsystemRegistry` where first-registered wins (built-in wins
-    /// over plugin).
-    pub fn drain_subsystems(&mut self) -> Vec<Box<dyn engine_subsystems::Subsystem>> {
-        std::mem::take(&mut self.plugin_subsystems)
-    }
-
     /// Drain all plugin-provided component registrations (consumes them for engine registration).
     ///
     /// Each entry is `(component_class_name, factory)`.

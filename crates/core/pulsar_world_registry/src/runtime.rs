@@ -11,41 +11,75 @@
 //! out [`host`], a plugin calls [`attach`] with it before anything else.
 //!
 //! This crate's own part is its registries: world component classes,
-//! component tick and event registrations, and unfinished-class reports.
+//! component event registrations, lifecycle tables, and unfinished-class reports.
 
 use std::fmt;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use pulsar_component_lifecycle::{ActorRegistration, ActorTable};
 use pulsar_scenedb::runtime::{AppendList, AttachError};
 
 use crate::systems::SystemRegistration;
 use crate::unfinished::UnfinishedComponentRegistration;
-use crate::{ComponentEventRegistration, ComponentTickRegistration, WorldComponentRegistration};
+use crate::{ComponentEventRegistration, WorldComponentRegistration};
 
 /// Version of [`WorldRuntimes`]' and [`Runtime`]'s ABI. Bump it on any
 /// change to their fields or to a type passed through them.
-pub const ABI_VERSION: u64 = 3;
+pub const ABI_VERSION: u64 = 6;
+
+/// The layouts the fingerprint covers, by name: every type passed through
+/// [`WorldRuntimes`] and [`Runtime`].
+const LAYOUTS: [(&str, usize); 15] = [
+    ("WorldRuntimes", size_of::<WorldRuntimes>()),
+    ("Runtime", size_of::<Runtime>()),
+    ("Registrations", size_of::<Registrations>()),
+    (
+        "WorldComponentRegistration",
+        size_of::<WorldComponentRegistration>(),
+    ),
+    (
+        "ComponentEventRegistration",
+        size_of::<ComponentEventRegistration>(),
+    ),
+    (
+        "UnfinishedComponentRegistration",
+        size_of::<UnfinishedComponentRegistration>(),
+    ),
+    ("SystemRegistration", size_of::<SystemRegistration>()),
+    ("ActorRegistration", size_of::<ActorRegistration>()),
+    ("ActorTable", size_of::<ActorTable>()),
+    // The session a system and a lifecycle callback receive by reference.
+    ("Session", size_of::<crate::Session>()),
+    (
+        "SessionScope",
+        size_of::<pulsar_component_lifecycle::SessionScope>(),
+    ),
+    (
+        "ActorCx",
+        size_of::<pulsar_component_lifecycle::ActorCx<'static>>(),
+    ),
+    (
+        "pulsar_reflection",
+        pulsar_reflection::runtime::ABI_VERSION as usize,
+    ),
+    (
+        "pulsar_scenedb",
+        pulsar_scenedb::runtime::ABI_VERSION as usize,
+    ),
+    (
+        "pulsar_scene_model",
+        pulsar_scene_model::runtime::ABI_VERSION as usize,
+    ),
+];
 
 const FINGERPRINT: u64 = {
-    let parts = [
-        ABI_VERSION as usize,
-        size_of::<WorldRuntimes>(),
-        size_of::<Runtime>(),
-        size_of::<Registrations>(),
-        size_of::<WorldComponentRegistration>(),
-        size_of::<ComponentTickRegistration>(),
-        size_of::<ComponentEventRegistration>(),
-        size_of::<UnfinishedComponentRegistration>(),
-        size_of::<SystemRegistration>(),
-        pulsar_reflection::runtime::ABI_VERSION as usize,
-        pulsar_scenedb::runtime::ABI_VERSION as usize,
-        pulsar_scene_model::runtime::ABI_VERSION as usize,
-    ];
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    hash ^= ABI_VERSION;
+    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     let mut index = 0;
-    while index < parts.len() {
-        hash ^= parts[index] as u64;
+    while index < LAYOUTS.len() {
+        hash ^= LAYOUTS[index].1 as u64;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         index += 1;
     }
@@ -72,29 +106,26 @@ pub struct WorldRuntimes {
 pub struct Runtime {
     pub abi: u64,
     world_components: fn() -> &'static [&'static WorldComponentRegistration],
-    ticks: fn() -> &'static [&'static ComponentTickRegistration],
     events: fn() -> &'static [&'static ComponentEventRegistration],
     unfinished: fn() -> &'static [&'static UnfinishedComponentRegistration],
     systems: fn() -> &'static [&'static SystemRegistration],
+    actors: fn() -> &'static [&'static ActorRegistration],
     add_registrations: fn(&Registrations),
 }
 
 /// The registrations one copy's `inventory` collected.
 pub struct Registrations {
     world_components: Vec<&'static WorldComponentRegistration>,
-    ticks: Vec<&'static ComponentTickRegistration>,
     events: Vec<&'static ComponentEventRegistration>,
     unfinished: Vec<&'static UnfinishedComponentRegistration>,
     systems: Vec<&'static SystemRegistration>,
+    actors: Vec<&'static ActorRegistration>,
 }
 
 impl Registrations {
     fn collected() -> Self {
         Self {
             world_components: world_component_registrations(),
-            ticks: inventory::iter::<ComponentTickRegistration>
-                .into_iter()
-                .collect(),
             events: inventory::iter::<ComponentEventRegistration>
                 .into_iter()
                 .collect(),
@@ -102,6 +133,7 @@ impl Registrations {
                 .into_iter()
                 .collect(),
             systems: pulsar_plugins::built::<SystemRegistration>(),
+            actors: actor_registrations(),
         }
     }
 }
@@ -119,11 +151,16 @@ static WORLD_COMPONENTS: AppendList<WorldComponentRegistration> =
     AppendList::new(world_component_registrations);
 static SYSTEMS: AppendList<SystemRegistration> =
     AppendList::new(pulsar_plugins::built::<SystemRegistration>);
-static TICKS: AppendList<ComponentTickRegistration> = AppendList::new(|| {
-    inventory::iter::<ComponentTickRegistration>
-        .into_iter()
-        .collect()
-});
+/// The tables of this copy: plugin builds' (`ClassSpec::actor`) and the
+/// link-time ones (`pulsar_component_lifecycle::EngineActor`: the engine's
+/// own and `#[register_component_runtime]`'s expansion).
+fn actor_registrations() -> Vec<&'static ActorRegistration> {
+    let mut all = pulsar_component_lifecycle::engine_registrations();
+    all.extend(pulsar_plugins::built::<ActorRegistration>());
+    all
+}
+
+static ACTORS: AppendList<ActorRegistration> = AppendList::new(actor_registrations);
 static EVENTS: AppendList<ComponentEventRegistration> = AppendList::new(|| {
     inventory::iter::<ComponentEventRegistration>
         .into_iter()
@@ -137,7 +174,7 @@ static UNFINISHED: AppendList<UnfinishedComponentRegistration> = AppendList::new
 
 // The registries hand out only what passes the plugin gate: a class whose
 // origin is a disabled plugin's module is not registered, and neither are
-// its ticks, events or unfinished-class reports (`pulsar_plugins`). The
+// its tables, events or unfinished-class reports (`pulsar_plugins`). The
 // gate runs in the copy that owns the registries, where the project's
 // plugins are activated.
 static OWN: Runtime = Runtime {
@@ -147,10 +184,6 @@ static OWN: Runtime = Runtime {
         GATED.get(WORLD_COMPONENTS.get(), |r| {
             pulsar_plugins::origin_enabled(r.origin)
         })
-    },
-    ticks: || {
-        static GATED: Gated<ComponentTickRegistration> = Gated::new();
-        GATED.get(TICKS.get(), |r| class_enabled(r.class_name))
     },
     events: || {
         static GATED: Gated<ComponentEventRegistration> = Gated::new();
@@ -164,10 +197,14 @@ static OWN: Runtime = Runtime {
         static GATED: Gated<SystemRegistration> = Gated::new();
         GATED.get(SYSTEMS.get(), |r| class_enabled(r.class_name))
     },
+    actors: || {
+        static GATED: Gated<ActorRegistration> = Gated::new();
+        GATED.get(ACTORS.get(), |r| class_enabled(r.class_name))
+    },
     add_registrations: |r| {
         SYSTEMS.extend(&r.systems);
+        ACTORS.extend(&r.actors);
         WORLD_COMPONENTS.extend(&r.world_components);
-        TICKS.extend(&r.ticks);
         EVENTS.extend(&r.events);
         UNFINISHED.extend(&r.unfinished);
     },
@@ -252,10 +289,6 @@ pub(crate) fn all_world_components() -> &'static [&'static WorldComponentRegistr
     WORLD_COMPONENTS.get()
 }
 
-pub(crate) fn ticks() -> &'static [&'static ComponentTickRegistration] {
-    (runtime().ticks)()
-}
-
 pub(crate) fn events() -> &'static [&'static ComponentEventRegistration] {
     (runtime().events)()
 }
@@ -285,6 +318,28 @@ pub fn import_builds() {
             .filter(|built| !SYSTEMS.get().iter().any(|r| std::ptr::eq(*r, *built)))
             .collect();
     SYSTEMS.extend(&new_systems);
+    let new_actors: Vec<&'static ActorRegistration> = pulsar_plugins::built::<ActorRegistration>()
+        .into_iter()
+        .filter(|built| !ACTORS.get().iter().any(|r| std::ptr::eq(*r, *built)))
+        .collect();
+    ACTORS.extend(&new_actors);
+}
+
+/// Register a lifecycle table in this test binary, as a plugin build would.
+#[cfg(test)]
+pub(crate) fn register_actor_for_test(registration: &'static ActorRegistration) {
+    ACTORS.extend(&[registration]);
+}
+
+/// Every lifecycle table the linked plugins register, whatever their state.
+pub(crate) fn all_actors() -> &'static [&'static ActorRegistration] {
+    ACTORS.get()
+}
+
+/// The lifecycle tables of the registered classes
+/// ([`pulsar_component_lifecycle`]), gated with their class.
+pub(crate) fn actors() -> &'static [&'static ActorRegistration] {
+    (runtime().actors)()
 }
 
 /// The systems of the registered classes ([`crate::systems`]).
@@ -469,6 +524,29 @@ macro_rules! export_world_runtime_attach {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The fingerprint covers the lifecycle registry's types: a plugin
+    /// library built against another layout of them is refused.
+    #[test]
+    fn the_fingerprint_covers_the_lifecycle_types() {
+        let layout = |name: &str| {
+            LAYOUTS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, size)| *size)
+        };
+        assert_eq!(
+            layout("ActorRegistration"),
+            Some(size_of::<ActorRegistration>())
+        );
+        assert_eq!(layout("ActorTable"), Some(size_of::<ActorTable>()));
+        // P2: the session handed to systems and callbacks is covered too.
+        assert_eq!(layout("Session"), Some(size_of::<crate::Session>()));
+        assert!(layout("SessionScope").is_some() && layout("ActorCx").is_some());
+        // `Runtime` carries the table accessor, `Registrations` the list.
+        assert!(size_of::<Runtime>() >= 8 * 7);
+        assert_eq!(ABI_VERSION, 6);
+    }
 
     #[test]
     fn a_mismatched_runtime_is_refused_before_anything_attaches() {

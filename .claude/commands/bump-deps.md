@@ -52,6 +52,28 @@ just check-plugin-pins        # what CI runs: every pinned rev must be an ancest
 Commit the rewritten manifests in each plugin repo, merge there, then re-pin the submodules as
 above.
 
+## Bumping SceneDB
+
+SceneDB (`pulsar_scenedb`, `pulsar_scenedb_derive`) is a git dependency pinned by `rev =`, and the
+same rev lives in **three** manifests:
+
+1. root `Cargo.toml`, `[workspace.dependencies]` (both crates);
+2. root `Cargo.toml`, `[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]` (both crates; the
+   patch forces one rev for every copy in the graph, so the two root places must match);
+3. `crates/renderer/helio/Cargo.toml` (both crates). Helio is a submodule, so **commit it
+   first**: Helio PR merged to Helio main, then re-pin the submodule, then the Pulsar-Native PR.
+
+The old and new revs cannot coexist, so a SceneDB bump and the code it needs go in one
+Pulsar-Native PR. Plugins carry no SceneDB rev. Merge order: SceneDB PR to SceneDB main (take the
+sha after any squash) → Helio rev bump merged and re-pinned → Pulsar-Native PR.
+
+```bash
+grep -n 'pulsar_scenedb' Cargo.toml crates/renderer/helio/Cargo.toml   # every rev must be the same sha
+```
+
+(`.agents/COMPONENT_LIFECYCLE_PLAN.md`, "As built (P5b)", is the worked example: SceneDB's
+`Actor`/`ActorRegistry` removal.)
+
 ---
 
 ## Rules

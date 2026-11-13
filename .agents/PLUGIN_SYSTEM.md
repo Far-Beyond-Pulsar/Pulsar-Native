@@ -260,7 +260,7 @@ native implementer) is a requirement of its `trait` contract; a class requiremen
 
 ### Component classes
 
-`p.components().class::<T>(ClassSpec { requires, systems, gpu, presentation })`
+`p.components().class::<T>(ClassSpec { requires, systems, actor, gpu, presentation })`
 (`engine_backend::scene::class_spec`):
 
 - **requires**: classes placed with it. Placing it (`pulsar_world_registry::place_component`:
@@ -273,6 +273,9 @@ native implementer) is a requirement of its `trait` contract; a class requiremen
   ordered around the engine's component lifecycles (`systems::COMPONENTS`) every frame by
   `tick_live_components`. They run while the class is registered. A label no registered
   system has orders nothing (an optional plugin's); a cycle is reported.
+- **actor**: its lifecycle (`construct`, `begin_play`, `tick`, `end_play`), `Some(ActorTable::of::<T>())`
+  or `of_world::<T>()`; a registry of its own, never reflected methods ("Component lifecycle
+  registrations" below, `.agents/ECS.md`).
 - **gpu**: the class's source rows and their join (a `SceneRowsRegistration`).
 - **presentation**: `Facade` shows one card in the inspector and one entry in the
   component tree over the class and its nested members (each member's properties a section
@@ -369,6 +372,22 @@ uses `registration!`; `Registration` is never implemented by hand.
 The registration matrix, the raw `inventory` paths and the plugin-to-plugin edges are in
 `PLUGIN_API_REFACTOR_PLAN.md` (the audit, sections 0-3; its review, section 9; phase 1 as
 built, section 11), which is also the roadmap.
+
+## Component lifecycle registrations
+
+A class's lifecycle is a registration of its own, never reflected methods:
+`ClassSpec::actor` makes `Components::class` add an `ActorRegistration`
+(category `component.lifecycle`, origin the plugin root), gated with the class
+(`class_enabled`: a disabled plugin's table is not handed out or driven) and
+carried across plugin libraries by the world runtime (`ABI_VERSION` 6, the
+fingerprint covers `ActorRegistration` and `ActorTable`). A class that uses
+`#[register_component_runtime]` gets its table from the macro instead
+(`EngineActor`, link-time, still gated by the class name; the raw `inventory`
+tick registration no longer exists). The audit
+`pulsar_world_registry::find_lifecycle_problems` (run over every installed
+class in `plugins/installed/tests/lifecycle.rs`) fails when a reflected
+method or script native is named `construct`, `begin_play`, `tick` or
+`end_play`.
 
 ## Plugin libraries
 
@@ -516,13 +535,12 @@ Extension traits (all have default implementations):
 - **`EditorPluginStatusbar`** — `statusbar_buttons()`, `accepted_drop_kinds()`
 - **`EditorPluginAi`** — `ai_tools()`, `execute_ai_tool()`, `capabilities_for_file()`
 - **`EditorPluginComponents`** — custom `EngineClass` definitions and factories
-- **`EditorPluginSubsystems`** — custom engine `Subsystem`s
 
 **`EditorPluginFull`** is the combined super-trait that the DLL exports:
 ```rust
 pub trait EditorPluginFull: EditorPlugin + EditorPluginEditor
     + EditorPluginStatusbar + EditorPluginAi
-    + EditorPluginComponents + EditorPluginSubsystems {}
+    + EditorPluginComponents {}
 ```
 
 ### Plugin components and the World

@@ -1,0 +1,2 @@
+# Pulsar project: Physics Playground: rigid bodies, colliders (hitboxes), a trigger, force fields and joints.
+# Open it with: cargo run --release -p pulsar_engine -- --project-path assets/examples/physics_playground

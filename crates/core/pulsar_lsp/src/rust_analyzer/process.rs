@@ -186,13 +186,20 @@ impl RustAnalyzerManager {
                 .ok_or_else(|| anyhow!("Failed to take stdin"))?;
 
             if let Some(stderr) = child.stderr.take() {
-                editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: spawn process blocking", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || {
-                    let reader = BufReader::new(stderr);
-                    for line in reader.lines().map_while(Result::ok) {
-                        tracing::error!("[rust-analyzer stderr] {}", line);
-                    }
-                    tracing::error!("❌ rust-analyzer stderr stream ended");
-                });
+                editor_task_queue::spawn_named(
+                    editor_task_queue::ThreadSpec::new(
+                        "pulsar lsp: spawn process blocking",
+                        editor_task_queue::ThreadRole::Io,
+                    )
+                    .owner("pulsar_lsp"),
+                    move || {
+                        let reader = BufReader::new(stderr);
+                        for line in reader.lines().map_while(Result::ok) {
+                            tracing::error!("[rust-analyzer stderr] {}", line);
+                        }
+                        tracing::error!("❌ rust-analyzer stderr stream ended");
+                    },
+                );
             }
 
             // The reader needs the request's id before the reply can arrive.
@@ -227,31 +234,38 @@ impl RustAnalyzerManager {
         // it, or a restart replaced it).
         let progress_tx_exit = progress_tx.clone();
         let process_arc_exit = Arc::clone(&process_arc);
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: spawn process blocking", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || loop {
-            let polled = {
-                let Ok(mut process_lock) = process_arc_exit.lock() else {
-                    break;
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "pulsar lsp: spawn process blocking",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("pulsar_lsp"),
+            move || loop {
+                let polled = {
+                    let Ok(mut process_lock) = process_arc_exit.lock() else {
+                        break;
+                    };
+                    match process_lock.as_mut() {
+                        Some(child) if child.id() == pid => child.try_wait(),
+                        _ => break,
+                    }
                 };
-                match process_lock.as_mut() {
-                    Some(child) if child.id() == pid => child.try_wait(),
-                    _ => break,
+                match polled {
+                    Ok(None) => thread::sleep(Duration::from_millis(200)),
+                    Ok(Some(status)) => {
+                        tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
+                        let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::error!("❌ Failed to wait for rust-analyzer: {}", e);
+                        let _ = progress_tx_exit
+                            .send(ProgressUpdate::Error(format!("Wait failed: {}", e)));
+                        break;
+                    }
                 }
-            };
-            match polled {
-                Ok(None) => thread::sleep(Duration::from_millis(200)),
-                Ok(Some(status)) => {
-                    tracing::debug!("❌ rust-analyzer exited with status: {:?}", status);
-                    let _ = progress_tx_exit.send(ProgressUpdate::ProcessExited(status));
-                    break;
-                }
-                Err(e) => {
-                    tracing::error!("❌ Failed to wait for rust-analyzer: {}", e);
-                    let _ =
-                        progress_tx_exit.send(ProgressUpdate::Error(format!("Wait failed: {}", e)));
-                    break;
-                }
-            }
-        });
+            },
+        );
 
         Ok(active_analyzer_path)
     }
@@ -276,79 +290,86 @@ impl RustAnalyzerManager {
     ) {
         let progress_tx_stdout = progress_tx.clone();
         let pending_requests_clone = Arc::clone(pending_requests);
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("pulsar lsp: spawn stdout reader", editor_task_queue::ThreadRole::Io).owner("pulsar_lsp"), move || {
-            let mut reader = BufReader::new(stdout);
-            let mut buffer = String::new();
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "pulsar lsp: spawn stdout reader",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("pulsar_lsp"),
+            move || {
+                let mut reader = BufReader::new(stdout);
+                let mut buffer = String::new();
 
-            loop {
-                buffer.clear();
+                loop {
+                    buffer.clear();
 
-                if reader.read_line(&mut buffer).is_err() || buffer.is_empty() {
-                    break;
-                }
+                    if reader.read_line(&mut buffer).is_err() || buffer.is_empty() {
+                        break;
+                    }
 
-                if !buffer.starts_with("Content-Length:") {
-                    continue;
-                }
+                    if !buffer.starts_with("Content-Length:") {
+                        continue;
+                    }
 
-                let content_len: usize =
-                    match buffer.trim_start_matches("Content-Length:").trim().parse() {
-                        Ok(len) => len,
-                        Err(_) => continue,
-                    };
+                    let content_len: usize =
+                        match buffer.trim_start_matches("Content-Length:").trim().parse() {
+                            Ok(len) => len,
+                            Err(_) => continue,
+                        };
 
-                buffer.clear();
-                if reader.read_line(&mut buffer).is_err() {
-                    break;
-                }
+                    buffer.clear();
+                    if reader.read_line(&mut buffer).is_err() {
+                        break;
+                    }
 
-                let mut content_buffer = vec![0u8; content_len];
-                if let Ok(_) = std::io::Read::read_exact(&mut reader, &mut content_buffer) {
-                    if let Ok(content) = String::from_utf8(content_buffer) {
-                        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
-                                if let Ok(mut pending) = pending_requests_clone.lock() {
-                                    if let Some(tx) = pending.remove(&id) {
-                                        tracing::debug!(
+                    let mut content_buffer = vec![0u8; content_len];
+                    if let Ok(_) = std::io::Read::read_exact(&mut reader, &mut content_buffer) {
+                        if let Ok(content) = String::from_utf8(content_buffer) {
+                            if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
+                                    if let Ok(mut pending) = pending_requests_clone.lock() {
+                                        if let Some(tx) = pending.remove(&id) {
+                                            tracing::debug!(
                                             "[LSP ANALYZER] Received response for request id={}",
                                             id
                                         );
-                                        let _ = tx.send(msg.clone());
-                                        continue;
+                                            let _ = tx.send(msg.clone());
+                                            continue;
+                                        }
                                     }
-                                }
-                                // The initialize reply carries the id the
-                                // request was sent with; it has no entry
-                                // in `pending_requests`.
-                                if id == init_id {
-                                    tracing::debug!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
+                                    // The initialize reply carries the id the
+                                    // request was sent with; it has no entry
+                                    // in `pending_requests`.
+                                    if id == init_id {
+                                        tracing::debug!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
                                         msg.get("result"), msg.get("error"));
-                                    if msg.get("error").is_some() {
-                                        tracing::debug!(
+                                        if msg.get("error").is_some() {
+                                            tracing::debug!(
                                             "[LSP ANALYZER] Initialize response contains an error!"
                                         );
-                                        let _ = progress_tx_stdout.send(ProgressUpdate::Error(
-                                            format!("Initialize error: {:?}", msg.get("error")),
-                                        ));
-                                    } else if msg.get("result").is_some() {
-                                        tracing::debug!(
+                                            let _ = progress_tx_stdout.send(ProgressUpdate::Error(
+                                                format!("Initialize error: {:?}", msg.get("error")),
+                                            ));
+                                        } else if msg.get("result").is_some() {
+                                            tracing::debug!(
                                             "[LSP ANALYZER] Initialize succeeded, server is ready"
                                         );
-                                        let triggers = trigger_characters_in(&msg);
-                                        let _ = progress_tx_stdout
-                                            .send(ProgressUpdate::CompletionTriggers(triggers));
-                                        // Initialization complete - server is ready for document operations
+                                            let triggers = trigger_characters_in(&msg);
+                                            let _ = progress_tx_stdout
+                                                .send(ProgressUpdate::CompletionTriggers(triggers));
+                                            // Initialization complete - server is ready for document operations
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        Self::handle_lsp_message(&content, &progress_tx_stdout);
+                            Self::handle_lsp_message(&content, &progress_tx_stdout);
+                        }
                     }
                 }
-            }
-            tracing::error!("❌ rust-analyzer stdout stream ended");
-        });
+                tracing::error!("❌ rust-analyzer stdout stream ended");
+            },
+        );
     }
 
     /// Write the `initialize` request (with request id `id`) and the

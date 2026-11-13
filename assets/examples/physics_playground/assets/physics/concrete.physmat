@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "friction": 0.800000011920929,
+  "restitution": 0.0,
+  "friction_combine": "average",
+  "restitution_combine": "average",
+  "density": 2400.0,
+  "surface": "concrete",
+  "description": "Ground, walls and posts: grippy, dead"
+}

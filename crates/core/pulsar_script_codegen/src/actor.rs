@@ -1,8 +1,8 @@
-//! The Rust export: a script module as an `Actor` source file.
+//! The Rust export: a script module as a `NativeActor` source file.
 //!
 //! [`generate_actor`] writes the file a game project compiles as a class's
 //! `events/events.rs`: the module's generated code (see the crate docs), an
-//! `Actor` whose callbacks forward to
+//! `NativeActor` whose callbacks forward to
 //! `pulsar_game::scripting::export::ExportedScript`, and the prefab
 //! component hydration an actor does at `begin_play`.
 //!
@@ -231,7 +231,7 @@ impl {ty} {{
 //! VM (same instances, natives, instruction budget and call-depth limit as
 //! an interpreted class). Each actor owns its variables and waiting calls.
 //! Component access goes through `pulsar_world_registry`'s dispatcher
-//! against the LIVE world each `Actor` callback receives (#651).
+//! against the LIVE world each `NativeActor` callback receives (#651).
 
 use pulsar_game::prelude::*;
 use pulsar_game::scripting::export::{{vm, ExportedScript}};
@@ -268,21 +268,20 @@ impl Clone for {ty} {{
     }}
 }}
 {component_helpers}
-impl Actor for {ty} {{
-    fn begin_play(&mut self, _entity: Entity, _world: &mut World) {{
+impl pulsar_game::lifecycle::NativeActor for {ty} {{
+    fn begin_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>) {{
 {begin_play}    }}
 
-    fn end_play(&mut self, _entity: Entity, _world: &mut World) {{
+    fn end_play(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>) {{
         self.script.end_play(program(), _entity, _world);
     }}
 
-    // Signature MUST match the pinned `pulsar_scenedb::Actor` exactly.
-    // `Actor::tick` is deliberately TIME-FREE there (see that trait's doc);
-    // the script reads time from `ExportedScript`'s clock. Do not add
-    // parameters here without changing SceneDB first: a mismatch is E0053 in
-    // every generated project. Guarded by pulsar_game's
-    // `blueprint_codegen_drift` probes (Pulsar-Native#652).
-    fn tick(&mut self, _entity: Entity, _world: &mut World) {{
+    // Signatures MUST match `pulsar_game::lifecycle::NativeActor` exactly: a
+    // mismatch is E0053 in every generated project. The component lifecycle
+    // calls `tick` with the frame's time, but the script reads time from
+    // `ExportedScript`'s clock, so `_delta_seconds` is not forwarded. Guarded
+    // by pulsar_game's `blueprint_codegen_drift` probes (Pulsar-Native#652).
+    fn tick(&mut self, _entity: Entity, _world: &mut World, _cx: &mut pulsar_game::lifecycle::ActorCx<'_>, _delta_seconds: f32) {{
         self.script.tick(program(), _entity, _world);
     }}
 }}

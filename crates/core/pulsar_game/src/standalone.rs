@@ -328,7 +328,30 @@ pub fn run_headless(
     content: &ContentRoot,
     frames: u64,
 ) -> Result<HeadlessReport, String> {
+    run_headless_with(game, content, frames, HeadlessHooks::default())
+}
+
+/// Hooks of a headless run, for tests and tools that watch it: the same run,
+/// observed.
+#[derive(Default)]
+pub struct HeadlessHooks<'a> {
+    /// Once the level is loaded and no tick has run yet (subscribe to the
+    /// level's entities here).
+    pub after_load: Option<Box<dyn FnOnce(&mut TickLoop) + 'a>>,
+    /// After every tick, with its index.
+    pub after_tick: Option<Box<dyn FnMut(&mut TickLoop, u64) + 'a>>,
+}
+
+/// [`run_headless`] with [`HeadlessHooks`].
+pub fn run_headless_with(
+    game: &mut TickLoop,
+    content: &ContentRoot,
+    frames: u64,
+    mut hooks: HeadlessHooks<'_>,
+) -> Result<HeadlessReport, String> {
     prepare_engine(content)?;
+    // No window, no renderer: a headless session, whatever built the loop.
+    game.set_session_kind(pulsar_world_registry::SessionKind::Headless);
     let settings = content.settings();
     let level = startup_level(content);
     if let Some(path) = &level {
@@ -336,9 +359,15 @@ pub fn run_headless(
     } else {
         tracing::warn!("No startup level: running an empty world");
     }
+    if let Some(after_load) = hooks.after_load.take() {
+        after_load(game);
+    }
     game.collect_script_problems(true);
-    for _ in 0..frames {
+    for index in 0..frames {
         game.tick_once();
+        if let Some(after_tick) = hooks.after_tick.as_mut() {
+            after_tick(game, index);
+        }
     }
     let mut report = HeadlessReport {
         content: content.root().display().to_string(),
@@ -381,7 +410,8 @@ pub fn run_headless(
             });
         }
     }
-    game.end_scripts();
+    // Components end first, while the world is alive, then scripts.
+    game.end_session();
     report.problems.extend(game.take_script_problems());
     tracing::info!(
         frames,
@@ -430,15 +460,28 @@ pub fn load_level(
         )
         .map_err(|e| format!("Failed to load level {name}: {e}"))?;
     }
+    adopt_level(game, content, path);
+    tracing::info!(level = %name, "Level loaded");
+    Ok(())
+}
+
+/// What a loaded level tells the session, for every host path (headless and
+/// windowed): its name for the script driver, and its roles and
+/// `world_settings` (gravity, `physics_enabled`, ...), which become the
+/// session's settings before its first tick. A host that hydrates the level
+/// itself (the windowed game does, once the window exists) must call this
+/// too, or the session runs with the defaults.
+pub fn adopt_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
+    let name = content
+        .relative(path)
+        .unwrap_or_else(|| path.display().to_string());
     if let Some(driver) = &game.scripts {
         driver
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .set_level_name(name.clone());
+            .set_level_name(name);
     }
     game.load_world_roles(path, content.root());
-    tracing::info!(level = %name, "Level loaded");
-    Ok(())
 }
 
 #[cfg(test)]

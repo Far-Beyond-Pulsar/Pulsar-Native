@@ -265,6 +265,11 @@ impl WorldRoles {
         self.bindings.is_empty()
     }
 
+    /// The level's whole `world_settings` object (a session's settings).
+    pub fn settings(&self) -> &Value {
+        &self.settings
+    }
+
     /// One of the level's `world_settings` values, by key: what a plugin
     /// keeps there (the input plugin's player input mapping).
     pub fn setting(&self, key: &str) -> Option<&Value> {

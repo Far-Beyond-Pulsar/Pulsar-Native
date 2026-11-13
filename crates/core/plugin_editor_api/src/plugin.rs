@@ -32,7 +32,6 @@ pub struct PreloadContext<'a> {
 /// | [`EditorPluginStatusbar`](crate::statusbar::EditorPluginStatusbar) | `statusbar_buttons`, `accepted_drop_kinds` |
 /// | [`EditorPluginAi`](crate::ai::EditorPluginAi) | `ai_tools`, `execute_ai_tool`, `capabilities_for_file` |
 /// | [`EditorPluginComponents`](crate::components::EditorPluginComponents) | `component_definitions`, `component_factories` |
-/// | [`EditorPluginSubsystems`](crate::subsystems::EditorPluginSubsystems) | `subsystems` |
 /// | [`EditorPluginScripting`](crate::scripting::EditorPluginScripting) | `script_languages` (opt in with `export_plugin!(T, scripting)`) |
 ///
 /// For DLL-loaded plugins the
@@ -92,7 +91,6 @@ pub trait EditorPluginFull:
     + crate::statusbar::EditorPluginStatusbar
     + crate::ai::EditorPluginAi
     + crate::components::EditorPluginComponents
-    + crate::subsystems::EditorPluginSubsystems
     + crate::scripting::EditorPluginScripting
 {
 }
@@ -262,12 +260,6 @@ macro_rules! export_plugin {
             }
             fn component_factories(&self) -> Vec<(String, $crate::components::ComponentFactory)> {
                 $crate::components::EditorPluginComponents::component_factories(&self.0)
-            }
-        }
-
-        impl $crate::subsystems::EditorPluginSubsystems for __PluginExport {
-            fn subsystems(&self) -> Vec<Box<dyn $crate::subsystems::Subsystem>> {
-                $crate::subsystems::EditorPluginSubsystems::subsystems(&self.0)
             }
         }
 

@@ -1,0 +1,9 @@
+# A test plugin for the component lifecycle proofs
+# (plugins/installed/tests/lifecycle.rs): one class with an ActorTable.
+id = "pulsar.test_lifecycle"
+name = "Lifecycle fixture"
+description = "A component class with begin_play, tick and end_play"
+enabled_by_default = true
+provides = []
+requires = []
+root = "lifecycle_fixture_plugin"

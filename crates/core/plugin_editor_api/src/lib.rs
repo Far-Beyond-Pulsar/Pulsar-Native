@@ -43,7 +43,6 @@
 //! | [`ai`] | `AiToolDefinition`, `FsContext` |
 //! | [`components`] | `ComponentDefinition`, `EditorPluginComponents` |
 //! | [`traits`] | `ProjectTraits`: query the project trait database (roles, implementers) |
-//! | [`subsystems`] | `EditorPluginSubsystems`, `Subsystem` re-exports |
 //! | [`plugin`] | `EditorPlugin` trait, `export_plugin!` macro |
 //! | [`editor_element`] | `EditorHandle`, `EditorElement` — init vs render lifecycle |
 //! | [`helpers`] | `standalone_file_type()`, `folder_file_type()` |
@@ -104,7 +103,6 @@ pub mod registrar;
 pub mod runtime;
 pub mod scripting;
 pub mod statusbar;
-pub mod subsystems;
 pub mod surface_animation;
 pub mod traits;
 pub mod undo;
@@ -140,7 +138,6 @@ pub use registrar::{Plugin, PluginAdapter, PluginBuilder, Registration};
 pub use runtime::*;
 pub use scripting::*;
 pub use statusbar::*;
-pub use subsystems::*;
 pub use traits::ProjectTraits;
 pub use traits::{
     TraitDescriptor, TraitImplementer, TraitMethodDescriptor, TraitParamDescriptor, TraitSnapshot,

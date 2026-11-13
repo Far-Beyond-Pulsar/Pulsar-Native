@@ -11,6 +11,7 @@
 //! | [`prefab`] | the `prefab.json` read model, with a stable slot id per component |
 //! | [`registry`] | [`ClassRegistry`]: GUID → class dir, by scanning `src/classes/*` |
 //! | [`component`] | the [`ClassInstance`] world component a placed class carries |
+//! | [`lifecycle`] | its `WorldActor` lifecycle: events the script driver follows |
 //! | [`overrides`] | JSON diff / merge used for per-instance overrides |
 //! | [`plan`] | which prefab component goes on the root and which on a child |
 //! | [`template`] | a class's slot defaults decoded once; instances clone them |
@@ -28,6 +29,7 @@
 
 pub mod component;
 pub mod id;
+pub mod lifecycle;
 pub mod migrate;
 pub mod native_script;
 pub mod overrides;
@@ -40,6 +42,7 @@ pub mod world;
 
 pub use component::ClassInstance;
 pub use id::{ClassId, ClassMeta, CLASS_META_FILE};
+pub use lifecycle::{ClassEvent, ClassInbox};
 pub use native_script::NativeScriptComponent;
 pub use plan::{
     migrate_slot_keys, plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent,

@@ -8,6 +8,8 @@ description = "Class-name-keyed registry of reflection-typed components in pulsa
 # The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
 pulsar_plugins = { workspace = true }
 pulsar_scenedb    = { workspace = true }
+# The lifecycle capability registry: tables by component id (L1; never reflected).
+pulsar_component_lifecycle = { workspace = true }
 pulsar_events     = { workspace = true }
 pulsar_reflection = { workspace = true }
 serde_json        = { workspace = true }
@@ -16,6 +18,8 @@ serde             = { workspace = true }
 inventory         = { workspace = true }
 thiserror         = { workspace = true }
 tracing           = { workspace = true }
+# Profiler scopes of the lifecycle (`Lifecycle::*`).
+profiling         = { workspace = true }
 # World components as script VM components and natives (`script_natives`).
 pulsar_script_vm  = { workspace = true }
 pulsar_script_math = { workspace = true }

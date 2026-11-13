@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "friction": 0.8999999761581421,
+  "restitution": 0.8500000238418579,
+  "friction_combine": "average",
+  "restitution_combine": "average",
+  "density": 1100.0,
+  "surface": "rubber",
+  "description": "Balls and the capsule: grippy and very bouncy"
+}

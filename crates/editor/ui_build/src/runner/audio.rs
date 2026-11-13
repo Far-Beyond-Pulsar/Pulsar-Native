@@ -60,31 +60,35 @@ fn volume() -> f32 {
 
 fn play(sound: &'static [u8]) {
     // Device setup and MP3 decoding can take a moment. Keep it off the UI task.
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui build: play", editor_task_queue::ThreadRole::Io).owner("ui_build"), move || {
-        let Some(mixer) = OUTPUT_MIXER
-            .get_or_init(|| {
-                let stream = OutputStreamBuilder::open_default_stream().ok()?;
-                let mixer = stream.mixer().clone();
-                std::mem::forget(stream);
-                Some(mixer)
-            })
-            .as_ref()
-        else {
-            tracing::warn!("Could not open the default audio output for build sound");
-            return;
-        };
-
-        let decoder = match Decoder::try_from(Cursor::new(sound)) {
-            Ok(decoder) => decoder,
-            Err(error) => {
-                tracing::warn!(%error, "Could not decode build notification sound");
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new("ui build: play", editor_task_queue::ThreadRole::Io)
+            .owner("ui_build"),
+        move || {
+            let Some(mixer) = OUTPUT_MIXER
+                .get_or_init(|| {
+                    let stream = OutputStreamBuilder::open_default_stream().ok()?;
+                    let mixer = stream.mixer().clone();
+                    std::mem::forget(stream);
+                    Some(mixer)
+                })
+                .as_ref()
+            else {
+                tracing::warn!("Could not open the default audio output for build sound");
                 return;
-            }
-        };
+            };
 
-        let sink = Sink::connect_new(mixer);
-        sink.set_volume(volume());
-        sink.append(decoder);
-        sink.detach();
-    });
+            let decoder = match Decoder::try_from(Cursor::new(sound)) {
+                Ok(decoder) => decoder,
+                Err(error) => {
+                    tracing::warn!(%error, "Could not decode build notification sound");
+                    return;
+                }
+            };
+
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(volume());
+            sink.append(decoder);
+            sink.detach();
+        },
+    );
 }

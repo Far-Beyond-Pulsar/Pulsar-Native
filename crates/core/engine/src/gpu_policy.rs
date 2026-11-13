@@ -4,7 +4,9 @@
 //! rendering performance. It probes available GPUs, prompts the user if no discrete
 //! GPU is available, and configures WGPU environment variables accordingly.
 
-use pulsar_dialog_protocol::{client, ButtonKind, DialogButton, DialogRequest, DialogResponse, Severity};
+use pulsar_dialog_protocol::{
+    client, ButtonKind, DialogButton, DialogRequest, DialogResponse, Severity,
+};
 use wgpu::{Backends, DeviceType, Instance, InstanceDescriptor};
 
 #[derive(Debug, Clone)]
@@ -102,9 +104,16 @@ fn prompt_request(adapters: &[String]) -> DialogRequest {
          detected.\n\nContinue anyway, using the GPU that is available?",
     )
     .severity(Severity::Warning)
-    .button(DialogButton::new(CONTINUE, "Continue").kind(ButtonKind::Primary).default())
+    .button(
+        DialogButton::new(CONTINUE, "Continue")
+            .kind(ButtonKind::Primary)
+            .default(),
+    )
     .button(DialogButton::new(QUIT, "Quit").cancel())
-    .checkbox("Don't ask again (set the GPU preference to Automatic)", false);
+    .checkbox(
+        "Don't ask again (set the GPU preference to Automatic)",
+        false,
+    );
     if !adapters.is_empty() {
         request = request.detail(format!("Available: {}", adapters.join(", ")));
     }
@@ -230,31 +239,61 @@ mod tests {
     fn any_adapter_named_rtx_spark_counts_as_discrete_however_it_is_reported() {
         let name = "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)";
         assert!(counts_as_discrete(DeviceType::IntegratedGpu, name));
-        assert!(counts_as_discrete(DeviceType::Other, &format!("{name}/PCIe")));
+        assert!(counts_as_discrete(
+            DeviceType::Other,
+            &format!("{name}/PCIe")
+        ));
         assert!(counts_as_discrete(DeviceType::Other, "nvidia rtx spark"));
     }
 
     #[test]
     fn ordinary_discrete_cards_still_count_and_other_integrated_gpus_do_not() {
         assert!(counts_as_discrete(DeviceType::DiscreteGpu, "AMD Radeon RX"));
-        assert!(!counts_as_discrete(DeviceType::IntegratedGpu, "AMD Radeon Graphics"));
-        assert!(!counts_as_discrete(DeviceType::IntegratedGpu, "Qualcomm Adreno X1"));
-        assert!(!counts_as_discrete(DeviceType::Cpu, "Microsoft Basic Render Driver"));
+        assert!(!counts_as_discrete(
+            DeviceType::IntegratedGpu,
+            "AMD Radeon Graphics"
+        ));
+        assert!(!counts_as_discrete(
+            DeviceType::IntegratedGpu,
+            "Qualcomm Adreno X1"
+        ));
+        assert!(!counts_as_discrete(
+            DeviceType::Cpu,
+            "Microsoft Basic Render Driver"
+        ));
         // The name has to say RTX Spark: "Spark" alone is not enough.
-        assert!(!counts_as_discrete(DeviceType::IntegratedGpu, "Spark Graphics"));
+        assert!(!counts_as_discrete(
+            DeviceType::IntegratedGpu,
+            "Spark Graphics"
+        ));
     }
 
     #[test]
     fn continue_carries_on_and_remembers_only_when_the_box_is_ticked() {
-        assert_eq!(decide(&DialogResponse::answered(CONTINUE, Some(false))), (true, false));
-        assert_eq!(decide(&DialogResponse::answered(CONTINUE, None)), (true, false));
-        assert_eq!(decide(&DialogResponse::answered(CONTINUE, Some(true))), (true, true));
+        assert_eq!(
+            decide(&DialogResponse::answered(CONTINUE, Some(false))),
+            (true, false)
+        );
+        assert_eq!(
+            decide(&DialogResponse::answered(CONTINUE, None)),
+            (true, false)
+        );
+        assert_eq!(
+            decide(&DialogResponse::answered(CONTINUE, Some(true))),
+            (true, true)
+        );
     }
 
     #[test]
     fn quit_and_closing_the_dialog_decline_and_never_remember() {
-        assert_eq!(decide(&DialogResponse::answered(QUIT, Some(true))), (false, false));
-        assert_eq!(decide(&DialogResponse::dismissed(Some(true))), (false, false));
+        assert_eq!(
+            decide(&DialogResponse::answered(QUIT, Some(true))),
+            (false, false)
+        );
+        assert_eq!(
+            decide(&DialogResponse::dismissed(Some(true))),
+            (false, false)
+        );
     }
 
     #[test]

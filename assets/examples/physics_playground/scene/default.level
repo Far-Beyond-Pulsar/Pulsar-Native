@@ -1,0 +1,4646 @@
+{
+  "version": "2.2",
+  "objects": [
+    {
+      "id": "sun",
+      "name": "Sun",
+      "object_type": {
+        "Light": "Directional"
+      },
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -48.0,
+          -35.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Sun",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "LightComponent",
+          "enabled": true,
+          "data": {
+            "general": {
+              "enabled": true,
+              "affects_world": true,
+              "light_type": "Directional",
+              "movability": "Static",
+              "light_channels": 255,
+              "lighting_channel_0": true,
+              "lighting_channel_1": false,
+              "lighting_channel_2": false
+            },
+            "intensity": {
+              "intensity": 3.0,
+              "intensity_units": "Lumens",
+              "exposure_compensation": 0.0,
+              "inverse_squared_falloff": true,
+              "indirect_intensity": 1.0,
+              "max_draw_distance": 0.0,
+              "max_distance_fade_range": 0.0
+            },
+            "color": {
+              "color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "use_temperature": false,
+              "temperature_kelvin": 6500.0,
+              "temperature_tint": 0.0,
+              "color_saturation": 1.0,
+              "color_contrast": 1.0,
+              "use_physical_light_color": true
+            },
+            "attenuation": {
+              "range": 1000.0,
+              "falloff_start": 0.0,
+              "attenuation_exponent": 2.0,
+              "source_radius": 0.0,
+              "source_length": 0.0,
+              "inner_cone_angle": 30.0,
+              "outer_cone_angle": 45.0
+            },
+            "shadows": {
+              "cast_shadows": true,
+              "cast_static_shadows": true,
+              "cast_dynamic_shadows": true,
+              "cast_volumetric_shadow": true,
+              "cast_contact_shadows": false,
+              "shadow_bias": 0.5,
+              "shadow_priority": 1.0,
+              "shadow_max_resolution": 2048,
+              "shadow_normal_bias": 0.5,
+              "shadow_slope_bias": 0.5,
+              "shadow_filter_sharpen": 0.0,
+              "shadow_softness": 1.0,
+              "shadow_resolution_scale": 1.0,
+              "contact_shadow_non_shadow_casting_intensity": 0.0
+            },
+            "volumetrics": {
+              "affects_volumetric_fog": true,
+              "volumetric_scattering_intensity": 1.0,
+              "volumetric_shadow_intensity": 1.0,
+              "fog_inscattering_intensity": 1.0,
+              "contact_shadow_length": 0.0
+            },
+            "light_function": {
+              "light_function_material": "",
+              "light_function_scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "light_function_fade_distance": 0.0,
+              "light_function_disabled_brightness": 0.0
+            },
+            "emitter_disk": {
+              "disk_enabled": false,
+              "texture": "None",
+              "angular_radius_degrees": 2.5
+            },
+            "performance": {
+              "mobile_quality_level": "High",
+              "ray_tracing_inclusion": true,
+              "virtual_shadow_map_enabled": true,
+              "shadow_cache_mode": "Auto",
+              "per_view_visibility_mask": 65535
+            },
+            "advanced": {
+              "rotation_offset": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "affects_translucency": true,
+              "affects_reflections": true,
+              "affects_global_illumination": true,
+              "specular_scale": 1.0,
+              "diffuse_scale": 1.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sky",
+      "name": "Sky",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Sky",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "AtmosphereComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "placement": "GroundAtOrigin",
+            "planet_radius_km": 6360.0,
+            "thickness_km": 100.0,
+            "ground_albedo": [
+              0.30000001192092896,
+              0.30000001192092896,
+              0.30000001192092896
+            ],
+            "sun_angular_radius_deg": 0.26785776019096375,
+            "rayleigh_scattering": [
+              0.005801999941468239,
+              0.013558000326156616,
+              0.03310000151395798
+            ],
+            "rayleigh_scale_height_km": 8.0,
+            "mie_scattering": [
+              0.003996000159531832,
+              0.003996000159531832,
+              0.003996000159531832
+            ],
+            "mie_absorption": [
+              0.004399999976158142,
+              0.004399999976158142,
+              0.004399999976158142
+            ],
+            "mie_scale_height_km": 1.2000000476837158,
+            "mie_anisotropy": 0.800000011920929,
+            "ozone_absorption": [
+              0.0006500000017695129,
+              0.0018810000037774444,
+              0.00008499999967170879
+            ],
+            "ozone_center_km": 25.0,
+            "ozone_width_km": 30.0,
+            "clouds_enabled": false,
+            "cloud_bottom_km": 1.5,
+            "cloud_top_km": 4.0,
+            "cloud_coverage": 0.44999998807907104,
+            "cloud_type": 0.8500000238418579,
+            "cloud_extinction_per_km": 40.0,
+            "cloud_weather_km": 24.0,
+            "cloud_shape_km": 6.0,
+            "cloud_detail_km": 0.800000011920929,
+            "cloud_erosion": 0.44999998807907104,
+            "cloud_wind": [
+              8.0,
+              0.0,
+              3.0
+            ],
+            "cloud_albedo": [
+              0.9900000095367432,
+              0.9900000095367432,
+              0.9900000095367432
+            ],
+            "cloud_voxels": false,
+            "cloud_voxel_m": 32.0,
+            "cloud_voxel_fill": 0.5,
+            "cloud_pole": [
+              0.0,
+              0.7071067690849304,
+              0.7071067690849304
+            ],
+            "cloud_circulation": 1.0,
+            "cloud_circulation_cells": 3.0,
+            "cloud_synoptic_km": 1500.0,
+            "cloud_storminess": 0.6000000238418579,
+            "cloud_mesoscale_km": 80.0,
+            "cloud_cirrus": 0.5,
+            "cloud_cirrus_km": 9.0,
+            "cloud_evolution": 0.0,
+            "cloud_seed": 0,
+            "night_sky_enabled": true,
+            "star_count": 1800.0,
+            "star_brightness": 2.0,
+            "star_twinkle_fraction": 0.1599999964237213,
+            "star_twinkle_speed": 1.2999999523162842,
+            "star_seed": 47,
+            "shooting_stars_enabled": true,
+            "shooting_star_rate": 0.11999999731779099,
+            "shooting_star_speed": 1.0,
+            "shooting_star_length": 0.05999999865889549,
+            "sky_texture_enabled": false,
+            "sky_texture_file": "",
+            "sky_texture_intensity": 10.0,
+            "sky_texture_opacity": 1.0,
+            "sky_texture_yaw_deg": 0.0,
+            "sky_texture_pitch_deg": 0.0,
+            "sky_texture_roll_deg": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "spectator_camera",
+      "name": "Spectator Camera",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          15.0,
+          36.0
+        ],
+        "rotation": [
+          -18.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Spectator Camera",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "CameraComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "priority": 0,
+            "projection": "Perspective",
+            "fov_y_deg": 45.0,
+            "orthographic_size": 5.0,
+            "near": 0.05000000074505806,
+            "far": 2000.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "ground",
+      "name": "Ground",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          -0.5,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.4,
+          0.005,
+          0.4
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Ground",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.41999998688697815,
+                0.4399999976158142,
+                0.4000000059604645,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.8999999761581421,
+              "emissive_color": [
+                0.41999998688697815,
+                0.4399999976158142,
+                0.4000000059604645
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              40.0,
+              0.5,
+              40.0
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "wall_north",
+      "name": "Wall North",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          2.0,
+          -40.5
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.41000000000000003,
+          0.02,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Wall North",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.800000011920929,
+              "emissive_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              41.0,
+              2.0,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "wall_south",
+      "name": "Wall South",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          2.0,
+          40.5
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.41000000000000003,
+          0.02,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Wall South",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.800000011920929,
+              "emissive_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              41.0,
+              2.0,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "wall_east",
+      "name": "Wall East",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          40.5,
+          2.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.02,
+          0.4
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Wall East",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.800000011920929,
+              "emissive_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              2.0,
+              40.0
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "wall_west",
+      "name": "Wall West",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -40.5,
+          2.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.02,
+          0.4
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Wall West",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.800000011920929,
+              "emissive_color": [
+                0.550000011920929,
+                0.5199999809265137,
+                0.47999998927116394
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              2.0,
+              40.0
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_1",
+      "name": "Pyramid Crate 1",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -10.04,
+          0.51,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 1",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_2",
+      "name": "Pyramid Crate 2",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -9.02,
+          0.51,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 2",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_3",
+      "name": "Pyramid Crate 3",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -8.0,
+          0.51,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 3",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_4",
+      "name": "Pyramid Crate 4",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -6.98,
+          0.51,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 4",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_5",
+      "name": "Pyramid Crate 5",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -5.96,
+          0.51,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 5",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_6",
+      "name": "Pyramid Crate 6",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -9.53,
+          1.53,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 6",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_7",
+      "name": "Pyramid Crate 7",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -8.51,
+          1.53,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 7",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_8",
+      "name": "Pyramid Crate 8",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -7.49,
+          1.53,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 8",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_9",
+      "name": "Pyramid Crate 9",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -6.47,
+          1.53,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 9",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_10",
+      "name": "Pyramid Crate 10",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -9.02,
+          2.55,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 10",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_11",
+      "name": "Pyramid Crate 11",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -8.0,
+          2.55,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 11",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_12",
+      "name": "Pyramid Crate 12",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -6.98,
+          2.55,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 12",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_13",
+      "name": "Pyramid Crate 13",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -8.51,
+          3.57,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 13",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.550000011920929,
+                0.36000001430511475,
+                0.18000000715255737
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_14",
+      "name": "Pyramid Crate 14",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -7.49,
+          3.57,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 14",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "crate_15",
+      "name": "Pyramid Crate 15",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -8.0,
+          4.59,
+          -6.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pyramid Crate 15",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.699999988079071,
+              "emissive_color": [
+                0.7200000286102295,
+                0.5,
+                0.25999999046325684
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 5.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "bouncy_ball_1",
+      "name": "Bouncy Ball 1",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -2.0,
+          10.0,
+          -4.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Bouncy Ball 1",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.8999999761581421,
+                0.15000000596046448,
+                0.15000000596046448,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.3499999940395355,
+              "emissive_color": [
+                0.8999999761581421,
+                0.15000000596046448,
+                0.15000000596046448
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 1.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "bouncy_ball_2",
+      "name": "Bouncy Ball 2",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          13.0,
+          -2.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Bouncy Ball 2",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.8999999761581421,
+                0.45000001788139343,
+                0.15000000596046448,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.3499999940395355,
+              "emissive_color": [
+                0.8999999761581421,
+                0.45000001788139343,
+                0.15000000596046448
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 1.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "bouncy_ball_3",
+      "name": "Bouncy Ball 3",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          2.0,
+          16.0,
+          -4.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Bouncy Ball 3",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.8999999761581421,
+                0.75,
+                0.15000000596046448,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.3499999940395355,
+              "emissive_color": [
+                0.8999999761581421,
+                0.75,
+                0.15000000596046448
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 1.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "capsule",
+      "name": "Falling Capsule",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          3.0,
+          14.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          35.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [
+        "capsule_shaft",
+        "capsule_cap_top",
+        "capsule_cap_bottom"
+      ],
+      "scene_path": "Falling Capsule",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Capsule",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.4000000059604645,
+            "height": 1.2000000476837158,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 2.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "capsule_shaft",
+      "name": "Capsule Shaft",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.004,
+          0.006,
+          0.004
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": "capsule",
+      "children": [],
+      "scene_path": "Capsule Shaft",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cylinder.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.20000000298023224,
+                0.6000000238418579,
+                0.8999999761581421,
+                1.0
+              ],
+              "metallic": 0.10000000149011612,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.20000000298023224,
+                0.6000000238418579,
+                0.8999999761581421
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "capsule_cap_top",
+      "name": "Capsule Cap Top",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.6,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.004,
+          0.004,
+          0.004
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": "capsule",
+      "children": [],
+      "scene_path": "Capsule Cap Top",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.20000000298023224,
+                0.6000000238418579,
+                0.8999999761581421,
+                1.0
+              ],
+              "metallic": 0.10000000149011612,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.20000000298023224,
+                0.6000000238418579,
+                0.8999999761581421
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "capsule_cap_bottom",
+      "name": "Capsule Cap Bottom",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          -0.6,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.004,
+          0.004,
+          0.004
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": "capsule",
+      "children": [],
+      "scene_path": "Capsule Cap Bottom",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.20000000298023224,
+                0.6000000238418579,
+                0.8999999761581421,
+                1.0
+              ],
+              "metallic": 0.10000000149011612,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.20000000298023224,
+                0.6000000238418579,
+                0.8999999761581421
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ramp",
+      "name": "Ramp",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          16.0,
+          2.5,
+          8.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          20.0
+        ],
+        "scale": [
+          0.05,
+          0.0025,
+          0.025
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Ramp",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.6000000238418579,
+                0.8500000238418579,
+                0.949999988079071,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.15000000596046448,
+              "emissive_color": [
+                0.6000000238418579,
+                0.8500000238418579,
+                0.949999988079071
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              5.0,
+              0.25,
+              2.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/ice.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "rolling_ball",
+      "name": "Rolling Ball",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          18.56,
+          4.23,
+          8.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Rolling Ball",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.949999988079071,
+                0.800000011920929,
+                0.10000000149011612,
+                1.0
+              ],
+              "metallic": 0.20000000298023224,
+              "roughness": 0.30000001192092896,
+              "emissive_color": [
+                0.949999988079071,
+                0.800000011920929,
+                0.10000000149011612
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 1.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "finish_zone",
+      "name": "Finish Trigger Zone",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          9.0,
+          1.5,
+          8.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.02,
+          0.015,
+          0.025
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Finish Trigger Zone",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.10000000149011612,
+                0.8999999761581421,
+                0.30000001192092896,
+                0.25
+              ],
+              "metallic": 0.0,
+              "roughness": 0.5,
+              "emissive_color": [
+                0.10000000149011612,
+                0.8999999761581421,
+                0.30000001192092896
+              ],
+              "emissive_intensity": 1.5,
+              "alpha": 0.25
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              2.0,
+              1.5,
+              2.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": true,
+            "physics_material": "",
+            "layer": "Triggers"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "updraft",
+      "name": "Updraft Field",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -14.0,
+          0.2,
+          8.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.04,
+          0.001,
+          0.04
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Updraft Field",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cylinder.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.5,
+                0.800000011920929,
+                1.0,
+                0.3499999940395355
+              ],
+              "metallic": 0.0,
+              "roughness": 0.6000000238418579,
+              "emissive_color": [
+                0.5,
+                0.800000011920929,
+                1.0
+              ],
+              "emissive_intensity": 0.6000000238418579,
+              "alpha": 0.3499999940395355
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ForceFieldComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "kind": "Directional",
+            "strength": 25.0,
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "radius": 4.0,
+            "falloff": "Linear",
+            "affected_layer": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "feather_ball",
+      "name": "Feather Ball",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -14.0,
+          3.0,
+          8.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.004000000059604645,
+          0.004000000059604645,
+          0.004000000059604645
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Feather Ball",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.5,
+              "emissive_color": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.4000000059604645,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 0.5,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "well",
+      "name": "Gravity Well",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -14.0,
+          0.6,
+          -14.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.003,
+          0.003,
+          0.003
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Gravity Well",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.699999988079071,
+                0.20000000298023224,
+                0.8999999761581421,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.699999988079071,
+                0.20000000298023224,
+                0.8999999761581421
+              ],
+              "emissive_intensity": 2.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ForceFieldComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "kind": "Radial",
+            "strength": 30.0,
+            "direction": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "radius": 7.0,
+            "falloff": "Quadratic",
+            "affected_layer": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "well_ball_1",
+      "name": "Well Ball 1",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -17.0,
+          0.5,
+          -14.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Well Ball 1",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.800000011920929,
+                0.4000000059604645,
+                0.949999988079071,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.800000011920929,
+                0.4000000059604645,
+                0.949999988079071
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 1.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "well_ball_2",
+      "name": "Well Ball 2",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -11.0,
+          0.5,
+          -16.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Well Ball 2",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.800000011920929,
+                0.4000000059604645,
+                0.949999988079071,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.800000011920929,
+                0.4000000059604645,
+                0.949999988079071
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 1.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pendulum_pivot",
+      "name": "Pendulum Pivot",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          14.0,
+          9.0,
+          -10.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0030000001192092896,
+          0.0030000001192092896,
+          0.0030000001192092896
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pendulum Pivot",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.20000000298023224,
+                0.20000000298023224,
+                0.25,
+                1.0
+              ],
+              "metallic": 0.800000011920929,
+              "roughness": 0.4000000059604645,
+              "emissive_color": [
+                0.20000000298023224,
+                0.20000000298023224,
+                0.25
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.30000001192092896,
+              0.30000001192092896,
+              0.30000001192092896
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "pendulum_bob",
+      "name": "Pendulum Bob",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          16.8,
+          6.2,
+          -10.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.006000000238418579,
+          0.006000000238418579,
+          0.006000000238418579
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Pendulum Bob",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.8500000238418579,
+                0.10000000149011612,
+                0.10000000149011612,
+                1.0
+              ],
+              "metallic": 0.6000000238418579,
+              "roughness": 0.25,
+              "emissive_color": [
+                0.8500000238418579,
+                0.10000000149011612,
+                0.10000000149011612
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.6000000238418579,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 3.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        {
+          "index": 3,
+          "class_name": "JointComponent",
+          "enabled": true,
+          "data": {
+            "kind": "BallSocket",
+            "connected_object": "Pendulum Pivot",
+            "anchor": [
+              -2.799999952316284,
+              2.799999952316284,
+              0.0
+            ],
+            "connected_anchor": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "collide_connected": false,
+            "break_force": 0.0,
+            "limits_enabled": false,
+            "limit_min": 0.0,
+            "limit_max": 0.0,
+            "stiffness": 0.0,
+            "damping": 0.0,
+            "rest_length": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "hinge_post",
+      "name": "Hinge Post",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -6.0,
+          2.0,
+          14.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.0020000000298023225,
+          0.02,
+          0.0020000000298023225
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Hinge Post",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Static",
+            "legacy_material_override": {
+              "base_color": [
+                0.30000001192092896,
+                0.30000001192092896,
+                0.3199999928474426,
+                1.0
+              ],
+              "metallic": 0.6000000238418579,
+              "roughness": 0.5,
+              "emissive_color": [
+                0.30000001192092896,
+                0.30000001192092896,
+                0.3199999928474426
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.20000000298023224,
+              2.0,
+              0.20000000298023224
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/concrete.physmat",
+            "layer": "World"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Static",
+            "mass": 0.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": false,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "swing_door",
+      "name": "Swing Door",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -4.3,
+          2.0,
+          14.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.015,
+          0.015,
+          0.001
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Swing Door",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.30000001192092896,
+                0.5,
+                0.800000011920929,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.6000000238418579,
+              "emissive_color": [
+                0.30000001192092896,
+                0.5,
+                0.800000011920929
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Box",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              1.5,
+              1.5,
+              0.10000000149011612
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/wood.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 8.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        },
+        {
+          "index": 3,
+          "class_name": "JointComponent",
+          "enabled": true,
+          "data": {
+            "kind": "Hinge",
+            "connected_object": "Hinge Post",
+            "anchor": [
+              -1.7000000476837158,
+              0.0,
+              0.0
+            ],
+            "connected_anchor": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "collide_connected": false,
+            "break_force": 0.0,
+            "limits_enabled": true,
+            "limit_min": -90.0,
+            "limit_max": 90.0,
+            "stiffness": 0.0,
+            "damping": 0.0,
+            "rest_length": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "door_ball",
+      "name": "Door Ball",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          -4.3,
+          3.0,
+          20.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.005,
+          0.005,
+          0.005
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Door Ball",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "StaticMeshComponent",
+          "enabled": true,
+          "data": {
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "movability": "Movable",
+            "legacy_material_override": {
+              "base_color": [
+                0.10000000149011612,
+                0.8999999761581421,
+                0.8999999761581421,
+                1.0
+              ],
+              "metallic": 0.0,
+              "roughness": 0.30000001192092896,
+              "emissive_color": [
+                0.10000000149011612,
+                0.8999999761581421,
+                0.8999999761581421
+              ],
+              "emissive_intensity": 0.0,
+              "alpha": 1.0
+            }
+          }
+        },
+        {
+          "index": 1,
+          "class_name": "ColliderComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "shape": "Sphere",
+            "center": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "half_extents": [
+              0.5,
+              0.5,
+              0.5
+            ],
+            "radius": 0.5,
+            "height": 1.0,
+            "axis": "Y",
+            "mesh": "",
+            "is_trigger": false,
+            "physics_material": "assets/physics/rubber.physmat",
+            "layer": "Props"
+          }
+        },
+        {
+          "index": 2,
+          "class_name": "RigidBodyComponent",
+          "enabled": true,
+          "data": {
+            "enabled": true,
+            "body_type": "Dynamic",
+            "mass": 2.0,
+            "gravity_scale": 1.0,
+            "can_sleep": true,
+            "continuous_collision": true,
+            "linear_damping": 0.0,
+            "angular_damping": 0.05000000074505806,
+            "lock_position_x": false,
+            "lock_position_y": false,
+            "lock_position_z": false,
+            "lock_rotation_x": false,
+            "lock_rotation_y": false,
+            "lock_rotation_z": false,
+            "linear_velocity": [
+              0.0,
+              0.0,
+              -12.0
+            ],
+            "angular_velocity": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "world_settings": {
+    "gravity": [
+      0.0,
+      -9.81,
+      0.0
+    ],
+    "physics_enabled": true
+  },
+  "metadata": {},
+  "editor": {
+    "camera": {
+      "position": [
+        0.0,
+        15.0,
+        36.0
+      ],
+      "yaw": 0.0,
+      "pitch": -0.31
+    }
+  }
+}

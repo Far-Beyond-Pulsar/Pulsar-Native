@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "friction": 0.6000000238418579,
+  "restitution": 0.10000000149011612,
+  "friction_combine": "average",
+  "restitution_combine": "average",
+  "density": 600.0,
+  "surface": "wood",
+  "description": "Crates, the door: moderate grip, barely bounces"
+}

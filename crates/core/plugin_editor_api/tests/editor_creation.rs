@@ -101,11 +101,6 @@ fn trait_vtable_dispatch() {
                 Vec::new()
             }
         }
-        impl plugin_editor_api::subsystems::EditorPluginSubsystems for FullTestPlugin {
-            fn subsystems(&self) -> Vec<Box<dyn plugin_editor_api::subsystems::Subsystem>> {
-                Vec::new()
-            }
-        }
 
         impl plugin_editor_api::plugin::EditorPluginFull for FullTestPlugin {}
 

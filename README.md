@@ -8,7 +8,13 @@
   </a>
 </p>
 
-<h1 align="center">Pulsar Engine</h1>
+<div align="center">
+  <h1>
+    <a href="https://pulsarnative.com/">
+      Pulsar Engine
+    </a>
+  </h1>
+</div>
 
 <p align="center">
   <strong>A next‑generation, experimental game engine focused on scalability, modularity, and modern systems design.</strong>

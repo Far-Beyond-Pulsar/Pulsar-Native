@@ -121,6 +121,9 @@ catalog_fixture_component = { path = "tests/fixtures/catalog_plugin/component" }
 # a Blueprint implementing the trait, and the game dispatching to both.
 trait_fixture_plugin = { path = "tests/fixtures/trait_plugin" }
 pulsar_traits = { workspace = true }
+# The component lifecycle proof (tests/lifecycle.rs): a fixture plugin whose
+# class has an ActorTable.
+lifecycle_fixture_plugin = { path = "tests/fixtures/lifecycle_plugin" }
 
 # The editor's and the game's own tests with every plugin, moved from
 # ui_level_editor and pulsar_game (a kernel crate's tests that need plugins are

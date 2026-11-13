@@ -1,5 +1,9 @@
 # Plugin API refactor: audit and plan
 
+> **Historical note.** `ComponentTickRegistration` (named in the audit tables below) no
+> longer exists: class lifecycles are `ActorTable`s registered through `ClassSpec::actor`
+> (`COMPONENT_LIFECYCLE_PLAN.md`, P1 and P6).
+
 Tracking issue: Far-Beyond-Pulsar/Pulsar-Native#1608 (design source: Tristan's
 2026-11-07 plan plus the coordinator's review; decisions recorded in the issue).
 This file is the one plan. When it lands it **replaces**

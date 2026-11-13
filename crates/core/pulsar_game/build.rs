@@ -1,13 +1,13 @@
 //! Generates the Rust-export probe actor.
 //!
 //! The Blueprint editor's Rust export (`pulsar_script_codegen::actor`) emits
-//! an `impl Actor` that every generated game project compiles. The
-//! `pulsar_scenedb::Actor` trait it must satisfy is pinned by rev from the
-//! root manifest, which the generator cannot see, so drift would otherwise
+//! an `impl pulsar_game::lifecycle::NativeActor` that every generated game
+//! project compiles. That trait lives in this crate and the generator cannot
+//! see it, so drift between the two would otherwise
 //! surface only inside user projects (Pulsar-Native#652). This script
 //! generates one actor through the real generator and `src/export_probe.rs`
 //! includes it into this crate's test build: it is compiled against the real
-//! pinned trait on every `cargo test -p pulsar_game`, and any drift is a
+//! trait on every `cargo test -p pulsar_game`, and any drift is a
 //! compile error here.
 
 use std::path::PathBuf;

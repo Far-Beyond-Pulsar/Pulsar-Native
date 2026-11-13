@@ -56,7 +56,10 @@ impl ProfileDropdown {
     }
 
     /// A dropdown that also lists `menu_items()`, grouped by section.
-    pub fn with_menu_items(menu_items: fn() -> Vec<AccountMenuItem>, cx: &mut Context<Self>) -> Self {
+    pub fn with_menu_items(
+        menu_items: fn() -> Vec<AccountMenuItem>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut this = Self {
             menu_items,
             avatar_image: None,
@@ -90,10 +93,17 @@ impl ProfileDropdown {
         self.avatar_image = None;
 
         let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
-        editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui common: ensure avatar loaded", editor_task_queue::ThreadRole::Io).owner("ui_common"), move || {
-            let image = fetch_avatar_image(&url).ok();
-            let _ = smol::block_on(tx.send(image));
-        });
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui common: ensure avatar loaded",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_common"),
+            move || {
+                let image = fetch_avatar_image(&url).ok();
+                let _ = smol::block_on(tx.send(image));
+            },
+        );
 
         cx.spawn(async move |this, cx| {
             if let Ok(maybe_image) = rx.recv().await {

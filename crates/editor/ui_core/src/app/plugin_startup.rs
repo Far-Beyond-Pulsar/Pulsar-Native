@@ -72,23 +72,8 @@ impl PulsarApp {
                         .await;
                 }
                 cx.update(|cx| {
-                    // Drain plugin subsystems and components into the engine
-                    // backend before the manager becomes globally accessible.
-                    let subsystems = manager.drain_subsystems();
-                    if !subsystems.is_empty() {
-                        match engine_backend::EngineBackend::global() {
-                            Some(backend) => {
-                                if let Err(e) =
-                                    backend.update(|b| b.inject_plugin_subsystems(subsystems))
-                                {
-                                    tracing::error!("Failed to inject plugin subsystems: {}", e);
-                                }
-                            }
-                            None => tracing::warn!(
-                                "EngineBackend not yet available — plugin subsystems will not be registered"
-                            ),
-                        }
-                    }
+                    // Drain plugin components into the engine backend before
+                    // the manager becomes globally accessible.
                     let components = manager.drain_component_registrations();
                     if !components.is_empty() {
                         match engine_backend::EngineBackend::global() {

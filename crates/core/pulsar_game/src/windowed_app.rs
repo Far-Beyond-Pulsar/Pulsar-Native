@@ -396,6 +396,8 @@ pub struct PulsarApp {
     bridge: Arc<WindowBridge>,
     gpu: GpuContext,
     tick_loop: Option<crate::tick::TickLoop>,
+    /// The tick thread once started; joined at shutdown (`join_ecs_thread`).
+    ecs_thread: Option<std::thread::JoinHandle<()>>,
     initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
     winit_to_handle: HashMap<WindowId, WindowHandle>,
     windows: HashMap<WindowHandle, GameWindow>,
@@ -451,6 +453,7 @@ impl PulsarApp {
             bridge,
             gpu: GpuContext::new(display),
             tick_loop: Some(tick_loop),
+            ecs_thread: None,
             initial_windows,
             winit_to_handle: HashMap::new(),
             windows: HashMap::new(),
@@ -645,7 +648,14 @@ impl PulsarApp {
                         );
                     }
 
-                    // Scripts need nothing here: the tick loop's script
+                    // The level's roles and world settings (gravity,
+                    // `physics_enabled`, ...) are the session's: the loop is
+                    // still ours (its thread starts after the windows open).
+                    if let Some(tick_loop) = self.tick_loop.as_mut() {
+                        crate::standalone::adopt_level(tick_loop, &self.content, path);
+                    }
+
+                    // Scripts need nothing else here: the tick loop's script
                     // driver finds the level's class instances in the shared
                     // world at its first reconcile (#922).
 
@@ -681,7 +691,7 @@ impl PulsarApp {
 
     fn spawn_ecs_thread(&mut self) {
         if let Some(mut tick_loop) = self.tick_loop.take() {
-            editor_task_queue::spawn_thread(
+            let handle = editor_task_queue::spawn_thread(
                 editor_task_queue::ThreadSpec::new(
                     "pulsar-ecs",
                     editor_task_queue::ThreadRole::Service,
@@ -690,7 +700,30 @@ impl PulsarApp {
                 move || tick_loop.run_blocking(),
             )
             .expect("Failed to spawn ECS tick thread");
+            self.ecs_thread = Some(handle);
             tracing::info!("ECS tick thread started");
+        }
+    }
+
+    /// Stop the tick thread and wait for it: its loop ends the session
+    /// (`end_play` of every live component, the physics thread joined) before
+    /// it returns, and the process must not exit before that. `running` is
+    /// cleared again until the thread is done, since a thread that had not
+    /// started its loop yet would set it.
+    pub(crate) fn join_ecs_thread(&mut self, running: &std::sync::atomic::AtomicBool) {
+        let Some(handle) = self.ecs_thread.take() else {
+            return;
+        };
+        let deadline = Instant::now() + std::time::Duration::from_secs(10);
+        while !handle.is_finished() && Instant::now() < deadline {
+            running.store(false, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        if handle.is_finished() {
+            let _ = handle.join();
+            tracing::info!("ECS tick thread ended its session");
+        } else {
+            tracing::error!("ECS tick thread did not end its session within 10 s");
         }
     }
 }

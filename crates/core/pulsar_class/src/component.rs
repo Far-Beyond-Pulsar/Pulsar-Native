@@ -56,8 +56,8 @@ impl ClassInstance {
     }
 }
 
-// The component itself has no runtime behaviour yet: the script runtime
-// follows it in phase B (#922). Registering it makes it a typed World
-// component that saves, loads and reaches scripts like every other one.
+// Registering it makes it a typed World component that saves, loads and
+// reaches scripts like every other one. Its lifecycle (`crate::lifecycle`)
+// is what the script driver follows.
 #[register_world_component]
 impl ClassInstance {}

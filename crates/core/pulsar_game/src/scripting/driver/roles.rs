@@ -318,7 +318,7 @@ impl ScriptDriver {
         if now {
             // Started here rather than by the scan that follows, so the
             // roles begin in role order, before the level's own objects.
-            self.sync_entity(world, entity, report);
+            self.start_now(world, entity, report);
             self.mark_role_entities(world);
             if self
                 .tracked
@@ -399,7 +399,6 @@ impl ScriptDriver {
         self.view_targets.clear_all();
         for owned in std::mem::take(&mut self.role_entities) {
             let entity = owned.entity;
-            self.holders.retain(|_, object| *object != entity);
             if let Some(tracked) = self.tracked.remove(&entity) {
                 if let Some(id) = tracked.instance {
                     self.by_instance.remove(&id);

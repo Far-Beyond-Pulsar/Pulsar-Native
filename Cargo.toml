@@ -194,6 +194,8 @@ members = [
     "plugins/installed/tests/fixtures/catalog_plugin/editor",
     # The trait proof's fixture plugin (plugins/installed/tests/traits.rs).
     "plugins/installed/tests/fixtures/trait_plugin",
+    # The component lifecycle proof's fixture plugin (plugins/installed/tests/lifecycle.rs).
+    "plugins/installed/tests/fixtures/lifecycle_plugin",
     # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
@@ -398,7 +400,6 @@ ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
 # plugins). Hosts link the set, never a plugin by name.
 installed_plugins                  = { path = "plugins/installed", default-features = false }
 engine_state                       = { path = "crates/core/engine_state" }
-engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
 pulsar_auth                        = { path = "crates/core/pulsar_auth" }
 pulsar_settings                    = { path = "crates/core/pulsar_settings" }
 engine_backend                     = { path = "crates/core/engine_backend" }
@@ -407,8 +408,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -417,6 +418,7 @@ pulsar_events                      = { path = "crates/core/pulsar_events" }
 gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
+pulsar_component_lifecycle         = { path = "crates/core/pulsar_component_lifecycle" }
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_class                       = { path = "crates/core/pulsar_class" }
 pulsar_content                     = { path = "crates/core/pulsar_content" }
@@ -808,5 +810,5 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # patch point at a different rev of the same repository), so SceneDB's types
 # are one set of types for all of them.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "017252c3c84331a29e53eaa627185597954a3241" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }

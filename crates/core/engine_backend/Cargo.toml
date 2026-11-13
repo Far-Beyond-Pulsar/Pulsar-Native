@@ -28,7 +28,6 @@ helio-scene-join = { workspace = true, optional = true }
 inventory = { workspace = true }
 helio-core = { workspace = true, optional = true }
 toml.workspace = true
-engine_subsystems = { workspace = true }
 ui_gen_macros = { workspace = true }
 pebble = { package = "PebbleVault", version = "0.7.0" }
 serde = { workspace = true, features = ["derive"] }
@@ -55,6 +54,7 @@ pulsar_scenedb.workspace = true
 pulsar_scene_model = { workspace = true }
 pulsar_class = { workspace = true }
 pulsar_world_registry.workspace = true
+pulsar_component_lifecycle.workspace = true
 # Script object model bridge (#639): StableIdResolver + ComponentInstanceStore impls.
 pulsar_script_object_model.workspace = true
 

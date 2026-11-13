@@ -110,12 +110,6 @@ impl EditorPluginComponents for AssetViewerPlugin {
         Vec::new()
     }
 }
-impl EditorPluginSubsystems for AssetViewerPlugin {
-    fn subsystems(&self) -> Vec<Box<dyn Subsystem>> {
-        Vec::new()
-    }
-}
-
 impl AssetViewerPlugin {
     fn create_editor(
         &'static self,

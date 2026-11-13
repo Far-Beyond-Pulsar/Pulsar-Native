@@ -1,7 +1,7 @@
 //! Runtime support for classes exported as Rust (`events.rs`).
 //!
 //! The Blueprint editor's Rust export (`pulsar_script_codegen`) turns a
-//! compiled class into an [`Actor`](pulsar_scenedb::Actor): the class's
+//! compiled class into a [`NativeActor`](crate::lifecycle::NativeActor): the class's
 //! functions become generated Rust that runs on the same VM as an
 //! interpreted class (same instances, same natives, same instruction
 //! budget, call-depth limit and waiting), and [`ExportedScript`] is the
@@ -10,8 +10,8 @@
 //!
 //! # Time
 //!
-//! The pinned `Actor::tick` is deliberately time-free, so an exported actor
-//! reads time from a [`ScriptClock`]. The default is wall-clock seconds
+//! `NativeActor::tick` is given the frame's time, but an exported actor does
+//! not forward it: it reads time from a [`ScriptClock`]. The default is wall-clock seconds
 //! since the actor was created, which differs from the interpreted path's
 //! game time in one respect: a paused or slowed game does not pause or slow
 //! an exported actor's waits. Hosts that want game time can supply their

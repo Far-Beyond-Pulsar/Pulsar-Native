@@ -25,6 +25,9 @@ root `[patch]` tables don't redirect to the in-tree copy.
   ```
   `just check-plugin-pins` checks the Pulsar-Native revs; `just bump-plugin-pins` rewrites them.
 - `cargo tree -i <crate> -e normal` shows which package pulls in each copy.
+- For `pulsar_scenedb` ("expected `World`, found `World`"), every `rev =` must be the same sha in the
+  root `Cargo.toml` (workspace entries and `[patch]`) and `crates/renderer/helio/Cargo.toml`
+  (`/bump-deps`, "Bumping SceneDB").
 
 ---
 

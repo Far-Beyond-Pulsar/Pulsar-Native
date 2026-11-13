@@ -77,82 +77,89 @@ pub(crate) fn on_start_download(
     let uid_thread = uid.clone();
     let filename_thread = filename.clone();
 
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on start download", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-        let run = || -> Result<(), String> {
-            let info = fetch_sketchfab_download_info(&uid_thread, &token)?;
-            let fmt = info
-                .gltf
-                .or(info.glb)
-                .or(info.source)
-                .ok_or_else(|| "No downloadable format available".to_string())?;
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui fab search: on start download",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_fab_search"),
+        move || {
+            let run = || -> Result<(), String> {
+                let info = fetch_sketchfab_download_info(&uid_thread, &token)?;
+                let fmt = info
+                    .gltf
+                    .or(info.glb)
+                    .or(info.source)
+                    .ok_or_else(|| "No downloadable format available".to_string())?;
 
-            let dest_dir = dirs::download_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("Sketchfab");
-            // The user's Downloads folder on the real machine, not a project file.
-            let local = engine_fs::LocalFsProvider::new();
-            use engine_fs::FsProvider as _;
-            let dest = dest_dir.join(&filename_thread);
+                let dest_dir = dirs::download_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("Sketchfab");
+                // The user's Downloads folder on the real machine, not a project file.
+                let local = engine_fs::LocalFsProvider::new();
+                use engine_fs::FsProvider as _;
+                let dest = dest_dir.join(&filename_thread);
 
-            let client = reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(600))
-                .user_agent("Pulsar-Native/1.0")
-                .build()
-                .map_err(|e| e.to_string())?;
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(std::time::Duration::from_secs(600))
+                    .user_agent("Pulsar-Native/1.0")
+                    .build()
+                    .map_err(|e| e.to_string())?;
 
-            let resp = client.get(&fmt.url).send().map_err(|e| e.to_string())?;
-            let status = resp.status();
-            if !status.is_success() {
-                return Err(format!("HTTP {} downloading file", status));
-            }
-            let total = resp.content_length();
-
-            let mut file = local
-                .open_write_stream(&dest)
-                .map_err(|e| format!("create: {e}"))?
-                .ok_or_else(|| "create: no write stream".to_string())?;
-            let mut bytes_total: u64 = 0;
-            let mut last_sample = std::time::Instant::now();
-            let mut bytes_since_sample: u64 = 0;
-            let mut buf = vec![0u8; 64 * 1024];
-            let mut reader = std::io::BufReader::new(resp);
-            use std::io::{Read, Write};
-
-            loop {
-                let n = reader.read(&mut buf).map_err(|e| format!("read: {e}"))?;
-                if n == 0 {
-                    break;
+                let resp = client.get(&fmt.url).send().map_err(|e| e.to_string())?;
+                let status = resp.status();
+                if !status.is_success() {
+                    return Err(format!("HTTP {} downloading file", status));
                 }
-                file.write_all(&buf[..n])
-                    .map_err(|e| format!("write: {e}"))?;
-                bytes_total += n as u64;
-                bytes_since_sample += n as u64;
+                let total = resp.content_length();
 
-                let elapsed = last_sample.elapsed();
-                if elapsed >= std::time::Duration::from_millis(500) {
-                    let speed = bytes_since_sample as f64 / elapsed.as_secs_f64();
-                    smol::block_on(tx.send(DownloadMsg::Progress {
-                        bytes_received: bytes_total,
-                        total,
-                        speed_bps: speed,
-                    }));
-                    last_sample = std::time::Instant::now();
-                    bytes_since_sample = 0;
+                let mut file = local
+                    .open_write_stream(&dest)
+                    .map_err(|e| format!("create: {e}"))?
+                    .ok_or_else(|| "create: no write stream".to_string())?;
+                let mut bytes_total: u64 = 0;
+                let mut last_sample = std::time::Instant::now();
+                let mut bytes_since_sample: u64 = 0;
+                let mut buf = vec![0u8; 64 * 1024];
+                let mut reader = std::io::BufReader::new(resp);
+                use std::io::{Read, Write};
+
+                loop {
+                    let n = reader.read(&mut buf).map_err(|e| format!("read: {e}"))?;
+                    if n == 0 {
+                        break;
+                    }
+                    file.write_all(&buf[..n])
+                        .map_err(|e| format!("write: {e}"))?;
+                    bytes_total += n as u64;
+                    bytes_since_sample += n as u64;
+
+                    let elapsed = last_sample.elapsed();
+                    if elapsed >= std::time::Duration::from_millis(500) {
+                        let speed = bytes_since_sample as f64 / elapsed.as_secs_f64();
+                        smol::block_on(tx.send(DownloadMsg::Progress {
+                            bytes_received: bytes_total,
+                            total,
+                            speed_bps: speed,
+                        }));
+                        last_sample = std::time::Instant::now();
+                        bytes_since_sample = 0;
+                    }
                 }
+
+                file.flush().map_err(|e| format!("flush: {e}"))?;
+                smol::block_on(tx.send(DownloadMsg::Done {
+                    path: dest,
+                    total: bytes_total,
+                }));
+                Ok(())
+            };
+
+            if let Err(e) = run() {
+                smol::block_on(tx.send(DownloadMsg::Error(e)));
             }
-
-            file.flush().map_err(|e| format!("flush: {e}"))?;
-            smol::block_on(tx.send(DownloadMsg::Done {
-                path: dest,
-                total: bytes_total,
-            }));
-            Ok(())
-        };
-
-        if let Err(e) = run() {
-            smol::block_on(tx.send(DownloadMsg::Error(e)));
-        }
-    });
+        },
+    );
 
     cx.spawn(async move |this, cx| {
         while let Ok(msg) = rx.recv().await {
@@ -254,14 +261,21 @@ pub(crate) fn on_toggle_like(
 
     let (tx, rx) = smol::channel::bounded::<Result<(), String>>(1);
     let uid_thread = uid.clone();
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on toggle like", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-        let result = if currently_liked {
-            sketchfab_unlike_model(&uid_thread, &token)
-        } else {
-            sketchfab_like_model(&uid_thread, &token)
-        };
-        smol::block_on(tx.send(result));
-    });
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui fab search: on toggle like",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_fab_search"),
+        move || {
+            let result = if currently_liked {
+                sketchfab_unlike_model(&uid_thread, &token)
+            } else {
+                sketchfab_like_model(&uid_thread, &token)
+            };
+            smol::block_on(tx.send(result));
+        },
+    );
 
     cx.spawn(async move |this, cx| {
         if let Ok(result) = rx.recv().await {
@@ -302,9 +316,16 @@ pub(crate) fn on_open_item_detail(
         Vec<String>,
         Result<Box<crate::parser::SketchfabModelDetail>, String>,
     )>(1);
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on open item detail", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-        smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid)));
-    });
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui fab search: on open item detail",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_fab_search"),
+        move || {
+            smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid)));
+        },
+    );
 
     cx.spawn(async move |this, cx| {
         if let Ok((_, result)) = rx.recv().await {
@@ -356,9 +377,16 @@ pub(crate) fn on_begin_search(window: &mut FabSearchWindow, cx: &mut Context<Fab
     cx.notify();
 
     let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on begin search", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-        smol::block_on(tx.send(fetch_sketchfab_models(&url)));
-    });
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui fab search: on begin search",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_fab_search"),
+        move || {
+            smol::block_on(tx.send(fetch_sketchfab_models(&url)));
+        },
+    );
 
     cx.spawn(async move |this, cx| {
         if let Ok((_, result)) = rx.recv().await {
@@ -399,9 +427,16 @@ pub(crate) fn on_load_more(window: &mut FabSearchWindow, cx: &mut Context<FabSea
     cx.notify();
 
     let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
-    editor_task_queue::spawn_named(editor_task_queue::ThreadSpec::new("ui fab search: on load more", editor_task_queue::ThreadRole::Io).owner("ui_fab_search"), move || {
-        smol::block_on(tx.send(fetch_sketchfab_models(&url)));
-    });
+    editor_task_queue::spawn_named(
+        editor_task_queue::ThreadSpec::new(
+            "ui fab search: on load more",
+            editor_task_queue::ThreadRole::Io,
+        )
+        .owner("ui_fab_search"),
+        move || {
+            smol::block_on(tx.send(fetch_sketchfab_models(&url)));
+        },
+    );
 
     cx.spawn(async move |this, cx| {
         if let Ok((_, result)) = rx.recv().await {

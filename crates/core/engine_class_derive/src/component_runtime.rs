@@ -1,6 +1,15 @@
 //! `#[register_component_runtime(...)]`: registers a component's runtime
 //! behavior (its `tick`, optional `begin_play` / `end_play` and
-//! `#[bp_handler]` event handlers) with `pulsar_world_registry`.
+//! `#[bp_handler]` event handlers) with the component lifecycle registry.
+//!
+//! The expansion is an `ActorTable` (`pulsar_component_lifecycle`) submitted
+//! as an `EngineActor`: link-time, like the macro's old registration, and
+//! gated by the class name (`class = "..."`) through the class's plugin, so
+//! no plugin root is needed. The source syntax is unchanged. The table's
+//! `handler_events` and `event` fields carry the `#[bp_handler]` support: the
+//! framework subscribes each live instance on `begin_play`, queues the
+//! events, hands them to the generated dispatcher before the frame's `tick`
+//! and unsubscribes on `end_play`.
 //!
 //! Entry point: [`expand`], a short orchestrator over the named steps below:
 //! [`parse_args`], [`collect_handlers`], [`validate_lifecycle`] and
@@ -195,9 +204,9 @@ fn collect_handlers(impl_block: &mut ItemImpl, class_name: &str) -> syn::Result<
             let payload_type = &arg.ty;
             decoded_names.push(local.clone());
             decode_fields.push(quote::quote! {
-                let Some(pulsar_events::gamma::DynValue::Bytes(bytes)) = queued_event.fields.get(#index) else {
+                let Some(pulsar_events::gamma::DynValue::Bytes(bytes)) = fields.get(#index) else {
                     tracing::warn!(event = #event_name, "native component event handler received malformed payload fields");
-                    continue;
+                    return;
                 };
                 let decoded = pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
                     .decode_event_value(#payload_name, bytes);
@@ -209,7 +218,7 @@ fn collect_handlers(impl_block: &mut ItemImpl, class_name: &str) -> syn::Result<
                     Ok(value) => value,
                     Err(error) => {
                         tracing::warn!(event = #event_name, %error, "native component event handler field decode failed");
-                        continue;
+                        return;
                     }
                 };
             });
@@ -218,9 +227,9 @@ fn collect_handlers(impl_block: &mut ItemImpl, class_name: &str) -> syn::Result<
         let handler_field_count = decoded_names.len();
         handler_calls.push(quote::quote! {
             #event_name => {
-                if queued_event.fields.len() != #handler_field_count {
-                    tracing::warn!(event = #event_name, expected = #handler_field_count, actual = queued_event.fields.len(), "native component event handler received the wrong field count");
-                    continue;
+                if fields.len() != #handler_field_count {
+                    tracing::warn!(event = #event_name, expected = #handler_field_count, actual = fields.len(), "native component event handler received the wrong field count");
+                    return;
                 }
                 #(#decode_fields)*
                 component.#method_name(&mut context, #(#decoded_names),*);
@@ -286,8 +295,9 @@ fn validate_lifecycle(impl_block: &ItemImpl) -> syn::Result<()> {
     Ok(())
 }
 
-/// Emit the impl unchanged plus the tick shim (subscribe, dispatch queued
-/// events, `begin_play` on the first frame, `tick`) and its registration.
+/// Emit the impl unchanged plus the lifecycle table's callbacks (each
+/// borrows the live typed component, builds its `ComponentContext` and calls
+/// the method) and the `EngineActor` that registers the table.
 fn generate(
     impl_block: &ItemImpl,
     ty_ident: &syn::Ident,
@@ -297,85 +307,128 @@ fn generate(
 ) -> TokenStream2 {
     let self_ty = &impl_block.self_ty;
     let handler_calls = &handlers.calls;
-    let handler_events = &handlers.events;
-    let enabled_field = args.enabled_field.clone();
-    let _tick = find_method(impl_block, "tick");
+    let handler_event_names = handlers.events.iter().collect::<Vec<_>>();
     let begin_play = find_method(impl_block, "begin_play");
     let end_play = find_method(impl_block, "end_play");
-    let shim = quote::format_ident!("__pulsar_component_tick_{}", ty_ident);
-    let end_shim = quote::format_ident!("__pulsar_component_end_{}", ty_ident);
-    let enabled = enabled_field.map(|field| quote::quote! { component.#field });
-    let begin_call = begin_play.map(|_| quote::quote! { component.begin_play(&mut context); });
+    let instances_fn = quote::format_ident!("__pulsar_component_instances_{}", ty_ident);
+    let begin_fn = quote::format_ident!("__pulsar_component_begin_{}", ty_ident);
+    let tick_fn = quote::format_ident!("__pulsar_component_tick_{}", ty_ident);
+    let end_fn = quote::format_ident!("__pulsar_component_end_{}", ty_ident);
+    let event_fn = quote::format_ident!("__pulsar_component_event_{}", ty_ident);
+    let table_fn = quote::format_ident!("__pulsar_component_table_{}", ty_ident);
+    let enabled = match &args.enabled_field {
+        Some(field) => quote::quote! { component.#field },
+        None => quote::quote! { true },
+    };
+    let lifecycle = quote::quote! { pulsar_world_registry::pulsar_component_lifecycle };
+    let begin_callback = begin_play.map(|_| {
+        quote::quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #begin_fn(
+                world: &mut pulsar_scenedb::World,
+                cx: &mut #lifecycle::ActorCx<'_>,
+                instance: pulsar_scenedb::Entity,
+            ) {
+                let Some(mut component) = world.get_mut::<#self_ty>(instance) else { return };
+                let mut context = pulsar_world_registry::ComponentContext::for_instance(instance, cx.entity, cx.events);
+                component.begin_play(&mut context);
+            }
+        }
+    });
+    let begin_value = begin_play
+        .map(|_| quote::quote! { Some(#begin_fn) })
+        .unwrap_or_else(|| quote::quote! { None });
     let end_callback = end_play.map(|_| {
         quote::quote! {
             #[doc(hidden)]
             #[allow(non_snake_case)]
-            fn #end_shim(entity: pulsar_scenedb::Entity, events: &pulsar_events::EventHub) {
-                let mut context = pulsar_world_registry::ComponentContext::new(entity, events);
-                #self_ty::end_play(entity, &mut context);
+            fn #end_fn(cx: &mut #lifecycle::ActorCx<'_>) {
+                let mut context = pulsar_world_registry::ComponentContext::new(cx.entity, cx.events);
+                #self_ty::end_play(cx.entity, &mut context);
             }
         }
     });
-    let end_callback_value = end_play
-        .map(|_| quote::quote! { Some(#end_shim) })
+    let end_value = end_play
+        .map(|_| quote::quote! { Some(#end_fn) })
         .unwrap_or_else(|| quote::quote! { None });
-    let activation_check = if let Some(enabled) = enabled {
-        quote::quote! { if !#enabled { continue; } }
+    let event_callback = (!handler_event_names.is_empty()).then(|| {
+        quote::quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #event_fn(
+                world: &mut pulsar_scenedb::World,
+                cx: &mut #lifecycle::ActorCx<'_>,
+                instance: pulsar_scenedb::Entity,
+                event_name: &str,
+                fields: &[pulsar_events::gamma::DynValue],
+            ) {
+                let Some(mut component) = world.get_mut::<#self_ty>(instance) else { return };
+                let mut context = pulsar_world_registry::ComponentContext::for_instance(instance, cx.entity, cx.events);
+                match event_name {
+                    #(#handler_calls)*
+                    _ => {}
+                }
+            }
+        }
+    });
+    let event_value = if handler_event_names.is_empty() {
+        quote::quote! { None }
     } else {
-        quote::quote! {}
+        quote::quote! { Some(#event_fn) }
     };
-    let handler_event_names = handler_events.iter().collect::<Vec<_>>();
     quote::quote! {
         #impl_block
 
+        #begin_callback
         #end_callback
+        #event_callback
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
-        fn #shim(
+        fn #instances_fn(world: &mut pulsar_scenedb::World, out: &mut Vec<pulsar_scenedb::Entity>) {
+            out.extend(
+                world
+                    .query::<&#self_ty>()
+                    .filter(|(_, component)| #enabled)
+                    .map(|(entity, _)| entity),
+            );
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #tick_fn(
             world: &mut pulsar_scenedb::World,
-            events: &pulsar_events::EventHub,
+            cx: &mut #lifecycle::ActorCx<'_>,
+            instance: pulsar_scenedb::Entity,
             delta_seconds: f32,
-            previous: &std::collections::HashMap<pulsar_scenedb::Entity, pulsar_scenedb::Entity>,
-            current: &mut std::collections::HashMap<pulsar_scenedb::Entity, pulsar_scenedb::Entity>,
-            runtime: &mut pulsar_world_registry::ComponentRuntimeState,
         ) {
-            // Every enabled instance ticks on its own; its owner object is the
-            // actor whose event channel it uses.
-            for (entity, (mut component, link)) in world.query::<(
-                &mut #self_ty,
-                &pulsar_world_registry::pulsar_scene_model::ComponentOwner,
-            )>() {
-                if !link.is_enabled() { continue; }
-                #activation_check
-                let owner = link.entity();
-                let first_frame = !previous.contains_key(&entity);
-                current.insert(entity, owner);
-                let instance = pulsar_world_registry::ComponentInstanceKey {
-                    component_type: pulsar_scenedb::component_id::<#self_ty>(),
-                    entity,
-                };
-                runtime.subscribe_instance(instance, owner, events, &[#(#handler_event_names),*]);
-                let mut context = pulsar_world_registry::ComponentContext::for_instance(entity, owner, events);
-                if first_frame { #begin_call }
-                for queued_event in runtime.take_events(instance) {
-                    match queued_event.name.as_str() {
-                        #(#handler_calls)*
-                        _ => {}
-                    }
-                }
-                component.tick(&mut context, delta_seconds);
+            let Some(mut component) = world.get_mut::<#self_ty>(instance) else { return };
+            let mut context = pulsar_world_registry::ComponentContext::for_instance(instance, cx.entity, cx.events);
+            component.tick(&mut context, delta_seconds);
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #table_fn() -> #lifecycle::ActorTable {
+            #lifecycle::ActorTable {
+                component_type: pulsar_scenedb::component_id::<#self_ty>,
+                type_name: stringify!(#self_ty),
+                instances: #instances_fn,
+                construct: None,
+                begin_play: #begin_value,
+                tick: Some(#tick_fn),
+                end_play: #end_value,
+                end_play_world: None,
+                handler_events: &[#(#handler_event_names),*],
+                event: #event_value,
             }
         }
 
         pulsar_world_registry::inventory::submit! {
-            pulsar_world_registry::ComponentTickRegistration {
-                type_name: stringify!(#self_ty),
+            #lifecycle::EngineActor {
                 class_name: #class_name,
-                handler_events: &[#(#handler_event_names),*],
-                component_type: pulsar_scenedb::component_id::<#self_ty>,
-                tick: #shim,
-                end_play: #end_callback_value,
+                table: #table_fn,
             }
         }
     }

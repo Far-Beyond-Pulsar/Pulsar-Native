@@ -13,8 +13,8 @@
 //!   path-deps into the game manifest and `register_scripts` calls into
 //!   `engine_main.rs`;
 //! * the level editor — needs the ACTOR TYPES (scanned from
-//!   `register_actor::<Type>(...)` calls, the documented authoring
-//!   convention) to offer Rust actors in the add-object flow.
+//!   `register_native_actor::<Type>(...)` calls, the documented
+//!   authoring convention) to offer Rust actors in the add-object flow.
 //!
 //! Scanning is deliberately textual and cheap: script crates are tiny,
 //! the patterns are conventions this engine scaffolds and documents, and a
@@ -33,7 +33,7 @@ pub struct ScriptCrate {
 }
 
 /// One actor type a script crate registers, as declared by a
-/// `game.register_actor::<Type>(...)` call in its sources.
+/// `game.register_native_actor::<Type>(...)` call in its sources.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScriptActorType {
     /// Package name of the declaring crate.
@@ -134,15 +134,19 @@ fn read_package_name(manifest: &str) -> Option<String> {
     None
 }
 
-/// Capture every `<ident>` appearing as `register_actor::<ident>(` in `text`,
+/// Capture every `<ident>` appearing as `register_native_actor::<ident>(` in `text`,
 /// tolerating whitespace inside the turbofish. This IS the authoring contract:
 /// the scaffolded `lib.rs` demonstrates it and the tutorial documents it.
 fn scan_registered_types(text: &str) -> Vec<String> {
-    const NEEDLE: &str = "register_actor::<";
+    const NEEDLES: [&str; 1] = ["register_native_actor::<"];
     let mut out = Vec::new();
     let mut rest = text;
-    while let Some(pos) = rest.find(NEEDLE) {
-        let tail = rest[pos + NEEDLE.len()..].trim_start();
+    while let Some((pos, needle)) = NEEDLES
+        .iter()
+        .filter_map(|needle| rest.find(needle).map(|pos| (pos, *needle)))
+        .min_by_key(|(pos, _)| *pos)
+    {
+        let tail = rest[pos + needle.len()..].trim_start();
         let ident: String = tail
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
@@ -176,12 +180,12 @@ mod tests {
                 "game_scripts",
                 "game_scripts",
                 "pub fn register_scripts(game: &mut TickLoop) {\n    \
-                 game.register_actor::< Spinner >(Spinner::default());\n}\n",
+                 game.register_native_actor::< Spinner >(Spinner::default());\n}\n",
             ),
             (
                 "extra",
                 "extra_scripts",
-                "// game.register_actor::<Hidden>(x); in a comment still matches —\n\
+                "// game.register_native_actor::<Hidden>(x); in a comment still matches —\n\
                  // acceptable: discovery is advisory.\n",
             ),
         ] {

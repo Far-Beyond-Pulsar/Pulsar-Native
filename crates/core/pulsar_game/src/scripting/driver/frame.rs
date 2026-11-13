@@ -13,12 +13,16 @@ use pulsar_events::entity_channel;
 impl ScriptDriver {
     /// Run one script phase against `world`. See the module doc.
     pub fn run_frame(&mut self, world: &mut World, delta_time: f64) -> DriverReport {
+        profiling::profile_scope!("Script::run_frame");
         let mut report = DriverReport::default();
         self.frame_delta = delta_time;
         let scope = self.frame_start(world, &mut report);
-        report
-            .script_errors
-            .extend(self.runtime.tick_all(world, delta_time));
+        {
+            profiling::profile_scope!("Script::tick");
+            report
+                .script_errors
+                .extend(self.runtime.tick_all(world, delta_time));
+        }
         self.frame_finish(world, scope, &mut report);
         report
     }
@@ -40,6 +44,7 @@ impl ScriptDriver {
         scene: &engine_backend::scene::SharedScene,
         delta_time: f64,
     ) -> DriverReport {
+        profiling::profile_scope!("Script::run_frame");
         use std::time::Instant;
         let mut report = DriverReport::default();
         let mut locks = LockTimes::default();
@@ -58,9 +63,12 @@ impl ScriptDriver {
         let store = scene.read();
         let held = Instant::now();
         locks.read_wait = held - asked;
-        report
-            .script_errors
-            .extend(self.runtime.run_read_stage(&store.world, delta_time));
+        {
+            profiling::profile_scope!("Script::tick_read");
+            report
+                .script_errors
+                .extend(self.runtime.run_read_stage(&store.world, delta_time));
+        }
         locks.read_hold = held.elapsed();
         drop(store);
 
@@ -68,9 +76,12 @@ impl ScriptDriver {
         let mut store = scene.write();
         let held = Instant::now();
         locks.write_wait += held - asked;
-        report
-            .script_errors
-            .extend(self.runtime.run_write_stage(&mut store.world, delta_time));
+        {
+            profiling::profile_scope!("Script::tick_write");
+            report
+                .script_errors
+                .extend(self.runtime.run_write_stage(&mut store.world, delta_time));
+        }
         self.frame_finish(&mut store.world, scope, &mut report);
         locks.write_hold += held.elapsed();
         drop(store);
@@ -94,16 +105,22 @@ impl ScriptDriver {
         if let Some(events) = &self.events {
             events.bridge().set_time(self.runtime.time());
         }
-        self.reconcile_into(world, report);
+        {
+            profiling::profile_scope!("Script::reconcile");
+            self.reconcile_into(world, report);
+        }
         if !report.started.is_empty() {
             tracing::info!(
                 instances = report.started.len(),
                 "Starting script instances (begin_play)"
             );
         }
-        report
-            .script_errors
-            .extend(self.runtime.dispatch_pending_begin_play(world));
+        {
+            profiling::profile_scope!("Script::begin_play");
+            report
+                .script_errors
+                .extend(self.runtime.dispatch_pending_begin_play(world));
+        }
         for id in &report.started {
             if let Some(entity) = self.by_instance.get(id) {
                 self.publish(

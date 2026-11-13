@@ -1,0 +1,15 @@
+[package]
+name = "pulsar_component_lifecycle"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The component lifecycle capability registry (L1): the `Actor` trait (construct, begin_play, tick, end_play) and the per-class `ActorTable` a plugin registers next to its class. Knows SceneDB and the event hub; deliberately not reflection or the script VM, so no lifecycle function is reachable from Blueprints."
+
+[dependencies]
+pulsar_plugins = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_events  = { workspace = true }
+serde_json     = { workspace = true }
+
+[lints]
+workspace = true

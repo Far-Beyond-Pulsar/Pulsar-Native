@@ -60,8 +60,12 @@ views (see [Observers](#observers)).
 - A component with no runtime consumer yet is declared with
   `declare_unfinished_component!` (reason and tracking issue) and is
   reported when attached, instead of looking supported.
-- Native component lifecycles (`begin_play`, `tick`, events, `end_play`)
-  run from `ComponentTickRegistration` on the live typed value.
+- Native component lifecycles (`construct`, `begin_play`, `tick`, events, `end_play`)
+  run from the component's lifecycle table (`ActorTable`, registered through
+  `ClassSpec::actor`) on the live typed value, in the session's scope
+  (`SessionScope`: kind, level settings, resources). SceneDB itself has no actor or
+  lifecycle: the registry is `pulsar_component_lifecycle` and `tick_live_components`
+  (`pulsar_world_registry`) drives it. See `COMPONENT_LIFECYCLE_PLAN.md`.
 
 ## JSON
 

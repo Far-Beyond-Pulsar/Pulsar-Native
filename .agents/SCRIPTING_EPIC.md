@@ -17,6 +17,14 @@ issues for its letter.
 > follow components through change-journal cursors (`ComponentWatch`), views
 > through object subscriptions. See [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
 
+> **Historical: lifecycle and subsystems.** This file is the record of the
+> scripting epic as it was built. Its mentions of SceneDB's `Actor`/`ActorRegistry`,
+> `register_actor`, the SceneDB `Subsystem` API and `ComponentTickRegistration` describe
+> code that no longer exists: native actors are `pulsar_game::lifecycle::NativeActor`
+> (`register_native_actor`) on the component lifecycle, component lifecycles are
+> `ActorTable`s in `pulsar_component_lifecycle`, and there is no subsystem registry. See
+> [COMPONENT_LIFECYCLE_PLAN.md](COMPONENT_LIFECYCLE_PLAN.md) and [ECS.md](ECS.md).
+
 ## Architecture target (invariant across all agents)
 
 Gameplay logic — Rust crates or Blueprint graphs, compiled to VM bytecode or
@@ -197,7 +205,9 @@ no scenedb dep). `WorldSceneStore::insert_snapshots` = additive snapshot
 insertion into a LIVE store (extracted from `load_from_snapshots`);
 `RuntimeLevel::load_into` uses it so setup-time actors survive level load.
 `core_project_builder.rs`'s generated `engine_main.rs` now emits
-`game.actors.register(actor, &mut game.scene_store.write().world());`.
+`game.actors.register(actor, &mut game.scene_store.write().world());`
+(historical: P5a of `COMPONENT_LIFECYCLE_PLAN.md` removed `TickLoop::actors`; it is
+`game.register_native_actor(actor)` now, run through the component lifecycle).
 Gameplay path grep-clean of `World::new()` (unit tests excepted).
 
 **A3 / #635 — PIE ABI v2.** `PIE_ABI_VERSION` bumped to **2**.
@@ -1337,7 +1347,7 @@ untouched.
    uses the same absolute engine-checkout anchor as the baked manifest →
    single unified copy. `engine_main.rs` emission now: (a) registers every
    discovered script crate (`<name>::register_scripts(game)?;`), (b) spawns
-   level.json prefabs through `game.register_actor(classes::X::new())`
+   level.json prefabs through `game.register_actor(classes::X::new())` (now `register_native_actor`, P5a)
    instead of bare `actors.register` so prefabs are reload-safe too.
 2. **Editor-visible registration — LANDED at data-model level.** New
    `services/native_scripts.rs`: discovers script crates under `scripts/` and
@@ -1353,7 +1363,7 @@ untouched.
    ONLY when the new build is in hand, then loads against the SAME shared
    store with RELOAD set. World survives by construction (it lives host-side);
    guest arms `TickLoop::begin_script_reload()` BEFORE setup, and
-   `TickLoop::register_actor<A>()` (new THE registration entry for generated
+   `TickLoop::register_actor<A>()` (now `register_native_actor<A: NativeActor>`, with `register_actor` a deprecated shim; P5a) (new THE registration entry for generated
    projects + scripts) matches surviving entities via a `ScriptTag { type_path
    }` component stamped at first registration — exact type-path match first,
    `::Type` suffix match second; tags consumed once each; matched actors

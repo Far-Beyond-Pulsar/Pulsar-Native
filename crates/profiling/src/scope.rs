@@ -113,6 +113,35 @@ macro_rules! export_profiler_attach {
     };
 }
 
+/// A scope named `prefix` + `name` for a name only known at run time but drawn
+/// from a small fixed set (a class name, a system label), so the string is
+/// built once per distinct pair, leaked, and reused: nothing is formatted or
+/// allocated per call. With the profiler off this is one atomic load and an
+/// inactive guard, the same as `profile_scope!` with a literal.
+///
+/// For a per-entity loop, call it once per class outside the loop. Never use it
+/// for an unbounded set of names (an entity id, a path): the interned names
+/// live for the process.
+pub fn interned_scope(prefix: &'static str, name: &'static str) -> ProfileScope {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static NAMES: OnceCell<Mutex<HashMap<(&'static str, &'static str), &'static str>>> =
+        OnceCell::new();
+    if !init_profiler().is_enabled() {
+        return ProfileScope::new_static("");
+    }
+    let mut names = NAMES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let interned = *names
+        .entry((prefix, name))
+        .or_insert_with(|| Box::leak(format!("{prefix}{name}").into_boxed_str()));
+    drop(names);
+    ProfileScope::new_static(interned)
+}
+
 /// Thread-local profiling state
 #[derive(Default)]
 pub struct ThreadState {

@@ -68,6 +68,11 @@ names_kinds = true
 "crates/core/pulsar_events/tests/fixtures" = { layer = "kernel" }
 
 [crates]
+# The component lifecycle registry is a kernel crate (by its path) with one
+# extra rule the layer gate cannot express: it must not depend on
+# pulsar_reflection or pulsar_script_vm, so no lifecycle function is a
+# Blueprint native. Its `crate_edges` test enforces it.
+pulsar_component_lifecycle = { layer = "kernel" }
 # The editor binary: links every installed plugin and the tools.
 pulsar_engine = { layer = "host" }
 # Tools that need every plugin by purpose, reaching them through the

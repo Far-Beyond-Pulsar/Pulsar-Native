@@ -3,7 +3,9 @@
 //! The Pulsar game runtime crate.  Provides:
 //!
 //! - **Archetypal ECS** — `World`, `Entity`, `Component`, queries.
-//! - **Actor lifecycle** — `Actor` trait with `begin_play` / `end_play` / `tick`.
+//! - **Component lifecycle** — [`lifecycle::Actor`] / [`lifecycle::WorldActor`]
+//!   with `construct` / `begin_play` / `tick` / `end_play`, and
+//!   [`lifecycle::NativeActor`] for boxed script actors.
 //! - **System schedule** — ordered `Schedule` of ECS `SystemFn`s.
 //! - **Tick loop** — `TickLoop` with fixed or variable timestep.
 //! - **Async task pool** — smol-backed `TaskPool` for background work.
@@ -16,10 +18,17 @@ pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool,
 
 // Generated actors address the live world through `pulsar_world_registry`'s
 // dispatcher.
+//
+// `Actor` is the component lifecycle's trait (`lifecycle::Actor`); SceneDB no
+// longer has an actor trait of its own.
+pub use lifecycle::Actor;
 pub use pulsar_scenedb::{
-    Actor, ActorRegistry, Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter,
-    Schedule, World, WorldQuery,
+    Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter, Schedule, World, WorldQuery,
 };
+
+// The component lifecycle traits and the native script actors that run
+// through it (P5a of the component lifecycle plan).
+pub mod lifecycle;
 
 // Script classes on the engine script VM (module.json builds).
 pub mod scripting;
@@ -58,7 +67,7 @@ pub mod time;
 
 // Gameplay script-crate actors: identity-tagged registration + native hot
 // reload (#653). Generated projects and scripts/ crates register through
-// `TickLoop::register_actor`.
+// `TickLoop::register_native_actor`.
 pub mod scripts;
 
 // Cross-object reference resolution for blueprint graphs (#654): the one
@@ -162,6 +171,7 @@ mod test_probe;
 
 /// Convenience prelude — glob-import this to get the whole public API.
 pub mod prelude {
+    pub use crate::lifecycle::Actor;
     pub use crate::{
         freecam::FreeCam,
         scripting::ScriptRuntime,
@@ -169,7 +179,5 @@ pub mod prelude {
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
-    pub use pulsar_scenedb::{
-        Actor, ActorRegistry, Component, Entity, QueryIter, Schedule, World, WorldQuery,
-    };
+    pub use pulsar_scenedb::{Component, Entity, QueryIter, Schedule, World, WorldQuery};
 }
