@@ -49,6 +49,15 @@ const PLANET_RADIUS: f64 = 6_371_000.0;
 /// How high above the ground the near-ground pose is.
 const EYE_HEIGHT: f64 = 2.0;
 
+/// The pipeline a level that names none runs: Helio's old default id, which
+/// the default pipelines plugin's migration makes its deferred graph
+/// (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, made for the open
+/// project's plugins).
+fn shipped_pipeline() -> String {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    pipelines::migrate_pipeline_id(pipelines::LEGACY_DEFAULT_PIPELINE.to_string())
+}
+
 fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
@@ -179,6 +188,15 @@ fn diff(a: &[u8], b: &[u8]) -> Diff {
     }
 }
 
+/// Pixels that are not fully opaque. The frame's alpha is the scene's
+/// coverage (`helio_frame_api::color`): a scene with ground and sky covers
+/// every pixel, and the editor composites its viewport by alpha, so anything
+/// below 255 shows the UI through the frame (TSR once put its transparency
+/// coverage there and every editor frame came out transparent).
+fn not_opaque(frame: &[u8]) -> usize {
+    frame.chunks_exact(4).filter(|p| p[3] != 255).count()
+}
+
 /// Distinct colours, coarsely: a frame of one flat colour (nothing drawn)
 /// has one.
 fn colours(frame: &[u8]) -> usize {
@@ -220,6 +238,9 @@ fn editor() -> HelioRenderer {
     RuntimeLevel::load_into(&level_path(), &mut scene.write().world)
         .expect("the example planet loads");
     let mut renderer = HelioRenderer::new(scene);
+    renderer
+        .editor_mailbox()
+        .set_render_pipeline(Some(shipped_pipeline()));
     renderer.set_viewport_realtime(false);
     renderer.set_frame_delta_override(Some(FRAME_DELTA));
     renderer.set_camera_jitter_override(Some([0.0, 0.0]));
@@ -400,7 +421,10 @@ fn game_frame(
         WIDTH,
         HEIGHT,
         FORMAT,
-        SceneRendererOptions::game(owner, false),
+        SceneRendererOptions {
+            pipeline: Some(shipped_pipeline()),
+            ..SceneRendererOptions::game(owner, false)
+        },
     );
     renderer.renderer.set_frame_clock_delta(Some(0.0));
     renderer
@@ -527,6 +551,11 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
         colours(&editor.frame) > 32,
         "the editor drew nothing at {name}"
     );
+    assert_eq!(
+        not_opaque(&editor.frame),
+        0,
+        "the editor's frame at {name} is not opaque: the viewport would show the UI through it"
+    );
     // The noise floor: the editor again, the same construction run twice.
     let again = editor_frame(target, pose);
     let floor = report(
@@ -540,6 +569,11 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
         ("embedded", DeviceOwner::Host),
     ] {
         let game = game_frame(target, owner, pose, &editor);
+        assert_eq!(
+            not_opaque(&game.frame),
+            0,
+            "the {runtime} game's frame at {name} is not opaque"
+        );
         let d = report(
             out,
             &format!("{name}_{runtime}"),
@@ -565,6 +599,12 @@ fn check_pose(target: &Target, out: &Path, name: &str, pose: EditorCameraState) 
 
 #[test]
 fn a_played_voxel_world_renders_as_the_editor_shows_it() {
+    // A project, so the default pipelines plugin's folder is mounted and the
+    // engine registers its graphs.
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("Pulsar.toml"), "# a test project\n").unwrap();
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(project.path().display().to_string());
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;

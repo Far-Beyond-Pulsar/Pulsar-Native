@@ -1,53 +1,43 @@
 //! The render pipelines the engine can run.
 //!
-//! One process-wide [`RenderPipelineRegistry`] holds the pipelines providers
-//! offer (Helio's shipped graphs, registered on first use) and whatever else
-//! registers: the project's render-graph assets are compiled and added one
-//! entry per asset with [`refresh_project_pipelines`]. A level names the
-//! pipeline it runs (World Settings' asset picker stores the id); the
-//! viewport renderer and the game both resolve that id here, so a pipeline
-//! authored once runs in both. Every one builds over Helio's default
-//! features and the ones plugins add ([`super::render_features`]).
+//! A pipeline is a `.rendergraph` asset in the project, a plugin's folder
+//! included: the shipped ones are the `pulsar.default_pipelines` plugin's files
+//! (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, ...). One
+//! process-wide [`RenderPipelineRegistry`] holds every asset compiled into a
+//! pipeline, by its project-relative path ([`refresh_project_pipelines`]), and
+//! the editors' private preview pipelines. The engine registers the open
+//! project's assets itself, before a renderer first asks for one, and again on
+//! every `.rendergraph` change ([`pipeline_state`]). A level names the
+//! pipeline it runs (World Settings' asset picker stores the path); the
+//! viewport renderer and the game both resolve it here, so a pipeline authored
+//! once runs in both. Every one builds over Helio's default features and the
+//! ones plugins add ([`super::render_features`]).
 //!
 //! Pipelines are not implicit: there is no default. A level that names none,
 //! or one that is not registered or does not compile, runs no pipeline, and
-//! [`pipeline_state`] says why ([`PipelineState::reason`]).
+//! [`pipeline_state`] says why ([`PipelineState::reason`]). Ids of pipelines
+//! that were renamed (Helio's old built-in ids) are rewritten when a level
+//! loads by the [`PipelineIdMigration`]s of the plugins that replaced them.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-use helio::{IntoGraph, PipelineFactory, PipelineInfo, PipelineOrigin, RenderPipelineRegistry};
+use helio::{IntoGraph, PipelineFactory, PipelineInfo, RenderPipelineRegistry};
 
 /// Project-relative suffix of a render-graph asset.
 pub const RENDER_GRAPH_EXTENSION: &str = "rendergraph";
 
 fn registry() -> &'static RwLock<RenderPipelineRegistry> {
     // Static, not `EngineContext`: read by the standalone game and headless tools,
-    // where no context is set; `RenderPipelineRegistry` has no `Default` either.
+    // where no context is set.
     static REGISTRY: OnceLock<RwLock<RenderPipelineRegistry>> = OnceLock::new();
-    // The plugin set the built-ins were made for.
-    static SYNCED: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(None);
-    let cell = REGISTRY.get_or_init(|| RwLock::new(RenderPipelineRegistry::new()));
-    let generation = pulsar_plugins::generation();
-    let mut synced = SYNCED.lock().unwrap_or_else(|e| e.into_inner());
-    if *synced != Some(generation) {
-        // The built-ins bake in the plugins' features, so a project that
-        // enables another set of plugins gets them made again; project and
-        // preview pipelines stay.
-        if let Ok(mut registry) = cell.write() {
-            registry.retain(|info| info.origin != PipelineOrigin::BuiltIn);
-            helio_presets::pipelines::register_builtin_pipelines(
-                &mut registry,
-                &super::render_features::plugin_features(),
-            );
-        }
-        *synced = Some(generation);
-    }
-    cell
+    REGISTRY.get_or_init(Default::default)
 }
 
-/// Every offered pipeline: built-ins first, then project pipelines.
+/// Every offered pipeline (the project's render graphs, a plugin's folder
+/// included), by id.
 pub fn list_pipelines() -> Vec<PipelineInfo> {
+    ensure_project_pipelines();
     registry()
         .read()
         .map(|r| r.list())
@@ -91,7 +81,6 @@ pub fn register_preview_pipeline(
                 id: id.clone(),
                 label: "Preview".to_string(),
                 description: String::new(),
-                origin: PipelineOrigin::Project,
             },
             factory,
         );
@@ -190,6 +179,7 @@ pub fn pipeline_state(requested: Option<&str>) -> PipelineState {
     let Some(id) = requested.filter(|id| !id.is_empty()) else {
         return PipelineState::Unassigned;
     };
+    ensure_project_pipelines();
     let registered = registry().read().map_or(false, |r| r.contains(id));
     if registered {
         return PipelineState::Assigned {
@@ -210,11 +200,8 @@ pub fn pipeline_state(requested: Option<&str>) -> PipelineState {
 /// or one that is not registered (there is no default to fall back to).
 pub fn create_pipeline(requested: Option<&str>) -> Option<Box<dyn IntoGraph>> {
     let id = requested.filter(|id| !id.is_empty())?;
-    registry()
-        .read()
-        .ok()
-        .filter(|r| r.contains(id))
-        .and_then(|r| r.create(Some(id)))
+    ensure_project_pipelines();
+    registry().read().ok().and_then(|r| r.create(id))
 }
 
 /// Says once per build which pipeline its routing findings belong to. Helio
@@ -248,8 +235,9 @@ pub fn register_project_pipeline(
     factory: PipelineFactory,
 ) {
     let id = id.into();
+    // Registered first, so a renderer that sees the new revision builds it.
+    register_entry(id.clone(), label, description, factory);
     bump_revision(&id);
-    register_entry(id, label, description, factory);
 }
 
 fn register_entry(
@@ -264,7 +252,6 @@ fn register_entry(
                 id,
                 label: label.into(),
                 description: description.into(),
-                origin: PipelineOrigin::Project,
             },
             factory,
         );
@@ -307,34 +294,6 @@ fn node_set() -> std::sync::MutexGuard<'static, NodeSet> {
         set.pins_applied = false;
     }
     set
-}
-
-/// Builds the default graph once on a headless device and returns the pins its
-/// passes declare, and the SceneDB buffers the mirror registers.
-fn probe_on_headless_device() -> Result<helio_graph_asset::Probe, String> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
-        .map_err(|error| format!("no GPU adapter: {error}"))?;
-    let features = helio::required_wgpu_features(adapter.features());
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        required_features: features,
-        required_limits: helio::required_wgpu_limits(adapter.limits()),
-        // Ray queries are experimental in wgpu; Helio asks for them with the features.
-        experimental_features: helio::required_experimental_features(features),
-        ..Default::default()
-    }))
-    .map_err(|error| format!("no GPU device: {error}"))?;
-    probe_on(Arc::new(device), Arc::new(queue))
-}
-
-/// The editor's own device and queue, if one was offered before the probe ran.
-// Static: a set-once offer with no `Default`, read by a background probe thread.
-static PROBE_DEVICE: OnceLock<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> = OnceLock::new();
-
-/// Offers the editor's shared device for the pin probe, so it does not create a
-/// second one. Only the first offer, made before the probe starts, is used.
-pub fn offer_probe_device(device: wgpu::Device, queue: wgpu::Queue) {
-    let _ = PROBE_DEVICE.set((Arc::new(device), Arc::new(queue)));
 }
 
 /// Builds the default graph on `device` (without locking it) and returns the
@@ -393,12 +352,13 @@ fn probe_on(
     helio_presets::graphs::probe_pins(&registry, &mut env)
 }
 
-/// The probe, on the shared device when one was offered, else a headless one.
+/// The probe, on the engine's device (the editor's window's, else one made
+/// for the process: `render_runtimes::RenderRuntimes::device`).
 fn probe_run() -> Result<helio_graph_asset::Probe, String> {
-    match PROBE_DEVICE.get() {
-        Some((device, queue)) => probe_on(device.clone(), queue.clone()),
-        None => probe_on_headless_device(),
-    }
+    let (device, queue) = crate::services::render_runtimes::global()
+        .device()
+        .ok_or_else(|| "no GPU device".to_string())?;
+    probe_on(Arc::new(device), Arc::new(queue))
 }
 
 /// Why [`graph_pin_probe`] found nothing, once it has tried and failed.
@@ -439,9 +399,20 @@ pub fn graph_pin_probe() -> Option<Arc<helio_graph_asset::Probe>> {
     probe_cache().0
 }
 
-/// Starts [`graph_pin_probe`] on a background thread, so the pins are ready
-/// when an editor first asks for the node registry.
+/// Starts [`graph_pin_probe`] on a background thread, once per plugin set, so
+/// the pins are ready when an editor first asks for the node registry. When it
+/// is done, the open project's render graphs are registered again: one wired to
+/// pins the probe had not found yet validates now.
 pub fn start_graph_pin_probe() {
+    static STARTED: Mutex<Option<u64>> = Mutex::new(None);
+    {
+        let generation = pulsar_plugins::generation();
+        let mut started = STARTED.lock().unwrap_or_else(|e| e.into_inner());
+        if *started == Some(generation) {
+            return;
+        }
+        *started = Some(generation);
+    }
     editor_task_queue::spawn_thread(
         editor_task_queue::ThreadSpec::new(
             "render-graph-pin-probe",
@@ -449,10 +420,40 @@ pub fn start_graph_pin_probe() {
         )
         .owner("engine_backend"),
         || {
-            graph_pin_probe();
+            let _ = graph_node_registry();
+            let root = registered_project()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .0
+                .clone();
+            if let Some(root) = root {
+                log_report(&refresh_project_pipelines(&root));
+            }
         },
     )
     .ok();
+}
+
+/// The node registry as it is now: the probed pins when the probe has run,
+/// flow pins only before. Registering a pipeline never waits for the probe (a
+/// second or more on a cold driver: every pass builds once); a graph wired to
+/// pins that are not known yet is registered when the probe finishes
+/// ([`start_graph_pin_probe`]).
+pub fn current_node_registry() -> helio_graph_asset::NodeRegistry {
+    // `try_lock`: while the probe runs it holds the lock, and this must not wait.
+    let probed = PROBE.try_lock().ok().and_then(|cached| {
+        cached
+            .as_ref()
+            .and_then(|(generation, probe, _)| probe.clone().map(|probe| (*generation, probe)))
+    });
+    let mut set = node_set();
+    if let Some((generation, probe)) = probed {
+        if !set.pins_applied && set.generation == Some(generation) {
+            helio_presets::graphs::apply_probe(&mut set.registry, &probe);
+            set.pins_applied = true;
+        }
+    }
+    set.registry.clone()
 }
 
 /// The node types render-graph assets can use: the core resource nodes,
@@ -486,13 +487,23 @@ pub struct ProjectGraphReport {
 /// with errors is reported in `failed` and not offered; one with only warnings
 /// is offered. Call when a project opens and when a `.rendergraph` changes.
 pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraphReport {
-    clear_project_pipelines();
-    let nodes = Arc::new(graph_node_registry());
+    let nodes = Arc::new(current_node_registry());
+    // The new set, swapped in at once below: a renderer asking meanwhile
+    // finds the old set or the new one, never none.
+    let mut entries: Vec<(PipelineInfo, PipelineFactory)> = Vec::new();
+    // Graphs whose build changed: their revisions move once the new set is
+    // in, so a renderer that sees a new revision builds the new graph.
+    let mut bumped: Vec<String> = Vec::new();
     let mut report = ProjectGraphReport::default();
     let mut failed_now: HashMap<String, String> = HashMap::new();
-    for relative in engine_fs::virtual_fs::find_by_extension(project_root, RENDER_GRAPH_EXTENSION) {
+    for path in engine_fs::virtual_fs::find_by_extension(project_root, RENDER_GRAPH_EXTENSION) {
+        // The id a level stores is the project-relative path.
+        let relative = path
+            .strip_prefix(project_root)
+            .unwrap_or(&path)
+            .to_path_buf();
         let id = relative.to_string_lossy().replace('\\', "/");
-        let loaded = engine_fs::virtual_fs::read_file(&project_root.join(&relative))
+        let loaded = engine_fs::virtual_fs::read_file(&path)
             .map_err(|e| format!("{e:#}"))
             .and_then(|bytes| {
                 helio_graph_asset::GraphAsset::from_json(&String::from_utf8_lossy(&bytes))
@@ -511,16 +522,13 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
             report.failed.push((id, error.to_string()));
             continue;
         }
-        // A saved graph that did not change keeps its revision, so the
-        // renderers running it are not rebuilt because another graph saved.
-        let content = {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            asset.to_json().hash(&mut hasher);
-            hasher.finish()
-        };
-        let changed = content_hashes().lock().map_or(true, |mut hashes| {
-            hashes.insert(id.clone(), content) != Some(content)
+        // Renderers running a graph rebuild only when what it builds changed
+        // (its passes, their order or parameters): not because another graph
+        // saved, nor for a moved node, a comment or a wire that keeps the
+        // order (the shipped files' swap to their wired form).
+        let built = validation.build_key(&nodes).unwrap_or_default();
+        let changed = build_keys().lock().map_or(true, |mut keys| {
+            keys.insert(id.clone(), built) != Some(built)
         });
         let label = if asset.name.trim().is_empty() {
             relative
@@ -536,45 +544,149 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
         };
         let asset = Arc::new(asset);
         let nodes = Arc::clone(&nodes);
-        register_entry(
-            id.clone(),
-            label,
-            description,
+        entries.push((
+            PipelineInfo {
+                id: id.clone(),
+                label,
+                description,
+            },
             Arc::new(move || {
                 Box::new(helio_graph_asset::GraphAssetPipeline::new(
                     Arc::clone(&asset),
                     Arc::clone(&nodes),
                 )) as Box<dyn IntoGraph>
             }),
-        );
+        ));
         if changed {
-            bump_revision(&id);
+            bumped.push(id.clone());
         }
         report.registered.push(id);
+    }
+    if let Ok(mut registry) = registry().write() {
+        // Project graphs go; a preview's pipeline belongs to an open editor.
+        registry.retain(|info| info.id.starts_with(PREVIEW_PREFIX));
+        for (info, factory) in entries {
+            registry.register(info, factory);
+        }
+    }
+    for id in &bumped {
+        bump_revision(id);
     }
     if let Ok(mut failures) = failures().lock() {
         *failures = failed_now;
     }
-    // A graph whose file is gone forgets its hash, so a new file of that path is new.
-    if let Ok(mut hashes) = content_hashes().lock() {
-        hashes.retain(|id, _| report.registered.contains(id));
+    // A graph whose file is gone forgets its key, so a new file of that path is new.
+    if let Ok(mut keys) = build_keys().lock() {
+        keys.retain(|id, _| report.registered.contains(id));
     }
     report
 }
 
-/// Hash of each registered project graph's text, to tell a saved change from a reload.
-fn content_hashes() -> &'static Mutex<HashMap<String, u64>> {
-    static HASHES: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
-    HASHES.get_or_init(Default::default)
+/// Each registered project graph's build key (`Validation::build_key`), to
+/// tell a change to what it builds from a reload or an edit of its layout.
+fn build_keys() -> &'static Mutex<HashMap<String, u64>> {
+    static KEYS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    KEYS.get_or_init(Default::default)
 }
 
 /// Forgets every project pipeline (a project closed or is reloading).
 pub fn clear_project_pipelines() {
     if let Ok(mut registry) = registry().write() {
         // Project graphs go; a preview's pipeline belongs to an open editor.
-        registry.retain(|info| {
-            info.origin != PipelineOrigin::Project || info.id.starts_with(PREVIEW_PREFIX)
-        });
+        registry.retain(|info| info.id.starts_with(PREVIEW_PREFIX));
+    }
+}
+
+/// The project whose render graphs are registered, and whether the watcher
+/// that registers them again on a change runs.
+fn registered_project() -> &'static Mutex<(Option<std::path::PathBuf>, bool)> {
+    // Static, like the registry it fills.
+    static PROJECT: OnceLock<Mutex<(Option<std::path::PathBuf>, bool)>> = OnceLock::new();
+    PROJECT.get_or_init(Default::default)
+}
+
+/// Registers the open project's render graphs if they are not yet (a project
+/// opened, or another one did), and starts the watcher that registers them
+/// again when a `.rendergraph` in the project changes, a plugin's folder
+/// included. Cheap when they are: renderers ask through [`pipeline_state`]
+/// every frame. A project with no path (a headless tool) registers nothing.
+pub fn ensure_project_pipelines() {
+    let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
+        return;
+    };
+    let (start_watcher, needs_pins) = {
+        // Held while registering, so a renderer asking meanwhile waits for the
+        // project's pipelines instead of finding none.
+        let mut project = registered_project()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if project.0.as_ref() == Some(&root) {
+            return;
+        }
+        let report = refresh_project_pipelines(&root);
+        log_report(&report);
+        project.0 = Some(root.clone());
+        (
+            !std::mem::replace(&mut project.1, true),
+            !report.failed.is_empty(),
+        )
+    };
+    if start_watcher {
+        watch_project_pipelines();
+    }
+    // A graph that did not validate may be wired to pins the probe has not
+    // found yet: the probe registers it again when it is done. Nothing else
+    // waits for it (it builds every pass once, which competes with the first
+    // frames' own pipeline compiles).
+    if needs_pins {
+        start_graph_pin_probe();
+    }
+}
+
+fn log_report(report: &ProjectGraphReport) {
+    for (path, error) in &report.failed {
+        tracing::warn!("Render graph {path} is not offered as a pipeline: {error}");
+    }
+}
+
+/// The service that registers the project's render graphs again when one
+/// changes (saved, created, deleted, or remade by the plugin that provides
+/// it), so the renderers running it rebuild at their next frame boundary.
+fn watch_project_pipelines() {
+    let mut events = engine_fs::subscribe();
+    let spawned = editor_task_queue::spawn_service(
+        editor_task_queue::ServiceDescription::new(
+            "Render pipeline assets",
+            "render",
+            "Render Pipeline Assets",
+            editor_task_queue::ThreadRole::Service,
+        )
+        .owner("engine")
+        .no_heartbeat(),
+        move |ctx| loop {
+            ctx.set_idle(true);
+            let event = match events.blocking_recv() {
+                Ok(event) => event,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+            };
+            let is_graph =
+                event.path.extension().and_then(|e| e.to_str()) == Some(RENDER_GRAPH_EXTENSION);
+            let root = registered_project()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .0
+                .clone();
+            let Some(root) = root.filter(|root| is_graph && event.path.starts_with(root)) else {
+                continue;
+            };
+            ctx.set_idle(false);
+            ctx.set_phase("Registering the project's render graphs");
+            log_report(&refresh_project_pipelines(&root));
+        },
+    );
+    if let Err(error) = spawned {
+        tracing::error!("The render pipeline asset watcher did not start: {error}");
     }
 }
 
@@ -601,6 +713,40 @@ pub fn level_pipeline() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
+/// A plugin's rewrite of pipeline ids it replaced: a level that names `id`
+/// runs what `migrate` returns (the `pulsar.default_pipelines` plugin maps
+/// Helio's old built-in ids to its files). Applied when a level loads, in the
+/// editor and the game ([`migrated_render_pipeline`]).
+pub struct PipelineIdMigration {
+    pub origin: &'static str,
+    pub migrate: fn(&str) -> Option<String>,
+}
+
+impl pulsar_plugins::Contribution for PipelineIdMigration {
+    const CATEGORY: &'static str = "render.pipeline_migrations";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.origin.to_owned()
+    }
+
+    fn label(&self) -> String {
+        "Render pipeline id migration".to_owned()
+    }
+}
+
+pulsar_plugins::registration!(PipelineIdMigration);
+
+/// What `id` names now: the first enabled plugin's rewrite of it, or `id`.
+pub fn migrate_pipeline_id(id: String) -> String {
+    pulsar_plugins::registered::<PipelineIdMigration>()
+        .find_map(|migration| (migration.migrate)(&id))
+        .unwrap_or(id)
+}
+
 /// The pipeline a level saved before pipelines were explicit ran: the engine's
 /// old default. A level without `world_settings.pipeline_version` (or with 0)
 /// that names none is migrated to it, so it keeps rendering; the editor writes
@@ -615,11 +761,12 @@ pub const PIPELINE_VERSION: u32 = 1;
 /// [`LEGACY_DEFAULT_PIPELINE`] and [`PIPELINE_VERSION`].
 pub fn migrated_render_pipeline(saved_version: u32, saved: Option<String>) -> Option<String> {
     let saved = saved.filter(|id| !id.is_empty());
-    if saved.is_none() && saved_version < PIPELINE_VERSION {
+    let saved = if saved.is_none() && saved_version < PIPELINE_VERSION {
         Some(LEGACY_DEFAULT_PIPELINE.to_string())
     } else {
         saved
-    }
+    };
+    saved.map(migrate_pipeline_id)
 }
 
 /// The `world_settings.render_pipeline` of a level file's JSON text, migrated.
@@ -684,18 +831,16 @@ mod tests {
         );
         assert!(create_pipeline(None).is_none());
         assert!(create_pipeline(Some("no/such.rendergraph")).is_none());
-        // The shipped pipelines stay registered by id, offered by their provider.
-        assert!(list_pipelines()
-            .iter()
-            .any(|p| p.id == LEGACY_DEFAULT_PIPELINE && p.origin == PipelineOrigin::BuiltIn));
-        assert!(matches!(
+        // The engine registers no pipeline of its own: the old default id is
+        // only a pipeline when a plugin's migration rewrites it to an asset.
+        assert_eq!(
             pipeline_state(Some(LEGACY_DEFAULT_PIPELINE)),
-            PipelineState::Assigned { .. }
-        ));
+            PipelineState::NotFound(LEGACY_DEFAULT_PIPELINE.into())
+        );
     }
 
     #[test]
-    fn project_pipelines_list_after_built_ins_and_clear() {
+    fn project_pipelines_list_and_clear() {
         register_project_pipeline("a/x.rendergraph", "X", "", dummy_factory());
         let listed = list_pipelines();
         assert_eq!(

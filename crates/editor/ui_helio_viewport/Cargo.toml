@@ -7,6 +7,10 @@ publish = false
 [dependencies]
 gpui-ce.workspace = true
 tracing.workspace = true
+# The render runtimes' output trait and the device-loss adoption.
+engine_backend = { workspace = true }
+wgpu = { workspace = true }
+profiling = { workspace = true }
 
 [lints]
 workspace = true

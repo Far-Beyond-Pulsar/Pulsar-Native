@@ -118,13 +118,14 @@ Raw `cx.spawn` is not blocked; raw threads, tokio runtimes and rayon pools are
 
 Tasks say what work is happening. The thread registry
 (`editor_task_queue::threads`) says what every thread is doing, including the
-ones that run no task. The Tasks window has three views over them:
+ones that run no task. The Tasks window has four views over them:
 
 | View | Shows |
 |---|---|
 | **Tasks** | finite work: queued, running, stalled, failed, done. A strip under the tabs summarises **micro tasks** |
 | **Threads** | every registered thread grouped by role (UI, Render, Services, Editor task workers, Async (tokio), Compute (rayon), I/O, Other): owner and pool, running or waiting and for how long, busy time, the phase it named, and the task being polled on it. Click a row with a task to open that task's log |
 | **Services** | persistent tasks: heartbeat rate, last pass time, phase, stall |
+| **Renderers** | the engine's render runtimes (category `categories::RENDER_RUNTIME`): each row is what the runtime says about itself (`TaskSnapshot::details`: owner, scene, size, update mode, state, visible, CPU frame time, graph textures, frames); its log is what its renderer logged while it drew. See `.agents/RENDER_RUNTIMES.md` |
 
 ### Persistent tasks (services)
 
@@ -139,8 +140,22 @@ Call `ctx.heartbeat()` (or `ctx.tick(work_time)`) once per pass and
 work on purpose calls `ctx.set_idle(true)` (silence is then not a stall) and
 `set_idle(false)` when it resumes. `NoHeartbeat` is reported when beats stop
 for longer than `heartbeat(every)` (default 5s, `no_heartbeat()` turns it off).
-Examples: `ui_level_editor` viewport `render_thread.rs` (frame heartbeat),
-`init_queue.rs` (idle between jobs), `input_thread.rs`.
+Examples: `engine_backend` `render_runtimes` (the "Helio runtimes" scheduler,
+one beat per pass), `pipelines.rs` (the "Render pipeline assets" watcher, idle
+between events), `ui_level_editor` `input_thread.rs`.
+
+### Threadless persistent tasks
+
+Something that lives as long as what it serves but is driven by another loop
+(a render runtime, which the runtimes' scheduler draws; a game window's
+renderer, which its event loop drives) is a `PersistentTask`:
+`global().persistent_task(TaskDescription::persistent(title, category),
+heartbeat)`. Its owner beats (`ctx.tick(work)` per frame), names phases (its
+state), marks itself idle while it does nothing on purpose, enters
+`ctx.span()` around its work so its logs are its own, and publishes
+`ctx.set_details(vec![(label, value), ..])`, which a view that lists one
+category as a table reads. Dropping it ends the task. Categories that a view
+lists on their own are consts in `editor_task_queue::categories`.
 
 ### Plain threads
 

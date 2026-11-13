@@ -2017,6 +2017,44 @@ impl HelioRenderer {
         self.inner.is_some()
     }
 
+    /// Whether the next [`prepare_for_render`](Self::prepare_for_render) builds
+    /// a graph: the first one, a pipeline the level asks for that is not the
+    /// one built, or graph-affecting project settings that changed. A build
+    /// compiles pipelines (seconds on a cold driver), so a scheduler runs it off
+    /// its frame loop.
+    pub fn needs_build(&mut self) -> bool {
+        let Some(applied) = self.applied_pipeline.as_ref() else {
+            return true;
+        };
+        if self.inner.is_none() {
+            return true;
+        }
+        let settings_changed = self.applied_graph_settings.as_ref().is_some_and(|applied| {
+            let current = self.graph_settings_cache.load();
+            !Arc::ptr_eq(applied, &current) && !applied.same_graph(&current)
+        });
+        settings_changed
+            || *applied
+                != super::pipelines::pipeline_state(self.requested_pipeline.get().as_deref())
+    }
+
+    /// Drop the Helio renderer (graph, passes and their GPU resources). The
+    /// scene, camera and settings stay; the next
+    /// [`prepare_for_render`](Self::prepare_for_render) builds it again.
+    pub fn release_gpu_resources(&mut self) {
+        self.inner = None;
+        self.applied_graph_settings = None;
+        self.applied_pipeline = None;
+        self.reset_taa_next_frame = true;
+    }
+
+    /// Estimated bytes of the textures the current render graph allocates.
+    pub fn graph_texture_bytes(&self) -> Option<u64> {
+        self.inner
+            .as_ref()
+            .map(|inner| inner.scene.renderer.graph_texture_bytes())
+    }
+
     pub fn get_metrics(&self) -> RenderMetrics {
         self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
     }

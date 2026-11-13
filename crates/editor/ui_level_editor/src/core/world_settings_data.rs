@@ -56,7 +56,10 @@ impl WorldSettingsData {
     /// Migrates a level file's JSON in place before it is read: a level saved
     /// when pipelines were implicit (no `pipeline_version`) and named none ran
     /// the engine's default, so it is given that pipeline's id and the current
-    /// version. A level written since keeps its `None`.
+    /// version. A level written since keeps its `None`. A named pipeline that
+    /// was renamed (Helio's old built-in ids, now the render pipelines
+    /// plugin's assets) is rewritten to its new id
+    /// (`pipelines::migrate_pipeline_id`).
     pub fn migrate_level(level: &mut Value) {
         let Some(root) = level.as_object_mut() else {
             return;
@@ -71,13 +74,19 @@ impl WorldSettingsData {
             .get("pipeline_version")
             .and_then(Value::as_u64)
             .unwrap_or(0) as u32;
-        if version >= pipelines::PIPELINE_VERSION {
-            return;
-        }
         let saved = settings
             .get("render_pipeline")
             .and_then(Value::as_str)
             .map(str::to_owned);
+        if version >= pipelines::PIPELINE_VERSION {
+            if let Some(saved) = saved {
+                settings.insert(
+                    "render_pipeline".into(),
+                    Value::String(pipelines::migrate_pipeline_id(saved)),
+                );
+            }
+            return;
+        }
         if let Some(migrated) = pipelines::migrated_render_pipeline(version, saved) {
             settings.insert("render_pipeline".into(), Value::String(migrated));
         }
@@ -140,10 +149,14 @@ mod tests {
             r#"{"world_settings":{"time_scale":2.0}}"#,
             r#"{"world_settings":{"render_pipeline":null}}"#,
         ] {
+            // The old default, as the enabled plugins name it now (the render
+            // pipelines plugin's `Deferred.rendergraph` when it is linked).
             let settings = migrate(legacy);
             assert_eq!(
-                settings.render_pipeline.as_deref(),
-                Some(pipelines::LEGACY_DEFAULT_PIPELINE),
+                settings.render_pipeline,
+                Some(pipelines::migrate_pipeline_id(
+                    pipelines::LEGACY_DEFAULT_PIPELINE.to_string()
+                )),
                 "{legacy}"
             );
             assert_eq!(settings.pipeline_version, pipelines::PIPELINE_VERSION);

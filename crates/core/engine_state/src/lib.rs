@@ -77,7 +77,6 @@ mod multiuser;
 
 // Typed systems (primary API)
 pub mod context;
-pub mod renderers_typed;
 
 // Generic, type-safe arbitrary state system
 pub mod build_config;
@@ -103,7 +102,6 @@ pub use context::{
     DevContext, EngineContext, LaunchContext, NewProjectContent, ProjectContext, WindowContext,
 };
 pub use keyed_store::KeyedStore;
-pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 pub use resource::{Resource, ResourceHandle, WriteGuard};
 pub use store::StateStore;
 

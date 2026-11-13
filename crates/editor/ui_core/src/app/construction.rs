@@ -87,18 +87,13 @@ pub(super) fn publish_project_path(project_path: Option<&Path>) {
 /// weak handle) and [`publish_project_path`].
 pub(super) fn build_center_dock(
     create_level_editor: bool,
-    window_id: Option<u64>,
     weak_dock: &WeakEntity<DockArea>,
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) -> DockItem {
     let t = std::time::Instant::now();
     let center_dock_item = if create_level_editor {
-        let level_editor = if let Some(wid) = window_id {
-            cx.new(|cx| LevelEditorPanel::new_with_window_id(wid, window, cx))
-        } else {
-            cx.new(|cx| LevelEditorPanel::new(window, cx))
-        };
+        let level_editor = cx.new(|cx| LevelEditorPanel::new(window, cx));
         DockItem::tabs(
             vec![Arc::new(level_editor.clone())],
             Some(0),

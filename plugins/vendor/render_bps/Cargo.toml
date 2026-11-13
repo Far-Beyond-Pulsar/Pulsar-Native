@@ -25,6 +25,8 @@ plugin_manager = { workspace = true, optional = true }
 engine_backend = { workspace = true }
 ui_helio_viewport = { workspace = true }
 engine_fs = { workspace = true }
+# The open project, where "Save a copy to the project" writes.
+engine_state = { workspace = true }
 wgpu = { workspace = true }
 parking_lot = { workspace = true }
 gpui-ce = { workspace = true }

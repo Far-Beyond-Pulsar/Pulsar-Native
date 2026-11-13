@@ -26,6 +26,7 @@ pub use asset_viewer_plugin;
 pub use blueprint_editor_plugin;
 pub use character_plugin;
 pub use decals_plugin;
+pub use default_pipelines_plugin;
 #[cfg(feature = "editor")]
 pub use editor_table_plugin;
 pub use fog_plugin;

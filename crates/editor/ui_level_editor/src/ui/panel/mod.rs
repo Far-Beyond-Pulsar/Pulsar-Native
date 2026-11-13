@@ -184,8 +184,13 @@ impl Panel for LevelEditorPanel {
     }
 
     fn set_active(&mut self, active: bool, _window: &mut Window, cx: &mut App) {
-        if active {
-            self.viewport.update(cx, |v, _| v.mark_tab_activated());
+        self.viewport
+            .update(cx, |v, _| v.set_tab_active(true, active));
+        // Split-off viewports are inside this tab too.
+        for extra in self.extra_viewports.live() {
+            if let Some(panel) = extra.panel.upgrade() {
+                panel.update(cx, |panel, cx| panel.set_editor_tab_active(active, cx));
+            }
         }
     }
 }

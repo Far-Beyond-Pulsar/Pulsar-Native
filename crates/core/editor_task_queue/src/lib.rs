@@ -32,12 +32,19 @@ mod track;
 
 pub use log::{LogRead, TaskLog, TaskLogLayer, MAX_LOG_LINES};
 pub use micro::{micro, micro_snapshots, MicroSnapshot};
-pub use services::{spawn_service, ServiceDescription, ServiceHandle};
+pub use services::{spawn_service, PersistentTask, ServiceDescription, ServiceHandle};
 pub use threads::{
     current_thread, register_current_thread, spawn_named, spawn_thread, thread_snapshots,
     ThreadGuard, ThreadHandle, ThreadRole, ThreadSnapshot, ThreadSpec, ThreadState,
 };
 pub use track::{scope, tracked, TaskOutcome, Tracked};
+
+/// Task categories that views list on their own (the Tasks window's
+/// Renderers view). The owner of each kind of task uses the const.
+pub mod categories {
+    /// The engine's render runtimes (`engine_backend::services::render_runtimes`).
+    pub const RENDER_RUNTIME: &str = "render.runtime";
+}
 
 use parking_lot::{Condvar, Mutex};
 use std::cell::RefCell;
@@ -271,6 +278,10 @@ pub struct TaskSnapshot {
     pub since_beat: Option<Duration>,
     /// Persistent tasks: intentionally idle (waiting for work), so silence is fine.
     pub idle: bool,
+    /// What the task says about itself, by name, for views that list a kind
+    /// of task as a table (the Tasks window's Renderers view): set with
+    /// [`TaskContext::set_details`].
+    pub details: Vec<(String, String)>,
 }
 
 /// What a finished unit of work reported.
@@ -627,6 +638,7 @@ impl QueueInner {
             last_tick: None,
             since_beat: None,
             idle: false,
+            details: Vec::new(),
         };
         let forgotten = {
             let mut state = self.state.lock();
@@ -1201,6 +1213,19 @@ impl TaskContext {
         }
         self.shared.idle.store(idle, Ordering::Release);
         self.shared.touch();
+    }
+
+    /// Replace what the task says about itself by name (owner, size, mode):
+    /// [`TaskSnapshot::details`]. For a view that lists one kind of task as a
+    /// table; it is not logged.
+    pub fn set_details(&self, details: Vec<(String, String)>) {
+        {
+            let mut state = self.inner.state.lock();
+            if let Some(record) = state.records.get_mut(&self.shared.id) {
+                record.snapshot.details = details;
+            }
+        }
+        self.inner.changed();
     }
 
     /// Persistent tasks: how long between heartbeats counts as stalled. Zero

@@ -101,6 +101,24 @@ impl GpuRenderer {
             .unwrap_or(false)
     }
 
+    /// Free the Helio renderer's GPU resources (its graph and passes); the
+    /// scene, camera and settings stay, and the next
+    /// [`prepare_for_render`](Self::prepare_for_render) builds them again. A
+    /// stopped render runtime calls it.
+    pub fn release_gpu_resources(&mut self) {
+        if let Some(renderer) = self.helio_renderer.as_mut() {
+            renderer.release_gpu_resources();
+        }
+    }
+
+    /// Estimated bytes of the textures the current render graph allocates,
+    /// once the renderer is built.
+    pub fn graph_texture_bytes(&self) -> Option<u64> {
+        self.helio_renderer
+            .as_ref()
+            .and_then(|renderer| renderer.graph_texture_bytes())
+    }
+
     /// Render one frame directly into a `WgpuSurfaceHandle` back-buffer view.
     pub fn render_frame_to_surface(
         &mut self,
@@ -185,6 +203,14 @@ impl GpuRenderer {
 
     pub fn get_render_fps(&self) -> f32 {
         self.get_fps().max(self.get_helio_fps())
+    }
+
+    /// Whether the next [`prepare_for_render`](Self::prepare_for_render) builds
+    /// a graph (the first, a new pipeline, changed graph settings).
+    pub fn needs_build(&mut self) -> bool {
+        self.helio_renderer
+            .as_mut()
+            .is_some_and(|renderer| renderer.needs_build())
     }
 
     pub fn is_initialized(&self) -> bool {

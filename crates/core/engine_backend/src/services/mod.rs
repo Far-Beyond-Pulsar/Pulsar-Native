@@ -1,7 +1,8 @@
 //! UI Services
 //!
 //! Background services and managers that support UI functionality:
-//! - GPU renderer for 3D viewports
+//! - GPU renderer for 3D viewports, and the render runtimes that own and
+//!   draw every one of them
 //! - Rust Analyzer integration for code intelligence
 //! - LSP completion provider for code suggestions
 
@@ -17,6 +18,8 @@ pub mod native_scripts;
 pub mod pie_blit;
 #[cfg(feature = "pie")]
 pub mod pie_host;
+#[cfg(feature = "render")]
+pub mod render_runtimes;
 #[cfg(feature = "editor-ui")]
 pub mod rust_analyzer_manager {
     pub use pulsar_lsp::rust_analyzer::{path_key, path_to_uri, uri_to_path};

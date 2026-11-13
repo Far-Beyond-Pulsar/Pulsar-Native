@@ -7,7 +7,7 @@
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -23,15 +23,18 @@ use crate::state::LevelEditorState;
 use helio_component::asset_component::component_for_asset;
 use pulsar_reflection::REGISTRY;
 
-/// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
+/// A GPUI component that shows a Helio renderer's frames from a
+/// `WgpuSurfaceHandle`.
 ///
-/// Rendering runs on a dedicated background thread so the UI thread is never
-/// blocked by GPU work. The background thread owns a clone of the `GpuRenderer`
-/// and the `WgpuSurfaceHandle`; it loops at ~60 FPS calling
-/// `render_frame_to_surface()` + `present_synced_silent()`.
+/// The renderer is an engine render runtime
+/// (`engine_backend::services::render_runtimes`): the engine's scheduler draws
+/// it into the surface (`ui_helio_viewport::SurfaceTarget`) while the view is
+/// shown, so the UI thread is never blocked by GPU work and no viewport has a
+/// render loop of its own. The view gives the runtime its surface, says when
+/// it is shown, and repaints when a frame is published:
 ///
 /// Presentation is deliberately split across the two threads:
-/// - the render thread only publishes finished frames into the triple buffer
+/// - the runtime only publishes finished frames into the triple buffer
 ///   and bumps `frames_published`;
 /// - the UI thread runs a frame pump that watches that counter and repaints
 ///   only when a new frame actually exists, so the compositor promotes
@@ -49,16 +52,20 @@ pub struct HelioViewport {
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
     debug_replace_with_yellow: bool,
-    tab_activated: Arc<AtomicBool>,
-    render_thread_stop: Arc<AtomicBool>,
-    render_thread_handle: Option<editor_task_queue::ServiceHandle<Result<(), String>>>,
-    /// Incremented by the render thread each time it publishes a frame into the
+    /// The engine runtime that draws `gpu_engine` into `surface`.
+    runtime: engine_backend::services::render_runtimes::RuntimeHandle,
+    /// The loading overlay's token while the runtime builds its renderer.
+    initial_load: Option<crate::state::EditorLoadingTask>,
+    /// Whether the level editor's tab and this view's dock tab are in front.
+    editor_tab_active: bool,
+    dock_tab_active: bool,
+    /// Incremented by the runtime each time it publishes a frame into the
     /// triple buffer. Read by the frame pump to decide whether a repaint is
     /// warranted.
     frames_published: Arc<AtomicU64>,
     /// Refresh rate of the display the window is on, in millihertz (0 = not
-    /// known yet). Written on the UI thread and picked up by the render
-    /// thread's pacer, since on Wayland it's often unknown when the thread starts.
+    /// known yet). Written on the UI thread and read by the runtime's output
+    /// for its pace, since on Wayland it's often unknown at first.
     display_refresh_millihertz: Arc<AtomicU32>,
     /// When the display refresh rate was last sampled, while it's still unknown.
     last_display_refresh_sample: Instant,
@@ -82,10 +89,6 @@ pub struct HelioViewport {
     viewport_size_at_last_full_render: Option<Size<Pixels>>,
     /// Whether the `on_next_frame` pump has been started (once per view).
     pump_started: bool,
-    last_spike_report: Instant,
-    slow_frames_since_report: u32,
-    engine_lock_misses_since_report: u32,
-    max_frame_ms_since_report: f64,
     active_placement: Option<(String, crate::scene_edit::SceneHistorySnapshot, (f32, f32))>,
     placement_monitor_running: bool,
     placement_bounds: Option<Bounds<Pixels>>,
@@ -94,28 +97,56 @@ pub struct HelioViewport {
 }
 
 mod assets;
-mod frame_pacer;
-mod init_queue;
-mod render_thread;
+mod frame_pump;
 mod thumbnail;
 use thumbnail::capture_viewport_png_tiled;
 use thumbnail::capture_viewport_thumbnail;
 impl HelioViewport {
+    /// A view of `gpu_engine`, drawn by an engine runtime labelled `label`
+    /// ("Level viewport", "Split viewport"). Higher `priority` draws first
+    /// when several are due.
     pub fn new<V: 'static>(
         gpu_engine: Arc<Mutex<GpuRenderer>>,
         shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
         debug_replace_with_yellow: bool,
+        label: &str,
+        priority: i32,
         cx: &mut Context<V>,
     ) -> Self {
+        use engine_backend::services::render_runtimes::{self, RuntimeDescription, UpdateMode};
+        let scene_label = shared_state
+            .read()
+            .scene
+            .current_scene
+            .as_ref()
+            .and_then(|path| path.file_stem())
+            .map_or_else(
+                || "level".to_string(),
+                |stem| stem.to_string_lossy().into_owned(),
+            );
+        let runtime = render_runtimes::global().create(
+            RuntimeDescription {
+                label: label.to_string(),
+                origin: pulsar_plugins::engine_origin!(),
+                scene_label,
+                priority,
+                mode: UpdateMode::WhenVisible,
+            },
+            gpu_engine.clone(),
+        );
+        // The camera input is sampled as late as possible: right before the
+        // frame reads it.
+        runtime.set_before_frame(Box::new(|| crate::ui::viewport::input_latch::latch_now()));
         Self {
             gpu_engine,
             shared_state,
             surface: None,
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
-            tab_activated: Arc::new(AtomicBool::new(true)),
-            render_thread_stop: Arc::new(AtomicBool::new(false)),
-            render_thread_handle: None,
+            runtime,
+            initial_load: None,
+            editor_tab_active: true,
+            dock_tab_active: true,
             frames_published: Arc::new(AtomicU64::new(0)),
             display_refresh_millihertz: Arc::new(AtomicU32::new(0)),
             last_display_refresh_sample: Instant::now(),
@@ -126,10 +157,6 @@ impl HelioViewport {
             last_full_render: Instant::now(),
             viewport_size_at_last_full_render: None,
             pump_started: false,
-            last_spike_report: Instant::now(),
-            slow_frames_since_report: 0,
-            engine_lock_misses_since_report: 0,
-            max_frame_ms_since_report: 0.0,
             active_placement: None,
             placement_monitor_running: false,
             placement_bounds: None,
@@ -138,10 +165,21 @@ impl HelioViewport {
         }
     }
 
-    /// Mark the viewport as having been activated (e.g. tab switch).
-    /// The next render will reset TAA history to prevent ghosting.
-    pub fn mark_tab_activated(&mut self) {
-        self.tab_activated.store(true, Ordering::Release);
+    /// The level editor's tab (`editor`) or the view's own dock tab was shown
+    /// or hidden. The view is shown when both are. Shown again, the next frame
+    /// resets the temporal history (it would ghost from where the camera
+    /// was); hidden, the runtime draws nothing.
+    pub fn set_tab_active(&mut self, editor: bool, active: bool) {
+        if editor {
+            self.editor_tab_active = active;
+        } else {
+            self.dock_tab_active = active;
+        }
+        let visible = self.editor_tab_active && self.dock_tab_active;
+        if visible {
+            self.runtime.reset_history();
+        }
+        self.runtime.set_visible(visible);
     }
 
     /// Refresh rate of the display this window is on, falling back to the
@@ -181,24 +219,6 @@ impl HelioViewport {
 }
 
 const DISPLAY_REFRESH_POLL_INTERVAL: Duration = Duration::from_secs(1);
-impl Drop for HelioViewport {
-    fn drop(&mut self) {
-        self.render_thread_stop.store(true, Ordering::Release);
-    }
-}
-
-impl HelioViewport {
-    /// Stop the render thread and wait for it, so the next one starts with
-    /// the renderer to itself: a frame from the old thread on the lost
-    /// device would rebuild the renderer back onto it.
-    fn stop_render_thread(&mut self) {
-        self.render_thread_stop.store(true, Ordering::Release);
-        if let Some(handle) = self.render_thread_handle.take() {
-            let _ = handle.join();
-        }
-        self.render_thread_stop = Arc::new(AtomicBool::new(false));
-    }
-}
 
 impl Focusable for HelioViewport {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -237,11 +257,12 @@ impl Render for HelioViewport {
             .is_some_and(WgpuSurfaceHandle::is_device_lost)
         {
             tracing::warn!("[HELIO-VIEWPORT] GPU device lost; waiting for the window's new device");
-            self.stop_render_thread();
+            // The runtime marks itself lost from its output and builds again
+            // on the next one.
             self.surface = None;
         }
 
-        // Lazy surface creation + start the background render thread.
+        // Lazy surface creation; the runtime draws into it.
         if self.surface.is_none() {
             // If this comes up empty (Wayland before `wl_surface.enter`), the
             // frame pump keeps polling via `poll_display_refresh`.
@@ -264,19 +285,26 @@ impl Render for HelioViewport {
                 Some(s) if s.is_device_lost() => {}
                 Some(s) => {
                     tracing::info!("[HELIO-VIEWPORT] WgpuSurface created (format={:?})", format);
-                    // Let WGPUI finish presenting this frame before Helio asks
-                    // the shared device to build its cold pipeline graph. The
-                    // callback runs at the start of the next platform frame.
-                    let (first_frame_tx, first_frame_rx) = std::sync::mpsc::channel();
-                    window.on_next_frame(move |_, _| {
-                        let _ = first_frame_tx.send(());
-                    });
-                    let loading = self
-                        .shared_state
-                        .read()
-                        .editor_loading
-                        .begin("Initializing Helio renderer…");
-                    self.start_render_thread(s.clone(), refresh_hz, first_frame_rx, loading);
+                    let _ = refresh_hz;
+                    if self.initial_load.is_none() && self.runtime.frames() == 0 {
+                        let loading = self
+                            .shared_state
+                            .read()
+                            .editor_loading
+                            .begin("Initializing Helio renderer…");
+                        loading.set_progress(0.05);
+                        self.initial_load = Some(loading);
+                    }
+                    // Let WGPUI present this frame before the runtime builds
+                    // its cold pipeline graph on the shared device: the output
+                    // is handed over at the start of the next platform frame.
+                    let runtime = self.runtime.clone();
+                    let target = Arc::new(ui_helio_viewport::SurfaceTarget::new(
+                        s.clone(),
+                        self.frames_published.clone(),
+                        self.display_refresh_millihertz.clone(),
+                    ));
+                    window.on_next_frame(move |_, _| runtime.set_output(target));
                     self.surface = Some(s);
                 }
                 None => {

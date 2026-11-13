@@ -2,8 +2,10 @@
 
 A level chooses its **render pipeline** (World Settings, first section) by picking
 an **asset**: the editor's shared asset picker lists the project's `.rendergraph`
-files and, beside them, the pipelines a provider offers (Helio's shipped ones,
-listed by id with their origin). A pipeline is anything that implements Helio's
+files and, beside them, the ones plugins provide in their folders (the shipped
+pipelines are the `pulsar.default_pipelines` plugin's files,
+`plugins/pulsar.default_pipelines/Deferred.rendergraph` and the rest, with the
+plugin named as their origin). A pipeline is anything that implements Helio's
 `IntoGraph`. A render graph is a graph of **pass nodes**: one node builds one pass,
 and the node's pins come from what that pass declares.
 
@@ -20,9 +22,10 @@ reason instead of substituting another pipeline.
 | `IntoGraph`, `RenderPipelineRegistry` | `helio` (`renderer/pipeline.rs`) | The extension seam. `RendererBuilder::with_graph(impl IntoGraph)` / `with_boxed_graph`. |
 | Graph asset + compiler | `helio-graph-asset` | `GraphAsset` (`.rendergraph` JSON), `NodeRegistry`, `validate`, `compile`, `GraphAssetPipeline` (an `IntoGraph`), `probe`. Knows no pass. |
 | Pass nodes | each pass crate's feature, `helio-spine`, `helio-presets` (`features.rs`) | One node per pass, registered by the feature that owns the pass (`registrar.node`); pins generated. |
-| Presets, default graphs | `helio-presets` (`presets.rs`, `graphs.rs`, `pipelines.rs`) | `Preset::nodes`: the shipped pipelines as node lists over the frame's slots and phases. `graph_asset` / `deferred_graph_asset(_for)`: the same list as a laid-out, sectioned `GraphAsset`. There is no `add_pass` builder any more. |
-| Engine registry | `engine_backend::…::helio_renderer::pipelines` | Process-wide pipeline and node registries; the pin probe; project `.rendergraph` registration; the hidden `preview:N` pipelines. |
-| Selection | level `world_settings.render_pipeline` (+ `pipeline_version`) | An asset picked in World Settings: a project-relative `.rendergraph` path or a provider's id; `None` is no pipeline. Editor: poller pushes it to every viewport mailbox, which rebuilds the renderer at a frame boundary (also when the asset is saved again: `pipelines::PipelineState::Assigned.revision`). Game: `load_level` records it, `game_renderer` builds from it. |
+| Presets, default graphs | `helio-presets` (`presets.rs`, `graphs.rs`) | `Preset::nodes`: the frame's structure as node lists over its slots and phases, the same for every renderer config (the anti-aliasing node follows the project's TSR setting when the graph builds). `graph_asset` / `deferred_graph_asset`: the same list as a laid-out, sectioned `GraphAsset`. Helio registers no pipeline and has no default. |
+| Shipped pipelines | `plugins/vendor/default_pipelines` (`pulsar.default_pipelines`) | The pipelines the engine ships, as `.rendergraph` files in the plugin's folder, made from the presets for the enabled plugins; the migration of Helio's old built-in ids to them. |
+| Engine registry | `engine_backend::…::helio_renderer::pipelines` | Process-wide pipeline and node registries; the pin probe (on the engine's device); the open project's `.rendergraph` registration (plugin folders included) and its watcher; the hidden `preview:N` pipelines; `PipelineIdMigration`. |
+| Selection | level `world_settings.render_pipeline` (+ `pipeline_version`) | An asset picked in World Settings: a project-relative `.rendergraph` path (a plugin's folder included); `None` is no pipeline. Editor: poller pushes it to every viewport mailbox, which rebuilds the renderer at a frame boundary (also when the asset is saved again: `pipelines::PipelineState::Assigned.revision`). Game: `load_level` records it, `game_renderer` builds from it. |
 | Editor | `plugins/vendor/render_bps` | The render graph editor on the Graphy canvas (`.agents/GRAPH_CANVAS.md`), plus a live preview. |
 | Trait | `pulsar_traits::builtin` | `pulsar.IntoGraph`, provided into every project at `plugins/pulsar/traits/into_graph.trait.json` (the engine's mount). |
 
@@ -59,7 +62,8 @@ parameter, `with_generated_pins`, `.in_slot(..)` or `.drawer(Phase, order)`).
 `engine_backend::..::pipelines::graph_node_registry()` is the core nodes, Helio's
 default features and `plugin_features()` (`pulsar_plugins::registered`, so only
 enabled plugins). It is made again when `pulsar_plugins::generation()` changes
-(the project's plugin set), as are the built-in pipelines and the pin probe.
+(the project's plugin set), as are the default pipelines plugin's files and the pin
+probe.
 
 - The probe builds nodes with `render_features::configure(config)`, the plugins'
   settings, so a node that builds nothing without its feature's settings has the
@@ -187,11 +191,15 @@ and derives each node's pins:
 - SceneDB: a Buffer input `scenedb.<key>` per consumed key.
 
 The result goes into the registry's pin table, shared by every descriptor, so
-registering order does not matter and nothing re-registers when a probe finishes.
-`engine_backend` runs the probe once per process, on the editor's shared device when
-the window offers one (`offer_probe_device`) and a headless one otherwise, and
-`graph_node_registry` waits for it. With no GPU the nodes have flow pins only
-(graphs still build). `Compile` reports why when it failed.
+registering order does not matter and nothing re-registers when a probe finishes. A graph
+asset keeps the pins its generated nodes had when it was written (`GraphAsset::pins`, see
+"Pin records and rebuilds"), so it validates where nothing probes.
+`engine_backend` runs the probe once per plugin set, on demand (the render graph editor
+opening, or a project graph that did not validate without pins), on the engine's one device
+(`render_runtimes::global().device()`: the window's, a headless one only where no window
+offered one). `graph_node_registry` waits for it; `current_node_registry` never does
+(registering a pipeline must not wait). With no GPU the nodes have flow pins only (graphs
+still build). `Compile` reports why when it failed.
 
 The pin type of a SceneDB buffer is the buffer kind, not its row type.
 
@@ -228,29 +236,27 @@ resource, a history input to the last pass that writes it in the frame. Host and
 SceneDB inputs get a source node **per pass that reads them**, placed beside that
 pass (like a property node in a shader graph), so no wire crosses the graph to reach
 its source. With no pins it is just the chain, which builds the same pipeline; the
-built-in `helio.deferred_graph` pipeline uses that form, so it needs no probe at
-runtime.
+shipped `Deferred.rendergraph` uses that form, so it needs no probe.
 
-The graph **is** the preset: both are `Preset::nodes` (`graph_asset(preset, registry,
-config)` takes the instances with their parameters), so the nodes features placed at the
+The graph **is** the preset: both are `Preset::nodes` (`graph_asset(preset, registry)`
+takes the instances with their parameters), so the nodes features placed at the
 frame's slots and phases join it in their place with no preset naming them, and
-`sectionize` puts them in the lane of their category. `deferred_graph_asset_for(registry,
-config)` has the **TSR node** (`quality` from the config, `transparency_reactivity`) where
-the config asks for temporal resolve and **FXAA** otherwise; `helio.deferred_graph` is a
-made pipeline over it (`GraphAssetPipeline::made`), so it follows the project's config as
-`helio.deferred` does. The first node of the chain is **Frame: Lighting Model**
+`sectionize` puts them in the lane of their category. Neither depends on the renderer
+config: where the deferred preset follows the project's anti-aliasing it names the
+**anti-aliasing node** (`helio.pass.antialiasing`, "Anti-Aliasing: Project Setting",
+`helio-presets` `features.rs`), which runs the TSR node's constructor at the config's
+quality when the project enables TSR and its `fallback` (the FXAA node, or none)
+otherwise, and the frame setup's `reactive_mask` applies only when the frame resolves
+temporally. So one asset is the pipeline for every project setting. The first node of the chain is **Frame: Lighting Model**
 (`helio.frame.setup`, `features::FRAME_SETUP`, params `model`, `reactive_mask`): it
 publishes the lighting model's id, the draw phases (`PhaseList`), specular layers and
 lighting-input order, and the reactive mask, as the settings the nodes after it read. It
 used to be code in the pipeline closure; as a node a `.rendergraph` states it as data.
 A model nobody registered resolves to the unlit stand-in with one warning.
 
-The golden files `crates/renderer/helio/crates/helio-presets/assets/deferred.rendergraph`
-and `deferred_tsr.rendergraph` are the sectioned kernel graph (no plugin nodes, unwired
-chain form) generated from code only to bootstrap them
-(`cargo test -p helio-presets regenerate_the_golden_graphs -- --ignored`); a test fails when
-code and files drift, and a GPU test builds each and compares the pass list with the
-preset's (`graph_parity`).
+`graph_parity` (Helio) builds `deferred_graph_asset` as a fixed asset and compares its pass
+list and swap policy with the preset's, with FXAA, TSR at two qualities and SSR. The `.rendergraph` files
+the engine ships are the default pipelines plugin's (below).
 
 A new `.rendergraph` from the file menu is **only an On Frame Start node flowing into an
 Output node** (`render_bps::document::new_graph_asset`, also the file type's creation
@@ -260,27 +266,86 @@ graph uses. A file with no nodes (the old `{"template": "deferred"}` marker) ope
 that new graph. The default graph above is what a provider ships as an asset, not what the
 editor creates.
 
-## Regenerating the default graph for a project
+## The shipped pipelines (`pulsar.default_pipelines`)
 
-`DefaultRenderGraph.rendergraph` is generated, never hand-written, by the ignored test
-`plugins/installed/tests/export_default_graph.rs` (a host test: it needs every installed plugin,
-`.agents/CRATES.md` "The layers"). It builds the node registry as the editor does
-(`graph_node_registry()`: core, Helio's and every enabled plugin's nodes, pins probed on a real
-device), makes the wired, sectioned, laid-out graph (`deferred_graph_asset_for`), validates it
-(`helio_graph_asset::validate`, routing included: an error fails the export, warnings are
-printed), compiles it on the GPU and requires the same pass list as the `helio.deferred` preset
-with the plugins' features, writes it with `engine_fs::virtual_fs::write_file`, then reads the file
-back through `render_bps::document::decode` and validates and compiles it again. Re-run it
-whenever a plugin adds nodes:
+The plugin `plugins/vendor/default_pipelines` owns the pipelines the engine ships.
+It serves them through an `engine_fs::FileProvider` at
+`plugins/pulsar.default_pipelines/` in every project:
 
-```
-PULSAR_EXPORT_DIR=<project root> cargo test -p installed_plugins --test export_default_graph -- --ignored --nocapture
-```
+| File | Preset | Replaces (old id) |
+|---|---|---|
+| `Deferred.rendergraph` | deferred model; TSR when the project enables it, FXAA otherwise (the anti-aliasing node) | `helio.deferred` (the old engine default), `helio.deferred_graph` |
+| `DeferredFxaa.rendergraph` | deferred model with FXAA | `helio.fxaa` |
+| `Forward.rendergraph` | forward model, no G-buffer | `helio.forward_opaque`, `helio.forward_only` |
+| `<label>.rendergraph` | each pipeline a registered lighting model brings (the lights' `HLFS.rendergraph`, `HLFS_FXAA.rendergraph`) | the model pipeline's id (`helio.hlfs`, ...) |
 
-`PULSAR_EXPORT_NAME` (default `DefaultRenderGraph`) names the file; `PULSAR_EXPORT_AA=tsr`
-makes the TSR variant (default FXAA; TSR needs the project's TSR setting on). A level selects
-the file by picking it in World Settings, which stores the project-relative path in
-`world_settings.render_pipeline` (with `pipeline_version` 1).
+- **Made for the enabled plugins.** Each file is `helio_presets::graphs::graph_asset`
+  over the node registry of the plugins the project enables, so it names every pass
+  they place and no other: a project that disables a kind gets files without its
+  nodes, never a graph that no longer validates (a static file naming every kind's
+  node would fail with `missing node (plugin disabled)`). The folder is made again
+  when `pulsar_plugins::generation()` changes; a changed file is reported through
+  the folder's capability, the engine registers it again and the renderers running
+  it rebuild. No project setting is baked in: the anti-aliasing node
+  (`helio.pass.antialiasing`, "Anti-Aliasing: Project Setting") builds TSR at the
+  project's quality when the project enables it and its fallback otherwise.
+- **Made, not authored.** Generating the files from the presets is the design, not a
+  stopgap: a kind's passes join where its feature placed them, so a plugin this repository
+  has never heard of joins the shipped pipelines by placing its nodes, and the frame's
+  structure has one owner (the spine's presets). A hand-authored file could drop an absent
+  kind's nodes but never pick up a new one's, and would be a second copy of the structure.
+  (Unity's URP frame is code with Renderer Features injected at events; UE's is code with
+  SceneViewExtensions; neither ships a hand-expanded frame asset.)
+- **Wired, readable form.** With the pins the engine's probe found
+  (`pipelines::current_node_registry`), a file is every pass wired to what supplies its
+  inputs (Get/Set buffer nodes beside each pass), laid out in lanes and sections, with the
+  pins it was wired from recorded in it (`GraphAsset::pins`). Before the probe has run it is
+  the chain form (On Frame Start, every node on one execution chain, the Output), which
+  builds the same pipeline. The render graph editor waits for the probe before it reads a
+  file, so it always shows the wired form. The swap from one form to the other rebuilds no
+  renderer (see "Rebuilds" below).
+- **Read-only; make your own from a copy.** Like every plugin folder the files cannot be
+  written (`engine_fs::virtual_fs::mount_of`, `ReadOnlyMount`). The render graph editor
+  opens them read-only, says which plugin serves them, and its toolbar's **Save a copy to
+  the project** (also what Save does there) writes the graph, edits included, to
+  `<project>/render_graphs/<Name>.rendergraph` (`render_bps::document::save_copy_to_project`,
+  numbered when the name is taken) and goes on editing the copy, as a Save As does. World
+  Settings offers the copy beside the shipped files; a level that picks it runs it.
+- **Old ids.** The plugin registers a `PipelineIdMigration`: loading a level (editor:
+  `WorldSettingsData::migrate_level`; game: `render_pipeline_of_level`) rewrites an
+  old id to its file's path. A level saved before pipelines were explicit migrates
+  to `helio.deferred` first, then to `Deferred.rendergraph`. With the plugin
+  disabled the old id stays and the viewport says the pipeline was not found.
+- **Packaged games** ship the packager's snapshot of the folder (`InGame::Snapshot`).
+- Tests: `plugins/vendor/default_pipelines/tests/` (the files for a registry);
+  `plugins/installed/tests/default_pipelines.rs` (as the editor and a game read them: wired
+  once probed, valid with routing and in a game from the pin record, the chain form's build
+  key, the render graph editor's loader; a copy saved, edited, selected and built; the editor
+  renderer on Vulkan and D3D12; old ids).
+- Repository: [Plugin_DefaultPipelines](https://github.com/Far-Beyond-Pulsar/Plugin_DefaultPipelines),
+  vendored at `plugins/vendor/default_pipelines`.
+
+## Pin records and rebuilds
+
+**Pin records.** A generated node's pins come from what its passes declare, which takes a
+device to find. A graph asset records the pins of the generated node kinds it uses
+(`GraphAsset::pins`, written by `GraphAsset::cache_pins`: `graph_asset` and the render graph
+editor's save do it), as UE's graphs serialise each node's pins and reconcile them with the
+live signature on load. Validation and compile read the registry through
+`NodeRegistry::with_pin_fallback(&asset.pins)`: a kind no probe has given pins takes the
+record's, so a wired graph validates and builds where nothing probes (a game, a tool);
+probed pins win, so a wire the passes no longer declare is an error, not trusted.
+
+**Rebuilds.** The engine bumps a registered graph's revision, which rebuilds the renderers
+running it, only when its build key changes (`Validation::build_key`: the executing nodes in
+build order with their ids and parameters). Moving nodes, comments, sections, the pin record
+and wires that keep the order change nothing a renderer builds.
+
+**Hot-reload swap policy.** Each feature declares which of its pass types shader hot reload
+may swap alone (`FeatureRegistrar::swappable`) or together (`swap_group`, `swap_shares`); a
+`GraphAssetPipeline` reports the registry's policy for every graph, since independence is a
+property of a node's constructor, not of the graph it is in. Helio's own (spine, SSR, planar
+reflections, FXAA, perf overlay, debug draw) are declared by their features.
 
 ## Layout
 
@@ -445,19 +510,17 @@ migrates version 0 on the JSON, in the data path
 (`WorldSettingsData::migrate_level` in the editor, `render_pipeline_of_level` for the
 game): a level that named none gets `helio.deferred` (`LEGACY_DEFAULT_PIPELINE`) and the
 current version, and saves that way; one that named a pipeline keeps it. A level created
-now has no pipeline until one is picked. When the default-graphs plugin ships the
-shipped pipelines as assets, a migration rewrites those ids to the asset paths the same way.
+now has no pipeline until one is picked. Every load then runs the enabled plugins'
+`PipelineIdMigration`s on the id, so Helio's old built-in ids become the
+`pulsar.default_pipelines` files (see above).
 
 ## Known gaps
 
-- The shipped pipelines (`helio.deferred` etc.) are still registered by Helio as code
-  (`Preset::nodes`). They are offered in the picker as assets of their provider (origin
-  shown) and old levels keep working through them (see Migration). The default-graphs
-  plugin, when it lands, ships the golden `.rendergraph` files as assets and the built-in
-  registrations go; `helio.deferred_graph` is the same nodes as data and is pinned equal
-  to the preset (FXAA, TSR at each quality, SSR; `graph_parity`).
-- The golden files are the unwired chain form. The editor's wired (Get/Set) form needs
-  probed pins, so it is generated on a device and not pinned yet.
+- The shipped files are wired only once the engine's probe has run in the process (the
+  render graph editor runs it; a renderer does not). A packaged game snapshots the folder as
+  the packager's process had it.
+- Plugin passes declare no hot-reload swap policy yet (`FeatureRegistrar::swappable`): a
+  shader edit in one rebuilds the graph whole.
 - Plugin passes join by slot/phase placement at registration; a plugin node that must sit
   between two kernel nodes inside one slot is ordered by its `order` only (there is no
   per-pin after/before hint).
@@ -470,10 +533,11 @@ shipped pipelines as assets, a migration rewrites those ids to the asset paths t
   them resources the graph owns and sizes from the pins is the next step.
 - The probe builds every registered pass once: a second or two at first use.
 - The preview has no sky, no gizmos or picking, simple pacing.
-- Project render graphs are compiled and registered when the World Settings panel (editor)
-  or `load_level` (game) runs, and again on each `.rendergraph` change (through the VFS);
-  a viewport whose level names a project graph shows "not found" until the panel exists.
-  A packaged game needs `.rendergraph` files in its content.
+- Project render graphs (plugin folders included) are compiled and registered by the
+  engine the first time a renderer or the picker asks for a pipeline of the open project
+  (`pipelines::ensure_project_pipelines`), and again on each `.rendergraph` change (the
+  "Render pipeline assets" service); the game registers them in `load_level`. A packaged
+  game needs `.rendergraph` files in its content.
 - The level stores the asset's project-relative path, not a typed `AssetRef` id: moving
   or renaming the file breaks the reference (the panel says so). A typed `AssetKind` for
   render graphs is the next step.

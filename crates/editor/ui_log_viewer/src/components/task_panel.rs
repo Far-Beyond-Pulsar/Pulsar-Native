@@ -75,27 +75,45 @@ impl TaskTab {
     }
 }
 
-/// What the window lists. Tasks and services are task records (finite work
-/// and persistent loops); Threads is the registry of every thread, grouped by
-/// role, which says what each one is doing whether or not a task is behind it.
+/// What the window lists. Tasks, services and renderers are task records
+/// (finite work, persistent loops, and the engine's render runtimes with what
+/// each says about itself: owner, scene, size, mode, frame time); Threads is
+/// the registry of every thread, grouped by role, which says what each one is
+/// doing whether or not a task is behind it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum View {
     Tasks,
     Threads,
     Services,
+    Renderers,
 }
 
 impl View {
-    const ALL: [Self; 3] = [Self::Tasks, Self::Threads, Self::Services];
+    const ALL: [Self; 4] = [Self::Tasks, Self::Threads, Self::Services, Self::Renderers];
 
     fn label(self) -> &'static str {
         match self {
             Self::Tasks => "Tasks",
             Self::Threads => "Threads",
             Self::Services => "Services",
+            Self::Renderers => "Renderers",
+        }
+    }
+
+    /// Whether `task` is listed in this view (Threads lists threads).
+    fn lists(self, task: &TaskSnapshot) -> bool {
+        let persistent = task.duration == TaskDuration::Persistent;
+        let renderer = task.category == RUNTIME_CATEGORY;
+        match self {
+            Self::Tasks => !persistent,
+            Self::Threads => false,
+            Self::Services => persistent && !renderer,
+            Self::Renderers => renderer,
         }
     }
 }
+
+use editor_task_queue::categories::RENDER_RUNTIME as RUNTIME_CATEGORY;
 
 pub struct TaskQueuePanel {
     focus_handle: FocusHandle,
@@ -169,33 +187,40 @@ impl Render for TaskQueuePanel {
         let all_tasks = editor_task_queue::global().snapshots();
         let threads = editor_task_queue::thread_snapshots();
         let view = self.view;
-        let persistent = |task: &&TaskSnapshot| task.duration == TaskDuration::Persistent;
+        let live = |view: View| {
+            all_tasks
+                .iter()
+                .filter(|task| view.lists(task) && !task.status.is_finished())
+                .count()
+        };
         let view_counts = [
-            all_tasks.iter().filter(|task| !persistent(task)).count(),
+            all_tasks
+                .iter()
+                .filter(|task| View::Tasks.lists(task))
+                .count(),
             threads
                 .iter()
                 .filter(|thread| thread.state != ThreadState::Exited)
                 .count(),
+            live(View::Services),
+            live(View::Renderers),
+        ];
+        let stalled = |view: View| {
             all_tasks
                 .iter()
-                .filter(|task| persistent(task) && !task.status.is_finished())
-                .count(),
-        ];
+                .filter(|task| view.lists(task) && task.stall.is_some())
+                .count()
+        };
         let view_stalled = [
-            all_tasks
-                .iter()
-                .filter(|task| !persistent(task) && task.stall.is_some())
-                .count(),
+            stalled(View::Tasks),
             0,
-            all_tasks
-                .iter()
-                .filter(|task| persistent(task) && task.stall.is_some())
-                .count(),
+            stalled(View::Services),
+            stalled(View::Renderers),
         ];
-        // Tasks and Services share the list; Threads has its own.
+        // Tasks, Services and Renderers share the list; Threads has its own.
         let snapshots: Vec<TaskSnapshot> = all_tasks
             .iter()
-            .filter(|task| persistent(task) == (view == View::Services))
+            .filter(|task| view.lists(task))
             .cloned()
             .collect();
         let strip = strip_text(view, &threads);
@@ -235,10 +260,10 @@ impl Render for TaskQueuePanel {
                     format!(
                         "No {} {}",
                         self.selected_tab.label().to_ascii_lowercase(),
-                        if view == View::Services {
-                            "services"
-                        } else {
-                            "tasks"
+                        match view {
+                            View::Services => "services",
+                            View::Renderers => "renderers",
+                            _ => "tasks",
                         }
                     )
                 } else {
@@ -428,6 +453,15 @@ fn render_row(task: TaskSnapshot, open: bool, cx: &mut Context<TaskQueuePanel>) 
         .stall
         .as_ref()
         .map(|stall| stall.message.clone())
+        .or_else(|| {
+            (!task.details.is_empty()).then(|| {
+                task.details
+                    .iter()
+                    .map(|(_, value)| value.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+            })
+        })
         .or_else(|| (task.duration == TaskDuration::Persistent).then(|| service_summary(&task)))
         .or_else(|| task.detail.clone())
         .or_else(|| task.phase.clone())
@@ -582,6 +616,29 @@ fn render_detail(
             .child(div().flex_1().min_w_0().text_xs().child(value))
     };
 
+    // What the task says about itself (a render runtime's owner, size, mode).
+    let detail_rows: Vec<_> = task
+        .details
+        .iter()
+        .map(|(label, value)| {
+            h_flex()
+                .w_full()
+                .gap_3()
+                .py_1()
+                .border_b_1()
+                .border_color(theme.border.opacity(0.25))
+                .child(
+                    div()
+                        .w(px(110.0))
+                        .flex_shrink_0()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(label.clone()),
+                )
+                .child(div().flex_1().min_w_0().text_xs().child(value.clone()))
+        })
+        .collect();
+
     let activity = match task.activity {
         TaskActivity::NotStarted => "Not started".to_string(),
         TaskActivity::Polling => match task.model {
@@ -718,6 +775,7 @@ fn render_detail(
                                             .px_4()
                                             .py_2()
                                             .child(row("Category", task.category.clone()))
+                                            .children(detail_rows)
                                             .child(row("Created at", task.origin.clone()))
                                             .child(row(
                                                 "Runs on",
@@ -902,7 +960,7 @@ fn model_label(model: TaskModel) -> &'static str {
         TaskModel::Async => "async",
         TaskModel::Blocking => "blocking",
         TaskModel::Foreground => "inline on the calling thread",
-        TaskModel::Persistent => "persistent loop on its own thread",
+        TaskModel::Persistent => "persistent (a loop, or driven by one)",
     }
 }
 
@@ -982,6 +1040,10 @@ fn strip_text(view: View, threads: &[ThreadSnapshot]) -> Option<String> {
             ))
         }
         View::Services => None,
+        View::Renderers => Some(
+            "The engine's render runtimes: one scheduler draws them all (the \"Helio runtimes\" service). Each lists its owner, scene, size, update mode, state and CPU frame time; its log is what its renderer logged while it drew."
+                .to_string(),
+        ),
     }
 }
 

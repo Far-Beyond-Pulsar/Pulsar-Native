@@ -273,8 +273,16 @@ impl LevelEditorPanel {
         mailbox.queue_gizmo(gizmo_mode);
 
         let shared_state = self.shared_state.clone();
-        let viewport =
-            cx.new(|cx| HelioViewport::new(gpu.clone(), shared_state.clone(), false, cx));
+        let viewport = cx.new(|cx| {
+            HelioViewport::new(
+                gpu.clone(),
+                shared_state.clone(),
+                false,
+                "Split viewport",
+                5,
+                cx,
+            )
+        });
         let inner = ViewportPanel::new(
             viewport,
             self.render_enabled.clone(),

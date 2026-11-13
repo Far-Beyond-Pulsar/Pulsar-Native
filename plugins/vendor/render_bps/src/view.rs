@@ -85,6 +85,7 @@ impl RenderGraphEditor {
 
     fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let dirty = self.is_dirty();
+        let read_only = self.read_only.is_some();
         let status = self.status.clone();
         let active = self.active_tab();
         let mut menus = plugin_editor_api::EditorMenuStrip::new("render-graph-editor-menus").menu(
@@ -116,7 +117,15 @@ impl RenderGraphEditor {
             .border_color(cx.theme().border.opacity(0.8))
             .child(menus)
             .child(separator(cx))
-            .child(
+            .child(if read_only {
+                // A plugin's graph: the project makes its own from a copy.
+                Button::new("toolbar-save")
+                    .small()
+                    .icon(IconName::Copy)
+                    .label("Save a copy to the project")
+                    .tooltip("This graph is read-only (a plugin serves it): save it into the project as a graph of your own")
+                    .on_click(cx.listener(|editor, _, _window, cx| editor.save_copy(cx)))
+            } else {
                 Button::new("toolbar-save")
                     .ghost()
                     .small()
@@ -126,8 +135,8 @@ impl RenderGraphEditor {
                     } else {
                         "Save Render Graph"
                     })
-                    .on_click(cx.listener(|editor, _, _window, cx| editor.save(cx))),
-            )
+                    .on_click(cx.listener(|editor, _, _window, cx| editor.save(cx)))
+            })
             .child(
                 Button::new("toolbar-compile")
                     .small()

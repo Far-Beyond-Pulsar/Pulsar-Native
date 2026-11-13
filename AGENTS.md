@@ -28,7 +28,8 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
 | `.agents/MEMORY.md` | How memory is held and bounded (`Residency`, texture size cap), settings, and the Mission Control Memory Explorer |
 | `.agents/LOD.md` | Authored mesh LOD as a camera-dependent asset choice, separate from renderer-internal geometric LOD, and its residency boundary |
-| `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, built-in pipelines, `.rendergraph` assets, pin shapes, the `render_bps` plugin |
+| `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, `.rendergraph` assets, the shipped pipelines (`pulsar.default_pipelines` plugin, old-id migration), pin shapes, the `render_bps` plugin |
+| `.agents/RENDER_RUNTIMES.md` | Engine-owned Helio renderers: `render_runtimes` service (one scheduler, one device, states, update modes, outputs, host-driven game runtimes), the Tasks window's Renderers view. Read before creating, drawing or presenting a renderer anywhere |
 | `.agents/GRAPH_CANVAS.md` | Shared node-graph canvas in Graphy: `graphy-render` layout/scene/hit-test/draw data, `graphy-render-wgpu` renderer and visual system, `graphy-gpui` interaction engine and profile API |
 | `.agents/CODE_EDITOR_AI.md` | Code editor AI: shared editor LLM, Mockaco inline blocks and hunk review, the inline prompt (Ctrl+I), chat-panel buffer tools |
 | `.agents/INSPECTOR.md` | Properties panels: one virtualized list, search/collapse, `VirtualRows` for huge values (arrays, lists, layer stacks) |

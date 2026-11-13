@@ -2,27 +2,32 @@
 //! panel above the Properties panel, drawing a small built-in test scene
 //! through the graph's pipeline.
 //!
-//! It shares the editor's wgpu device (the window's surface), so nothing is
-//! duplicated on the GPU. The scene is private to the preview (its own SceneDB),
+//! It is an engine render runtime (`engine_backend::services::render_runtimes`)
+//! drawing into the panel's surface on the editor's wgpu device, so nothing is
+//! duplicated on the GPU and no thread is the preview's own; it draws while the
+//! panel is shown and is listed in the Tasks window's Renderers view. The scene is private to the preview (its own SceneDB),
 //! so it works with no level open and never touches one. The graph is applied
 //! when the author presses Compile or saves, not on every edit: a rebuild
 //! compiles shaders, and a half-wired graph never reaches the GPU.
 //!
-//! The preview owns its test scene, camera controls, and status UI. Surface
-//! drawing utilities are shared with the level editor through `ui_helio_viewport`.
+//! The preview owns its test scene, camera controls, and status UI. The surface
+//! output and frame pump are shared with the level editor through
+//! `ui_helio_viewport`.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::{Arc, Mutex};
 
 use engine_backend::scene::{new_scene, resolve_level_assets, RuntimeLevel};
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
+use engine_backend::services::render_runtimes::{
+    self, RuntimeDescription, RuntimeHandle, UpdateMode,
+};
 use engine_backend::subsystems::render::helio_renderer::pipelines;
 use engine_backend::subsystems::render::EditorCameraState;
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};
 use ui::ActiveTheme as _;
-use ui_helio_viewport::{wait_for_frame_consumed, FramePacer, FRAME_CONSUMER_WAIT_TIMEOUT};
 
 use crate::model;
 
@@ -62,9 +67,11 @@ const FOCUS: [f64; 3] = [0.0, 0.8, 0.0];
 /// The preview panel.
 pub struct PipelinePreview {
     engine: Arc<Mutex<GpuRenderer>>,
+    /// The engine runtime drawing `engine` into `surface`.
+    runtime: RuntimeHandle,
     surface: Option<WgpuSurfaceHandle>,
-    stop: Arc<AtomicBool>,
     frames: Arc<AtomicU64>,
+    display_refresh_millihertz: Arc<AtomicU32>,
     frame_pump: ui_helio_viewport::PublishedFramePump,
     yaw: f32,
     pitch: f32,
@@ -91,12 +98,25 @@ impl PipelinePreview {
             }
             Err(error) => tracing::warn!("Preview scene could not be written: {error}"),
         }
-        let engine = GpuRendererBuilder::new(1, 1).scene_db(scene).build();
+        let engine = Arc::new(Mutex::new(
+            GpuRendererBuilder::new(1, 1).scene_db(scene).build(),
+        ));
+        let runtime = render_runtimes::global().create(
+            RuntimeDescription {
+                label: "Render graph preview".into(),
+                origin: pulsar_plugins::origin!(),
+                scene_label: "preview test scene".into(),
+                priority: 0,
+                mode: UpdateMode::WhenVisible,
+            },
+            Arc::clone(&engine),
+        );
         let preview = Self {
-            engine: Arc::new(Mutex::new(engine)),
+            engine,
+            runtime,
             surface: None,
-            stop: Arc::new(AtomicBool::new(false)),
             frames: Arc::new(AtomicU64::new(0)),
+            display_refresh_millihertz: Arc::new(AtomicU32::new(0)),
             frame_pump: ui_helio_viewport::PublishedFramePump::new(),
             yaw: 0.0,
             pitch: -0.25,
@@ -160,75 +180,23 @@ impl PipelinePreview {
             // On a lost device the window rebuilds and renders this view again.
             Some(surface) if surface.is_device_lost() => {}
             Some(surface) => {
-                self.start_render_thread(surface.clone(), refresh_hz);
+                if let Some(hz) = refresh_hz {
+                    self.display_refresh_millihertz
+                        .store((hz * 1000.0) as u32, std::sync::atomic::Ordering::Relaxed);
+                }
+                self.runtime
+                    .set_output(Arc::new(ui_helio_viewport::SurfaceTarget::new(
+                        surface.clone(),
+                        self.frames.clone(),
+                        self.display_refresh_millihertz.clone(),
+                    )));
                 self.surface = Some(surface);
             }
             None => tracing::warn!("Render graph preview: no surface"),
         }
     }
 
-    fn start_render_thread(&self, surface: WgpuSurfaceHandle, refresh_hz: Option<f64>) {
-        engine_backend::services::device_loss::DeviceLoss::adopt(
-            surface.device(),
-            surface.device_lost_flag(),
-        );
-        let engine = self.engine.clone();
-        let stop = self.stop.clone();
-        let frames = self.frames.clone();
-        let spawned = std::thread::Builder::new()
-            .name("Render graph preview".into())
-            .spawn(move || {
-                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let mut pacer = FramePacer::new(refresh_hz);
-                    while !stop.load(Ordering::Acquire) {
-                        pacer.wait_for_next_frame();
-                        let (device, queue, format) =
-                            (surface.device(), surface.queue(), surface.format());
-                        let (width, height) = surface.size();
-                        if width == 0 || height == 0 {
-                            continue;
-                        }
-                        let mut engine = match engine.lock() {
-                            Ok(engine) => engine,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
-                        // Building the graph compiles pipelines: before the submit
-                        // guard, so the window can still resize meanwhile.
-                        if !engine.prepare_for_render(device, queue, width, height, format) {
-                            continue;
-                        }
-                        let _guard = surface.submit_guard();
-                        let Some((view, (width, height))) = surface.back_view_with_size() else {
-                            continue;
-                        };
-                        let submission = engine
-                            .render_frame_to_surface(device, queue, &view, width, height, format);
-                        drop(view);
-                        drop(engine);
-                        if let Some(index) = submission {
-                            if !wait_for_frame_consumed(
-                                &surface,
-                                &stop,
-                                FRAME_CONSUMER_WAIT_TIMEOUT,
-                            ) {
-                                continue;
-                            }
-                            surface.present_synced_silent(index);
-                            frames.fetch_add(1, Ordering::Release);
-                            surface.request_frame();
-                        }
-                    }
-                }));
-                if outcome.is_err() {
-                    tracing::error!("Render graph preview thread panicked");
-                }
-            });
-        if let Err(error) = spawned {
-            tracing::error!("Render graph preview thread did not start: {error}");
-        }
-    }
-
-    /// Repaints when the render thread publishes a frame.
+    /// Repaints when the runtime publishes a frame.
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.frame_pump.start(self.frames.clone(), window, cx);
     }
@@ -254,12 +222,6 @@ fn write_test_scene() -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-impl Drop for PipelinePreview {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-    }
-}
-
 impl EventEmitter<PanelEvent> for PipelinePreview {}
 
 impl Focusable for PipelinePreview {
@@ -275,6 +237,10 @@ impl Panel for PipelinePreview {
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         "Preview".into_any_element()
+    }
+
+    fn set_active(&mut self, active: bool, _window: &mut Window, _cx: &mut App) {
+        self.runtime.set_visible(active);
     }
 }
 

@@ -605,7 +605,17 @@ fn render_with_stand_ins(scene: &SharedScene) {
         SIZE,
         SIZE,
         FORMAT,
-        SceneRendererOptions::game(DeviceOwner::Renderer, false),
+        SceneRendererOptions {
+            // The pipeline a level that names none runs: the render pipelines
+            // plugin's deferred graph, made for this project's plugins.
+            pipeline: Some(
+                engine_backend::subsystems::render::helio_renderer::pipelines::migrate_pipeline_id(
+                    engine_backend::subsystems::render::helio_renderer::pipelines::LEGACY_DEFAULT_PIPELINE
+                        .to_string(),
+                ),
+            ),
+            ..SceneRendererOptions::game(DeviceOwner::Renderer, false)
+        },
     );
     // Framed from the cube's own size, as the runtime parity test does.
     let radius = {

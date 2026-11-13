@@ -2779,6 +2779,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "default_pipelines_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_backend",
+ "engine_fs",
+ "helio",
+ "helio-core",
+ "helio-frame-api",
+ "helio-graph-asset",
+ "helio-presets",
+ "parking_lot",
+ "pollster 0.4.0",
+ "pulsar_plugins",
+ "tempfile",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
 name = "deflate64"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7476,6 +7496,7 @@ dependencies = [
  "catalog_fixture_plugin",
  "character_plugin",
  "decals_plugin",
+ "default_pipelines_plugin",
  "editor_table_plugin",
  "engine_backend",
  "engine_fs",
@@ -11697,6 +11718,7 @@ dependencies = [
  "pulsar_settings",
  "pulsar_world_registry",
  "ui_level_editor",
+ "wgpu",
 ]
 
 [[package]]
@@ -12467,6 +12489,7 @@ dependencies = [
  "pulsar_core",
  "pulsar_events",
  "pulsar_pie_abi",
+ "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
@@ -13428,6 +13451,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "engine_fs",
+ "engine_state",
  "gpui-ce",
  "graphy",
  "graphy-gpui",
@@ -17673,8 +17697,11 @@ dependencies = [
 name = "ui_helio_viewport"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
  "gpui-ce",
+ "profiling 0.1.0",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]

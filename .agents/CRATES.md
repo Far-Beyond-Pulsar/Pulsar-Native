@@ -294,6 +294,7 @@ cargo cannot load the workspace without them.
 | `matter_editor` | [Plugin_Matter](https://github.com/Far-Beyond-Pulsar/Plugin_Matter) | Texture painting in the Pulsar Image Format (`.pif`) |
 | `asset_viewer` | in-tree | Viewers for model files, meshes and images |
 | `character` | [Plugin_Character](https://github.com/Far-Beyond-Pulsar/Plugin_Character) | `pulsar.character`: a character as one component (a facade) over a skeletal mesh, its animator, a character controller and the player's input, with its movement system |
+| `default_pipelines` | [Plugin_DefaultPipelines](https://github.com/Far-Beyond-Pulsar/Plugin_DefaultPipelines) | `pulsar.default_pipelines`: the render pipelines the engine ships, as `.rendergraph` assets in its folder, made for the enabled plugins (`.agents/RENDER_GRAPH.md`) |
 | `render_bps` | in-tree | Render graph editor (`.rendergraph`) on the Graphy canvas, no Blueprint code (`.agents/RENDER_GRAPH.md`) |
 | `trait_editor` | in-tree | `pulsar.trait_editor`: the trait definition editor (`.trait.json`, `.agents/TRAITS.md`) |
 | `typescript` | in-tree | `pulsar.typescript`: TypeScript as a scripting language (`class.ts` compiles to script modules) |

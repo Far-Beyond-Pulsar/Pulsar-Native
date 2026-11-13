@@ -218,11 +218,15 @@ impl DevSnapshot {
             .collect();
         window_rows.sort();
 
-        let mut renderer_rows: Vec<String> = ctx
-            .renderers
-            .window_ids()
+        // The engine's render runtimes, as the Tasks system lists them.
+        let mut renderer_rows: Vec<String> = editor_task_queue::global()
+            .snapshots()
             .into_iter()
-            .map(|id| format!("Renderer #{}", id))
+            .filter(|task| {
+                task.category == editor_task_queue::categories::RENDER_RUNTIME
+                    && !task.status.is_finished()
+            })
+            .map(|task| task.title)
             .collect();
         renderer_rows.sort();
 
@@ -236,7 +240,7 @@ impl DevSnapshot {
             project_window_id,
             uri_project_path,
             window_count: ctx.windows.len(),
-            renderer_count: ctx.renderers.window_ids().len(),
+            renderer_count: renderer_rows.len(),
             verbose_launch,
             default_level_size,
             has_discord,
