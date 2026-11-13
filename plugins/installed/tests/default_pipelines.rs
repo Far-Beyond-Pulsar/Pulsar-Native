@@ -491,51 +491,13 @@ fn a_copy_of_the_shipped_deferred_is_the_projects_own_pipeline() {
     assert_eq!(edited, without_flare);
 }
 
-/// The scene's SceneDB mirror for a renderer built here.
-fn mirror(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> GpuMirrorHandle {
-    let store = SceneGpuStore::new(
-        &EngineGpuContext::new(Arc::clone(device), Arc::clone(queue)),
-        SceneGpuConfig {
-            classes: Vec::new(),
-            tombstone_headroom: 0,
-            max_cells_metadata: 0,
-        },
-    );
-    GpuMirrorHandle::new(Arc::new(store), Arc::clone(queue))
-}
-
-/// Renders a frame of `renderer` into an RGBA8 target and reads it back.
-fn rgba_frame(
-    renderer: &mut helio::Renderer,
+/// Reads `texture` (RGBA8, `size` square) back.
+fn read_rgba(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
     size: u32,
 ) -> Vec<u8> {
-    let target = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("opaque output target"),
-        size: wgpu::Extent3d {
-            width: size,
-            height: size,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let view = target.create_view(&Default::default());
-    let camera = helio::Camera::perspective_look_at(
-        glam::Vec3::new(0.0, 2.0, 5.0),
-        glam::Vec3::ZERO,
-        glam::Vec3::Y,
-        1.0,
-        1.0,
-        0.1,
-        100.0,
-    );
-    renderer.render(&camera, &view).expect("the frame renders");
     let row = (size * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("opaque output readback"),
@@ -545,7 +507,7 @@ fn rgba_frame(
     });
     let mut encoder = device.create_command_encoder(&Default::default());
     encoder.copy_texture_to_buffer(
-        target.as_image_copy(),
+        texture.as_image_copy(),
         wgpu::TexelCopyBufferInfo {
             buffer: &readback,
             layout: wgpu::TexelCopyBufferLayout {
@@ -576,7 +538,7 @@ fn rgba_frame(
 
 /// The frame's output is opaque (`helio_frame_api::color`: the chain's alpha
 /// is the scene's coverage, and nothing clears to a transparent background
-/// here). Every shipped pipeline, built as the engine builds it, with temporal
+/// here). Every shipped pipeline, run by the engine's renderer, with temporal
 /// resolve (the water plugin asks every graph for the reactive mask, so TSR
 /// keeps transparency coverage) and without, draws frames whose every pixel
 /// is opaque. The editor composites its viewport by alpha: TSR once put its
@@ -584,42 +546,102 @@ fn rgba_frame(
 /// transparent, and the viewport showed the UI behind it.
 #[test]
 fn every_shipped_pipeline_draws_an_opaque_frame() {
+    use engine_backend::subsystems::render::{
+        DeviceOwner, FrameProjection, FrameView, SceneRenderer, SceneRendererOptions,
+    };
     let _one = PROJECT.lock().unwrap_or_else(|e| e.into_inner());
-    let _project = open_project("# a test project\n");
+    let _project = open_project(
+        "# a test project
+",
+    );
     let Some((device, queue)) = device() else {
         eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: opaque output of the shipped pipelines");
         return;
     };
     const SIZE: u32 = 96;
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-    pipelines::ensure_project_pipelines();
     let shipped: Vec<String> = pipelines::list_pipelines()
         .into_iter()
         .map(|info| info.id)
         .filter(|id| id.starts_with("plugins/pulsar.default_pipelines/"))
         .collect();
     assert!(shipped.len() >= 4, "{shipped:?}");
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("opaque output target"),
+        size: wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&Default::default());
+    let eye = glam::Vec3::new(0.0, 2.0, 5.0);
+    let camera = FrameView {
+        eye: eye.as_dvec3(),
+        forward: (-eye).normalize(),
+        up: glam::Vec3::Y,
+        aspect: 1.0,
+        projection: FrameProjection::Perspective {
+            fov_y: std::f32::consts::FRAC_PI_4,
+            near: 0.1,
+            far: 100.0,
+        },
+        crop: None,
+    };
+    // The project's TSR setting, as the editor's Project Settings write it.
+    let rendering = {
+        use engine_state::settings::{global_config, NS_PROJECT};
+        global_config()
+            .owner_handle(NS_PROJECT, "rendering")
+            .or_else(|| {
+                engine_state::register_default_settings();
+                global_config().owner_handle(NS_PROJECT, "rendering")
+            })
+            .expect("the project's rendering settings are registered")
+    };
     for id in &shipped {
         for tsr in [None, Some(helio::TsrQuality::Quality)] {
-            let mut config = render_features::configure(RendererConfig::new(SIZE, SIZE, format));
-            if let Some(quality) = tsr {
-                config = config.with_tsr_quality(quality);
-            }
-            let mut renderer = helio::RendererBuilder::new(config, mirror(&device, &queue))
-                .with_external_device()
-                .with_boxed_graph(pipelines::create_pipeline(Some(id)).expect("registered"))
-                .build(Arc::clone(&device), Arc::clone(&queue), SIZE, SIZE, format);
-            assert!(
-                renderer.pipeline_status().is_ready(),
-                "{id} (TSR {tsr:?}): {:?}",
-                renderer.pipeline_status()
+            rendering
+                .set("tsr_quality", if tsr.is_some() { "quality" } else { "off" })
+                .expect("tsr_quality is a project setting");
+            let scene = Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
+            let mut renderer = SceneRenderer::new(
+                Arc::clone(&device),
+                Arc::clone(&queue),
+                &scene,
+                SIZE,
+                SIZE,
+                format,
+                SceneRendererOptions {
+                    pipeline: Some(id.clone()),
+                    ..SceneRendererOptions::game(DeviceOwner::Renderer, false)
+                },
             );
-            // Temporal history settles over a few frames.
-            let mut frame = Vec::new();
-            for _ in 0..4 {
-                frame = rgba_frame(&mut renderer, &device, &queue, SIZE);
+            for _ in 0..6 {
+                renderer.step_scene(&mut scene.write());
+                let frame = renderer.prepare_frame(&camera, [SIZE, SIZE]);
+                renderer.render(&frame.camera, &view).expect("render");
+                device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
             }
-            let not_opaque = frame.chunks_exact(4).filter(|p| p[3] != 255).count();
+            assert!(
+                renderer.renderer.pipeline_status().is_ready(),
+                "{id} (TSR {tsr:?}): {:?}",
+                renderer.renderer.pipeline_status()
+            );
+            if let Some(quality) = tsr {
+                assert!(
+                    (renderer.renderer.render_scale() - quality.render_scale()).abs() < 1.0e-6,
+                    "{id}: the frame resolves with TSR"
+                );
+            }
+            let pixels = read_rgba(&device, &queue, &texture, SIZE);
+            let not_opaque = pixels.chunks_exact(4).filter(|p| p[3] != 255).count();
             assert_eq!(
                 not_opaque,
                 0,

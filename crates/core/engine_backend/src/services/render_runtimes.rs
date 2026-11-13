@@ -536,6 +536,9 @@ impl RenderRuntimes {
         };
         if let Some(runtime) = removed {
             runtime.task.context().info("destroyed");
+            // Its task ends with its last handle, not when the scheduler,
+            // mid-step, lets go of it.
+            runtime.task.finish();
         }
         self.wake();
     }
@@ -654,6 +657,7 @@ impl RenderRuntimes {
                     .context()
                     .warn("destroyed: the plugin that owns it is no longer enabled");
                 runtime.set_state(RuntimeState::Stopped);
+                runtime.task.finish();
             }
             keep
         });

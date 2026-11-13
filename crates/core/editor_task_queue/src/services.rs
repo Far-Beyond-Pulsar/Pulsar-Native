@@ -152,19 +152,32 @@ impl TaskQueue {
 /// [`context`](Self::context); dropping it ends the task.
 pub struct PersistentTask {
     ctx: TaskContext,
+    finished: std::sync::atomic::AtomicBool,
 }
 
 impl PersistentTask {
     pub fn context(&self) -> &TaskContext {
         &self.ctx
     }
+
+    /// Ends the task now: what it serves is gone even if something still
+    /// holds it for a moment (a loop mid-step). Dropping it ends it too;
+    /// ending twice does nothing.
+    pub fn finish(&self) {
+        if !self
+            .finished
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            self.ctx
+                .inner
+                .finish(&self.ctx.shared, crate::Outcome::Succeeded);
+        }
+    }
 }
 
 impl Drop for PersistentTask {
     fn drop(&mut self) {
-        self.ctx
-            .inner
-            .finish(&self.ctx.shared, crate::Outcome::Succeeded);
+        self.finish();
     }
 }
 
@@ -192,7 +205,10 @@ impl TaskQueue {
             shared,
         };
         ctx.inner.mark_started(&ctx.shared);
-        PersistentTask { ctx }
+        PersistentTask {
+            ctx,
+            finished: std::sync::atomic::AtomicBool::new(false),
+        }
     }
 }
 
