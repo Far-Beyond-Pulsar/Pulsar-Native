@@ -67,6 +67,58 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// `text` without its `#[cfg(test)]` items: each attribute and the item it
+/// gates (a `mod tests;` line, or everything to the brace closing the block
+/// it opens). Test code may spawn what it likes; code after a test module is
+/// still checked.
+fn without_test_items(text: &str) -> String {
+    let mut kept = String::with_capacity(text.len());
+    let mut skipping = false;
+    let mut depth = 0i32;
+    let mut opened = false;
+    for line in text.lines() {
+        let mut line = line;
+        if !skipping {
+            let trimmed = line.trim_start();
+            let Some(rest) = trimmed.strip_prefix("#[cfg(test)]") else {
+                kept.push_str(line);
+                kept.push('\n');
+                continue;
+            };
+            skipping = true;
+            depth = 0;
+            opened = false;
+            line = rest;
+        }
+        let code = line.split("//").next().unwrap_or("");
+        for ch in code.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    opened = true;
+                }
+                '}' => depth -= 1,
+                _ => {}
+            }
+        }
+        if (opened && depth <= 0) || (!opened && code.trim_end().ends_with(';')) {
+            skipping = false;
+        }
+    }
+    kept
+}
+
+/// Whether `line` calls `pattern` as written, not as the tail of a longer
+/// name (`ScriptRuntime::new(` is not `Runtime::new(`).
+fn calls(line: &str, pattern: &str) -> bool {
+    line.match_indices(pattern).any(|(at, _)| {
+        !line[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+    })
+}
+
 /// Files with a raw call in non-test code, mapped to what they call.
 fn offenders(root: &Path) -> BTreeMap<String, Vec<&'static str>> {
     let mut files = Vec::new();
@@ -78,8 +130,7 @@ fn offenders(root: &Path) -> BTreeMap<String, Vec<&'static str>> {
         let Ok(text) = std::fs::read_to_string(&file) else {
             continue;
         };
-        // Test modules at the end of a file may spawn what they like.
-        let code = text.split("#[cfg(test)]").next().unwrap_or("");
+        let code = without_test_items(&text);
         let mut hits: Vec<&'static str> = Vec::new();
         for line in code.lines() {
             let line = line.trim_start();
@@ -87,7 +138,7 @@ fn offenders(root: &Path) -> BTreeMap<String, Vec<&'static str>> {
                 continue;
             }
             for pattern in PATTERNS {
-                if line.contains(pattern) && !hits.contains(pattern) {
+                if calls(line, pattern) && !hits.contains(pattern) {
                     hits.push(pattern);
                 }
             }
@@ -146,4 +197,21 @@ fn raw_thread_creation_only_shrinks() {
         "these files no longer create threads by hand; remove them from \
          architecture/raw-threads-allowed.txt (it only shrinks):\n{stale:#?}"
     );
+}
+
+#[test]
+fn test_items_are_skipped_and_code_after_them_is_not() {
+    let text = "fn a() {}
+#[cfg(test)]
+mod tests {
+    fn t() { std::thread::spawn(|| {}); }
+}
+fn b() { std::thread::spawn(|| {}); }
+";
+    let code = without_test_items(text);
+    assert!(!code.contains("fn t()"));
+    assert!(code.contains("fn b()"));
+    assert!(calls("std::thread::spawn(f)", "thread::spawn("));
+    assert!(!calls("ScriptRuntime::new(dir)", "Runtime::new("));
+    assert!(calls("tokio::runtime::Runtime::new()", "Runtime::new("));
 }

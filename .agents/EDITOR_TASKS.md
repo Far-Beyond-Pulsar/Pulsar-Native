@@ -193,13 +193,31 @@ task (`Slow micro task: name`), so an outlier is not lost in the mean.
 What this cannot capture: a crate that builds its **own** pool or runtime
 (`ThreadPoolBuilder::new().build()`, `Runtime::new()`, `reqwest::blocking`).
 
+### Helio-layer threads and jobs (`helio_tasks`)
+
+Helio and the plugins' feature and world crates (the voxel world, its
+residency and sun planners, its query workers, Helio's encoder-finish pool,
+its shader watcher, pipeline compiles) cannot depend on this crate. They
+start threads through Helio's `helio_tasks` seam instead:
+`helio_tasks::spawn_service(ServiceSpec::new(title, thread).owner(..), |ctx| ..)`
+for a loop (wait for work inside `ctx.wait(|| inbox.recv())`, so a host tells
+idle from stalled) and `helio_tasks::submit(JobSpec::new(title), |ctx| ..)` for
+one piece of blocking work. `engine/src/runtime.rs` installs
+`editor_task_queue::helio::install()` at startup, beside the rayon pool: from
+then on each such service is a persistent task here (its thread registered
+with its role and owner, a heartbeat, idle while waiting) and each job a
+blocking task on the dedicated pool. A process that installs nothing (Helio's
+own examples and tests, games) runs them on named std threads.
+
 ### The raw-thread ratchet
 
 `crates/core/editor_task_queue/tests/raw_threads.rs` fails when a file in
 `crates/core`, `crates/editor`, `crates/subsystems`, `crates/profiling` or
 `plugins/vendor` calls `thread::spawn`, `thread::Builder::new`,
 `Runtime::new`, `Builder::new_multi_thread`/`new_current_thread` or
-`ThreadPoolBuilder::new` (outside `#[cfg(test)]`) and is not listed, with its
+`ThreadPoolBuilder::new` (outside `#[cfg(test)]` items; code after a test
+module is checked, and a call is matched as written, so `ScriptRuntime::new`
+is not `Runtime::new`) and is not listed, with its
 reason, in `architecture/raw-threads-allowed.txt`. The list only shrinks: do not
 add a line, use the task system; remove a line when you migrate a file. What is
 left is mostly plugin repositories (separate submodules), private runtimes in

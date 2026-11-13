@@ -58,7 +58,13 @@ share the sky at irregular times and each pixel tests a bounded few.
   none, or `FILE | index` into a table of resolved paths), `intensity`, `opacity`, `yaw/pitch/roll`.
   These reuse the six words that were reserved for a retired moon, so the row
   stays 76 words and old data is binary compatible. `AtmosphereRow`,
-  `host_rows`, `atmosphere_common.wgsl` (helio submodule) name them identically.
+  `host_rows` and the sky's own layers (`SkyLayers` in the sky plugin's
+  `sky_layers.wgsl`) name them identically.
+- The row is the frame's medium (`SkyMedium`, `frame_sky.wgsl` in
+  `helio-frame-api`) then the sky's own layers (clouds, weather, night sky,
+  panorama). The resolve kernel writes the frame's `sky_frame` (what other
+  kinds read: the medium, the suns, the irradiance) and the sky's
+  `sky_layers` (`helio_pass_sky::SKY_LAYERS`, read only by the sky's passes).
 - The CPU needs the source to keep the right texture resident, but the row is
   resolved on the GPU, so the component's SceneDB dispatch publishes it with
   `sky_texture::set_requested` (a level has one sky). The composite pass reads

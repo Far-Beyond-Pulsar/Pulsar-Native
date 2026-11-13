@@ -3348,6 +3348,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "futures",
+ "helio-tasks",
  "parking_lot",
  "rayon",
  "tokio",
@@ -5619,9 +5620,11 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-tasks",
  "log",
  "naga",
  "notify 8.2.0",
+ "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_scenedb",
  "smallvec",
@@ -5684,6 +5687,15 @@ dependencies = [
  "serde",
  "serde_json",
  "wgpu",
+]
+
+[[package]]
+name = "helio-lens-api"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "naga",
 ]
 
 [[package]]
@@ -5918,9 +5930,9 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-lens-api",
  "helio-light-api",
  "helio-pass-lens",
- "helio-pass-postprocess",
  "naga",
  "pollster 0.4.0",
  "wgpu",
@@ -6088,8 +6100,10 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-lens-api",
  "helio-lens-optics",
  "helio-scene-join",
+ "helio-tasks",
  "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -6117,11 +6131,13 @@ dependencies = [
 name = "helio-pass-materials"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
  "helio-mats",
  "log",
+ "naga",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -6238,6 +6254,7 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-lens-api",
  "helio-pass-postprocess",
  "helio-scene-join",
  "pollster 0.4.0",
@@ -6338,6 +6355,7 @@ dependencies = [
  "helio-light-api",
  "helio-pass-sky",
  "helio-scene-join",
+ "helio-tasks",
  "image",
  "naga",
  "pollster 0.4.0",
@@ -6612,6 +6630,7 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-presets",
  "helio-settings",
+ "helio-tasks",
  "helio-voxel-world",
  "helio-water-api",
  "image",
@@ -6748,6 +6767,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-tasks"
+version = "0.1.0"
+
+[[package]]
 name = "helio-vg-build"
 version = "0.1.0"
 dependencies = [
@@ -6773,6 +6796,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-tasks",
  "helio-vg-build",
  "helio-vg-format",
  "log",
@@ -6843,6 +6867,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-tasks",
  "image",
  "rayon",
  "rustc-hash 2.1.3",
@@ -8011,6 +8036,7 @@ dependencies = [
  "helio-components",
  "helio-core",
  "helio-feature-api",
+ "helio-lens-api",
  "helio-light-api",
  "helio-light-host",
  "helio-mats",
@@ -8042,6 +8068,7 @@ dependencies = [
  "bytemuck",
  "engine_class_derive",
  "helio-feature-api",
+ "helio-lens-api",
  "helio-pass-flare",
  "helio-pass-lens",
  "helio-scene-join",
@@ -11762,6 +11789,7 @@ dependencies = [
  "bytemuck",
  "engine_class_derive",
  "helio-feature-api",
+ "helio-lens-api",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
  "helio-scene-join",
@@ -11801,6 +11829,7 @@ dependencies = [
  "pollster 0.4.0",
  "post_component",
  "post_editor",
+ "pulsar_class",
  "pulsar_plugins",
  "pulsar_scenedb",
  "pulsar_world_registry",
@@ -18351,6 +18380,7 @@ dependencies = [
  "helio-feature-api",
  "helio-pass-voxel-planet",
  "helio-settings",
+ "helio-tasks",
  "helio-voxel-data",
  "helio_component",
  "pulsar_class",
