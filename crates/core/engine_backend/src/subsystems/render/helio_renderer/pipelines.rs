@@ -235,8 +235,9 @@ pub fn register_project_pipeline(
     factory: PipelineFactory,
 ) {
     let id = id.into();
+    // Registered first, so a renderer that sees the new revision builds it.
+    register_entry(id.clone(), label, description, factory);
     bump_revision(&id);
-    register_entry(id, label, description, factory);
 }
 
 fn register_entry(
@@ -486,8 +487,13 @@ pub struct ProjectGraphReport {
 /// with errors is reported in `failed` and not offered; one with only warnings
 /// is offered. Call when a project opens and when a `.rendergraph` changes.
 pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraphReport {
-    clear_project_pipelines();
     let nodes = Arc::new(current_node_registry());
+    // The new set, swapped in at once below: a renderer asking meanwhile
+    // finds the old set or the new one, never none.
+    let mut entries: Vec<(PipelineInfo, PipelineFactory)> = Vec::new();
+    // Graphs whose build changed: their revisions move once the new set is
+    // in, so a renderer that sees a new revision builds the new graph.
+    let mut bumped: Vec<String> = Vec::new();
     let mut report = ProjectGraphReport::default();
     let mut failed_now: HashMap<String, String> = HashMap::new();
     for path in engine_fs::virtual_fs::find_by_extension(project_root, RENDER_GRAPH_EXTENSION) {
@@ -538,21 +544,33 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
         };
         let asset = Arc::new(asset);
         let nodes = Arc::clone(&nodes);
-        register_entry(
-            id.clone(),
-            label,
-            description,
+        entries.push((
+            PipelineInfo {
+                id: id.clone(),
+                label,
+                description,
+            },
             Arc::new(move || {
                 Box::new(helio_graph_asset::GraphAssetPipeline::new(
                     Arc::clone(&asset),
                     Arc::clone(&nodes),
                 )) as Box<dyn IntoGraph>
             }),
-        );
+        ));
         if changed {
-            bump_revision(&id);
+            bumped.push(id.clone());
         }
         report.registered.push(id);
+    }
+    if let Ok(mut registry) = registry().write() {
+        // Project graphs go; a preview's pipeline belongs to an open editor.
+        registry.retain(|info| info.id.starts_with(PREVIEW_PREFIX));
+        for (info, factory) in entries {
+            registry.register(info, factory);
+        }
+    }
+    for id in &bumped {
+        bump_revision(id);
     }
     if let Ok(mut failures) = failures().lock() {
         *failures = failed_now;
