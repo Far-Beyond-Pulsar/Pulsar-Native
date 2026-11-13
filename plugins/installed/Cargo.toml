@@ -15,6 +15,7 @@ blueprint_editor_plugin = { workspace = true, optional = true }
 character_plugin = { workspace = true }
 script_editor_plugin = { workspace = true, optional = true }
 decals_plugin = { workspace = true }
+default_pipelines_plugin = { workspace = true }
 fog_plugin = { workspace = true }
 foliage_plugin = { workspace = true }
 gi_plugin = { workspace = true }
@@ -29,7 +30,6 @@ physics_plugin = { workspace = true }
 portals_plugin = { workspace = true }
 post_plugin = { workspace = true }
 render_bps_plugin = { workspace = true, optional = true }
-default_pipelines_plugin = { workspace = true }
 sky_plugin = { workspace = true }
 splines_plugin = { workspace = true }
 sprites_plugin = { workspace = true }
@@ -53,6 +53,7 @@ editor = [
     "character_plugin/editor",
     "dep:script_editor_plugin",
     "decals_plugin/editor",
+    "default_pipelines_plugin/editor",
     "fog_plugin/editor",
     "foliage_plugin/editor",
     "gi_plugin/editor",
@@ -67,7 +68,6 @@ editor = [
     "portals_plugin/editor",
     "post_plugin/editor",
     "dep:render_bps_plugin",
-    "default_pipelines_plugin/editor",
     "sky_plugin/editor",
     "splines_plugin/editor",
     "sprites_plugin/editor",
