@@ -22,10 +22,14 @@ pub fn create_runtime() -> Runtime {
     .expect("failed to build the engine's tokio runtime")
 }
 
-/// Make rayon's global pool the engine's: its workers are created through the
-/// thread registry. Must run before anything uses rayon.
-pub fn install_rayon_pool() {
+/// Make rayon's global pool and Helio's task host the engine's: their
+/// threads are created through the thread registry. Must run before anything
+/// uses rayon or starts a renderer.
+pub fn install_thread_hosts() {
     if let Err(error) = editor_task_queue::pools::install_rayon_global(None) {
         tracing::warn!("{error}; its threads will not be listed in the Tasks window");
     }
+    // Helio's and the plugins' feature and world crates start their threads
+    // and jobs (voxel planners, pipeline compiles) through `helio_tasks`.
+    editor_task_queue::helio::install();
 }

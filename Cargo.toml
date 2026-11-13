@@ -73,6 +73,7 @@ members = [
     "plugins/vendor/decals/feature",
     "plugins/vendor/decals/examples",
     "plugins/vendor/lens",
+    "plugins/vendor/lens/api",
     "plugins/vendor/lens/component",
     "plugins/vendor/lens/feature/flare",
     "plugins/vendor/lens/feature/lens",
@@ -502,6 +503,7 @@ helio-pass-sprite-batch = { path = "plugins/vendor/sprites/feature/batch" }
 helio-pass-sprite-cull = { path = "plugins/vendor/sprites/feature/cull" }
 helio-pass-sprite-simulate = { path = "plugins/vendor/sprites/feature/simulate" }
 helio-pass-radiance-cascades-2d = { path = "plugins/vendor/sprites/feature/radiance-cascades-2d" }
+helio-lens-api = { path = "plugins/vendor/lens/api" }
 helio-pass-lens = { path = "plugins/vendor/lens/feature/lens" }
 helio-pass-flare = { path = "plugins/vendor/lens/feature/flare" }
 helio-lens-optics = { path = "plugins/vendor/lens/feature/optics" }
@@ -540,6 +542,7 @@ helio-vg-build = { path = "plugins/vendor/meshes/vg/build" }
 scenedb-inspector-agent = { path = "crates/renderer/helio/crates/scenedb-inspector-agent" }
 helio_snapshot = { package = "helio-snapshot", path = "plugins/vendor/meshes/snapshot" }
 helio-settings = { path = "crates/renderer/helio/crates/helio-settings" }
+helio-tasks = { path = "crates/renderer/helio/crates/helio-tasks" }
 helio-pass-object-batch = { path = "plugins/vendor/meshes/feature/object-batch" }
 helio-pass-debug-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay" }
 helio-pass-perf-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay" }

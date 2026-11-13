@@ -39,6 +39,8 @@ blueprint_graph_debug.json
 .env
 *.db
 /.pulsar/cache/
+# Derived-asset caches tests and tools write next to any project (plugins/installed's tests).
+**/.pulsar/cache/
 /.pulsar/tab_previews/
 
 # Local validation outputs and evidence archives.

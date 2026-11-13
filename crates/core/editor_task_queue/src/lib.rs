@@ -23,6 +23,7 @@
 //! starve short editor interactions. Starring a queued job raises its
 //! scheduling priority within its pool.
 
+pub mod helio;
 mod log;
 mod micro;
 pub mod pools;
