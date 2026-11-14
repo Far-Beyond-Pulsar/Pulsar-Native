@@ -432,6 +432,24 @@ logged in section 6 and fixed in a cleanup pass.
     `cargo check --workspace` the result, with a scripts crate and a class
     compiled to Rust.
 
+  **Real-engine check (this checkout, Windows).** The game's graph is 165
+  local packages; the mirror is 4,110 files, 38.8 MiB. First sync (index
+  built with Cargo, full mirror) 5.4-9.1 s; a second sync, nothing changed,
+  0.43-0.50 s and writes nothing. Cargo resolves the generated workspace
+  (root manifest, patches, profiles, seeded lockfile, normalized mirror) and
+  starts compiling; the check then fails in `engine_backend`'s build script,
+  `window_manager` and `meshes_component`, packages reading files outside
+  their own directory (section 6, issues 1-3a), which the old builder never
+  exposed because its games pointed into the engine checkout. With those
+  fixes simulated in a kept copy of the generated project (the old build
+  script stubbed, the escaped files supplied where the includes look),
+  `cargo check --workspace` of the whole project passes: the game crate,
+  the scripts crate and the class compiled to Rust. So the real-engine check
+  passes once issues 1-3a land in P2; nothing else in the generated project
+  or the mirror fails. `PULSAR_REAL_CHECK_DIR=<dir>` keeps the project for
+  that kind of inspection, and the check runs with `--keep-going` so one
+  failing crate does not hide the others.
+
   Departures from section 2 as first written: the index is computed by
   Cargo (`cargo tree`), not embedded by a build script; the generation record
   carries no input hash (rendering is cheap; see 2.5); `scripts.rs` is
@@ -463,4 +481,154 @@ logged in section 6 and fixed in a cleanup pass.
 
 ## 6. Issues log
 
-(empty — filled during P1-P5)
+Found while building P1. Each names the phase that fixes it. **Blocks the
+real-engine check** means `tests/real_engine.rs` cannot pass until it is
+fixed.
+
+### Packages that read outside their own directory
+
+The mirror holds each package's own directory, as `cargo package` would
+publish it. Anything a package reads above its directory at build time
+exists in the engine checkout but not in a project's `.pulsar/sdk/`.
+Found by scanning the 165 local packages of the game's graph (their
+`build.rs`, `include_str!`/`include_bytes!` and `CARGO_MANIFEST_DIR`
+joins) and confirmed by the real-engine check.
+
+1. **`crates/core/engine_backend/build.rs` reads the engine workspace's
+   `Cargo.toml` through `../../..`.** *Blocks the real-engine check:* the
+   build script panics in the mirror (`failed to read Pulsar workspace
+   manifest .pulsar/sdk/crates/core/engine_backend/../../../Cargo.toml`).
+   Everything it produces serves the old builder only: the baked game
+   manifest, the baked plugin list, and `PULSAR_HELIO_GIT_REVISION`, which
+   only `core_project_builder.rs` (`HELIO_GIT_REVISION`) and that file's own
+   test read. **P2** deletes the whole build script together with the
+   builder; nothing needs to replace the Helio revision.
+2. **`crates/core/window_manager/src/configs.rs:13,16` and
+   `crates/editor/ui_common/src/menu/mod.rs:863` embed
+   `assets/images/logo_sqrkl*.png` from the repository root.** These are
+   editor crates that the game graph should not contain at all (issue 4).
+   Where they stay in the graph, the logos need one owner inside a package:
+   a `branding` module in `window_manager` (which `ui_common` already
+   depends on) holding the PNGs and exporting them, used by `ui_common`,
+   `ui_about` and `ui_loading_screen` too. `engine/build.rs` keeps its
+   `.ico`/`.icns` (the engine binary is never mirrored). **P2.**
+3. **`plugins/vendor/voxel/component/src/presets.rs:57-66` embeds
+   `assets/examples/voxel_*/scene/default.level` from the repository root.**
+   A runtime plugin crate, so it is in every game with the voxel plugin. The
+   preset levels belong to the voxel plugin: move them into
+   `plugins/vendor/voxel/component/presets/` in the voxel plugin's
+   repository (the examples under `assets/examples/` can then read them from
+   there, or keep their own copies). Submodule: merge in `Plugin_Voxel` first,
+   then re-pin. **P2.**
+3a. **`plugins/vendor/meshes/component/src/mesh_files.rs:10-19` embeds the
+   engine's primitive meshes** (`assets/meshes/primitives/SM_{Cube,Sphere,
+   Cylinder,Plane,Torus}.fbx`) through `include_bytes!(concat!(env!(
+   "CARGO_MANIFEST_DIR"), "/../../../../assets/..."))`, a form the first
+   source scan missed and the real-engine check found. The primitives are
+   the meshes plugin's: they move into `plugins/vendor/meshes/component/`
+   in the meshes plugin's repository, and anything else that reads
+   `assets/meshes/primitives` is pointed there. Submodule: `Plugin_Meshes`
+   first. **P2.**
+4. **`crates/core/helio_component/src/subsystems.rs:5`:
+   `ENGINE_ASSETS_DIR = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets")`.**
+   Not a build failure, a runtime one: compiled in the mirror it points at
+   `.pulsar/sdk/assets`, which does not exist, so `resolve_asset_path` never
+   finds the engine's built-in assets in a game (and the path is a machine
+   path compiled into the game, which `pulsar_package::machine_path_in` is
+   meant to keep out of shipped content). Built-in assets a game needs must
+   ship as content (`pulsar/` mount) or with the plugin that uses them.
+   **P2.**
+5. Checked and not issues: `plugins/vendor/meshes/asset-compat/src/rig_converter.rs:881`
+   and `crates/ui/wgpui-base/src/text/text_view.rs:1310` include files from
+   outside their package, but only inside `#[cfg(test)]` modules, which a
+   dependency never compiles. Build scripts in the graph other than
+   `engine_backend`'s (`helio_component`, `plugin_editor_api`,
+   `pulsar_game`, `wgpui`) read nothing outside their package.
+
+### The game links editor crates
+
+6. **The game's graph contains the editor's UI** (`ui_shell`, `ui_common`,
+   `ui_auth`, `ui_types_common`, `window_manager`, `gpui-ce`/WGPUI),
+   mirrored and compiled into every game that enables the meshes or
+   materials plugin, and the reason issue 2 reaches a game at all. `cargo tree -i` from the runtime plugin roots:
+   - `meshes_component` depends on `ui_common` and `gpui-ce` directly, not
+     behind the plugin's `editor` feature;
+   - `meshes_plugin`, `materials_plugin` and `asset_import` (through
+     `meshes_component`) depend on `plugin_editor_api`, which brings
+     `window_manager` and `gpui-ce`;
+   - `pulsar_game` itself brings only `ui_types_common`, through `engine_fs`.
+   The fix is in the meshes and materials plugins (submodules): their editor
+   dependencies behind `editor`, as every other plugin's are. `engine_fs`'s
+   use of `ui_types_common` is a kernel crate depending on an editor crate,
+   which `just arch` should also reject. **P2** (plugins merge first).
+
+### Scripting
+
+7. **Rust-target classes compile but nothing runs them.** The generator emits
+   `classes/<module>.rs` for each class whose `compile_target` is `rust`,
+   and the game compiles it, but the script driver binds a placed class
+   instance to its compiled VM module only: there is no registry of a
+   class's native form for it to prefer. Until there is, the generated
+   module is compiled under `#[allow(dead_code)]` and the class runs as a
+   script. **P3** adds the binding.
+8. **Trait declarations for Rust classes live in the Blueprint plugin**
+   (`blueprint_editor/.../trait_contracts::generate_module`). The old
+   editor-side export appended them to the class's Rust; the generator, in
+   core, cannot call into a plugin, so a Rust-target class that declares
+   traits is generated without them. **P3** moves the generation into core
+   (`pulsar_script_codegen` or `pulsar_traits`).
+
+### Before P2 lands
+
+9. **The SceneDB reflection split.** SceneDB pins an older
+   `pulsar_reflection` than the engine; the old builder papered over it with
+   a `//`-aliased git patch in generated games (`build.rs:186-195`). The
+   generator carries the engine's `[patch]` table as it is and adds no alias,
+   so the split must be fixed at its source (bump SceneDB's reflection rev)
+   before generated games replace the old ones.
+10. **Two names for a project.** The generator reads the name from
+    `Pulsar.toml` `[project] name` (falling back to the folder name); the
+    editor's project settings have their own `project.name`
+    (`ProjectSettings`), which the old builder used. **P2** makes the
+    settings page read and write `Pulsar.toml`.
+11. **`native/<crate>` extension libraries** (`pulsar_game::scripting::driver::native_libs`)
+    are a second user-owned crate convention: separately built cdylibs
+    loaded by the script driver. The generator does not know them, so they
+    neither join the workspace nor get `{ workspace = true }` engine crates.
+    **P2** decides whether they become workspace members like scripts
+    crates.
+12. **The mirror is written to the real disk** at the project's path, since
+    it is per-machine input for the local Cargo. For a remote or
+    peer-to-peer project there is no local project path; where its mirror
+    and build live is undecided. **P2.**
+
+### Build output
+
+15. **A game build prints the engine's warnings.** Cargo caps lints only for
+    registry and git dependencies; mirrored SDK packages are path
+    dependencies, so their warnings (179 in the real-engine check, from
+    `pulsar_reflection`, `pulsar_std`, `plugin_editor_api`, `wgsl_std` and
+    others) appear in every game build. Normalization already strips
+    `[lints]`, so no engine `deny` can fail a game build, but rustc's default
+    warnings remain and no manifest key caps them per package. The real fix
+    is warning-free engine crates (CI's clippy gate covers libraries, not
+    rustc warnings in every crate); meanwhile the P2 build runner shows
+    diagnostics for the project's own crates and folds the rest.
+16. **Generated class code has unused imports.** `pulsar_script_codegen`
+    emits one fixed `use ...::vm::{...}` list for every class
+    (`src/lib.rs:136`), so a class that uses no collection or unary
+    instruction warns (`CollOp`, `Type`, `UnOp` in the real-engine check's
+    `door.rs`). **P3** emits the list it uses (or allows `unused_imports` on
+    that line), with its golden tests.
+
+### Environment
+
+13. **`cargo tree --target all` downloads other platforms' crates** the first
+    time the index is built on a fresh checkout (it needs every target's
+    dependencies to answer), so the first sync on a new machine needs the
+    network even when the engine is already built. Later syncs reuse the
+    cached index. Exported SDKs never run Cargo.
+14. **Pre-existing:** `cargo clippy` on `pulsar_install_layout` fails the
+    `std::fs` rule (`Path::is_dir`, `std::fs::remove_file`, ...) in code this
+    work did not touch; `cargo clippy -p pulsar_project` without `--no-deps`
+    stops there. Unrelated to project generation.

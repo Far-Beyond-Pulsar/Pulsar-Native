@@ -17467,10 +17467,12 @@ dependencies = [
  "rust-i18n",
  "serde_json",
  "smol",
+ "sysinfo",
  "tempfile",
  "tracing",
  "ui",
  "ui_common",
+ "ui_log_viewer",
  "window_manager",
 ]
 

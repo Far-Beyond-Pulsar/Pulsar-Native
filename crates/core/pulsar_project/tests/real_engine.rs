@@ -8,6 +8,10 @@
 //! ```text
 //! cargo test -p pulsar_project --test real_engine -- --ignored --nocapture
 //! ```
+//!
+//! `PULSAR_REAL_CHECK_DIR=<dir>` generates the project there and keeps it
+//! (an empty or missing directory), to inspect or re-check by hand. The check
+//! runs with `--keep-going`, so one failing crate does not hide the others.
 
 mod common;
 
@@ -58,8 +62,11 @@ fn counter() -> Module {
 #[test]
 #[ignore = "heavy: cargo-checks a generated project against the real engine"]
 fn a_generated_project_compiles_against_this_engine() {
-    let dir = tempfile::tempdir().unwrap();
-    let project = dir.path().join("Real Check");
+    let temp = tempfile::tempdir().unwrap();
+    let base = std::env::var_os("PULSAR_REAL_CHECK_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| temp.path().to_path_buf());
+    let project = base.join("Real Check");
     write(&project.join("Pulsar.toml"), "[project]\nname = \"Real Check\"\n");
     write(
         &project.join("scripts/gameplay/Cargo.toml"),
@@ -105,17 +112,27 @@ fn a_generated_project_compiles_against_this_engine() {
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("pulsar_project_real_check_target"));
     let output = cargo()
-        .args(["check", "--workspace", "--manifest-path"])
+        .args(["check", "--workspace", "--keep-going", "--manifest-path"])
         .arg(project.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", target)
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !output.status.success() {
-        let tail: Vec<&str> = stderr.lines().rev().take(120).collect();
+        // Every failing crate, then the first errors in full.
+        let failed: Vec<&str> = stderr
+            .lines()
+            .filter(|l| l.starts_with("error: could not compile") || l.starts_with("error: failed to run custom build"))
+            .collect();
+        let errors: Vec<&str> = stderr
+            .lines()
+            .skip_while(|l| !l.starts_with("error"))
+            .take(150)
+            .collect();
         panic!(
-            "the generated project does not compile:\n{}",
-            tail.into_iter().rev().collect::<Vec<_>>().join("\n")
+            "the generated project does not compile:\n{}\n\n{}",
+            failed.join("\n"),
+            errors.join("\n")
         );
     }
     let warnings: Vec<&str> = stderr
