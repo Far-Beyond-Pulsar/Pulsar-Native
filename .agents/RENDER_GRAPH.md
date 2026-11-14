@@ -216,6 +216,14 @@ kind, persistence and resource name match, because Helio binds resources by name
 | Depth | diamond | – |
 | Buffer | square | second outline |
 | Scene (host input) | hexagon | – |
+| Frame (the presented image) | screen (rounded rectangle) | – |
+
+**Frame.** `PinKind::Frame` is the frame buffer (`ctx.target`), not a named resource and no
+buffer (no Get/Set). The probe gives a node a `out_frame` output when one of its passes
+declares `writes_target`; the Output has an optional `frame` input. The generated graphs
+wire the last such node to it, and routing validation takes that wire as "this node writes
+the final output" (a graph with no frame wire still uses the flow wire into the Output).
+Execution says what runs when; the frame wire says where the image goes.
 
 ## Execution and data
 
@@ -542,3 +550,22 @@ now has no pipeline until one is picked. Every load then runs the enabled plugin
   or renaming the file breaks the reference (the panel says so). A typed `AssetKind` for
   render graphs is the next step.
 - Blueprints that declare `IntoGraph` are not yet listed as pipelines.
+
+## Pin spacing, quiet pins, tooltips
+
+- **Space pins** (`GraphAsset::space_pins`, saved with the graph, toolbar **Space Pins**): a
+  node with several pin rows gets every row the height of the smallest node
+  (`LayoutMetrics::spaced_row_h`), so a small node placed at its pin's height tiles with its
+  neighbours and the wire is straight. New graphs have it on; a file without the key loads
+  with it off (its nodes were placed without the room). No part of the build key.
+  `helio_graph_asset::layout` (`node_height`, `pin_center`, `min_node_height`) mirrors
+  Graphy's metrics for the headless auto layout; a `render_bps` test holds them equal. Auto
+  layout puts each data node (Get, Set, host) at the height of the pin it is wired to; nodes
+  sharing one pin fall back to a block. The sectioned main graph is one row and never wraps
+  (a wrapped row sends the execution wire back across the graph).
+- **Wired Pins** (toolbar, view only, not saved): hides quiet pins
+  (`Presenter::pin_quiet`: Scene inputs, SceneDB buffers, previous-frame reads) while nothing
+  is wired to them; a node says "+N pins" in its header. A wire shows its pin.
+- **Pin tooltip**: hovering a pin shows `Presenter::pin_tooltip` (default: name and type;
+  render graphs: kind, persistence, resource, who binds it).
+

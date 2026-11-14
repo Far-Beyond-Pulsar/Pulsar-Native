@@ -196,3 +196,12 @@ and its conversions, the clipboard/undo/selection features) was deleted.
 - **Colour space**: the GPUI surface is shown without sRGB encoding, so `GraphCanvas` draws with
   `GraphRenderer::set_linearize_colors(false)`: theme colours appear as authored. (Linearising made
   every colour, theme-derived or not, come out far darker than the UI around it.)
+
+## Pin layout options and tooltips
+
+`LayoutMetrics::space_pins` (every pin row of a multi-row node as tall as the smallest card)
+and `hide_quiet_pins` (`Presenter::pin_quiet` pins with no wire have no row, position or hit
+area; the node header says `+N pins`) are graph-wide, set with `GraphCanvas::set_space_pins`
+/ `set_hide_quiet_pins`. `Presenter::pin_tooltip` feeds the pin hover tooltip drawn by the
+canvas. `PinShape::Screen` is the frame buffer pin.
+

@@ -81,6 +81,13 @@ pub struct RenderGraphEditor {
     format_version: u32,
     name: String,
     description: String,
+    /// The graph-wide pin spacing option, applied to every canvas.
+    space_pins: bool,
+    /// Quiet pins (host inputs, SceneDB buffers, previous-frame reads) are hidden
+    /// while nothing is wired to them. A view option, not saved with the graph.
+    hide_quiet_pins: bool,
+    /// An option changed since the last save (it is not an undoable edit).
+    options_dirty: bool,
     pub(crate) tabs: Vec<GraphTab>,
     /// Indices into `tabs` of the graphs shown as tabs; the main graph is always first.
     pub(crate) open: Vec<usize>,
@@ -159,6 +166,9 @@ impl RenderGraphEditor {
             format_version: helio_graph_asset::FORMAT_VERSION,
             name: String::new(),
             description: String::new(),
+            space_pins: true,
+            hide_quiet_pins: false,
+            options_dirty: false,
             tabs: Vec::new(),
             open: Vec::new(),
             active: 0,
@@ -219,6 +229,7 @@ impl RenderGraphEditor {
             format_version,
             name,
             description,
+            space_pins,
             main,
             main_order,
             sections,
@@ -226,6 +237,7 @@ impl RenderGraphEditor {
         self.format_version = format_version;
         self.name = name;
         self.description = description;
+        self.space_pins = space_pins;
         *self
             .section_names
             .write()
@@ -278,6 +290,11 @@ impl RenderGraphEditor {
                 cx,
             )
             .expect("the bundled canvas font parses")
+        });
+        let (space_pins, hide_quiet) = (self.space_pins, self.hide_quiet_pins);
+        canvas.update(cx, |canvas, cx| {
+            canvas.set_space_pins(space_pins, cx);
+            canvas.set_hide_quiet_pins(hide_quiet, cx);
         });
         let tab_id = id.clone();
         cx.subscribe_in(
@@ -337,6 +354,7 @@ impl RenderGraphEditor {
             format_version: self.format_version,
             name: &self.name,
             description: &self.description,
+            space_pins: self.space_pins,
             main,
             sections: refs.collect(),
         };
@@ -381,9 +399,11 @@ impl RenderGraphEditor {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.tabs
-            .iter()
-            .any(|tab| plugin_editor_api::undo::lock(&tab.history).is_dirty())
+        self.options_dirty
+            || self
+                .tabs
+                .iter()
+                .any(|tab| plugin_editor_api::undo::lock(&tab.history).is_dirty())
     }
 
     // ── Tabs ───────────────────────────────────────────────────────────────
@@ -778,12 +798,52 @@ impl RenderGraphEditor {
         });
     }
 
+    /// Whether pins are spaced by the smallest node's height (graph-wide).
+    pub fn space_pins(&self) -> bool {
+        self.space_pins
+    }
+
+    /// Turns pin spacing on or off for every graph of the document (the
+    /// toolbar's Space Pins). It is saved with the file, so it dirties the
+    /// document; it changes how the graph is drawn, never what it builds.
+    pub fn set_space_pins(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.space_pins == on {
+            return;
+        }
+        self.space_pins = on;
+        self.options_dirty = true;
+        for tab in &self.tabs {
+            tab.canvas
+                .update(cx, |canvas, cx| canvas.set_space_pins(on, cx));
+        }
+        cx.notify();
+    }
+
+    /// Whether pins nothing is wired to are hidden when they are quiet ones.
+    pub fn hide_quiet_pins(&self) -> bool {
+        self.hide_quiet_pins
+    }
+
+    /// Hides or shows the quiet pins of every graph (the toolbar's Wired Pins).
+    /// A view option: it changes neither the file nor what the graph builds.
+    pub fn set_hide_quiet_pins(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.hide_quiet_pins == on {
+            return;
+        }
+        self.hide_quiet_pins = on;
+        for tab in &self.tabs {
+            tab.canvas
+                .update(cx, |canvas, cx| canvas.set_hide_quiet_pins(on, cx));
+        }
+        cx.notify();
+    }
+
     /// Arranges the active graph (the toolbar's Auto Layout).
     pub fn auto_layout(&mut self, cx: &mut Context<Self>) {
         let Some(canvas) = self.active_canvas().cloned() else {
             return;
         };
-        let commands = model::auto_layout_graph(canvas.read(cx).graph());
+        let commands = model::auto_layout_graph(canvas.read(cx).graph(), self.space_pins);
         if !commands.is_empty() {
             let _ = canvas.update(cx, |canvas, cx| canvas.apply("Auto layout", &commands, cx));
         }
@@ -991,6 +1051,7 @@ impl RenderGraphEditor {
         })();
         match written {
             Ok(()) => {
+                self.options_dirty = false;
                 for tab in &self.tabs {
                     plugin_editor_api::undo::lock(&tab.history).mark_saved();
                 }
@@ -1025,6 +1086,7 @@ impl RenderGraphEditor {
         let asset = self.with_doc(cx, |doc| doc.to_asset(registry));
         match document::save_copy_to_project(&self.file, asset) {
             Ok(path) => {
+                self.options_dirty = false;
                 for tab in &self.tabs {
                     plugin_editor_api::undo::lock(&tab.history).mark_saved();
                 }

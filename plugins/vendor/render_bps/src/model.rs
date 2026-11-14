@@ -52,6 +52,7 @@ pub fn pin_type_string(pin: &PinDesc) -> String {
         (PinKind::Buffer, false) => "buf",
         (PinKind::Buffer, true) => "pbuf",
         (PinKind::Scene, _) => "scene",
+        (PinKind::Frame, _) => "frame",
     };
     format!("{prefix}:{}", pin.resource)
 }
@@ -68,6 +69,7 @@ pub fn pin_type_of(type_name: &str) -> RenderPinType {
         "buf" => RenderPinType::BUFFER,
         "pbuf" => RenderPinType::PERSISTENT_BUFFER,
         "scene" => RenderPinType::SCENE,
+        "frame" => RenderPinType::FRAME,
         _ => RenderPinType::FLOW,
     }
 }
@@ -99,6 +101,7 @@ pub fn pin_style(type_name: &str) -> PinStyle {
         helio_graph_asset::PinShape::Diamond => PinShape::Diamond,
         helio_graph_asset::PinShape::Square => PinShape::Square,
         helio_graph_asset::PinShape::Hexagon => PinShape::Hexagon,
+        helio_graph_asset::PinShape::Frame => PinShape::Screen,
     };
     let [r, g, b] = ty.color();
     PinStyle {
@@ -114,10 +117,79 @@ pub fn pin_label(pin: &PinDesc) -> String {
     if pin.ty.kind == PinKind::Flow {
         String::new()
     } else if pin.history {
-        format!("{} (prev frame)", pin.resource)
+        format!("{}{PREV_FRAME}", pin.resource)
     } else {
         pin.resource.clone()
     }
+}
+
+/// Whether a pin may be hidden while nothing is wired to it: the ones a pass
+/// has but rarely wires. Host-supplied (scene) inputs, SceneDB buffers and
+/// previous-frame reads are the host's or the renderer's to supply; the
+/// resources passes hand each other, the frame and the flow are never quiet.
+pub fn pin_is_quiet(type_name: &str, label: &str) -> bool {
+    let ty = pin_type_of(type_name);
+    match ty.kind {
+        PinKind::Scene => true,
+        PinKind::Flow | PinKind::Frame => false,
+        _ => {
+            type_name
+                .split_once(':')
+                .is_some_and(|(_, resource)| resource.starts_with(helio_graph_asset::SCENEDB_PREFIX))
+                || label.ends_with(PREV_FRAME)
+        }
+    }
+}
+
+/// What a previous-frame input's label ends with.
+const PREV_FRAME: &str = " (prev frame)";
+
+/// The pin tooltip for a pin of `type_name`: the pin's label, then what it
+/// carries (kind and persistence), the Helio resource name that routes it, and
+/// what flows the other way. Pure, so it is tested without a canvas.
+pub fn pin_tooltip(type_name: &str, label: &str, input: bool) -> String {
+    let (what, persistent) = match pin_type_of(type_name).kind {
+        PinKind::Flow => ("Execution: runs after the pass before it", false),
+        PinKind::Texture => ("Texture", false),
+        PinKind::Depth => ("Depth target", false),
+        PinKind::Buffer => ("Buffer", false),
+        PinKind::Scene => ("Scene input: supplied by the host", false),
+        PinKind::Frame => ("Frame buffer: the image that is presented", false),
+    };
+    let persistent = persistent || type_name.starts_with("ptex:") || type_name.starts_with("pbuf:");
+    let mut lines = vec![if label.is_empty() {
+        what.to_string()
+    } else {
+        label.to_string()
+    }];
+    if !label.is_empty() {
+        lines.push(if persistent {
+            format!("{what}, persistent across frames")
+        } else {
+            what.to_string()
+        });
+    }
+    if pin_type_of(type_name).kind == PinKind::Frame {
+        lines.push(
+            if input {
+                "Takes the frame from the pass wired here"
+            } else {
+                "Draws the final image: wire it to the Output"
+            }
+            .to_string(),
+        );
+    } else if let Some((_, resource)) = type_name.split_once(':') {
+        lines.push(format!("Resource: {resource}"));
+        lines.push(
+            if input {
+                "Bound by name to the latest earlier writer"
+            } else {
+                "Read by name by later passes"
+            }
+            .to_string(),
+        );
+    }
+    lines.join("\n")
 }
 
 /// An editor pin for a node pin description.
@@ -421,8 +493,8 @@ pub fn refresh_pins(
 /// Arranges the graph as edit commands: positions every node and replaces the
 /// lane comments, keeping comments the author made. Reroute nodes are the
 /// editor's own and keep where they are.
-pub fn auto_layout_graph(graph: &GraphDescription) -> Vec<GraphCommand> {
-    let mut asset = crate::document::layout_asset(graph, registry());
+pub fn auto_layout_graph(graph: &GraphDescription, space_pins: bool) -> Vec<GraphCommand> {
+    let mut asset = crate::document::layout_asset(graph, registry(), space_pins);
     helio_graph_asset::auto_layout(&mut asset, registry());
 
     let positions: HashMap<String, [f32; 2]> = asset

@@ -11,7 +11,7 @@ use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{DockChannel, DockItem, Panel, PanelEvent, PanelView};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::workspace::Workspace;
-use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable as _, StyledExt as _};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Selectable as _, Sizable as _, StyledExt as _};
 
 use crate::buffers_panel::BuffersPanel;
 use crate::editor::{RenderGraphEditor, Status};
@@ -163,6 +163,34 @@ impl RenderGraphEditor {
                     .on_click(cx.listener(|editor, _, _window, cx| editor.auto_layout(cx))),
             )
             .child(
+                Button::new("toolbar-space-pins")
+                    .ghost()
+                    .small()
+                    .label("Space Pins")
+                    .selected(self.space_pins())
+                    .tooltip(
+                        "Space the pins of every node by the height of the smallest node, so small nodes stack at their pins with straight wires (saved with the graph)",
+                    )
+                    .on_click(cx.listener(|editor, _, _window, cx| {
+                        let on = !editor.space_pins();
+                        editor.set_space_pins(on, cx)
+                    })),
+            )
+            .child(
+                Button::new("toolbar-wired-pins")
+                    .ghost()
+                    .small()
+                    .label("Wired Pins")
+                    .selected(self.hide_quiet_pins())
+                    .tooltip(
+                        "Hide host inputs, SceneDB buffers and previous-frame reads while nothing is wired to them; a node says how many it hides",
+                    )
+                    .on_click(cx.listener(|editor, _, _window, cx| {
+                        let on = !editor.hide_quiet_pins();
+                        editor.set_hide_quiet_pins(on, cx)
+                    })),
+            )
+            .child(
                 div()
                     .flex_1()
                     .min_w_0()
@@ -183,6 +211,10 @@ impl RenderGraphEditor {
         let Some(canvas) = self.active_canvas().cloned() else {
             return div().into_any_element();
         };
+        let read_only = self.read_only.is_some();
+        if canvas.read(cx).read_only() != read_only {
+            canvas.update(cx, |canvas, cx| canvas.set_read_only(read_only, cx));
+        }
         let theme = crate::theme::graph_theme(cx);
         if canvas.read(cx).theme() != &theme {
             canvas.update(cx, |canvas, cx| canvas.set_theme(theme, cx));
@@ -247,6 +279,9 @@ impl RenderGraphEditor {
                         cx.listener(|editor, _: &plugin_editor_api::Redo, _, cx| editor.redo(cx)),
                     )
                     .child(div().size_full().child(canvas))
+                    .when(self.read_only.is_some(), |el| {
+                        el.child(plugin_editor_api::read_only::read_only_watermark())
+                    })
                     .child(self.render_comment_editor(cx)),
             )
             .into_any_element()

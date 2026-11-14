@@ -56,6 +56,8 @@ pub struct DocRef<'a> {
     pub format_version: u32,
     pub name: &'a str,
     pub description: &'a str,
+    /// The graph-wide pin spacing option ([`GraphAsset::space_pins`]).
+    pub space_pins: bool,
     pub main: GraphRef<'a>,
     pub sections: Vec<GraphRef<'a>>,
 }
@@ -73,6 +75,7 @@ pub struct RenderDocument {
     pub format_version: u32,
     pub name: String,
     pub description: String,
+    pub space_pins: bool,
     pub main: GraphDescription,
     pub main_order: Vec<String>,
     pub sections: Vec<SectionDoc>,
@@ -84,6 +87,7 @@ impl RenderDocument {
             format_version: self.format_version,
             name: &self.name,
             description: &self.description,
+            space_pins: self.space_pins,
             main: GraphRef {
                 id: "",
                 name: &self.name,
@@ -146,6 +150,7 @@ impl RenderDocument {
             format_version: asset.format_version,
             name: asset.name.clone(),
             description: asset.description.clone(),
+            space_pins: asset.space_pins,
             main,
             main_order: asset.nodes.iter().map(|n| n.id.clone()).collect(),
             sections,
@@ -180,6 +185,7 @@ impl DocRef<'_> {
                 })
                 .collect(),
             pins: Default::default(),
+            space_pins: self.space_pins,
         };
         asset.cache_pins(registry);
         asset
@@ -564,10 +570,15 @@ fn bypass_reroutes(
 
 /// One graph as the asset the layout reads: its nodes and wires with reroutes
 /// joined, and a section per section node (its pins are what the node shows).
-pub fn layout_asset(graph: &GraphDescription, registry: &NodeRegistry) -> GraphAsset {
+pub fn layout_asset(
+    graph: &GraphDescription,
+    registry: &NodeRegistry,
+    space_pins: bool,
+) -> GraphAsset {
     let mut ids: Vec<&String> = graph.nodes.keys().collect();
     ids.sort();
     let mut asset = GraphAsset {
+        space_pins,
         nodes: ids
             .iter()
             .filter(|id| !matches!(graph.nodes[**id].node_type.as_str(), ENTRY_TYPE | EXIT_TYPE))

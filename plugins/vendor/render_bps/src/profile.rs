@@ -104,6 +104,18 @@ impl Presenter for RenderPresenter {
         pin.pin.name.clone()
     }
 
+    fn pin_quiet(&self, _node: &NodeInstance, pin: &PinInstance, _side: PinSide) -> bool {
+        model::pin_is_quiet(&model::type_name(pin.data_type()), &pin.pin.name)
+    }
+
+    fn pin_tooltip(&self, _node: &NodeInstance, pin: &PinInstance, side: PinSide) -> Option<String> {
+        Some(model::pin_tooltip(
+            &model::type_name(pin.data_type()),
+            &pin.pin.name,
+            side == PinSide::Input,
+        ))
+    }
+
     fn comment(&self, _index: usize, comment: &graphy::core::GraphComment) -> CommentPresentation {
         CommentPresentation {
             accent: comment.color,

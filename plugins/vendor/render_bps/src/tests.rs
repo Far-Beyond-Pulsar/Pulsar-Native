@@ -373,7 +373,7 @@ fn auto_layout_moves_the_documents_nodes_and_adds_lanes() {
         node.position = [0.0, 0.0];
     }
     let doc = RenderDocument::from_asset(&asset, &registry);
-    let commands = model::auto_layout_graph(&doc.main);
+    let commands = model::auto_layout_graph(&doc.main, doc.space_pins);
     assert!(commands
         .iter()
         .any(|c| matches!(c, GraphCommand::MoveNode { .. })));
@@ -383,6 +383,88 @@ fn auto_layout_moves_the_documents_nodes_and_adds_lanes() {
         .comments
         .iter()
         .any(|c| c.id.starts_with(helio_graph_asset::LANE_PREFIX)));
+}
+
+/// Auto layout places a node from a size and pin height it estimates without a
+/// canvas; they have to be the canvas's own, spaced or not, or nodes that were
+/// laid out to line up do not.
+#[test]
+fn the_layouts_node_heights_and_pin_centres_are_the_canvases() {
+    use graphy_render::layout::{LayoutMetrics, NodeLayout, NodeShape, NodeSpec};
+    for space in [false, true] {
+        let metrics = LayoutMetrics {
+            space_pins: space,
+            ..LayoutMetrics::default()
+        };
+        assert_eq!(
+            helio_graph_asset::layout::min_node_height(),
+            metrics.min_node_height()
+        );
+        for rows in 1..=7usize {
+            let spaced = space && rows > 1;
+            let (row_specs, _) = NodeSpec::build_rows(rows, rows, None, &[], |_| {
+                if spaced {
+                    metrics.row_h.max(metrics.spaced_row_h())
+                } else {
+                    metrics.row_h
+                }
+            });
+            let layout = NodeLayout::compute(
+                &NodeSpec {
+                    shape: NodeShape::Card,
+                    title_width: 0.0,
+                    has_icon: false,
+                    input_label_widths: vec![0.0; rows],
+                    output_label_widths: vec![0.0; rows],
+                    header_output: None,
+                    rows: row_specs,
+                    min_width: 0.0,
+                },
+                &metrics,
+            );
+            assert_eq!(
+                layout.size.y,
+                helio_graph_asset::layout::node_height(rows, space),
+                "height of {rows} rows, spaced {space}"
+            );
+            for row in 0..rows {
+                assert_eq!(
+                    layout.inputs[row].center.y,
+                    helio_graph_asset::layout::pin_center(rows, row, space),
+                    "pin {row} of {rows}, spaced {space}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn pin_spacing_is_saved_with_the_graph_and_files_without_it_load_unspaced() {
+    let registry = base_registry();
+    let mut asset = crate::document::new_graph_asset();
+    assert!(asset.space_pins, "a new graph spaces its pins");
+    let doc = RenderDocument::from_asset(&asset, &registry);
+    assert!(doc.space_pins);
+    asset.space_pins = false;
+    let off = RenderDocument::from_asset(&asset, &registry);
+    assert!(!off.as_ref().to_asset(&registry).space_pins);
+    let text = crate::document::encode(&off.as_ref(), &registry);
+    assert!(!crate::document::decode(&text, &registry).unwrap().space_pins);
+    // A file from before the option has no key: its nodes were placed without the
+    // room, so it opens unspaced.
+    let old = r#"{"format_version":1,"nodes":[{"id":"start","kind":"core.on_frame_start","position":[0,0]}],"connections":[]}"#;
+    assert!(!crate::document::decode(old, &registry).unwrap().space_pins);
+}
+
+#[test]
+fn a_pin_tooltip_names_kind_persistence_and_resource() {
+    let tooltip = model::pin_tooltip("ptex:history", "history", true);
+    assert!(tooltip.starts_with("history\n"));
+    assert!(tooltip.contains("Texture, persistent across frames"));
+    assert!(tooltip.contains("Resource: history"));
+    assert!(model::pin_tooltip("buf:a", "a", false).contains("Read by name by later passes"));
+    assert!(model::pin_tooltip("scene:view", "view", true).contains("supplied by the host"));
+    assert!(model::pin_tooltip("execution", "", false).starts_with("Execution"));
 }
 
 #[test]
@@ -571,4 +653,49 @@ fn collapsing_nothing_is_refused() {
     let doc = RenderDocument::from_asset(&GraphAsset::default(), &registry);
     assert!(crate::collapse::collapse(&doc.main, &[], &Default::default()).is_err());
     assert!(crate::collapse::expand(&doc.main, "nope", &doc.main).is_err());
+}
+
+#[test]
+fn quiet_pins_are_the_host_supplied_and_previous_frame_ones() {
+    assert!(model::pin_is_quiet("scene:render_environment", "render_environment"));
+    assert!(model::pin_is_quiet("buf:scenedb.rows", "scenedb.rows"));
+    assert!(model::pin_is_quiet("depth:depth", "depth (prev frame)"));
+    assert!(!model::pin_is_quiet("tex:pre_aa", "pre_aa"));
+    assert!(!model::pin_is_quiet("frame:frame", "frame"));
+    assert!(!model::pin_is_quiet("execution", ""));
+}
+
+#[test]
+fn the_frame_pin_has_its_own_type_shape_and_connects_only_to_a_frame_pin() {
+    use graphy_render::presenter::PinShape;
+    let out = PinDesc::frame("out_frame");
+    assert_eq!(model::pin_type_string(&out), "frame:frame");
+    assert_eq!(model::pin_style("frame:frame").shape, PinShape::Screen);
+    assert_ne!(
+        model::pin_style("frame:frame").shape,
+        model::pin_style("execution").shape,
+        "the frame is not drawn as the execution chain"
+    );
+    use graphy::{Compatibility, TypeResolver};
+    let resolver = crate::profile::RenderResolver;
+    let frame = model::data_type("frame:frame");
+    assert!(resolver.compatibility(&frame, &frame).is_connectable());
+    for other in ["execution", "tex:frame", "scene:frame"] {
+        assert!(
+            matches!(
+                resolver.compatibility(&frame, &model::data_type(other)),
+                Compatibility::Incompatible(_)
+            ),
+            "frame must not connect to {other}"
+        );
+    }
+    assert!(model::pin_tooltip("frame:frame", "frame", false).contains("wire it to the Output"));
+    // The Output takes the frame, optionally.
+    let registry = base_registry();
+    let output = registry.get(helio_graph_asset::core_nodes::OUTPUT).unwrap();
+    let pins = output.pins(&Default::default());
+    assert!(pins
+        .inputs
+        .iter()
+        .any(|p| p.ty.kind == helio_graph_asset::PinKind::Frame && p.optional));
 }

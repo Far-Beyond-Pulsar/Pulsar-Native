@@ -100,6 +100,7 @@ pub mod metadata;
 pub mod panel_restore;
 pub mod plugin;
 pub mod registrar;
+pub mod read_only;
 pub mod runtime;
 pub mod scripting;
 pub mod statusbar;
