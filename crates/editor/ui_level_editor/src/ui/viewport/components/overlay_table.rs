@@ -11,6 +11,7 @@ use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
+use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{h_flex, v_flex, ActiveTheme};
 
 /// The card's width.
@@ -71,10 +72,21 @@ pub struct Row {
     pub cells: Vec<Cell>,
 }
 
+/// A table's scroll position and scrollbar. The overlay owns one for its
+/// lifetime and hands it to every [`OverlayTable`] it builds, so an update
+/// (new rows, ten times a second) keeps where the list is scrolled to and the
+/// scrollbar's hover and drag.
+#[derive(Clone, Default)]
+pub struct TableScroll {
+    list: UniformListScrollHandle,
+    bar: ScrollbarState,
+}
+
 /// A table overlay's content. Build one in the overlay's `render` and turn it
 /// into the card with [`OverlayTable::render`].
 pub struct OverlayTable {
     id: ElementId,
+    scroll: TableScroll,
     title: SharedString,
     badge: Option<(SharedString, Hsla)>,
     columns: &'static [Column],
@@ -85,13 +97,16 @@ pub struct OverlayTable {
 }
 
 impl OverlayTable {
+    /// `scroll`: the overlay's own, the same every render.
     pub fn new(
         id: impl Into<ElementId>,
+        scroll: &TableScroll,
         title: impl Into<SharedString>,
         columns: &'static [Column],
     ) -> Self {
         Self {
             id: id.into(),
+            scroll: scroll.clone(),
             title: title.into(),
             badge: None,
             columns,
@@ -159,9 +174,12 @@ impl OverlayTable {
         } else {
             let rows = self.rows.clone();
             let height = (count as f32 * ROW_HEIGHT).min(MAX_LIST_HEIGHT);
+            let scrolls = count as f32 * ROW_HEIGHT > MAX_LIST_HEIGHT;
             div()
+                .relative()
                 .w_full()
                 .h(px(height))
+                .overflow_hidden()
                 .occlude()
                 .child(
                     uniform_list(self.id.clone(), count, move |range, _, _| {
@@ -170,8 +188,16 @@ impl OverlayTable {
                             .map(|row| render_row(row, columns, swatches, muted, foreground))
                             .collect()
                     })
+                    .track_scroll(&self.scroll.list)
                     .size_full(),
                 )
+                // Only when the rows overflow the card.
+                .when(scrolls, |body| {
+                    body.child(div().absolute().inset_0().child(Scrollbar::uniform_scroll(
+                        &self.scroll.bar,
+                        &self.scroll.list,
+                    )))
+                })
                 .into_any_element()
         };
         v_flex()
@@ -232,19 +258,28 @@ fn render_row(
         .items_center()
         .when(swatches, |line| {
             line.child(
-                div().w(px(SWATCH_WIDTH)).flex_none().when_some(row.swatch, |slot, color| {
-                    slot.child(div().w(px(8.0)).h(px(8.0)).rounded(px(2.0)).bg(color))
-                }),
+                div()
+                    .w(px(SWATCH_WIDTH))
+                    .flex_none()
+                    .when_some(row.swatch, |slot, color| {
+                        slot.child(div().w(px(8.0)).h(px(8.0)).rounded(px(2.0)).bg(color))
+                    }),
             )
         })
-        .children(columns.iter().zip(&row.cells).enumerate().map(|(i, (column, cell))| {
-            // The first column names the row (muted); the others are values.
-            let base = if i == 0 { muted } else { foreground };
-            cell_box(column)
-                .line_height(relative(1.0))
-                .text_color(cell.color.unwrap_or(base))
-                .child(cell.text.clone())
-        }))
+        .children(
+            columns
+                .iter()
+                .zip(&row.cells)
+                .enumerate()
+                .map(|(i, (column, cell))| {
+                    // The first column names the row (muted); the others are values.
+                    let base = if i == 0 { muted } else { foreground };
+                    cell_box(column)
+                        .line_height(relative(1.0))
+                        .text_color(cell.color.unwrap_or(base))
+                        .child(cell.text.clone())
+                }),
+        )
 }
 
 /// A footer line with one cell per column, in the table's layout (totals).

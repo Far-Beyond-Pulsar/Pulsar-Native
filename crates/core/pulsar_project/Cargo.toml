@@ -1,0 +1,30 @@
+[package]
+name = "pulsar_project"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The one owner of every file the engine generates in a game project: the project model (Pulsar.toml, scripts crates, classes), the engine SDK mirrored into .pulsar/sdk, the generated Cargo workspace and game crate, and sync, which brings them up to date."
+
+[dependencies]
+# Every project file is read and written through the filesystem library.
+engine_fs = { workspace = true }
+# Which plugins a project enables, from their descriptors.
+pulsar_plugins = { workspace = true }
+# Where an install keeps its exported SDK.
+pulsar_install_layout = { workspace = true }
+# Classes whose compile target is Rust are generated into the game crate.
+pulsar_class = { workspace = true }
+pulsar_script_vm = { workspace = true }
+pulsar_script_codegen = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

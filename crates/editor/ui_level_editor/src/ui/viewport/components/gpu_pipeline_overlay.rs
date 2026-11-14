@@ -14,7 +14,9 @@ use std::time::Duration;
 use gpui::*;
 use ui::ActiveTheme;
 
-use super::overlay_table::{footer_note, footer_row, Cell, Column, OverlayTable, Row, CARD_WIDTH};
+use super::overlay_table::{
+    footer_note, footer_row, Cell, Column, OverlayTable, Row, TableScroll, CARD_WIDTH,
+};
 
 use engine_backend::subsystems::render::helio_renderer::{
     DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData,
@@ -60,6 +62,8 @@ fn profile_id(data: &GpuProfilerData) -> (u64, Option<u64>) {
 
 pub struct GpuPipelineOverlay {
     profile: Option<GpuProfilerData>,
+    /// The pass list's scroll, kept across updates.
+    scroll: TableScroll,
     source: RendererStatsSource,
     _tick: Task<()>,
 }
@@ -68,6 +72,7 @@ impl GpuPipelineOverlay {
     pub fn new(gpu_engine: GpuEngine, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             profile: None,
+            scroll: TableScroll::default(),
             source: RendererStatsSource::new(gpu_engine),
             _tick: Task::ready(()),
         };
@@ -133,7 +138,6 @@ where
         .into_any_element()
 }
 
-
 /// Pass, its CPU time, its GPU time.
 const COLUMNS: &[Column] = &[
     Column::left("Pass", 210.0),
@@ -153,7 +157,7 @@ impl Render for GpuPipelineOverlay {
                 theme.danger,
             )
         };
-        let table = OverlayTable::new("gpu-pass-list", "Render Pipeline", COLUMNS);
+        let table = OverlayTable::new("gpu-pass-list", &self.scroll, "Render Pipeline", COLUMNS);
         let Some(data) = &self.profile else {
             return table.render(cx);
         };

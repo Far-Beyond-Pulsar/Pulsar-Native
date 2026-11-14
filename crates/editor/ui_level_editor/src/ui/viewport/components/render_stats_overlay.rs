@@ -14,7 +14,7 @@ use std::time::Duration;
 use gpui::*;
 use ui::ActiveTheme;
 
-use super::overlay_table::{footer_note, Column, OverlayTable, Row, CARD_WIDTH};
+use super::overlay_table::{footer_note, Column, OverlayTable, Row, TableScroll, CARD_WIDTH};
 use crate::ui::viewport::performance::{compact_count, RendererStatsSource};
 
 type GpuEngine = Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>;
@@ -39,6 +39,8 @@ const SHARED: &[&str] = &[
 pub struct RenderStatsOverlay {
     source: RendererStatsSource,
     stats: Option<Arc<helio::StatsSnapshot>>,
+    /// The stat list's scroll, kept across updates.
+    scroll: TableScroll,
     _tick: Task<()>,
 }
 
@@ -47,6 +49,7 @@ impl RenderStatsOverlay {
         let mut this = Self {
             source: RendererStatsSource::new(gpu_engine),
             stats: None,
+            scroll: TableScroll::default(),
             _tick: Task::ready(()),
         };
         this.poll();
@@ -112,7 +115,7 @@ where
 
 impl Render for RenderStatsOverlay {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let table = OverlayTable::new("render-stats-list", "Render Stats", COLUMNS);
+        let table = OverlayTable::new("render-stats-list", &self.scroll, "Render Stats", COLUMNS);
         let Some(stats) = &self.stats else {
             return table.render(cx);
         };
@@ -139,7 +142,10 @@ impl Render for RenderStatsOverlay {
             .collect();
         let count = rows.len();
         table
-            .badge(format!("frame {}", stats.frame), cx.theme().muted_foreground)
+            .badge(
+                format!("frame {}", stats.frame),
+                cx.theme().muted_foreground,
+            )
             .rows(rows, false)
             .empty("No stats counted yet")
             .footer(footer_note(
@@ -149,4 +155,3 @@ impl Render for RenderStatsOverlay {
             .render(cx)
     }
 }
-

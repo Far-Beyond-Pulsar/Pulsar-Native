@@ -66,3 +66,4 @@ plugins/vendor/meshes/vg/stream/src/source.rs | Helio-layer: VgeoBytes::open tak
 plugins/vendor/sky/feature/src/sky_texture.rs | Helio-layer feature crate: polls the mtime of the real file the sky component registered, for hot reload (1 fn)
 plugins/vendor/voxel/world/src/planet_maps.rs | Helio-layer: the planet-map bake cache lives in the machine cache dir (LOCALAPPDATA/XDG), outside any project (load, store)
 tools/todo_check/src/main.rs | a repository tool reading the files git lists
+crates/core/pulsar_project/src/sdk/fs.rs | the engine SDK: reads the engine's checkout or install and writes its per-machine mirror under a project's .pulsar/sdk, which the local Cargo reads from the real disk

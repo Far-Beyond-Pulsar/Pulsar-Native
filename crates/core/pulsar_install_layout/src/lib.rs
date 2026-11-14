@@ -11,6 +11,8 @@
 //! <install root>/                   one engine install (a version)
 //!   pulsar[.exe]                    the engine
 //!   .pulsar-install.json            what the Hub installed (version, date)
+//!   sdk/                            the engine SDK games build against
+//!     pulsar-sdk.json               its index (pulsar_project::sdk)
 //!   plugins/editor/                 this install's plugin libraries
 //!     <plugin>.dll|so|dylib
 //!     plugin_integrity.json         { file name: sha-256 hex } the engine requires
@@ -109,6 +111,13 @@ impl InstallLayout {
     /// The Hub's record of the install (`version`, `install_date`, `install_path`).
     pub fn metadata_path(&self) -> PathBuf {
         self.root.join(".pulsar-install.json")
+    }
+
+    /// The engine SDK this install builds games against: the normalized
+    /// sources of the crates a game links and their index
+    /// (`pulsar_project::sdk`), mirrored into each project's `.pulsar/sdk/`.
+    pub fn sdk_dir(&self) -> PathBuf {
+        self.root.join("sdk")
     }
 
     /// This install's plugin libraries.
