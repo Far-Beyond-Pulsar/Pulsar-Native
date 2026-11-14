@@ -1,6 +1,6 @@
 //! Compiling a project's TypeScript classes headlessly.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use plugin_editor_api::{linked_script_languages, NativeRegistry, ScriptLanguage};
 use plugin_typescript::{
@@ -33,11 +33,13 @@ fn natives() -> NativeRegistry {
     NativeRegistry::with_engine_natives()
 }
 
+fn module_path(root: &Path, class: &str) -> PathBuf {
+    pulsar_class::modules::class_module_path(&root.join("src/classes").join(class))
+        .expect("the class is in the project")
+}
+
 fn module(root: &Path, class: &str) -> Module {
-    let json = std::fs::read_to_string(
-        root.join(format!("src/classes/{class}/events/.build/module.json")),
-    )
-    .expect("module.json");
+    let json = std::fs::read_to_string(module_path(root, class)).expect("module.json");
     Module::from_json(&json).expect("a module")
 }
 
@@ -50,9 +52,9 @@ fn a_class_compiles_to_the_modules_the_engine_loads() {
     let door = module(dir.path(), "Door");
     assert_eq!(door.name, "Door");
     assert!(door.function("open").is_some());
-    let build = dir.path().join("src/classes/Door/events/.build");
+    let module_dir = module_path(dir.path(), "Door");
     assert_eq!(
-        std::fs::read_to_string(build.join("language")).unwrap(),
+        std::fs::read_to_string(module_dir.with_file_name("language")).unwrap(),
         "typescript"
     );
     assert!(
@@ -105,10 +107,7 @@ fn field_identity_is_stable_across_compiles() {
 fn errors_carry_the_class_file_and_position_and_leave_no_stale_module() {
     let dir = project(&[("src/classes/Door/class.ts", DOOR)]);
     assert!(compile_project_classes(dir.path(), &natives()).is_empty());
-    assert!(dir
-        .path()
-        .join("src/classes/Door/events/.build/module.json")
-        .is_file());
+    assert!(module_path(dir.path(), "Door").is_file());
 
     std::fs::write(
         dir.path().join("src/classes/Door").join(CLASS_FILE),
@@ -124,9 +123,7 @@ fn errors_carry_the_class_file_and_position_and_leave_no_stale_module() {
     assert_eq!(problem.location.as_deref(), Some("3:16"));
     assert!(problem.message.contains("expected `int`, found `number`"));
     assert!(
-        !dir.path()
-            .join("src/classes/Door/events/.build/module.json")
-            .exists(),
+        !module_path(dir.path(), "Door").exists(),
         "never leave a module from an older source"
     );
 }
@@ -145,20 +142,20 @@ fn a_class_has_one_language() {
             .any(|p| p.message.contains("a class has one language")),
         "{problems:#?}"
     );
-    assert!(!dir
-        .path()
-        .join("src/classes/Door/events/.build/module.json")
-        .exists());
+    assert!(!module_path(dir.path(), "Door").exists());
 
     // A module another language wrote is not overwritten.
-    let dir = project(&[
-        ("src/classes/Door/class.ts", DOOR),
-        ("src/classes/Door/events/.build/language", "blueprint"),
-        (
-            "src/classes/Door/events/.build/module.json",
-            "{\"from\":\"blueprint\"}",
-        ),
-    ]);
+    let dir = project(&[("src/classes/Door/class.ts", DOOR)]);
+    let (entry, store) =
+        pulsar_class::ModuleStore::for_class_dir(&dir.path().join("src/classes/Door")).unwrap();
+    store
+        .write(
+            &entry,
+            "blueprint",
+            String::new(),
+            b"{\"from\":\"blueprint\"}",
+        )
+        .unwrap();
     let problems = compile_project_classes(dir.path(), &natives());
     assert!(
         problems
@@ -167,11 +164,7 @@ fn a_class_has_one_language() {
         "{problems:#?}"
     );
     assert_eq!(
-        std::fs::read_to_string(
-            dir.path()
-                .join("src/classes/Door/events/.build/module.json")
-        )
-        .unwrap(),
+        std::fs::read_to_string(module_path(dir.path(), "Door")).unwrap(),
         "{\"from\":\"blueprint\"}",
         "the other language's artifact survives the refusal"
     );

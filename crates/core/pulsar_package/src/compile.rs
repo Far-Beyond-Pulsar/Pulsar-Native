@@ -67,6 +67,9 @@ impl CompileOutput {
 /// allowlist of `settings.profile`.
 pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOutput {
     let mut output = CompileOutput::default();
+    // A project from before the module store keeps modules beside its
+    // classes: move them in before anything compiles or reads them.
+    pulsar_class::modules::migrate_legacy_modules(project, &ClassRegistry::scan(project));
     let natives_runtime = pulsar_game::scripting::new_runtime();
     #[cfg(feature = "scripting")]
     let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
@@ -86,6 +89,7 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
     run_languages(project, natives_runtime.natives(), &mut output);
 
     let registry = ClassRegistry::scan(project);
+    let store = pulsar_class::ModuleStore::of_project(project);
     let mut modules: Vec<(ClassEntry, Option<Module>)> = Vec::new();
     for entry in registry.entries() {
         let problem = |message: String, file: Option<PathBuf>| ScriptProblem {
@@ -94,8 +98,7 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
             file,
             message,
         };
-        let build = entry.dir.join("events").join(".build");
-        let json = build.join(pulsar_game::scripting::MODULE_JSON_FILE);
+        let json = store.module_path(&entry.id);
         let graph = entry.dir.join("graph_save.json");
         if !virtual_fs::is_file(&json) {
             if virtual_fs::is_file(&graph) {

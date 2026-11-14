@@ -1153,7 +1153,7 @@ pub unsafe extern "C" fn pulsar_pie_event_bus(out: *mut std::ffi::c_void, out_si
 ///    renderers -- Pulsar-Native#634).
 /// 2. Enables the script driver (`TickLoop::enable_scripting`): every placed
 ///    class instance in the world runs its class's compiled script
-///    (`src/classes/*/events/.build/module.json`) bound to its object, plus
+///    (`target/pulsar/scripts/<class id>/module.json`) bound to its object, plus
 ///    one instance per global script listed in `Pulsar/scripting.json` (#922).
 ///    Nothing is spawned here: `setup()` runs before the level is in the world
 ///    (standalone) and the driver finds it on its first tick, once the window
@@ -1266,7 +1266,7 @@ pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
     // ── Script classes (engine script VM) ─────────────────────────────────────
     //
     // The script driver follows the world: each placed class instance runs
-    // its class's script (src/classes/*/events/.build/module.json) bound to
+    // its class's script (target/pulsar/scripts/<class id>/) bound to
     // its object, from level load, Play-in-Editor placement or a script's
     // world::spawn. No instance is created here, and a level without class
     // instances runs no scripts. Global scripts: Pulsar/scripting.json.

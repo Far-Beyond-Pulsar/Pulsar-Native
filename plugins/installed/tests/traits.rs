@@ -95,22 +95,32 @@ fn hero_module() -> Module {
     module
 }
 
+/// Store `module` as the compiled module of the class at `dir`, in its
+/// project's module store.
+fn store_module(dir: &Path, module: &Module) {
+    let (entry, store) = pulsar_class::ModuleStore::for_class_dir(dir).unwrap();
+    store
+        .write(
+            &entry,
+            "blueprint",
+            String::new(),
+            module.to_json().unwrap().as_bytes(),
+        )
+        .unwrap();
+}
+
 /// A project with the class `Hero`: a Blueprint (`graph_save.json`) that
 /// declares the trait, and the module it compiled to.
 fn hero_project() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let class = dir.path().join(HERO_DIR);
-    std::fs::create_dir_all(class.join("events").join(".build")).unwrap();
+    std::fs::create_dir_all(&class).unwrap();
     std::fs::write(
         class.join("class.json"),
         json!({ "class_id": "Hero-guid" }).to_string(),
     )
     .unwrap();
-    std::fs::write(
-        class.join("events/.build/module.json"),
-        hero_module().to_json().unwrap(),
-    )
-    .unwrap();
+    store_module(&class, &hero_module());
     std::fs::write(
         class.join("graph_save.json"),
         json!({

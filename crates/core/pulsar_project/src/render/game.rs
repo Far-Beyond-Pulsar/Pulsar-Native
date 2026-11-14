@@ -93,8 +93,11 @@ fn manifest(model: &ProjectModel, root: &RootManifest) -> Result<String, SyncErr
             let mut spec = toml::Table::new();
             spec.insert(
                 "path".into(),
-                paths::relative(paths::GAME_DIR, &format!("{}/{}", paths::SCRIPTS_DIR, script.dir))
-                    .into(),
+                paths::relative(
+                    paths::GAME_DIR,
+                    &format!("{}/{}", paths::SCRIPTS_DIR, script.dir),
+                )
+                .into(),
             );
             doc.entry(&script.name, &toml::Value::Table(spec));
         }

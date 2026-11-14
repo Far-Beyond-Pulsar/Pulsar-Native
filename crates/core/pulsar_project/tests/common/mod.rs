@@ -12,6 +12,16 @@ pub fn write(path: &Path, text: &str) {
     std::fs::write(path, text).unwrap();
 }
 
+/// Store `module_json` as the compiled module of the class whose folder is
+/// `class_dir`, in its project's module store.
+pub fn write_module(class_dir: &Path, module_json: &str) {
+    std::fs::create_dir_all(class_dir).unwrap();
+    let (entry, store) = pulsar_class::ModuleStore::for_class_dir(class_dir).unwrap();
+    store
+        .write(&entry, "blueprint", String::new(), module_json.as_bytes())
+        .unwrap();
+}
+
 pub fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
@@ -135,7 +145,10 @@ not_in_the_game = {{ opt-level = 3 }}
         );
         write(&r.join("renderer/crates/render_core/src/lib.rs"), "");
         // Not mirrored: tests, build output, version control.
-        write(&r.join("crates/pulsar_game/tests/t.rs"), "#[test] fn t() {}");
+        write(
+            &r.join("crates/pulsar_game/tests/t.rs"),
+            "#[test] fn t() {}",
+        );
         write(&r.join("crates/pulsar_game/target/junk.bin"), "junk");
         write(&r.join("crates/pulsar_game/.git/HEAD"), "ref");
         write(&r.join("crates/pulsar_game/shaders/sky.wgsl"), "// data");

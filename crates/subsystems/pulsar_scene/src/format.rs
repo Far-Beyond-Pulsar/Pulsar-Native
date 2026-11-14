@@ -101,9 +101,8 @@ impl SceneFile {
 ///
 /// At play-mode load each binding becomes exactly one dispatcher instance
 /// whose component ops address the bound object's entity. The class must
-/// exist as compiled bytecode at
-/// `<project>/src/classes/<class_name>/events/.build/bytecode.json` — the
-/// same layout the generated `engine_main` auto-discovers.
+/// be compiled: its module is in the project's module store
+/// (`<project>/target/pulsar/scripts/<class id>/`, `pulsar_class::modules`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlueprintBinding {
     /// Compiled Blueprint class name — matches the bytecode's

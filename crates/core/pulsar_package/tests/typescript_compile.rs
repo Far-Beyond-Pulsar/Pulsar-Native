@@ -25,8 +25,8 @@ fn typescript_classes_compile_headlessly_and_link_against_the_engine() {
         "{:?}",
         output.languages
     );
-    let module =
-        std::fs::read(classes.join("Door/events/.build/module.json")).expect("module written");
+    let door_module = pulsar_class::modules::class_module_path(&classes.join("Door")).unwrap();
+    let module = std::fs::read(&door_module).expect("module written");
     assert_eq!(
         pulsar_script_vm::Module::decode(&module).unwrap().name,
         "Door"
@@ -53,8 +53,5 @@ fn typescript_classes_compile_headlessly_and_link_against_the_engine() {
             && p.message.contains("expected `int`")),
         "{problems:?}"
     );
-    assert!(
-        !classes.join("Door/events/.build/module.json").exists(),
-        "stale module removed"
-    );
+    assert!(!door_module.exists(), "stale module removed");
 }

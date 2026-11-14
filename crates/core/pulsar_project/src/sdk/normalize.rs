@@ -24,13 +24,16 @@ pub const HEADER: &str = "# Mirrored from the engine SDK by Pulsar and normalize
 # workspace values resolved; dev-dependencies, lints, tests, benches and\n\
 # examples removed). Rebuilt on every machine: do not edit.\n";
 
-const ROOT_ONLY: &[&str] = &["workspace", "patch", "profile", "replace", "lints", "badges"];
-const DEV_TABLES: &[&str] = &["dev-dependencies", "dev_dependencies"];
-const DEP_TABLES: &[&str] = &[
-    "dependencies",
-    "build-dependencies",
-    "build_dependencies",
+const ROOT_ONLY: &[&str] = &[
+    "workspace",
+    "patch",
+    "profile",
+    "replace",
+    "lints",
+    "badges",
 ];
+const DEV_TABLES: &[&str] = &["dev-dependencies", "dev_dependencies"];
+const DEP_TABLES: &[&str] = &["dependencies", "build-dependencies", "build_dependencies"];
 const TARGET_LISTS: &[&str] = &["test", "bench", "example"];
 const DROPPED_PACKAGE_KEYS: &[&str] = &["workspace", "readme", "license-file", "license_file"];
 
@@ -113,10 +116,15 @@ fn resolve_dependencies(
         if !is_inherited(spec) {
             continue;
         }
-        let member = spec.as_table().expect("an inherited spec is a table").clone();
+        let member = spec
+            .as_table()
+            .expect("an inherited spec is a table")
+            .clone();
         let (ws_dir, base) = workspace
             .and_then(|(dir, ws)| Some((dir, ws.dependencies.get(name)?)))
-            .ok_or_else(|| format!("dependency `{name}` is inherited, but its workspace has none"))?;
+            .ok_or_else(|| {
+                format!("dependency `{name}` is inherited, but its workspace has none")
+            })?;
         let mut resolved = match base {
             toml::Value::String(version) => {
                 let mut t = toml::Table::new();
@@ -124,7 +132,11 @@ fn resolve_dependencies(
                 t
             }
             toml::Value::Table(t) => t.clone(),
-            _ => return Err(format!("workspace dependency `{name}` is not a version or a table")),
+            _ => {
+                return Err(format!(
+                    "workspace dependency `{name}` is not a version or a table"
+                ))
+            }
         };
         if let Some(path) = resolved.get("path").and_then(toml::Value::as_str) {
             let target = paths::normalize_rel(&format!("{ws_dir}/{path}")).ok_or_else(|| {

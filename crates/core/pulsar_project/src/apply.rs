@@ -54,7 +54,10 @@ impl GenerationRecord {
 
     pub fn write(&self, project_root: &Path) -> Result<(), SyncError> {
         let json = serde_json::to_string_pretty(self).expect("the record serializes");
-        write(&paths::join(project_root, paths::GENERATION_RECORD), json.as_bytes())
+        write(
+            &paths::join(project_root, paths::GENERATION_RECORD),
+            json.as_bytes(),
+        )
     }
 }
 

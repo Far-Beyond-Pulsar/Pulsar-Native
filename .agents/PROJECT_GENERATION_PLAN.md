@@ -134,7 +134,7 @@ the editor on every input change.
 |---|---|---|---|
 | `Pulsar.toml` | user (editor writes through a typed API) | yes | identity, engine requirement, plugins, build options |
 | `scripts/<crate>/**` | user | yes | depends on engine crates with `{ workspace = true }`: no paths |
-| content (`*.class/`, `scene/`, assets, `Pulsar/project.json`) | user / editor tools | yes | Blueprint compile writes **only** `events/.build/module.json` |
+| content (`*.class/`, `scene/`, assets, `Pulsar/project.json`) | user / editor tools | yes | Blueprint compile writes **only** its module, to the store `target/pulsar/scripts/<class id>/` |
 | `Cargo.toml` (root) | generator | yes | virtual workspace: members, `[workspace.dependencies]`, `[patch]`; every path relative, into `.pulsar/sdk/` (2.3) |
 | `Cargo.lock` | generator seeds, cargo updates | yes | seeded from the engine's own lockfile; holds no paths |
 | `.pulsar/sdk/**` | generator, per machine | no | the engine SDK mirror: the only thing rebuilt per machine (2.3) |

@@ -30,7 +30,8 @@ impl ProjectDescriptor {
     }
 
     pub fn parse(text: &str) -> Result<Self, SyncError> {
-        let doc: toml::Table = toml::from_str(text).map_err(|e| SyncError::Descriptor(e.to_string()))?;
+        let doc: toml::Table =
+            toml::from_str(text).map_err(|e| SyncError::Descriptor(e.to_string()))?;
         let project = match doc.get("project") {
             None => None,
             Some(toml::Value::Table(t)) => Some(t),
@@ -39,7 +40,9 @@ impl ProjectDescriptor {
         let string = |key: &str| -> Result<Option<String>, SyncError> {
             match project.and_then(|p| p.get(key)) {
                 None => Ok(None),
-                Some(toml::Value::String(s)) if !s.trim().is_empty() => Ok(Some(s.trim().to_owned())),
+                Some(toml::Value::String(s)) if !s.trim().is_empty() => {
+                    Ok(Some(s.trim().to_owned()))
+                }
                 Some(_) => Err(SyncError::Descriptor(format!(
                     "`project.{key}` must be a non-empty string"
                 ))),
@@ -66,7 +69,10 @@ mod tests {
         assert_eq!(d.name.as_deref(), Some("Star Fall"));
         assert_eq!(d.version.as_deref(), Some("1.2.0"));
         assert_eq!(d.plugins.listed.get("pulsar.voxel"), Some(&false));
-        assert_eq!(ProjectDescriptor::parse("").unwrap(), ProjectDescriptor::default());
+        assert_eq!(
+            ProjectDescriptor::parse("").unwrap(),
+            ProjectDescriptor::default()
+        );
         assert!(ProjectDescriptor::parse("[project]\nname = 3\n").is_err());
     }
 }

@@ -259,8 +259,11 @@ impl ViewportPanel {
             self.perf_overlay.borrow_mut().take();
         }
         if view.overlays.state.show_gpu_pipeline_overlay {
-            bottom_left =
-                bottom_left.child(render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx));
+            bottom_left = bottom_left.child(render_gpu_pipeline_overlay(
+                gpu_engine,
+                &self.gpu_overlay,
+                cx,
+            ));
         } else {
             self.gpu_overlay.borrow_mut().take();
         }

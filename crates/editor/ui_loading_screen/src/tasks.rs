@@ -30,6 +30,7 @@ pub(crate) type TaskFn = fn(&Path) -> TaskResult;
 const ENGINE_TASKS: &[(&str, TaskFn)] = &[
     ("Preparing editor plugins", task_prepare_plugins),
     ("Verifying project structure", task_verify_project),
+    ("Moving compiled scripts", task_migrate_script_modules),
     ("Indexing project files", task_index_project_files),
     ("Reading project configuration", task_read_config),
     ("Scanning workspace packages", task_scan_packages),
@@ -139,6 +140,23 @@ fn task_verify_project(project: &Path) -> TaskResult {
     TaskResult {
         elapsed: t.elapsed(),
         detail: Some(detail),
+    }
+}
+
+/// Compiled class modules from before the module store
+/// (`<class>/events/.build/`) move into `target/pulsar/scripts/`, keyed by
+/// class id (`pulsar_class::modules`).
+fn task_migrate_script_modules(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let registry = pulsar_class::ClassRegistry::scan(project);
+    let moved = pulsar_class::modules::migrate_legacy_modules(project, &registry);
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(match moved {
+            0 => "up to date".to_owned(),
+            1 => "1 module moved".to_owned(),
+            n => format!("{n} modules moved"),
+        }),
     }
 }
 

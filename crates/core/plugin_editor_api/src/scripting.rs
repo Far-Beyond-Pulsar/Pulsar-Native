@@ -103,7 +103,7 @@ pub trait ScriptLanguage: Send + Sync {
     }
 
     /// Compile every class of this language under `project_root` to engine
-    /// script modules (each class's `events/.build/module.json`), with no
+    /// script modules (the project's module store, `pulsar_class::modules`), with no
     /// GPUI app or editor state: for CI and packaging (#879). Native calls
     /// are resolved against `natives`, the registry the game will link
     /// against. Returns every problem found; any

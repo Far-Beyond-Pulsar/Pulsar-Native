@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn script_only_changes_do_not_need_cargo() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(root.path().join("src/classes/Door/events/.build")).unwrap();
+        std::fs::create_dir_all(root.path().join("src/classes/Door")).unwrap();
         std::fs::write(root.path().join("src/lib.rs"), "// lib").unwrap();
         let artifact = root.path().join("target/release/libgame.so");
         std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
@@ -471,10 +471,14 @@ mod tests {
             "vars_save.json",
             "prefab.json",
             "class.json",
-            "events/.build/module.json",
         ] {
             std::fs::write(class.join(file), "{}").unwrap();
         }
+        let module = pulsar_class::ModuleStore::of_project(root.path())
+            .root()
+            .join("door");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("module.json"), "{}").unwrap();
         assert!(
             !any_source_newer(root.path(), &artifact),
             "script data never needs a rebuild"

@@ -41,11 +41,11 @@ use std::process::{Command, Stdio};
 
 use engine_fs::virtual_fs;
 use pulsar_class::{ClassIndex, ClassRegistry};
-pub use pulsar_content::{PackEvent, PackReport};
 use pulsar_content::{
     write_pak_set, AssetRegistry, BuildProfile, ContentKey, PackSettings, ProjectSettings,
     ASSET_REGISTRY_FILE, CONTENT_DIR_NAME, PROJECT_SETTINGS_FILE, TOC_FILE_NAME,
 };
+pub use pulsar_content::{PackEvent, PackReport};
 use serde::Serialize;
 
 /// What to package, and how.
@@ -450,11 +450,10 @@ fn cook_content(
             files.insert(format!("{dir}/{}", pulsar_class::PREFAB_FILE), json(&value));
         }
         if let Some(module) = &class.module {
+            // Keyed by the class id, where the game looks
+            // (`pulsar_class::modules::module_file`).
             files.insert(
-                format!(
-                    "{dir}/events/.build/{}",
-                    pulsar_game::scripting::MODULE_BINARY_FILE
-                ),
+                pulsar_class::modules::cooked_module_path(&entry.id),
                 module.to_binary(),
             );
         }

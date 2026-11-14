@@ -179,6 +179,21 @@ impl ModuleStore {
     }
 }
 
+impl ModuleStore {
+    /// The class whose folder is `dir`, and its project's store: what a
+    /// language compiling that folder writes to. `None` when `dir` is in no
+    /// project.
+    pub fn for_class_dir(dir: &Path) -> Option<(ClassEntry, Self)> {
+        let root = crate::registry::project_root_of_class_dir(dir)?;
+        let entry = ClassEntry {
+            id: crate::id::ensure_class_id(dir),
+            name: crate::registry::class_name_of_dir(dir),
+            dir: dir.to_path_buf(),
+        };
+        Some((entry, Self::of_project(&root)))
+    }
+}
+
 /// A class id as a folder name. Ids are UUIDs; anything else (an id from
 /// before, with characters a file system refuses) is hashed.
 fn folder_name(id: &ClassId) -> String {
@@ -191,8 +206,18 @@ fn folder_name(id: &ClassId) -> String {
     if safe {
         text.to_owned()
     } else {
-        format!("id-{:032x}", twox_hash::XxHash3_128::oneshot(text.as_bytes()))
+        format!(
+            "id-{:032x}",
+            twox_hash::XxHash3_128::oneshot(text.as_bytes())
+        )
     }
+}
+
+/// Where the class whose folder is `dir` has its compiled module in its
+/// project's store (which may not hold one). `None` when `dir` is in no
+/// project.
+pub fn class_module_path(dir: &Path) -> Option<PathBuf> {
+    ModuleStore::for_class_dir(dir).map(|(entry, store)| store.module_path(&entry.id))
 }
 
 /// Where the cook puts class `id`'s module in packaged content,
@@ -225,11 +250,13 @@ pub fn migrate_legacy_modules(project_root: &Path, registry: &crate::ClassRegist
     let mut moved = 0;
     for entry in registry.entries() {
         let legacy = entry.dir.join("events").join(".build");
-        let module = legacy.join(MODULE_JSON_FILE);
-        if !virtual_fs::is_file(&module) {
+        if !virtual_fs::is_dir(&legacy) {
             continue;
         }
-        if !store.has_module(&entry.id) {
+        // A folder with only an older VM's output (`bytecode.json`) has
+        // nothing to move; it is removed below all the same.
+        let module = legacy.join(MODULE_JSON_FILE);
+        if virtual_fs::is_file(&module) && !store.has_module(&entry.id) {
             let Ok(bytes) = virtual_fs::read_file(&module) else {
                 continue;
             };
@@ -271,15 +298,23 @@ mod tests {
     fn modules_are_stored_by_class_id_with_their_source() {
         let project = tempfile::tempdir().unwrap();
         let store = ModuleStore::of_project(project.path());
-        let door = entry(project.path(), "Door", "0b9d6c3e-1d7a-4c2e-9a51-3f0c8d2b7e10");
+        let door = entry(
+            project.path(),
+            "Door",
+            "0b9d6c3e-1d7a-4c2e-9a51-3f0c8d2b7e10",
+        );
         std::fs::create_dir_all(&door.dir).unwrap();
         std::fs::write(door.dir.join("graph_save.json"), "{}").unwrap();
         let hash = source_hash(&[door.dir.join("graph_save.json")]);
 
-        let path = store.write(&door, "blueprint", hash.clone(), b"{\"m\":1}").unwrap();
+        let path = store
+            .write(&door, "blueprint", hash.clone(), b"{\"m\":1}")
+            .unwrap();
         assert_eq!(
             path,
-            project.path().join("target/pulsar/scripts/0b9d6c3e-1d7a-4c2e-9a51-3f0c8d2b7e10/module.json")
+            project
+                .path()
+                .join("target/pulsar/scripts/0b9d6c3e-1d7a-4c2e-9a51-3f0c8d2b7e10/module.json")
         );
         assert_eq!(store.language(&door.id).as_deref(), Some("blueprint"));
         let source = store.source(&door.id).unwrap();
@@ -289,7 +324,10 @@ mod tests {
 
         std::fs::write(door.dir.join("graph_save.json"), "{\"changed\":1}").unwrap();
         let changed = source_hash(&[door.dir.join("graph_save.json")]);
-        assert!(!store.is_current(&door.id, &changed), "a changed source makes it stale");
+        assert!(
+            !store.is_current(&door.id, &changed),
+            "a changed source makes it stale"
+        );
 
         store.remove(&door.id);
         assert!(!store.has_module(&door.id));
@@ -300,7 +338,10 @@ mod tests {
         assert_eq!(folder_name(&ClassId::from("abc-123")), "abc-123");
         let odd = folder_name(&ClassId::from("name:HelloWorld"));
         assert!(odd.starts_with("id-") && !odd.contains(':'));
-        assert_eq!(cooked_module_path(&ClassId::from("abc")), "Pulsar/modules/abc.pvm");
+        assert_eq!(
+            cooked_module_path(&ClassId::from("abc")),
+            "Pulsar/modules/abc.pvm"
+        );
     }
 
     #[test]

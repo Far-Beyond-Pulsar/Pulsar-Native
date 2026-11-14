@@ -120,7 +120,8 @@ pub fn walk_package(dir: &Path) -> Result<Vec<Found>, String> {
     let mut found = Vec::new();
     let mut stack = vec![(dir.to_path_buf(), String::new())];
     while let Some((current, rel)) = stack.pop() {
-        let entries = std::fs::read_dir(&current).map_err(|e| format!("{}: {e}", current.display()))?;
+        let entries =
+            std::fs::read_dir(&current).map_err(|e| format!("{}: {e}", current.display()))?;
         for entry in entries {
             let entry = entry.map_err(|e| format!("{}: {e}", current.display()))?;
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -137,7 +138,8 @@ pub fn walk_package(dir: &Path) -> Result<Vec<Found>, String> {
             let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
             if meta.is_dir() {
                 let skipped = name == "target"
-                    || (rel.is_empty() && matches!(name.as_str(), "tests" | "benches" | "examples"))
+                    || (rel.is_empty()
+                        && matches!(name.as_str(), "tests" | "benches" | "examples"))
                     || path.join("Cargo.toml").is_file();
                 if !skipped {
                     stack.push((path, child));
@@ -160,7 +162,8 @@ pub fn all_files(dir: &Path) -> Result<Vec<String>, String> {
     }
     let mut stack = vec![(dir.to_path_buf(), String::new())];
     while let Some((current, rel)) = stack.pop() {
-        let entries = std::fs::read_dir(&current).map_err(|e| format!("{}: {e}", current.display()))?;
+        let entries =
+            std::fs::read_dir(&current).map_err(|e| format!("{}: {e}", current.display()))?;
         for entry in entries {
             let entry = entry.map_err(|e| format!("{}: {e}", current.display()))?;
             let name = entry.file_name().to_string_lossy().into_owned();
