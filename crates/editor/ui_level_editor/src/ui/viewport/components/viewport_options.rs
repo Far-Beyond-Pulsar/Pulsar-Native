@@ -27,7 +27,7 @@ fn overlay_menu(state_arc: Arc<parking_lot::RwLock<LevelEditorState>>) -> impl I
         .ghost()
         .popup_menu(move |menu, _, _| {
             let state = state_arc.read();
-            let options: [(&str, bool, fn(&mut crate::state::OverlayDomain, bool)); 4] = [
+            let options: [(&str, bool, fn(&mut crate::state::OverlayDomain, bool)); 5] = [
                 (
                     "Performance",
                     state.overlays.state.show_performance_overlay,
@@ -37,6 +37,11 @@ fn overlay_menu(state_arc: Arc<parking_lot::RwLock<LevelEditorState>>) -> impl I
                     "GPU pipeline",
                     state.overlays.state.show_gpu_pipeline_overlay,
                     crate::state::OverlayDomain::set_show_gpu_pipeline_overlay,
+                ),
+                (
+                    "Render stats",
+                    state.overlays.state.show_render_stats_overlay,
+                    crate::state::OverlayDomain::set_show_render_stats_overlay,
                 ),
                 (
                     "Stats",

@@ -18,7 +18,7 @@ use crate::{
     ui::viewport::{
         components::camera_selector::CameraSpeedControl,
         input_state::InputState,
-        performance::{Cursor, FrameSampler, LiveStats, Metric},
+        performance::{compact_count, Cursor, FrameSampler, LiveStats, Metric},
     },
 };
 
@@ -34,7 +34,7 @@ pub struct NerdsOverlay {
     stats: LiveStats,
     cursor: Cursor,
     input: Arc<InputState>,
-    shown: [String; 10],
+    shown: [String; 12],
     _tick: Task<()>,
 }
 
@@ -135,6 +135,8 @@ impl NerdsOverlay {
         next[7] = value(Metric::RenderCpuMs, |v| format!("{v:.2} ms"));
         next[8] = value(Metric::GpuMs, |v| format!("{v:.2} ms"));
         next[9] = value(Metric::GpuMemoryMb, |v| format!("{v:.0} MB"));
+        next[10] = value(Metric::DrawCalls, |v| format!("{v:.0}"));
+        next[11] = value(Metric::Vertices, compact_count);
 
         let changed = next != self.shown;
         self.shown = next;
@@ -157,6 +159,8 @@ impl Render for NerdsOverlay {
             ("Render CPU", self.shown[7].clone()),
             ("GPU Time", self.shown[8].clone()),
             ("GPU Memory", self.shown[9].clone()),
+            ("Draw Calls", self.shown[10].clone()),
+            ("Vertices", self.shown[11].clone()),
         ];
 
         v_flex()

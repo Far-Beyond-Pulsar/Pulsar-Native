@@ -102,7 +102,7 @@ fn the_engines_presets_carry_the_plugins_passes() {
         (std::mem::size_of::<GpuCameraUniforms>() * 2) as u64,
     );
     let debug_camera = uniform_buffer(&device, "Debug Camera Buffer", 64);
-    let cull_stats = uniform_buffer(&device, "Cull Stats Buffer", 64);
+    let stats = helio::FrameStats::new(&device);
     let scene_db = mirror(&device, &queue);
     let features = render_features::plugin_features();
     // Helio's shipped presets, then the pipelines the plugins' lighting
@@ -130,7 +130,7 @@ fn the_engines_presets_carry_the_plugins_passes() {
                 debug_state: Arc::new(Mutex::new(DebugDrawState::default())),
                 camera_buffer: &camera,
                 debug_camera_buffer: &debug_camera,
-                cull_stats_buffer: &cull_stats,
+                stats: &stats,
                 owns_device: false,
                 scene_db: scene_db.clone(),
             });

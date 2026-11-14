@@ -2228,6 +2228,15 @@ impl HelioRenderer {
         self.reset_taa_next_frame = true;
     }
 
+    /// The newest frame's named statistics (`helio::stats`: draw calls,
+    /// vertices, instances and whatever passes add), a frame or two behind;
+    /// `None` before the renderer is built.
+    pub fn frame_stats(&self) -> Option<std::sync::Arc<helio::StatsSnapshot>> {
+        self.inner
+            .as_ref()
+            .map(|inner| inner.scene.renderer.frame_stats().latest())
+    }
+
     /// How long a frame should take: the output's refresh interval (`None`:
     /// unpaced). Passes that stream work in size it against this
     /// (`helio::Renderer::set_frame_budget`).

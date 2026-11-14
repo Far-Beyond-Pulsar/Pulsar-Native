@@ -86,6 +86,9 @@ pub struct RendererDetails {
     /// Bytes the device's allocator holds (buffers and textures), when the
     /// backend reports it.
     pub gpu_memory_bytes: Option<u64>,
+    /// The newest frame's named statistics (`helio::stats`): draw calls,
+    /// vertices, instances, and any stat a pass contributes, by name.
+    pub frame_stats: Option<Arc<helio::StatsSnapshot>>,
 }
 
 /// The renderer's statistics, for diagnostics overlays.
@@ -287,6 +290,7 @@ impl GpuRenderer {
         self.stats_feed.publish_details(RendererDetails {
             profiler: self.get_gpu_profiler_data(),
             gpu_memory_bytes,
+            frame_stats: self.helio_renderer.as_ref().and_then(|r| r.frame_stats()),
         });
     }
 

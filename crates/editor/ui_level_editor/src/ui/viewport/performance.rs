@@ -37,11 +37,13 @@ pub enum Metric {
     RenderCpuMs,
     GpuMs,
     GpuMemoryMb,
+    DrawCalls,
+    Vertices,
     InputLatencyMs,
 }
 
 impl Metric {
-    const COUNT: usize = 7;
+    const COUNT: usize = 9;
 
     fn index(self) -> usize {
         self as usize
@@ -99,6 +101,17 @@ impl LiveStats {
     /// GPU timestamps, no allocator report) shows as unknown, not as 0.
     pub fn recorded(&self, metric: Metric) -> bool {
         self.totals[metric.index()].count > 0
+    }
+}
+
+/// A count as the overlays show it: `950`, `12.3k`, `4.56M`, `1.20B`.
+pub fn compact_count(n: f64) -> String {
+    let n = n.max(0.0);
+    match n {
+        n if n >= 1e9 => format!("{:.2}B", n / 1e9),
+        n if n >= 1e6 => format!("{:.2}M", n / 1e6),
+        n if n >= 1e4 => format!("{:.1}k", n / 1e3),
+        n => format!("{n:.0}"),
     }
 }
 
@@ -394,6 +407,17 @@ impl FrameSampler {
             }
             if let Some(bytes) = details.gpu_memory_bytes {
                 stats.record(Metric::GpuMemoryMb, bytes as f64 / (1024.0 * 1024.0));
+            }
+            // Helio's named frame stats, totalled over every pass that
+            // contributes to them (`helio::stats`).
+            if let Some(frame) = &details.frame_stats {
+                use helio::stats::{DRAW_CALLS, VERTICES};
+                if let Some(n) = frame.get(DRAW_CALLS) {
+                    stats.record(Metric::DrawCalls, n as f64);
+                }
+                if let Some(n) = frame.get(VERTICES) {
+                    stats.record(Metric::Vertices, n as f64);
+                }
             }
         }
     }

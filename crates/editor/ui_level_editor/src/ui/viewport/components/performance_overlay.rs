@@ -6,7 +6,7 @@
 //! | Section                                 | Refresh |
 //! |-----------------------------------------|---------|
 //! | Headline (UI FPS, Render FPS, Frame Time) | 10 Hz |
-//! | Rendering (render CPU, GPU time, memory) | 10 Hz |
+//! | Rendering (draws, vertices, CPU, GPU, memory) | 10 Hz |
 //! | Input (latency)                           | 10 Hz |
 //! | Charts (FPS, frame time, latency)         | 4 Hz  |
 //!
@@ -214,12 +214,12 @@ impl Render for HeadlineStats {
     }
 }
 
-// ── Rendering: render CPU, GPU time, GPU memory (10 Hz) ─────────────────────
+// ── Rendering: draw calls, vertices, render CPU, GPU time, GPU memory (10 Hz)────────────────────
 
 struct RenderingStats {
     stats: SharedStats,
     cursor: Cursor,
-    shown: [String; 3],
+    shown: [String; 5],
     _tick: Task<()>,
 }
 
@@ -253,6 +253,8 @@ impl RenderingStats {
                 }
             };
             [
+                value(Metric::DrawCalls, |v| format!("{v:.0}")),
+                value(Metric::Vertices, compact_count),
                 value(Metric::RenderCpuMs, |v| format!("{v:.2}ms")),
                 value(Metric::GpuMs, |v| format!("{v:.2}ms")),
                 value(Metric::GpuMemoryMb, |v| format!("{v:.0}MB")),
@@ -269,23 +271,36 @@ impl Render for RenderingStats {
         let theme = cx.theme();
         card(theme)
             .child(card_title("Rendering", theme))
-            // What the renderer costs per frame: CPU recording and
-            // submitting, GPU executing (the profiler's frame total).
+            // What was drawn: totals over every pass (Helio's named stats).
             .child(stat_line(
-                "Render CPU",
+                "Draw Calls",
                 self.shown[0].clone(),
                 theme.foreground,
                 theme,
             ))
             .child(stat_line(
-                "GPU Time",
+                "Vertices",
                 self.shown[1].clone(),
+                theme.foreground,
+                theme,
+            ))
+            // What the renderer costs per frame: CPU recording and
+            // submitting, GPU executing (the profiler's frame total).
+            .child(stat_line(
+                "Render CPU",
+                self.shown[2].clone(),
+                theme.foreground,
+                theme,
+            ))
+            .child(stat_line(
+                "GPU Time",
+                self.shown[3].clone(),
                 theme.foreground,
                 theme,
             ))
             .child(stat_line(
                 "GPU Memory",
-                self.shown[2].clone(),
+                self.shown[4].clone(),
                 theme.foreground,
                 theme,
             ))

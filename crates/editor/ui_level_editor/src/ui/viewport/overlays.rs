@@ -52,6 +52,7 @@ impl ViewportPanel {
                 overlays.camera_mode_selector_collapsed,
                 overlays.show_performance_overlay,
                 overlays.show_gpu_pipeline_overlay,
+                overlays.show_render_stats_overlay,
                 overlays.show_nerds_overlay,
                 overlays.debug_overlays.clone(),
                 overlays.camera_sync_locked,
@@ -240,40 +241,41 @@ impl ViewportPanel {
             })
         };
 
-        // Bottom-left: Performance overlay. A view with its own refresh timers,
-        // not rebuilt here; see `components/performance_overlay`.
+        // Bottom-left, side by side in this order, whichever are shown: the
+        // performance overlay, the render pipeline and the render stats. Each
+        // is a view with its own refresh timers, not rebuilt here; a closed
+        // one is dropped so its timers stop.
+        let mut bottom_left = h_flex().absolute().bottom_2().left_2().items_end().gap_2();
         if view.overlays.state.show_performance_overlay {
-            overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
-                render_performance_overlay(
-                    view,
-                    view_arc.clone(),
-                    &self.stats,
-                    sampler,
-                    &self.perf_overlay,
-                    cx,
-                ),
+            bottom_left = bottom_left.child(render_performance_overlay(
+                view,
+                view_arc.clone(),
+                &self.stats,
+                sampler,
+                &self.perf_overlay,
+                cx,
             ));
         } else {
-            // Closed: drop the overlay so its timers stop.
             self.perf_overlay.borrow_mut().take();
         }
-
-        // GPU Pipeline overlay - positions next to performance overlay if both visible
         if view.overlays.state.show_gpu_pipeline_overlay {
-            let overlay_div = if view.overlays.state.show_performance_overlay {
-                // Position to the right of performance overlay
-                div().absolute().bottom_2().left(px(300.0)) // 400px width + 10px gap
-            } else {
-                // Take performance overlay's position
-                div().absolute().bottom_2().left_2()
-            };
-
-            overlays = overlays.child(overlay_div.max_w(px(400.0)).child(
-                render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx),
-            ));
+            bottom_left =
+                bottom_left.child(render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx));
         } else {
             self.gpu_overlay.borrow_mut().take();
         }
+        if view.overlays.state.show_render_stats_overlay {
+            bottom_left = bottom_left.child(
+                components::render_stats_overlay::render_render_stats_overlay(
+                    gpu_engine,
+                    &self.render_stats_overlay,
+                    cx,
+                ),
+            );
+        } else {
+            self.render_stats_overlay.borrow_mut().take();
+        }
+        overlays = overlays.child(bottom_left);
 
         // Bottom-right: editor and renderer diagnostics. Its timer refreshes
         // the isolated overlay in place without invalidating the viewport.

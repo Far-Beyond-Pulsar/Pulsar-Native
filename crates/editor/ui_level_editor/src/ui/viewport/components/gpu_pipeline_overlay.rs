@@ -11,9 +11,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use gpui::prelude::FluentBuilder;
 use gpui::*;
-use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
+use ui::ActiveTheme;
+
+use super::overlay_table::{footer_note, footer_row, Cell, Column, OverlayTable, Row, CARD_WIDTH};
 
 use engine_backend::subsystems::render::helio_renderer::{
     DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData,
@@ -123,7 +124,7 @@ where
         })
         .clone();
     div()
-        .w(px(410.0))
+        .w(px(CARD_WIDTH))
         .child(
             AnyView::from(overlay)
                 .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
@@ -132,15 +133,19 @@ where
         .into_any_element()
 }
 
+
+/// Pass, its CPU time, its GPU time.
+const COLUMNS: &[Column] = &[
+    Column::left("Pass", 210.0),
+    Column::right("CPU", 65.0),
+    Column::right("GPU", 65.0),
+];
+
 impl Render for GpuPipelineOverlay {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let profiler_data = self.profile.clone();
-
-        let (background, border, foreground, muted, success, warning, danger) = {
+        let (foreground, muted, success, warning, danger) = {
             let theme = cx.theme();
             (
-                theme.background,
-                theme.border,
                 theme.foreground,
                 theme.muted_foreground,
                 theme.success,
@@ -148,212 +153,75 @@ impl Render for GpuPipelineOverlay {
                 theme.danger,
             )
         };
-
-        v_flex()
-            .gap_2()
-            .p_3()
-            .w(px(410.0))
-            .bg(background.opacity(0.85))
-            .rounded_lg()
-            .border_1()
-            .border_color(border.opacity(0.5))
-            .shadow_lg()
-            .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(foreground)
-                            .child("Render Pipeline"),
-                    )
-                    .when_some(profiler_data.as_ref(), |header, data| {
-                        let (label, color) = match data.availability {
-                            GpuProfilerAvailability::Disabled => ("GPU disabled", muted),
-                            GpuProfilerAvailability::Unsupported => ("GPU unsupported", warning),
-                            GpuProfilerAvailability::Pending => ("GPU pending", warning),
-                            GpuProfilerAvailability::Available => ("GPU available", success),
-                            GpuProfilerAvailability::Backpressured => ("GPU backpressured", danger),
-                        };
-                        header.child(div().text_xs().text_color(color).child(label))
-                    }),
-            )
-            .child(div().w_full().h(px(1.0)).bg(border))
-            .map(|this| {
-                if let Some(ref data) = profiler_data {
-                    let mut render_passes: Vec<&DiagnosticMetric> = data
-                        .render_metrics
-                        .iter()
-                        .filter(|metric| metric.cpu_ms.is_some() || metric.gpu_ms.is_some())
-                        .collect();
-                    render_passes.sort_by(|a, b| {
-                        let a_time = a.gpu_ms.or(a.cpu_ms).unwrap_or_default();
-                        let b_time = b.gpu_ms.or(b.cpu_ms).unwrap_or_default();
-                        b_time.total_cmp(&a_time)
-                    });
-
-                    this.child(
-                        v_flex()
-                            .gap_1()
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .items_center()
-                                    .child(div().w(px(16.0)).flex_none())
-                                    .child(
-                                        div()
-                                            .w(px(210.0))
-                                            .flex_none()
-                                            .text_xs()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(muted)
-                                            .child("Pass"),
-                                    )
-                                    .child(
-                                        div()
-                                            .w(px(65.0))
-                                            .flex_none()
-                                            .text_right()
-                                            .text_xs()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(muted)
-                                            .child("CPU"),
-                                    )
-                                    .child(
-                                        div()
-                                            .w(px(65.0))
-                                            .flex_none()
-                                            .text_right()
-                                            .text_xs()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(muted)
-                                            .child("GPU"),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .id("gpu-pass-list")
-                                    .w_full()
-                                    .max_h(px(300.0))
-                                    .scrollable(gpui::Axis::Vertical)
-                                    .occlude()
-                                    .child(v_flex().gap_0p5().children(
-                                        render_passes.iter().enumerate().map(|(index, metric)| {
-                                            let (r, g, b) = PASS_COLORS[index % PASS_COLORS.len()];
-                                            h_flex()
-                                                .w_full()
-                                                .items_center()
-                                                .child(
-                                                    div().w(px(16.0)).flex_none().child(
-                                                        div()
-                                                            .w(px(8.0))
-                                                            .h(px(8.0))
-                                                            .rounded(px(2.0))
-                                                            .bg(hsla(r, g, b, 1.0)),
-                                                    ),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .w(px(210.0))
-                                                        .flex_none()
-                                                        .overflow_hidden()
-                                                        .text_xs()
-                                                        .text_color(muted)
-                                                        .line_height(relative(1.0))
-                                                        .whitespace_nowrap()
-                                                        .child(metric.name),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .w(px(65.0))
-                                                        .flex_none()
-                                                        .text_right()
-                                                        .text_xs()
-                                                        .text_color(foreground)
-                                                        .child(time_label(metric.cpu_ms)),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .w(px(65.0))
-                                                        .flex_none()
-                                                        .text_right()
-                                                        .text_xs()
-                                                        .text_color(foreground)
-                                                        .child(time_label(metric.gpu_ms)),
-                                                )
-                                        }),
-                                    )),
-                            )
-                            .child(div().w_full().h(px(1.0)).bg(border).mt_1())
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .items_center()
-                                    .child(div().w(px(16.0)).flex_none())
-                                    .child(
-                                        div()
-                                            .w(px(210.0))
-                                            .flex_none()
-                                            .text_xs()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(foreground)
-                                            .child("Pass totals"),
-                                    )
-                                    .child(
-                                        div()
-                                            .w(px(65.0))
-                                            .flex_none()
-                                            .text_right()
-                                            .text_xs()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(timing_color(
-                                                data.total_cpu_ms,
-                                                success,
-                                                warning,
-                                                danger,
-                                            ))
-                                            .child(time_label(data.total_cpu_ms)),
-                                    )
-                                    .child(
-                                        div()
-                                            .w(px(65.0))
-                                            .flex_none()
-                                            .text_right()
-                                            .text_xs()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(timing_color(
-                                                data.total_gpu_ms,
-                                                success,
-                                                warning,
-                                                danger,
-                                            ))
-                                            .child(time_label(data.total_gpu_ms)),
-                                    ),
-                            )
-                            .child(div().text_xs().text_color(muted).child(format!(
-                                "CPU frame {} · GPU frame {} · lag {} · drops {} · overflows {}",
-                                data.frame_count,
-                                data.gpu_frame_count
-                                    .map(|frame| frame.to_string())
-                                    .unwrap_or_else(|| "—".to_owned()),
-                                data.gpu_lag_frames
-                                    .map(|lag| lag.to_string())
-                                    .unwrap_or_else(|| "—".to_owned()),
-                                data.readback_drops,
-                                data.query_overflows
-                            ))),
-                    )
-                } else {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child("Waiting for the renderer"),
-                    )
+        let table = OverlayTable::new("gpu-pass-list", "Render Pipeline", COLUMNS);
+        let Some(data) = &self.profile else {
+            return table.render(cx);
+        };
+        let (label, color) = match data.availability {
+            GpuProfilerAvailability::Disabled => ("GPU disabled", muted),
+            GpuProfilerAvailability::Unsupported => ("GPU unsupported", warning),
+            GpuProfilerAvailability::Pending => ("GPU pending", warning),
+            GpuProfilerAvailability::Available => ("GPU available", success),
+            GpuProfilerAvailability::Backpressured => ("GPU backpressured", danger),
+        };
+        // The passes that recorded anything, slowest first.
+        let mut passes: Vec<&DiagnosticMetric> = data
+            .render_metrics
+            .iter()
+            .filter(|metric| metric.cpu_ms.is_some() || metric.gpu_ms.is_some())
+            .collect();
+        passes.sort_by(|a, b| {
+            let a_time = a.gpu_ms.or(a.cpu_ms).unwrap_or_default();
+            let b_time = b.gpu_ms.or(b.cpu_ms).unwrap_or_default();
+            b_time.total_cmp(&a_time)
+        });
+        let rows: Vec<Row> = passes
+            .iter()
+            .enumerate()
+            .map(|(index, metric)| {
+                let (r, g, b) = PASS_COLORS[index % PASS_COLORS.len()];
+                Row {
+                    swatch: Some(hsla(r, g, b, 1.0)),
+                    cells: vec![
+                        metric.name.into(),
+                        time_label(metric.cpu_ms).into(),
+                        time_label(metric.gpu_ms).into(),
+                    ],
                 }
             })
-            .into_any_element()
+            .collect();
+        let total = |ms: Option<f32>| Cell {
+            text: time_label(ms).into(),
+            color: Some(timing_color(ms, success, warning, danger)),
+        };
+        table
+            .badge(label, color)
+            .rows(rows, true)
+            .footer(footer_row(
+                COLUMNS,
+                true,
+                vec![
+                    "Pass totals".into(),
+                    total(data.total_cpu_ms),
+                    total(data.total_gpu_ms),
+                ],
+                foreground,
+            ))
+            .footer(footer_note(
+                format!(
+                    "CPU frame {} · GPU frame {} · lag {} · drops {} · overflows {}",
+                    data.frame_count,
+                    data.gpu_frame_count
+                        .map(|frame| frame.to_string())
+                        .unwrap_or_else(|| "—".to_owned()),
+                    data.gpu_lag_frames
+                        .map(|lag| lag.to_string())
+                        .unwrap_or_else(|| "—".to_owned()),
+                    data.readback_drops,
+                    data.query_overflows
+                ),
+                cx,
+            ))
+            .render(cx)
     }
 }
