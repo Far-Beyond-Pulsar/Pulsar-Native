@@ -604,7 +604,7 @@ joins) and confirmed by the real-engine check.
 
 ### Build output
 
-15. **A game build prints the engine's warnings.** Cargo caps lints only for
+13. **A game build prints the engine's warnings.** Cargo caps lints only for
     registry and git dependencies; mirrored SDK packages are path
     dependencies, so their warnings (179 in the real-engine check, from
     `pulsar_reflection`, `pulsar_std`, `plugin_editor_api`, `wgsl_std` and
@@ -614,7 +614,7 @@ joins) and confirmed by the real-engine check.
     is warning-free engine crates (CI's clippy gate covers libraries, not
     rustc warnings in every crate); meanwhile the P2 build runner shows
     diagnostics for the project's own crates and folds the rest.
-16. **Generated class code has unused imports.** `pulsar_script_codegen`
+14. **Generated class code has unused imports.** `pulsar_script_codegen`
     emits one fixed `use ...::vm::{...}` list for every class
     (`src/lib.rs:136`), so a class that uses no collection or unary
     instruction warns (`CollOp`, `Type`, `UnOp` in the real-engine check's
@@ -623,12 +623,12 @@ joins) and confirmed by the real-engine check.
 
 ### Environment
 
-13. **`cargo tree --target all` downloads other platforms' crates** the first
+15. **`cargo tree --target all` downloads other platforms' crates** the first
     time the index is built on a fresh checkout (it needs every target's
     dependencies to answer), so the first sync on a new machine needs the
     network even when the engine is already built. Later syncs reuse the
     cached index. Exported SDKs never run Cargo.
-14. **Pre-existing:** `cargo clippy` on `pulsar_install_layout` fails the
+16. **Pre-existing:** `cargo clippy` on `pulsar_install_layout` fails the
     `std::fs` rule (`Path::is_dir`, `std::fs::remove_file`, ...) in code this
     work did not touch; `cargo clippy -p pulsar_project` without `--no-deps`
     stops there. Unrelated to project generation.
