@@ -939,9 +939,10 @@ unchanged. Baseline: 56 dependency violations, 132 (file, kind) names. Now: **2*
   unit tests that drive a plugin's component through crate internals (possession with the
   input plugin, light property edits, level rules over the sky and wind singletons); they need
   kernel fixtures or public seams to move.
-- **The baked-lighting plugin**: a new plugin repository, and the G-buffer's lightmap-UV target
-  leaving the frame through a `GBufferContributor` (a Helio frame change with render
-  acceptance). No engine path bakes today; only Helio's cathedral examples do.
+- **The baked-lighting plugin**: done in p24 (`pulsar.bake`, Plugin_Bake at
+  `plugins/vendor/bake`); the G-buffer's lightmap-UV target became the frame's surface
+  channel with a requested payload rather than a contributor's target (the G-buffer is at
+  eight targets). Helio's `plugin-migration.md`, "As built, p24", has the design.
 
 ## 13. T1-T4 as built (p21)
 
