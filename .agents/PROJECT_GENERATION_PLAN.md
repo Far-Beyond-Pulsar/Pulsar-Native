@@ -135,11 +135,12 @@ the editor on every input change.
 | `Pulsar.toml` | user (editor writes through a typed API) | yes | identity, engine requirement, plugins, build options |
 | `scripts/<crate>/**` | user | yes | depends on engine crates with `{ workspace = true }`: no paths |
 | content (`*.class/`, `scene/`, assets, `Pulsar/project.json`) | user / editor tools | yes | Blueprint compile writes **only** `events/.build/module.json` |
-| `Cargo.toml` (root) | generator | **no** | virtual workspace: members, `[workspace.dependencies]`, `[patch]` — the only place an engine path appears |
-| `Cargo.lock` | generator seeds, cargo updates | no | seeded from the engine's own lockfile |
+| `Cargo.toml` (root) | generator | yes | virtual workspace: members, `[workspace.dependencies]`, `[patch]`; every path relative, into `.pulsar/sdk/` (2.3) |
+| `Cargo.lock` | generator seeds, cargo updates | yes | seeded from the engine's own lockfile; holds no paths |
+| `.pulsar/sdk/**` | generator, per machine | no | the engine SDK mirror: the only thing rebuilt per machine (2.3) |
 | `.pulsar/build/game/**` | generator | no | the game crate: `Cargo.toml`, `src/{main,lib,plugins,scripts}.rs`, nativized classes |
 | `.pulsar/build/generated.json` | generator | no | the record (2.4) |
-| `.gitignore` entries | generator adds once | yes | `/target`, `/Cargo.toml`, `/Cargo.lock`, `/.pulsar/build/` |
+| `.gitignore` entries | generator adds once | yes | `/target`, `/.pulsar/sdk/`, `/.pulsar/build/` |
 
 No marker comments, no opt-outs. A user who wants different launcher code
 writes it in a scripts crate (2.6); a user who wants a different build setting
@@ -154,7 +155,7 @@ and the baking half of `engine_backend/build.rs`. Knows no plugin kind (reads
 ```
 pulsar_project
   descriptor.rs   Pulsar.toml: typed read/write (toml_edit, formatting kept), format version
-  sdk.rs          EngineSdk: where this engine's crates are on this machine (2.3)
+  sdk.rs          SDK index, EngineSdk::locate, the .pulsar/sdk mirror + normalization (2.3)
   model.rs        ProjectModel::resolve(root, &EngineSdk) -> ProjectModel   (reads inputs only)
   render/         ProjectModel -> FileSet   (pure; one module per file; toml via typed structs)
   apply.rs        FileSet + record -> writes, deletes, drift report (2.4)
@@ -164,29 +165,69 @@ pulsar_project
 ```
 
 `ProjectModel` is plain data: name (from `Pulsar.toml`, the one identity),
-crate idents, engine SDK root and fingerprint, enabled runtime plugin roots,
+crate idents, engine fingerprint and SDK index, enabled runtime plugin roots,
 scripts crates (by parsing their manifests with `toml`), nativized classes
 (2.6), build profile. `render` cannot touch the filesystem, so it is
 golden-testable and deterministic: no clocks, sorted iteration, stable
 formatting.
 
-### 2.3 The engine SDK
+### 2.3 The engine SDK, mirrored into the project
 
-The engine is referenced by identity and located at sync time, never baked as
-an absolute path at engine compile time:
+**No Cargo file anywhere in a project holds a machine-specific path.** The
+engine crates a game links are mirrored into the project at `.pulsar/sdk/`,
+and every Cargo path points there, relative to the project:
 
-- **Engine build** carries a relative description of what games link: the
-  game dependency list, the runtime plugin roots, the workspace `[patch]`
-  table, all with **workspace-relative** paths, plus the engine's
-  `Cargo.lock`, embedded by `pulsar_project/build.rs`. And an engine
-  fingerprint (version + git rev of the build).
-- **`EngineSdk::locate()`** resolves the root those relative paths are under:
-  the source checkout for a dev build (found from the running executable's
-  location, the way `pulsar_install_layout` finds plugins; not
-  `CARGO_MANIFEST_DIR`), or the install's `sdk/` directory for a Hub install
-  (decision Q1). Fails with a clear error, never a half-written project.
-- Paths become absolute only in the root `Cargo.toml`, which is per-machine and
-  regenerated (2.1). Scripts crates say `pulsar_game = { workspace = true }`.
+```toml
+# <project>/Cargo.toml (generated, portable, committed)
+[workspace]
+members  = [".pulsar/build/game", "scripts/*"]
+exclude  = [".pulsar/sdk"]
+resolver = "2"
+
+[workspace.dependencies]
+pulsar_game = { path = ".pulsar/sdk/crates/core/pulsar_game" }
+lights_plugin = { path = ".pulsar/sdk/plugins/vendor/lights" }
+# ...
+
+[patch."https://github.com/Far-Beyond-Pulsar/..."]
+some_crate = { path = ".pulsar/sdk/crates/third-party/..." }   # path patches relative too; git patches stay git
+```
+
+The Cargo files are the same on every machine for a given engine version and
+`Pulsar.toml`. What is rebuilt per machine is the **SDK mirror**, not Cargo:
+
+- **The SDK index**, embedded in the engine by `pulsar_project/build.rs`: the
+  path-dependency closure of the game dependency list and of every runtime
+  plugin root (what the game can link), each package with its
+  **workspace-relative** directory; the workspace `[patch]` table with
+  workspace-relative paths; the engine's `Cargo.lock`; and the engine
+  fingerprint (version + git rev).
+- **The SDK source** on this machine, found by `EngineSdk::locate()`: the
+  install's `sdk/` directory for a Hub install (Q1), or the source checkout for
+  a dev build (found from the running executable, the way
+  `pulsar_install_layout` finds plugins; never `CARGO_MANIFEST_DIR`). Missing
+  → a clear error; nothing is half-written.
+- **The mirror** (`.pulsar/sdk/`, gitignored): each indexed package copied
+  under its workspace-relative directory, so the index's relative paths just
+  gain a `.pulsar/sdk/` prefix. Only what a build needs is copied (what
+  `cargo package` would list: the manifest's `include`/`exclude`, no
+  `target/`, tests, benches, examples). Each package manifest is
+  **normalized** on the way in, the way `cargo package` does it: `workspace =
+  true` fields and dependencies are replaced by the engine workspace's
+  concrete values, and path dependencies between SDK packages become relative
+  paths inside the mirror. So the mirrored crates stand alone and never pick up
+  the game project's workspace. For a Hub install the release pipeline ships
+  `sdk/` already normalized; for a dev checkout the mirror normalizes.
+- **Mirroring is incremental**: a file is copied when its size, mtime or hash
+  differs, files the SDK no longer has are deleted, and
+  `.pulsar/sdk/sdk.json` records the engine fingerprint and a per-file
+  manifest. A fresh clone, a new machine or an engine upgrade rebuilds the
+  mirror on the next sync; an unchanged one costs a stat walk.
+- Scripts crates say `pulsar_game = { workspace = true }`, resolved through the
+  root `[workspace.dependencies]`.
+
+Cargo's own lockfile records path dependencies without a path, so
+`Cargo.lock` is portable too.
 
 The reflection-alias patch (`build.rs:186-195`) and the `libc` /
 `find-msvc-tools` pins (finding 8) are not carried over: the seeded lockfile
@@ -217,7 +258,8 @@ at its source (bump SceneDB's `pulsar_reflection` rev) before P2 lands.
 
 ### 2.5 Triggers
 
-`sync` hashes its inputs (engine fingerprint, SDK root, `Pulsar.toml`, the
+`sync` first brings the SDK mirror up to date (2.3), then hashes its inputs
+(engine fingerprint, `Pulsar.toml`, the
 scripts crate manifests, the nativized class modules, generator version) and
 returns at once when the hash matches the record and no recorded file is
 missing. So it is called everywhere, cheaply:
@@ -286,11 +328,11 @@ from `PieHost::output_dylib_path` guessing.
 
 ## 4. Decisions
 
-- **Q1. Where a Hub-installed engine's crates come from. Decided:** each install ships `sdk/`, a source snapshot of the workspace
-  crates a game links plus their `[patch]` sources and the `Cargo.lock`, built
-  by the release pipeline; `EngineSdk::locate()` prefers it. Alternative: git
-  revs only — needs network at first build, every submodule pushed to its
-  upstream at the pinned rev, and the reflection alias hack stays.
+- **Q1. Where a Hub-installed engine's crates come from. Decided:** each
+  install ships `sdk/`, a normalized source snapshot of the crates a game
+  links plus their path `[patch]` sources and the `Cargo.lock`, built by the
+  release pipeline. It is the source `.pulsar/sdk/` is mirrored from (2.3);
+  projects never point at it directly.
 - **Q2. Blueprint → Rust export. Decided:** the Blueprint editor's existing
   Rust/VM picker (`CompileMode`, `blueprint_editor/src/core/types.rs:152`)
   stays the control. Today it is panel state reset on open
@@ -299,9 +341,12 @@ from `PieHost::output_dylib_path` guessing.
   always writes `module.json`; the editor writes no Rust. The generator reads
   each class's `compile_target` and emits `.pulsar/build/game/src/classes/<ident>.rs`
   for the `rust` ones, so changing the picker and compiling triggers a sync.
-- **Q3. Root `Cargo.toml` committed or ignored. Decided:** ignored,
-  regenerated per machine (it holds the only engine paths).
-  `pulsar project sync` restores it for command-line users.
+- **Q3. Machine-specific Cargo paths. Decided:** there are none. The SDK is
+  mirrored into `.pulsar/sdk/` (gitignored, rebuilt per machine) and every
+  Cargo path is project-relative, so the root `Cargo.toml` and `Cargo.lock`
+  are identical on every machine and committed; an engine upgrade shows up as
+  a reviewable diff. `pulsar project sync` rebuilds the mirror and the game
+  crate for command-line users after a clone.
 
 ---
 
@@ -313,7 +358,11 @@ logged in section 6 and fixed in a cleanup pass.
 - **P1 — `pulsar_project` crate.** descriptor, sdk, model, render, apply,
   sync, the record. Tests: golden output per file; idempotency (second sync
   writes nothing, reads only inputs); deletion of files no longer produced;
-  drift detection; interrupted sync; no absolute path in any committed file.
+  drift detection; interrupted sync; no absolute path in any file the
+  generator writes outside `.pulsar/sdk/sdk.json`; the same project synced from
+  two different directories gives byte-identical `Cargo.toml` and
+  `Cargo.lock`; SDK mirror: incremental copy, deletion, manifest normalization
+  (no `workspace = true` left in a mirrored manifest), rebuilt after deletion.
 - **P2 — switch every caller, delete the old builder.** Build runner, PIE,
   packager, engine startup step, watcher triggers, `pulsar project sync`.
   `core_project_builder.rs` and the `engine_backend/build.rs` baking go in the
