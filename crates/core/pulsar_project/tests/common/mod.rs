@@ -65,6 +65,9 @@ impl Engine {
                 r#"[workspace]
 resolver = "2"
 members = ["crates/*", "plugins/lights", "plugins/lights/component", "plugins/lights/editor", "plugins/tool"]
+# A workspace of its own (as the renderer submodule is): its crates inherit
+# from it, not from this one.
+exclude = ["renderer"]
 
 [workspace.package]
 version = "0.4.0"
@@ -75,6 +78,7 @@ unsafe_code = "forbid"
 
 [workspace.dependencies]
 pulsar_game = {{ path = "crates/pulsar_game" }}
+render = {{ path = "renderer/crates/render" }}
 tracing-subscriber = {{ path = "crates/tracing-subscriber" }}
 lights_plugin = {{ path = "plugins/lights" }}
 tool_plugin = {{ path = "plugins/tool" }}
@@ -110,9 +114,26 @@ not_in_the_game = {{ opt-level = 3 }}
             "crates/pulsar_game",
             "pulsar_game",
             "[dependencies]\ntracing.workspace = true\nserde = { workspace = true }\n\
-             serde_json.workspace = true\ninventory.workspace = true\n\n\
+             serde_json.workspace = true\ninventory.workspace = true\nrender.workspace = true\n\n\
              [dev-dependencies]\nunused_editor.workspace = true\n",
         );
+        write(
+            &r.join("renderer/Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"crates/*\"]\n\n\
+             [workspace.package]\nversion = \"7.0.0\"\nedition = \"2021\"\n\n\
+             [workspace.dependencies]\nrender_core = { path = \"crates/render_core\" }\n",
+        );
+        write(
+            &r.join("renderer/crates/render/Cargo.toml"),
+            "[package]\nname = \"render\"\nversion.workspace = true\nedition.workspace = true\n\n\
+             [dependencies]\nrender_core.workspace = true\n",
+        );
+        write(&r.join("renderer/crates/render/src/lib.rs"), "");
+        write(
+            &r.join("renderer/crates/render_core/Cargo.toml"),
+            "[package]\nname = \"render_core\"\nversion.workspace = true\nedition.workspace = true\n",
+        );
+        write(&r.join("renderer/crates/render_core/src/lib.rs"), "");
         // Not mirrored: tests, build output, version control.
         write(&r.join("crates/pulsar_game/tests/t.rs"), "#[test] fn t() {}");
         write(&r.join("crates/pulsar_game/target/junk.bin"), "junk");

@@ -210,6 +210,12 @@ The Cargo files are the same on every machine for a given engine version and
     path dependency of a package that is not a workspace member, which every
     mirrored package is, so the editor-only side of a plugin (its `editor`
     feature's crates) is never mirrored.
+  - **Each package inherits from its own workspace**, found the way Cargo
+    finds it (`package.workspace`, else the nearest `[workspace]` at or above
+    it that does not exclude it). That is not always the engine's: Helio is a
+    workspace of its own (excluded from the engine's), and its crates inherit
+    from it. The index carries every such workspace's tables
+    (`SdkIndex::workspaces`) and each package's (`SdkPackage::workspace`).
   - **Installed plugins** are the normal dependencies of the engine's
     `installed_plugins` crate (the set the editor links), not every workspace
     member with a descriptor: the workspace also holds test-fixture plugins.

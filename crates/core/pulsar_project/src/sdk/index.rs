@@ -223,8 +223,10 @@ impl SdkIndex {
 
     /// The workspace `package` inherits from, if any.
     pub fn workspace_of(&self, package: &SdkPackage) -> Option<(&str, &SdkWorkspace)> {
-        let dir = package.workspace.as_deref()?;
-        Some((dir, self.workspaces.get(dir)?))
+        let (dir, workspace) = self
+            .workspaces
+            .get_key_value(package.workspace.as_deref()?)?;
+        Some((dir.as_str(), workspace))
     }
 }
 

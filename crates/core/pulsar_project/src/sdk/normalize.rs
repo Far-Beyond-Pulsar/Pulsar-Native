@@ -35,8 +35,13 @@ const TARGET_LISTS: &[&str] = &["test", "bench", "example"];
 const DROPPED_PACKAGE_KEYS: &[&str] = &["workspace", "readme", "license-file", "license_file"];
 
 /// Normalize `manifest`, the manifest of the package at `package_dir`
-/// (relative to the SDK root), against the engine workspace `ws`.
-pub fn normalize(manifest: &str, package_dir: &str, ws: &SdkWorkspace) -> Result<String, String> {
+/// (relative to the SDK root), against `workspace`: the directory (relative to
+/// the SDK root) and tables of the workspace it inherits from, if any.
+pub fn normalize(
+    manifest: &str,
+    package_dir: &str,
+    workspace: Option<(&str, &SdkWorkspace)>,
+) -> Result<String, String> {
     let body = manifest.strip_prefix(HEADER).unwrap_or(manifest);
     let mut doc: toml::Table = toml::from_str(body).map_err(|e| e.to_string())?;
 
@@ -57,10 +62,9 @@ pub fn normalize(manifest: &str, package_dir: &str, ws: &SdkWorkspace) -> Result
         .map(|(key, _)| key.clone())
         .collect();
     for key in inherited {
-        let value = ws
-            .package
-            .get(&key)
-            .ok_or_else(|| format!("`package.{key}` is inherited, but the workspace has none"))?;
+        let value = workspace
+            .and_then(|(_, ws)| ws.package.get(&key))
+            .ok_or_else(|| format!("`package.{key}` is inherited, but its workspace has none"))?;
         package.insert(key, value.clone());
     }
     for key in ["autotests", "autobenches", "autoexamples"] {
@@ -69,7 +73,7 @@ pub fn normalize(manifest: &str, package_dir: &str, ws: &SdkWorkspace) -> Result
 
     for table in DEP_TABLES {
         if let Some(deps) = doc.get_mut(*table).and_then(toml::Value::as_table_mut) {
-            resolve_dependencies(deps, package_dir, ws)?;
+            resolve_dependencies(deps, package_dir, workspace)?;
         }
     }
     if let Some(targets) = doc.get_mut("target").and_then(toml::Value::as_table_mut) {
@@ -82,7 +86,7 @@ pub fn normalize(manifest: &str, package_dir: &str, ws: &SdkWorkspace) -> Result
             }
             for table in DEP_TABLES {
                 if let Some(deps) = target.get_mut(*table).and_then(toml::Value::as_table_mut) {
-                    resolve_dependencies(deps, package_dir, ws)?;
+                    resolve_dependencies(deps, package_dir, workspace)?;
                 }
             }
         }
@@ -103,17 +107,16 @@ fn is_inherited(value: &toml::Value) -> bool {
 fn resolve_dependencies(
     deps: &mut toml::Table,
     package_dir: &str,
-    ws: &SdkWorkspace,
+    workspace: Option<(&str, &SdkWorkspace)>,
 ) -> Result<(), String> {
     for (name, spec) in deps.iter_mut() {
         if !is_inherited(spec) {
             continue;
         }
         let member = spec.as_table().expect("an inherited spec is a table").clone();
-        let base = ws
-            .dependencies
-            .get(name)
-            .ok_or_else(|| format!("dependency `{name}` is inherited, but the workspace has none"))?;
+        let (ws_dir, base) = workspace
+            .and_then(|(dir, ws)| Some((dir, ws.dependencies.get(name)?)))
+            .ok_or_else(|| format!("dependency `{name}` is inherited, but its workspace has none"))?;
         let mut resolved = match base {
             toml::Value::String(version) => {
                 let mut t = toml::Table::new();
@@ -124,7 +127,7 @@ fn resolve_dependencies(
             _ => return Err(format!("workspace dependency `{name}` is not a version or a table")),
         };
         if let Some(path) = resolved.get("path").and_then(toml::Value::as_str) {
-            let target = paths::normalize_rel(path).ok_or_else(|| {
+            let target = paths::normalize_rel(&format!("{ws_dir}/{path}")).ok_or_else(|| {
                 format!("workspace dependency `{name}` has a path outside the workspace: {path}")
             })?;
             resolved.insert(
@@ -220,7 +223,7 @@ path = "tests/lights.rs"
 
     #[test]
     fn inherited_values_resolve_and_workspace_only_tables_go() {
-        let out = normalize(MANIFEST, "plugins/vendor/lights", &workspace()).unwrap();
+        let out = normalize(MANIFEST, "plugins/vendor/lights", Some(("", &workspace()))).unwrap();
         assert!(out.starts_with(HEADER));
         let doc: toml::Table = toml::from_str(&out).unwrap();
         let package = doc["package"].as_table().unwrap();
@@ -256,16 +259,48 @@ path = "tests/lights.rs"
     }
 
     #[test]
+    fn a_package_inherits_from_its_own_nested_workspace() {
+        let renderer: SdkWorkspace = toml::from_str::<toml::Table>(
+            "[package]\nversion = \"7.0.0\"\nedition = \"2021\"\n\
+             [dependencies]\nhelio-core = { path = \"crates/helio-core\" }\n",
+        )
+        .map(|t| SdkWorkspace {
+            package: t["package"].as_table().unwrap().clone(),
+            dependencies: t["dependencies"].as_table().unwrap().clone(),
+            ..Default::default()
+        })
+        .unwrap();
+        let manifest = "[package]\nname = \"helio\"\nversion.workspace = true\n\
+                        [dependencies]\nhelio-core.workspace = true\n";
+        let out = normalize(
+            manifest,
+            "crates/renderer/helio/crates/helio",
+            Some(("crates/renderer/helio", &renderer)),
+        )
+        .unwrap();
+        let doc: toml::Table = toml::from_str(&out).unwrap();
+        assert_eq!(doc["package"]["version"].as_str(), Some("7.0.0"));
+        assert_eq!(
+            doc["dependencies"]["helio-core"]["path"].as_str(),
+            Some("../helio-core"),
+            "rebased from the renderer's workspace root, not the engine's"
+        );
+
+        let error = normalize(manifest, "x", None).unwrap_err();
+        assert!(error.contains("package.version"), "{error}");
+    }
+
+    #[test]
     fn normalizing_is_idempotent() {
-        let once = normalize(MANIFEST, "plugins/vendor/lights", &workspace()).unwrap();
-        let twice = normalize(&once, "plugins/vendor/lights", &workspace()).unwrap();
+        let once = normalize(MANIFEST, "plugins/vendor/lights", Some(("", &workspace()))).unwrap();
+        let twice = normalize(&once, "plugins/vendor/lights", Some(("", &workspace()))).unwrap();
         assert_eq!(once, twice);
     }
 
     #[test]
     fn an_inherited_value_the_workspace_lacks_is_an_error() {
         let manifest = "[package]\nname = \"x\"\nlicense.workspace = true\n";
-        let error = normalize(manifest, "x", &workspace()).unwrap_err();
+        let error = normalize(manifest, "x", Some(("", &workspace()))).unwrap_err();
         assert!(error.contains("package.license"), "{error}");
     }
 }

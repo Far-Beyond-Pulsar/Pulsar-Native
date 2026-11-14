@@ -133,21 +133,27 @@ impl EngineSdk {
     }
 
     /// Everything a checkout's index is computed from: the workspace
-    /// manifest and lockfile, and the manifest and plugin descriptor of each
-    /// package in `index`. A package newly reachable from a game is only
+    /// manifest and lockfile, the manifest and plugin descriptor of each
+    /// package in `index`, and the manifest of each nested workspace. A package newly reachable from a game is only
     /// reachable through a change to one of these.
     fn checkout_key(&self, index: &SdkIndex) -> Result<String, String> {
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
         for rel in ["Cargo.toml", "Cargo.lock"] {
             files.push((rel.to_owned(), fs::read(&self.root.join(rel))?));
         }
-        for package in &index.packages {
-            for file in ["Cargo.toml", pulsar_plugins::DESCRIPTOR_FILE] {
-                let rel = format!("{}/{file}", package.dir);
-                let bytes = fs::read_if_exists(&crate::paths::join(&self.root, &rel))?
-                    .unwrap_or_default();
-                files.push((rel, bytes));
-            }
+        let package_files = index.packages.iter().flat_map(|package| {
+            ["Cargo.toml", pulsar_plugins::DESCRIPTOR_FILE].map(|file| format!("{}/{file}", package.dir))
+        });
+        // Nested workspaces (a submodule's own root) feed normalization.
+        let workspace_files = index
+            .workspaces
+            .keys()
+            .filter(|dir| !dir.is_empty())
+            .map(|dir| format!("{dir}/Cargo.toml"));
+        for rel in package_files.chain(workspace_files) {
+            let bytes =
+                fs::read_if_exists(&crate::paths::join(&self.root, &rel))?.unwrap_or_default();
+            files.push((rel, bytes));
         }
         let format = index::INDEX_FORMAT.to_le_bytes();
         Ok(hash::sha256_parts(

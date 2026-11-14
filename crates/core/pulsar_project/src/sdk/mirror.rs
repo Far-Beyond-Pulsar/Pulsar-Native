@@ -110,7 +110,7 @@ pub fn mirror(
             let bytes = if is_manifest {
                 let text = String::from_utf8(bytes)
                     .map_err(|_| format!("{}: not UTF-8", found.path.display()))?;
-                normalize::normalize(&text, &package.dir, &index.workspace)
+                normalize::normalize(&text, &package.dir, index.workspace_of(package))
                     .map_err(|e| format!("{}: {e}", found.path.display()))?
                     .into_bytes()
             } else {

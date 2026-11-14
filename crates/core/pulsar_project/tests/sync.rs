@@ -102,6 +102,13 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
         sdk.join("crates/engine_class_derive/Cargo.toml").is_file(),
         "a local proc-macro crate is mirrored"
     );
+    let render: toml::Table = toml::from_str(&read(&sdk.join("renderer/crates/render/Cargo.toml"))).unwrap();
+    assert_eq!(
+        render["package"]["version"].as_str(),
+        Some("7.0.0"),
+        "a nested workspace's crate inherits from that workspace"
+    );
+    assert_eq!(render["dependencies"]["render_core"]["path"].as_str(), Some("../render_core"));
     for absent in [
         "crates/pulsar_game/tests",
         "crates/pulsar_game/target",
