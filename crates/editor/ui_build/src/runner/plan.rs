@@ -373,6 +373,31 @@ mod tests {
     }
 
     #[test]
+    fn content_is_packed_before_each_platform_is_built_and_only_with_a_build() {
+        let mut c = config(BuildSteps {
+            pack_content: true,
+            check: true,
+            build: true,
+            ..Default::default()
+        });
+        c.platforms = vec![
+            TargetPlatform::WindowsX86_64Msvc,
+            TargetPlatform::LinuxX86_64Gnu,
+        ];
+        let p = plan(&c, WIN).unwrap();
+        assert_eq!(
+            kinds(&p),
+            ["check", "pack_content", "build", "check", "pack_content", "build"]
+        );
+        let check_only = config(BuildSteps {
+            pack_content: true,
+            check: true,
+            ..Default::default()
+        });
+        assert_eq!(kinds(&plan(&check_only, WIN).unwrap()), ["check"]);
+    }
+
+    #[test]
     fn nothing_enabled_is_an_error() {
         assert_eq!(
             plan(&config(BuildSteps::default()), WIN),
@@ -538,6 +563,7 @@ mod tests {
             update: true,
             clean: true,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: true,
             build: true,
             run: true,
