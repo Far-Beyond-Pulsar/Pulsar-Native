@@ -419,7 +419,7 @@ fn a_copy_of_the_shipped_deferred_is_the_projects_own_pipeline() {
     assert!(engine_fs::virtual_fs::is_read_only(&refused), "{refused:#}");
     assert_eq!(
         engine_fs::virtual_fs::mount_of(&shipped).as_deref(),
-        Some("plugins/pulsar.default_pipelines")
+        Some("plugins/Default Pipelines")
     );
 
     // Opened in the editor and saved as a copy.

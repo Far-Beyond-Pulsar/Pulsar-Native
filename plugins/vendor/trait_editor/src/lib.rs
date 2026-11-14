@@ -12,6 +12,7 @@ use std::sync::Arc;
 use ui::dock::PanelView;
 
 mod editor;
+mod examples;
 
 pub use editor::TraitEditor;
 
@@ -75,6 +76,7 @@ pulsar_plugins::installed!("pulsar-plugin.toml", build);
 
 /// What the plugin registers: its editor provider.
 pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    examples::build(p);
     p.add(PluginEditorProvider {
         origin: p.origin(),
         id: "com.pulsar.trait-editor",

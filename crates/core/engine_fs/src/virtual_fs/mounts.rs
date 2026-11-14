@@ -5,8 +5,21 @@
 //! (an origin-gated contribution, from its root crate), and every project
 //! then shows a folder named after it under a virtual `plugins/` folder. The
 //! engine's own files (its trait definitions) are provided the same way, by
-//! the engine, at `plugins/pulsar/`. A disabled or absent plugin's folder is
+//! the engine, at `plugins/Pulsar/`. A disabled or absent plugin's folder is
 //! gone, and whatever referenced its files sees them missing.
+//!
+//! **A folder is named for what a user reads, and answers to its id.** The
+//! visible folder is the plugin's display name (`plugins/Default Pipelines/`,
+//! `plugins/Blueprints/`; the engine's is `plugins/Pulsar/`): listings,
+//! manifests, the file index, [`mount_of`], file events and the packaged
+//! snapshot all use it. The plugin's id (`plugins/pulsar.default_pipelines/`,
+//! `plugins/pulsar/`) is a legacy alias that still resolves to the same
+//! folder, so a path stored before the rename (a level's pipeline id, a trait
+//! reference) keeps working; [`canonical_mount_path`] turns either spelling
+//! into the visible one. A name that is not a valid path segment, or that two
+//! installed plugins (or the engine) would share, falls back to the id
+//! ([`folder_segments`]); the id is what identifies the owner everywhere else
+//! (the [`PluginFolder::owner`], the cache directory, the trait namespace).
 //!
 //! **The plugin owns its folder.** When the folder is first mounted, the
 //! engine calls the registration's `open` with a [`PluginFolder`]: the
@@ -67,9 +80,12 @@ use crate::{events, FsChangeKind};
 /// `<project>/plugins/`.
 pub const PLUGINS_FOLDER: &str = "plugins";
 
-/// The engine's own folder's name, `<project>/plugins/pulsar/`: the engine's
-/// id and trait namespace.
+/// The engine's own folder's id, `pulsar` (also its trait namespace): the
+/// legacy alias of `<project>/plugins/Pulsar/`.
 pub const ENGINE_FOLDER: &str = "pulsar";
+
+/// The engine's own folder as shown, `<project>/plugins/Pulsar/`.
+pub const ENGINE_FOLDER_NAME: &str = "Pulsar";
 
 /// Where [`CacheFolder`]s keep their files in a project.
 pub const CACHE_FOLDER: &str = ".pulsar/plugins";
@@ -154,12 +170,22 @@ fn clean(path: &str) -> String {
 #[derive(Clone, Debug)]
 pub struct PluginFolder {
     owner: Arc<str>,
+    /// The folder as shown (`Default Pipelines`), which paths and file events
+    /// use.
+    segment: Arc<str>,
 }
 
 impl PluginFolder {
-    /// The folder's name: the owning plugin's id (`pulsar` for the engine).
+    /// The owning plugin's id (`pulsar` for the engine): its identity, not
+    /// the folder's visible name ([`segment`](Self::segment)).
     pub fn owner(&self) -> &str {
         &self.owner
+    }
+
+    /// The folder's visible name under `plugins/` (the plugin's display name,
+    /// or its id when the name cannot be one).
+    pub fn segment(&self) -> &str {
+        &self.segment
     }
 
     /// Report that `path` (inside the folder) was created, changed or
@@ -180,7 +206,7 @@ impl PluginFolder {
     /// [`changed`](Self::changed) for one project.
     pub fn changed_in(&self, project: &Path, path: &str, kind: FsChangeKind) {
         let inner = clean(path);
-        let mut full = project.join(PLUGINS_FOLDER).join(&*self.owner);
+        let mut full = project.join(PLUGINS_FOLDER).join(&*self.segment);
         if !inner.is_empty() {
             full = full.join(inner);
         }
@@ -233,7 +259,9 @@ impl pulsar_plugins::Contribution for FileProvider {
     }
 
     fn label(&self) -> String {
-        format!("{PLUGINS_FOLDER}/{}", self.id())
+        let id = self.id();
+        let segment = folder_segments().get(&id).cloned().unwrap_or(id);
+        format!("{PLUGINS_FOLDER}/{segment}")
     }
 }
 
@@ -247,6 +275,63 @@ fn owner_folder(origin: &'static str) -> Option<String> {
         pulsar_plugins::Owner::Plugin(plugin) => Some(plugin.id.clone()),
         pulsar_plugins::Owner::Unknown(_) => None,
     }
+}
+
+/// The visible folder name of every installed plugin (and the engine), by id.
+/// Computed over the installed set, not the enabled one, so a folder keeps its
+/// name when another plugin is enabled or disabled.
+///
+/// The display name is used unless it is not a valid path segment (empty, a
+/// path separator or a character Windows refuses, a leading or trailing dot,
+/// a Windows device name, over 80 characters) or another installed plugin's
+/// name or id, or the engine's name, is the same (compared without regard to
+/// case): then the plugin's id is. The engine always keeps its own name.
+pub fn folder_segments() -> HashMap<String, String> {
+    let installed = pulsar_plugins::installed();
+    let mut out = HashMap::new();
+    out.insert(ENGINE_FOLDER.to_owned(), ENGINE_FOLDER_NAME.to_owned());
+    let key = |text: &str| text.to_ascii_lowercase();
+    let mut wanted: HashMap<String, usize> = HashMap::new();
+    for plugin in installed {
+        *wanted.entry(key(plugin.name.trim())).or_default() += 1;
+    }
+    for plugin in installed {
+        let name = plugin.name.trim();
+        let shared = wanted.get(&key(name)).copied().unwrap_or(0) > 1
+            || key(name) == key(ENGINE_FOLDER_NAME)
+            || key(name) == key(ENGINE_FOLDER)
+            || installed
+                .iter()
+                .any(|other| other.id != plugin.id && key(&other.id) == key(name));
+        let segment = if valid_segment(name) && !shared {
+            name.to_owned()
+        } else {
+            plugin.id.clone()
+        };
+        out.insert(plugin.id.clone(), segment);
+    }
+    out
+}
+
+fn valid_segment(name: &str) -> bool {
+    if name.is_empty()
+        || name.len() > 80
+        || name.ends_with('.')
+        || name.starts_with('.')
+        || name.chars().any(|c| {
+            c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
+    {
+        return false;
+    }
+    let stem = name.split('.').next().unwrap_or("").trim_end();
+    let stem = stem.to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            stem.strip_prefix(prefix)
+                .is_some_and(|n| n.len() == 1 && n.chars().all(|c| c.is_ascii_digit()))
+        });
+    !reserved
 }
 
 // ── The in-memory source ─────────────────────────────────────────────────────
@@ -537,32 +622,65 @@ impl FolderSource for CacheFolder {
 // ── The packaged source ──────────────────────────────────────────────────────
 
 /// A packaged game's copy of a plugin folder: the snapshot the packager wrote
-/// at `plugins/<owner>/` in the game's content, read from the game's
-/// provider (the pak, or loose files).
+/// at `plugins/<segment>/` in the game's content, read from the game's
+/// provider (the pak, or loose files). A package made before folders took the
+/// plugin's display name holds it at `plugins/<owner id>/`, which is read too.
 struct PackagedFolder {
+    /// The plugin's id.
     owner: String,
+    /// The folder's visible name.
+    segment: String,
 }
 
 impl PackagedFolder {
-    fn real(&self, project: &Path, path: &str) -> PathBuf {
+    /// Where `path` is in the content: under the visible name, then under the
+    /// id (an older package).
+    fn candidates(&self, project: &Path, path: &str) -> Vec<PathBuf> {
         let inner = clean(path);
-        let dir = project.join(PLUGINS_FOLDER).join(&self.owner);
-        if inner.is_empty() {
-            dir
-        } else {
-            dir.join(inner)
+        let mut names = vec![self.segment.as_str()];
+        if self.owner != self.segment {
+            names.push(self.owner.as_str());
         }
+        names
+            .into_iter()
+            .map(|name| {
+                let dir = project.join(PLUGINS_FOLDER).join(name);
+                if inner.is_empty() {
+                    dir
+                } else {
+                    dir.join(&inner)
+                }
+            })
+            .collect()
+    }
+
+    fn first<T>(
+        &self,
+        project: &Path,
+        path: &str,
+        read: impl Fn(&Arc<dyn FsProvider>, &Path) -> Result<T>,
+    ) -> Result<T> {
+        let base = super::base_provider();
+        let mut failure = None;
+        for real in self.candidates(project, path) {
+            match read(&base, &real) {
+                Ok(found) => return Ok(found),
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+        Err(failure.unwrap_or_else(|| not_found_inner(path)))
     }
 }
 
 impl FolderSource for PackagedFolder {
     fn read_file(&self, project: &Path, path: &str) -> Result<Vec<u8>> {
-        super::base_provider().read_file(&self.real(project, path))
+        self.first(project, path, |base, real| base.read_file(real))
     }
 
     fn list_dir(&self, project: &Path, path: &str) -> Result<Vec<FsEntry>> {
-        super::base_provider()
-            .list_dir(&self.real(project, path))
+        self.first(project, path, |base, real| base.list_dir(real))
             .or_else(|error| {
                 if clean(path).is_empty() {
                     Ok(Vec::new())
@@ -576,9 +694,7 @@ impl FolderSource for PackagedFolder {
         if clean(path).is_empty() {
             return Some(dir_metadata());
         }
-        super::base_provider()
-            .metadata(&self.real(project, path))
-            .ok()
+        self.first(project, path, |base, real| base.metadata(real)).ok()
     }
 }
 
@@ -628,13 +744,15 @@ fn opened() -> &'static RwLock<HashMap<String, Arc<dyn FolderSource>>> {
     OPENED.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
-/// A mounted folder.
+/// A mounted folder, in [`Tree::folders`] under its visible name.
 struct Folder {
+    /// The owning plugin's id (the legacy alias).
+    id: String,
     source: Arc<dyn FolderSource>,
     in_game: InGame,
 }
 
-/// The folders mounted for one plugin generation, by name.
+/// The folders mounted for one plugin generation, by visible name.
 struct Tree {
     generation: u64,
     packaged: bool,
@@ -644,6 +762,7 @@ struct Tree {
 fn build_tree(generation: u64, packaged: bool) -> Tree {
     let mut folders: BTreeMap<String, Folder> = BTreeMap::new();
     let mut owners: BTreeMap<String, &'static str> = BTreeMap::new();
+    let segments = folder_segments();
     for provider in pulsar_plugins::registered::<FileProvider>() {
         let Some(owner) = owner_folder(provider.origin) else {
             tracing::error!(
@@ -660,16 +779,22 @@ fn build_tree(generation: u64, packaged: bool) -> Tree {
             continue;
         }
         owners.insert(owner.clone(), provider.origin);
+        let segment = segments
+            .get(&owner)
+            .cloned()
+            .unwrap_or_else(|| owner.clone());
         let source: Arc<dyn FolderSource> = if packaged && provider.in_game == InGame::Snapshot {
             Arc::new(PackagedFolder {
                 owner: owner.clone(),
+                segment: segment.clone(),
             })
         } else {
-            source_of(provider, &owner)
+            source_of(provider, &owner, &segment)
         };
         folders.insert(
-            owner,
+            segment,
             Folder {
+                id: owner,
                 source,
                 in_game: provider.in_game,
             },
@@ -684,12 +809,13 @@ fn build_tree(generation: u64, packaged: bool) -> Tree {
 
 /// `provider`'s source for the folder `owner`: opened the first time (with
 /// the capability to change it), the same one after.
-fn source_of(provider: &FileProvider, owner: &str) -> Arc<dyn FolderSource> {
+fn source_of(provider: &FileProvider, owner: &str, segment: &str) -> Arc<dyn FolderSource> {
     if let Some(source) = opened().read().get(owner).cloned() {
         return source;
     }
     let source = (provider.open)(PluginFolder {
         owner: Arc::from(owner),
+        segment: Arc::from(segment),
     });
     opened()
         .write()
@@ -709,7 +835,11 @@ pub fn provided_files(
     let Some(owner) = owner_folder(provider.origin) else {
         return Vec::new();
     };
-    let source = source_of(provider, &owner);
+    let segment = folder_segments()
+        .get(&owner)
+        .cloned()
+        .unwrap_or_else(|| owner.clone());
+    let source = source_of(provider, &owner, &segment);
     if !source.project_independent() {
         return Vec::new();
     }
@@ -754,7 +884,7 @@ fn tree() -> Arc<Tree> {
 
 /// Every file of every folder the packager snapshots ([`InGame::Snapshot`])
 /// in the project at `project`, as `(project-relative path, bytes)`
-/// (`plugins/<owner>/...`): what a packaged game serves for them.
+/// (`plugins/<visible name>/...`): what a packaged game serves for them.
 pub fn plugin_snapshot(project: &Path) -> Vec<(String, Vec<u8>)> {
     mount_project(project);
     let tree = tree();
@@ -873,6 +1003,47 @@ enum Located {
     },
 }
 
+/// The folder `segment` names: by its visible name, else by the plugin's id
+/// (the legacy alias); either without regard to case.
+fn resolve_segment<'a>(tree: &'a Tree, segment: &str) -> Option<(&'a String, &'a Folder)> {
+    tree.folders
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(segment))
+        .or_else(|| {
+            tree.folders
+                .iter()
+                .find(|(_, folder)| folder.id.eq_ignore_ascii_case(segment))
+        })
+}
+
+/// A project-relative path with its plugin folder spelled as shown:
+/// `plugins/pulsar.default_pipelines/X` (the id, a legacy alias) becomes
+/// `plugins/Default Pipelines/X`; any other path, and a folder no enabled
+/// plugin provides, is returned as it was.
+pub fn canonical_mount_path(relative: &str) -> String {
+    let text = relative.replace('\\', "/");
+    let Some(rest) = text
+        .strip_prefix(PLUGINS_FOLDER)
+        .and_then(|rest| rest.strip_prefix('/'))
+    else {
+        return relative.to_owned();
+    };
+    let (segment, inner) = rest.split_once('/').unwrap_or((rest, ""));
+    let tree = tree();
+    match resolve_segment(&tree, segment) {
+        Some((name, _)) if inner.is_empty() => format!("{PLUGINS_FOLDER}/{name}"),
+        Some((name, _)) => format!("{PLUGINS_FOLDER}/{name}/{inner}"),
+        None => relative.to_owned(),
+    }
+}
+
+/// The id of the plugin (`pulsar` for the engine) whose folder `segment` names,
+/// by visible name or id.
+pub fn mount_owner_id(segment: &str) -> Option<String> {
+    let tree = tree();
+    resolve_segment(&tree, segment).map(|(_, folder)| folder.id.clone())
+}
+
 fn locate(path: &Path) -> Located {
     let text = comparable(&path.to_string_lossy());
     let original = path.to_string_lossy().replace('\\', "/");
@@ -910,11 +1081,7 @@ fn locate(path: &Path) -> Located {
     let after = &rest_original[PLUGINS_FOLDER.len() + 1..];
     let (owner, inner) = after.split_once('/').unwrap_or((after, ""));
     let tree = tree();
-    let (owner, source) = match tree
-        .folders
-        .iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case(owner))
-    {
+    let (owner, source) = match resolve_segment(&tree, owner) {
         Some((name, folder)) => (name.clone(), Some(Arc::clone(&folder.source))),
         None => (owner.to_owned(), None),
     };

@@ -203,6 +203,7 @@ impl TraitDb {
             return Some(found);
         }
         let normalized = normalize_relative_path(reference).filter(|p| is_trait_asset(p))?;
+        let normalized = engine_fs::virtual_fs::canonical_mount_path(&normalized);
         self.by_path
             .get(&normalized)
             .and_then(|id| self.traits.get(id))
@@ -241,6 +242,8 @@ impl TraitDb {
     /// The id of the trait now stored at `path`.
     pub fn id_for_path(&self, path: &str) -> Option<&str> {
         let normalized = normalize_relative_path(path)?;
+        // A plugin folder's id (the legacy alias) names the same file.
+        let normalized = engine_fs::virtual_fs::canonical_mount_path(&normalized);
         self.by_path.get(&normalized).map(String::as_str)
     }
 

@@ -57,7 +57,7 @@ fn names(path: &Path) -> Vec<String> {
 fn a_providing_plugin_gets_its_folder_with_its_files() {
     let dir = project();
     let root = dir.path();
-    let folder = root.join("plugins/test.provider");
+    let folder = root.join("plugins/Test provider");
     assert_eq!(
         virtual_fs::read_file(&folder.join("templates/one.txt")).unwrap(),
         b"one"
@@ -70,18 +70,18 @@ fn a_providing_plugin_gets_its_folder_with_its_files() {
     assert!(!virtual_fs::exists(&folder.join("templates/none.txt")).unwrap());
     assert!(names(root).contains(&"plugins".to_owned()));
     assert!(names(root).contains(&"own.txt".to_owned()));
-    assert!(names(&root.join("plugins")).contains(&"test.provider".to_owned()));
+    assert!(names(&root.join("plugins")).contains(&"Test provider".to_owned()));
     assert_eq!(names(&folder.join("templates")), ["deep", "one.txt"]);
     let manifest: Vec<String> = virtual_fs::manifest(root)
         .unwrap()
         .into_iter()
         .map(|e| e.path)
         .collect();
-    assert!(manifest.contains(&"plugins/test.provider/templates/deep/two.txt".to_owned()));
+    assert!(manifest.contains(&"plugins/Test provider/templates/deep/two.txt".to_owned()));
     assert!(manifest.contains(&"own.txt".to_owned()));
     assert_eq!(
         mount_of(&folder.join("templates/one.txt")).as_deref(),
-        Some("plugins/test.provider")
+        Some("plugins/Test provider")
     );
     assert_eq!(mount_of(&root.join("own.txt")), None);
 }
@@ -89,7 +89,7 @@ fn a_providing_plugin_gets_its_folder_with_its_files() {
 #[test]
 fn the_owner_changes_its_folder_at_runtime_and_the_change_is_announced() {
     let dir = project();
-    let folder = dir.path().join("plugins/test.provider");
+    let folder = dir.path().join("plugins/Test provider");
     // Mounting opened the provider.
     assert!(virtual_fs::exists(&folder).unwrap());
     let memory = FOLDER.get().expect("opened when mounted");
@@ -117,7 +117,7 @@ fn the_owner_changes_its_folder_at_runtime_and_the_change_is_announced() {
 fn everyone_else_gets_the_named_error() {
     let dir = project();
     let root = dir.path();
-    let file = root.join("plugins/test.provider/templates/one.txt");
+    let file = root.join("plugins/Test provider/templates/one.txt");
     let refused = |result: Result<()>| {
         let error = result.unwrap_err();
         assert!(is_read_only(&error), "{error:#}");
@@ -129,7 +129,7 @@ fn everyone_else_gets_the_named_error() {
     refused(virtual_fs::write_file(&file, b"x"));
     refused(virtual_fs::write_file_atomically(&file, b"x"));
     refused(virtual_fs::create_file(
-        &root.join("plugins/test.provider/new.txt"),
+        &root.join("plugins/Test provider/new.txt"),
         b"x",
     ));
     refused(virtual_fs::append_file(&file, b"x"));
@@ -142,7 +142,7 @@ fn everyone_else_gets_the_named_error() {
     ));
     refused(virtual_fs::copy(&root.join("own.txt"), &file));
     refused(virtual_fs::create_dir_all(
-        &root.join("plugins/test.provider/new_folder"),
+        &root.join("plugins/Test provider/new_folder"),
     ));
     refused(virtual_fs::create_dir_all(
         &root.join("plugins/not_a_plugin"),
@@ -181,7 +181,7 @@ fn an_on_disk_plugins_folder_is_a_problem_and_is_shadowed() {
 fn an_unmounted_project_is_the_providers_alone() {
     let dir = tempfile::tempdir().unwrap();
     assert!(
-        !virtual_fs::exists(&dir.path().join("plugins/test.provider/templates/one.txt")).unwrap()
+        !virtual_fs::exists(&dir.path().join("plugins/Test provider/templates/one.txt")).unwrap()
     );
     virtual_fs::write_file(&dir.path().join("plugins/real.txt"), b"x").unwrap();
 }
@@ -192,6 +192,7 @@ fn a_cache_folder_keeps_the_owners_writes_in_the_project() {
     let root = dir.path();
     let cache = CacheFolder::new(PluginFolder {
         owner: Arc::from("test.cache"),
+        segment: Arc::from("test.cache"),
     });
     assert!(cache.list_dir(root, "").unwrap().is_empty(), "nothing yet");
     let mut events = crate::events::subscribe();
@@ -221,14 +222,14 @@ fn the_snapshot_holds_the_folders_files_and_a_packaged_copy_serves_them() {
     let snapshot = plugin_snapshot(dir.path());
     let ours: Vec<&(String, Vec<u8>)> = snapshot
         .iter()
-        .filter(|(path, _)| path.starts_with("plugins/test.provider/templates/"))
+        .filter(|(path, _)| path.starts_with("plugins/Test provider/templates/"))
         .collect();
     assert!(ours
         .iter()
-        .any(|(path, bytes)| path == "plugins/test.provider/templates/one.txt" && bytes == b"one"));
+        .any(|(path, bytes)| path == "plugins/Test provider/templates/one.txt" && bytes == b"one"));
     assert!(ours
         .iter()
-        .any(|(path, _)| path == "plugins/test.provider/templates/deep/two.txt"));
+        .any(|(path, _)| path == "plugins/Test provider/templates/deep/two.txt"));
 
     // What a game serves: the snapshot written into its content.
     let game = tempfile::tempdir().unwrap();
@@ -239,6 +240,7 @@ fn the_snapshot_holds_the_folders_files_and_a_packaged_copy_serves_them() {
     }
     let packaged = PackagedFolder {
         owner: "test.provider".into(),
+        segment: "Test provider".into(),
     };
     assert_eq!(
         packaged
@@ -271,7 +273,7 @@ fn an_owners_runtime_write_reaches_the_project_file_index_the_drawer_lists() {
             })
             .unwrap()
             .into_iter()
-            .any(|file| file.path == format!("plugins/test.provider/live/{name}"))
+            .any(|file| file.path == format!("plugins/Test provider/live/{name}"))
     };
     assert!(!listed("index_probe.txt"));
     let memory = FOLDER.get().expect("opened when mounted");
@@ -301,7 +303,7 @@ fn opening_a_projects_file_index_mounts_it_and_lists_the_plugin_folders() {
         .collect();
     assert!(paths.contains(&"own.txt".to_owned()), "{paths:?}");
     assert!(
-        paths.contains(&"plugins/test.provider/templates/one.txt".to_owned()),
+        paths.contains(&"plugins/Test provider/templates/one.txt".to_owned()),
         "{paths:?}"
     );
     unmount_project(dir.path());
@@ -313,9 +315,93 @@ fn a_verbatim_canonical_path_is_the_same_project() {
     let dir = project();
     let canonical = std::fs::canonicalize(dir.path()).unwrap();
     assert_eq!(
-        virtual_fs::read_file(&canonical.join("plugins/test.provider/templates/one.txt")).unwrap(),
+        virtual_fs::read_file(&canonical.join("plugins/Test provider/templates/one.txt")).unwrap(),
         b"one"
     );
     assert!(names(&canonical).contains(&"plugins".to_owned()));
     unmount_project(dir.path());
+}
+
+// ── Friendly names and the id alias ──────────────────────────────────────────
+
+#[test]
+fn a_folder_shows_the_display_name_and_the_listing_has_no_id_folder() {
+    let dir = project();
+    let listed = names(&dir.path().join("plugins"));
+    assert!(listed.contains(&"Test provider".to_owned()), "{listed:?}");
+    assert!(!listed.contains(&"test.provider".to_owned()), "{listed:?}");
+    assert_eq!(
+        folder_segments().get("test.provider").map(String::as_str),
+        Some("Test provider")
+    );
+    // The engine's is friendly too.
+    assert_eq!(
+        folder_segments().get(ENGINE_FOLDER).map(String::as_str),
+        Some("Pulsar")
+    );
+    // The owner's capability announces the visible path.
+    let memory = FOLDER.get().expect("opened when mounted");
+    assert_eq!(memory.folder().owner(), "test.provider");
+    assert_eq!(memory.folder().segment(), "Test provider");
+}
+
+#[test]
+fn the_plugin_id_still_resolves_as_a_legacy_alias() {
+    let dir = project();
+    let root = dir.path();
+    let by_id = root.join("plugins/test.provider/templates/one.txt");
+    assert_eq!(virtual_fs::read_file(&by_id).unwrap(), b"one");
+    assert!(virtual_fs::exists(&root.join("plugins/test.provider")).unwrap());
+    // Writes through the alias are refused like any other, and the mount
+    // reported is the visible one.
+    let error = virtual_fs::write_file(&by_id, b"x").unwrap_err();
+    assert!(is_read_only(&error), "{error:#}");
+    assert_eq!(mount_of(&by_id).as_deref(), Some("plugins/Test provider"));
+    // Either spelling canonicalizes to the visible one; others are untouched.
+    assert_eq!(
+        canonical_mount_path("plugins/test.provider/templates/one.txt"),
+        "plugins/Test provider/templates/one.txt"
+    );
+    assert_eq!(
+        canonical_mount_path(r"plugins\Test provider\a.txt"),
+        "plugins/Test provider/a.txt"
+    );
+    assert_eq!(canonical_mount_path("plugins/test.provider"), "plugins/Test provider");
+    assert_eq!(canonical_mount_path("own.txt"), "own.txt");
+    assert_eq!(canonical_mount_path("plugins/unknown/x"), "plugins/unknown/x");
+    assert_eq!(
+        mount_owner_id("Test provider").as_deref(),
+        Some("test.provider")
+    );
+    assert_eq!(
+        mount_owner_id("test.provider").as_deref(),
+        Some("test.provider")
+    );
+}
+
+#[test]
+fn a_packaged_copy_reads_an_older_package_made_under_the_id() {
+    let game = tempfile::tempdir().unwrap();
+    crate::LocalFsProvider::new()
+        .write_file(&game.path().join("plugins/test.provider/a.txt"), b"old")
+        .unwrap();
+    let packaged = PackagedFolder {
+        owner: "test.provider".into(),
+        segment: "Test provider".into(),
+    };
+    assert_eq!(packaged.read_file(game.path(), "a.txt").unwrap(), b"old");
+}
+
+#[test]
+fn only_a_valid_path_segment_is_a_folder_name() {
+    for good in ["Blueprints", "Default Pipelines", "Pulsar 2", "a.b"] {
+        assert!(valid_segment(good), "{good}");
+    }
+    for bad in [
+        "", ".", "..", ".hidden", "ends.", "a/b", r"a\b", "a:b", "a*b", "a?b", "a\"b", "a<b",
+        "a|b", "tab\there", "CON", "nul", "com1", "Lpt9.txt",
+    ] {
+        assert!(!valid_segment(bad), "{bad:?}");
+    }
+    assert!(!valid_segment(&"x".repeat(81)));
 }

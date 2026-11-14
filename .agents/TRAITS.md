@@ -15,7 +15,7 @@ add its own kind. The engine uses traits to give gameplay **roles** to classes
 |---|---|---|
 | Trait asset | `ui_types_common::TraitAsset` (`types.rs`); editor in `plugins/vendor/trait_editor` (the `pulsar.trait_editor` plugin) | `.trait.json`: `id`, `name`, `methods`, `supertraits`, `meta` (`contractVersion`) |
 | Records | `pulsar_traits::records` (`TraitRecord`) | Tolerant parse of a trait asset, no `ui_types_common` needed (runtime-safe) |
-| Engine traits | `pulsar_traits::builtin`, files in `crates/core/pulsar_traits/content/traits/` | `IntoGraph` and the four role traits, provided into every project at `plugins/pulsar/traits/` (the engine's plugin folder) |
+| Engine traits | `pulsar_traits::builtin`, files in `crates/core/pulsar_traits/content/traits/` | `IntoGraph` and the four role traits, provided into every project at `plugins/Pulsar/traits/` (the engine's plugin folder; `plugins/pulsar/traits/...` in a stored reference still resolves) |
 | `TraitDb` | `pulsar_traits::db` | Resolved in-memory model: maps, supertrait closure, effective implementers, each implementer's source kind |
 | Sources | `pulsar_traits::sources` | `TraitImplementerSource` (kind, file scan, listed implementers), `Binding` (how the runtime reaches an implementer), `NativeTraitImpl` + `implements!` (native components) |
 | Index | `pulsar_traits::TraitIndex` (`index.rs`) | The project's one index over every source and the mounted traits; stores `.pulsar/trait_index.json` (schema 3), incremental `update_path` |
@@ -130,7 +130,7 @@ trait). Cycles are detected and do not hang. The type system's
 ## Engine traits
 
 Engine-owned, defined as files (`crates/core/pulsar_traits/content/traits/`),
-embedded in the engine and provided at `plugins/pulsar/traits/` in every project
+embedded in the engine and provided at `plugins/Pulsar/traits/` in every project
 (the engine's `FileProvider`, the same mechanism a plugin uses), with fixed
 ids (`pulsar.GameMode`, ...). A project cannot change them (a write fails with
 `engine_fs::ReadOnlyMount`; the trait editor opens them read-only). To change a

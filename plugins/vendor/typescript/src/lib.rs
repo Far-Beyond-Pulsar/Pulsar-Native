@@ -23,12 +23,14 @@
 //! the plugin, so a project that disables it has no TypeScript.
 
 mod compile;
+mod examples;
 mod provider;
 
 pub use compile::{
     compile_class_dir, compile_project_classes, validate_project_classes, CLASS_FILE, SCHEMA_FILE,
 };
 pub use provider::{script_language, TypeScriptLanguage};
+pub use examples::EXAMPLES;
 
 // The plugin's descriptor: linking this crate installs it.
 pulsar_plugins::installed!("pulsar-plugin.toml", build);
@@ -37,6 +39,7 @@ pulsar_plugins::installed!("pulsar-plugin.toml", build);
 /// the editor asks for the language's validation, and the language itself,
 /// which the packager finds without the editor.
 pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
+    examples::build(p);
     p.add(plugin_manager::PluginEditorProvider {
         origin: p.origin(),
         id: provider::PROVIDER_ID,

@@ -125,11 +125,14 @@ struct ScanContext {
 }
 
 /// The owner whose folder a project-relative path is in (`pulsar` for the
-/// engine, a plugin's id), or `None` for the project's own files.
+/// engine, a plugin's id: the folder is shown under the plugin's display name,
+/// and either spelling names the owner), or `None` for the project's own files.
 pub fn mount_owner(relative: &str) -> Option<String> {
     let (first, rest) = relative.split_once('/')?;
     if first == virtual_fs::PLUGINS_FOLDER {
-        return rest.split_once('/').map(|(id, _)| id.to_owned());
+        return rest.split_once('/').map(|(segment, _)| {
+            virtual_fs::mount_owner_id(segment).unwrap_or_else(|| segment.to_owned())
+        });
     }
     None
 }

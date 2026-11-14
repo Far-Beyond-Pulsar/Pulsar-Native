@@ -73,11 +73,28 @@ A plugin can **provide files** into every project: content packs, templates,
 default items such as the engine's gameplay-role traits. One that does
 registers an `engine_fs::FileProvider` from its root crate (an origin-gated
 contribution, category `fs.file_providers`), and every project then shows a
-folder named after it under a virtual `plugins/` folder at its root
+folder named after it (its display name, `PluginDescriptor.name`) under a virtual `plugins/` folder at its root
 (`engine_fs::virtual_fs::mounts`). It is opt-in: a plugin that registers no
 provider has no folder, and a disabled or absent plugin's folder is gone. The
-engine provides its own files the same way, at `plugins/pulsar/` (its id and
-trait namespace).
+engine provides its own files the same way, at `plugins/Pulsar/`.
+
+**The visible folder is the display name; the id is a legacy alias.**
+`plugins/Default Pipelines/`, `plugins/Blueprints/`, `plugins/Pulsar/`: listings,
+manifests, the file index, `mount_of`, file events and the package snapshot use
+that name. The id (`plugins/pulsar.default_pipelines/`, `plugins/pulsar/`) still
+resolves to the same folder (case-insensitively), so stored references keep
+working (a level's pipeline id, a trait path in an implementer);
+`virtual_fs::canonical_mount_path` rewrites either spelling to the visible one,
+`mount_owner_id` maps a folder name back to the plugin id, and the trait
+database canonicalizes the paths it is asked about. The owner stays its id
+everywhere else (`PluginFolder::owner`, `.pulsar/plugins/<id>/`, the trait
+namespace); `PluginFolder::segment` is the visible name. A name that is not a
+valid path segment (separators, `: * ? " < > |`, control characters, leading or
+trailing dot, Windows device names, over 80 characters), or that another
+installed plugin's name or id, or the engine's, shares (any case), falls back to
+the plugin's id (`virtual_fs::folder_segments`, computed over the installed set
+so a folder keeps its name as plugins are enabled and disabled). Write new
+paths with the visible name; ids in old data are fine.
 
 **The plugin owns its folder and fills it from any source.** When the folder is
 first mounted, the engine calls the registration's `open` with a
@@ -156,10 +173,11 @@ mounted, and shown as a banner above the file drawer's files.
 the editor's plugin got them (a download, a generator). The packager writes a
 snapshot of every plugin folder whose provider says `InGame::Snapshot` (the
 default) into the package (`virtual_fs::plugin_snapshot(project)`, at
-`plugins/<id>/...`, after activating the project's plugin list), and a packaged
+`plugins/<visible name>/...`, after activating the project's plugin list), and a packaged
 game serves each such folder from it, read-only, without calling the plugin
 (`virtual_fs::serve_packaged_folders(true)`, which `pulsar_content::ContentRoot::install`
-calls). A plugin that builds its folder in the game too says `InGame::Live`
+calls; a package made before the rename, holding `plugins/<id>/`, is still
+read). A plugin that builds its folder in the game too says `InGame::Live`
 (the engine's own folder does: its traits are embedded in every binary).
 
 The capability prevents accidental writes; it is no sandbox: a native plugin
