@@ -5,9 +5,11 @@
 //! generated files are rendered in memory and only differing ones are
 //! written.
 //!
-//! Order matters for an interrupted sync: the SDK mirror first (what the
-//! Cargo files point at), then the generated files, the lockfile and
-//! `.gitignore`, and the generation record last.
+//! Order: everything that can refuse the sync (the descriptor, the scripts
+//! crates, a file the generator did not write) is checked before anything
+//! is written. Then the SDK mirror (what the Cargo files point at), the
+//! generated files, the lockfile and `.gitignore`, and the generation record
+//! last, so an interrupted sync is redone by the next.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -79,13 +81,17 @@ pub fn sync_with(
     let mirror_dir = paths::join(project_root, paths::SDK_DIR);
     let cached = MirrorRecord::read(&mirror_dir);
     let (index, index_key) = sdk.index(cached.as_ref()).map_err(SyncError::Sdk)?;
-    let sdk_report = mirror::mirror(sdk.root(), &index, index_key, &mirror_dir, options.force)
-        .map_err(SyncError::Sdk)?;
 
+    // Everything that can refuse the sync is checked before anything is
+    // written.
     let model = ProjectModel::resolve(project_root, &descriptor, &index)?;
     let files = render::render(&model, &index)?;
     let previous = GenerationRecord::read(project_root)?;
-    let (report, hashes) = apply::apply(project_root, &files, previous.as_ref())?;
+    let plan = apply::plan(project_root, &files, previous.as_ref())?;
+
+    let sdk_report = mirror::mirror(sdk.root(), &index, index_key, &mirror_dir, options.force)
+        .map_err(SyncError::Sdk)?;
+    let (report, hashes) = plan.commit()?;
 
     let fingerprint = index.fingerprint();
     let lock_path = paths::join(project_root, paths::LOCKFILE);

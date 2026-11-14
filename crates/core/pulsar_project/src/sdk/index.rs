@@ -35,18 +35,15 @@ pub const INDEX_FORMAT: u32 = 1;
 /// The index file at the root of an exported SDK.
 pub const INDEX_FILE: &str = "pulsar-sdk.json";
 
-/// The engine crates a generated game crate depends on by name, beyond the
-/// plugin roots: its glue and the Rust it generates for classes. Those that
-/// are members of the engine workspace root the dependency graph.
-pub const GAME_ENGINE_CRATES: &[&str] = &[
-    "pulsar_game",
-    "pulsar_pie_abi",
-    "engine_class_derive",
-    "pulsar_world_registry",
-    "pulsar_scenedb",
-    "pulsar_reflection",
-    "pulsar_script_vm",
-];
+/// The crates a generated game crate depends on by name, beyond the plugin
+/// roots (its glue, and what the Rust generated for classes names). Those
+/// that are members of the engine workspace root the dependency graph.
+fn game_crate_dependencies() -> impl Iterator<Item = &'static str> {
+    crate::render::GLUE_DEPENDENCIES
+        .iter()
+        .chain(crate::render::CLASS_DEPENDENCIES)
+        .map(|(name, _)| *name)
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SdkIndex {
@@ -149,10 +146,9 @@ impl SdkIndex {
         plugins.sort();
 
         let member_names: BTreeSet<&str> = members.iter().map(|m| m.name.as_str()).collect();
-        let mut roots: BTreeSet<String> = GAME_ENGINE_CRATES
-            .iter()
-            .filter(|name| member_names.contains(*name))
-            .map(|name| (*name).to_owned())
+        let mut roots: BTreeSet<String> = game_crate_dependencies()
+            .filter(|name| member_names.contains(name))
+            .map(str::to_owned)
             .collect();
         for (_, source) in &plugins {
             let descriptor = pulsar_plugins::PluginDescriptor::parse(source)?;

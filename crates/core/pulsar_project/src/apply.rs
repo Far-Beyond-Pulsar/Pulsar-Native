@@ -66,70 +66,112 @@ pub struct ApplyReport {
     pub drifted: Vec<String>,
 }
 
-/// Apply `files` to the project; returns what changed and the new record's
-/// file hashes. Checks every file before writing any, so a refused file
-/// leaves the project untouched.
-pub fn apply(
-    project_root: &Path,
-    files: &FileSet,
+/// The changes [`plan`] found, written by [`Plan::commit`].
+pub struct Plan<'a> {
+    project_root: &'a Path,
+    files: &'a FileSet,
+    writes: Vec<&'a String>,
+    deletes: Vec<String>,
+    drifted: Vec<String>,
+}
+
+/// Compare `files` with the project and the previous record, writing
+/// nothing. Fails on a file that exists, differs, and the generator did not
+/// write ([`SyncError::Unowned`]).
+pub fn plan<'a>(
+    project_root: &'a Path,
+    files: &'a FileSet,
     previous: Option<&GenerationRecord>,
-) -> Result<(ApplyReport, BTreeMap<String, String>), SyncError> {
+) -> Result<Plan<'a>, SyncError> {
     let recorded = |rel: &str| previous.and_then(|r| r.files.get(rel));
-    let mut report = ApplyReport::default();
-    let mut pending: Vec<(&String, &Vec<u8>)> = Vec::new();
+    let read = |rel: &str| -> Result<Option<Vec<u8>>, SyncError> {
+        let path = paths::join(project_root, rel);
+        if !virtual_fs::is_file(&path) {
+            return Ok(None);
+        }
+        virtual_fs::read_file(&path)
+            .map(Some)
+            .map_err(|e| SyncError::io(&path, e))
+    };
+    let mut plan = Plan {
+        project_root,
+        files,
+        writes: Vec::new(),
+        deletes: Vec::new(),
+        drifted: Vec::new(),
+    };
 
     for (rel, content) in files {
-        let path = paths::join(project_root, rel);
-        let current = if virtual_fs::is_file(&path) {
-            Some(virtual_fs::read_file(&path).map_err(|e| SyncError::io(&path, e))?)
-        } else {
-            None
-        };
-        match (&current, recorded(rel)) {
-            (Some(current), _) if current == content => continue,
+        match (read(rel)?, recorded(rel)) {
+            (Some(current), _) if current == *content => continue,
             (Some(current), Some(hash)) => {
-                if sha256_hex(current) != *hash {
-                    report.drifted.push(rel.clone());
+                if sha256_hex(&current) != *hash {
+                    plan.drifted.push(rel.clone());
                 }
             }
-            (Some(_), None) => {
-                return Err(SyncError::Unowned {
-                    path: rel.clone(),
-                });
-            }
+            (Some(_), None) => return Err(SyncError::Unowned { path: rel.clone() }),
             (None, _) => {}
         }
-        pending.push((rel, content));
+        plan.writes.push(rel);
     }
 
-    for (rel, content) in pending {
-        write(&paths::join(project_root, rel), content)?;
-        report.written.push(rel.clone());
-    }
-
-    if let Some(previous) = previous {
-        for (rel, hash) in &previous.files {
-            if files.contains_key(rel) {
-                continue;
-            }
-            let path = paths::join(project_root, rel);
-            if !virtual_fs::is_file(&path) {
-                continue;
-            }
-            let current = virtual_fs::read_file(&path).map_err(|e| SyncError::io(&path, e))?;
+    for (rel, hash) in previous.iter().flat_map(|r| &r.files) {
+        if files.contains_key(rel) {
+            continue;
+        }
+        if let Some(current) = read(rel)? {
             if sha256_hex(&current) != *hash {
-                report.drifted.push(rel.clone());
+                plan.drifted.push(rel.clone());
             }
-            virtual_fs::delete_path(&path).map_err(|e| SyncError::io(&path, e))?;
-            report.deleted.push(rel.clone());
+            plan.deletes.push(rel.clone());
         }
     }
+    Ok(plan)
+}
 
-    let hashes = files
-        .iter()
-        .map(|(rel, content)| (rel.clone(), sha256_hex(content)))
-        .collect();
-    Ok((report, hashes))
+impl Plan<'_> {
+    /// Write and delete what the plan found; returns the report and the new
+    /// record's file hashes.
+    pub fn commit(self) -> Result<(ApplyReport, BTreeMap<String, String>), SyncError> {
+        let mut report = ApplyReport {
+            drifted: self.drifted,
+            ..Default::default()
+        };
+        for rel in self.writes {
+            write(&paths::join(self.project_root, rel), &self.files[rel])?;
+            report.written.push(rel.clone());
+        }
+        for rel in self.deletes {
+            let path = paths::join(self.project_root, &rel);
+            virtual_fs::delete_path(&path).map_err(|e| SyncError::io(&path, e))?;
+            remove_empty_parents(&path, self.project_root)?;
+            report.deleted.push(rel);
+        }
+        let hashes = self
+            .files
+            .iter()
+            .map(|(rel, content)| (rel.clone(), sha256_hex(content)))
+            .collect();
+        Ok((report, hashes))
+    }
+}
+
+/// Remove each directory above the deleted `path` that is left empty, up to
+/// (never including) the project root.
+fn remove_empty_parents(path: &Path, project_root: &Path) -> Result<(), SyncError> {
+    let mut dir = path.parent();
+    while let Some(current) = dir {
+        if current == project_root || !current.starts_with(project_root) {
+            break;
+        }
+        let empty = virtual_fs::list_dir(current).is_ok_and(|entries| entries.is_empty());
+        if !empty {
+            break;
+        }
+        virtual_fs::delete_path(current).map_err(|e| SyncError::io(current, e))?;
+        dir = current.parent();
+    }
+    Ok(())
 }
 
 /// Replace a project file atomically (Cargo and rust-analyzer read these
