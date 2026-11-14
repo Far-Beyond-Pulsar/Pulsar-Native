@@ -633,6 +633,9 @@ pub struct HelioRenderer {
     gpu_profiler_instance: u64,
     last_frame: Instant,
     frame_count: u64,
+    /// The output's refresh interval, handed to the scene renderer each
+    /// frame ([`Self::set_frame_budget`]).
+    frame_budget: Option<std::time::Duration>,
     spike_log_config: RenderSpikeLogConfig,
     last_spike_warning: Option<Instant>,
     last_reported_gpu_frame: Option<(u64, u64)>,
@@ -804,6 +807,7 @@ impl HelioRenderer {
             gpu_profiler_instance: 0,
             last_frame: Instant::now(),
             frame_count: 0,
+            frame_budget: None,
             spike_log_config: RenderSpikeLogConfig::default(),
             last_spike_warning: None,
             last_reported_gpu_frame: None,
@@ -1141,6 +1145,8 @@ impl HelioRenderer {
         self.configure_gizmo_view();
 
         if let Some(inner) = &mut self.inner {
+            // Every frame: a rebuilt scene renderer starts without it.
+            inner.scene.renderer.set_frame_budget(self.frame_budget);
             if let Ok(mut pending) = self.pending_gizmo_mode.lock() {
                 if let Some(mode) = pending.take() {
                     inner.interaction.set_mode(mode);
@@ -2220,6 +2226,13 @@ impl HelioRenderer {
 
     pub fn reset_taa(&mut self) {
         self.reset_taa_next_frame = true;
+    }
+
+    /// How long a frame should take: the output's refresh interval (`None`:
+    /// unpaced). Passes that stream work in size it against this
+    /// (`helio::Renderer::set_frame_budget`).
+    pub fn set_frame_budget(&mut self, budget: Option<std::time::Duration>) {
+        self.frame_budget = budget;
     }
 
     pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {

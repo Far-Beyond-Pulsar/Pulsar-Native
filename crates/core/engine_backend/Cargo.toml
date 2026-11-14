@@ -127,7 +127,7 @@ pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "
 shader-hot-reload = ["helio?/shader-hot-reload"]
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_Foundation"] }
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_Media"] }
 winapi = { workspace = true, features = ["winuser"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

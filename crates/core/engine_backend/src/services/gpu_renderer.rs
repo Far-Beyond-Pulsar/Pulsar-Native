@@ -290,6 +290,14 @@ impl GpuRenderer {
         });
     }
 
+    /// How long a frame should take: its output's refresh interval (`None`:
+    /// unpaced). See `HelioRenderer::set_frame_budget`.
+    pub fn set_frame_budget(&mut self, budget: Option<std::time::Duration>) {
+        if let Some(renderer) = self.helio_renderer.as_mut() {
+            renderer.set_frame_budget(budget);
+        }
+    }
+
     /// The handle the renderer publishes its statistics to. Take it once and
     /// read it without locking the renderer (see [`RendererStatsFeed`]).
     pub fn stats_feed(&self) -> RendererStatsFeed {
