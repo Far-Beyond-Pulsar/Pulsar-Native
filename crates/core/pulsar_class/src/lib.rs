@@ -31,6 +31,7 @@ pub mod component;
 pub mod id;
 pub mod lifecycle;
 pub mod migrate;
+pub mod modules;
 pub mod native_script;
 pub mod overrides;
 pub mod plan;
@@ -43,6 +44,7 @@ pub mod world;
 pub use component::ClassInstance;
 pub use id::{ClassId, ClassMeta, CLASS_META_FILE};
 pub use lifecycle::{ClassEvent, ClassInbox};
+pub use modules::{module_file, ModuleSource, ModuleStore};
 pub use native_script::NativeScriptComponent;
 pub use plan::{
     migrate_slot_keys, plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent,

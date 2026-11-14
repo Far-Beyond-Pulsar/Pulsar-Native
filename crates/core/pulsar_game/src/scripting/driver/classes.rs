@@ -66,7 +66,7 @@ impl ScriptDriver {
             self.loaded.insert(entry.id.clone(), entry.name.clone());
             return Some(entry.name.clone());
         }
-        let module = module_file(entry);
+        let module = module_file(&self.project_root, entry);
         let loaded = match read_module_bytes(&module) {
             None => {
                 tracing::info!(
@@ -165,7 +165,7 @@ impl ScriptDriver {
         let entry = by_id.or_else(by_path)?;
 
         if let Some(class) = self.loaded.get(&entry.id).cloned() {
-            let module = module_file(&entry);
+            let module = module_file(&self.project_root, &entry);
             if let Some(read) = read_module_bytes(&module) {
                 let loaded = read
                     .map_err(|source| RuntimeError::Io {

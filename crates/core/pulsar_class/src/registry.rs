@@ -137,17 +137,16 @@ impl VariableKind {
 
 impl ClassDefinition {
     /// The class's script variables: those its compiled module declares
-    /// (`events/.build/module.json`), with defaults from the prefab's
-    /// blueprint defaults. Hidden variables (`__…`, e.g. component-slot
-    /// handles) are left out. Without a compiled module, the prefab's
-    /// variable defaults are listed with their kind inferred.
+    /// (the project's module store, [`crate::modules`]), with defaults from
+    /// the prefab's blueprint defaults. Hidden variables (`__…`, e.g.
+    /// component-slot handles) are left out. Without a compiled module, the
+    /// prefab's variable defaults are listed with their kind inferred.
     pub fn variables(&self) -> Vec<ClassVariable> {
         let defaults = self.prefab.variable_defaults();
-        let module = engine_fs::virtual_fs::read_file(
-            &self.dir.join("events").join(".build").join("module.json"),
-        )
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+        let module = project_root_of_class_dir(&self.dir)
+            .map(|root| crate::modules::ModuleStore::of_project(&root).module_path(&self.id))
+            .and_then(|path| engine_fs::virtual_fs::read_file(&path).ok())
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
         let mut out: Vec<ClassVariable> = Vec::new();
         if let Some(vars) = module
             .as_ref()
@@ -303,7 +302,10 @@ pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// Whether `dir` looks like a class directory.
+/// Whether `dir` looks like a class directory. A class from before the
+/// module store may have only its old compiled module
+/// (`events/.build/module.json`): it is found, so the store's migration
+/// (`crate::modules::migrate_legacy_modules`) can move it.
 pub fn is_class_dir(dir: &Path) -> bool {
     let module = dir.join("events").join(".build").join("module.json");
     virtual_fs::is_dir(dir)
@@ -621,20 +623,32 @@ mod variable_tests {
 
     #[test]
     fn variables_come_from_the_module_with_prefab_defaults() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("events/.build")).unwrap();
-        std::fs::write(
-            dir.path().join("events/.build/module.json"),
-            json!({ "name": "C", "variables": [
-                { "name": "speed", "ty": { "kind": "float" } },
-                { "name": "alive", "ty": { "kind": "bool" } },
-                { "name": "__slot:x", "ty": { "kind": "component", "name": "A" } }
-            ] })
-            .to_string(),
-        )
-        .unwrap();
+        let project = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(project.path().join("Pulsar")).unwrap();
+        let class_dir = project.path().join("C.class");
+        std::fs::create_dir_all(&class_dir).unwrap();
+        let entry = ClassEntry {
+            id: ClassId::from("c-id"),
+            name: "C".into(),
+            dir: class_dir.clone(),
+        };
+        crate::modules::ModuleStore::of_project(project.path())
+            .write(
+                &entry,
+                "blueprint",
+                String::new(),
+                json!({ "name": "C", "variables": [
+                    { "name": "speed", "ty": { "kind": "float" } },
+                    { "name": "alive", "ty": { "kind": "bool" } },
+                    { "name": "__slot:x", "ty": { "kind": "component", "name": "A" } }
+                ] })
+                .to_string()
+                .as_bytes(),
+            )
+            .unwrap();
         let mut def = ClassDefinition {
-            dir: dir.path().to_path_buf(),
+            id: entry.id.clone(),
+            dir: class_dir,
             ..Default::default()
         };
         def.prefab.blueprint_class = Some(crate::prefab::BlueprintClassRef {

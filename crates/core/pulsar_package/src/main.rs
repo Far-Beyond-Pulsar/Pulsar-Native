@@ -21,7 +21,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Package a project as a standalone game: compile scripts, cook
-    /// levels and assets into Content/game.pak, build the executable.
+    /// levels and assets into the pak set in Content/, build the executable.
     Package {
         /// The project directory.
         #[arg(long)]
@@ -35,7 +35,7 @@ enum Command {
         /// Rust target triple of the game executable (default: host).
         #[arg(long)]
         target: Option<String>,
-        /// Write Content/ as loose files instead of game.pak.
+        /// Write Content/ as loose files instead of a pak set.
         #[arg(long)]
         loose: bool,
         /// Package content only; do not build the executable.

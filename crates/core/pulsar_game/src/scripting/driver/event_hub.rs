@@ -61,7 +61,7 @@ impl ScriptDriver {
             return;
         }
         for entry in self.registry.entries() {
-            let path = module_file(entry);
+            let path = module_file(&self.project_root, entry);
             let Some(Ok(bytes)) = read_module_bytes(&path) else {
                 continue;
             };

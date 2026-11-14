@@ -3,8 +3,8 @@
 //! One record per asset a packaged game ships (meshes, textures,
 //! materials, ...), keyed by its content-relative path, which is the id
 //! cooked levels and prefabs refer to. A record says where the asset came
-//! from in the project, its size and content hash, and, when it is in
-//! `game.pak`, its offset and length there.
+//! from in the project, its size and content hash. Where its bytes are in
+//! a pak set is the pak set's own table of contents (`crate::pak`).
 
 use std::collections::BTreeMap;
 

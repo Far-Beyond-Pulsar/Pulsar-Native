@@ -18,9 +18,11 @@
 //!    content-relative), `Pulsar/scripting.json`, a cooked
 //!    `Pulsar/project.json` (profile, startup level) and every referenced
 //!    asset, with `Pulsar/asset_registry.json`.
-//! 3. **Write** `<out>/Content/game.pak` (or loose files with `--loose`),
-//!    then check that no shipped file names an absolute path or
-//!    `CARGO_MANIFEST_DIR`.
+//!    No shipped file may name an absolute path or `CARGO_MANIFEST_DIR`.
+//! 3. **Write** the pak set in `<out>/Content/` (`pulsar_content::pak`:
+//!    compressed, encrypted with the project's content key, in containers
+//!    of bounded size; only changed entries are written again), or loose
+//!    files with `--loose`.
 //! 4. **Build** the game binary (`cargo build --release` of the project)
 //!    and copy it to `<out>/` (skipped with `--skip-build`).
 //!
@@ -56,7 +58,7 @@ pub struct PackageOptions {
     pub profile: BuildProfile,
     /// Rust target triple for the game binary (default: the host).
     pub target: Option<String>,
-    /// Write `Content/` as loose files instead of `game.pak`.
+    /// Write `Content/` as loose files instead of a pak set.
     pub loose: bool,
     /// Do not build the game binary (content only).
     pub skip_build: bool,

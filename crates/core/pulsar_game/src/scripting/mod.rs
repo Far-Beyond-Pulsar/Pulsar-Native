@@ -1,6 +1,7 @@
 //! Script classes on the engine script VM (`pulsar_script_runtime`).
 //!
-//! Every class's editor build writes `events/.build/module.json`; the
+//! Every class's build writes its compiled module to the project's module
+//! store (`pulsar_class::modules`, `target/pulsar/scripts/<class id>/`); the
 //! [`ScriptRuntime`] runs it. The runtime is language-neutral: any
 //! scripting plugin that writes a module for a class is loaded the same way.
 //!
@@ -18,7 +19,7 @@
 //! [`events`]: declared events, per-instance subscriptions and the
 //! handler-call queue the driver runs in its script phase.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
 pub use pulsar_script_vm::{DebugCommand, DebugSnapshot};
@@ -74,17 +75,6 @@ inventory::submit! {
                 })
         },
     }
-}
-
-/// Where a class's compiled script module lives, by class directory name.
-pub fn module_path_for_class(project_root: &Path, class_name: &str) -> PathBuf {
-    project_root
-        .join("src")
-        .join("classes")
-        .join(class_name)
-        .join("events")
-        .join(".build")
-        .join("module.json")
 }
 
 /// A runtime with every engine native (pulsar_std, world components,

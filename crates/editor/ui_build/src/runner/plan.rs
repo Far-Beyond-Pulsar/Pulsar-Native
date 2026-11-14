@@ -346,6 +346,17 @@ mod tests {
 
     const WIN: Option<TargetPlatform> = Some(TargetPlatform::WindowsX86_64Msvc);
 
+    /// The plan's (first) build command.
+    fn build_of(plan: &Plan) -> &Invocation {
+        plan.steps
+            .iter()
+            .find_map(|s| match s {
+                Step::Build { invocation, .. } => Some(invocation),
+                _ => None,
+            })
+            .expect("a build step")
+    }
+
     #[test]
     fn steps_run_in_a_fixed_order() {
         let c = config(BuildSteps {
@@ -426,9 +437,7 @@ mod tests {
         c.features = "a, b  a".into();
         c.extra_args = r#"--locked --config "build.jobs=4""#.into();
         let p = plan(&c, WIN).unwrap();
-        let Step::Build { invocation, .. } = &p.steps[1] else {
-            panic!("not a build")
-        };
+        let invocation = build_of(&p);
         assert_eq!(
             invocation.display(),
             r#"cargo build --release --target x86_64-unknown-linux-gnu --features a,b --locked --config build.jobs=4"#
@@ -439,16 +448,14 @@ mod tests {
     fn debug_has_no_profile_flag_and_shipping_sets_the_release_overrides() {
         let mut c = config(BuildSteps::just_build());
         c.profile = BuildProfile::Debug;
-        let Step::Build { invocation, .. } = &plan(&c, WIN).unwrap().steps[1] else {
-            panic!()
-        };
+        let p = plan(&c, WIN).unwrap();
+        let invocation = build_of(&p);
         assert_eq!(invocation.display(), "cargo build");
         assert!(invocation.envs.is_empty());
 
         c.profile = BuildProfile::Shipping;
-        let Step::Build { invocation, .. } = &plan(&c, WIN).unwrap().steps[1] else {
-            panic!()
-        };
+        let p = plan(&c, WIN).unwrap();
+        let invocation = build_of(&p);
         assert!(invocation.args.contains(&"--release".to_string()));
         assert!(
             invocation

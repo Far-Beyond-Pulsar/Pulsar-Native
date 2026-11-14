@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use pulsar_class::{ClassEntry, ClassId};
+use pulsar_class::ClassId;
 use serde::{Deserialize, Serialize};
 
 /// The project's scripting config file, relative to the project root.
@@ -55,24 +55,9 @@ pub fn global_instance_id(class: &ClassId) -> String {
     format!("global::{class}")
 }
 
-/// File name of a class's compiled module in the editor's JSON encoding.
-pub const MODULE_JSON_FILE: &str = "module.json";
-/// File name of a class's compiled module in the binary encoding packaged
-/// games ship (#852).
-pub const MODULE_BINARY_FILE: &str = "module.pvm";
-
-/// Where a class's compiled script module lives: the binary one when the
-/// class has it (packaged content), else the editor's JSON one. Either may
-/// be missing. Checked through the virtual filesystem, so a pak counts.
-pub fn module_file(entry: &ClassEntry) -> PathBuf {
-    let build = entry.dir.join("events").join(".build");
-    let binary = build.join(MODULE_BINARY_FILE);
-    if engine_fs::virtual_fs::exists(&binary).unwrap_or(false) {
-        binary
-    } else {
-        build.join(MODULE_JSON_FILE)
-    }
-}
+/// Where compiled modules live is the class model's
+/// (`pulsar_class::modules`): the project's module store, or cooked content.
+pub use pulsar_class::modules::{module_file, MODULE_BINARY_FILE, MODULE_JSON_FILE};
 
 /// Read a compiled module file (JSON or binary) through the virtual
 /// filesystem. `None` when it does not exist.

@@ -201,6 +201,19 @@ fn spawner_module() -> Module {
 
 // ---- project and level fixtures ---------------------------------------------
 
+/// Store `module` as the compiled module of class `guid` in `dir`, in the
+/// project's module store (as a language's build does).
+fn store_module(root: &Path, dir: &Path, guid: &str, module: &Module) {
+    let entry = pulsar_class::ClassEntry {
+        id: pulsar_class::ClassId::from(guid),
+        name: pulsar_class::registry::class_name_of_dir(dir),
+        dir: dir.to_path_buf(),
+    };
+    pulsar_class::ModuleStore::of_project(root)
+        .write(&entry, "blueprint", String::new(), module.to_json().unwrap().as_bytes())
+        .unwrap();
+}
+
 fn write_class(
     root: &Path,
     name: &str,
@@ -209,18 +222,14 @@ fn write_class(
     prefab: Option<serde_json::Value>,
 ) {
     let dir = root.join("src").join("classes").join(name);
-    std::fs::create_dir_all(dir.join("events").join(".build")).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("class.json"),
         json!({ "class_id": guid }).to_string(),
     )
     .unwrap();
     if let Some(module) = module {
-        std::fs::write(
-            dir.join("events/.build/module.json"),
-            module.to_json().unwrap(),
-        )
-        .unwrap();
+        store_module(root, &dir, guid, &module);
     }
     if let Some(prefab) = prefab {
         std::fs::write(dir.join("prefab.json"), prefab.to_string()).unwrap();
@@ -842,11 +851,7 @@ fn class_reload_rebinds_slots_of_live_instances() {
             id: None,
         },
     ];
-    std::fs::write(
-        def.dir.join("events/.build/module.json"),
-        module.to_json().unwrap(),
-    )
-    .unwrap();
+    store_module(project.path(), &def.dir, "lamp-guid", &module);
 
     let mut scene = engine_backend::scene::new_scene();
     let world = &mut scene.world;
@@ -1837,11 +1842,7 @@ mod pie_session {
 
         // The graph is edited and compiled: `tick` now adds 10.
         let dir = project.path().join("src/classes/Counter");
-        std::fs::write(
-            dir.join("events/.build/module.json"),
-            counter_module(10).to_json().unwrap(),
-        )
-        .unwrap();
+        store_module(project.path(), &dir, GUID, &counter_module(10));
         session.asset_updated(
             AssetUpdated::new(AssetKind::Blueprint)
                 .with_id(GUID)

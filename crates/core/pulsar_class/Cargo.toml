@@ -16,6 +16,8 @@ inventory             = { workspace = true }
 pulsar_plugins        = { workspace = true }
 serde                 = { workspace = true, features = ["derive"] }
 serde_json            = { workspace = true }
+# The module store's source hashes.
+twox-hash             = { workspace = true }
 tracing               = { workspace = true }
 uuid                  = { workspace = true, features = ["v4"] }
 glam                  = { workspace = true }

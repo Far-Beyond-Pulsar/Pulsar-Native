@@ -181,15 +181,17 @@ sync project ─▶ native fingerprint ─▶ stamp valid & equal? ──no─�
   engine's cook-format version), the cooked bytes. Only assets whose key
   changed are cooked again; class modules are re-encoded only when their
   `module.json` changed.
-- **Repack.** The pak is rebuilt from the cooked cache (reads, no cooking) and
-  written to a temporary file, then renamed over `Content/game.pak`. A running
-  copy of the game holds the old pak open on Windows: Build & Run stops the
-  running game first (it already owns its process).
-- **Stage.** `.pulsar/build/stage/<profile>-<target>/` holds the binary
-  (hard-linked from `target/`, copied when linking fails) and `Content/`. Build
-  & Run starts the staged binary, so it runs cooked content exactly as a
-  shipped game does (finding 4). `pulsar package` is staging plus a copy to
-  `--out`; `--skip-build` becomes "require a valid stamp".
+- **Repack — built (the pack step, below).** The pak set is updated in place:
+  unchanged entries keep their blocks, changed ones go to a new container, the
+  table of contents is swapped atomically. A running copy of the game holds
+  the containers open on Windows: Build & Run stops the running game first
+  (it already owns its process).
+- **Where content goes — built.** `Content/` beside the binary in Cargo's own
+  output folder (`<target>[/<triple>]/<debug|release>/Content`), so `cargo
+  run` and the built executable both find it (`ContentRoot::discover`
+  prefers cooked content next to the executable). This replaces the staging
+  directory first proposed: the binary is not copied anywhere. `pulsar
+  package` writes the same pak set into `<out>/Content`.
 - **Fallback** is the existing Cargo build, after which the describe step
   writes the stamp, then the same cook/repack/stage. The build dashboard shows
   which path ran and why ("Native code changed: scripts/gameplay/src/lib.rs",
@@ -265,6 +267,49 @@ session's modules.
   ⇒ quick path (no Cargo process started), edit a `.rs` ⇒ Cargo, enable a
   plugin ⇒ Cargo; timings recorded in the "As built" notes.
 
+## As built: the pack step and the pak set (part of Q1-P3)
+
+- **Format** (`pulsar_content::pak`): `Content/game.toc` plus containers
+  `game_NNNN.pak` of about 256 MiB each (an entry never spans two; one
+  larger than the limit has its own). Entries are cut into 128 KiB blocks,
+  each zstd-compressed (level 3 dev, 15 shipping; stored raw when that is not
+  smaller) and ChaCha20-encrypted with its own keystream (stream = container
+  and offset), so any block decodes alone. Paths live only inside the
+  encrypted, compressed table of contents; container names say nothing.
+  Every entry carries its XXH3-128 and every read checks it; a wrong key is
+  told apart from corruption by a key check in the header.
+- **Updating:** `write_pak_set` reuses every entry whose hash is unchanged;
+  changed and new entries go to new containers numbered after every existing
+  one; the table of contents is replaced by one rename; only then are
+  containers nothing references deleted. When dead bytes would pass 35% of
+  the set (0% for shipping) the set is rewritten whole. Interrupted or
+  cancelled writes leave the previous set working.
+- **Key:** one per project, `.pulsar/content.key`, made on first use. The
+  generated `main.rs` compiles it in and installs it
+  (`pulsar_game::standalone::install_content_key`) before content is found;
+  `ContentRoot::packaged` refuses a pak set without it.
+- **Build step:** `BuildSteps::pack_content` (on by default, shown in the
+  configurator), `Step::PackContent` before each platform's build. The runner
+  calls the host's `pulsar_content::ContentPacker` (registered by
+  `pulsar_package`, linked by the editor binary): cook, then pack, logged
+  under the `pack` target in the build's task, so it shows in the build
+  dashboard. `pulsar package` uses the same cook and writer.
+- Removed: the single-file `game.pak` writer and reader (a leftover
+  `game.pak` is deleted by the next pack), and the asset registry's
+  `PakLocation` (the table of contents is the one record of where bytes are).
+
 ## 9. Issues log
+
+- The cook still reads every source and holds the cooked content in memory
+  before packing; incremental cooking (the cook cache above) is the next
+  piece. Packing itself is bounded: 64 MiB batches.
+- `PakSet::read` holds one lock across a whole entry's reads; parallel
+  readers of different containers wait on each other. Positional reads per
+  container would remove that.
+- `pulsar_project`'s generated `main.rs` (project generation plan, P2) must
+  emit the content key the same way `core_project_builder` now does.
+- An `--target-dir` or `--profile` in a build configuration's extra arguments
+  is not seen by the pack step's output folder (it asks `cargo metadata` and
+  maps Debug/Release); the build would then put the binary elsewhere.
 
 (empty)
