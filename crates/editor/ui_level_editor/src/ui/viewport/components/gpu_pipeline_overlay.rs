@@ -92,7 +92,8 @@ impl GpuPipelineOverlay {
         let Some(fresh) = self
             .source
             .latest()
-            .and_then(|stats| stats.profiler.clone())
+            .and_then(|stats| stats.details)
+            .and_then(|details| details.profiler.clone())
         else {
             return false;
         };

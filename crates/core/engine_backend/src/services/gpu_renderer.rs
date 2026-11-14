@@ -58,49 +58,81 @@ impl GpuRendererBuilder {
             fps_window_frames: 0,
             fps: 0.0,
             stats_feed: RendererStatsFeed::default(),
-            stats_published: None,
+            details_published: None,
+            gpu_memory: None,
         }
     }
 }
 
-/// The renderer's statistics as of a recent frame, for diagnostics overlays.
-#[derive(Debug, Clone, Default)]
-pub struct RendererStats {
-    /// [`GpuRenderer::get_fps`].
-    pub fps: f32,
-    /// [`GpuRenderer::get_helio_fps`].
-    pub helio_fps: f32,
-    /// [`GpuRenderer::get_render_fps`].
-    pub render_fps: f32,
-    pub metrics: Option<RenderMetrics>,
-    pub profiler: Option<crate::subsystems::render::GpuProfilerData>,
+/// Frames the renderer submitted, counted on every one. Two reads give exact
+/// rates: frames per second is the change in `frames` over the change in
+/// `last`, and the CPU cost of a frame is the change in `busy` over the change
+/// in `frames`.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct RenderTally {
+    /// Frames submitted to the GPU (an idle frame that drew nothing is not one).
+    pub frames: u64,
+    /// When the latest of them finished recording.
+    pub last: Option<Instant>,
+    /// CPU time spent recording and submitting them, in total.
+    pub busy: std::time::Duration,
 }
 
-/// Where [`GpuRenderer`] publishes [`RendererStats`] at the end of a frame.
+/// What the renderer publishes less often than every frame.
+#[derive(Debug, Clone, Default)]
+pub struct RendererDetails {
+    /// Per-pass CPU and GPU timings, and the GPU frame total.
+    pub profiler: Option<crate::subsystems::render::GpuProfilerData>,
+    /// Bytes the device's allocator holds (buffers and textures), when the
+    /// backend reports it.
+    pub gpu_memory_bytes: Option<u64>,
+}
+
+/// The renderer's statistics, for diagnostics overlays.
+#[derive(Debug, Clone, Default)]
+pub struct RendererStats {
+    pub tally: RenderTally,
+    /// `None` before the first frame.
+    pub details: Option<Arc<RendererDetails>>,
+}
+
+/// Where [`GpuRenderer`] publishes [`RendererStats`].
 ///
 /// The render scheduler holds the renderer's mutex for the whole of every
 /// frame, so a reader that `try_lock`s the renderer misses most of the time
 /// and a diagnostics overlay polling it freezes. The feed is the renderer's
-/// statistics behind their own lock, held only to swap or clone an `Arc`:
-/// take the handle once ([`GpuRenderer::stats_feed`]) and read it on any
-/// thread without touching the renderer.
+/// statistics behind their own lock, held only to copy the tally or swap an
+/// `Arc`: take the handle once ([`GpuRenderer::stats_feed`]) and read it on
+/// any thread without touching the renderer.
 #[derive(Debug, Clone, Default)]
-pub struct RendererStatsFeed(Arc<parking_lot::Mutex<Option<Arc<RendererStats>>>>);
+pub struct RendererStatsFeed(Arc<parking_lot::Mutex<RendererStats>>);
 
 impl RendererStatsFeed {
-    /// The latest published statistics; `None` before the first frame.
-    pub fn latest(&self) -> Option<Arc<RendererStats>> {
+    /// The statistics as of now.
+    pub fn latest(&self) -> RendererStats {
         self.0.lock().clone()
     }
 
-    fn publish(&self, stats: RendererStats) {
-        *self.0.lock() = Some(Arc::new(stats));
+    fn count_frame(&self, busy: std::time::Duration) {
+        let mut stats = self.0.lock();
+        stats.tally.frames += 1;
+        stats.tally.last = Some(Instant::now());
+        stats.tally.busy += busy;
+    }
+
+    fn publish_details(&self, details: RendererDetails) {
+        self.0.lock().details = Some(Arc::new(details));
     }
 }
 
-/// How often the renderer publishes its statistics to the feed. Overlays show
-/// them at about 10 Hz; this keeps the profiler clone off most frames.
-const STATS_PUBLISH: std::time::Duration = std::time::Duration::from_millis(25);
+/// How often the renderer publishes [`RendererDetails`]. Overlays show them at
+/// about 10 Hz; this keeps the profiler clone off most frames.
+const DETAILS_PUBLISH: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// How often the allocator report behind
+/// [`RendererDetails::gpu_memory_bytes`] is generated: it walks every
+/// allocation.
+const GPU_MEMORY_REFRESH: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// GPU renderer — drives Helio through a GPUI `WgpuSurfaceHandle`.
 ///
@@ -119,7 +151,8 @@ pub struct GpuRenderer {
     fps_window_frames: u64,
     fps: f32,
     stats_feed: RendererStatsFeed,
-    stats_published: Option<Instant>,
+    details_published: Option<Instant>,
+    gpu_memory: Option<(Instant, Option<u64>)>,
 }
 
 /// Length of the rolling window used to compute [`GpuRenderer::get_fps`].
@@ -200,6 +233,7 @@ impl GpuRenderer {
         crop: Option<FrameCrop>,
     ) -> Option<wgpu::SubmissionIndex> {
         profiling::profile_scope!("GpuRenderer::render_frame_to_surface");
+        let started = Instant::now();
         let result = if let Some(ref mut r) = self.helio_renderer {
             if let Some(crop) = crop {
                 r.render_capture_tile(device, queue, view, width, height, format, crop)
@@ -219,21 +253,41 @@ impl GpuRenderer {
             self.fps_window_frames = 0;
         }
 
-        if self
-            .stats_published
-            .is_none_or(|at| at.elapsed() >= STATS_PUBLISH)
-        {
-            self.stats_published = Some(Instant::now());
-            self.stats_feed.publish(RendererStats {
-                fps: self.get_fps(),
-                helio_fps: self.get_helio_fps(),
-                render_fps: self.get_render_fps(),
-                metrics: self.get_render_metrics(),
-                profiler: self.get_gpu_profiler_data(),
-            });
+        // A screenshot tile is not a frame of the view.
+        if result.is_some() && crop.is_none() {
+            self.stats_feed.count_frame(started.elapsed());
+            self.publish_details(device);
         }
 
         result
+    }
+
+    /// Publish the profiler and GPU memory to the stats feed, at most every
+    /// [`DETAILS_PUBLISH`] (memory every [`GPU_MEMORY_REFRESH`]).
+    fn publish_details(&mut self, device: &wgpu::Device) {
+        let now = Instant::now();
+        if self
+            .details_published
+            .is_some_and(|at| now - at < DETAILS_PUBLISH)
+        {
+            return;
+        }
+        self.details_published = Some(now);
+        let gpu_memory_bytes = match self.gpu_memory {
+            Some((at, bytes)) if now - at < GPU_MEMORY_REFRESH => bytes,
+            _ => {
+                profiling::profile_scope!("GpuRenderer: allocator report");
+                let bytes = device
+                    .generate_allocator_report()
+                    .map(|report| report.total_allocated_bytes);
+                self.gpu_memory = Some((now, bytes));
+                bytes
+            }
+        };
+        self.stats_feed.publish_details(RendererDetails {
+            profiler: self.get_gpu_profiler_data(),
+            gpu_memory_bytes,
+        });
     }
 
     /// The handle the renderer publishes its statistics to. Take it once and

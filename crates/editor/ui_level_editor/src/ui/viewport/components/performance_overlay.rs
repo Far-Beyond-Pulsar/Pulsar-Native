@@ -6,7 +6,7 @@
 //! | Section                                 | Refresh |
 //! |-----------------------------------------|---------|
 //! | Headline (UI FPS, Render FPS, Frame Time) | 10 Hz |
-//! | Rendering (draw calls, vertices, memory)  | 10 Hz |
+//! | Rendering (render CPU, GPU time, memory) | 10 Hz |
 //! | Input (latency)                           | 10 Hz |
 //! | Charts (FPS, frame time, latency)         | 4 Hz  |
 //!
@@ -214,7 +214,7 @@ impl Render for HeadlineStats {
     }
 }
 
-// ── Rendering: draw calls, vertices, GPU memory (10 Hz) ─────────────────────
+// ── Rendering: render CPU, GPU time, GPU memory (10 Hz) ─────────────────────
 
 struct RenderingStats {
     stats: SharedStats,
@@ -243,19 +243,19 @@ impl RenderingStats {
     fn sample(&mut self) -> bool {
         let text = {
             let stats = self.stats.lock();
+            // A source that reports nothing shows as unknown, never as 0.
+            let mut value = |metric: Metric, format: fn(f64) -> String| {
+                let mean = stats.mean_since(&mut self.cursor, metric);
+                if stats.recorded(metric) {
+                    format(mean)
+                } else {
+                    "—".to_owned()
+                }
+            };
             [
-                format!(
-                    "{:.0}",
-                    stats.mean_since(&mut self.cursor, Metric::DrawCalls)
-                ),
-                format!(
-                    "{:.0}k",
-                    stats.mean_since(&mut self.cursor, Metric::Vertices) / 1000.0
-                ),
-                format!(
-                    "{:.1}MB",
-                    stats.mean_since(&mut self.cursor, Metric::MemoryMb)
-                ),
+                value(Metric::RenderCpuMs, |v| format!("{v:.2}ms")),
+                value(Metric::GpuMs, |v| format!("{v:.2}ms")),
+                value(Metric::GpuMemoryMb, |v| format!("{v:.0}MB")),
             ]
         };
         let changed = text != self.shown;
@@ -269,14 +269,16 @@ impl Render for RenderingStats {
         let theme = cx.theme();
         card(theme)
             .child(card_title("Rendering", theme))
+            // What the renderer costs per frame: CPU recording and
+            // submitting, GPU executing (the profiler's frame total).
             .child(stat_line(
-                "Draw Calls",
+                "Render CPU",
                 self.shown[0].clone(),
                 theme.foreground,
                 theme,
             ))
             .child(stat_line(
-                "Vertices",
+                "GPU Time",
                 self.shown[1].clone(),
                 theme.foreground,
                 theme,
@@ -374,8 +376,9 @@ impl ChartSections {
     /// Add one sample to each chart: the mean of the frames since the last one.
     fn sample(&mut self) {
         let stats = self.stats.lock();
+        // The viewport's rate: what this overlay is about.
         self.fps
-            .push(stats.mean_since(&mut self.cursor, Metric::UiFps));
+            .push(stats.mean_since(&mut self.cursor, Metric::RenderFps));
         self.frame_time
             .push(stats.mean_since(&mut self.cursor, Metric::FrameTimeMs));
         self.latency
@@ -403,7 +406,7 @@ impl ChartSections {
 impl Render for ChartSections {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let fps_color = ui_fps_color(self.fps.last().unwrap_or(0.0), theme);
+        let fps_color = render_fps_color(self.fps.last().unwrap_or(0.0), theme);
         let frame_color = frame_time_color(self.frame_time.last().unwrap_or(0.0), theme);
         v_flex()
             .w_full()
@@ -633,9 +636,9 @@ mod tests {
             stats.record(Metric::UiFps, 100.0 + (v % 90) as f64);
             stats.record(Metric::RenderFps, 60.0 + (v % 40) as f64);
             stats.record(Metric::FrameTimeMs, 1.0 + (v % 100) as f64 / 10.0);
-            stats.record(Metric::DrawCalls, 1000.0 + (v % 500) as f64);
-            stats.record(Metric::Vertices, 200_000.0 + (v % 900) as f64 * 100.0);
-            stats.record(Metric::MemoryMb, 512.0 + (v % 100) as f64 / 3.0);
+            stats.record(Metric::RenderCpuMs, 5.0 + (v % 50) as f64 / 10.0);
+            stats.record(Metric::GpuMs, 4.0 + (v % 40) as f64 / 10.0);
+            stats.record(Metric::GpuMemoryMb, 512.0 + (v % 100) as f64 / 3.0);
             stats.record(Metric::InputLatencyMs, 0.01);
         });
         let state = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));

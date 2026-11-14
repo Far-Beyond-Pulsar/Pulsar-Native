@@ -196,6 +196,10 @@ pub struct ViewportPanel {
     /// Mailbox into `gpu_engine`, fetched once the renderer exists.
     mailbox: Option<engine_backend::subsystems::render::HelioEditorMailbox>,
 
+    /// The frames this viewport's window presented (the UI frame rate), taken
+    /// on the first frame pump; the overlays' samplers share it.
+    ui_frames: Rc<std::cell::OnceCell<gpui::PresentedFrames>>,
+
     /// View-mode picker of a split-off viewport.
     own_picker: Option<view_settings::OwnViewPicker>,
 
@@ -295,6 +299,7 @@ impl ViewportPanel {
             view_state,
             own_view,
             mailbox: None,
+            ui_frames: Rc::default(),
             own_picker: None,
             cached_frame_snapshot: EngineFrameSnapshot::default(),
             viewport_controls: ViewportControls::new(),

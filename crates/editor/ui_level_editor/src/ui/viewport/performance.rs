@@ -1,15 +1,17 @@
 //! Performance monitoring data for the viewport's performance overlay.
 //!
-//! The viewport writes one sample per frame into [`LiveStats`]. The overlay's
-//! sections then read it at their own pace (see `components/performance_overlay`):
-//! the text sections at 10 Hz and the charts at 4 Hz. Nothing here is read, copied
-//! or rebuilt per frame by the overlay.
+//! [`FrameSampler`] fills [`LiveStats`] on the overlay's timer from the
+//! renderer's stats feed and the window's presented-frame count: frame rates
+//! measured between frame timestamps ([`RateMeter`]), so they are exact and
+//! move every sample. The overlay's sections then read it at their own pace
+//! (see `components/performance_overlay`): the text sections at 10 Hz and the
+//! charts at 4 Hz.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use engine_backend::services::gpu_renderer::{RendererStats, RendererStatsFeed};
+use engine_backend::services::gpu_renderer::{RenderTally, RendererStats, RendererStatsFeed};
 use gpui::SharedString;
 
 /// How often the text sections (headline, rendering, input) refresh.
@@ -32,9 +34,9 @@ pub enum Metric {
     UiFps,
     RenderFps,
     FrameTimeMs,
-    DrawCalls,
-    Vertices,
-    MemoryMb,
+    RenderCpuMs,
+    GpuMs,
+    GpuMemoryMb,
     InputLatencyMs,
 }
 
@@ -91,6 +93,12 @@ impl LiveStats {
         };
         *before = now;
         mean
+    }
+
+    /// Whether `metric` was ever recorded: a source that reports nothing (no
+    /// GPU timestamps, no allocator report) shows as unknown, not as 0.
+    pub fn recorded(&self, metric: Metric) -> bool {
+        self.totals[metric.index()].count > 0
     }
 }
 
@@ -179,19 +187,11 @@ pub fn label_step(len: usize) -> usize {
         .unwrap_or(100)
 }
 
-/// Per-frame copy of everything the UI thread reads out of `GpuRenderer`,
-/// gathered with one `try_lock` acquisition so the viewport render path
-/// contends with the Helio render thread's blocking lock once instead of
-/// several times per frame.
+/// What the viewport's render takes from `GpuRenderer` once per render: the
+/// camera input and pointer queue its handlers write to. The overlays'
+/// statistics are not here; they come from [`FrameSampler`].
 #[derive(Clone, Default)]
 pub struct EngineFrameSnapshot {
-    pub ui_fps: f64,
-    pub helio_fps: f64,
-    pub render_fps: f64,
-    pub memory_mb: f64,
-    pub draw_calls: f64,
-    pub vertices: f64,
-    pub frame_time_ms: f64,
     pub camera_input: Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>>,
     pub pointer_events:
         Option<Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>>,
@@ -201,9 +201,17 @@ pub struct EngineFrameSnapshot {
 /// viewport's render: it is called on the overlay's own timer.
 pub type Sampler = std::rc::Rc<dyn Fn(&mut LiveStats)>;
 
-/// How often the overlay samples. Independent of how often the viewport
-/// renders, which is a few times a second at most.
+/// How often the overlay samples. A rate is recorded once
+/// [`MIN_RATE_WINDOW`] has passed, so this only bounds how late it is.
 pub const SAMPLE_REFRESH: Duration = Duration::from_millis(16);
+
+/// The shortest span a frame rate is measured over: a handful of frames, so a
+/// rate is exact to the frame and still moves ten times a second.
+pub const MIN_RATE_WINDOW: Duration = Duration::from_millis(100);
+
+/// With no new frame for this long, the rate reads 0 (the renderer idles, or
+/// the window presents nothing).
+pub const STALL_AFTER: Duration = Duration::from_millis(500);
 
 /// The renderer's published statistics, for an overlay's timer.
 ///
@@ -218,13 +226,12 @@ pub struct RendererStatsSource {
 }
 
 impl RendererStatsSource {
+    /// Touches nothing: the feed is taken on the first read.
     pub fn new(engine: Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>) -> Self {
-        let source = Self {
+        Self {
             engine,
             feed: std::cell::OnceCell::new(),
-        };
-        source.feed();
-        source
+        }
     }
 
     fn feed(&self) -> Option<&RendererStatsFeed> {
@@ -235,88 +242,174 @@ impl RendererStatsSource {
         Some(self.feed.get_or_init(|| feed))
     }
 
-    /// The latest statistics the renderer published; `None` until the feed
-    /// is taken and the renderer has drawn a frame.
-    pub fn latest(&self) -> Option<Arc<RendererStats>> {
-        self.feed()?.latest()
+    /// The renderer's statistics as of now; `None` until the feed is taken.
+    pub fn latest(&self) -> Option<RendererStats> {
+        Some(self.feed()?.latest())
+    }
+}
+
+/// A frame count, when its latest frame happened, and the time spent on all
+/// of them: what both the renderer and a window count.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Tally {
+    pub frames: u64,
+    pub last: Option<Instant>,
+    pub busy: Duration,
+}
+
+impl From<RenderTally> for Tally {
+    fn from(tally: RenderTally) -> Self {
+        Self {
+            frames: tally.frames,
+            last: tally.last,
+            busy: tally.busy,
+        }
+    }
+}
+
+impl From<gpui::PresentTally> for Tally {
+    fn from(tally: gpui::PresentTally) -> Self {
+        Self {
+            frames: tally.frames,
+            last: tally.last,
+            busy: Duration::ZERO,
+        }
+    }
+}
+
+/// A rate measured between two tallies.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rate {
+    /// Frames arrived: per second, the mean time between them, and the mean
+    /// time spent on each.
+    Running {
+        fps: f64,
+        interval_ms: f64,
+        busy_ms: f64,
+    },
+    /// None for [`STALL_AFTER`].
+    Stalled,
+}
+
+/// Measures a [`Rate`] from successive reads of a [`Tally`].
+///
+/// The rate is the frames between two reads over the time between *their
+/// latest frames*, not between the reads: exact to the frame, with no
+/// window-boundary jitter. A read less than [`MIN_RATE_WINDOW`] after the
+/// last measured one is held back until enough frames span it.
+#[derive(Default)]
+pub struct RateMeter {
+    since: Option<Tally>,
+}
+
+impl RateMeter {
+    pub fn measure(&mut self, now: Tally, at: Instant) -> Option<Rate> {
+        let since = match self.since {
+            Some(since) if since.last.is_some() => since,
+            // No frame seen yet: start from here.
+            _ => {
+                self.since = Some(now);
+                return None;
+            }
+        };
+        let (Some(last), Some(before)) = (now.last, since.last) else {
+            return None;
+        };
+        let frames = now.frames.saturating_sub(since.frames);
+        if frames == 0 {
+            return (at.saturating_duration_since(last) >= STALL_AFTER).then_some(Rate::Stalled);
+        }
+        let span = last.saturating_duration_since(before);
+        if span < MIN_RATE_WINDOW {
+            return None;
+        }
+        self.since = Some(now);
+        let seconds = span.as_secs_f64();
+        Some(Rate::Running {
+            fps: frames as f64 / seconds,
+            interval_ms: seconds * 1000.0 / frames as f64,
+            busy_ms: now.busy.saturating_sub(since.busy).as_secs_f64() * 1000.0
+                / frames as f64,
+        })
+    }
+}
+
+/// Fills [`LiveStats`] from the renderer's stats feed and the window's
+/// presented frames, on an overlay's timer. Never locks the renderer.
+pub struct FrameSampler {
+    renderer: RendererStatsSource,
+    /// The viewport's window, once the viewport has seen it (empty until its
+    /// first frame pump).
+    window: std::rc::Rc<std::cell::OnceCell<gpui::PresentedFrames>>,
+    render_rate: std::cell::RefCell<RateMeter>,
+    ui_rate: std::cell::RefCell<RateMeter>,
+}
+
+impl FrameSampler {
+    pub fn new(
+        engine: Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        window: std::rc::Rc<std::cell::OnceCell<gpui::PresentedFrames>>,
+    ) -> Self {
+        Self {
+            renderer: RendererStatsSource::new(engine),
+            window,
+            render_rate: Default::default(),
+            ui_rate: Default::default(),
+        }
+    }
+
+    /// Record what changed since the last call.
+    pub fn sample(&self, stats: &mut LiveStats) {
+        let now = Instant::now();
+        if let Some(window) = self.window.get() {
+            match self.ui_rate.borrow_mut().measure(window.read().into(), now) {
+                Some(Rate::Running { fps, .. }) => stats.record(Metric::UiFps, fps),
+                Some(Rate::Stalled) => stats.record(Metric::UiFps, 0.0),
+                None => {}
+            }
+        }
+        let Some(renderer) = self.renderer.latest() else {
+            return;
+        };
+        match self
+            .render_rate
+            .borrow_mut()
+            .measure(renderer.tally.into(), now)
+        {
+            Some(Rate::Running {
+                fps,
+                interval_ms,
+                busy_ms,
+            }) => {
+                stats.record(Metric::RenderFps, fps);
+                stats.record(Metric::FrameTimeMs, interval_ms);
+                stats.record(Metric::RenderCpuMs, busy_ms);
+            }
+            Some(Rate::Stalled) => stats.record(Metric::RenderFps, 0.0),
+            None => {}
+        }
+        if let Some(details) = renderer.details {
+            if let Some(gpu_ms) = details.profiler.as_ref().and_then(|p| p.total_gpu_ms) {
+                stats.record(Metric::GpuMs, f64::from(gpu_ms));
+            }
+            if let Some(bytes) = details.gpu_memory_bytes {
+                stats.record(Metric::GpuMemoryMb, bytes as f64 / (1024.0 * 1024.0));
+            }
+        }
     }
 }
 
 impl EngineFrameSnapshot {
-    /// The renderer's statistics alone, with none of the camera side effects of
-    /// [`Self::gather`] (which consumes the scroll-zoom delta, so only the
-    /// viewport's render may call it). Read from the renderer's published feed,
-    /// never its mutex; `None` before the first frame.
-    pub fn read_stats(source: &RendererStatsSource) -> Option<Self> {
-        let stats = source.latest()?;
-        let (memory_mb, draw_calls, vertices, frame_time_ms) = match &stats.metrics {
-            Some(m) => (
-                m.memory_usage_mb as f64,
-                m.draw_calls as f64,
-                m.vertices_drawn as f64,
-                m.frame_time_ms as f64,
-            ),
-            None => (0.0, 0.0, 0.0, 0.0),
-        };
-        Some(Self {
-            ui_fps: stats.fps as f64,
-            helio_fps: stats.helio_fps as f64,
-            render_fps: stats.render_fps as f64,
-            memory_mb,
-            draw_calls,
-            vertices,
-            frame_time_ms,
-            camera_input: None,
-            pointer_events: None,
-        })
-    }
-
-    /// Record this snapshot into `stats`.
-    pub fn record_into(&self, stats: &mut LiveStats) {
-        // The renderer's metric stands in when the UI-side frame count is not
-        // available yet.
-        let ui_fps = if self.ui_fps > 0.0 {
-            self.ui_fps
-        } else {
-            self.helio_fps
-        };
-        stats.record(Metric::UiFps, ui_fps);
-        stats.record(Metric::RenderFps, self.render_fps);
-        stats.record(Metric::FrameTimeMs, self.frame_time_ms);
-        stats.record(Metric::DrawCalls, self.draw_calls);
-        stats.record(Metric::Vertices, self.vertices);
-        stats.record(Metric::MemoryMb, self.memory_mb);
-    }
-
-    /// Gather stats from `GpuRenderer`, pushing the frame-rate-independent
-    /// camera-input settings (move speed, scroll zoom) in the same locked
-    /// pass. Returns `None` if the renderer mutex was busy; callers skip
-    /// their stat updates that frame.
+    /// Take the camera input and pointer queue from `GpuRenderer`, pushing the
+    /// frame-rate-independent camera-input settings (move speed, scroll zoom)
+    /// in the same locked pass. Returns `None` if the renderer mutex was busy.
     pub fn gather(
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         move_speed: f32,
         zoom_delta: f32,
     ) -> Option<Self> {
         let engine = gpu_engine.try_lock().ok()?;
-        let metrics_opt = engine.get_render_metrics();
-        let (memory_mb, draw_calls, vertices, frame_time_ms) = match metrics_opt {
-            Some(ref m) => (
-                m.memory_usage_mb as f64,
-                m.draw_calls as f64,
-                m.vertices_drawn as f64,
-                m.frame_time_ms as f64,
-            ),
-            None => (0.0, 0.0, 0.0, 0.0),
-        };
-
         let snapshot = Self {
-            ui_fps: engine.get_fps() as f64,
-            helio_fps: engine.get_helio_fps() as f64,
-            render_fps: engine.get_render_fps() as f64,
-            memory_mb,
-            draw_calls,
-            vertices,
-            frame_time_ms,
             camera_input: engine.camera_input(),
             pointer_events: engine.pointer_event_queue(),
         };
@@ -367,14 +460,66 @@ mod tests {
     fn metrics_are_independent() {
         let mut stats = LiveStats::default();
         let mut cursor = Cursor::default();
-        stats.record(Metric::DrawCalls, 100.0);
-        stats.record(Metric::Vertices, 5000.0);
-        assert_eq!(stats.mean_since(&mut cursor, Metric::DrawCalls), 100.0);
-        assert_eq!(stats.mean_since(&mut cursor, Metric::Vertices), 5000.0);
+        stats.record(Metric::RenderCpuMs, 9.5);
+        stats.record(Metric::GpuMs, 5.25);
+        assert_eq!(stats.mean_since(&mut cursor, Metric::RenderCpuMs), 9.5);
+        assert_eq!(stats.mean_since(&mut cursor, Metric::GpuMs), 5.25);
+        assert!(!stats.recorded(Metric::GpuMemoryMb), "never recorded");
+    }
+
+    fn tally(frames: u64, last: Instant, busy_ms: u64) -> Tally {
+        Tally {
+            frames,
+            last: Some(last),
+            busy: Duration::from_millis(busy_ms),
+        }
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_rate_is_frames_over_the_time_between_their_last_frames() {
+        let t0 = Instant::now();
+        let mut meter = RateMeter::default();
+        assert_eq!(meter.measure(tally(10, t0, 100), t0), None, "first read");
+        // 8 frames, the last 125 ms after the first read's last: 64 fps,
+        // 15.625 ms apart, 10 ms of CPU each, whenever the read happens.
+        let last = t0 + Duration::from_millis(125);
+        let read_at = last + Duration::from_millis(7);
         assert_eq!(
-            stats.mean_since(&mut cursor, Metric::MemoryMb),
-            0.0,
-            "never recorded"
+            meter.measure(tally(18, last, 180), read_at),
+            Some(Rate::Running {
+                fps: 64.0,
+                interval_ms: 15.625,
+                busy_ms: 10.0,
+            })
+        );
+    }
+
+    #[::core::prelude::v1::test]
+    fn a_short_window_waits_for_more_frames() {
+        let t0 = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.measure(tally(0, t0, 0), t0);
+        let soon = t0 + Duration::from_millis(40);
+        assert_eq!(meter.measure(tally(3, soon, 0), soon), None);
+        let later = t0 + Duration::from_millis(100);
+        assert!(matches!(
+            meter.measure(tally(6, later, 0), later),
+            Some(Rate::Running { fps, .. }) if (fps - 60.0).abs() < 1e-9
+        ));
+    }
+
+    #[::core::prelude::v1::test]
+    fn no_frames_for_a_while_reads_as_stalled() {
+        let t0 = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.measure(tally(5, t0, 0), t0);
+        assert_eq!(
+            meter.measure(tally(5, t0, 0), t0 + Duration::from_millis(100)),
+            None
+        );
+        assert_eq!(
+            meter.measure(tally(5, t0, 0), t0 + STALL_AFTER),
+            Some(Rate::Stalled)
         );
     }
 

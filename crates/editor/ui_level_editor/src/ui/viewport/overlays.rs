@@ -225,15 +225,14 @@ impl ViewportPanel {
             }
         }
 
-        // What the overlay samples, on its own timer: the renderer's statistics
-        // and the input latency.
+        // What the overlay samples, on its own timer: the renderer's and the
+        // window's frame counts and the input latency. Building it touches
+        // nothing; it is used only when the overlay is created.
         let sampler: Sampler = {
-            let source = RendererStatsSource::new(gpu_engine.clone());
+            let frames = FrameSampler::new(gpu_engine.clone(), self.ui_frames.clone());
             let input = self.input_state.clone();
             std::rc::Rc::new(move |stats: &mut LiveStats| {
-                if let Some(snapshot) = EngineFrameSnapshot::read_stats(&source) {
-                    snapshot.record_into(stats);
-                }
+                frames.sample(stats);
                 stats.record(
                     Metric::InputLatencyMs,
                     input.get_input_latency_us() as f64 / 1000.0,
@@ -291,6 +290,7 @@ impl ViewportPanel {
                     .child(render_nerds_overlay(
                         view_arc.clone(),
                         gpu_engine,
+                        self.ui_frames.clone(),
                         self.input_state.clone(),
                         &self.nerds_overlay,
                         cx,

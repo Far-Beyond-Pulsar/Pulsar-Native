@@ -18,18 +18,23 @@ use crate::{
     ui::viewport::{
         components::camera_selector::CameraSpeedControl,
         input_state::InputState,
-        performance::{EngineFrameSnapshot, RendererStatsSource},
+        performance::{Cursor, FrameSampler, LiveStats, Metric},
     },
 };
 
 type GpuEngine = Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>;
-const REFRESH: Duration = Duration::from_millis(100);
+/// Frame rates are measured over at least `MIN_RATE_WINDOW` (100 ms); polling
+/// faster than that keeps each new rate from waiting a whole extra period.
+/// The view re-renders only when its text changes.
+const REFRESH: Duration = Duration::from_millis(50);
 
 pub struct NerdsOverlay {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
-    renderer_stats: RendererStatsSource,
+    frames: FrameSampler,
+    stats: LiveStats,
+    cursor: Cursor,
     input: Arc<InputState>,
-    shown: [String; 11],
+    shown: [String; 10],
     _tick: Task<()>,
 }
 
@@ -37,12 +42,15 @@ impl NerdsOverlay {
     fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: GpuEngine,
+        ui_frames: std::rc::Rc<std::cell::OnceCell<gpui::PresentedFrames>>,
         input: Arc<InputState>,
         cx: &mut Context<Self>,
     ) -> Self {
         let mut this = Self {
             state,
-            renderer_stats: RendererStatsSource::new(gpu_engine),
+            frames: FrameSampler::new(gpu_engine, ui_frames),
+            stats: LiveStats::default(),
+            cursor: Cursor::default(),
             input,
             shown: Default::default(),
             _tick: Task::ready(()),
@@ -111,15 +119,22 @@ impl NerdsOverlay {
         next[2] = format!("{latency_ms:.2} ms");
         next[3] = camera_mode;
 
-        if let Some(snapshot) = EngineFrameSnapshot::read_stats(&self.renderer_stats) {
-            next[4] = format!("{:.0}", snapshot.ui_fps);
-            next[5] = format!("{:.0}", snapshot.helio_fps);
-            next[6] = format!("{:.0}", snapshot.render_fps);
-            next[7] = format!("{:.2} ms", snapshot.frame_time_ms);
-            next[8] = format!("{:.0}", snapshot.draw_calls);
-            next[9] = format!("{:.1}k", snapshot.vertices / 1000.0);
-            next[10] = format!("{:.1} MB", snapshot.memory_mb);
-        }
+        self.frames.sample(&mut self.stats);
+        let (stats, cursor) = (&self.stats, &mut self.cursor);
+        let mut value = |metric: Metric, format: fn(f64) -> String| {
+            let mean = stats.mean_since(cursor, metric);
+            if stats.recorded(metric) {
+                format(mean)
+            } else {
+                "—".to_owned()
+            }
+        };
+        next[4] = value(Metric::UiFps, |v| format!("{v:.0}"));
+        next[5] = value(Metric::RenderFps, |v| format!("{v:.0}"));
+        next[6] = value(Metric::FrameTimeMs, |v| format!("{v:.2} ms"));
+        next[7] = value(Metric::RenderCpuMs, |v| format!("{v:.2} ms"));
+        next[8] = value(Metric::GpuMs, |v| format!("{v:.2} ms"));
+        next[9] = value(Metric::GpuMemoryMb, |v| format!("{v:.0} MB"));
 
         let changed = next != self.shown;
         self.shown = next;
@@ -137,12 +152,11 @@ impl Render for NerdsOverlay {
             ("Input Latency", self.shown[2].clone()),
             ("Camera Mode", self.shown[3].clone()),
             ("UI FPS", self.shown[4].clone()),
-            ("Helio FPS", self.shown[5].clone()),
-            ("Render FPS", self.shown[6].clone()),
-            ("Frame Time", self.shown[7].clone()),
-            ("Draw Calls", self.shown[8].clone()),
-            ("Vertices", self.shown[9].clone()),
-            ("GPU Memory", self.shown[10].clone()),
+            ("Render FPS", self.shown[5].clone()),
+            ("Frame Time", self.shown[6].clone()),
+            ("Render CPU", self.shown[7].clone()),
+            ("GPU Time", self.shown[8].clone()),
+            ("GPU Memory", self.shown[9].clone()),
         ];
 
         v_flex()
@@ -202,6 +216,7 @@ impl Render for NerdsOverlay {
 pub fn render_nerds_overlay<V>(
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: &GpuEngine,
+    ui_frames: std::rc::Rc<std::cell::OnceCell<gpui::PresentedFrames>>,
     input: Arc<InputState>,
     slot: &std::cell::RefCell<Option<Entity<NerdsOverlay>>>,
     cx: &mut Context<V>,
@@ -213,7 +228,7 @@ where
         .borrow_mut()
         .get_or_insert_with(|| {
             let gpu_engine = gpu_engine.clone();
-            cx.new(|cx| NerdsOverlay::new(state, gpu_engine, input, cx))
+            cx.new(|cx| NerdsOverlay::new(state, gpu_engine, ui_frames, input, cx))
         })
         .clone();
     AnyView::from(overlay)
