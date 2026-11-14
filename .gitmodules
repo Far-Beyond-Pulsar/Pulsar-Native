@@ -101,3 +101,6 @@
 [submodule "plugins/vendor/default_pipelines"]
 	path = plugins/vendor/default_pipelines
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_DefaultPipelines
+[submodule "plugins/vendor/bake"]
+	path = plugins/vendor/bake
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Bake

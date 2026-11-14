@@ -11,6 +11,7 @@ pulsar_plugins = { workspace = true }
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
 skeletal_animation_plugin = { workspace = true }
 asset_viewer_plugin = { workspace = true, optional = true }
+bake_plugin = { workspace = true }
 blueprint_editor_plugin = { workspace = true, optional = true }
 character_plugin = { workspace = true }
 script_editor_plugin = { workspace = true, optional = true }
@@ -49,6 +50,7 @@ default = ["editor"]
 editor = [
     "skeletal_animation_plugin/editor",
     "dep:asset_viewer_plugin",
+    "bake_plugin/editor",
     "dep:blueprint_editor_plugin",
     "character_plugin/editor",
     "dep:script_editor_plugin",

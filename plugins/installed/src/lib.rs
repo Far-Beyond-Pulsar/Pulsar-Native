@@ -22,6 +22,7 @@
 // by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
 #[cfg(feature = "editor")]
 pub use asset_viewer_plugin;
+pub use bake_plugin;
 #[cfg(feature = "editor")]
 pub use blueprint_editor_plugin;
 pub use character_plugin;

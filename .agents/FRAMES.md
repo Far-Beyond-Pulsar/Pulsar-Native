@@ -443,8 +443,8 @@ Known, not fixed. Ordered roughly by how much they matter.
 
 ### Portal findings (lighting + cost pass)
 
-- **Portal lighting**: portal pixels are tagged `(-1, -3 - chain)` in the G-buffer
-  `lightmap_uv`; `deferred_lighting.wgsl` maps position/normal/eye back through the
+- **Portal lighting**: portal pixels are tagged `(-1, -3 - chain)` in the G-buffer's
+  surface channel (`gbuffer::SURFACE`); `deferred_lighting.wgsl` maps position/normal/eye back through the
   chain (`portal_chain_unmap`, a 256-entry uniform in group 0 binding 11, published by
   `PortalProjection`) and walks all scene lights (cap `PORTAL_MAX_LIGHTS`) instead of
   the host tile lists. Shadows are sampled at the content's real position, so content

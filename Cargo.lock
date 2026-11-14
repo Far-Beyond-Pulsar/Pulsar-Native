@@ -985,6 +985,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bake_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "helio",
+ "helio-bake",
+ "helio-feature-api",
+ "pulsar_plugins",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2707,6 +2718,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-bake",
+ "helio-bake-host",
  "helio-components",
  "helio-feature-api",
  "helio-light-api",
@@ -4752,7 +4764,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-bake",
- "helio-components",
+ "helio-bake-host",
  "helio-core",
  "helio-feature-api",
  "helio-light-api",
@@ -5573,21 +5585,53 @@ dependencies = [
  "getrandom 0.2.17",
  "glam 0.33.5",
  "half",
- "helio-bake-types",
+ "helio-bake-api",
  "helio-core",
+ "helio-feature-api",
  "helio-frame-api",
  "log",
  "nebula",
  "pollster 0.4.0",
  "serde",
  "thiserror 2.0.20",
+ "twox-hash",
  "uuid",
  "wgpu",
 ]
 
 [[package]]
-name = "helio-bake-types"
+name = "helio-bake-api"
 version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "helio-frame-api",
+ "naga",
+]
+
+[[package]]
+name = "helio-bake-host"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_fs",
+ "glam 0.33.5",
+ "helio",
+ "helio-bake",
+ "helio-components",
+ "helio-core",
+ "helio-feature-api",
+ "helio-light-api",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-presets",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "uuid",
+ "wgpu",
+]
 
 [[package]]
 name = "helio-components"
@@ -5596,7 +5640,6 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
- "helio-bake",
  "helio-core",
  "log",
  "pulsar_reflection",
@@ -5791,7 +5834,6 @@ dependencies = [
  "half",
  "helio",
  "helio-asset-compat",
- "helio-bake",
  "helio-components",
  "helio-core",
  "helio-feature-api",
@@ -5907,7 +5949,6 @@ name = "helio-pass-deferred-light"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "helio-bake-types",
  "helio-components",
  "helio-core",
  "helio-feature-api",
@@ -6006,6 +6047,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-bake-api",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -6067,7 +6109,6 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "half",
- "helio-bake-types",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -6097,6 +6138,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -6107,6 +6149,8 @@ dependencies = [
  "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
  "wgpu",
 ]
 
@@ -6173,7 +6217,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
- "helio-bake-types",
+ "helio-bake-api",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -7515,6 +7559,7 @@ version = "0.1.0"
 dependencies = [
  "asset_import",
  "asset_viewer_plugin",
+ "bake_plugin",
  "blueprint_compiler",
  "blueprint_editor_plugin",
  "catalog_fixture_component",
@@ -8055,7 +8100,6 @@ dependencies = [
  "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "scenedb-inspector-agent",
  "wgpu",
  "winit",
@@ -8838,7 +8882,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-bake",
- "helio-components",
+ "helio-bake-host",
  "helio-controls",
  "helio-core",
  "helio-feature-api",
@@ -9453,12 +9497,15 @@ name = "nebula"
 version = "0.1.0"
 dependencies = [
  "nebula-ao",
+ "nebula-audio",
  "nebula-core",
  "nebula-gpu",
  "nebula-light",
+ "nebula-nav",
  "nebula-probe",
  "nebula-serialize",
  "nebula-visibility",
+ "pollster 0.3.0",
 ]
 
 [[package]]
@@ -9472,6 +9519,27 @@ dependencies = [
  "nebula-core",
  "nebula-gpu",
  "nebula-serialize",
+ "pollster 0.3.0",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-audio"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bincode 2.0.1",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-serialize",
+ "pollster 0.3.0",
+ "rayon",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -9502,6 +9570,7 @@ dependencies = [
  "glam 0.33.5",
  "log",
  "nebula-core",
+ "pollster 0.3.0",
  "thiserror 1.0.69",
  "wgpu",
 ]
@@ -9517,11 +9586,32 @@ dependencies = [
  "nebula-core",
  "nebula-gpu",
  "nebula-serialize",
+ "pollster 0.3.0",
  "rayon",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "uuid",
+ "wgpu",
+]
+
+[[package]]
+name = "nebula-nav"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bincode 2.0.1",
+ "bytemuck",
+ "glam 0.33.5",
+ "log",
+ "nebula-core",
+ "nebula-gpu",
+ "nebula-serialize",
+ "pollster 0.3.0",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
  "wgpu",
 ]
 
@@ -9537,6 +9627,7 @@ dependencies = [
  "nebula-core",
  "nebula-gpu",
  "nebula-serialize",
+ "pollster 0.3.0",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -9562,12 +9653,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bincode 2.0.1",
+ "bitflags 2.13.1",
  "bytemuck",
  "glam 0.33.5",
  "log",
  "nebula-core",
  "nebula-gpu",
  "nebula-serialize",
+ "pollster 0.3.0",
  "rayon",
  "serde",
  "serde_json",
@@ -11756,7 +11849,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-bake",
- "helio-components",
+ "helio-bake-host",
  "helio-feature-api",
  "helio-light-api",
  "helio-light-host",
@@ -14919,8 +15012,6 @@ dependencies = [
  "env_logger",
  "glam 0.33.5",
  "helio",
- "helio-bake",
- "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-light-api",
@@ -18613,6 +18704,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-bake",
+ "helio-bake-host",
  "helio-components",
  "helio-core",
  "helio-feature-api",
@@ -18640,9 +18732,7 @@ dependencies = [
  "image",
  "log",
  "pollster 0.4.0",
- "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive",
  "scenedb-inspector-agent",
  "wgpu",
  "winit",
