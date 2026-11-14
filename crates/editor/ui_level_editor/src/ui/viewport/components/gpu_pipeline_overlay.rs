@@ -3,8 +3,10 @@
 //! Like the performance overlay, it is a view with its own timer, mounted as an
 //! isolated cached view: it polls the renderer at [`REFRESH`] and re-renders
 //! itself in place only when a new profile arrived. Nothing above it renders,
-//! lays out or prepaints. When the renderer is busy the poll simply finds
-//! nothing new and the last profile stays on screen, at the same size.
+//! lays out or prepaints. It reads the profile the renderer publishes after a
+//! frame (`RendererStatsFeed`), not the renderer itself, whose mutex the render
+//! scheduler holds while it draws. With nothing new, the last profile stays on
+//! screen, at the same size.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -16,6 +18,8 @@ use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 use engine_backend::subsystems::render::helio_renderer::{
     DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData,
 };
+
+use crate::ui::viewport::performance::RendererStatsSource;
 
 type GpuEngine = Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>;
 
@@ -55,6 +59,7 @@ fn profile_id(data: &GpuProfilerData) -> (u64, Option<u64>) {
 
 pub struct GpuPipelineOverlay {
     profile: Option<GpuProfilerData>,
+    source: RendererStatsSource,
     _tick: Task<()>,
 }
 
@@ -62,13 +67,14 @@ impl GpuPipelineOverlay {
     pub fn new(gpu_engine: GpuEngine, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             profile: None,
+            source: RendererStatsSource::new(gpu_engine),
             _tick: Task::ready(()),
         };
-        this.poll(&gpu_engine);
+        this.poll();
         this._tick = cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(REFRESH).await;
             let updated = this.update(cx, |this, cx| {
-                if this.poll(&gpu_engine) {
+                if this.poll() {
                     cx.notify();
                 }
             });
@@ -79,14 +85,14 @@ impl GpuPipelineOverlay {
         this
     }
 
-    /// Take the renderer's latest profile if it can be had without waiting and
-    /// is new. Returns whether the overlay changed. A busy renderer, or one with
-    /// nothing new, leaves the last profile where it is.
-    fn poll(&mut self, gpu_engine: &GpuEngine) -> bool {
-        let Some(fresh) = gpu_engine
-            .try_lock()
-            .ok()
-            .and_then(|engine| engine.get_gpu_profiler_data())
+    /// Take the profile the renderer last published, if it is new. Returns
+    /// whether the overlay changed. Reads the renderer's stats feed, never its
+    /// mutex (which the render scheduler holds for every frame it draws).
+    fn poll(&mut self) -> bool {
+        let Some(fresh) = self
+            .source
+            .latest()
+            .and_then(|stats| stats.profiler.clone())
         else {
             return false;
         };

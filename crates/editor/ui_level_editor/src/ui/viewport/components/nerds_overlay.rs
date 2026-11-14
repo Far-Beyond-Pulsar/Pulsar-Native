@@ -16,8 +16,9 @@ use ui::{
 use crate::{
     state::LevelEditorState,
     ui::viewport::{
-        components::camera_selector::CameraSpeedControl, input_state::InputState,
-        performance::EngineFrameSnapshot,
+        components::camera_selector::CameraSpeedControl,
+        input_state::InputState,
+        performance::{EngineFrameSnapshot, RendererStatsSource},
     },
 };
 
@@ -26,7 +27,7 @@ const REFRESH: Duration = Duration::from_millis(100);
 
 pub struct NerdsOverlay {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
-    gpu_engine: GpuEngine,
+    renderer_stats: RendererStatsSource,
     input: Arc<InputState>,
     shown: [String; 11],
     _tick: Task<()>,
@@ -41,7 +42,7 @@ impl NerdsOverlay {
     ) -> Self {
         let mut this = Self {
             state,
-            gpu_engine,
+            renderer_stats: RendererStatsSource::new(gpu_engine),
             input,
             shown: Default::default(),
             _tick: Task::ready(()),
@@ -110,7 +111,7 @@ impl NerdsOverlay {
         next[2] = format!("{latency_ms:.2} ms");
         next[3] = camera_mode;
 
-        if let Some(snapshot) = EngineFrameSnapshot::read_stats(&self.gpu_engine) {
+        if let Some(snapshot) = EngineFrameSnapshot::read_stats(&self.renderer_stats) {
             next[4] = format!("{:.0}", snapshot.ui_fps);
             next[5] = format!("{:.0}", snapshot.helio_fps);
             next[6] = format!("{:.0}", snapshot.render_fps);

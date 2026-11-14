@@ -188,9 +188,18 @@ impl ViewportPanel {
         // The plugins' debug overlays (the portals' links): each shown one
         // docks its panel and does its per-frame work; the others clear
         // what they gave the renderer.
+        // Filled by `sync_view_settings` on the frame pump; until then, one
+        // attempt at the renderer.
+        let mailbox = self.mailbox.clone().or_else(|| {
+            gpu_engine
+                .try_lock()
+                .ok()
+                .and_then(|engine| engine.editor_mailbox())
+        });
         let overlay_context = crate::extend::viewport::OverlayContext {
             state: &state_arc,
             gpu_engine,
+            mailbox: mailbox.clone(),
         };
         let perspective = view.editor.camera_mode == crate::state::CameraMode::Perspective;
         for overlay in crate::extend::viewport::debug_overlays() {
@@ -219,10 +228,10 @@ impl ViewportPanel {
         // What the overlay samples, on its own timer: the renderer's statistics
         // and the input latency.
         let sampler: Sampler = {
-            let engine = gpu_engine.clone();
+            let source = RendererStatsSource::new(gpu_engine.clone());
             let input = self.input_state.clone();
             std::rc::Rc::new(move |stats: &mut LiveStats| {
-                if let Some(snapshot) = EngineFrameSnapshot::read_stats(&engine) {
+                if let Some(snapshot) = EngineFrameSnapshot::read_stats(&source) {
                     snapshot.record_into(stats);
                 }
                 stats.record(
@@ -293,21 +302,18 @@ impl ViewportPanel {
 
         // Debug passes can advertise a floating scale for a mode. Query only
         // while a debug mode is selected; lit view mode has no legend.
+        // The mailbox is read, not the renderer: the render scheduler holds the
+        // renderer's mutex for every frame, so a `try_lock` here missed most
+        // renders and the legend flickered in and out.
         let active_legend = (view.editor.viewport_debug_mode != 0)
             .then(|| {
-                gpu_engine
-                    .try_lock()
-                    .ok()
-                    .and_then(|engine| engine.editor_mailbox())
-                    .and_then(|mailbox| {
-                        mailbox
-                            .viewport_debug_views()
-                            .into_iter()
-                            .find(|view_mode| {
-                                view_mode.debug_mode == view.editor.viewport_debug_mode
-                            })
-                            .and_then(|view_mode| view_mode.legend)
-                    })
+                mailbox.as_ref().and_then(|mailbox| {
+                    mailbox
+                        .viewport_debug_views()
+                        .into_iter()
+                        .find(|view_mode| view_mode.debug_mode == view.editor.viewport_debug_mode)
+                        .and_then(|view_mode| view_mode.legend)
+                })
             })
             .flatten();
         if let Some(legend) = active_legend {

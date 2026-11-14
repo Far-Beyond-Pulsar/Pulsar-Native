@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use engine_backend::services::gpu_renderer::{RendererStats, RendererStatsFeed};
 use gpui::SharedString;
 
 /// How often the text sections (headline, rendering, input) refresh.
@@ -204,15 +205,51 @@ pub type Sampler = std::rc::Rc<dyn Fn(&mut LiveStats)>;
 /// renders, which is a few times a second at most.
 pub const SAMPLE_REFRESH: Duration = Duration::from_millis(16);
 
+/// The renderer's published statistics, for an overlay's timer.
+///
+/// The render scheduler holds the renderer's mutex for every frame it draws,
+/// so polling the renderer with `try_lock` misses most of the time and the
+/// overlay freezes. This takes the renderer's [`RendererStatsFeed`] once (the
+/// only `try_lock`, retried on each read until it succeeds) and from then on
+/// reads the feed alone.
+pub struct RendererStatsSource {
+    engine: Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    feed: std::cell::OnceCell<RendererStatsFeed>,
+}
+
+impl RendererStatsSource {
+    pub fn new(engine: Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>) -> Self {
+        let source = Self {
+            engine,
+            feed: std::cell::OnceCell::new(),
+        };
+        source.feed();
+        source
+    }
+
+    fn feed(&self) -> Option<&RendererStatsFeed> {
+        if let Some(feed) = self.feed.get() {
+            return Some(feed);
+        }
+        let feed = self.engine.try_lock().ok()?.stats_feed();
+        Some(self.feed.get_or_init(|| feed))
+    }
+
+    /// The latest statistics the renderer published; `None` until the feed
+    /// is taken and the renderer has drawn a frame.
+    pub fn latest(&self) -> Option<Arc<RendererStats>> {
+        self.feed()?.latest()
+    }
+}
+
 impl EngineFrameSnapshot {
     /// The renderer's statistics alone, with none of the camera side effects of
     /// [`Self::gather`] (which consumes the scroll-zoom delta, so only the
-    /// viewport's render may call it). `None` if the renderer is busy.
-    pub fn read_stats(
-        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-    ) -> Option<Self> {
-        let engine = gpu_engine.try_lock().ok()?;
-        let (memory_mb, draw_calls, vertices, frame_time_ms) = match engine.get_render_metrics() {
+    /// viewport's render may call it). Read from the renderer's published feed,
+    /// never its mutex; `None` before the first frame.
+    pub fn read_stats(source: &RendererStatsSource) -> Option<Self> {
+        let stats = source.latest()?;
+        let (memory_mb, draw_calls, vertices, frame_time_ms) = match &stats.metrics {
             Some(m) => (
                 m.memory_usage_mb as f64,
                 m.draw_calls as f64,
@@ -222,9 +259,9 @@ impl EngineFrameSnapshot {
             None => (0.0, 0.0, 0.0, 0.0),
         };
         Some(Self {
-            ui_fps: engine.get_fps() as f64,
-            helio_fps: engine.get_helio_fps() as f64,
-            render_fps: engine.get_render_fps() as f64,
+            ui_fps: stats.fps as f64,
+            helio_fps: stats.helio_fps as f64,
+            render_fps: stats.render_fps as f64,
             memory_mb,
             draw_calls,
             vertices,

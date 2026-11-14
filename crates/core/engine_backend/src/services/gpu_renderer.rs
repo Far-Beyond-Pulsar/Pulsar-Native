@@ -57,9 +57,50 @@ impl GpuRendererBuilder {
             fps_window_start: Instant::now(),
             fps_window_frames: 0,
             fps: 0.0,
+            stats_feed: RendererStatsFeed::default(),
+            stats_published: None,
         }
     }
 }
+
+/// The renderer's statistics as of a recent frame, for diagnostics overlays.
+#[derive(Debug, Clone, Default)]
+pub struct RendererStats {
+    /// [`GpuRenderer::get_fps`].
+    pub fps: f32,
+    /// [`GpuRenderer::get_helio_fps`].
+    pub helio_fps: f32,
+    /// [`GpuRenderer::get_render_fps`].
+    pub render_fps: f32,
+    pub metrics: Option<RenderMetrics>,
+    pub profiler: Option<crate::subsystems::render::GpuProfilerData>,
+}
+
+/// Where [`GpuRenderer`] publishes [`RendererStats`] at the end of a frame.
+///
+/// The render scheduler holds the renderer's mutex for the whole of every
+/// frame, so a reader that `try_lock`s the renderer misses most of the time
+/// and a diagnostics overlay polling it freezes. The feed is the renderer's
+/// statistics behind their own lock, held only to swap or clone an `Arc`:
+/// take the handle once ([`GpuRenderer::stats_feed`]) and read it on any
+/// thread without touching the renderer.
+#[derive(Debug, Clone, Default)]
+pub struct RendererStatsFeed(Arc<parking_lot::Mutex<Option<Arc<RendererStats>>>>);
+
+impl RendererStatsFeed {
+    /// The latest published statistics; `None` before the first frame.
+    pub fn latest(&self) -> Option<Arc<RendererStats>> {
+        self.0.lock().clone()
+    }
+
+    fn publish(&self, stats: RendererStats) {
+        *self.0.lock() = Some(Arc::new(stats));
+    }
+}
+
+/// How often the renderer publishes its statistics to the feed. Overlays show
+/// them at about 10 Hz; this keeps the profiler clone off most frames.
+const STATS_PUBLISH: std::time::Duration = std::time::Duration::from_millis(25);
 
 /// GPU renderer — drives Helio through a GPUI `WgpuSurfaceHandle`.
 ///
@@ -77,6 +118,8 @@ pub struct GpuRenderer {
     fps_window_start: Instant,
     fps_window_frames: u64,
     fps: f32,
+    stats_feed: RendererStatsFeed,
+    stats_published: Option<Instant>,
 }
 
 /// Length of the rolling window used to compute [`GpuRenderer::get_fps`].
@@ -176,7 +219,27 @@ impl GpuRenderer {
             self.fps_window_frames = 0;
         }
 
+        if self
+            .stats_published
+            .is_none_or(|at| at.elapsed() >= STATS_PUBLISH)
+        {
+            self.stats_published = Some(Instant::now());
+            self.stats_feed.publish(RendererStats {
+                fps: self.get_fps(),
+                helio_fps: self.get_helio_fps(),
+                render_fps: self.get_render_fps(),
+                metrics: self.get_render_metrics(),
+                profiler: self.get_gpu_profiler_data(),
+            });
+        }
+
         result
+    }
+
+    /// The handle the renderer publishes its statistics to. Take it once and
+    /// read it without locking the renderer (see [`RendererStatsFeed`]).
+    pub fn stats_feed(&self) -> RendererStatsFeed {
+        self.stats_feed.clone()
     }
 
     /// Frames per second submitted by the renderer, averaged over the last
