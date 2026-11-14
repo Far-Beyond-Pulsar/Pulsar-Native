@@ -30,6 +30,7 @@ use ui::{
 };
 
 const ROW_HEIGHT: f32 = 72.0;
+const THREAD_ROW_HEIGHT: f32 = 28.0;
 const DETAIL_WIDTH: f32 = 600.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1112,23 +1113,22 @@ fn render_threads(
             .text_color(color)
             .child(text)
     };
-    let mut body = v_flex().w_full().child(
-        h_flex()
-            .w_full()
-            .px_4()
-            .py_1()
-            .gap_3()
-            .text_xs()
-            .text_color(theme.muted_foreground)
-            .border_b_1()
-            .border_color(theme.border)
-            .child(div().w(px(8.0)).flex_shrink_0())
-            .child(cell(230.0, "Thread".into(), theme.muted_foreground))
-            .child(cell(150.0, "Owner / pool".into(), theme.muted_foreground))
-            .child(cell(130.0, "State".into(), theme.muted_foreground))
-            .child(cell(110.0, "Busy".into(), theme.muted_foreground))
-            .child(div().flex_1().min_w_0().child("Doing")),
-    );
+    let header = h_flex()
+        .w_full()
+        .px_4()
+        .py_1()
+        .gap_3()
+        .text_xs()
+        .text_color(theme.muted_foreground)
+        .border_b_1()
+        .border_color(theme.border)
+        .child(div().w(px(8.0)).flex_shrink_0())
+        .child(cell(230.0, "Thread".into(), theme.muted_foreground))
+        .child(cell(150.0, "Owner / pool".into(), theme.muted_foreground))
+        .child(cell(130.0, "State".into(), theme.muted_foreground))
+        .child(cell(110.0, "Busy".into(), theme.muted_foreground))
+        .child(div().flex_1().min_w_0().child("Doing"));
+    let mut rows = Vec::new();
     let mut shown = 0;
     for role in ThreadRole::ALL {
         let group: Vec<(&ThreadSnapshot, Option<String>)> = threads
@@ -1145,42 +1145,74 @@ fn render_threads(
             .iter()
             .filter(|(thread, _)| thread.state == ThreadState::Running)
             .count();
-        body = body.child(
-            h_flex()
-                .w_full()
-                .px_4()
-                .py_1()
-                .bg(theme.muted.opacity(0.1))
-                .text_xs()
-                .font_semibold()
-                .child(format!(
-                    "{}  ·  {} thread(s), {} running",
-                    role.label(),
-                    group.len(),
-                    running
-                )),
-        );
+        rows.push(ThreadListRow::Group(format!(
+            "{}  ·  {} thread(s), {} running",
+            role.label(), group.len(), running
+        )));
         for (thread, title) in group {
             shown += 1;
-            body = body.child(render_thread_row(thread, title, cx));
+            rows.push(ThreadListRow::Thread(thread.clone(), title));
         }
     }
     if shown == 0 {
-        body = body.child(
-            div()
-                .p_4()
-                .text_sm()
-                .text_color(theme.muted_foreground)
-                .child("No matching threads"),
-        );
+        return v_flex()
+            .id("editor-thread-list")
+            .flex_1()
+            .min_w_0()
+            .child(header)
+            .child(
+                div()
+                    .p_4()
+                    .text_sm()
+                    .text_color(theme.muted_foreground)
+                    .child("No matching threads"),
+            )
+            .into_any_element();
     }
+    let count = rows.len();
+    let rows = Rc::new(rows);
     v_flex()
         .id("editor-thread-list")
         .flex_1()
         .min_w_0()
-        .overflow_y_scroll()
-        .child(body)
+        .child(header)
+        .child(v_virtual_list(
+            cx.entity().clone(),
+            "editor-thread-rows",
+            Rc::new(vec![size(px(0.0), px(THREAD_ROW_HEIGHT)); count]),
+            move |_this,
+                  range: std::ops::Range<usize>,
+                  _window,
+                  cx: &mut Context<TaskQueuePanel>| {
+                range
+                    .map(|index| match rows.get(index) {
+                        Some(ThreadListRow::Group(label)) => {
+                            let theme = cx.theme().clone();
+                            h_flex()
+                                .w_full()
+                                .h(px(THREAD_ROW_HEIGHT))
+                                .px_4()
+                                .items_center()
+                                .bg(theme.muted.opacity(0.1))
+                                .text_xs()
+                                .font_semibold()
+                                .child(label.clone())
+                                .into_any_element()
+                        }
+                        Some(ThreadListRow::Thread(thread, title)) => {
+                            render_thread_row(thread, title.clone(), cx)
+                        }
+                        None => div().h(px(THREAD_ROW_HEIGHT)).into_any_element(),
+                    })
+                    .collect::<Vec<_>>()
+            },
+        ).flex_1().min_h_0())
         .into_any_element()
+}
+
+enum ThreadListRow {
+    Group(String),
+    Thread(ThreadSnapshot, Option<String>),
 }
 
 fn render_thread_row(
