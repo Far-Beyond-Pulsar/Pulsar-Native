@@ -17,7 +17,7 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::{cargo, write};
+use common::{cargo, write, write_module};
 use pulsar_project::sdk::SdkKind;
 use pulsar_project::{sync_with, EngineSdk, SyncOptions};
 use pulsar_script_vm::{BinOp, Constant, Function, Instr, Module, Type, Variable};
@@ -67,7 +67,10 @@ fn a_generated_project_compiles_against_this_engine() {
         .map(PathBuf::from)
         .unwrap_or_else(|| temp.path().to_path_buf());
     let project = base.join("Real Check");
-    write(&project.join("Pulsar.toml"), "[project]\nname = \"Real Check\"\n");
+    write(
+        &project.join("Pulsar.toml"),
+        "[project]\nname = \"Real Check\"\n",
+    );
     write(
         &project.join("scripts/gameplay/Cargo.toml"),
         "[package]\nname = \"gameplay\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
@@ -77,10 +80,7 @@ fn a_generated_project_compiles_against_this_engine() {
         &project.join("scripts/gameplay/src/lib.rs"),
         "pub fn register_scripts(_game: &mut pulsar_game::tick::TickLoop) -> Result<(), String> {\n    Ok(())\n}\n",
     );
-    write(
-        &project.join("Door.class/events/.build/module.json"),
-        &counter().to_json().unwrap(),
-    );
+    write_module(&project.join("Door.class"), &counter().to_json().unwrap());
     write(
         &project.join("Door.class/graph_save.json"),
         "{\"compile_target\": \"rust\"}",
@@ -122,7 +122,10 @@ fn a_generated_project_compiles_against_this_engine() {
         // Every failing crate, then the first errors in full.
         let failed: Vec<&str> = stderr
             .lines()
-            .filter(|l| l.starts_with("error: could not compile") || l.starts_with("error: failed to run custom build"))
+            .filter(|l| {
+                l.starts_with("error: could not compile")
+                    || l.starts_with("error: failed to run custom build")
+            })
             .collect();
         let errors: Vec<&str> = stderr
             .lines()
@@ -137,7 +140,10 @@ fn a_generated_project_compiles_against_this_engine() {
     }
     let warnings: Vec<&str> = stderr
         .lines()
-        .filter(|l| l.starts_with("warning: unused manifest key") || l.contains("patch") && l.starts_with("warning"))
+        .filter(|l| {
+            l.starts_with("warning: unused manifest key")
+                || l.contains("patch") && l.starts_with("warning")
+        })
         .collect();
     println!("manifest warnings: {warnings:#?}");
 }

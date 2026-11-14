@@ -32,9 +32,8 @@ fn fixture() -> PathBuf {
 // ---- the fixture's compiled modules ------------------------------------------
 //
 // Hand-assembled engine modules (the format every language compiles to), so
-// the smoke test needs no scripting-language plugin. `fixture_modules_are_current`
-// keeps the committed JSON in step with these; regenerate with
-// `cargo test -p pulsar_package --test smoke -- --ignored regenerate_fixture_modules`.
+// the smoke test needs no scripting-language plugin. The test stores them in
+// the project copy's module store before packaging (`install_modules`).
 
 fn function(
     name: &str,
@@ -213,33 +212,20 @@ fn fixture_modules() -> Vec<(&'static str, Module)> {
     ]
 }
 
-fn module_path(root: &Path, class: &str) -> PathBuf {
-    root.join("src/classes")
-        .join(class)
-        .join("events/.build/module.json")
-}
-
-#[test]
-#[ignore = "writes the fixture's module.json files; run after changing the modules above"]
-fn regenerate_fixture_modules() {
+/// Store the fixture's modules in `project`'s module store, as a language
+/// compiling its classes would.
+fn install_modules(project: &Path) {
     for (class, module) in fixture_modules() {
-        std::fs::write(
-            module_path(&fixture(), class),
-            module.to_json().unwrap() + "\n",
-        )
-        .unwrap();
-    }
-}
-
-#[test]
-fn fixture_modules_are_current() {
-    for (class, module) in fixture_modules() {
-        let committed = std::fs::read_to_string(module_path(&fixture(), class)).unwrap();
-        assert_eq!(
-            Module::from_json(&committed).unwrap(),
-            module,
-            "{class}: run the ignored `regenerate_fixture_modules` test"
-        );
+        let dir = project.join("src/classes").join(class);
+        let (entry, store) = pulsar_class::ModuleStore::for_class_dir(&dir).unwrap();
+        store
+            .write(
+                &entry,
+                "test",
+                String::new(),
+                module.to_json().unwrap().as_bytes(),
+            )
+            .unwrap();
     }
 }
 
@@ -376,6 +362,7 @@ fn packaged_game_runs_from_a_clean_directory() {
     // source tree.
     let project = work.path().join("project");
     copy_dir(&fixture(), &project);
+    install_modules(&project);
 
     let mut options = pulsar_package::PackageOptions::new(&project, work.path().join("out-pak"));
     options.profile = BuildProfile::Shipping;
@@ -388,7 +375,7 @@ fn packaged_game_runs_from_a_clean_directory() {
     assert!(report.files.contains_key("assets/meshes/glass_red.mesh"));
     assert!(report
         .files
-        .contains_key("src/classes/Spawner/events/.build/module.pvm"));
+        .contains_key("Pulsar/modules/762f7d93-1e8c-44dd-b20d-0707e5506e5f.pvm"));
     assert!(
         !report.files.keys().any(|f| f.ends_with("module.json")),
         "shipped modules are binary"

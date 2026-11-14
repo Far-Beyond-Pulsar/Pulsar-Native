@@ -341,8 +341,7 @@ impl RateMeter {
         Some(Rate::Running {
             fps: frames as f64 / seconds,
             interval_ms: seconds * 1000.0 / frames as f64,
-            busy_ms: now.busy.saturating_sub(since.busy).as_secs_f64() * 1000.0
-                / frames as f64,
+            busy_ms: now.busy.saturating_sub(since.busy).as_secs_f64() * 1000.0 / frames as f64,
         })
     }
 }

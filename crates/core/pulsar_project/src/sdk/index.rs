@@ -130,8 +130,8 @@ impl SdkIndex {
         let manifest_text = read(&manifest_path)?;
         let manifest: toml::Table = toml::from_str(&manifest_text)
             .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
-        let workspace = workspace_tables(&manifest)
-            .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
+        let workspace =
+            workspace_tables(&manifest).map_err(|e| format!("{}: {e}", manifest_path.display()))?;
 
         let members = workspace_members(root)?;
         // The installed plugins are the engine's: those its installed-set
@@ -202,8 +202,8 @@ impl SdkIndex {
                     let text = read(&path)?;
                     let manifest: toml::Table =
                         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-                    let tables =
-                        workspace_tables(&manifest).map_err(|e| format!("{}: {e}", path.display()))?;
+                    let tables = workspace_tables(&manifest)
+                        .map_err(|e| format!("{}: {e}", path.display()))?;
                     workspaces.insert(dir.clone(), tables);
                 }
             }
@@ -243,20 +243,28 @@ fn workspace_of(root: &Path, dir: &str) -> Result<Option<String>, String> {
         .and_then(|p| p.get("workspace"))
         .and_then(toml::Value::as_str)
     {
-        let resolved = crate::paths::normalize_rel(&format!("{dir}/{explicit}")).ok_or_else(|| {
-            format!("{}: `package.workspace` leaves the SDK", manifest_path.display())
-        })?;
+        let resolved =
+            crate::paths::normalize_rel(&format!("{dir}/{explicit}")).ok_or_else(|| {
+                format!(
+                    "{}: `package.workspace` leaves the SDK",
+                    manifest_path.display()
+                )
+            })?;
         return Ok(Some(resolved));
     }
     let mut candidate = Some(dir.to_owned());
     while let Some(current) = candidate {
         let path = crate::paths::join(root, &current).join("Cargo.toml");
         if let Some(bytes) = super::fs::read_if_exists(&path)? {
-            let text = String::from_utf8(bytes).map_err(|_| format!("{}: not UTF-8", path.display()))?;
+            let text =
+                String::from_utf8(bytes).map_err(|_| format!("{}: not UTF-8", path.display()))?;
             let manifest: toml::Table =
                 toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
             if let Some(ws) = manifest.get("workspace").and_then(toml::Value::as_table) {
-                let inside = dir.strip_prefix(current.as_str()).unwrap_or(dir).trim_start_matches('/');
+                let inside = dir
+                    .strip_prefix(current.as_str())
+                    .unwrap_or(dir)
+                    .trim_start_matches('/');
                 let excluded = ws
                     .get("exclude")
                     .and_then(toml::Value::as_array)
@@ -273,7 +281,11 @@ fn workspace_of(root: &Path, dir: &str) -> Result<Option<String>, String> {
         candidate = if current.is_empty() {
             None
         } else {
-            Some(current.rsplit_once('/').map_or(String::new(), |(parent, _)| parent.to_owned()))
+            Some(
+                current
+                    .rsplit_once('/')
+                    .map_or(String::new(), |(parent, _)| parent.to_owned()),
+            )
         };
     }
     Ok(None)
@@ -410,7 +422,9 @@ fn parse_tree(tree: &str, root: &Path) -> Result<(Vec<SdkPackage>, BTreeSet<Stri
             continue; // a git source
         }
         if !Path::new(source).is_absolute() {
-            return Err(format!("unexpected package source in cargo tree output: {line}"));
+            return Err(format!(
+                "unexpected package source in cargo tree output: {line}"
+            ));
         }
         let rel = strip_root(source, &root.to_string_lossy()).ok_or_else(|| {
                 format!(
@@ -492,17 +506,23 @@ mod tests {
 
     #[test]
     fn tree_lines_parse_with_their_markers() {
-        let line = parse_tree_line(r"pulsar_game v0.1.0 (D:\e\crates\core\pulsar_game) (*)").unwrap();
+        let line =
+            parse_tree_line(r"pulsar_game v0.1.0 (D:\e\crates\core\pulsar_game) (*)").unwrap();
         assert_eq!(
             (line.name, line.version, line.source),
-            ("pulsar_game", "0.1.0", Some(r"D:\e\crates\core\pulsar_game"))
+            (
+                "pulsar_game",
+                "0.1.0",
+                Some(r"D:\e\crates\core\pulsar_game")
+            )
         );
         let line = parse_tree_line("serde_derive v1.0.228 (proc-macro)").unwrap();
         assert_eq!((line.name, line.source), ("serde_derive", None));
         // Cargo puts the proc-macro marker before a local package's source.
-        let line =
-            parse_tree_line(r"engine_class_derive v0.1.0 (proc-macro) (D:\e\crates\core\engine_class_derive) (*)")
-                .unwrap();
+        let line = parse_tree_line(
+            r"engine_class_derive v0.1.0 (proc-macro) (D:\e\crates\core\engine_class_derive) (*)",
+        )
+        .unwrap();
         assert_eq!(line.source, Some(r"D:\e\crates\core\engine_class_derive"));
         let line = parse_tree_line(
             "wgpu v30.0.1 (https://github.com/x/wgpu?branch=helio%2Fv30.0.1#abc) (*)",
@@ -514,7 +534,10 @@ mod tests {
             parse_tree_line(r"m v0.1.0 (proc-macro) (C:\Program Files (x86)\e\m) (*)").unwrap();
         assert_eq!(line.source, Some(r"C:\Program Files (x86)\e\m"));
         let tree = "odd v0.1.0 (relative/path)\n";
-        assert!(parse_tree(tree, Path::new("/e")).is_err(), "an unknown source shape is an error");
+        assert!(
+            parse_tree(tree, Path::new("/e")).is_err(),
+            "an unknown source shape is an error"
+        );
     }
 
     #[test]

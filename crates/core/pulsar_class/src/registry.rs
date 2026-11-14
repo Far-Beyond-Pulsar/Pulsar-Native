@@ -281,7 +281,7 @@ pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
 
 /// The project a class directory belongs to: `<project>` for
 /// `<project>/src/classes/<Name>`, otherwise the nearest ancestor holding
-/// a `Pulsar/` directory or a `Cargo.toml`.
+/// a `Pulsar.toml`, a `Pulsar/` directory or a `Cargo.toml`.
 pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
     let parent = class_dir.parent()?;
     if parent.file_name().and_then(|n| n.to_str()) == Some("classes") {
@@ -297,7 +297,9 @@ pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
     parent
         .ancestors()
         .find(|dir| {
-            virtual_fs::is_dir(&dir.join("Pulsar")) || virtual_fs::is_file(&dir.join("Cargo.toml"))
+            virtual_fs::is_file(&dir.join("Pulsar.toml"))
+                || virtual_fs::is_dir(&dir.join("Pulsar"))
+                || virtual_fs::is_file(&dir.join("Cargo.toml"))
         })
         .map(Path::to_path_buf)
 }

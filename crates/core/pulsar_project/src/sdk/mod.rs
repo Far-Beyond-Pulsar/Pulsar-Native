@@ -100,7 +100,10 @@ impl EngineSdk {
     /// describes. `cached` (the last mirror's record) is reused when its key
     /// still matches, so Cargo runs only after the checkout's manifests or
     /// lockfile change.
-    pub fn index(&self, cached: Option<&MirrorRecord>) -> Result<(SdkIndex, Option<String>), String> {
+    pub fn index(
+        &self,
+        cached: Option<&MirrorRecord>,
+    ) -> Result<(SdkIndex, Option<String>), String> {
         match self.kind {
             SdkKind::Exported => {
                 let text = fs::read_string(&self.root.join(INDEX_FILE))?;
@@ -142,7 +145,8 @@ impl EngineSdk {
             files.push((rel.to_owned(), fs::read(&self.root.join(rel))?));
         }
         let package_files = index.packages.iter().flat_map(|package| {
-            ["Cargo.toml", pulsar_plugins::DESCRIPTOR_FILE].map(|file| format!("{}/{file}", package.dir))
+            ["Cargo.toml", pulsar_plugins::DESCRIPTOR_FILE]
+                .map(|file| format!("{}/{file}", package.dir))
         });
         // Nested workspaces (a submodule's own root) feed normalization.
         let workspace_files = index
@@ -157,8 +161,11 @@ impl EngineSdk {
         }
         let format = index::INDEX_FORMAT.to_le_bytes();
         Ok(hash::sha256_parts(
-            std::iter::once(("index-format", format.as_slice()))
-                .chain(files.iter().map(|(rel, bytes)| (rel.as_str(), bytes.as_slice()))),
+            std::iter::once(("index-format", format.as_slice())).chain(
+                files
+                    .iter()
+                    .map(|(rel, bytes)| (rel.as_str(), bytes.as_slice())),
+            ),
         ))
     }
 }

@@ -500,20 +500,30 @@ fn light_toggler_module() -> Module {
 
 // ---- project fixtures ------------------------------------------------------------
 
+/// Store `module` as the compiled module of the class at `dir`, in its
+/// project's module store.
+fn store_module(dir: &Path, module: &Module) {
+    let (entry, store) = pulsar_class::ModuleStore::for_class_dir(dir).unwrap();
+    store
+        .write(
+            &entry,
+            "blueprint",
+            String::new(),
+            module.to_json().unwrap().as_bytes(),
+        )
+        .unwrap();
+}
+
 fn write_class(root: &Path, name: &str, module: Module) -> String {
     let guid = format!("{}-guid", name.to_lowercase());
     let dir = root.join("src").join("classes").join(name);
-    std::fs::create_dir_all(dir.join("events").join(".build")).unwrap();
+    std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("class.json"),
         json!({ "class_id": guid }).to_string(),
     )
     .unwrap();
-    std::fs::write(
-        dir.join("events/.build/module.json"),
-        module.to_json().unwrap(),
-    )
-    .unwrap();
+    store_module(&dir, &module);
     guid
 }
 

@@ -9,7 +9,6 @@ use pulsar_script_ts::{compile_class, ClassSchema, ClassSource, Severity};
 pub const CLASS_FILE: &str = "class.ts";
 pub const SCHEMA_FILE: &str = "class.schema.json";
 pub(crate) const LANGUAGE_ID: &str = "typescript";
-const LANGUAGE_MARKER: &str = "language";
 const GRAPH_FILE: &str = "graph_save.json";
 
 /// The directory name is the class name.
@@ -39,10 +38,13 @@ fn check_language(dir: &Path) -> Result<(), String> {
             "this class has both `{CLASS_FILE}` (TypeScript) and `{GRAPH_FILE}` (Blueprint): a class has one language, so remove one of them"
         ));
     }
-    match vfs::read_to_string(&dir.join("events").join(".build").join(LANGUAGE_MARKER)) {
-        Ok(other) if !other.trim().is_empty() && other.trim() != LANGUAGE_ID => Err(format!(
-            "its compiled module was written by the `{}` language; delete `events/.build` to compile it as TypeScript",
-            other.trim()
+    let written_by = pulsar_class::ModuleStore::for_class_dir(dir)
+        .and_then(|(entry, store)| store.language(&entry.id));
+    match written_by {
+        Some(other) if other != LANGUAGE_ID => Err(format!(
+            "its compiled module was written by the `{other}` language; delete its module from \
+             the project's {} to compile it as TypeScript",
+            pulsar_class::modules::STORE_DIR
         )),
         _ => Ok(()),
     }
@@ -67,7 +69,9 @@ pub fn compile_class_dir(
     if let Err(message) = check_language(dir) {
         return vec![diagnostic(&class, &file, message)];
     }
-    let out = dir.join("events").join(".build").join("module.json");
+    let Some((entry, store)) = pulsar_class::ModuleStore::for_class_dir(dir) else {
+        return vec![diagnostic(&class, &file, "the class is in no project")];
+    };
     let source = match vfs::read_to_string(&file) {
         Ok(source) => source,
         Err(e) => return vec![diagnostic(&class, &file, format!("failed to read: {e}"))],
@@ -113,8 +117,9 @@ pub fn compile_class_dir(
 
     let Some(module) = compiled.module else {
         if write {
-            // Never leave a module from an older source behind (only our own).
-            let _ = vfs::delete_path(&out);
+            // Never leave a module from an older source behind (only our
+            // own: `check_language` refused another language's).
+            store.remove(&entry.id);
         }
         return problems;
     };
@@ -134,18 +139,11 @@ pub fn compile_class_dir(
             )]
         }
     };
-    if let Some(build) = out.parent() {
-        if let Err(e) = vfs::create_dir_all(build) {
-            problems.push(io_error("`events/.build`", build, e.to_string()));
-            return problems;
-        }
-        if let Err(e) = vfs::write_file(&out, json.as_bytes()) {
-            problems.push(io_error("the module", &out, e.to_string()));
-            return problems;
-        }
-        if let Err(e) = vfs::write_file(&build.join(LANGUAGE_MARKER), LANGUAGE_ID.as_bytes()) {
-            problems.push(io_error("the language marker", build, e.to_string()));
-        }
+    // The schema the module was compiled against is part of its source.
+    let hash = pulsar_class::modules::source_hash(&[file.clone(), schema_path.clone()]);
+    if let Err(e) = store.write(&entry, LANGUAGE_ID, hash, json.as_bytes()) {
+        problems.push(io_error("the module", store.root(), e));
+        return problems;
     }
     // The schema is the class's field identity: write it when it changed.
     if let Some(schema) = compiled.schema {
@@ -169,7 +167,7 @@ pub fn compile_class_dir(
 }
 
 /// Compile every TypeScript class of the project at `root` (#879): each
-/// `src/classes/<Class>/class.ts` to its `events/.build/module.json`,
+/// `class.ts` to its module in the project's module store,
 /// linking native calls against `natives`, and refresh the generated
 /// declarations. Returns every problem found.
 pub fn compile_project_classes(root: &Path, natives: &NativeRegistry) -> Vec<CompileDiagnostic> {

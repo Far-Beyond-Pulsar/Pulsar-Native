@@ -87,7 +87,9 @@ pub fn mirror(
         for found in fs::walk_package(&package_dir)? {
             let rel = format!("{}/{}", package.dir, found.rel);
             if rel == RECORD_FILE {
-                return Err(format!("the SDK has a file named {RECORD_FILE} at its root"));
+                return Err(format!(
+                    "the SDK has a file named {RECORD_FILE} at its root"
+                ));
             }
             let is_manifest = rel == manifest_rel;
             let (source_size, source_modified_ns) = fs::stamp(&found.path)?;

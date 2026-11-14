@@ -91,7 +91,10 @@ impl ProjectModel {
         let package = package_ident(&name, &taken);
         let lib = format!("{package}_pie");
 
-        let version = descriptor.version.clone().unwrap_or_else(|| "0.1.0".to_owned());
+        let version = descriptor
+            .version
+            .clone()
+            .unwrap_or_else(|| "0.1.0".to_owned());
         if !is_cargo_version(&version) {
             return Err(SyncError::Descriptor(format!(
                 "`project.version` \"{version}\" is not a version like 1.2.3"
@@ -250,9 +253,14 @@ fn rust_classes(project_root: &Path, problems: &mut Vec<String>) -> Vec<RustClas
 }
 
 fn generate_class(dir: &Path, name: &str) -> Result<String, String> {
-    let module_path = dir.join("events").join(".build").join("module.json");
-    let json = virtual_fs::read_to_string(&module_path)
-        .map_err(|_| "it has not been compiled (no events/.build/module.json)".to_owned())?;
+    let (entry, store) =
+        pulsar_class::ModuleStore::for_class_dir(dir).ok_or("it is in no project")?;
+    let json = virtual_fs::read_to_string(&store.module_path(&entry.id)).map_err(|_| {
+        format!(
+            "it has not been compiled (no module in {})",
+            pulsar_class::modules::STORE_DIR
+        )
+    })?;
     let module = pulsar_script_vm::Module::from_json(&json)
         .map_err(|e| format!("its compiled module does not read: {e}"))?;
     let prefab = pulsar_class::prefab::PrefabAsset::load_from_dir(dir)
@@ -297,12 +305,62 @@ pub fn package_ident(name: &str, taken: &BTreeSet<&str>) -> String {
 
 /// Keywords, and crate names a package must not take.
 const RESERVED: &[&str] = &[
-    "abstract", "alloc", "as", "async", "await", "become", "box", "break", "const", "continue",
-    "core", "crate", "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen",
-    "if", "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv",
-    "proc_macro", "pub", "ref", "return", "self", "static", "std", "struct", "super", "test",
-    "trait", "true", "try", "type", "typeof", "unsafe", "unsized", "use", "virtual", "where",
-    "while", "yield",
+    "abstract",
+    "alloc",
+    "as",
+    "async",
+    "await",
+    "become",
+    "box",
+    "break",
+    "const",
+    "continue",
+    "core",
+    "crate",
+    "do",
+    "dyn",
+    "else",
+    "enum",
+    "extern",
+    "false",
+    "final",
+    "fn",
+    "for",
+    "gen",
+    "if",
+    "impl",
+    "in",
+    "let",
+    "loop",
+    "macro",
+    "match",
+    "mod",
+    "move",
+    "mut",
+    "override",
+    "priv",
+    "proc_macro",
+    "pub",
+    "ref",
+    "return",
+    "self",
+    "static",
+    "std",
+    "struct",
+    "super",
+    "test",
+    "trait",
+    "true",
+    "try",
+    "type",
+    "typeof",
+    "unsafe",
+    "unsized",
+    "use",
+    "virtual",
+    "where",
+    "while",
+    "yield",
 ];
 
 /// `MAJOR.MINOR.PATCH`, optionally `-pre` and `+build`.
@@ -322,8 +380,14 @@ mod tests {
     #[test]
     fn package_names_are_identifiers_that_take_no_other_crate_name() {
         let taken: BTreeSet<&str> = ["helio", "pulsar_game"].into_iter().collect();
-        assert_eq!(package_ident("Star Fall: Redux!", &taken), "star_fall_redux");
-        assert_eq!(package_ident("voxel-reference-project", &taken), "voxel_reference_project");
+        assert_eq!(
+            package_ident("Star Fall: Redux!", &taken),
+            "star_fall_redux"
+        );
+        assert_eq!(
+            package_ident("voxel-reference-project", &taken),
+            "voxel_reference_project"
+        );
         assert_eq!(package_ident("2049", &taken), "game_2049");
         assert_eq!(package_ident("Helio", &taken), "helio_game");
         assert_eq!(package_ident("pulsar game", &taken), "pulsar_game_game");

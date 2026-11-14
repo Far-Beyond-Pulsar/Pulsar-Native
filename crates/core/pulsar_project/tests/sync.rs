@@ -6,7 +6,7 @@ mod common;
 
 use std::path::Path;
 
-use common::{cargo, project, read, tree, write, Engine};
+use common::{cargo, project, read, tree, write, write_module, Engine};
 use pulsar_project::sdk::SdkKind;
 use pulsar_project::{sync_with, EngineSdk, SyncError, SyncOptions, SyncReport};
 
@@ -15,7 +15,10 @@ fn absolute_paths(value: &toml::Value) -> Vec<String> {
     match value {
         toml::Value::String(s) => {
             let b = s.as_bytes();
-            let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'/' | b'\\');
+            let drive = b.len() >= 3
+                && b[0].is_ascii_alphabetic()
+                && b[1] == b':'
+                && matches!(b[2], b'/' | b'\\');
             if drive || s.starts_with('/') || s.starts_with('\\') {
                 vec![s.clone()]
             } else {
@@ -65,24 +68,44 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
     let game = read(&f.project.join(".pulsar/build/game/Cargo.toml"));
     for (name, text) in [("Cargo.toml", &root), ("game Cargo.toml", &game)] {
         let engine_path = f.engine.root.to_string_lossy().replace('\\', "/");
-        assert!(!text.replace('\\', "/").contains(&engine_path), "{name} names the engine");
+        assert!(
+            !text.replace('\\', "/").contains(&engine_path),
+            "{name} names the engine"
+        );
         let doc = toml::from_str::<toml::Table>(text).unwrap_or_else(|e| panic!("{name}: {e}"));
         let absolute = absolute_paths(&toml::Value::Table(doc));
-        assert!(absolute.is_empty(), "{name} has absolute paths: {absolute:?}");
+        assert!(
+            absolute.is_empty(),
+            "{name} has absolute paths: {absolute:?}"
+        );
     }
     assert!(root.contains("members = [\".pulsar/build/game\", \"scripts/fall\"]"));
     assert!(root.contains("exclude = [\".pulsar/sdk\"]"));
     assert!(root.contains("pulsar_game = { path = \".pulsar/sdk/crates/pulsar_game\" }"));
     assert!(root.contains("[patch.\"https://example.com/upstream\"]"));
-    assert!(!root.contains("unused_editor"), "the editor-only crate is not the game's");
+    assert!(
+        !root.contains("unused_editor"),
+        "the editor-only crate is not the game's"
+    );
     assert!(root.contains("tracing = { opt-level = 3 }"));
     assert!(!root.contains("not_in_the_game"));
     assert!(game.contains("lights_plugin = { workspace = true }"));
-    assert!(!game.contains("tool_plugin"), "an editor tool is not linked");
-    assert!(!game.contains("fixture_plugin"), "a plugin the engine does not install is not linked");
+    assert!(
+        !game.contains("tool_plugin"),
+        "an editor tool is not linked"
+    );
+    assert!(
+        !game.contains("fixture_plugin"),
+        "a plugin the engine does not install is not linked"
+    );
     assert!(game.contains("fall_scripts = { path = \"../../../scripts/fall\" }"));
-    assert!(game.contains("tracing-subscriber = { features = [\"env-filter\", \"fmt\"], workspace = true }"));
-    assert!(!game.contains("engine_class_derive"), "no class is compiled to Rust");
+    assert!(game.contains(
+        "tracing-subscriber = { features = [\"env-filter\", \"fmt\"], workspace = true }"
+    ));
+    assert!(
+        !game.contains("engine_class_derive"),
+        "no class is compiled to Rust"
+    );
 
     let setup = read(&f.project.join(".pulsar/build/game/src/setup.rs"));
     assert!(setup.contains("fall_scripts::register_scripts(game)?;"));
@@ -102,13 +125,17 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
         sdk.join("crates/engine_class_derive/Cargo.toml").is_file(),
         "a local proc-macro crate is mirrored"
     );
-    let render: toml::Table = toml::from_str(&read(&sdk.join("renderer/crates/render/Cargo.toml"))).unwrap();
+    let render: toml::Table =
+        toml::from_str(&read(&sdk.join("renderer/crates/render/Cargo.toml"))).unwrap();
     assert_eq!(
         render["package"]["version"].as_str(),
         Some("7.0.0"),
         "a nested workspace's crate inherits from that workspace"
     );
-    assert_eq!(render["dependencies"]["render_core"]["path"].as_str(), Some("../render_core"));
+    assert_eq!(
+        render["dependencies"]["render_core"]["path"].as_str(),
+        Some("../render_core")
+    );
     for absent in [
         "crates/pulsar_game/tests",
         "crates/pulsar_game/target",
@@ -127,7 +154,13 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
 
     // Cargo resolves it, offline, to the expected packages.
     let output = cargo()
-        .args(["metadata", "--offline", "--format-version", "1", "--manifest-path"])
+        .args([
+            "metadata",
+            "--offline",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ])
         .arg(f.project.join("Cargo.toml"))
         .output()
         .unwrap();
@@ -143,7 +176,13 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
         .iter()
         .map(|p| p["name"].as_str().unwrap())
         .collect();
-    for expected in ["star_fall", "fall_scripts", "pulsar_game", "lights_plugin", "lights_component"] {
+    for expected in [
+        "star_fall",
+        "fall_scripts",
+        "pulsar_game",
+        "lights_plugin",
+        "lights_component",
+    ] {
         assert!(names.contains(&expected), "{expected} not in {names:?}");
     }
     assert!(!names.contains(&"lights_editor"));
@@ -193,12 +232,25 @@ fn engine_changes_reach_the_mirror_and_only_them() {
 
     // A source edit and a removed file.
     std::thread::sleep(std::time::Duration::from_millis(20));
-    write(&f.engine.root.join("crates/pulsar_game/src/lib.rs"), "pub fn edited() {}");
+    write(
+        &f.engine.root.join("crates/pulsar_game/src/lib.rs"),
+        "pub fn edited() {}",
+    );
     std::fs::remove_file(f.engine.root.join("crates/pulsar_game/shaders/sky.wgsl")).unwrap();
     let report = sync(&f.project, &f.engine);
-    assert_eq!((report.sdk.written, report.sdk.deleted), (1, 1), "{report:?}");
-    assert_eq!(read(&sdk.join("crates/pulsar_game/src/lib.rs")), "pub fn edited() {}");
-    assert!(!sdk.join("crates/pulsar_game/shaders").exists(), "the emptied folder goes too");
+    assert_eq!(
+        (report.sdk.written, report.sdk.deleted),
+        (1, 1),
+        "{report:?}"
+    );
+    assert_eq!(
+        read(&sdk.join("crates/pulsar_game/src/lib.rs")),
+        "pub fn edited() {}"
+    );
+    assert!(
+        !sdk.join("crates/pulsar_game/shaders").exists(),
+        "the emptied folder goes too"
+    );
 
     // A new dependency: the index is rebuilt and the package mirrored.
     write(
@@ -263,7 +315,10 @@ fn a_cargo_toml_the_generator_did_not_write_is_never_replaced() {
     write(&f.project.join("Cargo.toml"), own);
     let sdk = EngineSdk::at(&f.engine.root).unwrap();
     let error = sync_with(&f.project, &sdk, SyncOptions::default()).unwrap_err();
-    assert!(matches!(error, SyncError::Unowned { ref path } if path == "Cargo.toml"), "{error}");
+    assert!(
+        matches!(error, SyncError::Unowned { ref path } if path == "Cargo.toml"),
+        "{error}"
+    );
     assert_eq!(read(&f.project.join("Cargo.toml")), own);
     assert!(!f.project.join(".pulsar").exists(), "nothing is written");
 }
@@ -298,8 +353,11 @@ fn a_class_compiled_to_rust_is_generated_and_removed_with_its_setting() {
     let f = fixture();
     let class = f.project.join("Door.class");
     let module = pulsar_script_vm::Module::new("Door").to_json().unwrap();
-    write(&class.join("events/.build/module.json"), &module);
-    write(&class.join("graph_save.json"), "{\"compile_target\": \"rust\"}");
+    write_module(&class, &module);
+    write(
+        &class.join("graph_save.json"),
+        "{\"compile_target\": \"rust\"}",
+    );
 
     let report = sync(&f.project, &f.engine);
     assert!(report.problems.is_empty(), "{:?}", report.problems);
@@ -309,9 +367,16 @@ fn a_class_compiled_to_rust_is_generated_and_removed_with_its_setting() {
     assert!(read(&game.join("Cargo.toml")).contains("engine_class_derive = { workspace = true }"));
     assert!(read(&game.join("src/lib.rs")).contains("mod classes;"));
 
-    write(&class.join("graph_save.json"), "{\"compile_target\": \"vm\"}");
+    write(
+        &class.join("graph_save.json"),
+        "{\"compile_target\": \"vm\"}",
+    );
     let report = sync(&f.project, &f.engine);
-    assert!(report.files.deleted.iter().any(|d| d.ends_with("classes/door.rs")));
+    assert!(report
+        .files
+        .deleted
+        .iter()
+        .any(|d| d.ends_with("classes/door.rs")));
     assert!(!game.join("src/classes").exists());
     assert!(!read(&game.join("Cargo.toml")).contains("engine_class_derive"));
 }
@@ -341,8 +406,14 @@ fn an_exported_sdk_generates_the_same_project_as_its_checkout() {
     project(&other);
     sync_with(&f.project, &checkout, SyncOptions::default()).unwrap();
     sync_with(&other, &exported, SyncOptions::default()).unwrap();
-    assert_eq!(read(&f.project.join("Cargo.toml")), read(&other.join("Cargo.toml")));
-    assert_eq!(read(&f.project.join("Cargo.lock")), read(&other.join("Cargo.lock")));
+    assert_eq!(
+        read(&f.project.join("Cargo.toml")),
+        read(&other.join("Cargo.toml"))
+    );
+    assert_eq!(
+        read(&f.project.join("Cargo.lock")),
+        read(&other.join("Cargo.lock"))
+    );
     assert_eq!(
         tree(&f.project.join(".pulsar/sdk"))
             .into_iter()

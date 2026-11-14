@@ -13,7 +13,8 @@
 //!     Pulsar/scripting.json    global scripts
 //!     Pulsar/class_index.json  class GUID -> class directory
 //!     Pulsar/asset_registry.json
-//!     src/classes/<Class>/{class.json, prefab.json, events/.build/module.pvm}
+//!     Pulsar/modules/<class id>.pvm  compiled class modules (`pulsar_class::modules`)
+//!     src/classes/<Class>/{class.json, prefab.json}
 //!     scenes/*.level           cooked levels (content-relative asset paths)
 //!     assets/...               meshes, textures, materials
 //! ```
