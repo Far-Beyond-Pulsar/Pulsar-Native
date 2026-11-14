@@ -12,6 +12,23 @@ use crate::plugin::EditorPlugin;
 
 pub use pulsar_script_vm::NativeRegistry;
 
+/// Requested tradeoff for plugin-owned cooking and script compilation.
+///
+/// This is a request, not a promise that every plugin has two distinct
+/// backends. A plugin may use the same output for both levels or report that
+/// it cannot produce the requested output.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CookOptimization {
+    /// Favor low cook latency and incremental iteration.
+    #[default]
+    Fast,
+    /// Favor runtime performance and production-ready output.
+    Optimized,
+}
+
 /// How bad a [`CompileDiagnostic`] is.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
@@ -129,6 +146,20 @@ pub trait ScriptLanguage: Send + Sync {
     ) -> Vec<CompileDiagnostic> {
         let _ = component_events;
         self.compile_project(project_root, natives)
+    }
+
+    /// Compile using a package cook's optimization request. Existing
+    /// languages inherit their previous behavior until they opt into
+    /// mode-specific compilation.
+    fn compile_project_for_cook(
+        &self,
+        project_root: &Path,
+        natives: &NativeRegistry,
+        component_events: &[crate::ComponentEventMetadata],
+        optimization: CookOptimization,
+    ) -> Vec<CompileDiagnostic> {
+        let _ = optimization;
+        self.compile_project_with_component_events(project_root, natives, component_events)
     }
 }
 

@@ -1,6 +1,37 @@
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 use crate::identifiers::FileTypeId;
+use crate::scripting::CookOptimization;
+
+/// Inputs supplied to a file type's cook callback.
+pub struct CookContext<'a> {
+    pub project_root: &'a Path,
+    pub source_path: &'a Path,
+    /// Package-relative destination assigned by the host (normally `assets/...`).
+    pub content_path: &'a Path,
+    pub optimization: CookOptimization,
+}
+
+/// One artifact emitted by a file type's cook callback.
+#[derive(Clone, Debug)]
+pub struct CookedFile {
+    pub path: PathBuf,
+    pub bytes: Vec<u8>,
+}
+
+/// Converts a file of this type into package-ready artifacts.
+pub type CookCallback = for<'a> fn(&CookContext<'a>) -> Result<Vec<CookedFile>, String>;
+
+/// Copy formats whose authored file is already runtime-ready.
+pub fn copy_file_for_cook(context: &CookContext<'_>) -> Result<Vec<CookedFile>, String> {
+    let bytes = engine_fs::virtual_fs::read_file(context.source_path)
+        .map_err(|error| format!("{}: {error}", context.source_path.display()))?;
+    Ok(vec![CookedFile {
+        path: context.content_path.to_path_buf(),
+        bytes,
+    }])
+}
 
 /// Replaced with one RFC 3339 UTC timestamp when a file type's default content
 /// is instantiated by the file manager.
@@ -74,6 +105,10 @@ pub struct FileTypeDefinition {
     /// This is useful for project assets with a canonical location, such as
     /// type definitions under `types/traits`.
     pub creation_directory: Option<String>,
+
+    /// Plugin-owned cook handler. Choose `copy_file_for_cook` for a runtime
+    /// ready format, or provide the transformation owned by this file type.
+    pub cook: CookCallback,
 }
 
 impl FileTypeDefinition {
@@ -101,6 +136,7 @@ mod tests {
             default_content,
             categories: Vec::new(),
             creation_directory: None,
+            cook: copy_file_for_cook,
         }
     }
 

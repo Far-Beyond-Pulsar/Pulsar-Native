@@ -52,6 +52,7 @@ impl EditorPlugin for AssetViewerPlugin {
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
                 creation_directory: None,
+                cook: plugin_editor_api::file_types::copy_file_for_cook,
 
                 categories: vec!["3D Models".to_string()],
             },
@@ -64,6 +65,7 @@ impl EditorPlugin for AssetViewerPlugin {
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
                 creation_directory: None,
+                cook: plugin_editor_api::file_types::copy_file_for_cook,
 
                 categories: vec!["3D Models".to_string()],
             },
@@ -76,6 +78,7 @@ impl EditorPlugin for AssetViewerPlugin {
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
                 creation_directory: None,
+                cook: plugin_editor_api::file_types::copy_file_for_cook,
 
                 categories: vec![t!("AssetViewer.Images").to_string()],
             },

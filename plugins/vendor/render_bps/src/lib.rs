@@ -77,6 +77,7 @@ pub(crate) fn file_type() -> FileTypeDefinition {
         default_content: serde_json::from_str(&document::new_graph_asset().to_json())
             .expect("a graph asset is JSON"),
         creation_directory: None,
+        cook: plugin_editor_api::file_types::copy_file_for_cook,
         categories: vec!["Rendering".to_string()],
     }
 }

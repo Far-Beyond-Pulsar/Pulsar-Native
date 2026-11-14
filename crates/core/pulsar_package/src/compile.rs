@@ -65,7 +65,11 @@ impl CompileOutput {
 /// Compile every class of every linked language, then load and link every
 /// class's module against the engine. `settings` supplies the capability
 /// allowlist of `settings.profile`.
-pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOutput {
+pub fn compile_project(
+    project: &Path,
+    settings: &ProjectSettings,
+    optimization: plugin_editor_api::CookOptimization,
+) -> CompileOutput {
     let mut output = CompileOutput::default();
     // A project from before the module store keeps modules beside its
     // classes: move them in before anything compiles or reads them.
@@ -83,10 +87,11 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
         project,
         natives_runtime.natives(),
         &component_events,
+        optimization,
         &mut output,
     );
     #[cfg(not(feature = "scripting"))]
-    run_languages(project, natives_runtime.natives(), &mut output);
+    run_languages(project, natives_runtime.natives(), optimization, &mut output);
 
     let registry = ClassRegistry::scan(project);
     let store = pulsar_class::ModuleStore::of_project(project);
@@ -230,12 +235,17 @@ fn run_languages(
     project: &Path,
     natives: &pulsar_script_vm::NativeRegistry,
     component_events: &[plugin_editor_api::ComponentEventMetadata],
+    optimization: plugin_editor_api::CookOptimization,
     output: &mut CompileOutput,
 ) {
     for language in plugin_editor_api::linked_script_languages() {
         tracing::info!(language = language.display_name(), "Compiling scripts");
-        for diagnostic in
-            language.compile_project_with_component_events(project, natives, component_events)
+        for diagnostic in language.compile_project_for_cook(
+            project,
+            natives,
+            component_events,
+            optimization,
+        )
         {
             output.problems.push(ScriptProblem {
                 error: diagnostic.is_error(),
@@ -255,6 +265,7 @@ fn run_languages(
 fn run_languages(
     _project: &Path,
     _natives: &pulsar_script_vm::NativeRegistry,
+    _optimization: plugin_editor_api::CookOptimization,
     _output: &mut CompileOutput,
 ) {
     tracing::warn!(

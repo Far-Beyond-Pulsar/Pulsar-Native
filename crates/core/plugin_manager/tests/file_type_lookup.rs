@@ -16,6 +16,8 @@ fn definition(id: &str, extension: &str, structure: FileStructure) -> FileTypeDe
         structure,
         default_content: serde_json::json!(""),
         creation_directory: None,
+        cook: plugin_editor_api::file_types::copy_file_for_cook,
+        cook: plugin_editor_api::file_types::copy_file_for_cook,
         categories: Vec::new(),
     }
 }

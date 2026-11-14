@@ -44,6 +44,7 @@ impl BuiltinEditorProvider for TraitEditorBuiltinProvider {
             }),
             categories: vec!["Types".to_owned(), "Traits".to_owned()],
             creation_directory: Some("types/traits".to_owned()),
+            cook: plugin_editor_api::file_types::copy_file_for_cook,
         }]
     }
 

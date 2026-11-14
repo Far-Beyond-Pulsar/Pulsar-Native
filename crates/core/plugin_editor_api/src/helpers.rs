@@ -20,6 +20,7 @@ pub fn standalone_file_type(
         default_content,
         categories: vec![],
         creation_directory: None,
+        cook: crate::file_types::copy_file_for_cook,
     }
 }
 
@@ -47,5 +48,6 @@ pub fn folder_file_type(
         default_content,
         categories: vec![],
         creation_directory: None,
+        cook: crate::file_types::copy_file_for_cook,
     }
 }

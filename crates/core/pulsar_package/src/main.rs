@@ -32,6 +32,9 @@ enum Command {
         /// Script limits and checks: `dev` or `shipping`.
         #[arg(long, default_value = "shipping")]
         profile: BuildProfile,
+        /// Plugin cook tradeoff: `fast` for iteration or `optimized` for runtime output.
+        #[arg(long, default_value = "optimized")]
+        optimization: String,
         /// Rust target triple of the game executable (default: host).
         #[arg(long)]
         target: Option<String>,
@@ -72,6 +75,7 @@ fn main() {
             project,
             out,
             profile,
+            optimization,
             target,
             loose,
             skip_build,
@@ -83,6 +87,14 @@ fn main() {
                 project,
                 out,
                 profile,
+                optimization: match optimization.as_str() {
+                    "fast" => plugin_editor_api::CookOptimization::Fast,
+                    "optimized" => plugin_editor_api::CookOptimization::Optimized,
+                    other => {
+                        eprintln!("error: unknown cook optimization `{other}` (expected fast or optimized)");
+                        return;
+                    }
+                },
                 target,
                 loose,
                 skip_build,

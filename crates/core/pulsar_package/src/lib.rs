@@ -56,6 +56,9 @@ pub struct PackageOptions {
     /// Output directory: gets the game executable and `Content/`.
     pub out: PathBuf,
     pub profile: BuildProfile,
+    /// Plugin cooking tradeoff. Fast favors iteration; optimized asks each
+    /// registered file handler and script language for production output.
+    pub optimization: plugin_editor_api::CookOptimization,
     /// Rust target triple for the game binary (default: the host).
     pub target: Option<String>,
     /// Write `Content/` as loose files instead of a pak set.
@@ -75,6 +78,7 @@ impl PackageOptions {
             project: project.into(),
             out: out.into(),
             profile: BuildProfile::Dev,
+            optimization: plugin_editor_api::CookOptimization::Fast,
             target: None,
             loose: false,
             skip_build: false,
@@ -106,6 +110,7 @@ pub enum PackageError {
 pub struct PackageReport {
     pub out: PathBuf,
     pub profile: String,
+    pub optimization: plugin_editor_api::CookOptimization,
     /// The pak, or `None` for loose content.
     pub pak: Option<PathBuf>,
     /// The game executable, unless the build was skipped.
@@ -136,7 +141,11 @@ pub fn build_scripts(
     profile: BuildProfile,
 ) -> Result<compile::CompileOutput, PackageError> {
     let settings = project_settings(project, profile)?;
-    let output = compile::compile_project(project, &settings);
+    let output = compile::compile_project(
+        project,
+        &settings,
+        plugin_editor_api::CookOptimization::Fast,
+    );
     if output.has_errors() {
         return Err(PackageError::Scripts(output.problems));
     }
@@ -163,6 +172,7 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     })?;
     let mut report = PackageReport {
         profile: options.profile.as_str().into(),
+        optimization: options.optimization,
         ..Default::default()
     };
     let content = cook_content(&project, options, &mut report)?;
@@ -385,9 +395,10 @@ fn cook_content(
     // The project's plugins, as its game links them: what is cooked (and
     // which plugin folders are snapshotted) follows the project's list.
     pulsar_plugins::activate_project(project, engine_state::project_plugins(project));
+    let file_types = plugin_manager::builtin::linked_file_type_definitions();
 
     // 1. Scripts.
-    let compiled = compile::compile_project(&project, &settings);
+    let compiled = compile::compile_project(&project, &settings, options.optimization);
     if compiled.has_errors() {
         return Err(PackageError::Scripts(compiled.problems));
     }
@@ -556,10 +567,45 @@ fn cook_content(
     let mut registry_out = AssetRegistry::new();
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for (id, source) in &assets.assets {
-        let bytes = virtual_fs::read_file(source)
-            .map_err(|e| PackageError::Cook(format!("asset {}: {e}", source.display())))?;
-        registry_out.insert(cook::asset_record(id, source, &project, &bytes));
-        asset_bytes.insert(id.clone(), bytes);
+        let handler = cook_handler_for_path(&file_types, source)
+            .map_err(|e| PackageError::Cook(format!("asset {id}: {e}")))?;
+        let content_path = Path::new(id);
+        let context = plugin_editor_api::CookContext {
+            project_root: &project,
+            source_path: source,
+            content_path,
+            optimization: options.optimization,
+        };
+        let cooked = handler(&context)
+            .map_err(|e| PackageError::Cook(format!("asset {id}: {e}")))?;
+        if cooked.is_empty() {
+            return Err(PackageError::Cook(format!(
+                "asset {id}: its registered file cook handler emitted no output"
+            )));
+        }
+        for artifact in cooked {
+            let path_text = artifact.path.to_string_lossy().replace('\\', "/");
+            let output_id = pulsar_content::normalize_rel(&path_text).ok_or_else(|| {
+                PackageError::Cook(format!("asset {id}: invalid cooked path `{path_text}`"))
+            })?;
+            if !output_id.starts_with("assets/") {
+                return Err(PackageError::Cook(format!(
+                    "asset {id}: cooked output `{output_id}` must be under assets/"
+                )));
+            }
+            if asset_bytes.contains_key(&output_id) {
+                return Err(PackageError::Cook(format!(
+                    "asset {id}: cooked output `{output_id}` collides with another asset"
+                )));
+            }
+            registry_out.insert(cook::asset_record(
+                &output_id,
+                source,
+                &project,
+                &artifact.bytes,
+            ));
+            asset_bytes.insert(output_id, artifact.bytes);
+        }
     }
     report.assets = asset_bytes.len();
     files.extend(asset_bytes);
@@ -574,6 +620,47 @@ fn cook_content(
         }
     }
     Ok(files)
+}
+
+/// Resolve the most specific registered file type suffix. Compound types
+/// such as `trait.json` take precedence over a generic `json` type.
+fn cook_handler_for_path(
+    file_types: &[plugin_editor_api::FileTypeDefinition],
+    path: &Path,
+) -> Result<plugin_editor_api::file_types::CookCallback, String> {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return Ok(plugin_editor_api::file_types::copy_file_for_cook);
+    };
+    let mut candidates: Vec<_> = file_types
+        .iter()
+        .filter(|definition| {
+            let Some(suffix_start) = name.len().checked_sub(definition.extension.len()) else {
+                return false;
+            };
+            name.get(suffix_start..)
+                .is_some_and(|suffix| suffix.eq_ignore_ascii_case(&definition.extension))
+                && name
+                    .get(..suffix_start)
+                    .is_some_and(|prefix| prefix.ends_with('.'))
+        })
+        .collect();
+    candidates.sort_by(|a, b| b.extension.len().cmp(&a.extension.len()));
+    let Some(selected) = candidates.first() else {
+        return Ok(plugin_editor_api::file_types::copy_file_for_cook);
+    };
+    let tied: Vec<_> = candidates
+        .iter()
+        .take_while(|candidate| candidate.extension.len() == selected.extension.len())
+        .collect();
+    if tied.iter().any(|candidate| {
+        !std::ptr::fn_addr_eq(candidate.cook, selected.cook)
+    }) {
+        return Err(format!(
+            "multiple enabled file types register different cook handlers for .{}",
+            selected.extension
+        ));
+    }
+    Ok(selected.cook)
 }
 
 // std::fs allowed: the packaged game's output folder is the user's chosen real machine path,

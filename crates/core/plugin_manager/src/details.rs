@@ -156,6 +156,7 @@ mod tests {
                 default_content: serde_json::Value::Null,
                 categories: Vec::new(),
                 creation_directory: None,
+                cook: plugin_editor_api::file_types::copy_file_for_cook,
             }]
         }
         fn editors(&self) -> Vec<EditorMetadata> {

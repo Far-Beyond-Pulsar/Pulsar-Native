@@ -41,6 +41,7 @@ impl BuiltinEditorProvider for Probe {
             structure: FileStructure::Standalone,
             default_content: serde_json::json!(""),
             creation_directory: None,
+            cook: plugin_editor_api::file_types::copy_file_for_cook,
             categories: vec!["Test".to_string()],
         }]
     }

@@ -108,6 +108,17 @@ pub trait BuiltinEditorProvider: Send + Sync {
     }
 }
 
+/// File types contributed by the currently enabled linked plugins. Hosts
+/// such as the packager use the same registrations as the file manager.
+pub fn linked_file_type_definitions() -> Vec<plugin_editor_api::FileTypeDefinition> {
+    let mut providers: Vec<_> = pulsar_plugins::registered::<PluginEditorProvider>().collect();
+    providers.sort_by(|a, b| a.id.cmp(b.id));
+    providers
+        .into_iter()
+        .flat_map(|registration| (registration.create)().file_types())
+        .collect()
+}
+
 /// A linked editor provider: a plugin's root crate submits one
 /// (`pulsar_plugins::origin!()`), and it counts only while the plugin is
 /// enabled for the project, as every plugin registration does; the engine's
