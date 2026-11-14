@@ -92,6 +92,13 @@ not_in_the_game = {{ opt-level = 3 }}
         for name in STUBS {
             stub(r, &format!("crates/{name}"), name, "");
         }
+        // A proc-macro: `cargo tree` prints these differently.
+        stub(
+            r,
+            "crates/engine_class_derive",
+            "engine_class_derive",
+            "[lib]\nproc-macro = true\n",
+        );
         stub(
             r,
             "crates/tracing-subscriber",
@@ -136,6 +143,22 @@ not_in_the_game = {{ opt-level = 3 }}
         write(
             &r.join("plugins/tool/pulsar-plugin.toml"),
             "id = \"pulsar.tool\"\nname = \"Tool\"\nroot = \"tool_plugin\"\neditor_only = true\n",
+        );
+        // A plugin in the workspace that the engine does not install (a
+        // test fixture): never a game's.
+        stub(r, "crates/fixture_plugin", "fixture_plugin", "");
+        write(
+            &r.join("crates/fixture_plugin/pulsar-plugin.toml"),
+            "id = \"pulsar.fixture\"\nname = \"Fixture\"\nroot = \"fixture_plugin\"\n",
+        );
+        // The engine's installed set.
+        stub(
+            r,
+            "crates/installed_plugins",
+            "installed_plugins",
+            "[dependencies]\nlights_plugin.workspace = true\n\
+             tool_plugin = { workspace = true, optional = true }\n\n\
+             [dev-dependencies]\nfixture_plugin = { path = \"../fixture_plugin\" }\n",
         );
         engine.lock();
         engine

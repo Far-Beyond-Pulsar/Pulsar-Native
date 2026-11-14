@@ -196,38 +196,72 @@ some_crate = { path = ".pulsar/sdk/crates/third-party/..." }   # path patches re
 The Cargo files are the same on every machine for a given engine version and
 `Pulsar.toml`. What is rebuilt per machine is the **SDK mirror**, not Cargo:
 
-- **The SDK index**, embedded in the engine by `pulsar_project/build.rs`: the
-  path-dependency closure of the game dependency list and of every runtime
-  plugin root (what the game can link), each package with its
-  **workspace-relative** directory; the workspace `[patch]` table with
-  workspace-relative paths; the engine's `Cargo.lock`; and the engine
-  fingerprint (version + git rev).
-- **The SDK source** on this machine, found by `EngineSdk::locate()`: the
-  install's `sdk/` directory for a Hub install (Q1), or the source checkout for
-  a dev build (found from the running executable, the way
-  `pulsar_install_layout` finds plugins; never `CARGO_MANIFEST_DIR`). Missing
-  → a clear error; nothing is half-written.
+- **The SDK index** (`sdk::SdkIndex`): the engine's local packages a game's
+  dependency graph activates, each with its SDK-relative directory; the name
+  of every crate in that graph; the engine workspace's `[workspace.package]`,
+  `[workspace.dependencies]`, `[patch]` and `[profile]` tables; the installed
+  plugins' descriptors; the engine's `Cargo.lock`. Its fingerprint (a hash
+  of all of it) identifies the engine a project was generated from.
+  - **Cargo computes the graph**, not a re-implementation of its resolver:
+    `cargo tree --locked -e normal,build --target all` from the game crate's
+    engine dependencies and every installed runtime plugin root. Features,
+    targets, optional dependencies and `[patch]` redirects are Cargo's own
+    answer. Verified first: Cargo reads no manifest of an *inactive* optional
+    path dependency of a package that is not a workspace member, which every
+    mirrored package is, so the editor-only side of a plugin (its `editor`
+    feature's crates) is never mirrored.
+  - **Installed plugins** are the normal dependencies of the engine's
+    `installed_plugins` crate (the set the editor links), not every workspace
+    member with a descriptor: the workspace also holds test-fixture plugins.
+  - For a checkout the index is built on demand and cached in the mirror's
+    record, keyed by a hash of the workspace manifest, the lockfile, and each
+    indexed package's manifest and descriptor; a package can only become
+    reachable through a change to one of those. For an exported SDK it is
+    `pulsar-sdk.json`, written by `EngineSdk::export` (the release pipeline's
+    call) from the same code.
+- **The SDK source** on this machine, found by `EngineSdk::locate()`:
+  `PULSAR_SDK` when set; an install's `sdk/`
+  (`InstallLayout::sdk_dir`, added to the Hub/engine contract); or the source
+  checkout, found by walking up from the running executable (a workspace root
+  whose `[workspace.dependencies]` has `pulsar_game` at a path). Never
+  `CARGO_MANIFEST_DIR`. Missing → a clear error; nothing is written.
 - **The mirror** (`.pulsar/sdk/`, gitignored): each indexed package copied
-  under its workspace-relative directory, so the index's relative paths just
-  gain a `.pulsar/sdk/` prefix. Only what a build needs is copied (what
-  `cargo package` would list: the manifest's `include`/`exclude`, no
-  `target/`, tests, benches, examples). Each package manifest is
-  **normalized** on the way in, the way `cargo package` does it: `workspace =
-  true` fields and dependencies are replaced by the engine workspace's
-  concrete values, and path dependencies between SDK packages become relative
-  paths inside the mirror. So the mirrored crates stand alone and never pick up
-  the game project's workspace. For a Hub install the release pipeline ships
-  `sdk/` already normalized; for a dev checkout the mirror normalizes.
-- **Mirroring is incremental**: a file is copied when its size, mtime or hash
-  differs, files the SDK no longer has are deleted, and
-  `.pulsar/sdk/sdk.json` records the engine fingerprint and a per-file
-  manifest. A fresh clone, a new machine or an engine upgrade rebuilds the
-  mirror on the next sync; an unchanged one costs a stat walk.
+  under its SDK-relative directory, so the index's relative paths just gain a
+  `.pulsar/sdk/` prefix. Copied: everything in the package directory except
+  `target/`, dot-files and dot-directories, the package's top-level `tests/`,
+  `benches/` and `examples/`, and nested packages (mirrored on their own when
+  the game uses them). Each manifest is **normalized** the way `cargo package`
+  does it: inherited `workspace = true` values resolved (path dependencies
+  rebased onto the package), and dev-dependencies, lints, test/bench/example
+  targets and workspace-root tables removed. An SDK package's lints are not
+  the game's: its `deny`s must not fail a game build. Normalizing is
+  idempotent, so an exported (already normalized) SDK mirrors through the
+  same code.
+- **Mirroring is incremental**: `.pulsar/sdk/sdk.json` records, per file, the
+  source's size and modification time and the output's size. A file is
+  rewritten when its source changed, its output is missing or resized, or
+  (manifests) the index changed; files the SDK no longer has are deleted with
+  any folder left empty. A fresh clone, a new machine or an engine upgrade
+  rebuilds the mirror on the next sync; an unchanged one costs a stat walk.
+  The mirror is per-machine Cargo input, so it is written to the real disk
+  (`sdk/fs.rs`, the crate's one `std::fs` module), never through a remote
+  project's provider.
 - Scripts crates say `pulsar_game = { workspace = true }`, resolved through the
   root `[workspace.dependencies]`.
 
 Cargo's own lockfile records path dependencies without a path, so
-`Cargo.lock` is portable too.
+`Cargo.lock` is portable too. It is seeded from the engine's when the project
+has none or the engine fingerprint changed: the engine's entries win, and the
+project keeps only the crates the engine does not lock at all (a second
+version of an engine crate would make the engine's bare-name references
+ambiguous, so it is dropped, and so is any kept entry that refers to such a
+crate by bare name). Cargo prunes and extends it on the next build.
+
+What the root manifest carries from the engine is what applies to the game's
+graph: a `[workspace.dependencies]` or `[patch]` entry only for a crate in the
+graph (or one the game crate names), a local one only when the mirror has it;
+`[profile.*.package]` overrides only for crates in the graph, so Cargo has
+nothing to warn about.
 
 The reflection-alias patch (`build.rs:186-195`) and the `libc` /
 `find-msvc-tools` pins (finding 8) are not carried over: the seeded lockfile
@@ -239,30 +273,33 @@ at its source (bump SceneDB's `pulsar_reflection` rev) before P2 lands.
 `.pulsar/build/generated.json`:
 
 ```json
-{ "format": 2, "generator": 1,
-  "inputs": "<hash of every input below>",
+{ "format": 1,
+  "engine": "<SDK index fingerprint>",
   "files": { "Cargo.toml": "<sha256>", ".pulsar/build/game/src/main.rs": "<sha256>" } }
 ```
 
-`apply`:
+`apply` is two steps, `plan` (reads, writes nothing) and `commit`:
 
-1. Write each file whose content differs from disk, atomically
-   (`write_file_atomically`, already used at `:722`).
-2. Delete each file in the old record that the new `FileSet` no longer has
-   (finding 6).
-3. If a file on disk differs from the hash the record says was written, it was
-   hand-edited: overwrite it and report it as drift ("put this in
-   `Pulsar.toml`"), shown in the editor's Problems panel.
-4. Write the record last. An interrupted sync leaves the old record, so the
-   next sync redoes the work.
+1. Each file whose content differs from disk is written, atomically
+   (`virtual_fs::write_file_atomically`).
+2. Each file in the old record that the new `FileSet` no longer has is
+   deleted, with any folder that leaves empty (finding 6).
+3. A file on disk that differs from the hash the record says was written was
+   hand-edited: it is overwritten and reported as drift.
+4. A file that exists, differs, and is **not** in the record was not written
+   by the generator (a format-1 project's `Cargo.toml`, a user's file): the
+   sync fails with `SyncError::Unowned` before writing anything, the SDK
+   mirror included. Migration (P4) is what takes those over.
+5. The record is written last. An interrupted sync leaves the old record, so
+   the next sync redoes the work.
 
 ### 2.5 Triggers
 
-`sync` first brings the SDK mirror up to date (2.3), then hashes its inputs
-(engine fingerprint, `Pulsar.toml`, the
-scripts crate manifests, the nativized class modules, generator version) and
-returns at once when the hash matches the record and no recorded file is
-missing. So it is called everywhere, cheaply:
+`sync` is cheap when nothing changed, with no separate input hash to keep
+correct: the SDK index is reused while the checkout files it was built from
+are unchanged, the mirror compares file stamps, and the generated files are
+rendered in memory (a handful of small files) and written only where they
+differ. So it is called everywhere:
 
 | Trigger | Where |
 |---|---|
@@ -280,10 +317,12 @@ an editor task with its own span log (`.agents/EDITOR_TASKS.md`).
 
 `.pulsar/build/game/` is glue only:
 
-- `main.rs` → `pulsar_game::standalone::run(setup)`; `lib.rs` → the PIE
-  `pulsar_pie_*` shim (unchanged ABI); `plugins.rs` → `use <root> as _;` per
-  enabled runtime plugin.
-- `scripts.rs` → `setup()` calls each scripts crate's `register_scripts`, then
+- `main.rs` → `pulsar_game::standalone::run(setup)`, the `[[bin]]` named
+  after the project (`star_fall`, so a packaged game's executable carries its
+  name); `lib.rs` → the PIE `pulsar_pie_*` shim (unchanged ABI), the `[lib]`
+  `<package>_pie`; `plugins.rs` → `use <root> as _;` per enabled runtime
+  plugin.
+- `setup.rs` → `setup()` calls each scripts crate's `register_scripts`, then
   `game.enable_project_scripting()`. Replaces `engine_main.rs`; the
   `Pulsar/level.json` prefabs path is deleted (finding 10).
 - `classes/<ident>.rs` → only for classes whose saved `compile_target` is
@@ -298,7 +337,7 @@ the codegen against the real `NativeActor`.
 `SyncReport` carries the package name, the `[[bin]]` name and the lib target
 name. PIE and the packager read them from there instead of scanning the
 manifest (finding 9). The PIE fast path keeps its "skip cargo when nothing
-changed" behaviour, keyed on the record's input hash plus the scripts crates'
+changed" behaviour, keyed on `SyncReport::changed()` plus the scripts crates'
 source mtimes instead of every `.rs`/`.toml` under the project; the artifact
 path comes from cargo's `--message-format=json` (`compiler-artifact`), not
 from `PieHost::output_dylib_path` guessing.
@@ -363,6 +402,35 @@ logged in section 6 and fixed in a cleanup pass.
   two different directories gives byte-identical `Cargo.toml` and
   `Cargo.lock`; SDK mirror: incremental copy, deletion, manifest normalization
   (no `workspace = true` left in a mirrored manifest), rebuilt after deletion.
+
+  **As built.** `crates/core/pulsar_project`: `descriptor` (Pulsar.toml
+  `[project]` name/version + `[plugins]`), `sdk` (`index`, `normalize`,
+  `mirror`, `fs`, `EngineSdk::{locate, at, index, export}`), `model`,
+  `render` (`root`, `game`, `lock`), `apply` (`plan`/`commit`, the record),
+  `sync` (`sync`, `sync_with`, `SyncOptions { force }`, `SyncReport`). Not
+  wired to any caller yet (P2). Tests:
+  - unit (paths, TOML writer round-trip, descriptor, package names,
+    versions, tree-line parsing including proc-macro lines and paths with
+    parentheses, normalization and its idempotence, lock seeding);
+  - `tests/sync.rs` against a miniature engine checkout (stub crates, a
+    proc-macro, an installed and an uninstalled plugin, an editor-only
+    plugin, an optional editor crate, a `[patch]`, profile overrides), with
+    Cargo resolving the result offline: portable output, second sync writes
+    nothing, two locations byte-identical, engine source edits and removals
+    and a new dependency reach the mirror, deleted mirror rebuilt, drift
+    restored and reported, plugins follow Pulsar.toml, an unowned
+    `Cargo.toml` refused with nothing written, scripts crate checks, a class
+    compiled to Rust generated and removed, an exported SDK generating the
+    same project as its checkout;
+  - `tests/real_engine.rs` (`--ignored`): sync against this checkout and
+    `cargo check --workspace` the result, with a scripts crate and a class
+    compiled to Rust.
+
+  Departures from section 2 as first written: the index is computed by
+  Cargo (`cargo tree`), not embedded by a build script; the generation record
+  carries no input hash (rendering is cheap; see 2.5); `scripts.rs` is
+  `setup.rs`; the executable is named after the project and the library
+  `<package>_pie`.
 - **P2 — switch every caller, delete the old builder.** Build runner, PIE,
   packager, engine startup step, watcher triggers, `pulsar project sync`.
   `core_project_builder.rs` and the `engine_backend/build.rs` baking go in the

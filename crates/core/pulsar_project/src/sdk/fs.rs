@@ -29,6 +29,17 @@ pub fn read_if_exists(path: &Path) -> Result<Option<Vec<u8>>, String> {
     }
 }
 
+/// `path` absolute, with `.`/`..` and links resolved, without the Windows
+/// verbatim (`\\?\`) prefix Cargo does not print.
+pub fn canonical(path: &Path) -> Result<PathBuf, String> {
+    let resolved = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = resolved.to_string_lossy();
+    Ok(match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
+        _ => resolved,
+    })
+}
+
 pub fn is_file(path: &Path) -> bool {
     path.is_file()
 }

@@ -55,16 +55,10 @@ impl EngineSdk {
         for dir in fs::executable_ancestors() {
             let install = pulsar_install_layout::InstallLayout::new(&dir).sdk_dir();
             if fs::is_file(&install.join(INDEX_FILE)) {
-                return Ok(Self {
-                    root: install,
-                    kind: SdkKind::Exported,
-                });
+                return Self::at(&install);
             }
             if is_checkout(&dir) {
-                return Ok(Self {
-                    root: dir,
-                    kind: SdkKind::Checkout,
-                });
+                return Self::at(&dir);
             }
         }
         Err(format!(
@@ -75,6 +69,7 @@ impl EngineSdk {
 
     /// The SDK at `root`: an exported SDK or an engine checkout.
     pub fn at(root: &Path) -> Result<Self, String> {
+        let root = &fs::canonical(root)?;
         if fs::is_file(&root.join(INDEX_FILE)) {
             Ok(Self {
                 root: root.to_path_buf(),

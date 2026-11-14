@@ -13,13 +13,14 @@
 //! - **workspace**: the engine workspace's `[workspace.package]`,
 //!   `[workspace.dependencies]`, `[patch]` and `[profile]` tables, which
 //!   normalize mirrored manifests and seed the game's root manifest.
-//! - **plugins**: the descriptors of the engine's plugins.
+//! - **plugins**: the descriptors of the engine's installed plugins (the
+//!   dependencies of its [`INSTALLED_SET_CRATE`]).
 //! - **lock**: the engine's `Cargo.lock`, which seeds the game's.
 //!
 //! Built from a source checkout ([`SdkIndex::build`]); an exported SDK ships
 //! it as [`INDEX_FILE`].
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -51,7 +52,13 @@ pub struct SdkIndex {
     /// Sorted by `dir`.
     pub packages: Vec<SdkPackage>,
     pub crates: BTreeSet<String>,
+    /// The engine workspace's tables (the SDK root's `Cargo.toml`).
     pub workspace: SdkWorkspace,
+    /// Every workspace a package inherits from, by its directory (relative
+    /// to the SDK root; `""` is the engine's). A package inherits from its
+    /// own workspace, which is not always the engine's: a submodule such as
+    /// the renderer is a workspace of its own.
+    pub workspaces: BTreeMap<String, SdkWorkspace>,
     /// Descriptor sources (`pulsar-plugin.toml`), sorted by plugin id.
     pub plugins: Vec<String>,
     pub lock: String,
@@ -63,6 +70,9 @@ pub struct SdkPackage {
     pub version: String,
     /// Relative to the SDK root, forward slashes.
     pub dir: String,
+    /// The directory of the workspace it inherits from (a key of
+    /// [`SdkIndex::workspaces`]), if it is in one.
+    pub workspace: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -124,8 +134,23 @@ impl SdkIndex {
             .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
 
         let members = workspace_members(root)?;
+        // The installed plugins are the engine's: those its installed-set
+        // crate depends on (a workspace can hold other plugins, such as
+        // test fixtures, that the engine does not install).
+        let installed_set = members
+            .iter()
+            .find(|m| m.name == INSTALLED_SET_CRATE)
+            .ok_or_else(|| {
+                format!(
+                    "{} has no `{INSTALLED_SET_CRATE}` package: not an engine checkout",
+                    root.display()
+                )
+            })?;
         let mut plugins: Vec<(String, String)> = Vec::new();
-        for member in &members {
+        for member in members
+            .iter()
+            .filter(|m| installed_set.dependencies.contains(&m.name))
+        {
             let descriptor = member.dir.join(pulsar_plugins::DESCRIPTOR_FILE);
             if !is_file(&descriptor) {
                 continue;
@@ -168,16 +193,88 @@ impl SdkIndex {
         packages.sort_by(|a, b| a.dir.cmp(&b.dir));
         packages.dedup_by(|a, b| a.dir == b.dir);
 
+        let mut workspaces: BTreeMap<String, SdkWorkspace> = BTreeMap::new();
+        for package in &mut packages {
+            package.workspace = workspace_of(root, &package.dir)?;
+            if let Some(dir) = &package.workspace {
+                if !workspaces.contains_key(dir) {
+                    let path = crate::paths::join(root, dir).join("Cargo.toml");
+                    let text = read(&path)?;
+                    let manifest: toml::Table =
+                        toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+                    let tables =
+                        workspace_tables(&manifest).map_err(|e| format!("{}: {e}", path.display()))?;
+                    workspaces.insert(dir.clone(), tables);
+                }
+            }
+        }
+
         let lock = read(&root.join("Cargo.lock"))?;
         Ok(Self {
             format: INDEX_FORMAT,
             packages,
             crates,
             workspace,
+            workspaces,
             plugins: plugins.into_iter().map(|(_, source)| source).collect(),
             lock,
         })
     }
+
+    /// The workspace `package` inherits from, if any.
+    pub fn workspace_of(&self, package: &SdkPackage) -> Option<(&str, &SdkWorkspace)> {
+        let dir = package.workspace.as_deref()?;
+        Some((dir, self.workspaces.get(dir)?))
+    }
+}
+
+/// The workspace the package at `dir` (relative to `root`) inherits from,
+/// found the way Cargo finds it: the path in its `package.workspace`, else
+/// the nearest directory at or above it, within `root`, whose `Cargo.toml`
+/// has a `[workspace]` that does not exclude it.
+fn workspace_of(root: &Path, dir: &str) -> Result<Option<String>, String> {
+    let manifest_path = crate::paths::join(root, dir).join("Cargo.toml");
+    let manifest: toml::Table = toml::from_str(&read(&manifest_path)?)
+        .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
+    if let Some(explicit) = manifest
+        .get("package")
+        .and_then(|p| p.get("workspace"))
+        .and_then(toml::Value::as_str)
+    {
+        let resolved = crate::paths::normalize_rel(&format!("{dir}/{explicit}")).ok_or_else(|| {
+            format!("{}: `package.workspace` leaves the SDK", manifest_path.display())
+        })?;
+        return Ok(Some(resolved));
+    }
+    let mut candidate = Some(dir.to_owned());
+    while let Some(current) = candidate {
+        let path = crate::paths::join(root, &current).join("Cargo.toml");
+        if let Some(bytes) = super::fs::read_if_exists(&path)? {
+            let text = String::from_utf8(bytes).map_err(|_| format!("{}: not UTF-8", path.display()))?;
+            let manifest: toml::Table =
+                toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+            if let Some(ws) = manifest.get("workspace").and_then(toml::Value::as_table) {
+                let inside = dir.strip_prefix(current.as_str()).unwrap_or(dir).trim_start_matches('/');
+                let excluded = ws
+                    .get("exclude")
+                    .and_then(toml::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(toml::Value::as_str)
+                    .filter_map(crate::paths::normalize_rel)
+                    .any(|ex| inside == ex || inside.starts_with(&format!("{ex}/")));
+                if !excluded {
+                    return Ok(Some(current));
+                }
+            }
+        }
+        candidate = if current.is_empty() {
+            None
+        } else {
+            Some(current.rsplit_once('/').map_or(String::new(), |(parent, _)| parent.to_owned()))
+        };
+    }
+    Ok(None)
 }
 
 /// The workspace tables an index carries, from an engine's root manifest.
@@ -201,9 +298,15 @@ pub(crate) fn workspace_tables(manifest: &toml::Table) -> Result<SdkWorkspace, S
     })
 }
 
+/// The engine crate whose dependencies are the installed plugins' root
+/// crates (`plugins/installed`, generated from the vendored descriptors).
+pub const INSTALLED_SET_CRATE: &str = "installed_plugins";
+
 struct Member {
     name: String,
     dir: std::path::PathBuf,
+    /// Its normal dependencies' package names.
+    dependencies: BTreeSet<String>,
 }
 
 fn cargo() -> Command {
@@ -233,6 +336,13 @@ fn workspace_members(root: &Path) -> Result<Vec<Member>, String> {
     struct Package {
         name: String,
         manifest_path: std::path::PathBuf,
+        dependencies: Vec<Dependency>,
+    }
+    #[derive(Deserialize)]
+    struct Dependency {
+        name: String,
+        /// `None` for a normal dependency, `"dev"` or `"build"` otherwise.
+        kind: Option<String>,
     }
     let metadata: Metadata = serde_json::from_slice(&output.stdout)
         .map_err(|e| format!("reading cargo metadata: {e}"))?;
@@ -243,6 +353,12 @@ fn workspace_members(root: &Path) -> Result<Vec<Member>, String> {
             Some(Member {
                 dir: p.manifest_path.parent()?.to_path_buf(),
                 name: p.name,
+                dependencies: p
+                    .dependencies
+                    .into_iter()
+                    .filter(|d| d.kind.is_none())
+                    .map(|d| d.name)
+                    .collect(),
             })
         })
         .collect();
@@ -286,10 +402,13 @@ fn parse_tree(tree: &str, root: &Path) -> Result<(Vec<SdkPackage>, BTreeSet<Stri
         };
         crates.insert(package.name.to_owned());
         let Some(source) = package.source else {
-            continue;
+            continue; // a registry crate
         };
-        if !Path::new(source).is_absolute() {
+        if source.contains("://") {
             continue; // a git source
+        }
+        if !Path::new(source).is_absolute() {
+            return Err(format!("unexpected package source in cargo tree output: {line}"));
         }
         let rel = strip_root(source, &root.to_string_lossy()).ok_or_else(|| {
                 format!(
@@ -302,6 +421,7 @@ fn parse_tree(tree: &str, root: &Path) -> Result<(Vec<SdkPackage>, BTreeSet<Stri
             name: package.name.to_owned(),
             version: package.version.to_owned(),
             dir: rel,
+            workspace: None,
         });
     }
     Ok((packages, crates))
@@ -313,26 +433,23 @@ struct TreeLine<'a> {
     source: Option<&'a str>,
 }
 
-/// `name vX.Y.Z`, then optionally ` (source)`, ` (proc-macro)` and ` (*)`.
+/// `name vX.Y.Z`, then optionally ` (proc-macro)`, ` (source)` and ` (*)`
+/// (Cargo prints the proc-macro marker before the source).
 fn parse_tree_line(line: &str) -> Option<TreeLine<'_>> {
-    let mut rest = line;
-    loop {
-        let before = rest;
-        for suffix in [" (*)", " (proc-macro)"] {
-            rest = rest.strip_suffix(suffix).unwrap_or(rest);
-        }
-        if rest == before {
-            break;
-        }
-    }
+    const PROC_MACRO: &str = "(proc-macro)";
+    let rest = line.strip_suffix(" (*)").unwrap_or(line);
     let (name, rest) = rest.split_once(' ')?;
     let (version, rest) = match rest.split_once(' ') {
         Some((version, rest)) => (version, Some(rest)),
         None => (rest, None),
     };
     let version = version.strip_prefix('v')?;
+    let rest = rest.map(|r| {
+        let r = r.strip_prefix(PROC_MACRO).unwrap_or(r).trim_start();
+        r.strip_suffix(PROC_MACRO).unwrap_or(r).trim_end()
+    });
     let source = match rest {
-        None => None,
+        None | Some("") => None,
         Some(rest) => Some(rest.strip_prefix('(')?.strip_suffix(')')?),
     };
     Some(TreeLine {
@@ -380,6 +497,11 @@ mod tests {
         );
         let line = parse_tree_line("serde_derive v1.0.228 (proc-macro)").unwrap();
         assert_eq!((line.name, line.source), ("serde_derive", None));
+        // Cargo puts the proc-macro marker before a local package's source.
+        let line =
+            parse_tree_line(r"engine_class_derive v0.1.0 (proc-macro) (D:\e\crates\core\engine_class_derive) (*)")
+                .unwrap();
+        assert_eq!(line.source, Some(r"D:\e\crates\core\engine_class_derive"));
         let line = parse_tree_line(
             "wgpu v30.0.1 (https://github.com/x/wgpu?branch=helio%2Fv30.0.1#abc) (*)",
         )
@@ -387,8 +509,10 @@ mod tests {
         assert_eq!(line.version, "30.0.1");
         assert!(line.source.unwrap().starts_with("https://"));
         let line =
-            parse_tree_line(r"m v0.1.0 (C:\Program Files (x86)\e\m) (proc-macro) (*)").unwrap();
+            parse_tree_line(r"m v0.1.0 (proc-macro) (C:\Program Files (x86)\e\m) (*)").unwrap();
         assert_eq!(line.source, Some(r"C:\Program Files (x86)\e\m"));
+        let tree = "odd v0.1.0 (relative/path)\n";
+        assert!(parse_tree(tree, Path::new("/e")).is_err(), "an unknown source shape is an error");
     }
 
     #[test]

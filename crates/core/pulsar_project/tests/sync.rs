@@ -79,6 +79,7 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
     assert!(!root.contains("not_in_the_game"));
     assert!(game.contains("lights_plugin = { workspace = true }"));
     assert!(!game.contains("tool_plugin"), "an editor tool is not linked");
+    assert!(!game.contains("fixture_plugin"), "a plugin the engine does not install is not linked");
     assert!(game.contains("fall_scripts = { path = \"../../../scripts/fall\" }"));
     assert!(game.contains("tracing-subscriber = { features = [\"env-filter\", \"fmt\"], workspace = true }"));
     assert!(!game.contains("engine_class_derive"), "no class is compiled to Rust");
@@ -97,6 +98,10 @@ fn a_synced_project_is_a_portable_cargo_workspace() {
     assert!(!mirrored.contains_key("lints") && !mirrored.contains_key("dev-dependencies"));
     assert_eq!(mirrored["package"]["version"].as_str(), Some("0.4.0"));
     assert!(sdk.join("crates/pulsar_game/shaders/sky.wgsl").is_file());
+    assert!(
+        sdk.join("crates/engine_class_derive/Cargo.toml").is_file(),
+        "a local proc-macro crate is mirrored"
+    );
     for absent in [
         "crates/pulsar_game/tests",
         "crates/pulsar_game/target",
