@@ -323,11 +323,7 @@ fn probe_on(
         64,
         wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
     );
-    let cull_stats = buffer(
-        "Probe Cull Stats",
-        64,
-        wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
-    );
+    let stats = helio::FrameStats::new(&device);
 
     let mut env = helio_graph_asset::build_env(&helio::PassBuildContext {
         device: &device,
@@ -342,7 +338,7 @@ fn probe_on(
         debug_state: Arc::new(std::sync::Mutex::new(helio::DebugDrawState::default())),
         camera_buffer: &camera,
         debug_camera_buffer: &debug_camera,
-        cull_stats_buffer: &cull_stats,
+        stats: &stats,
         owns_device: false,
         scene_db,
     });

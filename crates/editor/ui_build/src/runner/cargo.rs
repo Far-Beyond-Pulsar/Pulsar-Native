@@ -33,6 +33,9 @@ pub struct Progress {
     from: u32,
     to: u32,
     task: Option<TaskContext>,
+    /// The running cargo command's process id, 0 between commands: the root
+    /// of the process tree the build dashboard samples.
+    cargo_pid: Arc<AtomicU32>,
 }
 
 impl Progress {
@@ -43,12 +46,27 @@ impl Progress {
             from: 0,
             to: 100,
             task: None,
+            cargo_pid: Arc::default(),
         }
     }
 
     pub fn with_task_context(mut self, task: TaskContext) -> Self {
         self.task = Some(task);
         self
+    }
+
+    /// Publish each cargo command's process id into `pid` while it runs.
+    pub fn with_cargo_pid(mut self, pid: Arc<AtomicU32>) -> Self {
+        self.cargo_pid = pid;
+        self
+    }
+
+    fn cargo_started(&self, pid: u32) {
+        self.cargo_pid.store(pid, Ordering::Release);
+    }
+
+    fn cargo_ended(&self) {
+        self.cargo_pid.store(0, Ordering::Release);
     }
 
     /// The same bar, restricted to `from..to` percent.
@@ -139,6 +157,37 @@ fn registry_activity(line: &str) -> Option<String> {
         )
         .to_string(),
     )
+}
+
+/// The build's log target: cargo's output in the build task's log (and the
+/// engine log) is filterable by it.
+const LOG_TARGET: &str = "cargo";
+
+/// Write one line of cargo's own output (stderr) to the build's log, at the
+/// level cargo gave it.
+fn log_cargo_line(line: &str) {
+    let line = line.trim_end();
+    let head = line.trim_start();
+    if head.is_empty() {
+        return;
+    }
+    if head.starts_with("error") {
+        tracing::error!(target: LOG_TARGET, "{line}");
+    } else if head.starts_with("warning") {
+        tracing::warn!(target: LOG_TARGET, "{line}");
+    } else {
+        tracing::info!(target: LOG_TARGET, "{line}");
+    }
+}
+
+/// Write one compiler diagnostic, as rustc renders it, to the build's log.
+fn log_compiler_message(level: Option<&str>, rendered: &str) {
+    let rendered = rendered.trim_end();
+    match level {
+        Some(level) if level.starts_with("error") => tracing::error!(target: LOG_TARGET, "{rendered}"),
+        Some("warning") => tracing::warn!(target: LOG_TARGET, "{rendered}"),
+        _ => tracing::info!(target: LOG_TARGET, "{rendered}"),
+    }
 }
 
 /// How many `compiler-artifact` messages a build of `invocation` emits, from
@@ -271,14 +320,19 @@ pub fn run_compiling(
             .to_string(),
         )
     })?;
+    progress.cargo_started(child.id());
     let stdout = BufReader::new(child.stdout.take().expect("piped"));
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
     let child = Arc::new(Mutex::new(child));
     let done = Arc::new(AtomicBool::new(false));
     watch_for_cancel(child.clone(), cancel.clone(), done.clone());
 
-    // stderr carries registry activity and, when there is no JSON, the failure.
+    // stderr carries cargo's own lines (Compiling, Updating, Finished), the
+    // registry activity for the status line, and, when there is no JSON,
+    // the failure. Its lines go to the build task's log: the reader runs in
+    // the task's span.
     let stderr_progress = progress.clone();
+    let span = tracing::Span::current();
     let stderr_thread = editor_task_queue::spawn_named(
         editor_task_queue::ThreadSpec::new(
             "ui build: run compiling",
@@ -286,8 +340,10 @@ pub fn run_compiling(
         )
         .owner("ui_build"),
         move || {
+            let _in_task = span.enter();
             let mut text = String::new();
             for line in stderr.lines().map_while(Result::ok) {
+                log_cargo_line(&line);
                 if let Some(activity) = registry_activity(&line) {
                     stderr_progress.status(activity);
                 }
@@ -315,6 +371,9 @@ pub fn run_compiling(
         match message["reason"].as_str() {
             Some("compiler-message") => {
                 let m = &message["message"];
+                if let Some(rendered) = m["rendered"].as_str() {
+                    log_compiler_message(m["level"].as_str(), rendered);
+                }
                 if m["level"].as_str() == Some("error") {
                     if let Some(rendered) = m["rendered"].as_str() {
                         if !errors.iter().any(|e| e == rendered) {
@@ -341,6 +400,7 @@ pub fn run_compiling(
     let stderr_text = stderr_thread.join().unwrap_or_default();
     let status = child.lock().wait();
     done.store(true, Ordering::Release);
+    progress.cargo_ended();
 
     if cancel.load(Ordering::Acquire) {
         return Err(StepError::Cancelled);
@@ -393,6 +453,7 @@ pub fn run_plain(
             .to_string(),
         )
     })?;
+    progress.cargo_started(child.id());
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
     let child = Arc::new(Mutex::new(child));
     let done = Arc::new(AtomicBool::new(false));
@@ -401,6 +462,7 @@ pub fn run_plain(
     let mut output = String::new();
     let mut activity = 0u32;
     for line in stderr.lines().map_while(Result::ok) {
+        log_cargo_line(&line);
         if let Some(text) = registry_activity(&line) {
             activity += 1;
             progress.set((activity * 3).min(95));
@@ -412,6 +474,7 @@ pub fn run_plain(
 
     let status = child.lock().wait();
     done.store(true, Ordering::Release);
+    progress.cargo_ended();
 
     if cancel.load(Ordering::Acquire) {
         return Err(StepError::Cancelled);

@@ -85,6 +85,11 @@ impl FrameTarget for SurfaceTarget {
                 .is_none_or(|at| at.elapsed() >= FRAME_CONSUMER_WAIT_TIMEOUT)
     }
 
+    fn set_ready_waker(&self, waker: Option<Arc<dyn Fn() + Send + Sync>>) {
+        // The compositor taking the published frame is what `ready` waits on.
+        self.surface.set_consumed_waker(waker);
+    }
+
     fn frame_interval(&self) -> Duration {
         // The profiler's "uncap frame rate" recording option lifts the target.
         if profiling::uncap_frame_rate() {

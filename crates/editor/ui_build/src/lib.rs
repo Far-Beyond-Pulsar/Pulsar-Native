@@ -9,11 +9,14 @@
 //! - [`picker`]: the searchable dropdown behind the Build button.
 //! - [`button`]: the Build split button the global toolbar shows.
 //! - [`configurator`]: the window for creating and editing configurations.
+//! - [`dashboard`]: the window that opens with each build: its output, its
+//!   compiler processes, and CPU and memory use.
 
 rust_i18n::i18n!("locales", fallback = "en");
 
 pub mod button;
 pub mod configurator;
+pub mod dashboard;
 pub mod picker;
 pub mod runner;
 mod text;

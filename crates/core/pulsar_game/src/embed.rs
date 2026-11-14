@@ -456,6 +456,9 @@ impl EmbeddedGame {
         // editor viewport's construction on the host's device; its GPU mirror
         // is the viewport's when that already attached one.
         let scene_store = Arc::clone(&tick_loop.scene_store);
+        // The level's pipeline, chosen in this library (its pipeline registry
+        // and level slot are its own copies, not the editor's).
+        crate::standalone::select_level_pipeline(&project_root, scene_path.as_deref());
         let renderer = SceneRenderer::new(
             device.clone(),
             queue.clone(),

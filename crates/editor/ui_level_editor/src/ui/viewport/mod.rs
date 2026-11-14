@@ -34,7 +34,7 @@ use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::menu::popup_menu::PopupMenu;
 use ui::Sizable;
-use ui::{v_flex, ActiveTheme};
+use ui::{h_flex, v_flex, ActiveTheme};
 use ui_common::ViewportControls;
 
 use crate::state::LevelEditorState;
@@ -196,6 +196,10 @@ pub struct ViewportPanel {
     /// Mailbox into `gpu_engine`, fetched once the renderer exists.
     mailbox: Option<engine_backend::subsystems::render::HelioEditorMailbox>,
 
+    /// The frames this viewport's window presented (the UI frame rate), taken
+    /// on the first frame pump; the overlays' samplers share it.
+    ui_frames: Rc<std::cell::OnceCell<gpui::PresentedFrames>>,
+
     /// View-mode picker of a split-off viewport.
     own_picker: Option<view_settings::OwnViewPicker>,
 
@@ -218,6 +222,10 @@ pub struct ViewportPanel {
 
     /// The render pipeline overlay, alive only while it is shown.
     gpu_overlay: RefCell<Option<Entity<components::gpu_pipeline_overlay::GpuPipelineOverlay>>>,
+
+    /// The render stats overlay, alive only while it is shown.
+    render_stats_overlay:
+        RefCell<Option<Entity<components::render_stats_overlay::RenderStatsOverlay>>>,
 
     /// Editor diagnostics overlay, alive only while it is shown.
     nerds_overlay: RefCell<Option<Entity<NerdsOverlay>>>,
@@ -295,6 +303,7 @@ impl ViewportPanel {
             view_state,
             own_view,
             mailbox: None,
+            ui_frames: Rc::default(),
             own_picker: None,
             cached_frame_snapshot: EngineFrameSnapshot::default(),
             viewport_controls: ViewportControls::new(),
@@ -303,6 +312,7 @@ impl ViewportPanel {
             stats: SharedStats::default(),
             perf_overlay: RefCell::new(None),
             gpu_overlay: RefCell::new(None),
+            render_stats_overlay: RefCell::new(None),
             nerds_overlay: RefCell::new(None),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),

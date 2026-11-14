@@ -345,7 +345,7 @@ fn preset_passes(
         (std::mem::size_of::<GpuCameraUniforms>() * 2) as u64,
     );
     let debug_camera = buffer("Debug Camera Buffer", 64);
-    let cull_stats = buffer("Cull Stats Buffer", 64);
+    let stats = helio::FrameStats::new(&device);
     let gpu_context = EngineGpuContext::new(Arc::clone(device), Arc::clone(queue));
     let store = SceneGpuStore::new(
         &gpu_context,
@@ -368,7 +368,7 @@ fn preset_passes(
                 debug_state: Arc::new(Mutex::new(DebugDrawState::default())),
                 camera_buffer: &camera,
                 debug_camera_buffer: &debug_camera,
-                cull_stats_buffer: &cull_stats,
+                stats: &stats,
                 owns_device: false,
                 scene_db: scene_db.clone(),
             });
@@ -518,7 +518,7 @@ fn render_with_stand_ins(scene: &SharedScene) {
         (std::mem::size_of::<GpuCameraUniforms>() * 2) as u64,
     );
     let debug_camera = buffer("Debug Camera Buffer", 64);
-    let cull_stats = buffer("Cull Stats Buffer", 64);
+    let stats = helio::FrameStats::new(&device);
     let gpu_context = EngineGpuContext::new(Arc::clone(&device), Arc::clone(&queue));
     let store = SceneGpuStore::new(
         &gpu_context,
@@ -539,7 +539,7 @@ fn render_with_stand_ins(scene: &SharedScene) {
             debug_state: Arc::new(Mutex::new(DebugDrawState::default())),
             camera_buffer: &camera,
             debug_camera_buffer: &debug_camera,
-            cull_stats_buffer: &cull_stats,
+            stats: &stats,
             owns_device: false,
             scene_db: scene_db.clone(),
         });

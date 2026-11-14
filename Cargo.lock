@@ -12727,6 +12727,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_project"
+version = "0.1.0"
+dependencies = [
+ "engine_fs",
+ "pulsar_class",
+ "pulsar_install_layout",
+ "pulsar_plugins",
+ "pulsar_script_codegen",
+ "pulsar_script_vm",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml 1.1.4+spec-1.1.0",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_reflection"
 version = "0.1.0"
 dependencies = [
@@ -17539,10 +17558,12 @@ dependencies = [
  "rust-i18n",
  "serde_json",
  "smol",
+ "sysinfo",
  "tempfile",
  "tracing",
  "ui",
  "ui_common",
+ "ui_log_viewer",
  "window_manager",
 ]
 

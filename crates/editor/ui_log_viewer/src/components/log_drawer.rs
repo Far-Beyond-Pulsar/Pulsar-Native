@@ -26,20 +26,22 @@ enum LogLevel {
 }
 
 impl LogLevel {
+    /// The level a log line was written at. Every line this view shows is
+    /// `<date> <time> <LEVEL> <target>: <message>` (the engine's live log and
+    /// each task's log write them so), so the level is read from that place,
+    /// never from the message: a warning that mentions "error" is a warning.
+    /// A line without that prefix has no level.
     fn from_line(line: &str) -> Self {
-        let upper = line.to_ascii_uppercase();
-        if upper.contains("ERROR") || upper.contains(" ERR ") || upper.starts_with("ERR") {
-            LogLevel::Error
-        } else if upper.contains("WARN") {
-            LogLevel::Warn
-        } else if upper.contains("INFO") {
-            LogLevel::Info
-        } else if upper.contains("DEBUG") {
-            LogLevel::Debug
-        } else if upper.contains("TRACE") {
-            LogLevel::Trace
-        } else {
-            LogLevel::Unknown
+        let Some(token) = line.split_whitespace().nth(2) else {
+            return LogLevel::Unknown;
+        };
+        match token {
+            "ERROR" => LogLevel::Error,
+            "WARN" => LogLevel::Warn,
+            "INFO" => LogLevel::Info,
+            "DEBUG" => LogLevel::Debug,
+            "TRACE" => LogLevel::Trace,
+            _ => LogLevel::Unknown,
         }
     }
 
@@ -1000,5 +1002,32 @@ impl Render for LogDrawer {
                         }
                     }),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogLevel;
+
+    #[test]
+    fn the_level_is_read_from_its_place_not_the_message() {
+        let line = |level: &str, message: &str| {
+            format!("2026-11-13 21:52:22.117 {level} cargo: {message}")
+        };
+        assert_eq!(
+            LogLevel::from_line(&line("WARN", "warning: unused import: `pulsar_error::Error`")),
+            LogLevel::Warn
+        );
+        assert_eq!(
+            LogLevel::from_line(&line("INFO", "Compiling error-chain v0.12.4")),
+            LogLevel::Info
+        );
+        assert_eq!(LogLevel::from_line(&line("ERROR", "error[E0432]")), LogLevel::Error);
+        assert_eq!(LogLevel::from_line(&line("DEBUG", "x")), LogLevel::Debug);
+        assert_eq!(LogLevel::from_line(&line("TRACE", "x")), LogLevel::Trace);
+        assert_eq!(
+            LogLevel::from_line("... 3 earlier line(s) were dropped (an ERROR among them)"),
+            LogLevel::Unknown
+        );
     }
 }

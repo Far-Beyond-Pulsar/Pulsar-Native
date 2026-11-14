@@ -430,23 +430,7 @@ pub fn load_level(
     content: &ContentRoot,
     path: &std::path::Path,
 ) -> Result<(), String> {
-    // The level's render pipeline: offer the project's render graphs, then
-    // remember which one this level runs for the renderer built after this.
-    {
-        use engine_backend::subsystems::render::helio_renderer::pipelines;
-        let requested = engine_fs::virtual_fs::read_to_string(path)
-            .ok()
-            .and_then(|json| pipelines::render_pipeline_of_level(&json));
-        // Loading project graphs builds Helio's passes once to learn their pins, so
-        // only a level that names a pipeline pays for it.
-        if requested.is_some() {
-            let report = pipelines::refresh_project_pipelines(content.root());
-            for (graph, error) in &report.failed {
-                tracing::warn!(graph = %graph, "Render graph not offered: {error}");
-            }
-        }
-        pipelines::set_level_pipeline(requested);
-    }
+    select_level_pipeline(content.root(), Some(path));
     let registry = pulsar_class::ClassRegistry::scan(content.root());
     let name = content
         .relative(path)
@@ -463,6 +447,34 @@ pub fn load_level(
     adopt_level(game, content, path);
     tracing::info!(level = %name, "Level loaded");
     Ok(())
+}
+
+/// Choose the render pipeline the level at `level` asks for (its World
+/// Settings), for the renderers built after this: every host calls it before
+/// it builds one (headless and windowed games, Play-In-Editor), since a
+/// game's renderer takes its pipeline when it is made
+/// (`SceneRendererOptions::game`). Offers the project's render graphs first
+/// (`content_root`, plugin folders included); building them learns Helio's
+/// pins once, so only a level that names a pipeline pays for it. No level,
+/// or one that names none, chooses none: the renderer says so on screen.
+pub fn select_level_pipeline(content_root: &std::path::Path, level: Option<&std::path::Path>) {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    let requested = level.and_then(|path| {
+        engine_fs::virtual_fs::read_to_string(path)
+            .map_err(|error| {
+                tracing::warn!(level = %path.display(), "Level not read for its render pipeline: {error}");
+            })
+            .ok()
+            .and_then(|json| pipelines::render_pipeline_of_level(&json))
+    });
+    if requested.is_some() {
+        let report = pipelines::refresh_project_pipelines(content_root);
+        for (graph, error) in &report.failed {
+            tracing::warn!(graph = %graph, "Render graph not offered: {error}");
+        }
+    }
+    tracing::info!(pipeline = ?requested, "Level render pipeline selected");
+    pipelines::set_level_pipeline(requested);
 }
 
 /// What a loaded level tells the session, for every host path (headless and

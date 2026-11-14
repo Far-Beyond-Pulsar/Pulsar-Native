@@ -8,9 +8,6 @@ use std::time::Duration;
 pub struct RenderMetrics {
     pub fps: f32,
     pub frame_time_ms: f32,
-    pub draw_calls: u32,
-    pub memory_usage_mb: f32,
-    pub vertices_drawn: u64,
     pub frames_rendered: u64,
     pub pipeline_time_us: f32,
 }

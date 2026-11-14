@@ -392,6 +392,7 @@ lights_plugin                      = { path = "plugins/vendor/lights" }
 lights_editor                      = { path = "plugins/vendor/lights/editor" }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 pulsar_plugins                     = { path = "crates/core/pulsar_plugins" }
+pulsar_project                     = { path = "crates/core/pulsar_project" }
 # Plugins whose crate is the plugin (the editor tools and the pre-rewrite
 # plugins), linked by the installed set (plugins/installed). `builtin` drops
 # the dynamic-loader exports a plugin library carries for a DLL build.

@@ -6,6 +6,10 @@
 //! cancellation. If the plan ends in a run step the game is launched and
 //! watched. While anything here is running, `PlaybackState::build_running` is
 //! set; [`cancel_build`] stops it.
+//!
+//! Each build publishes a [`session::BuildSession`] and opens the build
+//! dashboard (`crate::dashboard`), which shows it: cargo's output (the build
+//! task's log), the compiler processes, and CPU and memory use.
 
 mod audio;
 pub mod cargo;
@@ -13,6 +17,7 @@ pub mod failure;
 pub mod game;
 pub mod plan;
 pub mod process_tree;
+pub mod session;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -85,10 +90,20 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     let pct = Arc::new(AtomicU32::new(0));
     let detail = Arc::new(Mutex::new(String::new()));
     let step_title = Arc::new(Mutex::new(t!("Build.Progress.Starting").to_string()));
-    let progress = Progress::new(Arc::clone(&pct), Arc::clone(&detail));
+    let cargo_pid = Arc::new(AtomicU32::new(0));
+    let progress = Progress::new(Arc::clone(&pct), Arc::clone(&detail))
+        .with_cargo_pid(Arc::clone(&cargo_pid));
+    let session = Arc::new(session::BuildSession::new(
+        name.clone(),
+        Arc::clone(&pct),
+        Arc::clone(&step_title),
+        Arc::clone(&detail),
+        cargo_pid,
+    ));
+    session::begin(Arc::clone(&session));
 
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), StepError>>(1);
-    {
+    let task_id = {
         let plan = plan.clone();
         let root = project_root.clone();
         let step_title = Arc::clone(&step_title);
@@ -124,8 +139,10 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
                     }
                 }
             },
-        );
-    }
+        )
+    };
+    session.set_task(task_id);
+    crate::dashboard::open(cx);
 
     window.push_notification(
         Notification::info(t!("Build.Notification.Starting").to_string())
@@ -186,6 +203,11 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
 
         // The build is over whatever happened; free the button first.
         playback().update(|s| s.build_running = false);
+        session.finish(match &result {
+            Some(Ok(())) => session::Outcome::Succeeded,
+            Some(Err(StepError::Failed(_))) => session::Outcome::Failed,
+            Some(Err(StepError::Cancelled)) | None => session::Outcome::Cancelled,
+        });
 
         match result {
             Some(Ok(())) => {

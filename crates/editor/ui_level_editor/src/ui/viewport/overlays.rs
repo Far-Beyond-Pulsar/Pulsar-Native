@@ -52,6 +52,7 @@ impl ViewportPanel {
                 overlays.camera_mode_selector_collapsed,
                 overlays.show_performance_overlay,
                 overlays.show_gpu_pipeline_overlay,
+                overlays.show_render_stats_overlay,
                 overlays.show_nerds_overlay,
                 overlays.debug_overlays.clone(),
                 overlays.camera_sync_locked,
@@ -188,9 +189,18 @@ impl ViewportPanel {
         // The plugins' debug overlays (the portals' links): each shown one
         // docks its panel and does its per-frame work; the others clear
         // what they gave the renderer.
+        // Filled by `sync_view_settings` on the frame pump; until then, one
+        // attempt at the renderer.
+        let mailbox = self.mailbox.clone().or_else(|| {
+            gpu_engine
+                .try_lock()
+                .ok()
+                .and_then(|engine| engine.editor_mailbox())
+        });
         let overlay_context = crate::extend::viewport::OverlayContext {
             state: &state_arc,
             gpu_engine,
+            mailbox: mailbox.clone(),
         };
         let perspective = view.editor.camera_mode == crate::state::CameraMode::Perspective;
         for overlay in crate::extend::viewport::debug_overlays() {
@@ -216,15 +226,14 @@ impl ViewportPanel {
             }
         }
 
-        // What the overlay samples, on its own timer: the renderer's statistics
-        // and the input latency.
+        // What the overlay samples, on its own timer: the renderer's and the
+        // window's frame counts and the input latency. Building it touches
+        // nothing; it is used only when the overlay is created.
         let sampler: Sampler = {
-            let engine = gpu_engine.clone();
+            let frames = FrameSampler::new(gpu_engine.clone(), self.ui_frames.clone());
             let input = self.input_state.clone();
             std::rc::Rc::new(move |stats: &mut LiveStats| {
-                if let Some(snapshot) = EngineFrameSnapshot::read_stats(&engine) {
-                    snapshot.record_into(stats);
-                }
+                frames.sample(stats);
                 stats.record(
                     Metric::InputLatencyMs,
                     input.get_input_latency_us() as f64 / 1000.0,
@@ -232,40 +241,41 @@ impl ViewportPanel {
             })
         };
 
-        // Bottom-left: Performance overlay. A view with its own refresh timers,
-        // not rebuilt here; see `components/performance_overlay`.
+        // Bottom-left, side by side in this order, whichever are shown: the
+        // performance overlay, the render pipeline and the render stats. Each
+        // is a view with its own refresh timers, not rebuilt here; a closed
+        // one is dropped so its timers stop.
+        let mut bottom_left = h_flex().absolute().bottom_2().left_2().items_end().gap_2();
         if view.overlays.state.show_performance_overlay {
-            overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
-                render_performance_overlay(
-                    view,
-                    view_arc.clone(),
-                    &self.stats,
-                    sampler,
-                    &self.perf_overlay,
-                    cx,
-                ),
+            bottom_left = bottom_left.child(render_performance_overlay(
+                view,
+                view_arc.clone(),
+                &self.stats,
+                sampler,
+                &self.perf_overlay,
+                cx,
             ));
         } else {
-            // Closed: drop the overlay so its timers stop.
             self.perf_overlay.borrow_mut().take();
         }
-
-        // GPU Pipeline overlay - positions next to performance overlay if both visible
         if view.overlays.state.show_gpu_pipeline_overlay {
-            let overlay_div = if view.overlays.state.show_performance_overlay {
-                // Position to the right of performance overlay
-                div().absolute().bottom_2().left(px(300.0)) // 400px width + 10px gap
-            } else {
-                // Take performance overlay's position
-                div().absolute().bottom_2().left_2()
-            };
-
-            overlays = overlays.child(overlay_div.max_w(px(400.0)).child(
-                render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx),
-            ));
+            bottom_left =
+                bottom_left.child(render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx));
         } else {
             self.gpu_overlay.borrow_mut().take();
         }
+        if view.overlays.state.show_render_stats_overlay {
+            bottom_left = bottom_left.child(
+                components::render_stats_overlay::render_render_stats_overlay(
+                    gpu_engine,
+                    &self.render_stats_overlay,
+                    cx,
+                ),
+            );
+        } else {
+            self.render_stats_overlay.borrow_mut().take();
+        }
+        overlays = overlays.child(bottom_left);
 
         // Bottom-right: editor and renderer diagnostics. Its timer refreshes
         // the isolated overlay in place without invalidating the viewport.
@@ -282,6 +292,7 @@ impl ViewportPanel {
                     .child(render_nerds_overlay(
                         view_arc.clone(),
                         gpu_engine,
+                        self.ui_frames.clone(),
                         self.input_state.clone(),
                         &self.nerds_overlay,
                         cx,
@@ -293,21 +304,18 @@ impl ViewportPanel {
 
         // Debug passes can advertise a floating scale for a mode. Query only
         // while a debug mode is selected; lit view mode has no legend.
+        // The mailbox is read, not the renderer: the render scheduler holds the
+        // renderer's mutex for every frame, so a `try_lock` here missed most
+        // renders and the legend flickered in and out.
         let active_legend = (view.editor.viewport_debug_mode != 0)
             .then(|| {
-                gpu_engine
-                    .try_lock()
-                    .ok()
-                    .and_then(|engine| engine.editor_mailbox())
-                    .and_then(|mailbox| {
-                        mailbox
-                            .viewport_debug_views()
-                            .into_iter()
-                            .find(|view_mode| {
-                                view_mode.debug_mode == view.editor.viewport_debug_mode
-                            })
-                            .and_then(|view_mode| view_mode.legend)
-                    })
+                mailbox.as_ref().and_then(|mailbox| {
+                    mailbox
+                        .viewport_debug_views()
+                        .into_iter()
+                        .find(|view_mode| view_mode.debug_mode == view.editor.viewport_debug_mode)
+                        .and_then(|view_mode| view_mode.legend)
+                })
             })
             .flatten();
         if let Some(legend) = active_legend {

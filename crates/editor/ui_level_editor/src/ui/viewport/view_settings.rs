@@ -124,6 +124,9 @@ impl ViewportPanel {
         window: &mut Window,
         cx: &mut Context<V>,
     ) {
+        if self.ui_frames.get().is_none() {
+            let _ = self.ui_frames.set(window.presented_frames());
+        }
         if self.mailbox.is_none() {
             self.mailbox = self
                 .gpu_engine

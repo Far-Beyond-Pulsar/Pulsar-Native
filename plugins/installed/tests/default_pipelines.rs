@@ -169,7 +169,7 @@ fn passes(
         (std::mem::size_of::<GpuCameraUniforms>() * 2) as u64,
     );
     let debug_camera = buffer("Debug Camera Buffer", 64);
-    let cull_stats = buffer("Cull Stats Buffer", 64);
+    let stats = helio::FrameStats::new(&device);
     let store = SceneGpuStore::new(
         &EngineGpuContext::new(Arc::clone(device), Arc::clone(queue)),
         SceneGpuConfig {
@@ -190,7 +190,7 @@ fn passes(
             debug_state: Arc::new(std::sync::Mutex::new(DebugDrawState::default())),
             camera_buffer: &camera,
             debug_camera_buffer: &debug_camera,
-            cull_stats_buffer: &cull_stats,
+            stats: &stats,
             owns_device: false,
             scene_db: GpuMirrorHandle::new(Arc::new(store), Arc::clone(queue)),
         })

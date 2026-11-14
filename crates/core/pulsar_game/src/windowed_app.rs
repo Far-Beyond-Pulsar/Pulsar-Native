@@ -594,6 +594,11 @@ impl PulsarApp {
             self.gpu.ensure_device(&temp_surface);
         }
 
+        // The renderer takes the level's pipeline when it is made, so choose
+        // it first; the level itself is hydrated below, once the renderer's
+        // GPU mirror is attached.
+        crate::standalone::select_level_pipeline(self.content.root(), scene_path.as_deref());
+
         let winit_id = window.id();
         let mut game_window = GameWindow::new(
             handle,

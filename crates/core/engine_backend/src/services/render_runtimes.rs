@@ -122,6 +122,10 @@ pub trait FrameTarget: Send + Sync + 'static {
     fn ready(&self) -> bool {
         true
     }
+    /// Call `waker` when it becomes [`ready`](Self::ready) again (its
+    /// consumer took the last frame); `None` stops. An output that never
+    /// waits needs none. The waker only signals; it never blocks.
+    fn set_ready_waker(&self, _waker: Option<Arc<dyn Fn() + Send + Sync>>) {}
     /// How long one frame lasts at its consumer's pace (a display's refresh).
     fn frame_interval(&self) -> Duration {
         Duration::from_secs_f64(1.0 / 60.0)
@@ -316,6 +320,9 @@ impl RuntimeHandle {
     /// Draw into `output` from now on (a new surface after a resize of the
     /// window's device, a lost device's replacement).
     pub fn set_output(&self, output: Arc<dyn FrameTarget>) {
+        // Its consumer taking a frame is the scheduler's cue to draw the next
+        // (rather than polling `ready` a quarter frame later).
+        output.set_ready_waker(Some(Arc::new(|| global().wake())));
         *self
             .runtime
             .output
@@ -426,6 +433,40 @@ pub fn global() -> &'static RenderRuntimes {
         device: Mutex::new(None),
         building: AtomicBool::new(false),
     })
+}
+
+/// Raises the system timer resolution to 1 ms while held.
+///
+/// The scheduler paces frames by sleeping on a condvar until the next is due.
+/// On Windows that sleep wakes on the system timer tick, 15.625 ms by default:
+/// every frame was held to the next tick, so the viewport drew at 64 Hz on any
+/// display faster than that, with the render thread idle for a third of the
+/// time (a captured profile: frames exactly 15.5 to 15.6 ms apart, 9.6 ms of
+/// work in each). Unreal and Chromium raise it the same way. Since Windows 10
+/// 2004 the request applies to this process only.
+struct FineTimerResolution;
+
+impl FineTimerResolution {
+    const PERIOD_MS: u32 = 1;
+
+    fn acquire() -> Self {
+        #[cfg(windows)]
+        // SAFETY: a plain winmm call; paired with `timeEndPeriod` in `drop`.
+        unsafe {
+            windows::Win32::Media::timeBeginPeriod(Self::PERIOD_MS);
+        }
+        Self
+    }
+}
+
+impl Drop for FineTimerResolution {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        // SAFETY: ends the period `acquire` began.
+        unsafe {
+            windows::Win32::Media::timeEndPeriod(Self::PERIOD_MS);
+        }
+    }
 }
 
 /// The scheduler's longest sleep when nothing is due.
@@ -588,6 +629,7 @@ impl RenderRuntimes {
     /// The scheduler's loop.
     fn run(&'static self, ctx: &editor_task_queue::TaskContext) {
         profiling::set_thread_name("Helio Runtimes");
+        let _timer = FineTimerResolution::acquire();
         let mut plugin_generation = pulsar_plugins::generation();
         while !self.stop.load(Ordering::Acquire) {
             ctx.heartbeat();
@@ -744,7 +786,9 @@ impl RenderRuntimes {
             return Step::DueAt(at);
         }
         if !output.ready() {
-            // The consumer still holds the last frame: try again shortly.
+            // The consumer still holds the last frame: its waker
+            // (`set_ready_waker`) wakes the scheduler when it takes it; this
+            // retry only bounds an output that has none.
             return Step::DueAt(now + interval / 4);
         }
         self.draw(runtime, &output, now);
@@ -839,6 +883,9 @@ impl RenderRuntimes {
         if runtime.reset_history.swap(false, Ordering::AcqRel) {
             renderer.reset_taa();
         }
+        // The pace this frame is drawn at, for passes that stream work in
+        // (none when unpaced).
+        renderer.set_frame_budget(Some(output.frame_interval()).filter(|i| !i.is_zero()));
         if let Some(callback) = runtime
             .before_frame
             .lock()

@@ -19,15 +19,22 @@ use super::SharedState;
 pub struct OverlayContext<'a> {
     pub state: &'a SharedState,
     pub gpu_engine: &'a Arc<Mutex<GpuRenderer>>,
+    /// The viewport's mailbox, taken once. The render scheduler holds the
+    /// renderer's mutex for every frame it draws, so a `try_lock` per call
+    /// misses most of the time.
+    pub(crate) mailbox: Option<HelioEditorMailbox>,
 }
 
 impl OverlayContext<'_> {
-    /// The renderer's editor mailbox (view payloads), when it is free.
+    /// The renderer's editor mailbox (view payloads). It is shared state
+    /// behind its own locks: use it rather than locking `gpu_engine`.
     pub fn mailbox(&self) -> Option<HelioEditorMailbox> {
-        self.gpu_engine
-            .try_lock()
-            .ok()
-            .and_then(|engine| engine.editor_mailbox())
+        self.mailbox.clone().or_else(|| {
+            self.gpu_engine
+                .try_lock()
+                .ok()
+                .and_then(|engine| engine.editor_mailbox())
+        })
     }
 }
 

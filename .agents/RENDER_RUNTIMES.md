@@ -58,7 +58,10 @@ scheduler and joins it.
 | `render_runtimes::OffscreenTarget` | engine | a texture on the engine's device with an async readback (`take_image`), for thumbnails and captures; never blocks |
 
 A new kind of output implements `FrameTarget` (device, queue, format, size,
-`is_lost`, `ready`, `frame_interval`, `draw`).
+`is_lost`, `ready`, `frame_interval`, `draw`, and `set_ready_waker` when it
+can say the moment it becomes ready again: `SurfaceTarget` wakes the
+scheduler when the compositor takes its frame, through wgpui's
+`set_consumed_waker`, so the next frame starts then rather than a poll later).
 
 ## The scheduler
 
@@ -66,8 +69,14 @@ One persistent task, **Helio runtimes** (role Render), draws every runtime:
 each pass it takes the runtimes in priority order and draws each that is
 running, wants frames (its mode and visibility), is due at its output's pace and
 whose output is ready; then it sleeps until the next one is due or something
-wakes it (a new output, a mode change, a frame request). It never waits for a
-consumer: an output that still holds its last frame is skipped this pass. A
+wakes it (a new output, a mode change, a frame request, an output's consumer
+taking a frame). It never waits for a consumer: an output that still holds its
+last frame is skipped this pass. While it runs it holds the system timer at
+1 ms (`timeBeginPeriod` on Windows): its sleeps otherwise wake on the 15.6 ms
+tick, which capped every viewport at 64 Hz. Each frame it hands the renderer
+its output's interval as the frame budget (`GpuRenderer::set_frame_budget`,
+Helio's `PassContext::frame_budget_ms`), so passes that stream work in keep
+the display's pace. A
 renderer's first build (seconds: pipelines compile) runs as a pooled task,
 **one build at a time** (a split layout's viewports would otherwise contend in
 the driver), so other runtimes keep drawing. A pipeline swap or a
