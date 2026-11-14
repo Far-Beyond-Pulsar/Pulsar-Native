@@ -15,6 +15,7 @@ mod audio;
 pub mod cargo;
 pub mod failure;
 pub mod game;
+mod pack;
 pub mod plan;
 pub mod process_tree;
 pub mod session;
@@ -303,6 +304,9 @@ fn execute(
                 engine_backend::services::ensure_core_bootstrap(project_root)
                     .map_err(StepError::Failed)
                     .map(|()| slice.set(100))?
+            }
+            Step::PackContent { platform, profile } => {
+                pack::run(*platform, *profile, project_root, &slice, &cancel)?
             }
             Step::Update(invocation) | Step::Clean(invocation) => {
                 cargo::run_plain(invocation, project_root, &slice, &cancel)?

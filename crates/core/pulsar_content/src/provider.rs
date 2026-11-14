@@ -13,17 +13,17 @@ use std::sync::Arc;
 use anyhow::Result;
 use engine_fs::{FsEntry, FsMetadata, FsProvider, LocalFsProvider};
 
-use crate::pak::PakReader;
+use crate::pak::PakSet;
 
 /// A local filesystem with a pak mounted (read-only) at `root`.
 pub struct ContentFsProvider {
     root: PathBuf,
-    pak: Arc<PakReader>,
+    pak: Arc<PakSet>,
     local: LocalFsProvider,
 }
 
 impl ContentFsProvider {
-    pub fn new(root: PathBuf, pak: Arc<PakReader>) -> Self {
+    pub fn new(root: PathBuf, pak: Arc<PakSet>) -> Self {
         Self {
             root,
             pak,
@@ -153,23 +153,23 @@ impl FsProvider for ContentFsProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pak::PakWriter;
+    use crate::pak::{write_pak_set, ContentKey, PackSettings};
 
     #[test]
     fn pak_paths_read_from_the_pak_and_others_from_disk() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("Content");
         std::fs::create_dir_all(&root).unwrap();
-        let mut writer = PakWriter::create(root.join("game.pak")).unwrap();
-        writer.add("src/classes/A/prefab.json", b"{}").unwrap();
-        writer.finish().unwrap();
+        let files = [("src/classes/A/prefab.json".to_string(), b"{}".to_vec())].into();
+        write_pak_set(&root, &files, ContentKey([3; 32]), PackSettings::DEV, &mut |_| {}, &|| false)
+            .unwrap();
         std::fs::write(root.join("loose.txt"), b"loose").unwrap();
         let outside = tmp.path().join("outside.txt");
         std::fs::write(&outside, b"out").unwrap();
 
         let fs = ContentFsProvider::new(
             root.clone(),
-            Arc::new(PakReader::open(root.join("game.pak")).unwrap()),
+            Arc::new(PakSet::open(&root, ContentKey([3; 32])).unwrap()),
         );
         assert_eq!(
             fs.read_file(&root.join("src/classes/A/prefab.json"))
@@ -187,7 +187,7 @@ mod tests {
             .into_iter()
             .map(|e| e.name)
             .collect();
-        assert_eq!(names, ["game.pak", "loose.txt", "src"]);
+        assert_eq!(names, ["game.toc", "game_0000.pak", "loose.txt", "src"]);
         let classes: Vec<(String, bool)> = fs
             .list_dir(&root.join("src/classes"))
             .unwrap()

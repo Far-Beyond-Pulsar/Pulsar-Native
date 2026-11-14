@@ -26,6 +26,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use pulsar_content::ContentRoot;
+/// The generated `main` installs the project's content key, which opens its
+/// packed content, before [`run`] finds it.
+pub use pulsar_content::{install_content_key, ContentKey};
 use pulsar_core::TickMode;
 use serde::Serialize;
 

@@ -5,7 +5,7 @@
 //!
 //! 1. `PULSAR_CONTENT_DIR` (env): that directory, as shipped content.
 //! 2. `PULSAR_PROJECT_ROOT` (env): that project, as loose dev files.
-//! 3. `<exe dir>/Content` holding cooked content (`game.pak`, or a loose
+//! 3. `<exe dir>/Content` holding cooked content (a pak set, or a loose
 //!    cook with `Pulsar/class_index.json`): a **packaged** game.
 //! 4. The nearest ancestor of the executable that is a project (has a
 //!    `Pulsar/` or `.pulsar/` directory): a **dev** build run from its
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use engine_fs::virtual_fs;
 use parking_lot::RwLock;
 
-use crate::pak::{PakReader, PAK_FILE_NAME};
+use crate::pak::{installed_content_key, PakSet, TOC_FILE_NAME};
 use crate::settings::{ProjectSettings, PROJECT_SETTINGS_FILE};
 
 /// The content directory next to a packaged game's executable.
@@ -45,8 +45,8 @@ pub const ASSET_CACHE_ENV: &str = "PULSAR_ASSET_CACHE";
 enum Source {
     /// A project directory (editor, Play-in-Editor, `cargo run`).
     Project,
-    /// Cooked content: from `game.pak` when present, else loose files.
-    Packaged { pak: Option<Arc<PakReader>> },
+    /// Cooked content: from its pak set when present, else loose files.
+    Packaged { pak: Option<Arc<PakSet>> },
 }
 
 /// A game's content: a directory, and maybe a pak inside it.
@@ -65,15 +65,22 @@ impl ContentRoot {
         }
     }
 
-    /// Cooked content in `dir`: `dir/game.pak` when it exists, loose files
-    /// otherwise.
+    /// Cooked content in `dir`: its pak set when there is one (opened with
+    /// the key the game installed, [`crate::install_content_key`]), loose
+    /// files otherwise.
     pub fn packaged(dir: impl Into<PathBuf>) -> io::Result<Self> {
         let root = dir.into();
-        let pak_path = root.join(PAK_FILE_NAME);
-        let pak = if virtual_fs::is_file(&pak_path) {
-            Some(Arc::new(
-                PakReader::open(&pak_path).map_err(io::Error::from)?,
-            ))
+        let pak = if PakSet::exists_in(&root) {
+            let key = installed_content_key().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!(
+                        "{} holds a pak set, but this binary has no content key to open it",
+                        root.display()
+                    ),
+                )
+            })?;
+            Some(Arc::new(PakSet::open(&root, key).map_err(io::Error::from)?))
         } else if virtual_fs::is_file(&root.join(crate::CLASS_INDEX_FILE))
             || virtual_fs::is_file(&root.join(PROJECT_SETTINGS_FILE))
         {
@@ -82,7 +89,7 @@ impl ContentRoot {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!(
-                    "{} holds no cooked content ({PAK_FILE_NAME} or loose files)",
+                    "{} holds no cooked content ({TOC_FILE_NAME} or loose files)",
                     root.display()
                 ),
             ));
@@ -154,7 +161,7 @@ impl ContentRoot {
     }
 
     /// The pak, when content comes from one.
-    pub fn pak(&self) -> Option<&Arc<PakReader>> {
+    pub fn pak(&self) -> Option<&Arc<PakSet>> {
         match &self.source {
             Source::Packaged { pak } => pak.as_ref(),
             Source::Project => None,
@@ -276,7 +283,7 @@ impl ContentRoot {
 
 /// Whether `dir` holds cooked content.
 pub fn is_cooked(dir: &Path) -> bool {
-    virtual_fs::is_file(&dir.join(PAK_FILE_NAME))
+    PakSet::exists_in(dir)
         || virtual_fs::is_file(&dir.join(crate::CLASS_INDEX_FILE))
 }
 
@@ -314,7 +321,18 @@ pub fn set_current(root: Option<ContentRoot>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pak::PakWriter;
+    use crate::pak::{install_content_key, write_pak_set, ContentKey, PackSettings};
+
+    /// Pack `files` into `dir` under the key these tests install.
+    fn pack(dir: &Path, files: &[(&str, &[u8])]) {
+        let key = ContentKey([9; 32]);
+        install_content_key(key);
+        let files = files
+            .iter()
+            .map(|(path, bytes)| ((*path).to_owned(), bytes.to_vec()))
+            .collect();
+        write_pak_set(dir, &files, key, PackSettings::DEV, &mut |_| {}, &|| false).unwrap();
+    }
 
     #[test]
     fn discovery_prefers_content_next_to_the_exe_then_a_project_around_it() {
@@ -333,18 +351,15 @@ mod tests {
         assert!(!found.is_packaged());
         assert_eq!(found.root(), project);
 
-        // A packaged game: <dir>/Content/game.pak next to the exe.
+        // A packaged game: a pak set in <dir>/Content next to the exe.
         let shipped = tmp.path().join("shipped");
-        std::fs::create_dir_all(shipped.join(CONTENT_DIR_NAME)).unwrap();
-        let mut pak =
-            PakWriter::create(shipped.join(CONTENT_DIR_NAME).join(PAK_FILE_NAME)).unwrap();
-        pak.add(
-            PROJECT_SETTINGS_FILE,
-            br#"{"startup_level":"scenes/a.level"}"#,
-        )
-        .unwrap();
-        pak.add("assets/meshes/a.mesh", b"mesh").unwrap();
-        pak.finish().unwrap();
+        pack(
+            &shipped.join(CONTENT_DIR_NAME),
+            &[
+                (PROJECT_SETTINGS_FILE, br#"{"startup_level":"scenes/a.level"}"#),
+                ("assets/meshes/a.mesh", b"mesh"),
+            ],
+        );
         let found = ContentRoot::discover_from(&shipped, Some(&project)).unwrap();
         assert!(found.is_packaged());
         assert!(found.pak().is_some());
@@ -371,11 +386,10 @@ mod tests {
     fn pak_assets_unpack_once_for_file_loaders() {
         let tmp = tempfile::tempdir().unwrap();
         let content = tmp.path().join(CONTENT_DIR_NAME);
-        std::fs::create_dir_all(&content).unwrap();
-        let mut pak = PakWriter::create(content.join(PAK_FILE_NAME)).unwrap();
-        pak.add("assets/meshes/a.mesh", b"mesh").unwrap();
-        pak.add("scenes/a.level", b"{}").unwrap();
-        pak.finish().unwrap();
+        pack(
+            &content,
+            &[("assets/meshes/a.mesh", b"mesh"), ("scenes/a.level", b"{}")],
+        );
         let root = ContentRoot::packaged(&content).unwrap();
 
         let assets = root.asset_root_in(&tmp.path().join("cache")).unwrap();

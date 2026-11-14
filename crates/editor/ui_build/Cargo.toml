@@ -18,6 +18,8 @@ rust-i18n.workspace = true
 serde_json = { workspace = true }
 smol = { workspace = true }
 tracing = { workspace = true }
+# The pack step: the content packer seam and the `Content/` folder name.
+pulsar_content = { workspace = true }
 # The build dashboard: Mission Control's log view for the build's output,
 # and the process sampling for its process list and charts.
 ui_log_viewer = { workspace = true }

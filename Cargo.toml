@@ -434,6 +434,7 @@ pulsar_component_lifecycle         = { path = "crates/core/pulsar_component_life
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_class                       = { path = "crates/core/pulsar_class" }
 pulsar_content                     = { path = "crates/core/pulsar_content" }
+pulsar_package                     = { path = "crates/core/pulsar_package" }
 pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 

@@ -6,7 +6,8 @@
 //! MyGame/
 //!   my_game_game(.exe)
 //!   Content/
-//!     game.pak                 everything below, in one indexed archive
+//!     game.toc, game_NNNN.pak  everything below, as a pak set: compressed,
+//!                              encrypted, in containers of bounded size
 //!     (or, with `--loose`, the same files as a directory tree:)
 //!     Pulsar/project.json      runtime project settings (startup level, window, script limits)
 //!     Pulsar/scripting.json    global scripts
@@ -19,25 +20,32 @@
 //!
 //! Paths inside content are **content-relative** and use `/`: the same
 //! relative layout as the project, so a dev build reading loose files from
-//! the project root and a packaged build reading `game.pak` resolve the
+//! the project root and a packaged build reading its pak set resolve the
 //! same names.
 //!
 //! | Module | What |
 //! |--------|------|
-//! | [`pak`] | the `game.pak` format: [`PakWriter`], [`PakReader`] |
+//! | [`pak`] | the pak set format: [`write_pak_set`], [`PakSet`], [`ContentKey`] |
 //! | [`root`] | [`ContentRoot`]: where content comes from, found at startup ([`ContentRoot::discover`]) |
+//! | [`packer`] | [`ContentPacker`]: the host's cook-and-pack, for the editor's build |
 //! | [`provider`] | [`ContentFsProvider`]: serves a pak through `engine_fs::virtual_fs`, so path-based loaders read it |
 //! | [`settings`] | [`ProjectSettings`]: `Pulsar/project.json` |
 //! | [`registry`] | [`AssetRegistry`]: `Pulsar/asset_registry.json` |
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 pub mod pak;
+pub mod packer;
 pub mod provider;
 pub mod registry;
 pub mod root;
 pub mod settings;
 
-pub use pak::{PakEntry, PakError, PakReader, PakWriter, PAK_FILE_NAME, PAK_MAGIC, PAK_VERSION};
+pub use pak::{
+    install_content_key, installed_content_key, write_pak_set, ContentKey, PackEvent,
+    PackReport, PackSettings, PakEntry, PakError, PakSet, CONTENT_KEY_FILE, PAK_VERSION,
+    TOC_FILE_NAME,
+};
+pub use packer::{packer, ContentPacker, PackJob};
 pub use provider::ContentFsProvider;
 pub use registry::{AssetKind, AssetRecord, AssetRegistry, ASSET_REGISTRY_FILE};
 pub use root::{

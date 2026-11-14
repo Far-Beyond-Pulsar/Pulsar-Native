@@ -30,7 +30,7 @@ crates/core/plugin_manager/src/permanent_library.rs | opens the native library i
 crates/core/pulsar-relay/src/config.rs | the standalone relay server's config file on its host, no project
 crates/core/pulsar-relay/src/transport/quic.rs | the standalone relay server's TLS certificate and key files on its host
 crates/core/pulsar_auth/src/lib.rs | the user's token and profile cache in the machine's per-user data dir, never routed through a project's provider
-crates/core/pulsar_content/src/pak.rs | PakWriter::create: the packaged game's output pak, a seekable file whose header is rewritten at the end
+crates/core/pulsar_content/src/pak/writer.rs | the pak set: the packaged game's output containers and table of contents on the real machine, seekable files renamed into place atomically
 crates/core/pulsar_content/src/root.rs | asset_root_in unpacks pak assets into a machine cache dir for loaders that need OS paths
 crates/core/pulsar_docs/build.rs | build script
 crates/core/pulsar_docs/build/doc_generator/extractor.rs | build script

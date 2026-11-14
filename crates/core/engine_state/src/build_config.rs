@@ -273,6 +273,10 @@ pub struct BuildSteps {
     /// Regenerate engine-owned project files before running Cargo.
     #[serde(default = "default_true")]
     pub regenerate_core_project_files: bool,
+    /// Cook the project and pack it into the pak set next to the game
+    /// binary, before Cargo builds it. Only with a build or run.
+    #[serde(default = "default_true")]
+    pub pack_content: bool,
     /// `cargo check`: type-check without producing binaries.
     pub check: bool,
     /// `cargo build`.
@@ -287,6 +291,7 @@ impl BuildSteps {
             update: false,
             clean: false,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: false,
             build: true,
             run: false,
@@ -311,7 +316,13 @@ impl BuildSteps {
         self
     }
 
-    /// `Regenerate › Update › Clean › Check › Build › Run`, or `Nothing` when empty.
+    /// Whether a plan of these steps packs content: with a build or run.
+    pub fn packs(self) -> bool {
+        self.pack_content && (self.build || self.run)
+    }
+
+    /// `Regenerate › Update › Clean › Check › Pack content › Build › Run`, or
+    /// `No steps` when empty.
     pub fn summary(self) -> String {
         let mut parts = Vec::new();
         if self.regenerate_core_project_files {
@@ -325,6 +336,9 @@ impl BuildSteps {
         }
         if self.check {
             parts.push("Check");
+        }
+        if self.packs() {
+            parts.push("Pack content");
         }
         if self.build {
             parts.push("Build");
@@ -445,6 +459,7 @@ impl BuildConfiguration {
             update,
             clean,
             regenerate_core_project_files: true,
+            pack_content: true,
             check,
             build,
             run,
@@ -808,6 +823,7 @@ mod tests {
                 update: true,
                 clean: true,
                 regenerate_core_project_files: true,
+                pack_content: false,
                 check: false,
                 build: true,
                 run: false,

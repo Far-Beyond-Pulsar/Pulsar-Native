@@ -376,7 +376,6 @@ pub fn asset_record(id: &str, source: &Path, project: &Path, bytes: &[u8]) -> As
         source,
         size: bytes.len() as u64,
         hash: pulsar_content::registry::hash_hex(pulsar_content::pak::content_hash(bytes)),
-        pak: None,
     }
 }
 

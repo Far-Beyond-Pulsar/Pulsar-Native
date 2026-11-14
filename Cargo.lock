@@ -3544,6 +3544,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_class",
  "pulsar_component_lifecycle",
+ "pulsar_content",
  "pulsar_error",
  "pulsar_events",
  "pulsar_lsp",
@@ -12440,15 +12441,19 @@ name = "pulsar_content"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chacha20",
  "engine_fs",
+ "getrandom 0.3.4",
  "parking_lot",
  "pulsar_plugins",
+ "rayon",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
  "twox-hash",
+ "zstd",
 ]
 
 [[package]]
@@ -12534,6 +12539,7 @@ dependencies = [
  "pulsar_dialog_protocol",
  "pulsar_error",
  "pulsar_install_layout",
+ "pulsar_package",
  "pulsar_std",
  "reqwest 0.13.4",
  "rfd",
@@ -17557,6 +17563,7 @@ dependencies = [
  "image",
  "parking_lot",
  "profiling 0.1.0",
+ "pulsar_content",
  "rodio",
  "rust-i18n",
  "serde_json",

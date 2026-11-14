@@ -407,12 +407,16 @@ fn packaged_game_runs_from_a_clean_directory() {
         &work.path().join("out-loose"),
         &shipped.path().join("loose"),
     );
+    // The game binary holds the project's content key (its generated code
+    // installs it); this test is that binary.
+    let key = pulsar_content::ContentKey::load_or_create(&project).unwrap();
+    pulsar_content::install_content_key(key);
     std::fs::remove_dir_all(&project).unwrap();
     drop(work);
 
     // Shipped data: no machine paths, a registry for the asset, cooked levels.
     let pak_content = shipped.path().join("pak/Content");
-    let pak = pulsar_content::PakReader::open(pak_content.join("game.pak")).unwrap();
+    let pak = pulsar_content::PakSet::open(&pak_content, key).unwrap();
     for path in pak.entries().keys() {
         let bytes = pak.read(path).unwrap();
         if let Some(problem) = pulsar_package::machine_path_in(path, &bytes, &project) {
@@ -426,11 +430,10 @@ fn packaged_game_runs_from_a_clean_directory() {
     let mesh = registry
         .get("assets/meshes/glass_red.mesh")
         .expect("registered asset");
-    let location = mesh.pak.expect("packed");
     assert_eq!(
-        pak.entry("assets/meshes/glass_red.mesh")
-            .map(|e| (e.offset, e.len)),
-        Some((location.offset, location.len))
+        pak.entry("assets/meshes/glass_red.mesh").map(|e| e.len),
+        Some(mesh.size),
+        "the registered asset is packed"
     );
     let level: serde_json::Value =
         serde_json::from_slice(&pak.read("scenes/main.level").unwrap()).unwrap();

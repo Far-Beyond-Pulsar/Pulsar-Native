@@ -15,6 +15,11 @@ tracing    = { workspace = true }
 parking_lot = { workspace = true }
 twox-hash  = { workspace = true }
 thiserror  = { workspace = true }
+# The pak set: compressed blocks, encrypted with the content key, packed in parallel.
+zstd = "0.13"
+chacha20 = { version = "0.10", default-features = false, features = ["rng"] }
+getrandom = "0.3"
+rayon = "1"
 
 [dev-dependencies]
 tempfile = { workspace = true }

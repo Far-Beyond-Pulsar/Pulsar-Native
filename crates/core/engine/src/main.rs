@@ -49,6 +49,8 @@ use ui_log_viewer::TrackingAllocator;
 // generated from their pulsar-plugin.toml); the project the editor opens
 // enables some of them (`pulsar_plugins`).
 use installed_plugins as _;
+// The content packer the build's pack step uses (`pulsar_content::ContentPacker`).
+use pulsar_package as _;
 
 // The optional editor tools this editor ships: linking one installs its
 // registrations (`ui_common::editor_tools`, the chat's providers).

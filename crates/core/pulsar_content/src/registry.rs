@@ -48,13 +48,6 @@ impl AssetKind {
     }
 }
 
-/// Where an asset's bytes are in `game.pak`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PakLocation {
-    pub offset: u64,
-    pub len: u64,
-}
-
 /// One shipped asset.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetRecord {
@@ -67,9 +60,6 @@ pub struct AssetRecord {
     pub size: u64,
     /// XXH3-128 of the contents, hex.
     pub hash: String,
-    /// Its place in `game.pak`; `None` when shipped as a loose file.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pak: Option<PakLocation>,
 }
 
 /// Every shipped asset, by id.
@@ -127,7 +117,6 @@ mod tests {
             source: "meshes/a.mesh".into(),
             size: 3,
             hash: hash_hex(7),
-            pak: Some(PakLocation { offset: 40, len: 3 }),
         });
         let back = AssetRegistry::from_json(registry.to_json().as_bytes()).unwrap();
         assert_eq!(back, registry);

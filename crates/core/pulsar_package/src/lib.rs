@@ -39,9 +39,10 @@ use std::process::{Command, Stdio};
 
 use engine_fs::virtual_fs;
 use pulsar_class::{ClassIndex, ClassRegistry};
+pub use pulsar_content::{PackEvent, PackReport};
 use pulsar_content::{
-    AssetRegistry, BuildProfile, PakWriter, ProjectSettings, ASSET_REGISTRY_FILE, CONTENT_DIR_NAME,
-    PAK_FILE_NAME, PROJECT_SETTINGS_FILE,
+    write_pak_set, AssetRegistry, BuildProfile, ContentKey, PackSettings, ProjectSettings,
+    ASSET_REGISTRY_FILE, CONTENT_DIR_NAME, PROJECT_SETTINGS_FILE, TOC_FILE_NAME,
 };
 use serde::Serialize;
 
@@ -158,14 +159,230 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     let project = virtual_fs::canonicalize(&options.project).map_err(|e| {
         PackageError::Project(format!("project {}: {e}", options.project.display()))
     })?;
-    let mut settings = project_settings(&project, options.profile)?;
-    // The project's plugins, as its game links them: what is cooked (and
-    // which plugin folders are snapshotted) follows the project's list.
-    pulsar_plugins::activate_project(&project, engine_state::project_plugins(&project));
     let mut report = PackageReport {
         profile: options.profile.as_str().into(),
         ..Default::default()
     };
+    let content = cook_content(&project, options, &mut report)?;
+
+    // 3. Write.
+    let content_dir = options.out.join(CONTENT_DIR_NAME);
+    if options.loose {
+        reset_output_dir(&content_dir)
+            .map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
+        for (rel, bytes) in &content {
+            write_loose(&content_dir, rel, bytes)?;
+        }
+    } else {
+        let key = ContentKey::load_or_create(&project).map_err(PackageError::Write)?;
+        let pack = write_pak_set(
+            &content_dir,
+            &content,
+            key,
+            pack_settings(options.profile),
+            &mut |event| log_pack_event(&event),
+            &|| false,
+        )
+        .map_err(|e| PackageError::Write(e.to_string()))?;
+        log_pack_report(&pack);
+        report.pak = Some(content_dir.join(TOC_FILE_NAME));
+    }
+    report.files = content
+        .iter()
+        .map(|(rel, bytes)| (rel.clone(), bytes.len() as u64))
+        .collect();
+    report.out = options.out.clone();
+
+    // 4. Build.
+    if options.skip_build {
+        tracing::warn!("--skip-build: the game executable was not built");
+    } else {
+        engine_backend::services::ensure_core_bootstrap(&project).map_err(PackageError::Build)?;
+        report.executable = Some(build_game(
+            &project,
+            &options.out,
+            options.target.as_deref(),
+        )?);
+    }
+    Ok(report)
+}
+
+/// What [`pack_content`] did.
+#[derive(Debug, Default)]
+pub struct PackContentReport {
+    pub pack: PackReport,
+    pub warnings: Vec<String>,
+    pub classes: usize,
+    pub levels: usize,
+    pub assets: usize,
+}
+
+/// Cook the project and pack it as the pak set in `content_dir`, reusing
+/// what the set there already holds (only changed entries are written; see
+/// `pulsar_content::pak`). The editor's build runs this before Cargo, into
+/// the `Content/` folder next to where the game binary is built. Progress
+/// and results are logged under the `pack` target; `cancelled` is polled
+/// while packing.
+pub fn pack_content(
+    project: &Path,
+    content_dir: &Path,
+    profile: BuildProfile,
+    on_event: &mut dyn FnMut(&PackEvent),
+    cancelled: &dyn Fn() -> bool,
+) -> Result<PackContentReport, PackageError> {
+    let project = virtual_fs::canonicalize(project)
+        .map_err(|e| PackageError::Project(format!("project {}: {e}", project.display())))?;
+    let mut options = PackageOptions::new(&project, content_dir.parent().unwrap_or(content_dir));
+    options.profile = profile;
+    let mut report = PackageReport::default();
+    tracing::info!(target: "pack", "Cooking {}", project.display());
+    let content = cook_content(&project, &options, &mut report)?;
+    for warning in &report.warnings {
+        tracing::warn!(target: "pack", "{warning}");
+    }
+    tracing::info!(
+        target: "pack",
+        "Cooked {} classes, {} levels, {} assets ({} files)",
+        report.classes.len(),
+        report.levels.len(),
+        report.assets,
+        content.len()
+    );
+    let key = ContentKey::load_or_create(&project).map_err(PackageError::Write)?;
+    let pack = write_pak_set(
+        content_dir,
+        &content,
+        key,
+        pack_settings(profile),
+        &mut |event| {
+            log_pack_event(&event);
+            on_event(&event);
+        },
+        cancelled,
+    )
+    .map_err(|e| PackageError::Write(e.to_string()))?;
+    log_pack_report(&pack);
+    Ok(PackContentReport {
+        pack,
+        warnings: report.warnings,
+        classes: report.classes.len(),
+        levels: report.levels.len(),
+        assets: report.assets,
+    })
+}
+
+// The editor build's pack step (`pulsar_content::packer`): this crate is the
+// host that can cook, so it is the packer of any binary that links it.
+pulsar_plugins::inventory::submit! {
+    pulsar_content::ContentPacker {
+        origin: pulsar_plugins::engine_origin!(),
+        pack: pack_for_build,
+    }
+}
+
+fn pack_for_build(job: &pulsar_content::PackJob<'_>) -> Result<String, String> {
+    let profile = if job.shipping {
+        BuildProfile::Shipping
+    } else {
+        BuildProfile::Dev
+    };
+    (job.progress)(0.0, "Cooking content".into());
+    let report = pack_content(
+        job.project_root,
+        job.content_dir,
+        profile,
+        &mut |event| match event {
+            PackEvent::Planned {
+                changed, reused, ..
+            } => (job.progress)(
+                0.3,
+                format!("Packing {changed} changed entries ({reused} unchanged)"),
+            ),
+            PackEvent::Packed { done, total } => (job.progress)(
+                0.3 + 0.7 * (*done as f32 / (*total).max(1) as f32),
+                format!("Packed {:.1} of {:.1} MiB", mib(*done), mib(*total)),
+            ),
+            PackEvent::ContainerWritten { .. } | PackEvent::Removed { .. } => {}
+        },
+        job.cancelled,
+    )
+    .map_err(|e| e.to_string())?;
+    (job.progress)(1.0, String::new());
+    Ok(format!(
+        "{} entries in {} containers, {:.1} MiB ({} written, {} reused)",
+        report.pack.entries,
+        report.pack.containers.len(),
+        mib(report.pack.total_stored),
+        report.pack.written,
+        report.pack.reused
+    ))
+}
+
+fn pack_settings(profile: BuildProfile) -> PackSettings {
+    match profile {
+        BuildProfile::Dev => PackSettings::DEV,
+        BuildProfile::Shipping => PackSettings::SHIPPING,
+    }
+}
+
+fn mib(bytes: u64) -> f64 {
+    bytes as f64 / (1024.0 * 1024.0)
+}
+
+fn log_pack_event(event: &PackEvent) {
+    match event {
+        PackEvent::Planned {
+            entries,
+            reused,
+            changed,
+            changed_bytes,
+            rewrite,
+        } => match rewrite {
+            Some(why) => tracing::info!(
+                target: "pack",
+                "Packing all {entries} entries ({:.1} MiB): {why}",
+                mib(*changed_bytes)
+            ),
+            None => tracing::info!(
+                target: "pack",
+                "Packing {changed} changed entries ({:.1} MiB); {reused} unchanged stay in place",
+                mib(*changed_bytes)
+            ),
+        },
+        PackEvent::Packed { done, total } => {
+            tracing::info!(target: "pack", "Packed {:.1} of {:.1} MiB", mib(*done), mib(*total))
+        }
+        PackEvent::ContainerWritten { file, bytes } => {
+            tracing::info!(target: "pack", "Wrote {file} ({:.1} MiB)", mib(*bytes))
+        }
+        PackEvent::Removed { file } => tracing::info!(target: "pack", "Removed {file}"),
+    }
+}
+
+fn log_pack_report(pack: &PackReport) {
+    tracing::info!(
+        target: "pack",
+        "Pak set: {} entries in {} containers, {:.1} MiB ({} written, {} reused{})",
+        pack.entries,
+        pack.containers.len(),
+        mib(pack.total_stored),
+        pack.written,
+        pack.reused,
+        if pack.rewritten { ", rewritten whole" } else { "" }
+    );
+}
+
+/// Scripts and cook (steps 1 and 2 of [`package`]): every file the game's
+/// content holds, content-relative, with the asset registry.
+fn cook_content(
+    project: &Path,
+    options: &PackageOptions,
+    report: &mut PackageReport,
+) -> Result<BTreeMap<String, Vec<u8>>, PackageError> {
+    let mut settings = project_settings(project, options.profile)?;
+    // The project's plugins, as its game links them: what is cooked (and
+    // which plugin folders are snapshotted) follows the project's list.
+    pulsar_plugins::activate_project(project, engine_state::project_plugins(project));
 
     // 1. Scripts.
     let compiled = compile::compile_project(&project, &settings);
@@ -344,72 +561,18 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         asset_bytes.insert(id.clone(), bytes);
     }
     report.assets = asset_bytes.len();
+    files.extend(asset_bytes);
+    files.insert(
+        ASSET_REGISTRY_FILE.into(),
+        registry_out.to_json().into_bytes(),
+    );
 
-    // 3. Write.
-    for (rel, bytes) in files.iter().chain(asset_bytes.iter()) {
-        if let Some(problem) = machine_path_in(rel, bytes, &project) {
+    for (rel, bytes) in &files {
+        if let Some(problem) = machine_path_in(rel, bytes, project) {
             return Err(PackageError::AbsolutePaths(vec![problem]));
         }
     }
-    let content_dir = options.out.join(CONTENT_DIR_NAME);
-    reset_output_dir(&content_dir)
-        .map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
-    if options.loose {
-        for (rel, bytes) in files.iter().chain(asset_bytes.iter()) {
-            write_loose(&content_dir, rel, bytes)?;
-            report.files.insert(rel.clone(), bytes.len() as u64);
-        }
-        let registry_json = registry_out.to_json().into_bytes();
-        write_loose(&content_dir, ASSET_REGISTRY_FILE, &registry_json)?;
-        report
-            .files
-            .insert(ASSET_REGISTRY_FILE.into(), registry_json.len() as u64);
-    } else {
-        let pak_path = content_dir.join(PAK_FILE_NAME);
-        let mut pak =
-            PakWriter::create(&pak_path).map_err(|e| PackageError::Write(e.to_string()))?;
-        // Assets first, so the registry (written last) knows their place.
-        for (rel, bytes) in &asset_bytes {
-            let entry = pak
-                .add(rel, bytes)
-                .map_err(|e| PackageError::Write(e.to_string()))?;
-            if let Some(record) = registry_out.assets.get_mut(rel) {
-                record.pak = Some(pulsar_content::registry::PakLocation {
-                    offset: entry.offset,
-                    len: entry.len,
-                });
-            }
-            report.files.insert(rel.clone(), bytes.len() as u64);
-        }
-        for (rel, bytes) in &files {
-            pak.add(rel, bytes)
-                .map_err(|e| PackageError::Write(e.to_string()))?;
-            report.files.insert(rel.clone(), bytes.len() as u64);
-        }
-        let registry_json = registry_out.to_json().into_bytes();
-        pak.add(ASSET_REGISTRY_FILE, &registry_json)
-            .map_err(|e| PackageError::Write(e.to_string()))?;
-        report
-            .files
-            .insert(ASSET_REGISTRY_FILE.into(), registry_json.len() as u64);
-        pak.finish()
-            .map_err(|e| PackageError::Write(e.to_string()))?;
-        report.pak = Some(pak_path);
-    }
-    report.out = options.out.clone();
-
-    // 4. Build.
-    if options.skip_build {
-        tracing::warn!("--skip-build: the game executable was not built");
-    } else {
-        engine_backend::services::ensure_core_bootstrap(&project).map_err(PackageError::Build)?;
-        report.executable = Some(build_game(
-            &project,
-            &options.out,
-            options.target.as_deref(),
-        )?);
-    }
-    Ok(report)
+    Ok(files)
 }
 
 // std::fs allowed: the packaged game's output folder is the user's chosen real machine path,

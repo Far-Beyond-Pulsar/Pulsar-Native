@@ -3,7 +3,7 @@
 //! This is pure: no processes, no UI. The runner executes a [`Plan`]; the
 //! configurator shows one as a live preview, so what you see is what runs.
 
-use engine_state::build_config::{BuildConfiguration, TargetPlatform};
+use engine_state::build_config::{BuildConfiguration, BuildProfile, TargetPlatform};
 use rust_i18n::t;
 
 use crate::text::platform_label;
@@ -52,6 +52,13 @@ pub enum Step {
         platform: Option<TargetPlatform>,
         invocation: Invocation,
     },
+    /// Cook the project and pack it into the pak set in the `Content/`
+    /// folder next to where `platform`'s build puts the game binary, before
+    /// that build: the binary then runs its packed content.
+    PackContent {
+        platform: Option<TargetPlatform>,
+        profile: BuildProfile,
+    },
     Build {
         platform: Option<TargetPlatform>,
         invocation: Invocation,
@@ -70,6 +77,10 @@ impl Step {
             Self::Update(_) => t!("Build.Step.Update"),
             Self::Clean(_) => t!("Build.Step.Clean"),
             Self::Check { platform: None, .. } => t!("Build.Step.Check"),
+            Self::PackContent { platform: None, .. } => t!("Build.Step.PackContent"),
+            Self::PackContent {
+                platform: Some(p), ..
+            } => t!("Build.Step.PackContentFor", platform = platform_label(*p)),
             Self::Build { platform: None, .. } => t!("Build.Step.Build"),
             Self::Run { platform: None, .. } => t!("Build.Step.Run"),
             Self::Check {
@@ -87,7 +98,7 @@ impl Step {
 
     pub fn invocation(&self) -> Option<&Invocation> {
         match self {
-            Self::RegenerateCoreProjectFiles => None,
+            Self::RegenerateCoreProjectFiles | Self::PackContent { .. } => None,
             Self::Update(i) | Self::Clean(i) => Some(i),
             Self::Check { invocation, .. }
             | Self::Build { invocation, .. }
@@ -103,6 +114,7 @@ impl Step {
             Self::Update(_) => 12,
             Self::Clean(_) => 8,
             Self::Check { .. } => 20,
+            Self::PackContent { .. } => 15,
             Self::Build { .. } => 60,
             Self::Run { .. } => 0,
         }
@@ -261,6 +273,12 @@ pub fn plan(config: &BuildConfiguration, host: Option<TargetPlatform>) -> Result
                 invocation: cargo("check", config, platform),
             });
         }
+        if steps.packs() {
+            plan.steps.push(Step::PackContent {
+                platform,
+                profile: config.profile,
+            });
+        }
         if steps.build {
             plan.steps.push(Step::Build {
                 platform,
@@ -319,6 +337,7 @@ mod tests {
                 Step::Update(_) => "update",
                 Step::Clean(_) => "clean",
                 Step::Check { .. } => "check",
+                Step::PackContent { .. } => "pack_content",
                 Step::Build { .. } => "build",
                 Step::Run { .. } => "run",
             })
@@ -333,6 +352,7 @@ mod tests {
             update: true,
             clean: true,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: true,
             build: true,
             run: true,
@@ -345,6 +365,7 @@ mod tests {
                 "update",
                 "clean",
                 "check",
+                "pack_content",
                 "build",
                 "run"
             ]

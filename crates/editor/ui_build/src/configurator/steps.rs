@@ -23,7 +23,7 @@ struct StepRow {
 }
 
 /// In the order they run.
-const STEPS: [StepRow; 6] = [
+const STEPS: [StepRow; 7] = [
     StepRow {
         title: "Build.Steps.RegenerateCoreProjectFiles.Title",
         description: "Build.Steps.RegenerateCoreProjectFiles.Description",
@@ -47,6 +47,12 @@ const STEPS: [StepRow; 6] = [
         description: "Build.Steps.Check.Description",
         get: |s| s.check,
         set: |s, v| s.check = v,
+    },
+    StepRow {
+        title: "Build.Steps.PackContent.Title",
+        description: "Build.Steps.PackContent.Description",
+        get: |s| s.pack_content,
+        set: |s, v| s.pack_content = v,
     },
     StepRow {
         title: "Build.Steps.Build.Title",
@@ -76,6 +82,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
             update: false,
             clean: false,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: true,
             build: false,
             run: false,
@@ -88,6 +95,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
             update: false,
             clean: true,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: false,
             build: true,
             run: false,
@@ -99,6 +107,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
             update: false,
             clean: false,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: false,
             build: true,
             run: true,
@@ -110,6 +119,7 @@ const PRESETS: [(&str, BuildSteps); 5] = [
             update: true,
             clean: true,
             regenerate_core_project_files: true,
+            pack_content: true,
             check: false,
             build: true,
             run: true,
@@ -236,9 +246,13 @@ fn preview(config: &BuildConfiguration, p: Palette) -> AnyElement {
             v_flex()
                 .gap_1()
                 .children(plan.steps.iter().enumerate().map(|(ix, step)| {
-                    let command = step.invocation().map(|i| i.display()).unwrap_or_else(|| {
-                        t!("Build.Preview.RegenerateCoreProjectFiles").to_string()
-                    });
+                    let command = match step {
+                        Step::RegenerateCoreProjectFiles => {
+                            t!("Build.Preview.RegenerateCoreProjectFiles").to_string()
+                        }
+                        Step::PackContent { .. } => t!("Build.Preview.PackContent").to_string(),
+                        _ => step.invocation().map(|i| i.display()).unwrap_or_default(),
+                    };
                     h_flex()
                         .gap_3()
                         .items_baseline()
