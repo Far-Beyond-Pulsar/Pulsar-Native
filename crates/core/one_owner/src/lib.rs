@@ -420,6 +420,64 @@ const KEY_CALLS: &[&str] = &[
     "registry.contains(",
 ];
 
+/// The string literals passed to a key call on `code`: the literals inside
+/// each [`KEY_CALLS`] call's own parentheses (to the end of the line when
+/// the call continues on the next). A literal elsewhere on the line is not
+/// a resource name, even when it equals a key: in
+/// `analyzer.read(cx).did_open_file(&path, &text, "rust")` the `"rust"`
+/// is a language id handed to `did_open_file`, not an argument of `.read(`.
+fn key_call_literals(code: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    for call in KEY_CALLS {
+        let mut from = 0;
+        while let Some(at) = code[from..].find(call) {
+            let after_name = from + at + call.len();
+            from = after_name;
+            // Calls named without their `(` (`write_color`) open at the next one.
+            let Some(open) = (if call.ends_with('(') {
+                Some(after_name - 1)
+            } else {
+                code[after_name..]
+                    .find('(')
+                    .map(|i| after_name + i)
+                    .filter(|&i| code[after_name..i].trim().is_empty())
+            }) else {
+                continue;
+            };
+            let mut depth = 0;
+            let mut in_str = false;
+            let mut escaped = false;
+            let mut close = code.len();
+            for (i, c) in code[open..].char_indices() {
+                if in_str {
+                    if escaped {
+                        escaped = false;
+                    } else if c == '\\' {
+                        escaped = true;
+                    } else if c == '"' {
+                        in_str = false;
+                    }
+                    continue;
+                }
+                match c {
+                    '"' => in_str = true,
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = open + i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            out.extend(literals(&code[open + 1..close]));
+        }
+    }
+    out
+}
+
 /// The code lines of `text` (comments removed), with each `const` item
 /// that spans lines joined into one, so a key defined over several lines
 /// reads as one definition.
@@ -488,11 +546,17 @@ pub fn rust_copies(sources: &[Source]) -> Vec<Copy> {
             if trimmed.starts_with("#[")
                 || code.contains("same_layout!")
                 || !key_definitions(code).is_empty()
-                || !(in_list || KEY_CALLS.iter().any(|c| code.contains(c)))
             {
                 continue;
             }
-            for lit in literals(code) {
+            // In a `reads`/`writes` list every literal is a resource name;
+            // elsewhere only what a key call takes is.
+            let names = if in_list {
+                literals(code)
+            } else {
+                key_call_literals(code)
+            };
+            for lit in names {
                 let Some(owners) = keys.get(lit) else {
                     continue;
                 };
