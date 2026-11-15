@@ -8703,6 +8703,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scenedb",
  "serde_json",
+ "tracing",
  "wgpu",
 ]
 

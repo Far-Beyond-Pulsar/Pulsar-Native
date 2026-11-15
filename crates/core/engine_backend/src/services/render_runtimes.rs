@@ -1102,16 +1102,59 @@ enum Step {
 fn headless_device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let instance = wgpu::Instance::new(helio_core::wgpu_instance_descriptor());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-    let features = helio::required_wgpu_features(adapter.features());
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("Pulsar engine device"),
-        required_features: features,
-        required_limits: helio::required_wgpu_limits(adapter.limits()),
-        experimental_features: helio::required_experimental_features(features),
-        ..Default::default()
-    }))
+    // A headless process opts in to everything Helio can use, ray queries included.
+    request_engine_device(
+        &adapter,
+        &wgpu::DeviceDescriptor {
+            label: Some("Pulsar engine device"),
+            required_features: helio::required_wgpu_features(helio::usable_adapter_features(
+                &adapter,
+            )),
+            ..Default::default()
+        },
+    )
     .map_err(|error| tracing::warn!("No GPU device for the engine: {error}"))
     .ok()
+}
+
+/// Requests the device the engine renders with from `adapter`: what `host`
+/// asks for (a window's own needs, or nothing for a headless process), raised
+/// to what Helio needs. Every device the engine draws on comes from here: a
+/// windowed host (the editor's window, which [`RenderRuntimes::offer_device`]
+/// shares with the engine) passes this as its device factory, so the shared
+/// device carries Helio's features and the adapter's full binding-array
+/// limits, which size the material texture table
+/// (`helio_core::texture_table_capacity`). Experimental ray queries come only
+/// from `host` (the editor enables them through the user's persisted opt-in).
+pub fn request_engine_device(
+    adapter: &wgpu::Adapter,
+    host: &wgpu::DeviceDescriptor<'_>,
+) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
+    let helio_features = helio::required_wgpu_features(helio::usable_adapter_features(adapter))
+        - wgpu::Features::EXPERIMENTAL_RAY_QUERY;
+    let features = host.required_features | helio_features;
+    // Each limit the better of the host's and Helio's (the texture table holds
+    // as many textures as the binding arrays allow), except the buffer size:
+    // wgpu-core asserts `max_buffer_size <= u32::MAX` at device creation, so
+    // Helio's clamp stands (`helio::required_wgpu_limits`).
+    let helio_limits = helio::required_wgpu_limits(adapter.limits());
+    let required_limits = wgpu::Limits {
+        max_buffer_size: host.required_limits.max_buffer_size.min(helio_limits.max_buffer_size),
+        ..host.required_limits.clone().or_better_values_from(&helio_limits)
+    };
+    let experimental_features = if features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY) {
+        helio::required_experimental_features(features)
+    } else {
+        host.experimental_features
+    };
+    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: host.label,
+        required_features: features,
+        required_limits,
+        experimental_features,
+        memory_hints: host.memory_hints.clone(),
+        trace: host.trace.clone(),
+    }))
 }
 
 // ── Offscreen output ─────────────────────────────────────────────────────────

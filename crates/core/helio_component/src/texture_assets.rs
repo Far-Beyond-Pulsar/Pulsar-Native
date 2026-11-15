@@ -659,9 +659,9 @@ pub fn resident_slot(
     }
     let (slot, uploaded) = match (shared, cooked) {
         (Some(texture), _) => (
-            store
-                .register_shared(texture)
-                .map_err(|error| format!("could not share a texture: {error:?}"))?,
+            store.register_shared(texture).map_err(|error| {
+                store_error(error, store.slot_count(), "could not share a texture")
+            })?,
             None,
         ),
         (None, Some(cooked)) => {
@@ -851,6 +851,14 @@ mod shared_upload_tests {
 
     /// A scene's mirror on `ctx`'s device, with a texture store of its own.
     fn scene(ctx: &EngineGpuContext) -> (GpuMirrorHandle, Arc<RwLock<TextureStore>>) {
+        scene_with(ctx, 16)
+    }
+
+    /// A scene's mirror whose texture store holds `slots` textures.
+    fn scene_with(
+        ctx: &EngineGpuContext,
+        slots: u32,
+    ) -> (GpuMirrorHandle, Arc<RwLock<TextureStore>>) {
         let store = Arc::new(SceneGpuStore::new(
             ctx,
             SceneGpuConfig {
@@ -859,7 +867,7 @@ mod shared_upload_tests {
                 max_cells_metadata: 0,
             },
         ));
-        let textures = Arc::new(RwLock::new(TextureStore::new(16)));
+        let textures = Arc::new(RwLock::new(TextureStore::new(slots)));
         let handle = GpuMirrorHandle::new(store, Arc::clone(ctx.queue()))
             .with_texture_store(Arc::clone(&textures))
             .expect("a texture store on the mirror's device");
@@ -1033,6 +1041,43 @@ mod shared_upload_tests {
         assert_eq!(store.texture(restored).unwrap().width(), 16);
         assert_eq!(store.upload_count(), 3);
     }
+
+    #[test]
+    fn a_full_texture_table_is_an_error_that_says_so() {
+        let _detail = DETAIL.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(ctx) = context() else {
+            eprintln!("no GPU adapter; skipping");
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("full.png");
+        image::RgbImage::from_pixel(4, 4, image::Rgb([1, 2, 3]))
+            .save(&path)
+            .unwrap();
+        let image = decode_image_file(&path).unwrap();
+        let (scene, textures) = scene(&ctx);
+        for index in 0..16 {
+            let id = AssetId::of(TEXTURE_ASSET_KIND, &format!("full-table-{index}"));
+            resident_slot(id, 1, &image, TextureUse::Color, &scene).unwrap();
+        }
+
+        // A seventeenth texture has no slot: uploaded or shared, the error
+        // names the full table rather than a store enum.
+        let id = AssetId::of(TEXTURE_ASSET_KIND, "full-table-overflow");
+        let error = resident_slot(id, 1, &image, TextureUse::Color, &scene).unwrap_err();
+        assert!(
+            error.contains("the scene's texture table is full (all 16 slots are in use)"),
+            "{error}"
+        );
+        let (other_scene, _) = scene_with(&ctx, 0);
+        let shared = AssetId::of(TEXTURE_ASSET_KIND, "full-table-0");
+        let error = resident_slot(shared, 1, &image, TextureUse::Color, &other_scene).unwrap_err();
+        assert!(
+            error.contains("could not share a texture: the scene's texture table is full"),
+            "{error}"
+        );
+        assert_eq!(textures.read().unwrap().slot_count(), 16);
+    }
 }
 
 /// Upload a cooked texture (its full mip chain, in its own format) into
@@ -1059,5 +1104,25 @@ fn upload_cooked(
     };
     store
         .register_mips(&device, mirror.queue(), &descriptor, &cooked.mips())
-        .map_err(|error| format!("could not register texture in SceneDB: {error:?}"))
+        .map_err(|error| {
+            store_error(
+                error,
+                store.slot_count(),
+                "could not register texture in SceneDB",
+            )
+        })
+}
+
+/// What a texture store error means to whoever shows the texture. A full
+/// store (`slots` of them, all taken) is the scene's texture table at its
+/// capacity (the device's, [`helio_core::texture_table_capacity`], in the
+/// editor): the texture gets no slot and the caller draws without it (a
+/// material its fallback surface), so the message says so plainly.
+fn store_error(error: pulsar_scenedb::gpu::TextureError, slots: u32, what: &str) -> String {
+    match error {
+        pulsar_scenedb::gpu::TextureError::SlotsExhausted => {
+            format!("{what}: the scene's texture table is full (all {slots} slots are in use)")
+        }
+        other => format!("{what}: {other:?}"),
+    }
 }
