@@ -14,18 +14,18 @@ serde_json = { workspace = true }
 semver = { version = "1", features = ["serde"] }
 schemars = { workspace = true }
 tracing = { workspace = true }
-gpui-ce.workspace = true
-window_manager = { workspace = true }
+gpui-ce = { workspace = true, optional = true }
+window_manager = { workspace = true, optional = true }
 ui_types_common = { workspace = true }
 
 # UI dependencies (for Panel trait integration)
-ui.workspace = true
+ui = { workspace = true, optional = true }
 
 
 # Reflection system (for EngineClass — plugin components use full reflection)
 pulsar_reflection = { workspace = true }
 # The engine-owned language server, handed to editors through `EditorServices`.
-pulsar_lsp = { workspace = true }
+pulsar_lsp = { workspace = true, optional = true }
 # Asset-update notifications (`asset_events`), shared with the engine.
 pulsar_events = { workspace = true }
 # The world crates' shared runtimes: plugin component classes become World
@@ -44,6 +44,17 @@ tracing = { workspace = true }
 gpui-ce = { workspace = true, features = ["test-support"] }
 [lib]
 crate-type = ["lib", "cdylib"]
+
+[[test]]
+name = "editor_creation"
+path = "tests/editor_creation.rs"
+required-features = ["editor"]
+
+[features]
+default = []
+# Runtime cooking and script compilation do not require the editor UI. Editor
+# hosts opt into this feature for GPUI panels, editor services and commands.
+editor = ["dep:gpui-ce", "dep:ui", "dep:window_manager", "dep:pulsar_lsp"]
 
 [lints]
 workspace = true

@@ -100,7 +100,7 @@ engine_fs = { workspace = true }
 render_bps_plugin = { workspace = true }
 helio-mats = { workspace = true }
 helio_component = { workspace = true }
-plugin_editor_api = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["editor"] }
 # The absent meshes: no model importer, no skinned access.
 asset_import = { workspace = true }
 wgpu = { workspace = true }

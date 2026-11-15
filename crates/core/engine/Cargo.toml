@@ -131,7 +131,7 @@ winresource = "0.1"
 [dev-dependencies]
 tempfile = { workspace = true }
 plugin_manager = { workspace = true }
-plugin_editor_api = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["editor"] }
 
 [lints]
 workspace = true

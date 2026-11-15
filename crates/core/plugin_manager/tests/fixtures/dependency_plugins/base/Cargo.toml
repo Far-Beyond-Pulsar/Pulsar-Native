@@ -12,6 +12,6 @@ test = false
 doctest = false
 
 [dependencies]
-plugin_editor_api = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["editor"] }
 ui                = { workspace = true }
 tracing           = { workspace = true }

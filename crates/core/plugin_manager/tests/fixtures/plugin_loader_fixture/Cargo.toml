@@ -10,4 +10,4 @@ test = false
 doctest = false
 
 [dependencies]
-plugin_editor_api = { path = "../../../../plugin_editor_api" }
+plugin_editor_api = { path = "../../../../plugin_editor_api", features = ["editor"] }

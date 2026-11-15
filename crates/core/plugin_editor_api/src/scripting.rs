@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[cfg(feature = "editor")]
 use crate::plugin::EditorPlugin;
 
 pub use pulsar_script_vm::NativeRegistry;
@@ -165,6 +166,7 @@ pub trait ScriptLanguage: Send + Sync {
 
 /// Plugins that provide scripting languages. The default provides none; a
 /// DLL plugin opts in with `export_plugin!(MyPlugin, scripting)`.
+#[cfg(feature = "editor")]
 pub trait EditorPluginScripting: EditorPlugin {
     fn script_languages(&self) -> Vec<Arc<dyn ScriptLanguage>> {
         Vec::new()

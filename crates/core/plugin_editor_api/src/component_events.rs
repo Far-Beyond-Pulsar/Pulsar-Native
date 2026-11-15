@@ -5,6 +5,7 @@
 //! of walking their own `inventory` copy, which may not contain registrations
 //! linked into the host executable.
 
+#[cfg(feature = "editor")]
 use gpui::Global;
 use pulsar_script_vm::EventDecl;
 
@@ -23,4 +24,5 @@ pub struct ComponentEventCatalog {
     pub events: Vec<ComponentEventMetadata>,
 }
 
+#[cfg(feature = "editor")]
 impl Global for ComponentEventCatalog {}

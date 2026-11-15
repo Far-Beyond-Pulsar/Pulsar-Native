@@ -152,10 +152,12 @@ pub struct FileTypeDefinition {
     /// Human-readable name for this file type
     pub display_name: String,
 
-    /// Icon to show in the file drawer
+    /// Icon to show in the file drawer.
+    #[cfg(feature = "editor")]
     pub icon: ui::IconName,
 
-    /// Color for the icon
+    /// Color for the icon.
+    #[cfg(feature = "editor")]
     pub color: gpui::Hsla,
 
     /// Whether this is a standalone file or folder-based
@@ -203,7 +205,9 @@ mod tests {
             id: FileTypeId::new("x"),
             extension: "x".into(),
             display_name: "X".into(),
+            #[cfg(feature = "editor")]
             icon: ui::IconName::Cube,
+            #[cfg(feature = "editor")]
             color: gpui::Hsla::default(),
             structure: FileStructure::Standalone,
             default_content,

@@ -14,6 +14,8 @@
 //! its publishes reach the editor and the editor's reach it
 //! (Pulsar-Native#930).
 
+pub use ui_types_common::AssetKind;
+
 pub use pulsar_events::assets::{
     publish_asset_updated, subscribe_asset_updates, AssetSubscription, AssetUpdated,
 };

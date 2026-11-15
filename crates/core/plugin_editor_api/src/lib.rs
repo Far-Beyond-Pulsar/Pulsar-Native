@@ -80,32 +80,47 @@
 
 // ── Modules ──────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "editor")]
 pub mod actions;
+#[cfg(feature = "editor")]
 pub mod ai;
 pub mod asset_events;
+#[cfg(feature = "editor")]
 pub mod asset_payload;
 pub mod component_events;
+#[cfg(feature = "editor")]
 pub mod components;
+#[cfg(feature = "editor")]
 pub mod editor_element;
 pub mod error;
 pub mod events;
 pub mod file_types;
+#[cfg(feature = "editor")]
 pub mod helpers;
 pub mod identifiers;
 pub mod import_companion;
+#[cfg(feature = "editor")]
 pub mod llm;
 pub mod manifest;
+#[cfg(feature = "editor")]
 pub mod menus;
 pub mod metadata;
+#[cfg(feature = "editor")]
 pub mod panel_restore;
+#[cfg(feature = "editor")]
 pub mod plugin;
+#[cfg(feature = "editor")]
 pub mod registrar;
+#[cfg(feature = "editor")]
 pub mod read_only;
 pub mod runtime;
 pub mod scripting;
+#[cfg(feature = "editor")]
 pub mod statusbar;
+#[cfg(feature = "editor")]
 pub mod surface_animation;
 pub mod traits;
+#[cfg(feature = "editor")]
 pub mod undo;
 pub mod version;
 
@@ -117,32 +132,44 @@ pub mod version;
 // `export_plugin!` macro, which references types via `$crate::Name`, resolves
 // correctly.
 
+#[cfg(feature = "editor")]
 pub use actions::*;
+#[cfg(feature = "editor")]
 pub use ai::*;
 pub use asset_events::*;
+#[cfg(feature = "editor")]
 pub use asset_payload::*;
 pub use component_events::*;
+#[cfg(feature = "editor")]
 pub use components::*;
+#[cfg(feature = "editor")]
 pub use editor_element::*;
 pub use error::*;
 pub use events::*;
 pub use file_types::*;
+#[cfg(feature = "editor")]
 pub use helpers::*;
 pub use identifiers::*;
 pub use import_companion::*;
 pub use manifest::{PluginDependency, PluginManifest};
+#[cfg(feature = "editor")]
 pub use menus::*;
 pub use metadata::*;
+#[cfg(feature = "editor")]
 pub use panel_restore::*;
+#[cfg(feature = "editor")]
 pub use plugin::*;
+#[cfg(feature = "editor")]
 pub use registrar::{Plugin, PluginAdapter, PluginBuilder, Registration};
 pub use runtime::*;
 pub use scripting::*;
+#[cfg(feature = "editor")]
 pub use statusbar::*;
 pub use traits::ProjectTraits;
 pub use traits::{
     TraitDescriptor, TraitImplementer, TraitMethodDescriptor, TraitParamDescriptor, TraitSnapshot,
 };
+#[cfg(feature = "editor")]
 pub use undo::{
     bind_undo_keys, DocumentId, History, HistoryView, Redo, SharedHistory, Undo, UndoEntry,
     UndoService,
@@ -151,10 +178,12 @@ pub use version::*;
 
 /// Re-export GPUI's core types for plugin use.
 /// The `export_plugin!` macro references these via `$crate::Window`, `$crate::App`.
+#[cfg(feature = "editor")]
 pub use gpui::{App, Window};
 
 /// Re-export UI dock types for plugin use.
 /// The `export_plugin!` macro references `$crate::PanelView`.
+#[cfg(feature = "editor")]
 pub use ui::dock::{Panel, PanelView};
 
 /// Re-export serde_json::Value for plugin use.

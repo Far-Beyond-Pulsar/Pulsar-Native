@@ -20,7 +20,7 @@ builtin = ["dep:plugin_manager"]
 [dependencies]
 # The plugin's descriptor and its editor provider's registration.
 pulsar_plugins = { workspace = true }
-plugin_editor_api = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["editor"] }
 plugin_manager = { workspace = true, optional = true }
 engine_backend = { workspace = true }
 ui_helio_viewport = { workspace = true }

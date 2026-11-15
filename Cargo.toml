@@ -491,7 +491,7 @@ ui_shell              = { path = "crates/editor/ui_shell" }
 friends_engine        = { path = "crates/core/friends_engine" }
 
 # ---------- Plugin System ----------
-plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
+plugin_editor_api     = { path = "crates/core/plugin_editor_api", default-features = false }
 materials_graph_editor = { path = "plugins/vendor/materials/graph_editor" }
 plugin_manager        = { path = "crates/core/plugin_manager" }
 

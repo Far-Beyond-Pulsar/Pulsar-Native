@@ -68,6 +68,12 @@ Rules:
   ("Component classes" below). (`#[register_world_component]` registers at the type and is
   for the engine's own components; `submit_world_component!` only for a component crate's
   own unit tests.)
+- Runtime plugin roots may use `plugin_editor_api` for cook handlers, asset kinds and
+  headless script compilation. Its default feature set is runtime-safe and does not link
+  GPUI, `ui`, the editor window manager or the language server. Editor hosts explicitly
+  enable its `editor` feature; mixed plugin roots forward their own `editor` feature to it.
+  Keep editor widgets in editor crates or behind that feature so generated games do not
+  inherit the editor framework through a runtime registration API.
 - `installed!("pulsar-plugin.toml", build)` carries the descriptor and the build into
   whatever links the root. The first read of any registry runs every linked plugin's build
   once (providers before the plugins requiring their contracts) into one store, which
@@ -692,7 +698,7 @@ crate-type = ["cdylib", "rlib"]
 A plugin's `Cargo.toml` needs:
 ```toml
 [dependencies]
-plugin_editor_api = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native" }
+plugin_editor_api = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native", features = ["editor"] }
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI" }
 ui = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component" }
 ```

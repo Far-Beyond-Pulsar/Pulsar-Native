@@ -20,7 +20,7 @@ plugin_manager = { workspace = true }
 gpui-ce = { workspace = true }
 ui      = { workspace = true }
 
-plugin_editor_api = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["editor"] }
 ui_common         = { workspace = true }
 helio_component   = { workspace = true }
 # Material graph previews (the materials' one compiler).

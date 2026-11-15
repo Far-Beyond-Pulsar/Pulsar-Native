@@ -25,7 +25,7 @@ parking_lot = { workspace = true }
 tracing.workspace = true
 
 # Plugin system
-plugin_editor_api = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["editor"] }
 
 # Utilities
 anyhow = { workspace = true }

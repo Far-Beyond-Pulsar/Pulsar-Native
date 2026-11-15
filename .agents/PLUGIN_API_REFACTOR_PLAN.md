@@ -784,6 +784,11 @@ Tristan's `backlog/wave0-source-branch-pins` / `backlog/b0-lighting-models`.
 - **Hosts**: `plugins/installed` (generated) depends on the roots, `editor` turning on each
   root's `editor` feature; generated games link the enabled runtime roots without it; host
   tests reach a kind's types through its root.
+- **Runtime/editor dependency split**: `plugin_editor_api` defaults to the cook and
+  headless scripting contracts only. GPUI, `ui`, `window_manager` and `pulsar_lsp` are
+  behind its opt-in `editor` feature, which editor hosts and mixed plugin roots forward.
+  Mesh inspector widgets in `meshes_component` are likewise behind that root's `editor`
+  feature; the runtime mesh component keeps serialization and rendering without them.
 - **Helio** `helio-feature-api`: `NodeRegistry::{feature_of, feature_nodes}`, recorded by
   `FeatureRegistrar::node`.
 - **Catalog** `plugin_manager::catalog::PluginCatalog::snapshot()`: plugins (descriptor,

@@ -47,7 +47,7 @@ The heart of the engine.
 | `pulsar_traits` | Traits and gameplay roles: trait records and database, the one trait index over every implementer source (`TraitImplementerSource`, `NativeTraitImpl`), conformance, the role registry (`RoleRegistration`), the engine's trait files (its `plugins/pulsar/` folder) and roles |
 | `engine_state` | Typed resource system — `StateStore`, `ResourceHandle`, `EngineContext` |
 | `friends_engine` | Multiplayer friends backend |
-| `plugin_editor_api` | Plugin SDK — traits, types, `export_plugin!` macro |
+| `plugin_editor_api` | Plugin SDK. Runtime cooking/scripting contracts are default and UI-free; editor panels and editor services require its `editor` feature |
 | `plugin_manager` | Plugin host — DLL loading, registries, tool bridge |
 | `profiling` | Performance tracing (Tracy) |
 | `pulsar_auth` | Authentication |
@@ -180,7 +180,7 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_problems` | Errors / warnings panel |
 | `ui_settings` | Settings editor |
 | `ui_type_debugger` | Runtime type inspector |
-| `ui_types_common` | Shared type definitions |
+| `ui_types_common` | Data-only types shared between editor and runtime (asset kinds, window requests, drag payloads); it does not depend on GPUI |
 
 ### Asset thumbnails
 
