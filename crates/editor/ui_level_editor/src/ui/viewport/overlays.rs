@@ -54,6 +54,7 @@ impl ViewportPanel {
                 overlays.show_gpu_pipeline_overlay,
                 overlays.show_render_stats_overlay,
                 overlays.show_nerds_overlay,
+                overlays.show_warnings_overlay,
                 overlays.debug_overlays.clone(),
                 overlays.camera_sync_locked,
             ),
@@ -303,6 +304,18 @@ impl ViewportPanel {
             );
         } else {
             self.nerds_overlay.borrow_mut().take();
+        }
+
+        if view.overlays.state.show_warnings_overlay {
+            overlays = overlays.child(div().absolute().top(px(56.0)).left_2().child(
+                components::warnings_overlay::render_warnings_overlay(
+                    gpu_engine,
+                    &self.warnings_overlay,
+                    cx,
+                ),
+            ));
+        } else {
+            self.warnings_overlay.borrow_mut().take();
         }
 
         // Debug passes can advertise a floating scale for a mode. Query only

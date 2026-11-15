@@ -89,6 +89,8 @@ pub struct RendererDetails {
     /// The newest frame's named statistics (`helio::stats`): draw calls,
     /// vertices, instances, and any stat a pass contributes, by name.
     pub frame_stats: Option<Arc<helio::StatsSnapshot>>,
+    /// Active render-graph warnings published for editor diagnostics panels.
+    pub warnings: Vec<String>,
 }
 
 /// The renderer's statistics, for diagnostics overlays.
@@ -291,6 +293,16 @@ impl GpuRenderer {
             profiler: self.get_gpu_profiler_data(),
             gpu_memory_bytes,
             frame_stats: self.helio_renderer.as_ref().and_then(|r| r.frame_stats()),
+            warnings: self
+                .helio_renderer
+                .as_ref()
+                .map_or_else(Vec::new, |renderer| {
+                    renderer
+                        .diagnostics()
+                        .into_iter()
+                        .filter(|line| line.starts_with("WARNING:"))
+                        .collect()
+                }),
         });
     }
 

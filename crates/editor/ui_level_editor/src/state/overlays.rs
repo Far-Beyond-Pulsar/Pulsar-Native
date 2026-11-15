@@ -50,6 +50,7 @@ pub struct OverlayState {
     /// Every named frame stat the renderer counted (`helio::stats`).
     pub show_render_stats_overlay: bool,
     pub show_nerds_overlay: bool,
+    pub show_warnings_overlay: bool,
     /// The plugins' debug overlays shown, by id
     /// ([`crate::extend::viewport::DebugOverlay`]).
     pub debug_overlays: Vec<&'static str>,
@@ -86,6 +87,7 @@ impl Default for OverlayState {
             show_gpu_pipeline_overlay: false,
             show_render_stats_overlay: false,
             show_nerds_overlay: false,
+            show_warnings_overlay: true,
             debug_overlays: Vec::new(),
             show_camera_mode_selector: true,
             show_viewport_options: true,
@@ -215,6 +217,10 @@ impl OverlayDomain {
 
     pub fn set_show_nerds_overlay(&mut self, show: bool) {
         self.state.show_nerds_overlay = show;
+    }
+
+    pub fn set_show_warnings_overlay(&mut self, show: bool) {
+        self.state.show_warnings_overlay = show;
     }
 
     pub fn set_show_camera_mode_selector(&mut self, show: bool) {

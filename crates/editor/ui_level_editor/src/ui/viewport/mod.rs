@@ -226,6 +226,7 @@ pub struct ViewportPanel {
     /// The render stats overlay, alive only while it is shown.
     render_stats_overlay:
         RefCell<Option<Entity<components::render_stats_overlay::RenderStatsOverlay>>>,
+    warnings_overlay: RefCell<Option<Entity<components::warnings_overlay::WarningsOverlay>>>,
 
     /// Editor diagnostics overlay, alive only while it is shown.
     nerds_overlay: RefCell<Option<Entity<NerdsOverlay>>>,
@@ -313,6 +314,7 @@ impl ViewportPanel {
             perf_overlay: RefCell::new(None),
             gpu_overlay: RefCell::new(None),
             render_stats_overlay: RefCell::new(None),
+            warnings_overlay: RefCell::new(None),
             nerds_overlay: RefCell::new(None),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
