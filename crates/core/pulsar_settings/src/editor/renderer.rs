@@ -41,7 +41,9 @@ pub fn register(cfg: &'static ConfigManager) {
     .setting(
         "hardware_ray_queries",
         SchemaEntry::new(
-            "Request experimental hardware ray queries when supported",
+            "Request experimental hardware ray queries when the GPU supports them. Global \
+             illumination traces meshes with them: without, mesh scenes get no GI. \
+             Restart the editor to apply",
             false,
         )
         .label("Hardware Ray Queries")

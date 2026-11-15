@@ -6088,6 +6088,7 @@ dependencies = [
  "helio-vg-build",
  "helio-vg-format",
  "helio-vg-stream",
+ "log",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",

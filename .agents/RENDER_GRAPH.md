@@ -126,7 +126,8 @@ and `enabled` off bypasses them, probed flow pins, disabled plugin => absent).
 | meshes | `helio.pass.gbuffer` | Geometry: GBuffer | opens phase GBuffer |
 | meshes | `helio.pass.forward_lit` | Geometry: Forward Lit | opens phase Forward (builds only where no G-buffer phase runs) |
 | meshes | `helio.pass.virtual_geometry` | Geometry: Virtual Geometry | phase GBuffer drawer, 30 |
-| meshes | `helio.pass.transparent` | Transparency: Blend | drawer of phase Transparent |
+| meshes | `helio.pass.transparent` | Transparency: Accumulate | phase Transparent drawer; weighted blended OIT accumulation |
+| meshes | `helio.pass.transparent_composite` | Transparency: Composite | resolves accumulation/revealage into the advancing scene colour |
 | decals | `helio.pass.decal` | Geometry: Decals | phase GBuffer drawer, 100 |
 | sprites | `helio.pass.sprite_overlay` | Output: Sprites | slot Display, 10 |
 | materials | `host.material_textures` | Host::material_textures | host inputs (data only: it supplies the texture table, no pass) |

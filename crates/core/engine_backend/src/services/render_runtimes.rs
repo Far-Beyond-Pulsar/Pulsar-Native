@@ -1147,6 +1147,18 @@ pub fn request_engine_device(
     } else {
         host.experimental_features
     };
+    let ray_queries = features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
+    if ray_queries {
+        tracing::info!("Engine device: hardware ray queries on (meshes trace GI)");
+    } else if helio::usable_adapter_features(adapter).contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
+    {
+        tracing::info!(
+            "Engine device: hardware ray queries supported but not requested; meshes get no GI \
+             (Editor settings > Renderer > Hardware Ray Queries, then restart)"
+        );
+    } else {
+        tracing::info!("Engine device: no hardware ray queries on this adapter; meshes get no GI");
+    }
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: host.label,
         required_features: features,
