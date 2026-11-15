@@ -1,6 +1,6 @@
 //! The shipped render pipelines as the editor and the game see them: the
 //! `pulsar.default_pipelines` plugin's files in every project's
-//! `plugins/pulsar.default_pipelines/` folder, registered by the engine before
+//! `plugins/pulsar.default_pipelines/default/` folder, registered by the engine before
 //! a renderer asks, made for the project's plugins, and the migration of a
 //! level that names Helio's old default (or none, from before pipelines were
 //! explicit) to them.
@@ -20,7 +20,7 @@ use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, Sce
 // Every installed plugin is linked, as the editor links them.
 use installed_plugins as _;
 
-const DEFERRED: &str = "plugins/pulsar.default_pipelines/Deferred.rendergraph";
+const DEFERRED: &str = "plugins/Default Pipelines/default/Deferred.rendergraph";
 
 /// The process's project and plugin set are global: one test at a time.
 static PROJECT: Mutex<()> = Mutex::new(());
@@ -68,16 +68,21 @@ fn the_shipped_pipelines_are_the_plugins_files_and_old_levels_run_them() {
     }
 
     // The engine registered it before anyone asked, by its project path.
-    assert!(matches!(
+    assert!(
+        matches!(
+            pipelines::pipeline_state(Some(DEFERRED)),
+            pipelines::PipelineState::Assigned { .. }
+        ),
+        "state={:?}; listed={:?}",
         pipelines::pipeline_state(Some(DEFERRED)),
-        pipelines::PipelineState::Assigned { .. }
-    ));
+        pipelines::list_pipelines()
+    );
     let listed: Vec<String> = pipelines::list_pipelines()
         .into_iter()
         .map(|pipeline| pipeline.id)
         .collect();
     for stem in ["Deferred", "DeferredFxaa", "Forward", "HLFS", "HLFS_FXAA"] {
-        let id = format!("plugins/pulsar.default_pipelines/{stem}.rendergraph");
+        let id = format!("plugins/Default Pipelines/default/{stem}.rendergraph");
         assert!(listed.contains(&id), "{id} in {listed:?}");
     }
 
@@ -95,7 +100,12 @@ fn the_shipped_pipelines_are_the_plugins_files_and_old_levels_run_them() {
     }
     assert_eq!(
         pipelines::migrate_pipeline_id("helio.hlfs".into()),
-        "plugins/pulsar.default_pipelines/HLFS.rendergraph"
+        "plugins/Default Pipelines/default/HLFS.rendergraph"
+    );
+    assert_eq!(
+        pipelines::migrate_pipeline_id("plugins/Default Pipelines/Deferred.rendergraph".into()),
+        DEFERRED,
+        "the former visible plugin-root path migrates to the default subfolder"
     );
     // A project's own graph keeps its id.
     assert_eq!(
@@ -110,9 +120,11 @@ fn without_a_kind_the_shipped_graph_has_none_of_its_nodes_and_still_runs() {
     let project = open_project("[plugins]\n\"pulsar.voxel\" = false\n");
     let text = engine_fs::virtual_fs::read_to_string(&project.path().join(DEFERRED))
         .expect("the plugin serves the file");
-    assert!(!node_kinds(&text)
-        .iter()
-        .any(|k| k == "helio.pass.voxel_chunks"));
+    assert!(
+        !node_kinds(&text)
+            .iter()
+            .any(|k| k == "helio.pass.voxel_chunks")
+    );
     assert!(matches!(
         pipelines::pipeline_state(Some(DEFERRED)),
         pipelines::PipelineState::Assigned { .. }
@@ -563,7 +575,7 @@ fn every_shipped_pipeline_draws_an_opaque_frame() {
     let shipped: Vec<String> = pipelines::list_pipelines()
         .into_iter()
         .map(|info| info.id)
-        .filter(|id| id.starts_with("plugins/pulsar.default_pipelines/"))
+        .filter(|id| id.starts_with("plugins/Default Pipelines/default/"))
         .collect();
     assert!(shipped.len() >= 4, "{shipped:?}");
     let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -596,7 +608,7 @@ fn every_shipped_pipeline_draws_an_opaque_frame() {
     };
     // The project's TSR setting, as the editor's Project Settings write it.
     let rendering = {
-        use engine_state::settings::{global_config, NS_PROJECT};
+        use engine_state::settings::{NS_PROJECT, global_config};
         global_config()
             .owner_handle(NS_PROJECT, "rendering")
             .or_else(|| {

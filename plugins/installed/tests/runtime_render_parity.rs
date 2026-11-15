@@ -13,7 +13,7 @@ use installed_plugins as _;
 use std::path::Path;
 use std::sync::Arc;
 
-use engine_backend::scene::{attachments, RuntimeLevel, SceneWorldExt, SharedScene};
+use engine_backend::scene::{RuntimeLevel, SceneWorldExt, SharedScene, attachments};
 use engine_backend::subsystems::render::{
     DeviceOwner, EditorCameraState, FrameProjection, FrameView, HelioRenderer, SceneRenderer,
     SceneRendererOptions,
@@ -27,7 +27,7 @@ const FRAMES: usize = 6;
 
 /// The pipeline a level that names none runs: Helio's old default id, which
 /// the default pipelines plugin's migration makes its deferred graph
-/// (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, made for the open
+/// (`plugins/pulsar.default_pipelines/default/Deferred.rendergraph`, made for the open
 /// project's plugins).
 fn shipped_pipeline() -> String {
     use engine_backend::subsystems::render::helio_renderer::pipelines;
@@ -313,8 +313,8 @@ fn every_runtime_renders_the_same_level() {
 /// tick, and resuming runs it again.
 #[test]
 fn the_game_clock_drives_animation_and_pause_freezes_it() {
-    use pulsar_game::tick::TickLoop;
     use pulsar_game::TickMode;
+    use pulsar_game::tick::TickLoop;
 
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");

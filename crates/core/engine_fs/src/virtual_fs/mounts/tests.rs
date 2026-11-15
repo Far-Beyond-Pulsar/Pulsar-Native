@@ -241,15 +241,17 @@ fn the_snapshot_holds_the_folders_files_and_a_packaged_copy_serves_them() {
     let packaged = PackagedFolder {
         owner: "test.provider".into(),
         segment: "Test provider".into(),
+        content_root: Some(game.path().to_path_buf()),
     };
+    let asset_cache = tempfile::tempdir().unwrap();
     assert_eq!(
         packaged
-            .read_file(game.path(), "templates/one.txt")
+            .read_file(asset_cache.path(), "templates/one.txt")
             .unwrap(),
         b"one"
     );
     let names: Vec<String> = packaged
-        .list_dir(game.path(), "templates")
+        .list_dir(asset_cache.path(), "templates")
         .unwrap()
         .into_iter()
         .map(|entry| entry.name)
@@ -366,9 +368,15 @@ fn the_plugin_id_still_resolves_as_a_legacy_alias() {
         canonical_mount_path(r"plugins\Test provider\a.txt"),
         "plugins/Test provider/a.txt"
     );
-    assert_eq!(canonical_mount_path("plugins/test.provider"), "plugins/Test provider");
+    assert_eq!(
+        canonical_mount_path("plugins/test.provider"),
+        "plugins/Test provider"
+    );
     assert_eq!(canonical_mount_path("own.txt"), "own.txt");
-    assert_eq!(canonical_mount_path("plugins/unknown/x"), "plugins/unknown/x");
+    assert_eq!(
+        canonical_mount_path("plugins/unknown/x"),
+        "plugins/unknown/x"
+    );
     assert_eq!(
         mount_owner_id("Test provider").as_deref(),
         Some("test.provider")
@@ -388,8 +396,13 @@ fn a_packaged_copy_reads_an_older_package_made_under_the_id() {
     let packaged = PackagedFolder {
         owner: "test.provider".into(),
         segment: "Test provider".into(),
+        content_root: Some(game.path().to_path_buf()),
     };
-    assert_eq!(packaged.read_file(game.path(), "a.txt").unwrap(), b"old");
+    let asset_cache = tempfile::tempdir().unwrap();
+    assert_eq!(
+        packaged.read_file(asset_cache.path(), "a.txt").unwrap(),
+        b"old"
+    );
 }
 
 #[test]
@@ -398,8 +411,24 @@ fn only_a_valid_path_segment_is_a_folder_name() {
         assert!(valid_segment(good), "{good}");
     }
     for bad in [
-        "", ".", "..", ".hidden", "ends.", "a/b", r"a\b", "a:b", "a*b", "a?b", "a\"b", "a<b",
-        "a|b", "tab\there", "CON", "nul", "com1", "Lpt9.txt",
+        "",
+        ".",
+        "..",
+        ".hidden",
+        "ends.",
+        "a/b",
+        r"a\b",
+        "a:b",
+        "a*b",
+        "a?b",
+        "a\"b",
+        "a<b",
+        "a|b",
+        "tab\there",
+        "CON",
+        "nul",
+        "com1",
+        "Lpt9.txt",
     ] {
         assert!(!valid_segment(bad), "{bad:?}");
     }

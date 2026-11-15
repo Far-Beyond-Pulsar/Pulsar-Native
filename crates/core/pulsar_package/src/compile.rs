@@ -74,6 +74,12 @@ pub fn compile_project(
     // A project from before the module store keeps modules beside its
     // classes: move them in before anything compiles or reads them.
     pulsar_class::modules::migrate_legacy_modules(project, &ClassRegistry::scan(project));
+    let registry = ClassRegistry::scan(project);
+    let duplicate_names = duplicate_class_names(&registry);
+    if !duplicate_names.is_empty() {
+        output.problems.extend(duplicate_names);
+        return output;
+    }
     let natives_runtime = pulsar_game::scripting::new_runtime();
     #[cfg(feature = "scripting")]
     let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
@@ -91,9 +97,13 @@ pub fn compile_project(
         &mut output,
     );
     #[cfg(not(feature = "scripting"))]
-    run_languages(project, natives_runtime.natives(), optimization, &mut output);
+    run_languages(
+        project,
+        natives_runtime.natives(),
+        optimization,
+        &mut output,
+    );
 
-    let registry = ClassRegistry::scan(project);
     let store = pulsar_class::ModuleStore::of_project(project);
     let mut modules: Vec<(ClassEntry, Option<Module>)> = Vec::new();
     for entry in registry.entries() {
@@ -153,7 +163,7 @@ pub fn compile_project(
         }
     }
 
-    link_all(&registry, &modules, settings, &mut output);
+    link_all(project, &registry, &modules, settings, &mut output);
     output.classes = modules
         .into_iter()
         .map(|(entry, module)| CompiledClass { entry, module })
@@ -164,6 +174,7 @@ pub fn compile_project(
 /// Load every module into one runtime, as the game does: declared events
 /// first (classes may use each other's), then each class links.
 fn link_all(
+    project: &Path,
     registry: &ClassRegistry,
     modules: &[(ClassEntry, Option<Module>)],
     settings: &ProjectSettings,
@@ -174,6 +185,15 @@ fn link_all(
     let events = pulsar_game::scripting::ScriptEvents::new(pulsar_events::EventHub::new());
     if let Err(error) = pulsar_world_registry::register_component_events(events.bridge().hub()) {
         tracing::error!(%error, "could not register component events for package validation");
+    }
+    // Run the same project-data event declarations as a game session before
+    // declaring or linking any class modules. This lets plugins validate
+    // handlers for events defined by project assets (for example input
+    // actions) using the runtime's normal registration path.
+    for hook in engine_backend::scene::game_hooks::game_sessions() {
+        if let Some(begin) = hook.begin {
+            begin(events.bridge().hub(), project);
+        }
     }
     for registration in pulsar_world_registry::component_event_registrations() {
         let declaration = (registration.declaration)();
@@ -217,6 +237,33 @@ fn link_all(
     }
 }
 
+fn duplicate_class_names(registry: &ClassRegistry) -> Vec<ScriptProblem> {
+    let mut by_name = std::collections::BTreeMap::<&str, Vec<&Path>>::new();
+    for entry in registry.entries() {
+        by_name
+            .entry(&entry.name)
+            .or_default()
+            .push(entry.dir.as_path());
+    }
+    by_name
+        .into_iter()
+        .filter(|(_, paths)| paths.len() > 1)
+        .map(|(name, paths)| ScriptProblem {
+            error: true,
+            class: Some(name.to_owned()),
+            file: None,
+            message: format!(
+                "class name is ambiguous; multiple class folders have this name: {}",
+                paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        })
+        .collect()
+}
+
 fn is_older(a: &Path, b: &Path) -> bool {
     let modified = |p: &Path| {
         virtual_fs::metadata(p)
@@ -224,6 +271,43 @@ fn is_older(a: &Path, b: &Path) -> bool {
             .and_then(|m| m.modified_nanos())
     };
     matches!((modified(a), modified(b)), (Some(a), Some(b)) if a < b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_class_names_report_every_conflicting_folder() {
+        let registry = ClassRegistry::from_entries(vec![
+            ClassEntry {
+                id: pulsar_class::ClassId::from("first"),
+                name: "NewBlueprintClass".into(),
+                dir: PathBuf::from("classes/NewBlueprintClass.class"),
+            },
+            ClassEntry {
+                id: pulsar_class::ClassId::from("second"),
+                name: "NewBlueprintClass".into(),
+                dir: PathBuf::from("src/classes/NewBlueprintClass.class"),
+            },
+        ]);
+
+        let problems = duplicate_class_names(&registry);
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].error);
+        assert_eq!(problems[0].class.as_deref(), Some("NewBlueprintClass"));
+        assert!(
+            problems[0]
+                .message
+                .contains("classes/NewBlueprintClass.class")
+        );
+        assert!(
+            problems[0]
+                .message
+                .contains("src/classes/NewBlueprintClass.class")
+        );
+        assert!(duplicate_class_names(&ClassRegistry::default()).is_empty());
+    }
 }
 
 // The languages linked into this tool: `scripting` links the installed set's
@@ -240,12 +324,8 @@ fn run_languages(
 ) {
     for language in plugin_editor_api::linked_script_languages() {
         tracing::info!(language = language.display_name(), "Compiling scripts");
-        for diagnostic in language.compile_project_for_cook(
-            project,
-            natives,
-            component_events,
-            optimization,
-        )
+        for diagnostic in
+            language.compile_project_for_cook(project, natives, component_events, optimization)
         {
             output.problems.push(ScriptProblem {
                 error: diagnostic.is_error(),

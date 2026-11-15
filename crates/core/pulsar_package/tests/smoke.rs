@@ -19,11 +19,13 @@ use std::path::{Path, PathBuf};
 
 use pulsar_content::BuildProfile;
 use pulsar_game::prelude::TickLoop;
-use pulsar_game::standalone::{run_with, HeadlessReport, LaunchOptions};
+use pulsar_game::standalone::{HeadlessReport, LaunchOptions, run_with};
 use pulsar_script_vm::{
     BinOp, Constant, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param,
     Signature, Subscription, SubscriptionScope, Type, Variable,
 };
+
+static STANDALONE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/smoke_project")
@@ -352,6 +354,9 @@ fn check_report(report: &HeadlessReport, pak: bool, frames: u64) {
 
 #[test]
 fn packaged_game_runs_from_a_clean_directory() {
+    let _standalone = STANDALONE_TEST_LOCK.lock().unwrap();
+    engine_fs::virtual_fs::serve_packaged_folders(None);
+    engine_fs::virtual_fs::reset_to_local();
     let log = Log::default();
     let _ = tracing_subscriber::fmt()
         .with_writer(log.clone())
@@ -373,9 +378,11 @@ fn packaged_game_runs_from_a_clean_directory() {
     assert_eq!(report.startup_level.as_deref(), Some("scenes/main.level"));
     assert_eq!(report.assets, 1);
     assert!(report.files.contains_key("assets/meshes/glass_red.mesh"));
-    assert!(report
-        .files
-        .contains_key("Pulsar/modules/762f7d93-1e8c-44dd-b20d-0707e5506e5f.pvm"));
+    assert!(
+        report
+            .files
+            .contains_key("Pulsar/modules/762f7d93-1e8c-44dd-b20d-0707e5506e5f.pvm")
+    );
     assert!(
         !report.files.keys().any(|f| f.ends_with("module.json")),
         "shipped modules are binary"
@@ -488,4 +495,74 @@ fn packaged_game_runs_from_a_clean_directory() {
 
     let report = run_packaged(&shipped.path().join("loose/Content"), frames);
     check_report(&report, false, frames);
+}
+
+#[test]
+fn selected_plugin_render_pipeline_is_cooked_as_a_referenced_asset() {
+    let _standalone = STANDALONE_TEST_LOCK.lock().unwrap();
+    engine_fs::virtual_fs::serve_packaged_folders(None);
+    engine_fs::virtual_fs::reset_to_local();
+    let work = tempfile::tempdir().unwrap();
+    let project = work.path().join("project");
+    copy_dir(&fixture(), &project);
+    install_modules(&project);
+    std::fs::write(
+        project.join("Pulsar.toml"),
+        "[plugins]\n\"pulsar.default_pipelines\" = true\n",
+    )
+    .unwrap();
+
+    let level_path = project.join("scenes/main.level");
+    let mut level: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&level_path).unwrap()).unwrap();
+    level["world_settings"] = serde_json::json!({
+        "pipeline_version": 1,
+        "render_pipeline": "plugins/Default Pipelines/default/Deferred.rendergraph"
+    });
+    std::fs::write(&level_path, serde_json::to_vec_pretty(&level).unwrap()).unwrap();
+
+    let mut options = pulsar_package::PackageOptions::new(&project, work.path().join("out"));
+    options.skip_build = true;
+    let report = pulsar_package::package(&options).expect("selected pipeline is packaged");
+
+    let pipeline = "plugins/Default Pipelines/default/Deferred.rendergraph";
+    assert!(report.files.contains_key(pipeline));
+    assert_eq!(
+        report.assets, 2,
+        "the mesh and selected pipeline are counted"
+    );
+    let pak = pulsar_content::PakSet::open(
+        &report.out.join("Content"),
+        pulsar_content::ContentKey::load_or_create(&project).unwrap(),
+    )
+    .unwrap();
+    let registry =
+        pulsar_content::AssetRegistry::from_json(&pak.read("Pulsar/asset_registry.json").unwrap())
+            .unwrap();
+    assert!(
+        registry.get(pipeline).is_some(),
+        "pipeline has an asset record"
+    );
+
+    // Standalone startup extracts `assets/` to a cache and points the engine's
+    // project path there. Plugin snapshots remain in the package Content root;
+    // the VFS must still serve them through that split.
+    let content_key = pulsar_content::ContentKey::load_or_create(&project).unwrap();
+    pulsar_game::standalone::install_content_key(content_key);
+    let content = pulsar_content::ContentRoot::packaged(report.out.join("Content")).unwrap();
+    content.install();
+    let asset_root = content
+        .asset_root_in(&work.path().join("asset-cache"))
+        .unwrap();
+    pulsar_settings::register_all_settings(engine_state::settings::global_config());
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(asset_root.display().to_string());
+    let runtime_path = asset_root.join(pipeline);
+    assert_eq!(
+        engine_fs::virtual_fs::read_file(&runtime_path).unwrap(),
+        pak.read(pipeline).unwrap(),
+        "packaged plugin snapshot resolves with the extracted asset cache as project root"
+    );
+    engine_fs::virtual_fs::serve_packaged_folders(None);
+    engine_fs::virtual_fs::reset_to_local();
 }

@@ -175,13 +175,24 @@ snapshot of every plugin folder whose provider says `InGame::Snapshot` (the
 default) into the package (`virtual_fs::plugin_snapshot(project)`, at
 `plugins/<visible name>/...`, after activating the project's plugin list), and a packaged
 game serves each such folder from it, read-only, without calling the plugin
-(`virtual_fs::serve_packaged_folders(true)`, which `pulsar_content::ContentRoot::install`
-calls; a package made before the rename, holding `plugins/<id>/`, is still
-read). A plugin that builds its folder in the game too says `InGame::Live`
+(`virtual_fs::serve_packaged_folders(content_root)`, which `pulsar_content::ContentRoot::install`
+calls). Snapshot reads use the package's Content root even when standalone
+startup points the engine project path at an extracted asset cache. A package
+made before the rename, holding `plugins/<id>/`, is still read. A plugin that
+builds its folder in the game too says `InGame::Live`
 (the engine's own folder does: its traits are embedded in every binary).
 
 The capability prevents accidental writes; it is no sandbox: a native plugin
 runs in-process.
+
+During package cooking, registered file-type handlers return `CookOutput`:
+package-ready files plus the asset paths referenced directly by that asset.
+The packager follows those edges with an iterative queue until it reaches the
+full reachable set. Visited asset ids deduplicate shared references and stop
+cycles; there is no configured depth limit. Folder-based assets are resolved
+and copied as a unit. For example, native mesh handlers expose assigned
+materials and material graph handlers expose sampled textures, so those
+references are cooked transitively as well.
 
 How others do it: Unreal stacks `IPlatformFile` layers (the pak layer over the
 physical one) and registers a mount point per plugin's content

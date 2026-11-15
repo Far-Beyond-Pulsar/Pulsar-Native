@@ -278,7 +278,7 @@ editor creates.
 
 The plugin `plugins/vendor/default_pipelines` owns the pipelines the engine ships.
 It serves them through an `engine_fs::FileProvider` at
-`plugins/pulsar.default_pipelines/` in every project:
+`plugins/pulsar.default_pipelines/default/` in every project:
 
 | File | Preset | Replaces (old id) |
 |---|---|---|

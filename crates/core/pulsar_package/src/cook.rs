@@ -92,7 +92,9 @@ impl AssetResolver {
             }
             c
         };
-        let file = candidates.into_iter().find(|p| virtual_fs::is_file(p))?;
+        let file = candidates
+            .into_iter()
+            .find(|path| virtual_fs::is_file(path) || virtual_fs::is_dir(path))?;
         let file = canonical(&file);
         Some((self.content_id(&file), file))
     }
@@ -348,7 +350,7 @@ pub fn cook_scripting_config(
                     return Err(format!(
                         "{}: global script `{reference}` is not a class of this project",
                         path.display()
-                    ))
+                    ));
                 }
             }
         }

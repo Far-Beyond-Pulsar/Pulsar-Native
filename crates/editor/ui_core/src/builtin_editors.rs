@@ -54,6 +54,7 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
                     }
                 }),
                 creation_directory: None,
+                cook: plugin_editor_api::file_types::copy_file_for_cook,
 
                 categories: vec!["Levels".to_string()],
             },
@@ -74,6 +75,7 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
                     }
                 }),
                 creation_directory: None,
+                cook: plugin_editor_api::file_types::copy_file_for_cook,
 
                 categories: vec!["Levels".to_string()],
             },

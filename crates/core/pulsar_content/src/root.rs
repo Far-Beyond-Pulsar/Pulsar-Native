@@ -217,7 +217,9 @@ impl ContentRoot {
     pub fn install(&self) {
         // A packaged game serves the plugins' folders from the snapshot the
         // packager wrote into its content, not from the plugins.
-        engine_fs::virtual_fs::serve_packaged_folders(self.is_packaged());
+        engine_fs::virtual_fs::serve_packaged_folders(
+            self.is_packaged().then(|| self.root.clone()),
+        );
         if let Some(pak) = self.pak() {
             engine_fs::virtual_fs::set_provider(Arc::new(crate::ContentFsProvider::new(
                 self.root.clone(),
@@ -283,8 +285,7 @@ impl ContentRoot {
 
 /// Whether `dir` holds cooked content.
 pub fn is_cooked(dir: &Path) -> bool {
-    PakSet::exists_in(dir)
-        || virtual_fs::is_file(&dir.join(crate::CLASS_INDEX_FILE))
+    PakSet::exists_in(dir) || virtual_fs::is_file(&dir.join(crate::CLASS_INDEX_FILE))
 }
 
 /// Whether `dir` is a Pulsar project root: it holds the project file
@@ -356,7 +357,10 @@ mod tests {
         pack(
             &shipped.join(CONTENT_DIR_NAME),
             &[
-                (PROJECT_SETTINGS_FILE, br#"{"startup_level":"scenes/a.level"}"#),
+                (
+                    PROJECT_SETTINGS_FILE,
+                    br#"{"startup_level":"scenes/a.level"}"#,
+                ),
                 ("assets/meshes/a.mesh", b"mesh"),
             ],
         );

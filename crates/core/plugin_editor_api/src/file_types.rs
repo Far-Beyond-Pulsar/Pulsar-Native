@@ -20,17 +20,90 @@ pub struct CookedFile {
     pub bytes: Vec<u8>,
 }
 
-/// Converts a file of this type into package-ready artifacts.
-pub type CookCallback = for<'a> fn(&CookContext<'a>) -> Result<Vec<CookedFile>, String>;
+/// The package-ready files emitted by a cook handler and its direct asset
+/// references. Hosts follow those references to a fixed point, so handlers
+/// only need to report immediate dependencies.
+#[derive(Clone, Debug, Default)]
+pub struct CookOutput {
+    pub files: Vec<CookedFile>,
+    pub dependencies: Vec<String>,
+}
+
+impl CookOutput {
+    pub fn single(file: CookedFile) -> Self {
+        Self {
+            files: vec![file],
+            dependencies: Vec::new(),
+        }
+    }
+
+    pub fn new(files: Vec<CookedFile>, dependencies: Vec<String>) -> Self {
+        Self {
+            files,
+            dependencies,
+        }
+    }
+}
+
+/// Converts a file of this type into package-ready artifacts and direct
+/// references.
+pub type CookCallback = for<'a> fn(&CookContext<'a>) -> Result<CookOutput, String>;
 
 /// Copy formats whose authored file is already runtime-ready.
-pub fn copy_file_for_cook(context: &CookContext<'_>) -> Result<Vec<CookedFile>, String> {
+pub fn copy_file_for_cook(context: &CookContext<'_>) -> Result<CookOutput, String> {
     let bytes = engine_fs::virtual_fs::read_file(context.source_path)
         .map_err(|error| format!("{}: {error}", context.source_path.display()))?;
-    Ok(vec![CookedFile {
+    Ok(CookOutput::single(CookedFile {
         path: context.content_path.to_path_buf(),
         bytes,
-    }])
+    }))
+}
+
+/// Copy every file in a folder-based asset while keeping paths relative to
+/// the asset root. The dependency callback registered for that file type
+/// reports references contained in its files.
+pub fn copy_folder_for_cook(context: &CookContext<'_>) -> Result<CookOutput, String> {
+    fn visit(
+        source_root: &Path,
+        current: &Path,
+        content_root: &Path,
+        files: &mut Vec<CookedFile>,
+    ) -> Result<(), String> {
+        let entries = engine_fs::virtual_fs::list_dir(current)
+            .map_err(|error| format!("{}: {error}", current.display()))?;
+        for entry in entries {
+            let source = current.join(&entry.name);
+            if entry.is_dir {
+                visit(source_root, &source, content_root, files)?;
+                continue;
+            }
+            let relative = source
+                .strip_prefix(source_root)
+                .map_err(|error| format!("{}: {error}", source.display()))?;
+            let bytes = engine_fs::virtual_fs::read_file(&source)
+                .map_err(|error| format!("{}: {error}", source.display()))?;
+            files.push(CookedFile {
+                path: content_root.join(relative),
+                bytes,
+            });
+        }
+        Ok(())
+    }
+
+    let mut files = Vec::new();
+    visit(
+        context.source_path,
+        context.source_path,
+        context.content_path,
+        &mut files,
+    )?;
+    if files.is_empty() {
+        return Err(format!(
+            "{} contains no files to cook",
+            context.source_path.display()
+        ));
+    }
+    Ok(CookOutput::new(files, Vec::new()))
 }
 
 /// Replaced with one RFC 3339 UTC timestamp when a file type's default content

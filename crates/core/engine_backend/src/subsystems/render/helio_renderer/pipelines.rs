@@ -2,7 +2,7 @@
 //!
 //! A pipeline is a `.rendergraph` asset in the project, a plugin's folder
 //! included: the shipped ones are the `pulsar.default_pipelines` plugin's files
-//! (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, ...). One
+//! (`plugins/pulsar.default_pipelines/default/Deferred.rendergraph`, ...). One
 //! process-wide [`RenderPipelineRegistry`] holds every asset compiled into a
 //! pipeline, by its project-relative path ([`refresh_project_pipelines`]), and
 //! the editors' private preview pipelines. The engine registers the open

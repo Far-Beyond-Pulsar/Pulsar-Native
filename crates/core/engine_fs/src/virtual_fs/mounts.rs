@@ -630,6 +630,8 @@ struct PackagedFolder {
     owner: String,
     /// The folder's visible name.
     segment: String,
+    /// The package's Content root, distinct from the project's asset cache.
+    content_root: Option<PathBuf>,
 }
 
 impl PackagedFolder {
@@ -637,6 +639,7 @@ impl PackagedFolder {
     /// id (an older package).
     fn candidates(&self, project: &Path, path: &str) -> Vec<PathBuf> {
         let inner = clean(path);
+        let root = self.content_root.as_deref().unwrap_or(project);
         let mut names = vec![self.segment.as_str()];
         if self.owner != self.segment {
             names.push(self.owner.as_str());
@@ -644,7 +647,7 @@ impl PackagedFolder {
         names
             .into_iter()
             .map(|name| {
-                let dir = project.join(PLUGINS_FOLDER).join(name);
+                let dir = root.join(PLUGINS_FOLDER).join(name);
                 if inner.is_empty() {
                     dir
                 } else {
@@ -694,7 +697,8 @@ impl FolderSource for PackagedFolder {
         if clean(path).is_empty() {
             return Some(dir_metadata());
         }
-        self.first(project, path, |base, real| base.metadata(real)).ok()
+        self.first(project, path, |base, real| base.metadata(real))
+            .ok()
     }
 }
 
@@ -729,12 +733,17 @@ fn dir_metadata() -> FsMetadata {
 static PACKAGED: AtomicBool = AtomicBool::new(false);
 
 /// Serve every [`InGame::Snapshot`] folder from the packaged game's content
-/// (the snapshot the packager wrote at `plugins/<owner>/`) instead of
-/// opening its plugin. The game's content root calls it when it installs a
-/// packaged game; an on-disk `plugins/` folder is then the snapshot, not a
-/// problem.
-pub fn serve_packaged_folders(on: bool) {
-    PACKAGED.store(on, Ordering::Release);
+/// (the snapshot the packager wrote at `plugins/<visible name>/`) instead of
+/// opening its plugin. The content root is separate from the project's path,
+/// which can point at an extracted asset cache.
+pub fn serve_packaged_folders(content_root: Option<PathBuf>) {
+    *packaged_content_root().write() = content_root.clone();
+    PACKAGED.store(content_root.is_some(), Ordering::Release);
+}
+
+fn packaged_content_root() -> &'static RwLock<Option<PathBuf>> {
+    static ROOT: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+    ROOT.get_or_init(|| RwLock::new(None))
 }
 
 /// Every source opened so far, by folder: each provider is opened once per
@@ -756,10 +765,11 @@ struct Folder {
 struct Tree {
     generation: u64,
     packaged: bool,
+    packaged_root: Option<PathBuf>,
     folders: BTreeMap<String, Folder>,
 }
 
-fn build_tree(generation: u64, packaged: bool) -> Tree {
+fn build_tree(generation: u64, packaged: bool, packaged_root: Option<PathBuf>) -> Tree {
     let mut folders: BTreeMap<String, Folder> = BTreeMap::new();
     let mut owners: BTreeMap<String, &'static str> = BTreeMap::new();
     let segments = folder_segments();
@@ -787,6 +797,7 @@ fn build_tree(generation: u64, packaged: bool) -> Tree {
             Arc::new(PackagedFolder {
                 owner: owner.clone(),
                 segment: segment.clone(),
+                content_root: packaged_root.clone(),
             })
         } else {
             source_of(provider, &owner, &segment)
@@ -803,6 +814,7 @@ fn build_tree(generation: u64, packaged: bool) -> Tree {
     Tree {
         generation,
         packaged,
+        packaged_root,
         folders,
     }
 }
@@ -863,7 +875,12 @@ fn tree() -> Arc<Tree> {
     let cell = TREE.get_or_init(|| RwLock::new(None));
     let generation = pulsar_plugins::generation();
     let packaged = PACKAGED.load(Ordering::Acquire);
-    let current = |tree: &Tree| tree.generation == generation && tree.packaged == packaged;
+    let packaged_root = packaged_content_root().read().clone();
+    let current = |tree: &Tree| {
+        tree.generation == generation
+            && tree.packaged == packaged
+            && tree.packaged_root == packaged_root
+    };
     if let Some(tree) = cell.read().as_ref() {
         if current(tree) {
             return Arc::clone(tree);
@@ -877,7 +894,7 @@ fn tree() -> Arc<Tree> {
             return Arc::clone(tree);
         }
     }
-    let fresh = Arc::new(build_tree(generation, packaged));
+    let fresh = Arc::new(build_tree(generation, packaged, packaged_root));
     *cell.write() = Some(Arc::clone(&fresh));
     fresh
 }

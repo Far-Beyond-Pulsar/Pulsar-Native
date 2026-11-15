@@ -265,6 +265,14 @@ pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
             if skip_when_searching(name) {
                 continue;
             }
+            // Plugin snapshots expose their sample projects through the
+            // project's virtual filesystem. Those classes are not project
+            // content and must not enter its class registry. A project may
+            // still reference plugin-owned classes outside an `examples/`
+            // tree; only the sample tree is excluded here.
+            if is_plugin_examples_path(project_root, &path) {
+                continue;
+            }
             let is_class_folder =
                 path.extension().and_then(|e| e.to_str()) == Some(CLASS_DIR_EXTENSION);
             if is_class_folder && is_class_dir(&path) {
@@ -277,6 +285,17 @@ pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
     found.sort();
     found.dedup();
     found
+}
+
+fn is_plugin_examples_path(project_root: &Path, path: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(project_root) else {
+        return false;
+    };
+    let mut components = relative.components();
+    if components.next().and_then(|part| part.as_os_str().to_str()) != Some("plugins") {
+        return false;
+    }
+    components.any(|part| part.as_os_str().to_str() == Some("examples"))
 }
 
 /// The project a class directory belongs to: `<project>` for
@@ -324,7 +343,11 @@ impl ClassRegistry {
     /// assigning a GUID to every class that has none yet.
     pub fn scan(project_root: &Path) -> Self {
         if let Some(index) = ClassIndex::read(project_root) {
-            return index.registry(project_root);
+            let mut registry = index.registry(project_root);
+            registry
+                .entries
+                .retain(|entry| !is_plugin_examples_path(project_root, &entry.dir));
+            return registry;
         }
         Self::from_dirs(find_class_dirs(project_root))
     }
@@ -615,6 +638,27 @@ mod tests {
             lamp.id
         );
         assert!(registry.resolve_script_asset("/x/Missing").is_none());
+    }
+
+    #[test]
+    fn scan_excludes_plugin_example_classes_but_keeps_plugin_content() {
+        let root = tempfile::tempdir().unwrap();
+        let examples = root
+            .path()
+            .join("plugins/Blueprints/examples/basic/Example.class");
+        let plugin_asset = root
+            .path()
+            .join("plugins/MyPlugin/classes/PluginClass.class");
+        let project_class = root.path().join("src/classes/Player.class");
+        for dir in [&examples, &plugin_asset, &project_class] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join("graph_save.json"), "{}").unwrap();
+        }
+
+        let found = find_class_dirs(root.path());
+        assert!(!found.contains(&examples));
+        assert!(found.contains(&plugin_asset));
+        assert!(found.contains(&project_class));
     }
 }
 

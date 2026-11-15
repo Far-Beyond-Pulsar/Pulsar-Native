@@ -65,7 +65,7 @@ impl EditorPlugin for AssetViewerPlugin {
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
                 creation_directory: None,
-                cook: plugin_editor_api::file_types::copy_file_for_cook,
+                cook: mesh_asset_cook,
 
                 categories: vec!["3D Models".to_string()],
             },
@@ -96,6 +96,35 @@ impl EditorPlugin for AssetViewerPlugin {
             ],
         }]
     }
+}
+
+/// Native meshes own their default material assignments in the PMSH metadata.
+fn mesh_asset_cook(
+    context: &plugin_editor_api::CookContext<'_>,
+) -> Result<plugin_editor_api::file_types::CookOutput, String> {
+    let cooked = plugin_editor_api::file_types::copy_file_for_cook(context)?;
+    let bytes = cooked
+        .files
+        .first()
+        .ok_or_else(|| format!("{} emitted no mesh", context.source_path.display()))?
+        .bytes
+        .as_slice();
+    let (mesh, _) = meshes_component::mesh_cache::decode_asset(&bytes).ok_or_else(|| {
+        format!(
+            "{} is not a valid native mesh",
+            context.source_path.display()
+        )
+    })?;
+    let dependencies = mesh
+        .material_slots
+        .into_iter()
+        .map(|slot| slot.material_asset.trim().to_owned())
+        .filter(|path| !path.is_empty())
+        .collect();
+    Ok(plugin_editor_api::file_types::CookOutput::new(
+        cooked.files,
+        dependencies,
+    ))
 }
 
 impl EditorPluginEditor for AssetViewerPlugin {

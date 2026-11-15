@@ -29,8 +29,8 @@ use installed_plugins::meshes_plugin::meshes_component::components::{
 };
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
-use serde_json::{json, Value};
-use ui_level_editor::commands::{execute_command, SceneCommand};
+use serde_json::{Value, json};
+use ui_level_editor::commands::{SceneCommand, execute_command};
 use ui_level_editor::scene_edit::components;
 use ui_level_editor::scene_edit::{ObjectType, Transform};
 use ui_level_editor::{LevelEditorState, SceneObjectData};
@@ -43,7 +43,7 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// The pipeline a level that names none runs: Helio's old default id, which
 /// the default pipelines plugin's migration makes its deferred graph
-/// (`plugins/pulsar.default_pipelines/Deferred.rendergraph`, made for the open
+/// (`plugins/pulsar.default_pipelines/default/Deferred.rendergraph`, made for the open
 /// project's plugins).
 ///
 /// Pipelines are project files, so a test that opened no project opens this
@@ -443,8 +443,8 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
 
 /// The bright, opaque, emissive surface every acceptance mesh draws with, so
 /// it shows against the empty scene without depending on lights.
-fn emissive_surface(
-) -> installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
+fn emissive_surface()
+-> installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
     installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
         base_color: [1.0, 0.5, 0.1, 1.0],
         roughness: 0.7,
@@ -3100,10 +3100,12 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
     .affected_ids[0]
         .clone();
     // The world loads the image off the write path (SceneDB#84).
-    assert!(state
-        .scene
-        .world_mut()
-        .resolve_assets_blocking(std::time::Duration::from_secs(30)));
+    assert!(
+        state
+            .scene
+            .world_mut()
+            .resolve_assets_blocking(std::time::Duration::from_secs(30))
+    );
     let frame = harness.frames(&mut renderer, || {});
     frame.dump("sprites_textured");
     assert_color(
@@ -4023,7 +4025,9 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
     let dark = brightness(&render(None));
     let beside_content = brightness(&render(Some(far_x))) - dark;
     let beside_portal = brightness(&render(Some(0.0))) - dark;
-    println!("lights: beside content {beside_content:+.2}, beside portal {beside_portal:+.2} (dark {dark:.2})");
+    println!(
+        "lights: beside content {beside_content:+.2}, beside portal {beside_portal:+.2} (dark {dark:.2})"
+    );
     assert!(
         beside_content > 2.0,
         "a light beside the content did not light it through the portal \
@@ -4043,16 +4047,16 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
 mod plugin_kinds {
     use installed_plugins::foliage_plugin::foliage_component::WindComponent;
     use installed_plugins::sprites_plugin::sprites_component::SpriteComponent;
+    use ui_level_editor::LevelEditorState;
     use ui_level_editor::commands::{CommandResult, TypedComponent};
     use ui_level_editor::extend::add_object;
     use ui_level_editor::scene_edit::{ObjectType, Transform};
-    use ui_level_editor::LevelEditorState;
 
     pub mod sky {
-        use installed_plugins::sky_plugin::sky_component::{level_atmosphere, AtmosphereComponent};
-        use ui_level_editor::commands::{CommandResult, TypedComponent};
-        use ui_level_editor::extend::{level_component, LevelComponent};
+        use installed_plugins::sky_plugin::sky_component::{AtmosphereComponent, level_atmosphere};
         use ui_level_editor::LevelEditorState;
+        use ui_level_editor::commands::{CommandResult, TypedComponent};
+        use ui_level_editor::extend::{LevelComponent, level_component};
 
         pub const SKY_OBJECT_NAME: &str = "Sky";
 
@@ -4084,7 +4088,7 @@ mod plugin_kinds {
         name: &str,
         components: Vec<TypedComponent>,
     ) -> CommandResult {
-        use ui_level_editor::commands::{execute_command, SceneCommand};
+        use ui_level_editor::commands::{SceneCommand, execute_command};
         execute_command(
             state,
             SceneCommand::AddObjectWithComponents {

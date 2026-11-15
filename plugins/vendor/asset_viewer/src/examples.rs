@@ -89,7 +89,8 @@ mod tests {
 
     #[test]
     fn every_fbx_loads_as_a_model_with_geometry() {
-        let dir = std::env::temp_dir().join(format!("asset_viewer_examples_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("asset_viewer_examples_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for file in with_extension("fbx") {
             let name = file.path.trim_start_matches("examples/");
@@ -108,7 +109,11 @@ mod tests {
             let (asset, _id) = meshes_component::mesh_cache::decode_asset(file.bytes)
                 .unwrap_or_else(|| panic!("{} does not decode", file.path));
             assert!(!asset.sections.is_empty(), "{} has sections", file.path);
-            assert!(!asset.geometry.vertices.is_empty(), "{} has vertices", file.path);
+            assert!(
+                !asset.geometry.vertices.is_empty(),
+                "{} has vertices",
+                file.path
+            );
         }
     }
 
