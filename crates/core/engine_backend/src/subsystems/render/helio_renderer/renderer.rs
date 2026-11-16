@@ -1,6 +1,6 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
-use glam::{DVec3, Vec3};
+use glam::{DVec3, Vec2, Vec3};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
@@ -278,6 +278,11 @@ pub enum PendingPointerEvent {
         tool: ToolRay,
     },
     LeftRelease,
+    /// A box dragged over the viewport with Shift held, then released:
+    /// select the objects inside it (normalized viewport corners, either
+    /// first). A box too small to be a drag adds or removes the object under
+    /// the pointer instead.
+    BoxSelect { from: [f32; 2], to: [f32; 2] },
 }
 
 impl PendingPointerEvent {
@@ -370,13 +375,13 @@ pub struct ViewportDebugView {
     pub legend: Option<ViewportDebugLegend>,
 }
 
-/// A gizmo drag that moved its object, reported when the mouse is released
+/// A gizmo drag that moved its objects, reported when the mouse is released
 /// so the editor can record it as one undo step (#931).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CompletedDrag {
-    pub entity: pulsar_scenedb::Entity,
-    /// The transform the object had when the drag started.
-    pub before: crate::scene::Transform,
+    /// Each object the drag moved, with the (parent-relative) transform it
+    /// had when the drag started.
+    pub moved: Vec<(pulsar_scenedb::Entity, crate::scene::Transform)>,
 }
 
 /// A gizmo drag started on an object whose authored movability promises a
@@ -1221,6 +1226,10 @@ impl HelioRenderer {
                     PendingPointerEvent::LeftRelease => {
                         profiling::profile_scope!("helio_handle_left_release");
                         self.handle_left_release();
+                    }
+                    PendingPointerEvent::BoxSelect { from, to } => {
+                        profiling::profile_scope!("helio_handle_box_select");
+                        self.handle_box_select(from, to);
                     }
                     PendingPointerEvent::ToolRay {
                         norm_x,
@@ -2351,10 +2360,10 @@ impl HelioRenderer {
             .interaction
             .try_start_drag(&store.world, ray_origin, ray_direction)
         {
-            // What the object's mesh and light instances author: the flag
+            // What the objects' mesh and light instances author: the flag
             // the caches the drag would invalidate key on.
-            let fixed = store.world.selected_entity().and_then(|selected| {
-                // The object itself, or anything dragging it would also move
+            let fixed = store.world.selection().into_iter().find_map(|selected| {
+                // Each object itself, or anything dragging it would also move
                 // (a group's contents); a rigid frame's members stay fixed in
                 // its space.
                 let (entity, movability) =
@@ -2408,20 +2417,64 @@ impl HelioRenderer {
     pub fn handle_left_release(&mut self) {
         self.gizmo_dirty = true;
         let Some(inner) = &mut self.inner else { return };
-        let Some((entity, before)) = inner.interaction.finish_drag() else {
+        let Some(started) = inner.interaction.finish_drag() else {
             return;
         };
-        let moved = self
-            .scene_store
-            .read()
-            .world
-            .get::<crate::scene::Transform>(entity)
-            .is_some_and(|now| *now != before);
-        if moved {
+        let moved: Vec<_> = {
+            let store = self.scene_store.read();
+            started
+                .into_iter()
+                .filter(|(entity, before)| {
+                    store
+                        .world
+                        .get::<crate::scene::Transform>(*entity)
+                        .is_some_and(|now| now != before)
+                })
+                .collect()
+        };
+        if !moved.is_empty() {
             if let Ok(mut drags) = self.completed_drags.lock() {
-                drags.push(CompletedDrag { entity, before });
+                drags.push(CompletedDrag { moved });
             }
         }
+    }
+
+    /// Select what a Shift-dragged box covers ([`SceneInteraction::box_pick`]),
+    /// replacing the selection. A box under a few pixels was a Shift-click:
+    /// it adds the object under the pointer to the selection (as the new
+    /// primary), or takes it out if it was already selected.
+    pub fn handle_box_select(&mut self, from: [f32; 2], to: [f32; 2]) {
+        const CLICK_PIXELS: f32 = 4.0;
+        self.configure_gizmo_view();
+        self.gizmo_dirty = true;
+        let (width, height) = self.viewport_size;
+        let size = Vec2::new(width.max(1) as f32, height.max(1) as f32);
+        let (from, to) = (Vec2::from_array(from), Vec2::from_array(to));
+        let click = ((to - from) * size).abs().max_element() < CLICK_PIXELS;
+        let (origin, direction) = self.build_pick_ray(to.x, to.y);
+        let Some(inner) = &mut self.inner else { return };
+        inner.interaction.cancel_drag();
+        let mut store = self.scene_store.write();
+        let world = &mut store.world;
+        if click {
+            let Some(hit) = inner
+                .interaction
+                .pick(world, origin, direction)
+                .and_then(|id| world.entity_for(&id))
+            else {
+                return;
+            };
+            let mut selection = world.selection();
+            if let Some(at) = selection.iter().position(|e| *e == hit) {
+                selection.remove(at);
+            } else {
+                selection.push(hit);
+            }
+            world.select_all(&selection);
+            return;
+        }
+        let picked = inner.interaction.box_pick(world, from, to);
+        world.select_all(&picked);
     }
     fn configure_gizmo_view(&mut self) {
         let (forward, _, up) = self.camera_basis();

@@ -628,7 +628,9 @@ mod tests {
             PendingPointerEvent::LeftClick { norm_x, norm_y } => {
                 assert_eq!((norm_x, norm_y), (0.25, 0.75));
             }
-            PendingPointerEvent::LeftRelease => panic!("expected LeftClick first"),
+            PendingPointerEvent::LeftRelease | PendingPointerEvent::BoxSelect { .. } => {
+                panic!("expected LeftClick first")
+            }
         }
         assert!(matches!(drained[1], PendingPointerEvent::LeftRelease));
 

@@ -323,38 +323,42 @@ impl SceneDomain {
         history.seal();
     }
 
-    /// Record a finished gizmo drag as one undo step (#931). The renderer
-    /// moves the object directly while dragging; this captures the object
-    /// as it was (by briefly putting the starting transform back, so a
-    /// placed class's overrides are captured the same way as any edit) and
-    /// as it is now.
+    /// Record a finished gizmo drag as one undo step (#931), however many
+    /// objects it moved. The renderer moves the objects directly while
+    /// dragging; this captures them as they were (by briefly putting the
+    /// starting transforms back, so a placed class's overrides are captured
+    /// the same way as any edit) and as they are now.
     pub fn record_gizmo_drag(
         &mut self,
-        entity: Entity,
-        before: engine_backend::scene::Transform,
+        moved: &[(Entity, engine_backend::scene::Transform)],
     ) -> bool {
+        use engine_backend::scene::Transform;
         let (pre, post) = {
             let mut world = self.world_mut();
-            let Some(id) = world.stable_id_of(entity).map(str::to_string) else {
-                return false;
-            };
-            let Some(now) = world
-                .get::<engine_backend::scene::Transform>(entity)
-                .copied()
-            else {
-                return false;
-            };
-            if now == before {
+            // (entity, id, before, now) for each object that actually moved.
+            let changed: Vec<(Entity, String, Transform, Transform)> = moved
+                .iter()
+                .filter_map(|&(entity, before)| {
+                    let id = world.stable_id_of(entity)?.to_string();
+                    let now = world.get::<Transform>(entity).copied()?;
+                    (now != before).then_some((entity, id, before, now))
+                })
+                .collect();
+            if changed.is_empty() {
                 return false;
             }
-            let ids = [id];
+            let ids: Vec<String> = changed.iter().map(|(_, id, _, _)| id.clone()).collect();
             let post = scene_edit::history::capture_history_subset(&world, &ids);
-            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity) {
-                *transform = before;
+            for (entity, _, before, _) in &changed {
+                if let Some(mut transform) = world.get_mut::<Transform>(*entity) {
+                    *transform = *before;
+                }
             }
             let pre = scene_edit::history::capture_history_subset(&world, &ids);
-            if let Some(mut transform) = world.get_mut::<engine_backend::scene::Transform>(entity) {
-                *transform = now;
+            for (entity, _, _, now) in &changed {
+                if let Some(mut transform) = world.get_mut::<Transform>(*entity) {
+                    *transform = *now;
+                }
             }
             (pre, post)
         };

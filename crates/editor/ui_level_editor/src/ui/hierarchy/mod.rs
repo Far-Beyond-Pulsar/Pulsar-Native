@@ -202,6 +202,44 @@ pub(crate) fn move_selection_to(state: &mut LevelEditorState, folder: Option<Str
     moved
 }
 
+/// Delete every selected object (with what is inside it). Returns how many
+/// were removed.
+pub(crate) fn delete_selection(state: &mut LevelEditorState) -> usize {
+    use crate::commands::{execute_command, SceneCommand};
+    let mut removed = 0;
+    for id in selection_roots(state) {
+        if execute_command(state, SceneCommand::RemoveObject { id }).changed {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// Duplicate every selected object and select the copies (the last one the
+/// primary). Returns the copies.
+pub(crate) fn duplicate_selection(state: &mut LevelEditorState) -> Vec<String> {
+    use crate::commands::{execute_command, SceneCommand};
+    let mut copies = Vec::new();
+    for id in selection_roots(state) {
+        let copy = execute_command(
+            state,
+            SceneCommand::DuplicateObject {
+                source_id: id,
+                count: 1,
+                position_offset: None,
+            },
+        )
+        .affected_ids
+        .last()
+        .cloned();
+        copies.extend(copy);
+    }
+    if !copies.is_empty() {
+        state.scene.select_objects(&copies);
+    }
+    copies
+}
+
 /// Every folder in the level as `(id, path)`, sorted by path, for a
 /// "Move to folder" menu.
 pub(crate) fn folder_choices(state: &LevelEditorState) -> Vec<(String, String)> {

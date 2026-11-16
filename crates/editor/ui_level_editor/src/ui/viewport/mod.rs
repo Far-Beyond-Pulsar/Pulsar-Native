@@ -258,6 +258,9 @@ pub struct ViewportPanel {
     right_mouse_down_position: Rc<RefCell<Option<Point<Pixels>>>>,
     right_mouse_dragged: Arc<AtomicBool>,
     context_menu: Rc<RefCell<Option<(Point<Pixels>, Entity<PopupMenu>)>>>,
+    /// A Shift + left-drag selection box in progress: where it started and
+    /// where the pointer is now (window coordinates).
+    box_select: Rc<RefCell<Option<(Point<Pixels>, Point<Pixels>)>>>,
 
     /// Locked cursor position for infinite mouse movement
     locked_cursor_x: Arc<AtomicI32>,
@@ -337,6 +340,7 @@ impl ViewportPanel {
             right_mouse_down_position: Rc::new(RefCell::new(None)),
             right_mouse_dragged: Arc::new(AtomicBool::new(false)),
             context_menu: Rc::new(RefCell::new(None)),
+            box_select: Rc::new(RefCell::new(None)),
             locked_cursor_x: Arc::new(AtomicI32::new(0)),
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
             // MIN marks that the platform has no global cursor coordinate

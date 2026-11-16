@@ -245,6 +245,27 @@ impl ViewportPanel {
             .then(|| snap.camera_input.clone())
             .flatten();
 
+        // A Shift + drag selection box: drawn here, finished on release.
+        let box_select = self.box_select.clone();
+        let box_overlay = match (*box_select.borrow(), *self.element_bounds.borrow()) {
+            (Some((start, end)), Some(bounds)) => {
+                let min = point(start.x.min(end.x), start.y.min(end.y)) - bounds.origin;
+                let max = point(start.x.max(end.x), start.y.max(end.y)) - bounds.origin;
+                let accent = cx.theme().accent;
+                div()
+                    .absolute()
+                    .left(min.x)
+                    .top(min.y)
+                    .w(max.x - min.x)
+                    .h(max.y - min.y)
+                    .bg(accent.opacity(0.12))
+                    .border_1()
+                    .border_color(accent.opacity(0.85))
+                    .into_any_element()
+            }
+            _ => div().into_any_element(),
+        };
+
         // For mouse move tracking
         let element_bounds_move = self.element_bounds.clone();
         let gpu_engine_move = gpu_engine.clone();
@@ -292,8 +313,21 @@ impl ViewportPanel {
                 let right_mouse_dragged = right_mouse_dragged.clone();
                 let state_arc_move = state_arc.clone();
                 let pointer_events_move = snap.pointer_events.clone();
+                let box_select = box_select.clone();
 
-                move |event: &gpui::MouseMoveEvent, _window, _cx| {
+                move |event: &gpui::MouseMoveEvent, _window, cx| {
+                    let mut drawing_box = box_select.borrow_mut();
+                    if let Some((_, end)) = drawing_box.as_mut() {
+                        if event.pressed_button == Some(gpui::MouseButton::Left) {
+                            *end = event.position;
+                        } else {
+                            // The release was missed (focus loss): drop it.
+                            *drawing_box = None;
+                        }
+                        cx.notify(owner_view);
+                        return;
+                    }
+                    drop(drawing_box);
                     if event.pressed_button == Some(gpui::MouseButton::Right) {
                         if let Some(start) = *right_mouse_down_position.borrow() {
                             let dx: f32 = (event.position.x - start.x).into();
@@ -493,6 +527,7 @@ impl ViewportPanel {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_click = state_arc.clone();
                 let gpu_engine_click = gpu_engine.clone();
+                let box_select = box_select.clone();
 
                 move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
@@ -506,6 +541,7 @@ impl ViewportPanel {
                         mouse_middle_captured.clone(),
                         state_arc_click.clone(),
                         gpu_engine_click.clone(),
+                        box_select.clone(),
                     );
                 }
             })
@@ -514,10 +550,20 @@ impl ViewportPanel {
                 let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
                 let gpu_engine_up = gpu_engine.clone();
+                let box_select = box_select.clone();
+                let element_bounds = element_bounds_for_click.clone();
 
                 move |event: &gpui::MouseUpEvent,
                       _window: &mut gpui::Window,
-                      _cx: &mut gpui::App| {
+                      cx: &mut gpui::App| {
+                    if super::build_handlers::finish_box_select(
+                        &box_select,
+                        &element_bounds,
+                        &pointer_events,
+                        event.position,
+                    ) {
+                        cx.notify(owner_view);
+                    }
                     super::build_handlers::handle_left_mouse_up(
                         event,
                         pointer_events.clone(),
@@ -530,7 +576,17 @@ impl ViewportPanel {
                 let pointer_events = pointer_events_for_click.clone();
                 let state = state_arc.clone();
                 let engine = gpu_engine.clone();
-                move |event, _window, _cx| {
+                let box_select = box_select.clone();
+                let element_bounds = element_bounds_for_click.clone();
+                move |event, _window, cx| {
+                    if super::build_handlers::finish_box_select(
+                        &box_select,
+                        &element_bounds,
+                        &pointer_events,
+                        event.position,
+                    ) {
+                        cx.notify(owner_view);
+                    }
                     super::build_handlers::handle_left_mouse_up(
                         event,
                         pointer_events.clone(),
@@ -544,11 +600,27 @@ impl ViewportPanel {
                 let queue = pointer_events_for_click.clone();
                 let right = mouse_right_captured.clone();
                 let middle = mouse_middle_captured.clone();
+                let box_select = box_select.clone();
                 gpui::canvas(
                     |_, _, _| (),
                     move |bounds, (), window, _cx| {
                         window.on_mouse_event(
-                            move |event: &gpui::MouseMoveEvent, phase, _window, _cx| {
+                            move |event: &gpui::MouseMoveEvent, phase, _window, cx| {
+                                // A selection box keeps following the pointer
+                                // past the viewport's edge, clamped to it.
+                                if phase == gpui::DispatchPhase::Capture
+                                    && !bounds.contains(&event.position)
+                                {
+                                    if let Some((_, end)) = box_select.borrow_mut().as_mut() {
+                                        let max = bounds.bottom_right();
+                                        *end = point(
+                                            event.position.x.clamp(bounds.origin.x, max.x),
+                                            event.position.y.clamp(bounds.origin.y, max.y),
+                                        );
+                                        cx.notify(owner_view);
+                                        return;
+                                    }
+                                }
                                 if phase != gpui::DispatchPhase::Capture
                                     || bounds.contains(&event.position)
                                     || right.load(Ordering::Relaxed)
@@ -580,6 +652,7 @@ impl ViewportPanel {
                 .size_full()
             })
             // Overlays
+            .child(box_overlay)
             .child(self.render_overlays(state, state_arc, gpu_engine, cx))
             .child(popup_element)
             .id("level-editor-viewport-context-menu")

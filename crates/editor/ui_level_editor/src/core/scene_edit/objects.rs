@@ -200,7 +200,8 @@ pub struct HierarchyChanges {
 impl HierarchyWatch {
     pub fn new(world: &World) -> Self {
         use engine_backend::scene::{
-            ComponentAttachments, LevelInstanceMember, Parent, Selected, SiblingIndex,
+            level_instances::LevelInstanceMember, ComponentAttachments, Parent, Selected,
+            SiblingIndex,
         };
         let structure = vec![
             world.open_change_cursor::<StableId>(),

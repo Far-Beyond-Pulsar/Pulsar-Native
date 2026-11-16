@@ -426,6 +426,7 @@ pub(super) fn handle_left_mouse_down(
     mouse_middle_captured: Arc<AtomicBool>,
     state_arc_click: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_click: Arc<Mutex<GpuRenderer>>,
+    box_select: Rc<RefCell<Option<(Point<Pixels>, Point<Pixels>)>>>,
 ) {
     if ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured).is_active() {
         return;
@@ -509,6 +510,14 @@ pub(super) fn handle_left_mouse_down(
         crate::tool_modes::ToolPointerResult::PassThrough => {}
     }
 
+    // Shift + drag draws a selection box; the render thread picks what it
+    // covers on release (`PendingPointerEvent::BoxSelect`). A Shift-click
+    // without a drag adds or removes the object under the pointer.
+    if event.modifiers.shift {
+        *box_select.borrow_mut() = Some((event.position, event.position));
+        return;
+    }
+
     if let Some(events) = &pointer_events {
         if let Ok(mut events) = events.lock() {
             tracing::info!(
@@ -526,6 +535,41 @@ pub(super) fn handle_left_mouse_down(
             );
         }
     }
+}
+
+/// Finish a Shift + drag selection box, if one is in progress: hand its
+/// corners (normalized to the viewport, clamped to it) to the render thread,
+/// which selects what it covers. Returns whether there was a box.
+pub(super) fn finish_box_select(
+    box_select: &Rc<RefCell<Option<(Point<Pixels>, Point<Pixels>)>>>,
+    element_bounds: &Rc<RefCell<Option<Bounds<Pixels>>>>,
+    pointer_events: &Option<
+        Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
+    >,
+    end: Point<Pixels>,
+) -> bool {
+    let Some((start, _)) = box_select.borrow_mut().take() else {
+        return false;
+    };
+    let Some(bounds) = *element_bounds.borrow() else {
+        return true;
+    };
+    let normalize = |p: Point<Pixels>| -> [f32; 2] {
+        let x: f32 = ((p.x - bounds.origin.x) / bounds.size.width.max(px(1.0))).into();
+        let y: f32 = ((p.y - bounds.origin.y) / bounds.size.height.max(px(1.0))).into();
+        [x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)]
+    };
+    if let Some(events) = pointer_events {
+        if let Ok(mut events) = events.lock() {
+            events.push(
+                engine_backend::subsystems::render::PendingPointerEvent::BoxSelect {
+                    from: normalize(start),
+                    to: normalize(end),
+                },
+            );
+        }
+    }
+    true
 }
 
 pub(super) fn handle_left_mouse_up(

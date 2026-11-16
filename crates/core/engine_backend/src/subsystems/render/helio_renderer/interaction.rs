@@ -89,16 +89,40 @@ impl View {
         (depth > 0.1 && depth < self.far).then_some(world_height * HANDLE_PIXELS / self.size.y)
     }
 }
+/// One object a gizmo drag moves.
 #[derive(Clone, Copy, Debug)]
-struct DragState {
+struct DragTarget {
     entity: Entity,
-    handle: Handle,
-    mode: GizmoType,
-    /// The object's transform in the world when the drag began: what the handles are
-    /// laid out on.
+    /// Its transform in the world when the drag began.
     initial: Transform,
     /// Its own (parent-relative) transform then, which undo restores.
     initial_local: Transform,
+}
+
+/// What the gizmo acts on: the selected objects that can move, and the pose
+/// its handles sit on.
+struct GizmoTargets {
+    /// Visible, unlocked selected objects, less any inside another of them
+    /// (moving the outer one carries them). Never empty.
+    objects: Vec<(Entity, Transform)>,
+    /// One object: its own world transform, so the handles follow its axes.
+    /// Several: their average position on world axes at unit scale, as
+    /// Unreal and Blender place a multi-object gizmo by default.
+    pivot: Transform,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DragState {
+    /// The primary selection when the drag began: a selection change ends it.
+    primary: Option<Entity>,
+    handle: Handle,
+    mode: GizmoType,
+    /// The gizmo's pose in the world when the drag began: what the handles
+    /// are laid out on ([`GizmoTargets::pivot`]).
+    initial: Transform,
+    /// Whether it moves several objects about a shared pivot
+    /// ([`SceneInteraction::drag_targets`]) rather than one object's own pose.
+    group: bool,
     view: View,
     length: f32,
     start: Vec2,
@@ -115,6 +139,8 @@ pub struct SceneInteraction {
     mode: GizmoType,
     hovered: Option<Handle>,
     drag: Option<DragState>,
+    /// The objects the drag in progress moves (empty without one).
+    drag_targets: Vec<DragTarget>,
     view: View,
 }
 impl Default for SceneInteraction {
@@ -123,6 +149,7 @@ impl Default for SceneInteraction {
             mode: GizmoType::None,
             hovered: None,
             drag: None,
+            drag_targets: Vec::new(),
             view: View::default(),
         }
     }
@@ -157,14 +184,75 @@ impl SceneInteraction {
     }
     pub fn cancel_drag(&mut self) {
         self.drag = None;
+        self.drag_targets.clear();
         self.hovered = None;
     }
-    /// End the drag in progress, if any: the object it moved and the
-    /// (parent-relative) transform it started from, for undo (#931).
-    pub fn finish_drag(&mut self) -> Option<(Entity, Transform)> {
-        let drag = self.drag.take()?;
+    /// End the drag in progress, if any: each object it moved with the
+    /// (parent-relative) transform it started from, for one undo step (#931).
+    pub fn finish_drag(&mut self) -> Option<Vec<(Entity, Transform)>> {
+        self.drag.take()?;
         self.hovered = None;
-        Some((drag.entity, drag.initial_local))
+        Some(
+            std::mem::take(&mut self.drag_targets)
+                .into_iter()
+                .map(|target| (target.entity, target.initial_local))
+                .collect(),
+        )
+    }
+    /// The objects whose whole click bounds lie inside the screen rectangle
+    /// between `a` and `b` (normalized viewport coordinates, either corner
+    /// first), in front of the camera: a mesh by the box around what it draws
+    /// projected to the screen, an object with an editor icon by its icon.
+    /// Objects with neither (empties, folders) are selected in the
+    /// hierarchy, as with a click ([`Self::pick`]).
+    ///
+    /// One pass over the objects on release, the same cost as a click pick;
+    /// nothing runs while the box is being dragged.
+    pub fn box_pick(&self, world: &World, a: Vec2, b: Vec2) -> Vec<Entity> {
+        let min = a.min(b) * self.view.size;
+        let max = a.max(b) * self.view.size;
+        let inside = |p: Vec2| p.x >= min.x && p.y >= min.y && p.x <= max.x && p.y <= max.y;
+        let right = self.view.matrix.row(0).truncate().normalize_or_zero();
+        let up = self.view.matrix.row(1).truncate().normalize_or_zero();
+        let mut picked: Vec<(String, Entity)> = world
+            .query::<&StableId>()
+            .filter_map(|(entity, id)| {
+                if !world.get::<Visibility>(entity)?.visible {
+                    return None;
+                }
+                let transform = world_transform_of(world, entity)?;
+                let corners: Vec<Vec3> = if let Some(size) = view_icon(world, entity) {
+                    let center = self.view.relative(transform.position);
+                    let depth = (center - self.view.position).dot(self.view.forward);
+                    if depth <= 0.001 || depth >= self.view.far {
+                        return None;
+                    }
+                    let half = size * (0.5 * depth);
+                    [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
+                        .into_iter()
+                        .map(|(x, y)| center + right * (half.x * x) + up * (half.y * y))
+                        .collect()
+                } else {
+                    let (lo, hi) = object_bounds(world, entity, transform, self.view)?;
+                    (0..8)
+                        .map(|i| {
+                            Vec3::new(
+                                if i & 1 == 0 { lo.x } else { hi.x },
+                                if i & 2 == 0 { lo.y } else { hi.y },
+                                if i & 4 == 0 { lo.z } else { hi.z },
+                            )
+                        })
+                        .collect()
+                };
+                corners
+                    .into_iter()
+                    .all(|corner| self.view.project(corner).is_some_and(inside))
+                    .then(|| (id.0.clone(), entity))
+            })
+            .collect();
+        // A stable order (by id), whatever order the world stores them in.
+        picked.sort_by(|left, right| left.0.cmp(&right.0));
+        picked.into_iter().map(|(_, entity)| entity).collect()
     }
     /// The object a ray from `origin` (world) along `direction` hits first.
     pub fn pick(&self, world: &World, origin: DVec3, direction: Vec3) -> Option<String> {
@@ -272,13 +360,53 @@ impl SceneInteraction {
         Some(origin + direction.as_dvec3() * nearest as f64)
     }
 
-    fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
-        let entity = world.selected_entity()?;
-        let v = world.get::<Visibility>(entity)?;
-        if !v.visible || v.locked || self.mode == GizmoType::None {
+    fn gizmo_targets(&self, world: &World) -> Option<GizmoTargets> {
+        if self.mode == GizmoType::None {
             return None;
         }
-        Some((entity, world_transform_of(world, entity)?))
+        let selection = world.selection();
+        let movable = |entity: Entity| {
+            world
+                .get::<Visibility>(entity)
+                .is_some_and(|v| v.visible && !v.locked)
+        };
+        // A selected object inside another selected one moves with it.
+        let inside_selected = |entity: Entity| {
+            let mut at = world.parent_of(entity);
+            while let Some(parent) = at {
+                if selection.contains(&parent) {
+                    return true;
+                }
+                at = world.parent_of(parent);
+            }
+            false
+        };
+        let objects: Vec<(Entity, Transform)> = selection
+            .iter()
+            .copied()
+            .filter(|&entity| movable(entity) && !inside_selected(entity))
+            .filter_map(|entity| Some((entity, world_transform_of(world, entity)?)))
+            .collect();
+        let pivot = match objects.as_slice() {
+            [] => return None,
+            [(_, transform)] => *transform,
+            many => {
+                let sum = many
+                    .iter()
+                    .fold(DVec3::ZERO, |sum, (_, t)| sum + DVec3::from_array(t.position));
+                Transform {
+                    position: (sum / many.len() as f64).to_array(),
+                    rotation: [0.0; 3],
+                    scale: [1.0; 3],
+                }
+            }
+        };
+        Some(GizmoTargets { objects, pivot })
+    }
+    /// The primary selection and the pose the gizmo is drawn on.
+    fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
+        let targets = self.gizmo_targets(world)?;
+        Some((targets.objects[0].0, targets.pivot))
     }
     fn handle_visible(&self, handle: Handle, pivot: Vec3, basis: Mat3, length: f32) -> bool {
         let Some(center) = self.view.project(pivot) else {
@@ -360,9 +488,10 @@ impl SceneInteraction {
     }
     /// Grab a gizmo handle under the ray from `o` (world) along `d`.
     pub fn try_start_drag(&mut self, world: &World, o: DVec3, d: Vec3) -> bool {
-        let Some((entity, initial)) = self.selected(world) else {
+        let Some(targets) = self.gizmo_targets(world) else {
             return false;
         };
+        let initial = targets.pivot;
         let o = self.view.relative(o.to_array());
         let Some(start) = self.view.cursor(o, d) else {
             return false;
@@ -402,12 +531,22 @@ impl SceneInteraction {
         } else {
             0.0
         };
+        let group = targets.objects.len() > 1;
+        self.drag_targets = targets
+            .objects
+            .iter()
+            .map(|&(entity, world_pose)| DragTarget {
+                entity,
+                initial: world_pose,
+                initial_local: world.get::<Transform>(entity).copied().unwrap_or(world_pose),
+            })
+            .collect();
         self.drag = Some(DragState {
-            entity,
+            primary: world.selected_entity(),
             handle,
             mode: self.mode,
             initial,
-            initial_local: world.get::<Transform>(entity).copied().unwrap_or(initial),
+            group,
             view: self.view,
             length,
             start,
@@ -428,17 +567,28 @@ impl SceneInteraction {
         };
         // In the coordinates of the view the drag began in.
         let o = drag.view.relative(o.to_array());
-        if world.selected_entity() != Some(drag.entity)
-            || !world
-                .get::<Visibility>(drag.entity)
+        let movable = |entity: Entity| {
+            world
+                .get::<Visibility>(entity)
                 .is_some_and(|v| v.visible && !v.locked)
+        };
+        if world.selected_entity() != drag.primary
+            || !self.drag_targets.iter().all(|target| movable(target.entity))
         {
             self.cancel_drag();
             return;
         }
-        let Some(current) = world_transform_of(world, drag.entity) else {
-            self.cancel_drag();
-            return;
+        // The pose the handles move: one object's live transform, or the
+        // group's pivot as the drag began (each frame is applied from the
+        // starting poses, so a group never accumulates rounding).
+        let current = if drag.group {
+            drag.initial
+        } else {
+            let Some(current) = world_transform_of(world, self.drag_targets[0].entity) else {
+                self.cancel_drag();
+                return;
+            };
+            current
         };
         let Some(cursor) = drag.view.cursor(o, d) else {
             return;
@@ -543,8 +693,41 @@ impl SceneInteraction {
         }
         self.drag = Some(drag);
         self.hovered = Some(drag.handle);
-        if next != current {
-            set_world_transform(world, drag.entity, next);
+        if !drag.group {
+            if next != current {
+                set_world_transform(world, self.drag_targets[0].entity, next);
+            }
+            return;
+        }
+        // The pivot's change, carried to every object about the pivot.
+        let pivot_start = DVec3::from_array(drag.initial.position);
+        let travel = DVec3::from_array(next.position) - pivot_start;
+        let turn = rotation_quat(next);
+        let stretch = Vec3::from_array(next.scale);
+        for target in &self.drag_targets {
+            let start = target.initial;
+            let offset = (DVec3::from_array(start.position) - pivot_start).as_vec3();
+            let mut moved = start;
+            match drag.mode {
+                GizmoType::Translate => {
+                    moved.position = (DVec3::from_array(start.position) + travel).to_array();
+                }
+                GizmoType::Rotate => {
+                    moved.position = (pivot_start + (turn * offset).as_dvec3()).to_array();
+                    let (y, x, z) = (turn * rotation_quat(start)).to_euler(EulerRot::YXZ);
+                    moved.rotation = [x.to_degrees(), y.to_degrees(), z.to_degrees()];
+                }
+                GizmoType::Scale => {
+                    moved.position = (pivot_start + (offset * stretch).as_dvec3()).to_array();
+                    for axis in 0..3 {
+                        moved.scale[axis] = (start.scale[axis] * stretch[axis]).max(0.001);
+                    }
+                }
+                GizmoType::None => {}
+            }
+            if world_transform_of(world, target.entity) != Some(moved) {
+                set_world_transform(world, target.entity, moved);
+            }
         }
     }
     /// Highlight the handle under the ray from `o` (world) along `d`.
@@ -1056,13 +1239,17 @@ fn object_bounds(
     Some((center - extents, center + extents))
 }
 
-fn rotation_matrix(transform: Transform) -> Mat3 {
-    Mat3::from_quat(Quat::from_euler(
+fn rotation_quat(transform: Transform) -> Quat {
+    Quat::from_euler(
         EulerRot::YXZ,
         transform.rotation[1].to_radians(),
         transform.rotation[0].to_radians(),
         transform.rotation[2].to_radians(),
-    ))
+    )
+}
+
+fn rotation_matrix(transform: Transform) -> Mat3 {
+    Mat3::from_quat(rotation_quat(transform))
 }
 
 fn ray_aabb(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
@@ -1218,8 +1405,11 @@ mod tests {
             after.position[0]
         );
         // Undo restores the child's own (relative) transform.
-        let (entity, restore) = interaction.finish_drag().unwrap();
-        assert_eq!(entity, child);
+        let moved = interaction.finish_drag().unwrap();
+        let [(entity, restore)] = moved.as_slice() else {
+            panic!("one object moved: {moved:?}");
+        };
+        assert_eq!(*entity, child);
         assert!((restore.position[0] - -4.0).abs() < 1e-4, "{restore:?}");
     }
 
