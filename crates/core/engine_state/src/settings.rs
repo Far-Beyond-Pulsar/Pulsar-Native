@@ -25,7 +25,7 @@ use engine_fs::{FsProvider as _, LocalFsProvider};
 pub use pulsar_config::{
     ChangeEvent, Color, ConfigError, ConfigManager, ConfigStore, ConfigValue, DropdownOption,
     FieldType, ListenerId, NamespaceSchema, OwnerHandle, PersistError, SchemaEntry, SearchResult,
-    SettingInfo, Validator,
+    SettingInfo, Validator, TAG_REQUIRES_RESTART,
 };
 
 // ─── Global manager ───────────────────────────────────────────────────────────

@@ -223,7 +223,11 @@ pub fn item_from_info(
         .clone()
         .unwrap_or_else(|| info.key.clone())
         .into();
-    let desc: SharedString = info.description.clone().into();
+    let desc: SharedString = if info.requires_restart() {
+        format!("{} (restart the editor to apply)", info.description).into()
+    } else {
+        info.description.clone().into()
+    };
 
     let field_type = info.field_type.clone()?;
 
@@ -357,9 +361,12 @@ pub fn item_from_info(
     Some(item)
 }
 
+/// One group per owner of `ns`. Changing a setting calls `mark_dirty`, or
+/// `mark_restart` for one that applies only after a restart.
 pub fn groups_for_namespace(
     ns: &str,
     mark_dirty: Arc<dyn Fn(&mut App) + Send + Sync>,
+    mark_restart: Arc<dyn Fn(&mut App) + Send + Sync>,
 ) -> Vec<SettingGroup> {
     let mut owners = global_config().list_owners(ns);
     owners.sort();
@@ -390,7 +397,14 @@ pub fn groups_for_namespace(
 
             let items: Vec<SettingItem> = settings
                 .iter()
-                .filter_map(|info| item_from_info(info, mark_dirty.clone()))
+                .filter_map(|info| {
+                    let notify = if info.requires_restart() {
+                        mark_restart.clone()
+                    } else {
+                        mark_dirty.clone()
+                    };
+                    item_from_info(info, notify)
+                })
                 .collect();
 
             if items.is_empty() {

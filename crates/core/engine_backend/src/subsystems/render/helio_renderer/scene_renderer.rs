@@ -498,7 +498,7 @@ impl SceneRenderer {
     /// Bring the GPU up to date with the scene: bind the assets that
     /// finished loading, flush the GPU mirror and close the frame's change
     /// window. [`Self::render`] does it first.
-    pub fn upload(&self) {
+    pub fn upload(&mut self) {
         // `SceneDb::step` flushes the mirror too, but writes queued after it
         // this frame (a gizmo drag, a script, a tool) must reach the GPU
         // before the frame reads them.
@@ -509,9 +509,17 @@ impl SceneRenderer {
             pump.pump(&self.scene);
         }
         profiling::profile_scope!("helio_flush_gpu_mirror");
-        let store = self.scene.read();
-        store.world.flush_gpu_mirror(&self.queue);
-        crate::scene::end_change_window(&store.world);
+        {
+            let store = self.scene.read();
+            store.world.flush_gpu_mirror(&self.queue);
+            crate::scene::end_change_window(&store.world);
+        }
+        // What the plugins publish from the uploaded scene (the meshes'
+        // ray-traced scene).
+        profiling::profile_scope!("helio_publish_host_parts");
+        for part in &mut self.host_parts {
+            part.publish_frame(&self.scene, &mut self.renderer);
+        }
     }
 
     /// Upload the scene and draw `camera`'s frame into `target`.
