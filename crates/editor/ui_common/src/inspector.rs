@@ -129,6 +129,13 @@ impl<V: Render + 'static> Inspector<V> {
         self.relayout();
     }
 
+    /// Open every card (what "Expand all" does).
+    pub fn expand_all(&mut self) {
+        let keys = self.cards.iter().map(|card| card.key.clone());
+        self.collapse.set_all_cards(keys, false);
+        self.relayout();
+    }
+
     /// Set how many rows property `prop_name` of card `card_key` offers below
     /// its own (`pulsar_reflection::VirtualRows`).  Relays out when the count
     /// changed; returns whether it did.

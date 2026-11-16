@@ -180,3 +180,7 @@ impl Panel for HierarchyPanelWrapper {
         "Hierarchy".into_any_element()
     }
 }
+
+#[cfg(test)]
+#[path = "hierarchy_perf_tests.rs"]
+mod perf_tests;

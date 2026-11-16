@@ -801,6 +801,101 @@ fn properties_panel_scroll_report(cx: &mut TestAppContext) {
     }
 }
 
+/// Sidebar resize: the window (and so the panel) changes width every frame,
+/// the way dragging the dock splitter does. Prints what each frame rebuilds:
+/// which views, how many list rows (on screen vs. measured only), and the
+/// time per row kind.
+///
+/// ```text
+/// cargo test -p ui_level_editor --lib properties_panel_resize_report -- --ignored --nocapture --test-threads=1
+/// ```
+#[gpui::test]
+#[ignore = "manual measurement; see module docs"]
+fn properties_panel_resize_report(cx: &mut TestAppContext) {
+    let card_count = std::env::var("PROPS_PERF_CARDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(6);
+    let class_names: Vec<String> = heaviest_classes(card_count)
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    let mut f = open_fixture(cx, &class_names);
+    for _ in 0..4 {
+        dirty_frame(&mut f);
+        idle_frame(&mut f);
+    }
+    let section = f
+        .panel
+        .read_with(&f.cx, |p, _| p.object_type_fields_section.clone())
+        .expect("section");
+    for expanded in [false, true] {
+        if expanded {
+            section.update(&mut f.cx, |s, cx| {
+                s.expand_all();
+                cx.notify();
+            });
+            for _ in 0..4 {
+                idle_frame(&mut f);
+            }
+        }
+        render_stats::set_force_enabled(true);
+        // Warm the editors and text caches at every width first.
+        for step in 0..20 {
+            f.cx.simulate_resize(size(px(300. + 4. * step as f32), px(1000.)));
+            idle_frame(&mut f);
+        }
+        let frames = 60;
+        let mut step = 0usize;
+        let (wall, s) = measure(frames, || {
+            step += 1;
+            // Drag back and forth over 300..=420 px.
+            let w = 300. + 4. * ((step % 60) as f32 - 30.).abs();
+            // The resize draws by itself; the draw after it is whatever the
+            // first one scheduled (a notify issued during it).
+            let start = Instant::now();
+            f.cx.simulate_resize(size(px(w), px(1000.)));
+            f.cx.run_until_parked();
+            idle_frame(&mut f);
+            start.elapsed()
+        });
+        let label = if expanded {
+            "RESIZE (cards expanded)"
+        } else {
+            "RESIZE (cards collapsed)"
+        };
+        print_profile(label, frames, wall, &s);
+        for name in [
+            "list: item built (visible)",
+            "list: item built (measure only)",
+        ] {
+            eprintln!(
+                "  {name:<44} {:>8.1} /frame",
+                counter(&s, name) as f64 / frames as f64
+            );
+        }
+        // Every timer, heaviest first (nested timers count in their parents too).
+        let mut rows: Vec<_> = s.timers.iter().collect();
+        rows.sort_by(|a, b| b.1.total.cmp(&a.1.total));
+        for (name, t) in rows.into_iter().take(40) {
+            eprintln!(
+                "  {name:<44} {:>8.1} x/frame {:>8.3} ms/frame (max {:.3} ms)",
+                t.count as f64 / frames as f64,
+                t.total.as_secs_f64() * 1e3 / frames as f64,
+                t.max.as_secs_f64() * 1e3
+            );
+        }
+        for (name, n) in s
+            .counters
+            .iter()
+            .filter(|(name, _)| name.starts_with("view cache: rebuilt: ") || name.starts_with("view cache: rebuilt (dependency changed): "))
+        {
+            eprintln!("    {name:<90} {:>8.1} /frame", *n as f64 / frames as f64);
+        }
+        render_stats::set_force_enabled(false);
+    }
+}
+
 /// `render_stats` is process-global: every test that draws a window in this
 /// crate holds this while it does, so counters of one are not another's.
-pub(super) static RENDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) static RENDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

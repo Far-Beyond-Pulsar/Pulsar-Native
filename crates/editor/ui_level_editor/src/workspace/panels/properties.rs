@@ -430,7 +430,7 @@ impl Panel for PropertiesPanelWrapper {
 
 #[cfg(test)]
 #[path = "properties_perf_tests.rs"]
-mod perf_tests;
+pub(super) mod perf_tests;
 
 #[cfg(test)]
 #[path = "inspector_stress_tests.rs"]

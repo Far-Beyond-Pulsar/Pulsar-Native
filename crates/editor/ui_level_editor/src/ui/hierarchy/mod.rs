@@ -12,7 +12,8 @@ use ui::{
     h_flex,
     hierarchical_tree::tree_colors,
     menu::popup_menu::PopupMenu,
-    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, Icon,
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
+    HierarchyListState, Icon,
     IconName, Sizable, StyledExt,
 };
 
@@ -559,6 +560,17 @@ pub struct HierarchyPanel {
     cache_key: Option<(u64, Option<String>, Vec<String>)>,
     cached_items: Vec<SceneObjectItem>,
     cached_root_ids: Vec<String>,
+    /// The tree's rows as one persistent `gpui::list` (the list the
+    /// properties panel uses): it keeps its scroll position and measured row
+    /// heights across renders, and builds only the rows on screen.
+    list_state: HierarchyListState<String>,
+    /// The expanded set the tree was last shown with, shared with its
+    /// `is_expanded` callback.
+    expanded: Rc<HashSet<String>>,
+    /// Changes whenever the rows are rebuilt or the expanded set changes:
+    /// the tree's content key, so a render that changes neither (each
+    /// frame of a panel resize) reuses the flattened rows.
+    tree_generation: u64,
 }
 
 impl HierarchyPanel {
@@ -567,6 +579,9 @@ impl HierarchyPanel {
             cache_key: None,
             cached_items: Vec::new(),
             cached_root_ids: Vec::new(),
+            list_state: HierarchyListState::new(),
+            expanded: Rc::default(),
+            tree_generation: 0,
         }
     }
 
@@ -624,6 +639,7 @@ impl HierarchyPanel {
         drop(world);
         self.cached_root_ids = root_ids;
         self.cache_key = Some(key);
+        self.tree_generation += 1;
     }
 
     pub fn render<V>(
@@ -644,7 +660,14 @@ impl HierarchyPanel {
         // Root-level objects (those without parents)
         let root_ids = self.cached_root_ids.clone();
 
-        let state_arc_for_expand = state_arc.clone();
+        // A snapshot of the expanded set: the tree asks once per item, and a
+        // lock per item made every render (each frame of a panel resize)
+        // take the state lock n times.
+        if *self.expanded != state.hierarchy.expanded_objects {
+            self.expanded = Rc::new(state.hierarchy.expanded_objects.clone());
+            self.tree_generation += 1;
+        }
+        let expanded = self.expanded.clone();
         let state_arc_for_toggle = state_arc.clone();
         let wrapper_for_toggle = wrapper_entity.clone();
         let state_arc_for_select = state_arc.clone();
@@ -761,9 +784,7 @@ impl HierarchyPanel {
             disable_nesting: false, // Allow full nesting in hierarchy
 
             // Callbacks
-            is_expanded: Arc::new(move |id: &String| {
-                state_arc_for_expand.read().hierarchy.is_object_expanded(id)
-            }),
+            is_expanded: Arc::new(move |id: &String| expanded.contains(id)),
             on_toggle_expand: Arc::new(move |id: &String, _window, cx| {
                 let id = id.clone();
                 let state = state_arc_for_toggle.clone();
@@ -849,7 +870,9 @@ impl HierarchyPanel {
             ),
         };
 
-        HierarchicalTreeView::new(config).render(cx)
+        HierarchicalTreeView::new(config)
+            .with_list_state(self.list_state.clone(), self.tree_generation)
+            .render(cx)
     }
 
     pub fn get_icon_for_object_type(object_type: ObjectType) -> IconName {

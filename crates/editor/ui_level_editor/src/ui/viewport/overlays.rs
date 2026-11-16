@@ -240,8 +240,8 @@ impl ViewportPanel {
             })
         };
 
-        // In the bottom strip (packed right, so each one shown pushes the
-        // others left), in this order: the performance overlay, the render
+        // In the bottom-left strip, filling rightwards from the corner (each
+        // one shown pushes the later ones right), in this order: the performance overlay, the render
         // pipeline and the render stats. Each is a view with its own refresh timers, not rebuilt here;
         // a closed one is dropped so its timers stop.
         if view.overlays.state.show_performance_overlay {
@@ -257,7 +257,7 @@ impl ViewportPanel {
             let grip = corner_grip(id.clone(), cx);
             overlays = overlays.panel(
                 RndPanel::new(id)
-                    .default_slot("bottom-1")
+                    .default_slot("bottom-performance")
                     .child(content)
                     .child(grip),
             );
@@ -270,7 +270,7 @@ impl ViewportPanel {
             let grip = corner_grip(id.clone(), cx);
             overlays = overlays.panel(
                 RndPanel::new(id)
-                    .default_slot("bottom-2")
+                    .default_slot("bottom-pipeline")
                     .child(content)
                     .child(grip),
             );
@@ -287,7 +287,7 @@ impl ViewportPanel {
             let grip = corner_grip(id.clone(), cx);
             overlays = overlays.panel(
                 RndPanel::new(id)
-                    .default_slot("bottom-3")
+                    .default_slot("bottom-render-stats")
                     .child(content)
                     .child(grip),
             );
@@ -295,7 +295,7 @@ impl ViewportPanel {
             self.render_stats_overlay.borrow_mut().take();
         }
 
-        // Rightmost in the bottom strip: editor and renderer diagnostics. Its timer refreshes
+        // In the bottom-right corner: editor and renderer diagnostics. Its timer refreshes
         // the isolated overlay in place without invalidating the viewport.
         if view.overlays.state.show_nerds_overlay {
             let id = panel("nerds");
@@ -310,7 +310,7 @@ impl ViewportPanel {
             let grip = corner_grip(id.clone(), cx);
             overlays = overlays.panel(
                 RndPanel::new(id)
-                    .default_slot("bottom-4")
+                    .default_slot("bottom-nerds")
                     // The cached Nerds view is width-full: give its card a
                     // concrete width so that resolves to the panel width.
                     .w(px(230.0))
@@ -403,21 +403,42 @@ impl ViewportPanel {
     }
 }
 
-/// The viewport overlay canvas's slot groups: the bottom strip, packed to the
-/// right, so each overlay turned on pushes the others left instead of
-/// covering them.
+/// The viewport overlay canvas's slot groups: two strips along the bottom.
+/// `bottom-left` fills from the left corner rightwards, `bottom-right` from
+/// the right corner leftwards (a group orders its slots from its anchor), so
+/// each panel shown pushes its strip's later ones along instead of covering
+/// them.
 pub(super) fn overlay_groups() -> Vec<SlotGroup> {
-    vec![SlotGroup::new("bottom", SlotAnchor::BottomRight).inset(px(8.0), px(8.0))]
+    let inset = px(8.0);
+    vec![
+        SlotGroup::new("bottom-left", SlotAnchor::BottomLeft).inset(inset, inset),
+        SlotGroup::new("bottom-right", SlotAnchor::BottomRight).inset(inset, inset),
+    ]
 }
+
+/// Every bottom slot's size, so the strips line up evenly and an empty slot
+/// previews at the same size whichever it is.
+const BOTTOM_SLOT: (f32, f32) = (220.0, 150.0);
+
+/// The bottom-left strip, from the corner rightwards: the render performance
+/// panels' homes, then a spare.
+const BOTTOM_LEFT: [&str; 4] = [
+    "bottom-performance",
+    "bottom-pipeline",
+    "bottom-render-stats",
+    "bottom-left-spare",
+];
+
+/// The bottom-right strip, from the corner leftwards: Nerds' home, then
+/// spares.
+const BOTTOM_RIGHT: [&str; 3] = ["bottom-nerds", "bottom-right-spare", "bottom-right-spare-2"];
 
 /// The viewport overlay canvas's slots.
 ///
 /// - `toolbar-left`, `toolbar-right`: one toolbar each (a toolbar is wider
 ///   than its slot, so the slot is full once it holds one).
 /// - `left`, `right`: columns under the toolbars.
-/// - `bottom-0` .. `bottom-5`: the bottom strip, left to right. The HUD
-///   overlays default to `bottom-1` .. `bottom-4` (performance, pipeline,
-///   stats, Nerds); the others are open for drops.
+/// - The bottom strips ([`BOTTOM_LEFT`], [`BOTTOM_RIGHT`]), all slots one size.
 pub(super) fn overlay_slots() -> Vec<Slot> {
     let inset = px(8.0);
     let mut slots = vec![
@@ -430,9 +451,14 @@ pub(super) fn overlay_slots() -> Vec<Slot> {
             .inset(inset, px(58.0))
             .flow(SlotFlow::Column),
     ];
-    slots.extend((0..6).map(|n| {
-        Slot::new(format!("bottom-{n}"), SlotAnchor::BottomRight, size(px(160.0), px(120.0)))
-            .group("bottom")
-    }));
+    let bottom = size(px(BOTTOM_SLOT.0), px(BOTTOM_SLOT.1));
+    slots.extend(
+        BOTTOM_LEFT
+            .map(|id| Slot::new(id, SlotAnchor::BottomLeft, bottom).group("bottom-left")),
+    );
+    slots.extend(
+        BOTTOM_RIGHT
+            .map(|id| Slot::new(id, SlotAnchor::BottomRight, bottom).group("bottom-right")),
+    );
     slots
 }
