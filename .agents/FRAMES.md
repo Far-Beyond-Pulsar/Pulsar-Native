@@ -469,9 +469,9 @@ Known, not fixed. Ordered roughly by how much they matter.
 - **Lighting and decals**: a chain's pixels carry its remap in the surface tag
   (`gbuffer_remap_tag`); lighting, transmission and decals map position and
   normal back to the content's world through `VIEW_REMAPS`. Normals are stored
-  in the drawn space. Shadows are sampled at the content's real position, so
-  content outside the host camera's shadow cascades/local shadow maps is
-  unshadowed (as before views).
+  in the drawn space. **Gap:** a chain's pixels walk the scene's lights (at
+  most 256) unshadowed (the shadow maps are the camera's world's), and no
+  light crosses an opening; an open design.
 - **Water's reflection is a mirrored capture view** (`ViewKind::Capture`,
   `ViewContext::render_view`): every feature at the capture's slots draws in
   it; voxel terrain does not draw secondary views yet. Captures resolve no

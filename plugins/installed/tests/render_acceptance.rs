@@ -3759,6 +3759,57 @@ fn linked_portals_show_the_far_side_in_the_frame() {
     );
 }
 
+/// Portals cost nothing where a level has none: the chains, the mask and
+/// every drawer's draw through portals are scheduled only while the level
+/// has linked portals (the frame publishes chains), and all of them are then.
+#[test]
+fn portal_passes_are_scheduled_only_with_linked_portals() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    const THROUGH_PORTALS: [&str; 5] = [
+        "PortalChains",
+        "PortalMask",
+        "PortalOccurrences",
+        "GBufferPortalOccurrences",
+        "FoliageGBufferPortalOccurrences",
+    ];
+    let members = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        harness.frames(&mut renderer, || {});
+        renderer.graph_members()
+    };
+    for (label, state) in [
+        ("no portals", {
+            let mut state = LevelEditorState::new();
+            drop_matte_mesh(&mut state);
+            state
+        }),
+        ("unlinked portals", portal_scene(radius, 1, 2, true)),
+    ] {
+        let scheduled = members(&state);
+        assert!(scheduled.contains(&"GBuffer"), "{label}: {scheduled:?}");
+        for pass in THROUGH_PORTALS {
+            assert!(
+                !scheduled.contains(&pass),
+                "{label}: {pass} is scheduled: {scheduled:?}"
+            );
+        }
+    }
+    let scheduled = members(&portal_scene(radius, 5, 5, true));
+    for pass in THROUGH_PORTALS {
+        assert!(
+            scheduled.contains(&pass),
+            "linked portals: {pass} is not scheduled: {scheduled:?}"
+        );
+    }
+}
+
 /// An object with one typed component at `position`, by the editor's command.
 fn add_with_component(
     state: &mut LevelEditorState,

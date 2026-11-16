@@ -874,8 +874,16 @@ impl HelioRenderer {
         ))
     }
 
-    /// GPU milliseconds of each secondary view the frame rendered (a portal's,
-    /// a reflection's; `helio_core::view`): the requesting pass, the view's
+    /// The passes the frame's graph schedules: its members, the passes whose
+    /// content the scene holds this frame (`helio::Renderer::graph_members`).
+    pub fn graph_members(&self) -> Vec<&'static str> {
+        self.inner
+            .as_ref()
+            .map_or_else(Vec::new, |inner| inner.scene.renderer.graph_members())
+    }
+
+    /// GPU milliseconds of each secondary view the frame rendered (a capture,
+    /// such as a reflection; `helio_core::view`): the requesting pass, the view's
     /// key and the sum of its passes' GPU times. A graph's own span
     /// (`__graph_*`) is left out: a view-rendering pass submits in the middle
     /// of its graph, so the span also holds the time the CPU spent recording
