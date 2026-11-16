@@ -127,8 +127,15 @@ pub trait SceneWorldExt {
     // ── Selection ───────────────────────────────────────────────────────
     /// Single selection: clears every other [`Selected`] marker.
     fn select(&mut self, entity: Option<Entity>);
+    /// Select exactly `entities`, in pick order: the last is the primary.
+    /// Repeats and dead entities are skipped; an empty slice deselects.
+    /// Objects whose place in the selection is unchanged are not written.
+    fn select_all(&mut self, entities: &[Entity]);
+    /// The primary selection: the most recently picked selected object.
     fn selected_entity(&self) -> Option<Entity>;
     fn selected_id(&self) -> Option<String>;
+    /// Every selected object, in pick order (the primary last).
+    fn selection(&self) -> Vec<Entity>;
 
     // ── Queries ─────────────────────────────────────────────────────────
     fn camera_entities(&self) -> Vec<Entity>;
@@ -278,21 +285,53 @@ impl SceneWorldExt for World {
     }
 
     fn select(&mut self, entity: Option<Entity>) {
-        let previous: Vec<Entity> = self.query::<&Selected>().map(|(e, _)| e).collect();
-        for other in previous {
-            if Some(other) != entity {
-                self.remove::<Selected>(other);
+        match entity {
+            Some(entity) => self.select_all(&[entity]),
+            None => self.select_all(&[]),
+        }
+    }
+
+    fn select_all(&mut self, entities: &[Entity]) {
+        let mut wanted: Vec<Entity> = Vec::with_capacity(entities.len());
+        for &entity in entities {
+            if self.is_alive(entity) && !wanted.contains(&entity) {
+                wanted.push(entity);
             }
         }
-        if let Some(entity) = entity {
-            if self.is_alive(entity) && self.get::<Selected>(entity).is_none() {
-                self.insert(entity, Selected);
+        let previous: Vec<(Entity, u64)> = self
+            .query::<&Selected>()
+            .map(|(entity, selected)| (entity, selected.order))
+            .collect();
+        for (entity, _) in &previous {
+            if !wanted.contains(entity) {
+                self.remove::<Selected>(*entity);
+            }
+        }
+        for (order, &entity) in wanted.iter().enumerate() {
+            let order = order as u64;
+            let current = previous
+                .iter()
+                .find(|(e, _)| *e == entity)
+                .map(|(_, o)| *o);
+            if current != Some(order) {
+                self.insert(entity, Selected { order });
             }
         }
     }
 
     fn selected_entity(&self) -> Option<Entity> {
-        self.query::<&Selected>().map(|(entity, _)| entity).next()
+        self.query::<&Selected>()
+            .max_by_key(|(_, selected)| selected.order)
+            .map(|(entity, _)| entity)
+    }
+
+    fn selection(&self) -> Vec<Entity> {
+        let mut selected: Vec<(u64, Entity)> = self
+            .query::<&Selected>()
+            .map(|(entity, selected)| (selected.order, entity))
+            .collect();
+        selected.sort_by_key(|(order, _)| *order);
+        selected.into_iter().map(|(_, entity)| entity).collect()
     }
 
     fn selected_id(&self) -> Option<String> {

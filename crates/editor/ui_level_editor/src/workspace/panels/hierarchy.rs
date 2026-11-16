@@ -14,18 +14,18 @@ use ui::{
 
 /// Hierarchy Panel
 ///
-/// Self-refreshing: a frame pump compares a `(store_revision, selected)`
-/// signature every platform frame and notifies this view only when something
-/// the tree actually displays changed. No other panel needs to know this panel
-/// exists — scene mutations from any thread (UI commands, AI tools, the render
-/// thread's gizmo-drag release / click-select) all advance the store revision.
+/// Self-refreshing: a frame pump polls the world's change journals for what
+/// the tree shows ([`HierarchyPanel::poll_changes`]) every platform frame and
+/// notifies this view only when one of those changed. No other panel needs to
+/// know this panel exists: scene mutations from any thread (UI commands, AI
+/// tools, the render thread's click and box select) all land in the journals,
+/// while writes the tree does not show (each frame of a gizmo drag) do not
+/// wake it.
 pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     focus_handle: FocusHandle,
-    /// `(store_revision, selected)` last seen by the pump/render pair.
-    last_signature: (u64, Option<String>),
     pump_started: bool,
 }
 
@@ -36,23 +36,13 @@ impl HierarchyPanelWrapper {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let last_signature = {
-            let state = state.read();
-            (state.scene.world_revision(), state.scene.selected_object())
-        };
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             gpu_engine,
             focus_handle: cx.focus_handle(),
-            last_signature,
             pump_started: false,
         }
-    }
-
-    fn signature(&self) -> (u64, Option<String>) {
-        let state = self.state.read();
-        (state.scene.world_revision(), state.scene.selected_object())
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -62,9 +52,8 @@ impl HierarchyPanelWrapper {
         self.pump_started = true;
 
         crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
-            let signature = this.signature();
-            if signature != this.last_signature {
-                this.last_signature = signature;
+            let state = this.state.clone();
+            if this.hierarchy.poll_changes(&state.read()) {
                 cx.notify();
             }
         });
@@ -81,11 +70,6 @@ impl Render for HierarchyPanelWrapper {
         let _t = gpui::render_stats::scope("hierarchy panel: render");
 
         self.start_pump(_window, cx);
-
-        // Record what we are about to paint so the pump doesn't immediately
-        // re-notify for a change an explicit notify (e.g. expand toggle, row
-        // click) has already picked up.
-        self.last_signature = self.signature();
 
         let _state_scope = gpui::render_stats::scope("hierarchy panel: state read");
         let state = self.state.read();

@@ -168,6 +168,80 @@ pub fn get_hierarchy_projection(world: &World) -> (Vec<HierarchyObjectProjection
     (objects, root_ids)
 }
 
+/// What changed in the world since the hierarchy last looked, read from
+/// SceneDB's change journals instead of the world's revision.
+///
+/// The world revision moves on every write: each frame of a gizmo drag
+/// (transforms), each selection change. Keyed on it, the outliner rebuilt
+/// every row on all of those, though none changes the tree. This watch opens
+/// a journal for each component a row is built from and reports a change
+/// only when one of those was written, so a drag costs the outliner nothing
+/// and a selection change costs a flag per row.
+///
+/// Values a row derives from a component instance's fields (a mesh's
+/// movability) are not journaled here; they change through edits, which
+/// advance the undo history, so the caller also keys on that.
+pub struct HierarchyWatch {
+    structure: Vec<pulsar_scenedb::ChangeCursor>,
+    selection: pulsar_scenedb::ChangeCursor,
+    scratch: Vec<pulsar_scenedb::ComponentChange>,
+}
+
+/// What [`HierarchyWatch::poll`] found.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HierarchyChanges {
+    /// Objects were added, removed, renamed, moved in the tree, hidden, or
+    /// their components or class changed: the rows must be rebuilt.
+    pub structure: bool,
+    /// Only which objects are selected changed.
+    pub selection: bool,
+}
+
+impl HierarchyWatch {
+    pub fn new(world: &World) -> Self {
+        use engine_backend::scene::{
+            ComponentAttachments, LevelInstanceMember, Parent, Selected, SiblingIndex,
+        };
+        let structure = vec![
+            world.open_change_cursor::<StableId>(),
+            world.open_change_cursor::<Parent>(),
+            world.open_change_cursor::<SiblingIndex>(),
+            world.open_change_cursor::<Name>(),
+            world.open_change_cursor::<ObjectType>(),
+            world.open_change_cursor::<WorldVisibility>(),
+            world.open_change_cursor::<RenderProps>(),
+            world.open_change_cursor::<ComponentAttachments>(),
+            world.open_change_cursor::<LevelInstanceMember>(),
+            world.open_change_cursor::<pulsar_class::ClassInstance>(),
+        ];
+        Self {
+            structure,
+            selection: world.open_change_cursor::<Selected>(),
+            scratch: Vec::new(),
+        }
+    }
+
+    /// Consume everything journaled since the last poll. A journal that
+    /// overflowed (or a world that was replaced) counts as a change.
+    pub fn poll(&mut self, world: &World) -> HierarchyChanges {
+        let mut read = |cursor: &mut pulsar_scenedb::ChangeCursor| {
+            self.scratch.clear();
+            let result = world.read_changes(cursor, &mut self.scratch);
+            matches!(result, pulsar_scenedb::ChangeRead::Overflowed) || !self.scratch.is_empty()
+        };
+        let mut structure = false;
+        for cursor in &mut self.structure {
+            // Read every cursor, even after a hit, so none lags behind.
+            structure |= read(cursor);
+        }
+        let selection = read(&mut self.selection);
+        HierarchyChanges {
+            structure,
+            selection,
+        }
+    }
+}
+
 /// Minimal data needed to paint one hierarchy row.
 #[derive(Clone, Debug)]
 pub struct HierarchyObjectProjection {
@@ -274,6 +348,22 @@ pub fn get_children(world: &World, id: &str) -> Vec<ObjectId> {
 pub fn select_object(world: &mut World, id: Option<&str>) {
     let entity = id.and_then(|id| world.entity_for(id));
     world.select(entity);
+}
+
+/// Select exactly `ids`, in pick order (the last is the primary). Unknown ids
+/// are skipped; an empty list deselects.
+pub fn select_objects(world: &mut World, ids: &[ObjectId]) {
+    let entities: Vec<Entity> = ids.iter().filter_map(|id| world.entity_for(id)).collect();
+    world.select_all(&entities);
+}
+
+/// Every selected object's id, in pick order (the primary last).
+pub fn selected_object_ids(world: &World) -> Vec<ObjectId> {
+    world
+        .selection()
+        .into_iter()
+        .filter_map(|entity| world.stable_id_of(entity).map(str::to_string))
+        .collect()
 }
 
 pub fn get_selected_object_id(world: &World) -> Option<ObjectId> {

@@ -211,6 +211,16 @@ impl SceneDomain {
         scene_edit::objects::select_object(&mut self.world_mut(), object_id.as_deref());
     }
 
+    /// Every selected object, in pick order (the primary last).
+    pub fn selected_objects(&self) -> Vec<ObjectId> {
+        scene_edit::objects::selected_object_ids(&self.world())
+    }
+
+    /// Select exactly `ids`, in pick order (the last becomes the primary).
+    pub fn select_objects(&mut self, ids: &[ObjectId]) {
+        scene_edit::objects::select_objects(&mut self.world_mut(), ids);
+    }
+
     pub fn get_selected_object(&self) -> Option<SceneObjectData> {
         scene_edit::objects::get_selected_object(&self.world())
     }

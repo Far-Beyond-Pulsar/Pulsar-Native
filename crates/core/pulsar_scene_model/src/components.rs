@@ -29,10 +29,16 @@ pub struct Parent(pub Entity);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SiblingIndex(pub u64);
 
-/// Marks the selected object(s). Selection is ordinary world state, so the
-/// renderer's gizmo/outline passes read it the same way the editor does.
+/// Marks a selected object. Selection is ordinary world state, so the
+/// renderer's gizmo and box select read it the same way the editor does.
+///
+/// Several objects can be selected at once. `order` is the order they were
+/// picked in; the highest is the primary selection, the one the inspector
+/// shows ([`crate::SceneWorldExt::selected_entity`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Selected;
+pub struct Selected {
+    pub order: u64,
+}
 
 /// Flat per-entity transform: in world space, or relative to its
 /// [`Parent`]. The position is f64, so an object keeps its millimetres on
