@@ -62,6 +62,94 @@ fn world_position_on_ground_plane(
     ])
 }
 
+/// The viewport's right-click menu while objects are selected: what can be
+/// done to all of them (focus, duplicate, delete, put them in a folder,
+/// deselect), then the usual level menu (`level_menu`) as a submenu.
+fn build_selection_menu(
+    menu: PopupMenu,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+    state: &Arc<parking_lot::RwLock<LevelEditorState>>,
+    selection: &[String],
+    action_context: &FocusHandle,
+    level_menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+) -> PopupMenu {
+    use crate::ui::hierarchy::{folder_choices, group_selection_into_folder, move_selection_to};
+
+    let (title, folders) = {
+        let state = state.read();
+        let title = match selection {
+            [id] => {
+                let world = state.scene.world();
+                crate::scene_edit::objects::get_object_name(&world, id)
+                    .unwrap_or_else(|| id.clone())
+            }
+            many => t!("LevelEditor.Selection.Count", count = many.len()).to_string(),
+        };
+        // A selected folder cannot take the selection into itself.
+        let folders: Vec<(String, String)> = folder_choices(&state)
+            .into_iter()
+            .filter(|(id, _)| !selection.contains(id))
+            .collect();
+        (title, folders)
+    };
+    let handler = |run: fn(&mut LevelEditorState)| {
+        let state = state.clone();
+        move |_: &mut Window, _: &mut gpui::App| run(&mut state.write())
+    };
+
+    let menu = menu
+        .action_context(action_context.clone())
+        .label(title)
+        .separator()
+        .menu(t!("LevelEditor.Menu.FocusSelected"), Box::new(FocusSelected))
+        .menu(t!("LevelEditor.Menu.Duplicate"), Box::new(DuplicateObject))
+        .menu(t!("LevelEditor.Menu.Delete"), Box::new(DeleteObject))
+        .separator()
+        .menu_handler(
+            t!("LevelEditor.Selection.GroupIntoFolder"),
+            handler(|state| {
+                group_selection_into_folder(state);
+            }),
+        )
+        .submenu(t!("LevelEditor.Selection.MoveToFolder"), window, cx, {
+            let state = state.clone();
+            move |mut submenu, _, _| {
+                let new_folder = state.clone();
+                submenu = submenu
+                    .menu_handler(t!("LevelEditor.Selection.NewFolder"), move |_, _| {
+                        group_selection_into_folder(&mut new_folder.write());
+                    })
+                    .separator();
+                let top = state.clone();
+                submenu = submenu.menu_handler(t!("LevelEditor.Selection.TopLevel"), move |_, _| {
+                    move_selection_to(&mut top.write(), None);
+                });
+                if !folders.is_empty() {
+                    submenu = submenu.separator();
+                }
+                for (id, path) in &folders {
+                    let state = state.clone();
+                    let id = id.clone();
+                    submenu = submenu.menu_handler(path.clone(), move |_, _| {
+                        move_selection_to(&mut state.write(), Some(id.clone()));
+                    });
+                }
+                submenu
+            }
+        })
+        .separator()
+        .menu_handler(
+            t!("LevelEditor.Selection.Deselect"),
+            handler(|state| state.scene.select_objects(&[])),
+        )
+        .separator();
+    let level_context = action_context.clone();
+    menu.submenu(t!("LevelEditor.Selection.Level"), window, cx, move |submenu, window, cx| {
+        level_menu(submenu.action_context(level_context.clone()), window, cx)
+    })
+}
+
 impl ViewportPanel {
     /// Build the complete viewport UI.
     pub(super) fn build_viewport_ui<V>(
@@ -193,14 +281,36 @@ impl ViewportPanel {
         let show_context_menu = {
             let context_menu = context_menu.clone();
             let build_context_menu = build_context_menu.clone();
+            let selection_state = state_arc.clone();
+            let action_context = action_context.clone();
             Rc::new(move |position, window: &mut Window, cx: &mut gpui::App| {
                 let world_position = placement_bounds.borrow().and_then(|bounds| {
                     let gpu = placement_gpu.lock().ok()?;
                     let camera = gpu.editor_camera_state()?;
                     world_position_on_ground_plane(position, bounds, camera)
                 });
+                // With objects selected, the menu acts on them; the usual
+                // level menu moves into a submenu.
+                let selection = selection_state.read().scene.selected_objects();
                 let menu = PopupMenu::build(window, cx, |menu, window, cx| {
-                    build_context_menu(menu, window, cx, world_position)
+                    if selection.is_empty() {
+                        build_context_menu(menu, window, cx, world_position)
+                    } else {
+                        build_selection_menu(
+                            menu,
+                            window,
+                            cx,
+                            &selection_state,
+                            &selection,
+                            &action_context,
+                            {
+                                let build_context_menu = build_context_menu.clone();
+                                move |menu, window, cx| {
+                                    build_context_menu(menu, window, cx, world_position)
+                                }
+                            },
+                        )
+                    }
                 });
                 if menu.read(cx).is_empty() {
                     return;
