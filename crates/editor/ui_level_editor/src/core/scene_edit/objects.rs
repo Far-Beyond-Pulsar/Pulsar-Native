@@ -108,20 +108,62 @@ pub fn get_root_objects(world: &World) -> Vec<SceneObjectData> {
 /// Minimal hierarchy projection: component-backed object rows plus root ids.
 /// This is intentionally not a history snapshot and does not merge expensive
 /// component metadata; hierarchy editing reads those details on demand.
+///
+/// One pass over the world: the parent → ordered-children map is built from a
+/// single `StableId` query, then walked depth-first. (`children_of` scans every
+/// object, so calling it per object made this O(n²) -- seconds on a large level,
+/// paid on every selection change since selecting bumps the world revision.)
 pub fn get_hierarchy_projection(world: &World) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
+    use engine_backend::scene::{Parent, SiblingIndex};
+    use std::collections::HashMap;
+
     profiling::profile_scope!("scene_edit::get_hierarchy_projection");
-    let mut objects = Vec::new();
-    fn collect(world: &World, parent: Option<Entity>, out: &mut Vec<HierarchyObjectProjection>) {
-        for entity in world.children_of(parent) {
-            out.push(entity_to_hierarchy_projection(world, entity));
-            collect(world, Some(entity), out);
+
+    let mut children: HashMap<Option<Entity>, Vec<(SiblingIndex, Entity)>> = HashMap::new();
+    let mut ids: HashMap<Entity, &str> = HashMap::new();
+    for (entity, stable_id) in world.query::<&StableId>() {
+        ids.insert(entity, stable_id.0.as_str());
+        let parent = world.get::<Parent>(entity).map(|parent| parent.0);
+        let order = world
+            .get::<SiblingIndex>(entity)
+            .copied()
+            .unwrap_or_default();
+        children.entry(parent).or_default().push((order, entity));
+    }
+    // Same order as `children_of`.
+    let children: HashMap<Option<Entity>, Vec<Entity>> = children
+        .into_iter()
+        .map(|(parent, mut kids)| {
+            kids.sort_by_key(|(order, entity)| (*order, entity.bits()));
+            (parent, kids.into_iter().map(|(_, entity)| entity).collect())
+        })
+        .collect();
+
+    let icons = crate::extend::object_icon_registrations();
+    let mut objects = Vec::with_capacity(ids.len());
+    let mut stack: Vec<Entity> = children
+        .get(&None)
+        .map(|roots| roots.iter().rev().copied().collect())
+        .unwrap_or_default();
+    while let Some(entity) = stack.pop() {
+        let kids = children.get(&Some(entity));
+        objects.push(hierarchy_row(
+            world,
+            entity,
+            &ids,
+            kids.map(Vec::as_slice).unwrap_or(&[]),
+            &icons,
+        ));
+        if let Some(kids) = kids {
+            stack.extend(kids.iter().rev().copied());
         }
     }
-    collect(world, None, &mut objects);
-    let root_ids = world
-        .children_of(None)
+
+    let root_ids = children
+        .get(&None)
         .into_iter()
-        .filter_map(|entity| world.stable_id_of(entity).map(str::to_string))
+        .flatten()
+        .filter_map(|entity| ids.get(entity).map(|id| id.to_string()))
         .collect();
     (objects, root_ids)
 }
@@ -129,6 +171,8 @@ pub fn get_hierarchy_projection(world: &World) -> (Vec<HierarchyObjectProjection
 /// Minimal data needed to paint one hierarchy row.
 #[derive(Clone, Debug)]
 pub struct HierarchyObjectProjection {
+    /// The object's entity, valid for the world revision this was built from.
+    pub entity: Entity,
     pub id: ObjectId,
     pub name: String,
     pub object_type: ObjectType,
@@ -140,7 +184,13 @@ pub struct HierarchyObjectProjection {
     pub kind_icon: Option<(ui::IconName, gpui::Hsla)>,
 }
 
-pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> HierarchyObjectProjection {
+fn hierarchy_row(
+    world: &World,
+    entity: Entity,
+    ids: &std::collections::HashMap<Entity, &str>,
+    children: &[Entity],
+    icons: &[&'static crate::extend::ObjectIconRegistration],
+) -> HierarchyObjectProjection {
     let visibility = world
         .get::<WorldVisibility>(entity)
         .copied()
@@ -151,22 +201,19 @@ pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> Hierarch
         .and_then(|value| value.as_str())
         .filter(|value| !value.trim().is_empty())
         .map(str::to_owned);
-    let id_of = |e: Entity| world.stable_id_of(e).map(str::to_string);
+    let id_of = |e: &Entity| ids.get(e).map(|id| id.to_string());
     HierarchyObjectProjection {
-        id: id_of(entity).unwrap_or_default(),
+        entity,
+        id: id_of(&entity).unwrap_or_default(),
         name: name_of(world, entity),
         object_type: world
             .get::<ObjectType>(entity)
             .copied()
             .unwrap_or(ObjectType::Empty),
         visible: visibility.visible,
-        children: world
-            .children_of(Some(entity))
-            .into_iter()
-            .filter_map(id_of)
-            .collect(),
+        children: children.iter().filter_map(id_of).collect(),
         icon_asset,
-        kind_icon: crate::extend::object_icon(world, entity),
+        kind_icon: crate::extend::object_icon_with(icons, world, entity),
     }
 }
 

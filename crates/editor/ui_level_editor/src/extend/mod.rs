@@ -120,8 +120,23 @@ pub struct ObjectIconRegistration {
 
 /// The icon and colour a kind gives `object`, if any.
 pub fn object_icon(world: &World, object: Entity) -> Option<(ui::IconName, gpui::Hsla)> {
+    object_icon_with(&object_icon_registrations(), world, object)
+}
+
+/// The icon registrations in order, for a caller resolving many objects
+/// ([`object_icon_with`]) without re-collecting and re-sorting per object.
+pub fn object_icon_registrations() -> Vec<&'static ObjectIconRegistration> {
     sorted::<ObjectIconRegistration>(|registration| registration.order)
-        .into_iter()
+}
+
+/// [`object_icon`] against registrations already gathered once.
+pub fn object_icon_with(
+    registrations: &[&'static ObjectIconRegistration],
+    world: &World,
+    object: Entity,
+) -> Option<(ui::IconName, gpui::Hsla)> {
+    registrations
+        .iter()
         .find_map(|registration| (registration.icon)(world, object))
 }
 

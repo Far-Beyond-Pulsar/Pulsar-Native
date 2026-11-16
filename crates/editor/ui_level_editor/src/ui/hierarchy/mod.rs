@@ -597,21 +597,20 @@ impl HierarchyPanel {
                 let is_selected = selected.as_deref() == Some(obj.id.as_str())
                     || multi.iter().any(|id| *id == obj.id);
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
-                let class_role = if crate::scene_edit::classes::is_class_root(&world, &obj.id) {
+                // By entity: an id lookup (`entity_for`) scans every object,
+                // which per row made this rebuild O(n²).
+                let entity = obj.entity;
+                let class_role = if pulsar_class::world::is_class_root(&world, entity) {
                     ClassRole::Root
-                } else if crate::scene_edit::classes::is_generated_child(&world, &obj.id) {
+                } else if pulsar_class::world::is_generated_child(&world, entity) {
                     ClassRole::Owned
-                } else if crate::scene_edit::objects::is_instance_member(&world, &obj.id) {
+                } else if engine_backend::scene::level_instances::is_member(&world, entity) {
                     ClassRole::Instanced
                 } else {
                     ClassRole::None
                 };
-                let movability = {
-                    use engine_backend::scene::SceneWorldExt;
-                    world.entity_for(&obj.id).and_then(|entity| {
-                        helio_component::components::object_movability(&world, entity)
-                    })
-                };
+                let movability =
+                    helio_component::components::object_movability(&world, entity);
                 SceneObjectItem {
                     object: Rc::new(obj),
                     state_arc: state_arc.clone(),
