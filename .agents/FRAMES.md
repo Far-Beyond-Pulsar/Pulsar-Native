@@ -441,29 +441,32 @@ Known, not fixed. Ordered roughly by how much they matter.
 17. **Industry claims** in this document are unverified; back them with the
     phase-2 and phase-4 benchmarks before repeating them.
 
-### Portal findings (lighting + cost pass)
+### Portals and reflections are views (p25, Helio#390)
 
-- **Portal lighting**: portal pixels are tagged `(-1, -3 - chain)` in the G-buffer's
-  surface channel (`gbuffer::SURFACE`); `deferred_lighting.wgsl` maps position/normal/eye back through the
-  chain (`portal_chain_unmap`, a 256-entry uniform in group 0 binding 11, published by
-  `PortalProjection`) and walks all scene lights (cap `PORTAL_MAX_LIGHTS`) instead of
-  the host tile lists. Shadows are sampled at the content's real position, so content
-  outside the host camera's shadow cascades/local shadow maps is unshadowed. SSR and
-  planar reflections are skipped for portal pixels.
-- **Portal cost**: chains were built for every path (depth 3) whether or not the
-  camera could see them (`build_into`); every chain redraws the scene it shows. The
-  editor now builds chains with `build_visible_from_camera_into` (`SpaceSync::set_view`).
-  `pulsar_game` (`embed.rs`, `windowed_app.rs`) still calls `sync` without a view, so
-  it builds every path: give it the camera too. Not yet measured on a GPU.
-- **Portal materials**: portal duplicates now draw per material key like the G-buffer
-  (`PortalCullPass` packs `portal_indirect` into portal segments laid out by the
-  G-buffer's segment table via `compact_portal.wgsl`; `PortalInstancePass` draws one
-  segment per key with a pipeline built from `gbuffer_portal.wgsl` plus the graph,
-  `RadiantTemplate::build_shader_source_on`). Graph `time` nodes read 0 there; the
-  transparent and forward buckets are not drawn through portals; built-in template
-  classes 1-4 follow the G-buffer (which also only uses class 0). Compiles for graph
-  and built-in classes are unit-tested; a graph material drawn through a portal on a
-  GPU is NOT yet verified.
+- **What a portal shows is an inline view of the frame** (`helio_core::view`):
+  the portals' views drawer (`PortalViewsPass`, last in the G-buffer phase)
+  stamps each visible opening, makes the view's depth from the stamp (far
+  inside, near outside), and the frame renders the view (the camera seen
+  through the opening's map, clipped at the destination plane) with every
+  G-buffer drawer's own program into the frame's G-buffer. Portals seen
+  through portals are the same drawer inside that view, bounded by
+  `ViewBudget` (`RendererConfig::views`). The host publishes only the direct
+  openings (`PORTAL_OPENINGS` from `PortalSync`): no chains, no
+  coordinate-space slots, no camera to prune against (the producers' camera
+  seam, `SpaceSync::set_view`, is deleted: each view culls what it sees).
+- **Lighting of portal pixels**: an inline view's pixels carry its slot in the
+  surface tag (`gbuffer_view_tag`); `deferred_lighting.wgsl` maps position,
+  normal and eye back through the frame's view table (`VIEW_REMAPS`, group 0
+  binding 11, written by the graph) and walks all scene lights instead of the
+  host tile lists. Shadows are sampled at the content's real position, so
+  content outside the host camera's shadow cascades/local shadow maps is
+  unshadowed. SSR and planar reflections are skipped for portal pixels.
+- **Water's reflection is a mirrored capture view**: every feature at the
+  capture's slots and phases draws in it (meshes, foliage, decals, VG, the sky
+  composite, GI's resolve); voxel terrain does not draw secondary views yet.
+- **Cost**: each visible opening is a pass sequence (stamp, mask, the view's
+  culls and drawers, merge); openings facing away or off-screen cost a CPU
+  test. Measure with the views' GPU time (`RenderGraph::view_graphs`).
 - **Not a bug (was a test artefact)**: "content shifts with portal distance" came from
   the test scene (mesh radius ~173 m, so the far content was directly visible, and the
   near portal faced away from the camera). Portal tests must face the near portal at the

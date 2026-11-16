@@ -476,10 +476,8 @@ impl SceneRenderer {
         });
         // Rigid frames: one matrix each, relative to the same origin. Their
         // members' rows never change when a frame moves; this table does.
-        // Producers (portal projections) build only what this camera sees,
-        // and publish what their passes read about the frame.
-        self.spaces
-            .set_view(camera.view_proj_in(origin), camera.position_in(origin));
+        // Producers publish what their passes read about the frame (the
+        // portals' openings; each pass culls what its own view sees).
         self.spaces
             .sync(&self.scene, origin, &mut self.renderer, &mut payloads);
         self.renderer.set_scene_payloads(payloads);

@@ -874,6 +874,32 @@ impl HelioRenderer {
         ))
     }
 
+    /// GPU milliseconds of each secondary view the frame rendered (a portal's,
+    /// a reflection's; `helio_core::view`): the requesting pass, the view's
+    /// key and the sum of its passes' GPU times. A graph's own span
+    /// (`__graph_*`) is left out: a view-rendering pass submits in the middle
+    /// of its graph, so the span also holds the time the CPU spent recording
+    /// the views. [`Self::gpu_timings`] is the primary view's.
+    pub fn view_gpu_timings(&self) -> Vec<(&'static str, u64, f32)> {
+        self.inner.as_ref().map_or_else(Vec::new, |inner| {
+            inner
+                .scene
+                .renderer
+                .view_timing_snapshots()
+                .into_iter()
+                .map(|(pass, key, snapshot)| {
+                    let ms = snapshot
+                        .passes
+                        .iter()
+                        .filter(|timing| !timing.name.starts_with("__"))
+                        .filter_map(|timing| timing.gpu_ms)
+                        .sum();
+                    (pass, key, ms)
+                })
+                .collect()
+        })
+    }
+
     /// The last rendered frame's milliseconds by phase (pointer, scene,
     /// publish, render, ...), for harnesses.
     pub fn last_frame_phases(&self) -> &[(&'static str, f32)] {

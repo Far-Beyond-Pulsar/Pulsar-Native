@@ -85,7 +85,7 @@ fn a_planted_copy_is_caught() {
         ),
         source(
             "plugins/vendor/fog/feature/src/lib.rs",
-            "fn run(r: &Registry) {\n    let v = r.get(helio_core::ResourceKey::new(\"pre_aa\"));\n    let label = Some(\"pre_aa\"); // a label is no key\n}\n#[gpu(buffer = \"pre_aa\")]\nstruct Row;\n",
+            "fn run(r: &Registry) {\n    let v = r.get(helio_core::ResourceKey::new(\"pre_aa\"));\n    let label = Some(\"pre_aa\"); // a label is no key\n    let sent = analyzer.read(cx).did_open_file(&path, \"pre_aa\"); // nor what another call takes\n}\n#[gpu(buffer = \"pre_aa\")]\nstruct Row;\n",
         ),
         // Test code may name what it likes.
         source(
