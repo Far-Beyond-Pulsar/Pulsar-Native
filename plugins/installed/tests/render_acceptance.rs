@@ -4239,6 +4239,92 @@ fn diag_portal_cost() {
     }
 }
 
+/// The water's reflection capture costs only while water is in view: the GPU
+/// time of the frame's passes and its views with a water volume in front of
+/// the camera, and the same volume behind it (the capture not scheduled),
+/// interleaved, over pipelined frames.
+#[test]
+#[ignore = "diagnostic: prints GPU timings"]
+fn diag_water_capture_cost() {
+    use installed_plugins::water_plugin::water_component::WaterVolumeComponent;
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let view = harness.texture.create_view(&Default::default());
+    let distance = (radius * 4.0).max(3.0);
+    let scene = |z: f32| {
+        let mut state = LevelEditorState::new();
+        let mut water = WaterVolumeComponent::default();
+        water.size = [distance * 4.0, radius, distance * 4.0];
+        water.bounded = true;
+        add_with_component(
+            &mut state,
+            "Water",
+            [0.0, 0.0, z],
+            ui_level_editor::commands::TypedComponent::new(water),
+        );
+        let id = drop_matte_mesh(&mut state);
+        move_to(&mut state, &id, [0.0, radius, -distance]);
+        state
+    };
+    for round in 0..3 {
+        // Ahead of the camera (it looks down -Z), then far behind it.
+        for (label, z) in [("in view", -distance * 2.0), ("behind", distance * 200.0)] {
+            let state = scene(z);
+            let mut renderer = harness.renderer(&state);
+            harness.frames(&mut renderer, || {});
+            let (mut primary, mut views) = (Vec::new(), Vec::new());
+            for _ in 0..8 {
+                for _ in 0..8 {
+                    renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
+                    renderer.render_frame(
+                        &harness.device,
+                        &harness.queue,
+                        &view,
+                        SIZE,
+                        SIZE,
+                        FORMAT,
+                    );
+                }
+                harness
+                    .device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .unwrap();
+                if let Some((_, passes)) = renderer.gpu_timings() {
+                    primary.push(
+                        passes
+                            .iter()
+                            .filter(|(name, _)| !name.starts_with("__"))
+                            .map(|(_, ms)| ms)
+                            .sum(),
+                    );
+                }
+                views.push(
+                    renderer
+                        .view_gpu_timings()
+                        .iter()
+                        .map(|(_, _, ms)| ms)
+                        .sum::<f32>(),
+                );
+            }
+            let median = |v: &mut Vec<f32>| {
+                v.sort_by(f32::total_cmp);
+                v.get(v.len() / 2).copied().unwrap_or(f32::NAN)
+            };
+            println!(
+                "DIAG round {round} water {label}: primary {:.3} ms, views {:.3} ms ({} views)",
+                median(&mut primary),
+                median(&mut views),
+                renderer.view_gpu_timings().len()
+            );
+        }
+    }
+}
+
 fn rotate_y(state: &mut LevelEditorState, id: &str, degrees: f32) {
     if degrees == 0.0 {
         return;

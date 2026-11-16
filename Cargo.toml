@@ -80,6 +80,7 @@ members = [
     "plugins/vendor/lens/feature/optics",
     "plugins/vendor/lens/examples",
     "plugins/vendor/portals",
+    "plugins/vendor/portals/api",
     "plugins/vendor/portals/component",
     "plugins/vendor/portals/feature/cull",
     "plugins/vendor/portals/feature/instances",
@@ -519,6 +520,7 @@ helio-lens-api = { path = "plugins/vendor/lens/api" }
 helio-pass-lens = { path = "plugins/vendor/lens/feature/lens" }
 helio-pass-flare = { path = "plugins/vendor/lens/feature/flare" }
 helio-lens-optics = { path = "plugins/vendor/lens/feature/optics" }
+helio-portal-api = { path = "plugins/vendor/portals/api" }
 helio-pass-portal-cull = { path = "plugins/vendor/portals/feature/cull" }
 helio-pass-portal-instances = { path = "plugins/vendor/portals/feature/instances" }
 # The media and placement kinds' api and feature crates: their plugins'
