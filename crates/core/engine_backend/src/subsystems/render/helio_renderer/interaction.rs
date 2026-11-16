@@ -1682,4 +1682,80 @@ mod tests {
             None
         );
     }
+
+    /// Two cubes 2 m either side of the view's centre line, 10 m away.
+    fn two_cubes(mode: GizmoType) -> (World, SceneInteraction, Entity, Entity) {
+        let (mut world, interaction, _) = setup(mode);
+        world.despawn_tree(world.selected_entity().unwrap());
+        spawn_cube(&mut world, "left", -10.0);
+        spawn_cube(&mut world, "right", -10.0);
+        let left = world.entity_for("left").unwrap();
+        let right = world.entity_for("right").unwrap();
+        for (entity, x) in [(left, -2.0), (right, 2.0)] {
+            let mut t = *world.get::<Transform>(entity).unwrap();
+            t.position[0] = x;
+            world.insert(entity, t);
+        }
+        (world, interaction, left, right)
+    }
+
+    #[test]
+    fn box_pick_takes_only_objects_wholly_inside() {
+        let (world, interaction, left, right) = two_cubes(GizmoType::Translate);
+        // The left half of the view holds the left cube.
+        let picked = interaction.box_pick(&world, Vec2::new(0.0, 0.0), Vec2::new(0.5, 1.0));
+        assert_eq!(picked, vec![left]);
+        // Corners in either order; the whole view holds both.
+        let picked = interaction.box_pick(&world, Vec2::ONE, Vec2::ZERO);
+        assert_eq!(picked.len(), 2);
+        assert!(picked.contains(&left) && picked.contains(&right));
+        // A box through the middle of the left cube does not hold all of it.
+        let center = interaction
+            .view
+            .project(Vec3::new(-2.0, 0.0, -10.0))
+            .unwrap()
+            / interaction.view.size;
+        let picked = interaction.box_pick(&world, Vec2::ZERO, Vec2::new(center.x, 1.0));
+        assert!(picked.is_empty(), "{picked:?}");
+    }
+
+    #[test]
+    fn group_gizmo_sits_at_the_average_and_moves_every_object() {
+        let (mut world, mut interaction, left, right) = two_cubes(GizmoType::Translate);
+        world.select_all(&[left, right]);
+        assert_eq!(world.selected_entity(), Some(right), "the last picked is primary");
+        let (_, pivot) = interaction.selected(&world).unwrap();
+        assert_eq!(pivot.position, [0.0, 0.0, -10.0]);
+        assert_eq!(pivot.rotation, [0.0; 3], "world axes for a group");
+
+        let at = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(at).unwrap();
+        let start = at + Vec3::X * length * 0.7;
+        assert!(interaction.try_start_drag(&world, DVec3::ZERO, start.normalize()));
+        let away = at + Vec3::new(length * 4.0, 0.0, 0.0);
+        interaction.update_drag(&mut world, DVec3::ZERO, away.normalize());
+        let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
+        let travel = f64::from((3.3 * length / step).round() * step);
+        let x = |e| world.get::<Transform>(e).unwrap().position[0];
+        assert!((x(left) - (-2.0 + travel)).abs() < 1e-3, "left at {}", x(left));
+        assert!((x(right) - (2.0 + travel)).abs() < 1e-3, "right at {}", x(right));
+
+        // One undo step holds both starting transforms.
+        let moved = interaction.finish_drag().unwrap();
+        assert_eq!(moved.len(), 2);
+        assert!(moved.contains(&(left, Transform {
+            position: [-2.0, 0.0, -10.0],
+            ..Default::default()
+        })));
+    }
+
+    #[test]
+    fn a_selected_child_moves_with_its_selected_parent_only_once() {
+        let (mut world, interaction, left, right) = two_cubes(GizmoType::Translate);
+        world.reparent(right, Some(left)).unwrap();
+        world.select_all(&[left, right]);
+        let targets = interaction.gizmo_targets(&world).unwrap();
+        assert_eq!(targets.objects.len(), 1, "the child rides along with its parent");
+        assert_eq!(targets.objects[0].0, left);
+    }
 }

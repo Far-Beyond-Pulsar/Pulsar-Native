@@ -1,6 +1,6 @@
 # Hierarchy (Outliner) Performance Plan
 
-Status: plan only. Wave 0 landed; waves 1-5 are not started.
+Status: waves 0, 1 and 2 landed (2026-11-16); waves 3-5 are not started.
 
 ## The problem
 
@@ -64,7 +64,7 @@ layers, which the waves below remove one at a time.
 What is left: the cost of a selection is still O(n). It is linear now
 instead of quadratic, but it should not depend on n at all.
 
-## Wave 1: remove the quadratic code from the tree widget (small, isolated)
+## Wave 1 (landed): remove the quadratic code from the tree widget
 
 `hierarchical_list_view.rs`:
 - Build `HashMap<Id, usize>` once per render, and a `HashSet` of root ids.
@@ -79,7 +79,7 @@ Every hierarchy that uses this widget benefits, including the file manager
 and other trees. Done when: flattening is O(visible rows + n) with no nested
 scans, and an existing tree view looks unchanged.
 
-## Wave 2: selection is not a structural change
+## Wave 2 (landed): selection is not a structural change
 
 Choose one approach (A is recommended):
 
@@ -101,6 +101,25 @@ Also audit the other consumers keyed on `world_revision()` (properties,
 viewport overlays) for the same false invalidation.
 
 Done when: a selection click shows no `hierarchy: ECS snapshot` span at all.
+
+**As built (wave 2).** Approach A.
+- `scene_edit::objects::HierarchyWatch` keeps change cursors on `StableId`,
+  `Parent`, `SiblingIndex`, `Name`, `ObjectType`, `Visibility`,
+  `RenderProps`, `ComponentAttachments`, `LevelInstanceMember` and
+  `ClassInstance`, plus one cursor on `Selected`.
+- `poll` reports `structure` or `selection`. An overflowed journal, or a
+  replaced world, counts as structure.
+- `HierarchyPanel::poll_changes` also treats a change in the undo history's
+  revision as structure. That is how edits to a component's fields (a mesh's
+  movability) reach a row.
+- The panel's frame pump polls this every frame instead of comparing
+  `world_revision()`. A gizmo drag, which only writes transforms, no longer
+  wakes the panel, and a selection change only flips each row's flag.
+- Multi-selection is now world state: `Selected { order }` on every selected
+  object, with the highest order as the primary (`select_all`, `selection`
+  in `SceneWorldExt`). `HierarchyDomain::multi_selected` is gone.
+- Still open: other consumers keyed on `world_revision()` (properties,
+  world settings) still wake on every write.
 
 ## Wave 3: real indexes in the scene model (fixes about 228 call sites at once)
 

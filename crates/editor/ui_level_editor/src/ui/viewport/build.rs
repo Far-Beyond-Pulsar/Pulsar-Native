@@ -361,16 +361,16 @@ impl ViewportPanel {
             (Some((start, end)), Some(bounds)) => {
                 let min = point(start.x.min(end.x), start.y.min(end.y)) - bounds.origin;
                 let max = point(start.x.max(end.x), start.y.max(end.y)) - bounds.origin;
-                let accent = cx.theme().accent;
+                let foreground = cx.theme().foreground;
                 div()
                     .absolute()
                     .left(min.x)
                     .top(min.y)
                     .w(max.x - min.x)
                     .h(max.y - min.y)
-                    .bg(accent.opacity(0.12))
+                    .bg(foreground.opacity(0.08))
                     .border_1()
-                    .border_color(accent.opacity(0.85))
+                    .border_color(foreground.opacity(0.7))
                     .into_any_element()
             }
             _ => div().into_any_element(),

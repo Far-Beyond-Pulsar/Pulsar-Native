@@ -97,6 +97,28 @@ fn selection_is_a_single_marker_and_dies_with_the_entity() {
 }
 
 #[test]
+fn multi_selection_keeps_pick_order_and_the_last_pick_is_primary() {
+    let mut world = World::new();
+    let a = spawn(&mut world, "a", None);
+    let b = spawn(&mut world, "b", None);
+    let c = spawn(&mut world, "c", None);
+
+    world.select_all(&[c, a, c, b]);
+    assert_eq!(world.selection(), vec![c, a, b], "repeats dropped, order kept");
+    assert_eq!(world.selected_entity(), Some(b));
+
+    // Re-selecting a subset drops the rest; a plain select clears to one.
+    world.select_all(&[a, c]);
+    assert_eq!(world.selection(), vec![a, c]);
+    assert_eq!(world.selected_entity(), Some(c));
+    world.select(Some(b));
+    assert_eq!(world.selection(), vec![b]);
+    world.select_all(&[]);
+    assert!(world.selection().is_empty());
+    assert_eq!(world.selected_entity(), None);
+}
+
+#[test]
 fn default_object_type_is_empty() {
     let mut world = World::new();
     let entity = world.spawn_object(SpawnObject::new("empty")).unwrap();

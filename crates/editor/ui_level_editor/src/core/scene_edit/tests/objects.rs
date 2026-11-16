@@ -394,3 +394,32 @@ fn the_rigid_frame_prop_makes_a_frame_and_copies_keep_it() {
         "the copy is untouched"
     );
 }
+
+#[test]
+fn hierarchy_watch_ignores_transforms_and_tells_selection_from_structure() {
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let a = objects::add_folder(world, "a", None);
+    let b = objects::add_folder(world, "b", None);
+    let mut watch = objects::HierarchyWatch::new(world);
+    assert_eq!(watch.poll(world), objects::HierarchyChanges::default());
+
+    // A gizmo drag only writes transforms: nothing the tree shows.
+    assert!(objects::set_transform(world, &a, Some([3.0, 0.0, 0.0]), None, None));
+    assert_eq!(watch.poll(world), objects::HierarchyChanges::default());
+
+    // Selecting changes the flags, not the rows.
+    objects::select_objects(world, &[a.clone(), b.clone()]);
+    let changes = watch.poll(world);
+    assert!(changes.selection && !changes.structure, "{changes:?}");
+    assert_eq!(objects::selected_object_ids(world), vec![a.clone(), b.clone()]);
+
+    // A rename and a reparent are structure.
+    assert!(objects::set_name(world, &a, "renamed".into()));
+    assert!(watch.poll(world).structure);
+    world
+        .reparent(world.entity_for(&b).unwrap(), world.entity_for(&a))
+        .unwrap();
+    assert!(watch.poll(world).structure);
+    assert_eq!(watch.poll(world), objects::HierarchyChanges::default());
+}

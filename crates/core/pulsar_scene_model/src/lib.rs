@@ -30,8 +30,8 @@ pub use attachments::{
     ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
 };
 pub use components::{
-    Name, ObjectFrame, ObjectHidden, ObjectParent, Parent, RenderProps, Selected, SiblingIndex,
-    StableId, Transform, TransformRow, Visibility,
+    Name, ObjectFrame, ObjectHidden, ObjectParent, ObjectSelected, Parent, RenderProps, Selected,
+    SiblingIndex, StableId, Transform, TransformRow, Visibility,
 };
 pub use frames::{RigidFrame, SpaceSlot};
 pub use instance::{ComponentInstance, EditorObjectId};

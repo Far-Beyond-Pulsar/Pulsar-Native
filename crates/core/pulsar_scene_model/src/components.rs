@@ -194,6 +194,50 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
     }
 }
 
+/// [`Selected`]'s GPU row: 1 while the object is selected. Keyed by the
+/// object entity, so an object never selected (a zero row) is not. Derived
+/// from the marker on every insert, removal and replay, like
+/// [`ObjectHidden`]: a selection change writes the rows of the objects whose
+/// selection changed, nothing else. The renderer's selection outline reads
+/// it (Helio's `helio_frame_api::selection::OBJECT_SELECTED` contract).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed, buffer = "object_selected")]
+#[repr(C)]
+pub struct ObjectSelected {
+    #[gpu]
+    pub selected: u32,
+}
+
+fn object_selected_dispatch(
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    row: u32,
+    _data: *const (),
+    is_new_insert: bool,
+) {
+    // Reached only through `Selected`'s own `ComponentId`: the marker is
+    // present, whatever its pick order.
+    let row_value = ObjectSelected { selected: 1 };
+    pulsar_scenedb::gpu::write_derived_row(mirror, row, &row_value, is_new_insert);
+}
+
+fn object_selected_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+    pulsar_scenedb::gpu::clear_derived_row::<ObjectSelected>(mirror, row);
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuMirrorRegistration {
+        component_id: pulsar_scenedb::component_id::<Selected>,
+        dispatch: object_selected_dispatch,
+    }
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuClearRegistration {
+        component_id: pulsar_scenedb::component_id::<Selected>,
+        clear: object_selected_clear,
+    }
+}
+
 /// [`Parent`]'s GPU row: the parent's entity index plus one, zero for an
 /// object with no parent. Keyed by the child entity. The renderer composes
 /// each object's world transform from its parent chain on the GPU
