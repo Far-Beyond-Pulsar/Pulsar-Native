@@ -3810,6 +3810,147 @@ fn portal_passes_are_scheduled_only_with_linked_portals() {
     }
 }
 
+/// What a portal shows moves with the camera under TSR: its motion vectors
+/// carry the chain's map (this frame's and last frame's), so content seen
+/// through an opening reprojects like the same content seen directly. The
+/// camera strafes and approaches a step a frame; where the content shows, the
+/// last moving frame is compared with the frame settled at the same camera,
+/// through the portal and, as the control, with the content placed directly
+/// where the portal shows it (a smear through the portal would trail it
+/// beyond what TSR lags behind direct motion).
+#[test]
+fn portal_content_moves_without_a_tsr_smear() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    // TSR on, as the editor's Project Settings write it.
+    let rendering = {
+        use engine_state::settings::{global_config, NS_PROJECT};
+        global_config()
+            .owner_handle(NS_PROJECT, "rendering")
+            .or_else(|| {
+                engine_state::register_default_settings();
+                global_config().owner_handle(NS_PROJECT, "rendering")
+            })
+            .expect("the project's rendering settings are registered")
+    };
+    rendering
+        .set("tsr_quality", "quality")
+        .expect("tsr_quality is a project setting");
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let start = harness.camera;
+    let step = (radius * 4.0).max(3.0) as f64 * 0.02;
+    let at = |i: usize| EditorCameraState {
+        position: [
+            start.position[0] + step * i as f64,
+            start.position[1],
+            start.position[2] - step * i as f64,
+        ],
+        ..start
+    };
+    let view = harness.texture.create_view(&Default::default());
+    let render = |renderer: &mut HelioRenderer, camera: EditorCameraState| {
+        renderer.set_editor_camera_state(camera);
+        renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
+        renderer.render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT);
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+    };
+    const STEPS: usize = 12;
+    let settled_at = |state: &LevelEditorState, camera: EditorCameraState| {
+        let mut renderer = harness.renderer(state);
+        for _ in 0..settle_frames().max(8) {
+            render(&mut renderer, camera);
+        }
+        harness.read_texture(&harness.texture, wgpu::TextureAspect::All)
+    };
+    let moved_in = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        for _ in 0..settle_frames().max(8) {
+            render(&mut renderer, at(0));
+        }
+        for i in 1..=STEPS {
+            render(&mut renderer, at(i));
+        }
+        harness.read_texture(&harness.texture, wgpu::TextureAspect::All)
+    };
+    let differs = |a: &[u8], b: &[u8]| {
+        (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD
+    };
+    // The share of the pixels showing the content (`with` against
+    // `without`, settled at the last camera) that the moving frame misses.
+    let lag = |name: &str, with: &LevelEditorState, without: &LevelEditorState| {
+        let moved = moved_in(with);
+        let settled = settled_at(with, at(STEPS));
+        let empty = settled_at(without, at(STEPS));
+        let region: Vec<bool> = settled
+            .chunks_exact(4)
+            .zip(empty.chunks_exact(4))
+            .map(|(a, b)| differs(a, b))
+            .collect();
+        let shown = region.iter().filter(|r| **r).count();
+        let missed = moved
+            .chunks_exact(4)
+            .zip(settled.chunks_exact(4))
+            .zip(&region)
+            .filter(|((a, b), r)| **r && differs(a, b))
+            .count();
+        if let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") {
+            for (label, pixels) in [("moved", &moved), ("settled", &settled), ("empty", &empty)] {
+                let path = std::path::Path::new(&dir).join(format!("tsr_{name}_{label}.png"));
+                image::save_buffer(&path, pixels, SIZE, SIZE, image::ColorType::Rgba8)
+                    .expect("write dump");
+            }
+        }
+        (missed, shown)
+    };
+    // The far portal kilometres away, a mesh on each side of it: they show
+    // only through the near one.
+    let far_side = |near_id: i32, far_id: i32| {
+        let mut state = portal_scene_at(radius, near_id, far_id, false, 5000.0);
+        for z in [radius * 2.0, -radius * 2.0] {
+            let mesh = drop_mesh(&mut state);
+            move_to(&mut state, &mesh, [5000.0, 0.0, z]);
+        }
+        state
+    };
+    let through = lag("through", &far_side(5, 5), &far_side(1, 2));
+    // The control: what the portal shows, seen directly where it shows it
+    // (the mesh beyond the opening; the one on the camera's side of the far
+    // portal maps in front of the near one, which clips it).
+    let direct = {
+        let mut state = LevelEditorState::new();
+        let mesh = drop_mesh(&mut state);
+        move_to(&mut state, &mesh, [0.0, 0.0, -radius * 2.0]);
+        lag("direct", &state, &LevelEditorState::new())
+    };
+    rendering
+        .set("tsr_quality", "auto")
+        .expect("tsr_quality is a project setting");
+    let share = |(missed, shown): (usize, usize)| missed as f64 / shown.max(1) as f64;
+    println!(
+        "PORTAL TSR motion: through the portal {} of {} pixels differ from the settled frame ({:.3}); directly {} of {} ({:.3})",
+        through.0,
+        through.1,
+        share(through),
+        direct.0,
+        direct.1,
+        share(direct)
+    );
+    assert!(through.1 > 100, "the portal shows nothing: {through:?}");
+    assert!(direct.1 > 100, "the control shows nothing: {direct:?}");
+    assert!(
+        share(through) <= share(direct) * 1.5 + 0.02,
+        "portal content lags its direct motion under TSR (a smear): {through:?} against {direct:?}"
+    );
+}
+
 /// An object with one typed component at `position`, by the editor's command.
 fn add_with_component(
     state: &mut LevelEditorState,
