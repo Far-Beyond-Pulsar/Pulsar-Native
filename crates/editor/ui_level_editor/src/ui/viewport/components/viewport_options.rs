@@ -4,7 +4,6 @@
 
 use std::sync::Arc;
 
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use rust_i18n::t;
 use ui::{
@@ -170,7 +169,7 @@ pub fn render_viewport_options<V>(
     view: &LevelEditorState,
     view_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     snap_panels: &[Entity<SnapPanel>; 3],
-    is_dragging: bool,
+    panel: ui::panel_canvas::PanelRef,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
@@ -189,13 +188,7 @@ where
             .into_any_element();
     }
 
-    let drag_handle = create_drag_handle(
-        view_arc.clone(),
-        |s: &mut LevelEditorState, pos| s.overlays.positions.viewport_drag_start = pos,
-        |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_viewport = dragging,
-        HandleSide::Left,
-        cx,
-    );
+    let drag_handle = create_drag_handle(panel, HandleSide::Left, cx);
 
     let toolbar_content = h_flex()
         .gap_2()
@@ -220,7 +213,6 @@ where
 
     h_flex()
         .gap_0()
-        .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
         .child(toolbar_with_drag_handle(
             drag_handle,
             toolbar_content,

@@ -8,7 +8,6 @@ pub(super) fn handle_mouse_move(
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
     state_arc_move: Arc<parking_lot::RwLock<LevelEditorState>>,
-    view_state_move: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_move: Arc<Mutex<GpuRenderer>>,
     pointer_events_move: Option<
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
@@ -45,44 +44,6 @@ pub(super) fn handle_mouse_move(
         input_state_clone.mouse_x.store(x, Ordering::Relaxed);
         input_state_clone.mouse_y.store(y, Ordering::Relaxed);
     }
-
-    // Handle overlay dragging (overlay positions are per viewport)
-    let mut state = view_state_move.write();
-    if state.overlays.positions.is_dragging_camera {
-        if let Some((start_x, start_y)) = state.overlays.positions.camera_drag_start {
-            let current_x: f32 = event.position.x.into();
-            let current_y: f32 = event.position.y.into();
-            let delta_x = current_x - start_x;
-            let delta_y = current_y - start_y;
-
-            // Camera overlay positioned from right edge with .right(px(value))
-            // When dragging right, delta_x is positive, but right value should decrease
-            state.overlays.positions.camera.0 =
-                (state.overlays.positions.camera.0 - delta_x).max(0.0);
-            state.overlays.positions.camera.1 =
-                (state.overlays.positions.camera.1 + delta_y).max(0.0);
-            state.overlays.positions.camera_drag_start = Some((current_x, current_y));
-        }
-        return;
-    }
-
-    if state.overlays.positions.is_dragging_viewport {
-        if let Some((start_x, start_y)) = state.overlays.positions.viewport_drag_start {
-            let current_x: f32 = event.position.x.into();
-            let current_y: f32 = event.position.y.into();
-            let delta_x = current_x - start_x;
-            let delta_y = current_y - start_y;
-
-            // Viewport overlay is positioned from left edge, normal drag
-            state.overlays.positions.viewport.0 =
-                (state.overlays.positions.viewport.0 + delta_x).max(0.0);
-            state.overlays.positions.viewport.1 =
-                (state.overlays.positions.viewport.1 + delta_y).max(0.0);
-            state.overlays.positions.viewport_drag_start = Some((current_x, current_y));
-        }
-        return;
-    }
-    drop(state);
 
     // Update Helio mouse input
     let bounds_opt = element_bounds_move.borrow();
@@ -573,16 +534,8 @@ pub(super) fn handle_left_mouse_up(
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
     >,
     state_arc_up: Arc<parking_lot::RwLock<LevelEditorState>>,
-    view_state_up: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_up: Arc<Mutex<GpuRenderer>>,
 ) {
-    let mut state = view_state_up.write();
-    state.overlays.positions.is_dragging_camera = false;
-    state.overlays.positions.is_dragging_viewport = false;
-    state.overlays.positions.camera_drag_start = None;
-    state.overlays.positions.viewport_drag_start = None;
-    drop(state);
-
     // Close the active tool-mode gesture before the release
     // reaches the renderer. No ray is cast for `Up`.
     let consumed = dispatch_tool_pointer(

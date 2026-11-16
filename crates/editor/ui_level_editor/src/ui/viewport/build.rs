@@ -291,7 +291,6 @@ impl ViewportPanel {
                 let right_mouse_down_position = right_mouse_down_position.clone();
                 let right_mouse_dragged = right_mouse_dragged.clone();
                 let state_arc_move = state_arc.clone();
-                let view_state_move = view_state.clone();
                 let pointer_events_move = snap.pointer_events.clone();
 
                 move |event: &gpui::MouseMoveEvent, _window, _cx| {
@@ -312,7 +311,6 @@ impl ViewportPanel {
                         mouse_right_captured.clone(),
                         mouse_middle_captured.clone(),
                         state_arc_move.clone(),
-                        view_state_move.clone(),
                         gpu_engine_move.clone(),
                         pointer_events_move.clone(),
                         element_bounds_move.clone(),
@@ -515,7 +513,6 @@ impl ViewportPanel {
             .on_mouse_up(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
-                let view_state_up = view_state.clone();
                 let gpu_engine_up = gpu_engine.clone();
 
                 move |event: &gpui::MouseUpEvent,
@@ -525,7 +522,6 @@ impl ViewportPanel {
                         event,
                         pointer_events.clone(),
                         state_arc_up.clone(),
-                        view_state_up.clone(),
                         gpu_engine_up.clone(),
                     );
                 }
@@ -533,14 +529,12 @@ impl ViewportPanel {
             .on_mouse_up_out(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state = state_arc.clone();
-                let view_state = view_state.clone();
                 let engine = gpu_engine.clone();
                 move |event, _window, _cx| {
                     super::build_handlers::handle_left_mouse_up(
                         event,
                         pointer_events.clone(),
                         state.clone(),
-                        view_state.clone(),
                         engine.clone(),
                     );
                 }

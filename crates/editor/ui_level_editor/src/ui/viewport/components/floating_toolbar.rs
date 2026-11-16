@@ -1,12 +1,10 @@
-//! Floating toolbar component with drag handle.
+//! Floating toolbar with a drag handle.
 //!
-//! This component provides a reusable floating toolbar that can be dragged
-//! and positioned anywhere in the viewport. It includes a drag handle with
-//! grip dots and supports custom content through children.
-
-use std::sync::Arc;
+//! A toolbar card for the viewport's Panel Canvas: a grip strip on one side
+//! (the canvas's shared [`DragHandle`]) and the toolbar's content.
 
 use gpui::{prelude::FluentBuilder as _, *};
+use ui::panel_canvas::{DragHandle, PanelRef};
 use ui::{h_flex, ActiveTheme};
 
 #[derive(Clone, Copy)]
@@ -15,30 +13,16 @@ pub enum HandleSide {
     Right,
 }
 
-/// Create a drag handle with mouse event handlers.
-///
-/// # Arguments
-/// * `state_arc` - The state to update on drag
-/// * `drag_start_field` - Function to set the drag start coordinates
-/// * `is_dragging_field` - Function to set the dragging flag
-/// * `cx` - The window context
-pub fn create_drag_handle<V, S>(
-    state_arc: Arc<parking_lot::RwLock<S>>,
-    drag_start_field: impl Fn(&mut S, Option<(f32, f32)>) + Clone + 'static,
-    is_dragging_field: impl Fn(&mut S, bool) + Clone + 'static,
-    side: HandleSide,
-    cx: &Context<V>,
-) -> impl IntoElement
+/// The grip strip that moves the toolbar's card on its canvas.
+pub fn create_drag_handle<V>(panel: PanelRef, side: HandleSide, cx: &Context<V>) -> impl IntoElement
 where
     V: Render + 'static,
-    S: 'static,
 {
-    div()
-        .relative()
+    let background = cx.theme().background;
+    DragHandle::new(panel)
         .w(px(12.0))
         .h_full()
-        .flex_shrink_0()
-        .bg(cx.theme().background.opacity(0.9))
+        .bg(background.opacity(0.9))
         .when(matches!(side, HandleSide::Left), |el| {
             el.rounded_l(cx.theme().radius)
         })
@@ -47,44 +31,10 @@ where
         })
         .border_1()
         .border_color(cx.theme().border)
-        .cursor(CursorStyle::PointingHand)
-        .hover(|style| style.bg(cx.theme().background))
-        .on_mouse_down(MouseButton::Left, {
-            let state = state_arc.clone();
-            let drag_start = drag_start_field.clone();
-            let is_dragging = is_dragging_field.clone();
-            move |event: &MouseDownEvent, _window, _cx| {
-                let mut s = state.write();
-                let x: f32 = event.position.x.into();
-                let y: f32 = event.position.y.into();
-                drag_start(&mut s, Some((x, y)));
-                is_dragging(&mut s, true);
-            }
-        })
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .right_0()
-                .bottom_0()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .gap_0p5()
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white()))
-                .child(div().w(px(2.0)).h(px(2.0)).rounded_full().bg(white())),
-        )
+        .hover(move |style| style.bg(background))
 }
 
 /// Create a toolbar with drag handle and content.
-///
-/// # Arguments
-/// * `drag_handle_content` - The drag handle element
-/// * `toolbar_content` - The main toolbar content
-/// * `cx` - The window context
 pub fn toolbar_with_drag_handle<V>(
     drag_handle_content: impl IntoElement,
     toolbar_content: impl IntoElement,
@@ -119,4 +69,20 @@ where
         HandleSide::Left => toolbar.child(drag_handle_content).child(content),
         HandleSide::Right => toolbar.child(content).child(drag_handle_content),
     }
+}
+
+/// A small grip in a card's top-right corner, for overlays whose content is
+/// a view of its own (no room for a handle in it).
+pub fn corner_grip<V>(panel: PanelRef, cx: &Context<V>) -> impl IntoElement
+where
+    V: 'static,
+{
+    DragHandle::new(panel)
+        .absolute()
+        .top(px(4.0))
+        .right(px(4.0))
+        .size(px(14.0))
+        .rounded(px(3.0))
+        .bg(cx.theme().background.opacity(0.6))
+        .hover(|style| style.bg(cx.theme().secondary))
 }

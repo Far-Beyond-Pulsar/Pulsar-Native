@@ -1,43 +1,13 @@
-//! Overlay Domain — viewport overlay visibility, collapse state, positions, and
+//! Overlay Domain — viewport overlay visibility, collapse state and
 //! performance metric toggles.
 //!
 //! This domain collects all the "chrome" state that controls which floating
-//! panels are visible in the viewport, where they are positioned, and which
+//! panels are visible in the viewport and which
 //! performance graphs are active.
 //!
 //! Separating this from [`EditorDomain`](super::editor::EditorDomain) keeps
 //! rendering preferences (grid, wireframe, lighting) distinct from overlay
 //! chrome, making both easier to reason about.
-
-/// Viewport overlay positions and drag state.
-#[derive(Clone, Debug)]
-pub struct OverlayPositions {
-    /// Camera selector position relative to bottom-left corner.
-    pub camera: (f32, f32),
-    /// Viewport options position relative to top-left corner.
-    pub viewport: (f32, f32),
-    /// Whether the camera selector is being dragged.
-    pub is_dragging_camera: bool,
-    /// Whether the viewport options is being dragged.
-    pub is_dragging_viewport: bool,
-    /// Mouse position when the camera overlay drag started.
-    pub camera_drag_start: Option<(f32, f32)>,
-    /// Mouse position when the viewport overlay drag started.
-    pub viewport_drag_start: Option<(f32, f32)>,
-}
-
-impl Default for OverlayPositions {
-    fn default() -> Self {
-        Self {
-            camera: (16.0, 16.0),
-            viewport: (16.0, 16.0),
-            is_dragging_camera: false,
-            is_dragging_viewport: false,
-            camera_drag_start: None,
-            viewport_drag_start: None,
-        }
-    }
-}
 
 // ── Overlay collapse state ────────────────────────────────────────────────
 
@@ -117,15 +87,12 @@ impl Default for OverlayState {
 pub struct OverlayDomain {
     /// Overlay toggle and collapse states.
     pub state: OverlayState,
-    /// Overlay pixel positions and drag state.
-    pub positions: OverlayPositions,
 }
 
 impl Default for OverlayDomain {
     fn default() -> Self {
         Self {
             state: OverlayState::default(),
-            positions: OverlayPositions::default(),
         }
     }
 }

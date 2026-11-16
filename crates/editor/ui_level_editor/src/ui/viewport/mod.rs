@@ -231,6 +231,10 @@ pub struct ViewportPanel {
     /// Editor diagnostics overlay, alive only while it is shown.
     nerds_overlay: RefCell<Option<Entity<NerdsOverlay>>>,
 
+    /// Where this viewport's movable overlays are: the Panel Canvas's slots,
+    /// the cards' placements and sizes, and the drag or resize in flight.
+    overlay_canvas: Entity<ui::panel_canvas::PanelCanvasState>,
+
     /// Lock-free input state
     input_state: Arc<InputState>,
 
@@ -316,6 +320,11 @@ impl ViewportPanel {
             render_stats_overlay: RefCell::new(None),
             warnings_overlay: RefCell::new(None),
             nerds_overlay: RefCell::new(None),
+            overlay_canvas: cx.new(|_| {
+                ui::panel_canvas::PanelCanvasState::new()
+                    .with_groups(overlays::overlay_groups())
+                    .with_slots(overlays::overlay_slots())
+            }),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
             input_thread_stop: Arc::new(AtomicBool::new(false)),

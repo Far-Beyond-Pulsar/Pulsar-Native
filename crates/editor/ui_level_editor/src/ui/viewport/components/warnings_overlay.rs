@@ -1,4 +1,8 @@
 //! Virtualized viewport warnings, refreshed from the renderer's published diagnostics.
+//!
+//! The card is an RnD panel on the viewport's Panel Canvas: its header is the
+//! drag handle, and the canvas's resize handles size it (the canvas tracks a
+//! resize at the window, so it keeps going when the pointer leaves the card).
 
 use std::{
     rc::Rc,
@@ -9,6 +13,7 @@ use std::{
 use gpui::*;
 use ui::{
     ActiveTheme, h_flex,
+    panel_canvas::{DragHandle, HandleEdge, PanelRef, RndPanel},
     scroll::{Scrollbar, ScrollbarState},
     v_flex,
 };
@@ -18,32 +23,25 @@ use crate::ui::viewport::performance::RendererStatsSource;
 type GpuEngine = Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>;
 
 const REFRESH: Duration = Duration::from_millis(250);
-const MIN_WIDTH: f32 = 300.0;
-const MAX_WIDTH: f32 = 760.0;
-const MIN_HEIGHT: f32 = 150.0;
-const MAX_HEIGHT: f32 = 560.0;
 
 pub struct WarningsOverlay {
     warnings: Rc<[String]>,
     scroll: UniformListScrollHandle,
     scrollbar: ScrollbarState,
     source: RendererStatsSource,
-    width: f32,
-    height: f32,
-    resize_start: Option<(Point<Pixels>, f32, f32)>,
+    /// The card this overlay fills; its header moves it.
+    panel: PanelRef,
     _tick: Task<()>,
 }
 
 impl WarningsOverlay {
-    pub fn new(gpu_engine: GpuEngine, cx: &mut Context<Self>) -> Self {
+    pub fn new(gpu_engine: GpuEngine, panel: PanelRef, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             warnings: Rc::from([]),
             scroll: UniformListScrollHandle::default(),
             scrollbar: ScrollbarState::default(),
             source: RendererStatsSource::new(gpu_engine),
-            width: 410.0,
-            height: 250.0,
-            resize_start: None,
+            panel,
             _tick: Task::ready(()),
         };
         this.poll();
@@ -78,33 +76,15 @@ impl WarningsOverlay {
         self.warnings = next;
         true
     }
-
-    fn begin_resize(&mut self, event: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-        self.resize_start = Some((event.position, self.width, self.height));
-        cx.stop_propagation();
-    }
-
-    fn resize(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some((origin, width, height)) = self.resize_start {
-            self.width =
-                (width + (event.position.x - origin.x) / px(1.0)).clamp(MIN_WIDTH, MAX_WIDTH);
-            self.height =
-                (height + (event.position.y - origin.y) / px(1.0)).clamp(MIN_HEIGHT, MAX_HEIGHT);
-            cx.notify();
-        }
-    }
-
-    fn end_resize(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
-        self.resize_start = None;
-        cx.notify();
-    }
 }
 
+/// The warnings card: a resizable RnD panel in the viewport's `left` slot.
 pub fn render_warnings_overlay<V>(
     gpu_engine: &GpuEngine,
+    panel: PanelRef,
     slot: &std::cell::RefCell<Option<Entity<WarningsOverlay>>>,
     cx: &mut Context<V>,
-) -> AnyElement
+) -> RndPanel
 where
     V: 'static,
 {
@@ -112,16 +92,23 @@ where
         .borrow_mut()
         .get_or_insert_with(|| {
             let engine = gpu_engine.clone();
-            cx.new(|cx| WarningsOverlay::new(engine, cx))
+            let panel = panel.clone();
+            cx.new(|cx| WarningsOverlay::new(engine, panel, cx))
         })
         .clone();
-    div()
-        .child(
-            AnyView::from(overlay)
-                .cached_auto_height(StyleRefinement::default().flex_shrink_0())
-                .isolated(),
-        )
-        .into_any_element()
+    let theme = cx.theme();
+    RndPanel::new(panel)
+        .default_slot("left")
+        .default_size(size(px(410.0), px(250.0)))
+        .min_size(size(px(300.0), px(150.0)))
+        .max_size(size(px(760.0), px(560.0)))
+        .resizable([HandleEdge::Right, HandleEdge::Bottom, HandleEdge::BottomRight])
+        .bg(theme.background.opacity(0.88))
+        .rounded_lg()
+        .border_1()
+        .border_color(theme.border.opacity(0.5))
+        .shadow_lg()
+        .child(AnyView::from(overlay).cached(StyleRefinement::default().size_full()).isolated())
 }
 
 impl Render for WarningsOverlay {
@@ -134,27 +121,19 @@ impl Render for WarningsOverlay {
         let warnings = self.warnings.clone();
         let empty = warnings.is_empty();
         v_flex()
-            .relative()
-            .w(px(self.width))
-            .h(px(self.height))
+            .size_full()
             .p_3()
             .gap_2()
-            .bg(theme.background.opacity(0.88))
-            .rounded_lg()
-            .border_1()
-            .border_color(border.opacity(0.5))
-            .shadow_lg()
-            .on_mouse_move(cx.listener(Self::resize))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::end_resize))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::end_resize))
-            .child(h_flex().w_full().justify_between()
-                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(foreground).child("Warnings"))
+            .child(DragHandle::new(self.panel.clone()).no_grip().w_full().justify_between()
+                .child(h_flex().gap_2().items_center()
+                    .child(div().flex().flex_col().gap(px(2.0)).children((0..3).map(|_| div().w(px(10.0)).h(px(1.5)).bg(muted))))
+                    .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(foreground).child("Warnings")))
                 .child(div().text_xs().text_color(if empty { muted } else { warning_color }).child(format!("{}", warnings.len()))))
             .child(div().w_full().h(px(1.0)).bg(border))
             .child(if empty {
                 div().flex_1().text_xs().text_color(muted).child("No active renderer warnings").into_any_element()
             } else {
-                div().relative().flex_1().w_full().overflow_hidden().occlude()
+                div().relative().flex_1().min_h_0().w_full().overflow_hidden().occlude()
                     .child(uniform_list("viewport-warnings", warnings.len(), move |range, _, _| {
                         range.filter_map(|index| warnings.get(index)).map(|warning| {
                             div().w_full().px_2().py_1().text_xs().text_color(foreground)
@@ -166,9 +145,5 @@ impl Render for WarningsOverlay {
             })
             .child(div().w_full().text_xs().text_color(muted)
                 .child("For lighting overloads, select Lighting: Tile Light Count in the viewport view-mode menu."))
-            .child(div().absolute().right_1().bottom_1().w(px(14.0)).h(px(14.0))
-                .cursor(CursorStyle::ResizeUpRightDownLeft)
-                .on_mouse_down(MouseButton::Left, cx.listener(Self::begin_resize))
-                .child(div().absolute().right_1().bottom_1().w(px(8.0)).h(px(8.0)).border_r_2().border_b_2().border_color(muted)))
     }
 }
