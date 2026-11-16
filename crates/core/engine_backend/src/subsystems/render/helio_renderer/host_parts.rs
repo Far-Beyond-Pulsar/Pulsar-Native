@@ -46,6 +46,13 @@ pub trait RenderHostPart: Any + Send {
     /// Once a frame, before the frame reads the scene.
     fn prepare_frame(&mut self, _scene: &SharedScene) {}
 
+    /// Once a frame, after the scene is flushed to the GPU and before the
+    /// frame renders: what the part publishes from the uploaded scene for
+    /// the frame's passes (`Renderer::set_scene_payload`), such as the
+    /// meshes' ray-traced scene, whose acceleration structures read the
+    /// mirrored geometry.
+    fn publish_frame(&mut self, _scene: &SharedScene, _renderer: &mut helio::Renderer) {}
+
     /// Whether `world` holds content of the part's kind the scene's ground
     /// knows nothing about, so a camera keeps its own near plane even where
     /// the ground certifies a farther one (authored meshes near a voxel

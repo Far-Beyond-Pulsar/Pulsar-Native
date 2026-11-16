@@ -36,6 +36,14 @@ pub fn save_pending_changes(
         }
     }
     screen.has_pending_changes = !errors.is_empty();
+    if errors.is_empty() && screen.restart_required {
+        screen.restart_required = false;
+        window.push_notification(
+            Notification::info("Restart the editor to apply the device settings you changed.")
+                .title("Restart required"),
+            cx,
+        );
+    }
     if !errors.is_empty() {
         window.push_notification(
             Notification::error(errors.join("\n")).title("Settings were not saved"),

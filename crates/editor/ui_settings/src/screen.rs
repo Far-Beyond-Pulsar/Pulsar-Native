@@ -23,6 +23,9 @@ pub struct ModernSettingsScreen {
     pub(crate) size: ui::Size,
     pub(crate) project_path: Option<PathBuf>,
     pub(crate) has_pending_changes: bool,
+    /// A changed setting applies only after the editor restarts
+    /// (`SettingInfo::requires_restart`).
+    pub(crate) restart_required: bool,
 }
 
 impl ModernSettingsScreen {
@@ -34,6 +37,7 @@ impl ModernSettingsScreen {
             size: ui::Size::default(),
             project_path,
             has_pending_changes: false,
+            restart_required: false,
         }
     }
 
@@ -169,12 +173,25 @@ impl ModernSettingsScreen {
                 ]))
         };
 
-        let editor_groups = config::groups_for_namespace(NS_EDITOR, mark_dirty.clone());
+        let mark_restart: Arc<dyn Fn(&mut App) + Send + Sync> = {
+            let view = view.clone();
+            Arc::new(move |cx: &mut App| {
+                view.update(cx, |screen: &mut ModernSettingsScreen, cx| {
+                    screen.has_pending_changes = true;
+                    screen.restart_required = true;
+                    cx.notify();
+                });
+            })
+        };
+
+        let editor_groups =
+            config::groups_for_namespace(NS_EDITOR, mark_dirty.clone(), mark_restart.clone());
         let editor_page = SettingPage::new("Editor")
             .icon(Icon::new(IconName::Code))
             .groups(editor_groups);
 
-        let project_groups = config::groups_for_namespace(NS_PROJECT, mark_dirty.clone());
+        let project_groups =
+            config::groups_for_namespace(NS_PROJECT, mark_dirty.clone(), mark_restart.clone());
         let project_page = SettingPage::new("Project")
             .icon(Icon::new(IconName::Folder))
             .groups(project_groups);
@@ -192,11 +209,12 @@ impl Focusable for ModernSettingsScreen {
 impl Render for ModernSettingsScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let has_pending = self.has_pending_changes;
+        let restart_required = self.restart_required;
 
         v_flex()
             .size_full()
             .when(has_pending, |this| {
-                this.child(crate::components::render_save_bar(cx))
+                this.child(crate::components::render_save_bar(restart_required, cx))
             })
             .child(
                 div().flex_1().min_h_0().size_full().child(
