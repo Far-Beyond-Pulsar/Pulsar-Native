@@ -490,10 +490,6 @@ pulsar_plugins::registration!(SpaceProducerRegistration);
 
 /// One renderer's space producer ([`SpaceProducerRegistration`]).
 pub trait SpaceProducer: Send + Sync {
-    /// The coming frame's camera (view-projection and position, relative to
-    /// the frame's origin), so it can skip what the camera cannot see.
-    fn set_view(&mut self, _view_projection: glam::Mat4, _position: glam::Vec3) {}
-
     /// Take this frame's slots from `table` for `world`, relative to `origin`
     /// (the frame's world origin), and publish what its passes read about the
     /// frame into `payloads` (by their payload contracts' keys).
@@ -541,14 +537,6 @@ impl SpaceSync {
             .iter()
             .filter_map(|producer| producer.derivation(device))
             .collect()
-    }
-
-    /// The camera of the coming frame (view-projection and position, relative to
-    /// the origin given to `sync`), so producers can skip what it cannot see.
-    pub fn set_view(&mut self, view_projection: glam::Mat4, position: glam::Vec3) {
-        for producer in &mut self.producers {
-            producer.set_view(view_projection, position);
-        }
     }
 
     /// Bring `renderer`'s table up to date with `scene`'s spaces, relative to

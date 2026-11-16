@@ -59,6 +59,17 @@ fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
     .ok()
 }
 
+/// The pipeline the editor ships (a renderer with none runs only its status
+/// screen).
+fn shipped_pipeline() -> String {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    if engine_state::get_project_path().is_none() {
+        engine_state::EngineContext::new().set_global();
+        engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    }
+    pipelines::migrate_pipeline_id(pipelines::LEGACY_DEFAULT_PIPELINE.to_string())
+}
+
 fn mesh_asset_named(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../assets/meshes/primitives")
@@ -241,6 +252,9 @@ impl Harness {
     fn renderer(&self, state: &LevelEditorState) -> HelioRenderer {
         let mut renderer = HelioRenderer::new(state.scene.shared_scene());
         renderer.set_editor_camera_state(self.camera);
+        renderer
+            .editor_mailbox()
+            .set_render_pipeline(Some(shipped_pipeline()));
         renderer
     }
 
@@ -758,4 +772,118 @@ fn virtual_geometry_debug_views_register_and_render() {
     mailbox.set_viewport_debug_mode(0);
     let lit = harness.frames(&mut renderer, 8);
     assert!(lit.difference(&lit).covered > 1000);
+}
+
+/// A portal object with Link ID `link`, `RADIUS * 3` across, at `x` turned
+/// `yaw` degrees, by the editor's commands. An opening shows its far side to
+/// eyes on its local -Z side.
+fn add_portal(state: &mut LevelEditorState, name: &str, x: f32, yaw: f32, link: i32) {
+    let id = execute_command(
+        state,
+        SceneCommand::AddObject {
+            data: SceneObjectData {
+                id: String::new(),
+                name: name.to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                props: HashMap::new(),
+                scene_path: String::new(),
+                component_instances: None,
+            },
+            parent_id: None,
+        },
+    )
+    .affected_ids[0]
+        .clone();
+    let placed = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.clone(),
+            position: Some([f64::from(x), 0.0, 0.0]),
+            rotation: Some([0.0, yaw, 0.0]),
+            scale: None,
+        },
+    );
+    assert!(placed.changed, "portal transform edit was refused");
+    assert!(
+        execute_command(
+            state,
+            SceneCommand::AddComponent {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                value: None,
+            },
+        )
+        .changed
+    );
+    for (property, value) in [
+        ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
+        ("width", Box::new(RADIUS * 3.0)),
+        ("height", Box::new(RADIUS * 3.0)),
+    ] {
+        let result = execute_command(
+            state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                component_index: 0,
+                prop_name: property.into(),
+                value,
+            },
+        );
+        assert!(result.changed, "portal {property} edit was refused");
+    }
+}
+
+fn move_to(state: &mut LevelEditorState, id: &str, position: [f32; 3]) {
+    let result = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.to_string(),
+            position: Some(position.map(f64::from)),
+            rotation: None,
+            scale: None,
+        },
+    );
+    assert!(result.changed, "transform edit was refused");
+}
+
+/// Virtual geometry shows through a portal: the portal's inline view
+/// (`helio_core::view`) runs the cluster cull and raster for its own camera,
+/// clipped at the far portal's plane. The portal used to redraw classic
+/// meshes with a program of its own, which drew no virtual geometry. The
+/// sphere sits 1 km to the side, beside the far portal and out of the
+/// camera's view; the same scene with unlinked portals shows none of it.
+#[test]
+fn virtual_geometry_shows_through_a_portal() {
+    let Some(harness) = setup() else { return };
+    let portal_scene = |link: i32| {
+        let (mut state, id) = scene(Some(VirtualGeometryComponent::default()));
+        move_to(&mut state, &id, [1000.0, 0.0, -RADIUS * 2.0]);
+        // The near one faces the camera (on +Z).
+        add_portal(&mut state, "near", 0.0, 180.0, 5);
+        add_portal(&mut state, "far", 1000.0, 0.0, link);
+        state
+    };
+    let render = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
+            &mut renderer,
+            Some(vg_settings(VirtualGeometryMode::Auto)),
+        );
+        harness.until_ready(&mut renderer)
+    };
+    let unlinked = render(&portal_scene(6));
+    let linked = render(&portal_scene(5));
+    linked.dump("portal");
+    let d = linked.difference(&unlinked);
+    println!("VG through a portal vs unlinked: {d:?}");
+    assert!(
+        d.depth_texels > 1000 && d.color_pixels > 1000,
+        "the far side's virtual geometry did not show through the portal: {d:?}"
+    );
 }

@@ -29,8 +29,8 @@ use installed_plugins::meshes_plugin::meshes_component::components::{
 };
 use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
-use serde_json::{Value, json};
-use ui_level_editor::commands::{SceneCommand, execute_command};
+use serde_json::{json, Value};
+use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::scene_edit::components;
 use ui_level_editor::scene_edit::{ObjectType, Transform};
 use ui_level_editor::{LevelEditorState, SceneObjectData};
@@ -443,8 +443,8 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
 
 /// The bright, opaque, emissive surface every acceptance mesh draws with, so
 /// it shows against the empty scene without depending on lights.
-fn emissive_surface()
--> installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
+fn emissive_surface(
+) -> installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
     installed_plugins::meshes_plugin::meshes_component::mesh_cache::ImportedSurfaceMaterial {
         base_color: [1.0, 0.5, 0.1, 1.0],
         roughness: 0.7,
@@ -3100,12 +3100,10 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
     .affected_ids[0]
         .clone();
     // The world loads the image off the write path (SceneDB#84).
-    assert!(
-        state
-            .scene
-            .world_mut()
-            .resolve_assets_blocking(std::time::Duration::from_secs(30))
-    );
+    assert!(state
+        .scene
+        .world_mut()
+        .resolve_assets_blocking(std::time::Duration::from_secs(30)));
     let frame = harness.frames(&mut renderer, || {});
     frame.dump("sprites_textured");
     assert_color(
@@ -3697,7 +3695,10 @@ fn portal_scene_at(
     far_x: f32,
 ) -> LevelEditorState {
     let mut state = LevelEditorState::new();
-    add_portal(&mut state, radius, "near", [0.0, 0.0, 0.0], near_id);
+    // An opening shows its far side to eyes on its local -Z side: turned, the
+    // near one faces the camera (on +Z).
+    let near = add_portal(&mut state, radius, "near", [0.0, 0.0, 0.0], near_id);
+    rotate_y(&mut state, &near, 180.0);
     add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], far_id);
     if content {
         add_portal_content(&mut state, radius);
@@ -3747,10 +3748,263 @@ fn linked_portals_show_the_far_side_in_the_frame() {
     };
     let unlinked = render(&portal_scene(radius, 1, 2, true));
     let linked = render(&portal_scene(radius, 5, 5, true));
+    linked.dump("portal_linked");
+    unlinked.dump("portal_unlinked");
+    linked.dump_depth_change(&unlinked, "portal_linked_depth");
     let shown = linked.difference(&unlinked);
+    println!("PORTAL linked vs unlinked: {shown:?}");
     assert!(
         shown.depth_texels > 0,
         "a linked portal showed nothing of the content beside its partner ({shown:?})"
+    );
+}
+
+/// An object with one typed component at `position`, by the editor's command.
+fn add_with_component(
+    state: &mut LevelEditorState,
+    name: &str,
+    position: [f32; 3],
+    component: ui_level_editor::commands::TypedComponent,
+) -> String {
+    let added = execute_command(
+        state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: name.to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![component],
+        },
+    );
+    let id = added.affected_ids[0].clone();
+    if position != [0.0; 3] {
+        move_to(state, &id, position);
+    }
+    id
+}
+
+/// A blue albedo decal whose box holds a mesh of `radius` at `position`.
+fn add_blue_decal(state: &mut LevelEditorState, radius: f32, position: [f32; 3]) -> String {
+    use installed_plugins::decals_plugin::decals_component::{DecalComponent, DecalLayers};
+    let decal = DecalComponent {
+        size: [radius * 3.0; 3],
+        color: [0.0, 0.2, 1.0],
+        layers: DecalLayers::Albedo,
+        ..Default::default()
+    };
+    add_with_component(
+        state,
+        "Decal",
+        position,
+        ui_level_editor::commands::TypedComponent::new(decal),
+    )
+}
+
+/// What a portal shows is drawn by every drawer of the frame in the portal's
+/// own view (`helio_core::view`): the decals of the far side show through it.
+/// The portal used to duplicate meshes only, with a program of its own; a
+/// decal there was invisible through the opening. Both frames show the far
+/// side's meshes through the linked portals; only the decals differ, and
+/// they change colour, not depth.
+#[test]
+fn a_portal_shows_the_decals_of_the_far_side() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    // The far side well out of the camera's view: only the portal shows it.
+    let far = radius * 20.0;
+    let scene = |decals: bool| {
+        let mut state = portal_scene_at(radius, 5, 5, false, far);
+        for z in [radius * 2.0, -radius * 2.0] {
+            let mesh = drop_matte_mesh(&mut state);
+            move_to(&mut state, &mesh, [far, 0.0, z]);
+            if decals {
+                add_blue_decal(&mut state, radius, [far, 0.0, z]);
+            }
+        }
+        add_light(
+            &mut state,
+            [far, radius * 1.5, 0.0],
+            installed_plugins::lights_plugin::lights_component::LightType::Point,
+            BRIGHT,
+        );
+        state
+    };
+    let render = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        harness.frames(&mut renderer, || {})
+    };
+    let without = render(&scene(false));
+    let with = render(&scene(true));
+    with.dump("portal_decals");
+    let change = with.difference(&without);
+    println!("PORTAL DECALS vs without: {change:?}");
+    assert!(
+        change.color_pixels > 0,
+        "the far side's decals did not show through the portal: {change:?}"
+    );
+    assert_eq!(change.depth_texels, 0, "a decal moved geometry");
+}
+
+/// Foliage shows through a portal: the far side's meadow is placed around the
+/// portal view's own eye and drawn by the foliage drawer in that view
+/// (`helio_core::view`). The portal used to duplicate meshes only. Both
+/// frames look through the same linked portals; only the meadow beside the
+/// far one differs, and its blades are depth.
+#[test]
+fn a_portal_shows_the_foliage_of_the_far_side() {
+    use installed_plugins::foliage_plugin::foliage_component::FoliageComponent;
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    // Blades are half a metre tall: the camera stands 4 m from the portal.
+    let radius = 1.0;
+    let harness = Harness::new(device, queue, radius);
+    let settled = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        // Placement fills a bounded number of tiles a frame, in each view.
+        for _ in 0..5 {
+            harness.frames(&mut renderer, || {});
+        }
+        harness.frames(&mut renderer, || {})
+    };
+    let scene = |meadow: bool| {
+        let mut state = portal_scene_at(radius, 5, 5, false, 100.0);
+        if meadow {
+            let mut foliage = FoliageComponent::default();
+            foliage.general.enabled = true;
+            foliage.placement.layer_extent = 20.0;
+            add_with_component(
+                &mut state,
+                "meadow",
+                [100.0, 0.0, 0.0],
+                ui_level_editor::commands::TypedComponent::new(foliage),
+            );
+        }
+        state
+    };
+    let without = settled(&scene(false));
+    let with = settled(&scene(true));
+    with.dump("portal_foliage");
+    with.dump_depth_change(&without, "portal_foliage_depth");
+    let change = with.difference(&without);
+    println!("PORTAL FOLIAGE vs without: {change:?}");
+    assert!(
+        change.depth_texels > 0,
+        "the far side's foliage did not show through the portal: {change:?}"
+    );
+}
+
+/// A water surface reflects the frame as a mirrored capture view, drawn by
+/// every drawer (`helio_core::view`): a mesh high above the camera's view,
+/// and a decal on it, show in the water without changing the frame's depth.
+/// The capture used to be a pass list of the meshes' own; a decal never
+/// showed in it.
+#[test]
+fn a_water_reflection_shows_meshes_and_decals_out_of_view() {
+    use installed_plugins::water_plugin::water_component::WaterVolumeComponent;
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    // Far ahead of the camera, 18 degrees over the horizon: past the top of
+    // its view (45 degrees tall, pitched down by about 9.5), its mirror image
+    // about 21 degrees under the horizon, inside it.
+    let distance = (radius * 4.0).max(3.0);
+    let ahead = distance * 10.0;
+    let above = [
+        0.0,
+        distance / 6.0 + ahead * 18f32.to_radians().tan(),
+        distance - ahead,
+    ];
+    let scene = |mesh: bool, decal: bool| {
+        let mut state = LevelEditorState::new();
+        let mut water = WaterVolumeComponent::default();
+        water.size = [distance * 40.0, radius, distance * 40.0];
+        water.bounded = true;
+        // The surface at the rest plane the capture mirrors about
+        // (`WaterSimPass::set_ocean_rest_height`, 0 unless a host sets it):
+        // the surface draws at its owner's height.
+        add_with_component(
+            &mut state,
+            "Water",
+            [0.0; 3],
+            ui_level_editor::commands::TypedComponent::new(water),
+        );
+        add_light(
+            &mut state,
+            [0.0, above[1] + radius * 2.0, above[2] + radius * 3.0],
+            installed_plugins::lights_plugin::lights_component::LightType::Point,
+            BRIGHT,
+        );
+        if mesh {
+            let id = drop_matte_mesh(&mut state);
+            move_to(&mut state, &id, above);
+            if decal {
+                add_blue_decal(&mut state, radius, above);
+            }
+        }
+        state
+    };
+    let render = |state: &LevelEditorState| {
+        let mut renderer = harness.renderer(state);
+        harness.frames(&mut renderer, || {})
+    };
+    let empty = render(&scene(false, false));
+    let mesh = render(&scene(true, false));
+    let decal = render(&scene(true, true));
+    mesh.dump("water_reflects_mesh");
+    decal.dump("water_reflects_decal");
+    let reflected = mesh.difference(&empty);
+    println!("REFLECTED MESH vs none: {reflected:?}");
+    assert_eq!(
+        reflected.depth_texels, 0,
+        "the mesh is in the camera's view: the test sees it directly"
+    );
+    assert!(
+        reflected.color_pixels > 0,
+        "the water does not reflect the mesh above it: {reflected:?}"
+    );
+    let decorated = decal.difference(&mesh);
+    println!("REFLECTED DECAL vs without: {decorated:?}");
+    assert_eq!(decorated.depth_texels, 0, "a decal moved geometry");
+    assert!(
+        decorated.color_pixels > 0,
+        "the reflection does not show the mesh's decal: {decorated:?}"
     );
 }
 
@@ -3915,7 +4169,9 @@ fn diag_portal_lighting() {
     }
 }
 
-/// DIAGNOSTIC: GPU time by pass with no portals and with a linked pair in view.
+/// DIAGNOSTIC: GPU time with no portals and with a linked pair in view: the
+/// primary view's passes and each secondary view's (`helio_core::view`), over
+/// pipelined frames (no wait between them), unlinked and linked interleaved.
 #[test]
 #[ignore = "diagnostic: prints GPU timings"]
 fn diag_portal_cost() {
@@ -3926,30 +4182,59 @@ fn diag_portal_cost() {
     engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
     let radius = typed_mesh().bounds_local[3];
     let harness = Harness::new(device, queue, radius);
-    for (label, near, far) in [("unlinked", 1, 2), ("linked", 5, 5)] {
-        let state = portal_scene(radius, near, far, true);
-        let mut renderer = harness.renderer(&state);
-        let mut best: Option<(f32, Vec<(&'static str, f32)>)> = None;
-        for _ in 0..6 {
+    let view = harness.texture.create_view(&Default::default());
+    for round in 0..3 {
+        for (label, near, far) in [("unlinked", 1, 2), ("linked", 5, 5)] {
+            let state = portal_scene(radius, near, far, true);
+            let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
-            if let Some(t) = renderer.gpu_timings() {
-                if best.as_ref().is_none_or(|b| t.0 < b.0) {
-                    best = Some(t);
+            let (mut primary, mut views) = (Vec::new(), Vec::new());
+            for _ in 0..8 {
+                // Eight frames in flight, then their timings.
+                for _ in 0..8 {
+                    renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
+                    renderer.render_frame(
+                        &harness.device,
+                        &harness.queue,
+                        &view,
+                        SIZE,
+                        SIZE,
+                        FORMAT,
+                    );
                 }
+                harness
+                    .device
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .unwrap();
+                // The passes' own times: the graph's span (`__graph_*`)
+                // also holds the time the CPU spent recording the views.
+                if let Some((_, passes)) = renderer.gpu_timings() {
+                    primary.push(
+                        passes
+                            .iter()
+                            .filter(|(name, _)| !name.starts_with("__"))
+                            .map(|(_, ms)| ms)
+                            .sum(),
+                    );
+                }
+                views.push(
+                    renderer
+                        .view_gpu_timings()
+                        .iter()
+                        .map(|(_, _, ms)| ms)
+                        .sum::<f32>(),
+                );
             }
-        }
-        println!("DIAG {label} phases: {:?}", renderer.last_frame_phases());
-        let Some((total, mut passes)) = best else {
-            println!("DIAG {label}: no gpu timings");
-            continue;
-        };
-        passes.sort_by(|a, b| b.1.total_cmp(&a.1));
-        println!("DIAG {label}: total {total:.3} ms");
-        for (name, ms) in passes.iter().take(14) {
-            println!("DIAG   {name}: {ms:.3}");
-        }
-        for (name, ms) in passes.iter().filter(|(n, _)| n.contains("ortal")) {
-            println!("DIAG   [portal] {name}: {ms:.3}");
+            let median = |v: &mut Vec<f32>| {
+                v.sort_by(f32::total_cmp);
+                v.get(v.len() / 2).copied().unwrap_or(f32::NAN)
+            };
+            println!(
+                "DIAG round {round} {label}: primary {:.3} ms, views {:.3} ms ({} views)",
+                median(&mut primary),
+                median(&mut views),
+                renderer.view_gpu_timings().len()
+            );
         }
     }
 }
@@ -4047,16 +4332,16 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
 mod plugin_kinds {
     use installed_plugins::foliage_plugin::foliage_component::WindComponent;
     use installed_plugins::sprites_plugin::sprites_component::SpriteComponent;
-    use ui_level_editor::LevelEditorState;
     use ui_level_editor::commands::{CommandResult, TypedComponent};
     use ui_level_editor::extend::add_object;
     use ui_level_editor::scene_edit::{ObjectType, Transform};
+    use ui_level_editor::LevelEditorState;
 
     pub mod sky {
-        use installed_plugins::sky_plugin::sky_component::{AtmosphereComponent, level_atmosphere};
-        use ui_level_editor::LevelEditorState;
+        use installed_plugins::sky_plugin::sky_component::{level_atmosphere, AtmosphereComponent};
         use ui_level_editor::commands::{CommandResult, TypedComponent};
-        use ui_level_editor::extend::{LevelComponent, level_component};
+        use ui_level_editor::extend::{level_component, LevelComponent};
+        use ui_level_editor::LevelEditorState;
 
         pub const SKY_OBJECT_NAME: &str = "Sky";
 
@@ -4088,7 +4373,7 @@ mod plugin_kinds {
         name: &str,
         components: Vec<TypedComponent>,
     ) -> CommandResult {
-        use ui_level_editor::commands::{SceneCommand, execute_command};
+        use ui_level_editor::commands::{execute_command, SceneCommand};
         execute_command(
             state,
             SceneCommand::AddObjectWithComponents {

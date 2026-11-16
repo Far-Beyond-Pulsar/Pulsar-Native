@@ -55,6 +55,17 @@ impl Rng {
     }
 }
 
+/// The pipeline the editor ships (a renderer with none runs only its status
+/// screen).
+fn shipped_pipeline() -> String {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    if engine_state::get_project_path().is_none() {
+        engine_state::EngineContext::new().set_global();
+        engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    }
+    pipelines::migrate_pipeline_id(pipelines::LEGACY_DEFAULT_PIPELINE.to_string())
+}
+
 /// A UV sphere whose vertices are pushed radially by white noise (25 % of the
 /// radius): the simplifier cannot remove detail whose deviation exceeds the
 /// error threshold, so far-away instances keep thousands of tiny triangles.
@@ -508,6 +519,9 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     let Some(harness) = setup(true) else { return };
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
+    renderer
+        .editor_mailbox()
+        .set_render_pipeline(Some(shipped_pipeline()));
     renderer.set_editor_camera_state(harness.camera);
 
     // ── NonRT: the baseline, and the proof that tiles go dense ───────────
@@ -728,6 +742,9 @@ fn auto_without_ray_queries_is_the_fallback() {
     let Some(harness) = setup(false) else { return };
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
+    renderer
+        .editor_mailbox()
+        .set_render_pipeline(Some(shipped_pipeline()));
     renderer.set_editor_camera_state(harness.camera);
     installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
         &mut renderer,
@@ -767,6 +784,9 @@ fn dense_mask_is_stable_on_a_static_scene_and_the_peel_drops_nothing() {
     let Some(harness) = setup(false) else { return };
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
+    renderer
+        .editor_mailbox()
+        .set_render_pipeline(Some(shipped_pipeline()));
     renderer.set_editor_camera_state(harness.camera);
     installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
         &mut renderer,
@@ -846,6 +866,9 @@ fn tier_view_paints_resolved_dense_tiles() {
     let Some(harness) = setup(false) else { return };
     let state = scene();
     let mut renderer = HelioRenderer::new(state.scene.shared_scene());
+    renderer
+        .editor_mailbox()
+        .set_render_pipeline(Some(shipped_pipeline()));
     renderer.set_editor_camera_state(harness.camera);
     installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
         &mut renderer,
@@ -924,6 +947,9 @@ fn lod_views_and_vg_gpu_timings() {
         let Some(harness) = setup(false) else { return };
         let state = scene_of(placements);
         let mut renderer = HelioRenderer::new(state.scene.shared_scene());
+        renderer
+            .editor_mailbox()
+            .set_render_pipeline(Some(shipped_pipeline()));
         renderer.set_editor_camera_state(harness.camera);
         installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
             &mut renderer,

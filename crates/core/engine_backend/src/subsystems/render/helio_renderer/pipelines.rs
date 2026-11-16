@@ -66,11 +66,14 @@ pub fn register_preview_pipeline(
     );
     let asset = Arc::new(asset);
     let nodes = Arc::new(graph_node_registry());
+    // The graph's secondary views (a reflection, a portal) are the frame's
+    // members for the view, as the preset composes them.
+    let views = helio_presets::view_graphs_for(&asset);
     let factory: PipelineFactory = Arc::new(move || {
-        Box::new(helio_graph_asset::GraphAssetPipeline::new(
-            Arc::clone(&asset),
-            Arc::clone(&nodes),
-        )) as Box<dyn IntoGraph>
+        Box::new(
+            helio_graph_asset::GraphAssetPipeline::new(Arc::clone(&asset), Arc::clone(&nodes))
+                .with_views(Arc::clone(&views)),
+        ) as Box<dyn IntoGraph>
     });
     if let Ok(mut registry) = registry().write() {
         if let Some(old) = replacing {
@@ -546,12 +549,20 @@ pub fn refresh_project_pipelines(project_root: &std::path::Path) -> ProjectGraph
                 label,
                 description,
             },
-            Arc::new(move || {
-                Box::new(helio_graph_asset::GraphAssetPipeline::new(
-                    Arc::clone(&asset),
-                    Arc::clone(&nodes),
-                )) as Box<dyn IntoGraph>
-            }),
+            {
+                // Secondary views compose the frame's members for the view
+                // (`helio_presets::view_graphs_for`), lit as the graph is.
+                let views = helio_presets::view_graphs_for(&asset);
+                Arc::new(move || {
+                    Box::new(
+                        helio_graph_asset::GraphAssetPipeline::new(
+                            Arc::clone(&asset),
+                            Arc::clone(&nodes),
+                        )
+                        .with_views(Arc::clone(&views)),
+                    ) as Box<dyn IntoGraph>
+                })
+            },
         ));
         if changed {
             bumped.push(id.clone());
