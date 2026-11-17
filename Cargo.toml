@@ -88,6 +88,13 @@ members = [
     "plugins/vendor/splines",
     "plugins/vendor/splines/component",
     "plugins/vendor/splines/editor",
+    # Cables: authored cable definitions/connectors and its plugin root. The
+    # renderer feature is deliberately kept out until its GPU implementation
+    # is complete; the plugin is not part of the installed set yet.
+    "plugins/vendor/cables",
+    "plugins/vendor/cables/api",
+    "plugins/vendor/cables/component",
+    "plugins/vendor/cables/feature",
     # The media and placement kinds' plugins (phase B, batch 2), the same
     # way; water and foliage also have an api crate (contracts other
     # plugins read: the terrain seam and hitbox rows, the wind rows).
@@ -360,6 +367,11 @@ portals_editor                     = { path = "plugins/vendor/portals/editor" }
 splines_component                  = { path = "plugins/vendor/splines/component" }
 splines_plugin                     = { path = "plugins/vendor/splines" }
 splines_editor                     = { path = "plugins/vendor/splines/editor" }
+# Cables is being developed but is not linked by `plugins/installed` yet.
+cables_component                   = { path = "plugins/vendor/cables/component" }
+cables_plugin                      = { path = "plugins/vendor/cables" }
+cables_api                         = { package = "helio-cables-api", path = "plugins/vendor/cables/api" }
+cables_feature                    = { package = "helio-pass-cables", path = "plugins/vendor/cables/feature" }
 # The media and placement kinds' plugins, the same way.
 fog_component                      = { path = "plugins/vendor/fog/component" }
 character_plugin                   = { path = "plugins/vendor/character" }
