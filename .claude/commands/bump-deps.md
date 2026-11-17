@@ -64,6 +64,22 @@ grep -n 'pulsar_scenedb' Cargo.toml crates/renderer/helio/Cargo.toml   # every r
 (`.agents/COMPONENT_LIFECYCLE_PLAN.md`, "As built (P5b)", is the worked example: SceneDB's
 `Actor`/`ActorRegistry` removal.)
 
+## Bumping Pulsar-Profiling
+
+The `profiling` crate's one home is the public Pulsar-Profiling repository (#1662). Pulsar-Native
+has it as the submodule `crates/external/pulsar-profiling`, and the root `Cargo.toml`'s
+`[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling"]` points every copy at that
+submodule. Helio pins it by `rev =` in `crates/renderer/helio/Cargo.toml`, in its dependency and in
+its own `[patch]` (same sha in both); SceneDB pins its own rev, which the patches override.
+
+Merge order: Pulsar-Profiling PR to its main → Helio rev bump merged and re-pinned → submodule
+re-pinned and the Pulsar-Native PR merged.
+
+```bash
+grep -rn 'Pulsar-Profiling' --include=Cargo.toml Cargo.toml crates/renderer/helio/Cargo.toml
+git -C crates/external/pulsar-profiling rev-parse HEAD
+```
+
 ---
 
 ## Rules
