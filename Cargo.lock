@@ -5885,6 +5885,7 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-pass-hlfs",
  "helio-pass-materials",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
@@ -6242,6 +6243,25 @@ dependencies = [
  "helio-mats",
  "log",
  "naga",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-mesh-rays"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-presets",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -9030,6 +9050,7 @@ dependencies = [
  "helio-mesh-host",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
