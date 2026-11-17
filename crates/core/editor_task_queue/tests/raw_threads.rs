@@ -35,7 +35,6 @@ const ROOTS: &[&str] = &[
     "crates/core",
     "crates/editor",
     "crates/subsystems",
-    "crates/profiling",
     "plugins/vendor",
 ];
 

@@ -127,4 +127,4 @@ The plugin is a separate repository, so merge order matters:
 2. re-pin the submodule here (`git -C plugins/vendor/<dir> fetch origin main && git -C plugins/vendor/<dir> checkout origin/main && git add plugins/vendor/<dir>`);
 3. merge the Pulsar-Native PR.
 
-`just check-submodule-pins` fails when a pin is not on its upstream main (a pin waiting on an upstream PR is listed in `.github/submodule-pin-exceptions.txt`). A plugin that needs a Pulsar-Native API change merges the Pulsar PR first and takes the new rev through `just bump-plugin-pins <rev>`; plugins pin Pulsar crates by `rev =` and carry no SceneDB rev (`/bump-deps`).
+`just check-submodule-pins` fails when a pin is not on its upstream main (a pin waiting on an upstream PR is listed in `.github/submodule-pin-exceptions.txt`). Plugins use Pulsar crates through `workspace = true`, never a git dependency on Pulsar-Native (`just check-pulsar-native-git-deps`), and carry no SceneDB rev (`/bump-deps`).

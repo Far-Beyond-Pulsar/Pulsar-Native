@@ -74,11 +74,14 @@ pub(super) fn publish_project_path(project_path: Option<&Path>) {
         tracing::info!("Set engine project path to {:?}", path);
         // Let other editors' profilers list and record this one (cheap
         // until a viewer starts recording; once per process).
-        profiling::remote::publish_process(profiling::remote::TargetDescription {
-            kind: "editor".into(),
-            name: "Pulsar Editor".into(),
-            project: path.display().to_string(),
-        });
+        profiling::remote::publish_process(
+            profiling::remote::TargetDescription {
+                kind: "editor".into(),
+                name: "Pulsar Editor".into(),
+                project: path.display().to_string(),
+            },
+            editor_task_queue::service_spawner("profiling"),
+        );
     }
 }
 

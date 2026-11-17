@@ -13,7 +13,6 @@ crates/core/engine/src/appdata.rs | the engine's own per-user app data, config a
 crates/core/engine/src/assets.rs | RustEmbed's generated code reads the engine's own assets folder in debug builds (a module allow: derive output takes no item allow)
 crates/core/engine/src/dev_bootstrap.rs | the restart sidecar: its log in the OS temp dir, restoring the engine's own executable
 crates/core/engine/src/dxc.rs | the Windows-on-ARM DXC install in the engine's own per-user tool cache (cfg windows+aarch64)
-crates/core/engine/src/file_association.rs | OS file-association probes and the user's desktop entry, outside any project (cfg macos/linux)
 crates/core/engine/src/gpu_policy.rs | reads the OS /proc/version to detect WSL
 crates/core/engine/src/logging.rs | the engine's own per-user log folder, outside any project
 crates/core/engine/src/macos_permissions.rs | the engine's own prompt-state file in the user dir (cfg macos)
@@ -58,8 +57,6 @@ crates/editor/ui_level_editor/src/ui/panel/pie.rs | cargo's output dylib and the
 crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/mod.rs | the high-res screenshot's OS temp file and its copy to a save-dialog path
 crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/thumbnail.rs | a PNG the `png` encoder streams into an OS temp file
 crates/editor/ui_log_viewer/src/utils/gpu_info.rs | reads the Linux kernel's /proc and /sys GPU driver files (cfg linux)
-crates/profiling/src/database.rs | profiling sits below engine_fs (Helio links it): the SQLite trace store on the developer's machine
-crates/profiling/src/remote.rs | profiling sits below engine_fs (Helio links it): the profiler's IPC channel files in the machine's temp dir
 plugins/vendor/meshes/asset-compat/src/texture_loader.rs | Helio-layer format crate (no engine_fs): solid_rs opens the model by real path, so its texture lookups read real paths (3 fns)
 plugins/vendor/meshes/snapshot/src/renderer.rs | Helio-layer tool crate (no engine_fs): the caller passes a real model path; its sidecar base-colour scan (1 fn)
 plugins/vendor/meshes/vg/stream/src/source.rs | Helio-layer: VgeoBytes::open takes a real path from a tool or example; Pulsar reads through open_reader (1 fn)
