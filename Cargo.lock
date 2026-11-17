@@ -1569,6 +1569,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
+name = "cables_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_backend",
+ "engine_class_derive",
+ "engine_fs",
+ "engine_state",
+ "glam 0.33.5",
+ "helio-cables-api",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-cables",
+ "helio-scene-join",
+ "helio_component",
+ "meshes_component",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "cables_plugin"
+version = "0.1.0"
+dependencies = [
+ "cables_component",
+ "engine_backend",
+ "helio-pass-cables",
+ "helio_component",
+ "pulsar_plugins",
+]
+
+[[package]]
 name = "calloop"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5636,6 +5675,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-cables-api"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+]
+
+[[package]]
 name = "helio-components"
 version = "0.1.0"
 dependencies = [
@@ -5893,6 +5940,22 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-cables"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-cables-api",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "naga",
+ "pulsar_scenedb",
+ "tracing",
  "wgpu",
 ]
 
@@ -7586,6 +7649,7 @@ dependencies = [
  "bake_plugin",
  "blueprint_compiler",
  "blueprint_editor_plugin",
+ "cables_plugin",
  "catalog_fixture_component",
  "catalog_fixture_plugin",
  "character_plugin",
