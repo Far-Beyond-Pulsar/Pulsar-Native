@@ -46,7 +46,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `/add-component` | create a world component: class, `ClassSpec`, `Actor`/`WorldActor` lifecycle, session scope, script methods and events |
 | `/add-blueprint-node`, `/blueprint-system` | add a `pulsar_std` node; how a Blueprint compiles and runs |
 | `/add-editor-panel`, `/gpui-patterns` | add a dockable editor panel; GPUI idioms |
-| `/bump-deps` | move a submodule pin, a plugin's Pulsar rev or the SceneDB rev (three manifests) |
+| `/bump-deps` | move a submodule pin, the SceneDB rev (three manifests) or the Pulsar-Profiling rev |
 | `/debug-compile-errors`, `/repo-map` | duplicate-crate and Blueprint compile errors; where things live |
 
 ## Project data (`.pulsar/`)
