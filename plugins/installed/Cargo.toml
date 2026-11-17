@@ -13,6 +13,7 @@ skeletal_animation_plugin = { workspace = true }
 asset_viewer_plugin = { workspace = true, optional = true }
 bake_plugin = { workspace = true }
 blueprint_editor_plugin = { workspace = true, optional = true }
+cables_plugin = { workspace = true }
 character_plugin = { workspace = true }
 script_editor_plugin = { workspace = true, optional = true }
 decals_plugin = { workspace = true }
@@ -52,6 +53,7 @@ editor = [
     "dep:asset_viewer_plugin",
     "bake_plugin/editor",
     "dep:blueprint_editor_plugin",
+    "cables_plugin/editor",
     "character_plugin/editor",
     "dep:script_editor_plugin",
     "decals_plugin/editor",
