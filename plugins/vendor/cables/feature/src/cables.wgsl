@@ -166,7 +166,7 @@ fn fs_debug(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     var color = vec4<f32>(0.0);
 
     // HUD: one bar per stage; length is the count (4 px per unit, 128 max).
-    if (px.x < 16.0 + 128.0 * 4.0 + 8.0 && px.y < 16.0 + 9.0 * 24.0) {
+    if (px.x < 16.0 + 128.0 * 4.0 + 8.0 && px.y < 16.0 + 16.0 * 24.0) {
         color = vec4<f32>(0.0, 0.0, 0.0, 0.45);
         var enabled = 0u;
         var with_id = 0u;
@@ -179,11 +179,27 @@ fn fs_debug(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         for (var d = 0u; d < u.definition_count; d++) {
             if (definition_words[d * DEFINITION_WORDS + 1u] != 0u) { defs++; }
         }
+        // Raw definition buffer: how many rows it holds, how many carry any
+        // data (scanning up to 1024 rows), and the first such row's words.
+        let total_rows = arrayLength(&definition_words) / DEFINITION_WORDS;
+        var nonzero_rows = 0u;
+        var first_row = 0xffffffffu;
+        for (var d = 0u; d < min(total_rows, 1024u); d++) {
+            var any_data = false;
+            for (var w = 0u; w < DEFINITION_WORDS; w++) {
+                if (definition_words[d * DEFINITION_WORDS + w] != 0u) { any_data = true; }
+            }
+            if (any_data) {
+                nonzero_rows++;
+                if (first_row == 0xffffffffu) { first_row = d; }
+            }
+        }
+        let first_base = select(0u, first_row * DEFINITION_WORDS, first_row != 0xffffffffu);
         let rows_live = u.flags & FLAG_ROWS_LIVE;
         let textures_ok = (u.flags & FLAG_TEXTURES_OK) >> 1u;
         let ribbon = draw_args[1];
         let tube = draw_args[5];
-        var layers: array<vec4<f32>, 9>;
+        var layers: array<vec4<f32>, 16>;
         layers[0] = bar(px, 0u, rows_live * 128u, vec3<f32>(0.2, 0.9, 0.2));      // both source buffers hold rows
         layers[1] = bar(px, 1u, textures_ok * 128u, vec3<f32>(0.9, 0.9, 0.9));    // material texture table present
         layers[2] = bar(px, 2u, u.connector_count, vec3<f32>(0.3, 0.4, 1.0));    // connector rows considered
@@ -193,7 +209,14 @@ fn fs_debug(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         layers[6] = bar(px, 6u, ribbon, vec3<f32>(1.0, 0.6, 0.1));               // ribbon instances built
         layers[7] = bar(px, 7u, tube, vec3<f32>(1.0, 0.2, 0.9));                 // tube instances built
         layers[8] = bar(px, 8u, u.definition_count, vec3<f32>(0.5, 0.5, 0.9));   // definition rows considered
-        for (var k = 0u; k < 9u; k++) {
+        layers[9] = bar(px, 9u, total_rows, vec3<f32>(0.8, 0.8, 0.8));           // rows in the definition buffer
+        layers[10] = bar(px, 10u, nonzero_rows, vec3<f32>(1.0, 0.5, 0.5));       // ... holding any data
+        layers[11] = bar(px, 11u, select(0u, first_row, first_row != 0xffffffffu), vec3<f32>(0.6, 1.0, 0.6)); // first such row's index
+        layers[12] = bar(px, 12u, definition_words[first_base], vec3<f32>(1.0, 1.0, 1.0));      // word 0: id (expect 1)
+        layers[13] = bar(px, 13u, definition_words[first_base + 1u], vec3<f32>(1.0, 1.0, 1.0)); // word 1: enabled (expect 1)
+        layers[14] = bar(px, 14u, definition_words[first_base + 2u], vec3<f32>(1.0, 1.0, 1.0)); // word 2: mode (0 = 2D, 1 = 3D)
+        layers[15] = bar(px, 15u, definition_words[first_base + 3u], vec3<f32>(1.0, 1.0, 1.0)); // word 3: bundle count (expect 1)
+        for (var k = 0u; k < 16u; k++) {
             if (layers[k].a > 0.0) { color = vec4<f32>(mix(color.rgb, layers[k].rgb, layers[k].a), max(color.a, 0.9)); }
         }
     }
