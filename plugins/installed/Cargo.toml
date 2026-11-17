@@ -151,7 +151,6 @@ helio-vg-format = { workspace = true }
 helio-pass-buffer-view = { workspace = true }
 helio-pass-water-sim = { workspace = true }
 helio-pass-portal-cull = { workspace = true }
-helio-pass-gi = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 blueprint_compiler = { path = "../vendor/blueprint_editor/compiler" }
 graphy-blueprint = { workspace = true }
