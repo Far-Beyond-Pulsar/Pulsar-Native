@@ -28,3 +28,13 @@ nothing pages. Content of any size and any row height is windowed by the one
 `cargo test -p ui_level_editor --lib inspector_stress -- --include-ignored --nocapture --test-threads=1`
 (1,000,000-leaf array, 200×50 feature spawns, 300-layer stack, 20,000-row card).
 Tests that draw a window take `RENDER_LOCK`: `render_stats` is process-global.
+
+Sidebar resize: `cargo test -p ui_level_editor --lib properties_panel_resize_report -- --ignored --nocapture --test-threads=1`
+changes the panel width every frame and prints the views rebuilt, the list rows built (`list: item built (visible)` vs
+`(measure only)`) and the time per row kind (`properties row: ...`). A resize must cost one draw per step and build
+only the rows on screen:
+
+- `gpui::list` keeps off-screen row heights as estimates when its width changes (rows on screen are re-measured every
+  frame anyway); it used to discard them all, re-measuring the overdraw above and below the viewport each frame.
+- A single-line `InputState` does not notify when only its size changed. That notify, issued during the draw, scheduled
+  a second frame that rebuilt every ancestor view.

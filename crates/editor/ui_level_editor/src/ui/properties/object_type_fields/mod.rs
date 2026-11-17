@@ -549,6 +549,16 @@ impl ObjectTypeFieldsSection {
     ) -> AnyElement {
         use super::{ComponentHierarchyPanel, PropertiesPanel};
 
+        let _scope = gpui::render_stats::scope(match row {
+            InspectorRow::Leading(0) => "properties row: object header",
+            InspectorRow::Leading(1) => "properties row: transform",
+            InspectorRow::Leading(2) => "properties row: icon",
+            InspectorRow::Leading(3) => "properties row: component tree",
+            InspectorRow::Leading(_) => "properties row: leading (other)",
+            InspectorRow::Property { .. } => "properties row: property",
+            InspectorRow::Child { .. } => "properties row: child",
+            InspectorRow::Body { .. } => "properties row: class card",
+        });
         let wrap = |el: AnyElement| div().w_full().pt_3().child(el).into_any_element();
         match row {
             InspectorRow::Leading(0) => match &self.header_view {
@@ -644,5 +654,10 @@ impl ObjectTypeFieldsSection {
     /// Test hook: scroll the virtual list.
     pub fn scroll_by(&self, distance: Pixels) {
         self.inspector.scroll_by(distance);
+    }
+
+    /// Test hook: open every card.
+    pub fn expand_all(&mut self) {
+        self.inspector.expand_all();
     }
 }

@@ -560,6 +560,7 @@ helio-tasks = { path = "crates/renderer/helio/crates/helio-tasks" }
 helio-pass-object-batch = { path = "plugins/vendor/meshes/feature/object-batch" }
 helio-pass-debug-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay" }
 helio-pass-perf-overlay = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay" }
+helio-pass-selection-outline = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-selection-outline" }
 helio-bake = { path = "plugins/vendor/bake/feature" }
 helio-bake-api = { path = "plugins/vendor/bake/api" }
 helio-bake-host = { path = "plugins/vendor/bake/host" }

@@ -1,10 +1,15 @@
 //! Floating viewport controls, performance HUDs and debug-view legends.
+//!
+//! The movable overlays are RnD panels on a Panel Canvas
+//! (`ui::panel_canvas`, see `.agents/PANEL_CANVAS.md`).
 
 use super::*;
 
 use crate::ui::toolbar::view_mode_dropdown::ViewModePickerState;
+use components::floating_toolbar::corner_grip;
 use rust_i18n::t;
 use ui::button::Button;
+use ui::panel_canvas::{PanelCanvas, PanelRef, RndPanel, Slot, SlotAnchor, SlotFlow, SlotGroup};
 use ui::IconName;
 
 impl ViewportPanel {
@@ -34,7 +39,6 @@ impl ViewportPanel {
         let view_guard = self.own_view.then(|| self.view_state.read());
         let view: &LevelEditorState = view_guard.as_deref().unwrap_or(state);
         let overlays = &view.overlays.state;
-        let positions = &view.overlays.positions;
         (
             (
                 editor.current_tool,
@@ -58,18 +62,17 @@ impl ViewportPanel {
                 overlays.debug_overlays.clone(),
                 overlays.camera_sync_locked,
             ),
-            (
-                positions.viewport,
-                positions.camera,
-                positions.is_dragging_viewport,
-                positions.is_dragging_camera,
-            ),
             state.editor_loading.snapshot(),
             self.view_picker(cx).entity_id(),
         )
     }
 
     /// Render all viewport overlays.
+    ///
+    /// The movable ones are RnD panels on the viewport's Panel Canvas: they
+    /// sit in its slots (see [`overlay_slots`]) and the user drags them
+    /// between slots or anywhere inside the viewport. The loading card, the
+    /// debug-view legend and the camera sync button stay fixed.
     ///
     /// `state` and `state_arc` are the editor's shared state; this viewport's
     /// own settings are `self.view_state`.
@@ -83,10 +86,12 @@ impl ViewportPanel {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        // Pad the overlay container by the scrollbar width (12px) so overlays
-        // don't sit underneath the scrollbar track.
+        let canvas_state = &self.overlay_canvas;
+        let panel = |id: &str| PanelRef::new(canvas_state, id.to_string());
+        // Pad the canvas by the scrollbar width (12px) so overlays don't sit
+        // underneath the scrollbar track.
         let scrollbar_width = px(12.0);
-        let mut overlays = div()
+        let mut overlays = PanelCanvas::new("viewport-overlays", canvas_state)
             .absolute()
             .top_0()
             .left_0()
@@ -148,43 +153,31 @@ impl ViewportPanel {
         let view_mode_label = self.view_picker_label(cx);
         let snaps = self.toolbar.read(cx).snap_panels.clone();
         if view.overlays.state.show_viewport_options {
-            overlays = overlays.child(
-                div()
-                    .absolute()
-                    .top(px(view.overlays.positions.viewport.1))
-                    .left(px(view.overlays.positions.viewport.0))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-                    .child(components::viewport_options::render_viewport_options(
-                        state,
-                        state_arc.clone(),
-                        view,
-                        view_arc.clone(),
-                        &snaps,
-                        view.overlays.positions.is_dragging_viewport,
-                        cx,
-                    )),
+            let id = panel("viewport-options");
+            let toolbar = components::viewport_options::render_viewport_options(
+                state,
+                state_arc.clone(),
+                view,
+                view_arc.clone(),
+                &snaps,
+                id.clone(),
+                cx,
             );
+            overlays = overlays.panel(RndPanel::new(id).default_slot("toolbar-left").child(toolbar));
         }
         if view.overlays.state.show_camera_mode_selector {
-            overlays = overlays.child(
-                div()
-                    .absolute()
-                    .top(px(view.overlays.positions.camera.1))
-                    .right(px(view.overlays.positions.camera.0))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-                    .child(components::camera_selector::render_camera_selector(
-                        view,
-                        view_arc.clone(),
-                        view.editor.camera_mode,
-                        self.input_state.clone(),
-                        &picker,
-                        view_mode_label,
-                        view.overlays.positions.is_dragging_camera,
-                        cx,
-                    )),
+            let id = panel("camera-selector");
+            let toolbar = components::camera_selector::render_camera_selector(
+                view,
+                view_arc.clone(),
+                view.editor.camera_mode,
+                self.input_state.clone(),
+                &picker,
+                view_mode_label,
+                id.clone(),
+                cx,
             );
+            overlays = overlays.panel(RndPanel::new(id).default_slot("toolbar-right").child(toolbar));
         }
 
         // The plugins' debug overlays (the portals' links): each shown one
@@ -207,17 +200,22 @@ impl ViewportPanel {
         for overlay in crate::extend::viewport::debug_overlays() {
             let shown = view.overlays.state.debug_overlays.contains(&overlay.id);
             if shown {
-                overlays = overlays.child(
-                    div()
-                        .absolute()
-                        .top(px(56.0))
-                        .right_2()
+                let id = panel(&format!("debug-overlay-{}", overlay.id));
+                let content = (overlay.panel)(&overlay_context, cx);
+                let grip = corner_grip(id.clone(), cx);
+                overlays = overlays.panel(
+                    RndPanel::new(id)
+                        .default_slot("right")
                         .w(px(320.0))
-                        .max_h(px(360.0))
-                        .overflow_y_scroll()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .on_mouse_down(MouseButton::Middle, |_, _, cx| cx.stop_propagation())
-                        .child((overlay.panel)(&overlay_context, cx)),
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("debug-overlay-scroll-{}", overlay.id)))
+                                .w_full()
+                                .max_h(px(360.0))
+                                .overflow_y_scroll()
+                                .child(content),
+                        )
+                        .child(grip),
                 );
             }
             if shown && perspective {
@@ -242,77 +240,93 @@ impl ViewportPanel {
             })
         };
 
-        // Bottom-left, side by side in this order, whichever are shown: the
-        // performance overlay, the render pipeline and the render stats. Each
-        // is a view with its own refresh timers, not rebuilt here; a closed
-        // one is dropped so its timers stop.
-        let mut bottom_left = h_flex().absolute().bottom_2().left_2().items_end().gap_2();
+        // In the bottom-left strip, filling rightwards from the corner (each
+        // one shown pushes the later ones right), in this order: the performance overlay, the render
+        // pipeline and the render stats. Each is a view with its own refresh timers, not rebuilt here;
+        // a closed one is dropped so its timers stop.
         if view.overlays.state.show_performance_overlay {
-            bottom_left = bottom_left.child(render_performance_overlay(
+            let id = panel("performance");
+            let content = render_performance_overlay(
                 view,
                 view_arc.clone(),
                 &self.stats,
                 sampler,
                 &self.perf_overlay,
                 cx,
-            ));
+            );
+            let grip = corner_grip(id.clone(), cx);
+            overlays = overlays.panel(
+                RndPanel::new(id)
+                    .default_slot("bottom-performance")
+                    .child(content)
+                    .child(grip),
+            );
         } else {
             self.perf_overlay.borrow_mut().take();
         }
         if view.overlays.state.show_gpu_pipeline_overlay {
-            bottom_left = bottom_left.child(render_gpu_pipeline_overlay(
-                gpu_engine,
-                &self.gpu_overlay,
-                cx,
-            ));
+            let id = panel("gpu-pipeline");
+            let content = render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx);
+            let grip = corner_grip(id.clone(), cx);
+            overlays = overlays.panel(
+                RndPanel::new(id)
+                    .default_slot("bottom-pipeline")
+                    .child(content)
+                    .child(grip),
+            );
         } else {
             self.gpu_overlay.borrow_mut().take();
         }
         if view.overlays.state.show_render_stats_overlay {
-            bottom_left = bottom_left.child(
-                components::render_stats_overlay::render_render_stats_overlay(
-                    gpu_engine,
-                    &self.render_stats_overlay,
-                    cx,
-                ),
+            let id = panel("render-stats");
+            let content = components::render_stats_overlay::render_render_stats_overlay(
+                gpu_engine,
+                &self.render_stats_overlay,
+                cx,
+            );
+            let grip = corner_grip(id.clone(), cx);
+            overlays = overlays.panel(
+                RndPanel::new(id)
+                    .default_slot("bottom-render-stats")
+                    .child(content)
+                    .child(grip),
             );
         } else {
             self.render_stats_overlay.borrow_mut().take();
         }
-        overlays = overlays.child(bottom_left);
 
-        // Bottom-right: editor and renderer diagnostics. Its timer refreshes
+        // In the bottom-right corner: editor and renderer diagnostics. Its timer refreshes
         // the isolated overlay in place without invalidating the viewport.
         if view.overlays.state.show_nerds_overlay {
-            overlays = overlays.child(
-                div()
-                    .absolute()
-                    .bottom_2()
-                    .right_2()
-                    // The cached Nerds view is width-full. Give its absolute
-                    // positioning wrapper a concrete width so that width-full
-                    // resolves to the panel width instead of the whole editor.
+            let id = panel("nerds");
+            let content = render_nerds_overlay(
+                view_arc.clone(),
+                gpu_engine,
+                self.ui_frames.clone(),
+                self.input_state.clone(),
+                &self.nerds_overlay,
+                cx,
+            );
+            let grip = corner_grip(id.clone(), cx);
+            overlays = overlays.panel(
+                RndPanel::new(id)
+                    .default_slot("bottom-nerds")
+                    // The cached Nerds view is width-full: give its card a
+                    // concrete width so that resolves to the panel width.
                     .w(px(230.0))
-                    .child(render_nerds_overlay(
-                        view_arc.clone(),
-                        gpu_engine,
-                        self.ui_frames.clone(),
-                        self.input_state.clone(),
-                        &self.nerds_overlay,
-                        cx,
-                    )),
+                    .child(content)
+                    .child(grip),
             );
         } else {
             self.nerds_overlay.borrow_mut().take();
         }
 
         if view.overlays.state.show_warnings_overlay {
-            overlays = overlays.child(div().absolute().top(px(56.0)).left_2().child(
-                components::warnings_overlay::render_warnings_overlay(
-                    gpu_engine,
-                    &self.warnings_overlay,
-                    cx,
-                ),
+            overlays = overlays.panel(components::warnings_overlay::render_warnings_overlay(
+                gpu_engine,
+                panel("warnings"),
+                &self.warnings_overlay,
+                cx,
             ));
         } else {
             self.warnings_overlay.borrow_mut().take();
@@ -387,4 +401,64 @@ impl ViewportPanel {
 
         overlays
     }
+}
+
+/// The viewport overlay canvas's slot groups: two strips along the bottom.
+/// `bottom-left` fills from the left corner rightwards, `bottom-right` from
+/// the right corner leftwards (a group orders its slots from its anchor), so
+/// each panel shown pushes its strip's later ones along instead of covering
+/// them.
+pub(super) fn overlay_groups() -> Vec<SlotGroup> {
+    let inset = px(8.0);
+    vec![
+        SlotGroup::new("bottom-left", SlotAnchor::BottomLeft).inset(inset, inset),
+        SlotGroup::new("bottom-right", SlotAnchor::BottomRight).inset(inset, inset),
+    ]
+}
+
+/// Every bottom slot's size, so the strips line up evenly and an empty slot
+/// previews at the same size whichever it is.
+const BOTTOM_SLOT: (f32, f32) = (220.0, 150.0);
+
+/// The bottom-left strip, from the corner rightwards: the render performance
+/// panels' homes, then a spare.
+const BOTTOM_LEFT: [&str; 4] = [
+    "bottom-performance",
+    "bottom-pipeline",
+    "bottom-render-stats",
+    "bottom-left-spare",
+];
+
+/// The bottom-right strip, from the corner leftwards: Nerds' home, then
+/// spares.
+const BOTTOM_RIGHT: [&str; 3] = ["bottom-nerds", "bottom-right-spare", "bottom-right-spare-2"];
+
+/// The viewport overlay canvas's slots.
+///
+/// - `toolbar-left`, `toolbar-right`: one toolbar each (a toolbar is wider
+///   than its slot, so the slot is full once it holds one).
+/// - `left`, `right`: columns under the toolbars.
+/// - The bottom strips ([`BOTTOM_LEFT`], [`BOTTOM_RIGHT`]), all slots one size.
+pub(super) fn overlay_slots() -> Vec<Slot> {
+    let inset = px(8.0);
+    let mut slots = vec![
+        Slot::new("toolbar-left", SlotAnchor::TopLeft, size(px(160.0), px(42.0))).inset(inset, inset),
+        Slot::new("toolbar-right", SlotAnchor::TopRight, size(px(160.0), px(42.0))).inset(inset, inset),
+        Slot::new("left", SlotAnchor::TopLeft, size(px(320.0), px(250.0)))
+            .inset(inset, px(58.0))
+            .flow(SlotFlow::Column),
+        Slot::new("right", SlotAnchor::TopRight, size(px(320.0), px(250.0)))
+            .inset(inset, px(58.0))
+            .flow(SlotFlow::Column),
+    ];
+    let bottom = size(px(BOTTOM_SLOT.0), px(BOTTOM_SLOT.1));
+    slots.extend(
+        BOTTOM_LEFT
+            .map(|id| Slot::new(id, SlotAnchor::BottomLeft, bottom).group("bottom-left")),
+    );
+    slots.extend(
+        BOTTOM_RIGHT
+            .map(|id| Slot::new(id, SlotAnchor::BottomRight, bottom).group("bottom-right")),
+    );
+    slots
 }

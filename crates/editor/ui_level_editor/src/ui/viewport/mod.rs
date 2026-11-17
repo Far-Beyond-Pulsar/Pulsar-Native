@@ -231,6 +231,10 @@ pub struct ViewportPanel {
     /// Editor diagnostics overlay, alive only while it is shown.
     nerds_overlay: RefCell<Option<Entity<NerdsOverlay>>>,
 
+    /// Where this viewport's movable overlays are: the Panel Canvas's slots,
+    /// the cards' placements and sizes, and the drag or resize in flight.
+    overlay_canvas: Entity<ui::panel_canvas::PanelCanvasState>,
+
     /// Lock-free input state
     input_state: Arc<InputState>,
 
@@ -254,6 +258,9 @@ pub struct ViewportPanel {
     right_mouse_down_position: Rc<RefCell<Option<Point<Pixels>>>>,
     right_mouse_dragged: Arc<AtomicBool>,
     context_menu: Rc<RefCell<Option<(Point<Pixels>, Entity<PopupMenu>)>>>,
+    /// A Shift + left-drag selection box in progress: where it started and
+    /// where the pointer is now (window coordinates).
+    box_select: Rc<RefCell<Option<(Point<Pixels>, Point<Pixels>)>>>,
 
     /// Locked cursor position for infinite mouse movement
     locked_cursor_x: Arc<AtomicI32>,
@@ -316,6 +323,11 @@ impl ViewportPanel {
             render_stats_overlay: RefCell::new(None),
             warnings_overlay: RefCell::new(None),
             nerds_overlay: RefCell::new(None),
+            overlay_canvas: cx.new(|_| {
+                ui::panel_canvas::PanelCanvasState::new()
+                    .with_groups(overlays::overlay_groups())
+                    .with_slots(overlays::overlay_slots())
+            }),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
             input_thread_stop: Arc::new(AtomicBool::new(false)),
@@ -328,6 +340,7 @@ impl ViewportPanel {
             right_mouse_down_position: Rc::new(RefCell::new(None)),
             right_mouse_dragged: Arc::new(AtomicBool::new(false)),
             context_menu: Rc::new(RefCell::new(None)),
+            box_select: Rc::new(RefCell::new(None)),
             locked_cursor_x: Arc::new(AtomicI32::new(0)),
             locked_cursor_y: Arc::new(AtomicI32::new(0)),
             // MIN marks that the platform has no global cursor coordinate

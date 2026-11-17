@@ -10,7 +10,7 @@
 //! |--------|---------|
 //! | [`SceneDomain`](scene::SceneDomain) | Scene database, play-mode snapshot, file path, revision counter |
 //! | [`EditorDomain`](editor::EditorDomain) | Tool selection, camera mode, rendering toggles (grid, wireframe, etc.) |
-//! | [`OverlayDomain`](overlays::OverlayDomain) | Overlay visibility, collapse state, positions, performance metric toggles |
+//! | [`OverlayDomain`](overlays::OverlayDomain) | Overlay visibility, collapse state, performance metric toggles |
 //! | [`HierarchyDomain`](hierarchy::HierarchyDomain) | Hierarchy expand/collapse state, drag-and-drop state |
 //! | [`BuildDomain`](build::BuildDomain) | Build configuration, platform target, game process |
 //! | [`PlayDomain`](play::PlayDomain) | Play-mode parameters: time scale, target FPS, multiplayer mode |

@@ -25,7 +25,11 @@ use pulsar_scenedb::gpu::{
 };
 
 use pulsar_scene_model::attachments::ComponentOwner;
-use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent, TransformRow};
+use pulsar_scene_model::{ObjectFrame, ObjectHidden, ObjectParent, ObjectSelected, TransformRow};
+
+// The selection rows are what the renderer's selection outline reads.
+const _: () = helio_frame_api::selection::OBJECT_SELECTED
+    .assert_producer::<ObjectSelected>("object_selected");
 
 /// Where this engine's object rows live: the instance owner links
 /// (`ComponentOwner`), entity generations, object visibility (`Visibility`'s
@@ -273,6 +277,8 @@ pub fn ensure_gpu_mirror(
     }
     ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    // Which objects are selected, for the editor's selection outline.
+    ObjectSelected::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // Each object's parent, for the hierarchy resolve (transforms are parent-relative).
     ObjectParent::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // Which objects are rigid frames, and their slot in the coordinate-space table.

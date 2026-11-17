@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 
-use gpui::prelude::FluentBuilder;
 use gpui::*;
 use rust_i18n::t;
 use ui::{
@@ -153,7 +152,7 @@ pub fn render_camera_selector<V, S>(
     input_state: Arc<S>,
     view_mode_picker: &Entity<ViewModePickerState>,
     view_mode_label: SharedString,
-    is_dragging: bool,
+    panel: ui::panel_canvas::PanelRef,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
@@ -173,13 +172,7 @@ where
             .into_any_element();
     }
 
-    let drag_handle = create_drag_handle(
-        state_arc.clone(),
-        |s: &mut LevelEditorState, pos| s.overlays.positions.camera_drag_start = pos,
-        |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_camera = dragging,
-        HandleSide::Right,
-        cx,
-    );
+    let drag_handle = create_drag_handle(panel, HandleSide::Right, cx);
 
     let collapse_state = state_arc.clone();
     // Left-to-right child order keeps view mode at the left end and the
@@ -207,7 +200,6 @@ where
 
     h_flex()
         .gap_0()
-        .when(is_dragging, |f| f.cursor(CursorStyle::PointingHand))
         .child(toolbar_with_drag_handle(
             drag_handle,
             toolbar_content,

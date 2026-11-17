@@ -26,6 +26,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
+| `.agents/PANEL_CANVAS.md` | `ui::panel_canvas`: Panel Canvas slots, RnD (resize and drag) panels, drag/resize handles with window-level tracking; the viewport overlays use it; gallery example |
 | `.agents/MEMORY.md` | How memory is held and bounded (`Residency`, texture size cap), settings, and the Mission Control Memory Explorer |
 | `.agents/LOD.md` | Authored mesh LOD as a camera-dependent asset choice, separate from renderer-internal geometric LOD, and its residency boundary |
 | `.agents/RENDER_GRAPH.md` | Render pipelines: `IntoGraph`, `.rendergraph` assets, the shipped pipelines (`pulsar.default_pipelines` plugin, old-id migration), pin shapes, the `render_bps` plugin |

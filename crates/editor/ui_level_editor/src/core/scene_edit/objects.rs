@@ -108,27 +108,146 @@ pub fn get_root_objects(world: &World) -> Vec<SceneObjectData> {
 /// Minimal hierarchy projection: component-backed object rows plus root ids.
 /// This is intentionally not a history snapshot and does not merge expensive
 /// component metadata; hierarchy editing reads those details on demand.
+///
+/// One pass over the world: the parent → ordered-children map is built from a
+/// single `StableId` query, then walked depth-first. (`children_of` scans every
+/// object, so calling it per object made this O(n²) -- seconds on a large level,
+/// paid on every selection change since selecting bumps the world revision.)
 pub fn get_hierarchy_projection(world: &World) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
+    use engine_backend::scene::{Parent, SiblingIndex};
+    use std::collections::HashMap;
+
     profiling::profile_scope!("scene_edit::get_hierarchy_projection");
-    let mut objects = Vec::new();
-    fn collect(world: &World, parent: Option<Entity>, out: &mut Vec<HierarchyObjectProjection>) {
-        for entity in world.children_of(parent) {
-            out.push(entity_to_hierarchy_projection(world, entity));
-            collect(world, Some(entity), out);
+
+    let mut children: HashMap<Option<Entity>, Vec<(SiblingIndex, Entity)>> = HashMap::new();
+    let mut ids: HashMap<Entity, &str> = HashMap::new();
+    for (entity, stable_id) in world.query::<&StableId>() {
+        ids.insert(entity, stable_id.0.as_str());
+        let parent = world.get::<Parent>(entity).map(|parent| parent.0);
+        let order = world
+            .get::<SiblingIndex>(entity)
+            .copied()
+            .unwrap_or_default();
+        children.entry(parent).or_default().push((order, entity));
+    }
+    // Same order as `children_of`.
+    let children: HashMap<Option<Entity>, Vec<Entity>> = children
+        .into_iter()
+        .map(|(parent, mut kids)| {
+            kids.sort_by_key(|(order, entity)| (*order, entity.bits()));
+            (parent, kids.into_iter().map(|(_, entity)| entity).collect())
+        })
+        .collect();
+
+    let icons = crate::extend::object_icon_registrations();
+    let mut objects = Vec::with_capacity(ids.len());
+    let mut stack: Vec<Entity> = children
+        .get(&None)
+        .map(|roots| roots.iter().rev().copied().collect())
+        .unwrap_or_default();
+    while let Some(entity) = stack.pop() {
+        let kids = children.get(&Some(entity));
+        objects.push(hierarchy_row(
+            world,
+            entity,
+            &ids,
+            kids.map(Vec::as_slice).unwrap_or(&[]),
+            &icons,
+        ));
+        if let Some(kids) = kids {
+            stack.extend(kids.iter().rev().copied());
         }
     }
-    collect(world, None, &mut objects);
-    let root_ids = world
-        .children_of(None)
+
+    let root_ids = children
+        .get(&None)
         .into_iter()
-        .filter_map(|entity| world.stable_id_of(entity).map(str::to_string))
+        .flatten()
+        .filter_map(|entity| ids.get(entity).map(|id| id.to_string()))
         .collect();
     (objects, root_ids)
+}
+
+/// What changed in the world since the hierarchy last looked, read from
+/// SceneDB's change journals instead of the world's revision.
+///
+/// The world revision moves on every write: each frame of a gizmo drag
+/// (transforms), each selection change. Keyed on it, the outliner rebuilt
+/// every row on all of those, though none changes the tree. This watch opens
+/// a journal for each component a row is built from and reports a change
+/// only when one of those was written, so a drag costs the outliner nothing
+/// and a selection change costs a flag per row.
+///
+/// Values a row derives from a component instance's fields (a mesh's
+/// movability) are not journaled here; they change through edits, which
+/// advance the undo history, so the caller also keys on that.
+pub struct HierarchyWatch {
+    structure: Vec<pulsar_scenedb::ChangeCursor>,
+    selection: pulsar_scenedb::ChangeCursor,
+    scratch: Vec<pulsar_scenedb::ComponentChange>,
+}
+
+/// What [`HierarchyWatch::poll`] found.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HierarchyChanges {
+    /// Objects were added, removed, renamed, moved in the tree, hidden, or
+    /// their components or class changed: the rows must be rebuilt.
+    pub structure: bool,
+    /// Only which objects are selected changed.
+    pub selection: bool,
+}
+
+impl HierarchyWatch {
+    pub fn new(world: &World) -> Self {
+        use engine_backend::scene::{
+            level_instances::LevelInstanceMember, ComponentAttachments, Parent, Selected,
+            SiblingIndex,
+        };
+        let structure = vec![
+            world.open_change_cursor::<StableId>(),
+            world.open_change_cursor::<Parent>(),
+            world.open_change_cursor::<SiblingIndex>(),
+            world.open_change_cursor::<Name>(),
+            world.open_change_cursor::<ObjectType>(),
+            world.open_change_cursor::<WorldVisibility>(),
+            world.open_change_cursor::<RenderProps>(),
+            world.open_change_cursor::<ComponentAttachments>(),
+            world.open_change_cursor::<LevelInstanceMember>(),
+            world.open_change_cursor::<pulsar_class::ClassInstance>(),
+        ];
+        Self {
+            structure,
+            selection: world.open_change_cursor::<Selected>(),
+            scratch: Vec::new(),
+        }
+    }
+
+    /// Consume everything journaled since the last poll. A journal that
+    /// overflowed (or a world that was replaced) counts as a change.
+    pub fn poll(&mut self, world: &World) -> HierarchyChanges {
+        let mut read = |cursor: &mut pulsar_scenedb::ChangeCursor| {
+            self.scratch.clear();
+            let result = world.read_changes(cursor, &mut self.scratch);
+            matches!(result, pulsar_scenedb::ChangeRead::Overflowed) || !self.scratch.is_empty()
+        };
+        let mut structure = false;
+        for cursor in &mut self.structure {
+            // Read every cursor, even after a hit, so none lags behind.
+            structure |= read(cursor);
+        }
+        let selection = read(&mut self.selection);
+        HierarchyChanges {
+            structure,
+            selection,
+        }
+    }
 }
 
 /// Minimal data needed to paint one hierarchy row.
 #[derive(Clone, Debug)]
 pub struct HierarchyObjectProjection {
+    /// The object's entity, valid for the world revision this was built from.
+    pub entity: Entity,
     pub id: ObjectId,
     pub name: String,
     pub object_type: ObjectType,
@@ -140,7 +259,13 @@ pub struct HierarchyObjectProjection {
     pub kind_icon: Option<(ui::IconName, gpui::Hsla)>,
 }
 
-pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> HierarchyObjectProjection {
+fn hierarchy_row(
+    world: &World,
+    entity: Entity,
+    ids: &std::collections::HashMap<Entity, &str>,
+    children: &[Entity],
+    icons: &[&'static crate::extend::ObjectIconRegistration],
+) -> HierarchyObjectProjection {
     let visibility = world
         .get::<WorldVisibility>(entity)
         .copied()
@@ -151,22 +276,19 @@ pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> Hierarch
         .and_then(|value| value.as_str())
         .filter(|value| !value.trim().is_empty())
         .map(str::to_owned);
-    let id_of = |e: Entity| world.stable_id_of(e).map(str::to_string);
+    let id_of = |e: &Entity| ids.get(e).map(|id| id.to_string());
     HierarchyObjectProjection {
-        id: id_of(entity).unwrap_or_default(),
+        entity,
+        id: id_of(&entity).unwrap_or_default(),
         name: name_of(world, entity),
         object_type: world
             .get::<ObjectType>(entity)
             .copied()
             .unwrap_or(ObjectType::Empty),
         visible: visibility.visible,
-        children: world
-            .children_of(Some(entity))
-            .into_iter()
-            .filter_map(id_of)
-            .collect(),
+        children: children.iter().filter_map(id_of).collect(),
         icon_asset,
-        kind_icon: crate::extend::object_icon(world, entity),
+        kind_icon: crate::extend::object_icon_with(icons, world, entity),
     }
 }
 
@@ -227,6 +349,22 @@ pub fn get_children(world: &World, id: &str) -> Vec<ObjectId> {
 pub fn select_object(world: &mut World, id: Option<&str>) {
     let entity = id.and_then(|id| world.entity_for(id));
     world.select(entity);
+}
+
+/// Select exactly `ids`, in pick order (the last is the primary). Unknown ids
+/// are skipped; an empty list deselects.
+pub fn select_objects(world: &mut World, ids: &[ObjectId]) {
+    let entities: Vec<Entity> = ids.iter().filter_map(|id| world.entity_for(id)).collect();
+    world.select_all(&entities);
+}
+
+/// Every selected object's id, in pick order (the primary last).
+pub fn selected_object_ids(world: &World) -> Vec<ObjectId> {
+    world
+        .selection()
+        .into_iter()
+        .filter_map(|entity| world.stable_id_of(entity).map(str::to_string))
+        .collect()
 }
 
 pub fn get_selected_object_id(world: &World) -> Option<ObjectId> {

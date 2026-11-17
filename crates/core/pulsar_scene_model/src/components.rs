@@ -29,10 +29,16 @@ pub struct Parent(pub Entity);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SiblingIndex(pub u64);
 
-/// Marks the selected object(s). Selection is ordinary world state, so the
-/// renderer's gizmo/outline passes read it the same way the editor does.
+/// Marks a selected object. Selection is ordinary world state, so the
+/// renderer's gizmo and box select read it the same way the editor does.
+///
+/// Several objects can be selected at once. `order` is the order they were
+/// picked in; the highest is the primary selection, the one the inspector
+/// shows ([`crate::SceneWorldExt::selected_entity`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Selected;
+pub struct Selected {
+    pub order: u64,
+}
 
 /// Flat per-entity transform: in world space, or relative to its
 /// [`Parent`]. The position is f64, so an object keeps its millimetres on
@@ -185,6 +191,50 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
     pulsar_scenedb::gpu::GpuClearRegistration {
         component_id: pulsar_scenedb::component_id::<Visibility>,
         clear: object_hidden_clear,
+    }
+}
+
+/// [`Selected`]'s GPU row: 1 while the object is selected. Keyed by the
+/// object entity, so an object never selected (a zero row) is not. Derived
+/// from the marker on every insert, removal and replay, like
+/// [`ObjectHidden`]: a selection change writes the rows of the objects whose
+/// selection changed, nothing else. The renderer's selection outline reads
+/// it (Helio's `helio_frame_api::selection::OBJECT_SELECTED` contract).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed, buffer = "object_selected")]
+#[repr(C)]
+pub struct ObjectSelected {
+    #[gpu]
+    pub selected: u32,
+}
+
+fn object_selected_dispatch(
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    row: u32,
+    _data: *const (),
+    is_new_insert: bool,
+) {
+    // Reached only through `Selected`'s own `ComponentId`: the marker is
+    // present, whatever its pick order.
+    let row_value = ObjectSelected { selected: 1 };
+    pulsar_scenedb::gpu::write_derived_row(mirror, row, &row_value, is_new_insert);
+}
+
+fn object_selected_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+    pulsar_scenedb::gpu::clear_derived_row::<ObjectSelected>(mirror, row);
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuMirrorRegistration {
+        component_id: pulsar_scenedb::component_id::<Selected>,
+        dispatch: object_selected_dispatch,
+    }
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuClearRegistration {
+        component_id: pulsar_scenedb::component_id::<Selected>,
+        clear: object_selected_clear,
     }
 }
 

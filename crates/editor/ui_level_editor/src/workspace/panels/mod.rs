@@ -5,7 +5,7 @@
 //! of the editor's default layout; panels a tool mode adds live with that mode.
 
 mod hierarchy;
-mod properties;
+pub(crate) mod properties;
 mod viewport;
 mod world_settings;
 

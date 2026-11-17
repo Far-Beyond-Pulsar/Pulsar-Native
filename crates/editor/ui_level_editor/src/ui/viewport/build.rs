@@ -62,6 +62,94 @@ fn world_position_on_ground_plane(
     ])
 }
 
+/// The viewport's right-click menu while objects are selected: what can be
+/// done to all of them (focus, duplicate, delete, put them in a folder,
+/// deselect), then the usual level menu (`level_menu`) as a submenu.
+fn build_selection_menu(
+    menu: PopupMenu,
+    window: &mut Window,
+    cx: &mut Context<PopupMenu>,
+    state: &Arc<parking_lot::RwLock<LevelEditorState>>,
+    selection: &[String],
+    action_context: &FocusHandle,
+    level_menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+) -> PopupMenu {
+    use crate::ui::hierarchy::{folder_choices, group_selection_into_folder, move_selection_to};
+
+    let (title, folders) = {
+        let state = state.read();
+        let title = match selection {
+            [id] => {
+                let world = state.scene.world();
+                crate::scene_edit::objects::get_object_name(&world, id)
+                    .unwrap_or_else(|| id.clone())
+            }
+            many => t!("LevelEditor.Selection.Count", count = many.len()).to_string(),
+        };
+        // A selected folder cannot take the selection into itself.
+        let folders: Vec<(String, String)> = folder_choices(&state)
+            .into_iter()
+            .filter(|(id, _)| !selection.contains(id))
+            .collect();
+        (title, folders)
+    };
+    let handler = |run: fn(&mut LevelEditorState)| {
+        let state = state.clone();
+        move |_: &mut Window, _: &mut gpui::App| run(&mut state.write())
+    };
+
+    let menu = menu
+        .action_context(action_context.clone())
+        .label(title)
+        .separator()
+        .menu(t!("LevelEditor.Menu.FocusSelected"), Box::new(FocusSelected))
+        .menu(t!("LevelEditor.Menu.Duplicate"), Box::new(DuplicateObject))
+        .menu(t!("LevelEditor.Menu.Delete"), Box::new(DeleteObject))
+        .separator()
+        .menu_handler(
+            t!("LevelEditor.Selection.GroupIntoFolder"),
+            handler(|state| {
+                group_selection_into_folder(state);
+            }),
+        )
+        .submenu(t!("LevelEditor.Selection.MoveToFolder"), window, cx, {
+            let state = state.clone();
+            move |mut submenu, _, _| {
+                let new_folder = state.clone();
+                submenu = submenu
+                    .menu_handler(t!("LevelEditor.Selection.NewFolder"), move |_, _| {
+                        group_selection_into_folder(&mut new_folder.write());
+                    })
+                    .separator();
+                let top = state.clone();
+                submenu = submenu.menu_handler(t!("LevelEditor.Selection.TopLevel"), move |_, _| {
+                    move_selection_to(&mut top.write(), None);
+                });
+                if !folders.is_empty() {
+                    submenu = submenu.separator();
+                }
+                for (id, path) in &folders {
+                    let state = state.clone();
+                    let id = id.clone();
+                    submenu = submenu.menu_handler(path.clone(), move |_, _| {
+                        move_selection_to(&mut state.write(), Some(id.clone()));
+                    });
+                }
+                submenu
+            }
+        })
+        .separator()
+        .menu_handler(
+            t!("LevelEditor.Selection.Deselect"),
+            handler(|state| state.scene.select_objects(&[])),
+        )
+        .separator();
+    let level_context = action_context.clone();
+    menu.submenu(t!("LevelEditor.Selection.Level"), window, cx, move |submenu, window, cx| {
+        level_menu(submenu.action_context(level_context.clone()), window, cx)
+    })
+}
+
 impl ViewportPanel {
     /// Build the complete viewport UI.
     pub(super) fn build_viewport_ui<V>(
@@ -193,14 +281,36 @@ impl ViewportPanel {
         let show_context_menu = {
             let context_menu = context_menu.clone();
             let build_context_menu = build_context_menu.clone();
+            let selection_state = state_arc.clone();
+            let action_context = action_context.clone();
             Rc::new(move |position, window: &mut Window, cx: &mut gpui::App| {
                 let world_position = placement_bounds.borrow().and_then(|bounds| {
                     let gpu = placement_gpu.lock().ok()?;
                     let camera = gpu.editor_camera_state()?;
                     world_position_on_ground_plane(position, bounds, camera)
                 });
+                // With objects selected, the menu acts on them; the usual
+                // level menu moves into a submenu.
+                let selection = selection_state.read().scene.selected_objects();
                 let menu = PopupMenu::build(window, cx, |menu, window, cx| {
-                    build_context_menu(menu, window, cx, world_position)
+                    if selection.is_empty() {
+                        build_context_menu(menu, window, cx, world_position)
+                    } else {
+                        build_selection_menu(
+                            menu,
+                            window,
+                            cx,
+                            &selection_state,
+                            &selection,
+                            &action_context,
+                            {
+                                let build_context_menu = build_context_menu.clone();
+                                move |menu, window, cx| {
+                                    build_context_menu(menu, window, cx, world_position)
+                                }
+                            },
+                        )
+                    }
                 });
                 if menu.read(cx).is_empty() {
                     return;
@@ -244,6 +354,27 @@ impl ViewportPanel {
         let ortho_zoom_camera = (camera_mode != crate::state::CameraMode::Perspective)
             .then(|| snap.camera_input.clone())
             .flatten();
+
+        // A Shift + drag selection box: drawn here, finished on release.
+        let box_select = self.box_select.clone();
+        let box_overlay = match (*box_select.borrow(), *self.element_bounds.borrow()) {
+            (Some((start, end)), Some(bounds)) => {
+                let min = point(start.x.min(end.x), start.y.min(end.y)) - bounds.origin;
+                let max = point(start.x.max(end.x), start.y.max(end.y)) - bounds.origin;
+                let foreground = cx.theme().foreground;
+                div()
+                    .absolute()
+                    .left(min.x)
+                    .top(min.y)
+                    .w(max.x - min.x)
+                    .h(max.y - min.y)
+                    .bg(foreground.opacity(0.08))
+                    .border_1()
+                    .border_color(foreground.opacity(0.7))
+                    .into_any_element()
+            }
+            _ => div().into_any_element(),
+        };
 
         // For mouse move tracking
         let element_bounds_move = self.element_bounds.clone();
@@ -291,10 +422,22 @@ impl ViewportPanel {
                 let right_mouse_down_position = right_mouse_down_position.clone();
                 let right_mouse_dragged = right_mouse_dragged.clone();
                 let state_arc_move = state_arc.clone();
-                let view_state_move = view_state.clone();
                 let pointer_events_move = snap.pointer_events.clone();
+                let box_select = box_select.clone();
 
-                move |event: &gpui::MouseMoveEvent, _window, _cx| {
+                move |event: &gpui::MouseMoveEvent, _window, cx| {
+                    let mut drawing_box = box_select.borrow_mut();
+                    if let Some((_, end)) = drawing_box.as_mut() {
+                        if event.pressed_button == Some(gpui::MouseButton::Left) {
+                            *end = event.position;
+                        } else {
+                            // The release was missed (focus loss): drop it.
+                            *drawing_box = None;
+                        }
+                        cx.notify(owner_view);
+                        return;
+                    }
+                    drop(drawing_box);
                     if event.pressed_button == Some(gpui::MouseButton::Right) {
                         if let Some(start) = *right_mouse_down_position.borrow() {
                             let dx: f32 = (event.position.x - start.x).into();
@@ -312,7 +455,6 @@ impl ViewportPanel {
                         mouse_right_captured.clone(),
                         mouse_middle_captured.clone(),
                         state_arc_move.clone(),
-                        view_state_move.clone(),
                         gpu_engine_move.clone(),
                         pointer_events_move.clone(),
                         element_bounds_move.clone(),
@@ -495,6 +637,7 @@ impl ViewportPanel {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_click = state_arc.clone();
                 let gpu_engine_click = gpu_engine.clone();
+                let box_select = box_select.clone();
 
                 move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
@@ -508,6 +651,7 @@ impl ViewportPanel {
                         mouse_middle_captured.clone(),
                         state_arc_click.clone(),
                         gpu_engine_click.clone(),
+                        box_select.clone(),
                     );
                 }
             })
@@ -515,17 +659,25 @@ impl ViewportPanel {
             .on_mouse_up(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
-                let view_state_up = view_state.clone();
                 let gpu_engine_up = gpu_engine.clone();
+                let box_select = box_select.clone();
+                let element_bounds = element_bounds_for_click.clone();
 
                 move |event: &gpui::MouseUpEvent,
                       _window: &mut gpui::Window,
-                      _cx: &mut gpui::App| {
+                      cx: &mut gpui::App| {
+                    if super::build_handlers::finish_box_select(
+                        &box_select,
+                        &element_bounds,
+                        &pointer_events,
+                        event.position,
+                    ) {
+                        cx.notify(owner_view);
+                    }
                     super::build_handlers::handle_left_mouse_up(
                         event,
                         pointer_events.clone(),
                         state_arc_up.clone(),
-                        view_state_up.clone(),
                         gpu_engine_up.clone(),
                     );
                 }
@@ -533,14 +685,22 @@ impl ViewportPanel {
             .on_mouse_up_out(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state = state_arc.clone();
-                let view_state = view_state.clone();
                 let engine = gpu_engine.clone();
-                move |event, _window, _cx| {
+                let box_select = box_select.clone();
+                let element_bounds = element_bounds_for_click.clone();
+                move |event, _window, cx| {
+                    if super::build_handlers::finish_box_select(
+                        &box_select,
+                        &element_bounds,
+                        &pointer_events,
+                        event.position,
+                    ) {
+                        cx.notify(owner_view);
+                    }
                     super::build_handlers::handle_left_mouse_up(
                         event,
                         pointer_events.clone(),
                         state.clone(),
-                        view_state.clone(),
                         engine.clone(),
                     );
                 }
@@ -550,11 +710,27 @@ impl ViewportPanel {
                 let queue = pointer_events_for_click.clone();
                 let right = mouse_right_captured.clone();
                 let middle = mouse_middle_captured.clone();
+                let box_select = box_select.clone();
                 gpui::canvas(
                     |_, _, _| (),
                     move |bounds, (), window, _cx| {
                         window.on_mouse_event(
-                            move |event: &gpui::MouseMoveEvent, phase, _window, _cx| {
+                            move |event: &gpui::MouseMoveEvent, phase, _window, cx| {
+                                // A selection box keeps following the pointer
+                                // past the viewport's edge, clamped to it.
+                                if phase == gpui::DispatchPhase::Capture
+                                    && !bounds.contains(&event.position)
+                                {
+                                    if let Some((_, end)) = box_select.borrow_mut().as_mut() {
+                                        let max = bounds.bottom_right();
+                                        *end = point(
+                                            event.position.x.clamp(bounds.origin.x, max.x),
+                                            event.position.y.clamp(bounds.origin.y, max.y),
+                                        );
+                                        cx.notify(owner_view);
+                                        return;
+                                    }
+                                }
                                 if phase != gpui::DispatchPhase::Capture
                                     || bounds.contains(&event.position)
                                     || right.load(Ordering::Relaxed)
@@ -586,6 +762,7 @@ impl ViewportPanel {
                 .size_full()
             })
             // Overlays
+            .child(box_overlay)
             .child(self.render_overlays(state, state_arc, gpu_engine, cx))
             .child(popup_element)
             .id("level-editor-viewport-context-menu")

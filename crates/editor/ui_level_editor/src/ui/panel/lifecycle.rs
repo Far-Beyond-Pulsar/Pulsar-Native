@@ -402,7 +402,7 @@ impl LevelEditorPanel {
                 if !drags.is_empty() {
                     let mut s = poll_state.write();
                     for drag in drags {
-                        s.scene.record_gizmo_drag(drag.entity, drag.before);
+                        s.scene.record_gizmo_drag(&drag.moved);
                     }
                 }
                 // A gizmo drag on a Static/Stationary object (#837); the

@@ -4691,3 +4691,57 @@ mod plugin_kinds {
         )
     }
 }
+
+/// Pixels of `frame` that differ from `reference` and are the selection
+/// outline's yellow (`helio-pass-selection-outline`, drawn at full strength
+/// where the selected surface is in front).
+fn outline_pixels(frame: &Frame, reference: &Frame) -> usize {
+    frame
+        .color
+        .chunks_exact(4)
+        .zip(reference.color.chunks_exact(4))
+        .filter(|(px, before)| {
+            px != before && px[0] >= 230 && (160..=230).contains(&px[1]) && px[2] <= 60
+        })
+        .count()
+}
+
+#[test]
+fn a_selected_mesh_is_outlined_in_the_editor_and_the_outline_leaves_with_the_selection() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+
+    let mut state = LevelEditorState::new();
+    let id = drop_matte_mesh(&mut state);
+    state.scene.select_object(None);
+    let mut renderer = harness.renderer(&state);
+    let unselected = harness.frames(&mut renderer, || {});
+
+    state.scene.select_object(Some(id.clone()));
+    let selected = harness.frames(&mut renderer, || {});
+    selected.dump("selection_outline_selected");
+    let outlined = outline_pixels(&selected, &unselected);
+    println!("SELECTION outline pixels: {outlined}");
+    assert!(
+        outlined >= 32,
+        "a selected mesh shows no outline ({outlined} outline pixels)"
+    );
+
+    state.scene.select_object(None);
+    let deselected = harness.frames(&mut renderer, || {});
+    let left = outline_pixels(&deselected, &unselected);
+    println!("SELECTION outline pixels after deselect: {left}");
+    assert!(
+        left * 10 < outlined,
+        "the outline stays after the selection is cleared ({left} of {outlined})"
+    );
+}
