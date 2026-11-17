@@ -18,5 +18,6 @@ found (definition rows, texture table, strands published) and projects every
 cable end; *Cable Solid* paints the geometry flat magenta.
 
 `reset_simulation()` increments a revision in the GPU row; persistent
-reset-driven physics, using `cylinder_mesh` for the 3D profile, and a dedicated
+reset-driven physics, a 3D profile mesh (referenced through the meshes
+plugin's api crate, so a game without meshes still links cables), and a dedicated
 editor reset action remain to be completed.

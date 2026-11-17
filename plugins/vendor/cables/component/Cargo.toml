@@ -23,7 +23,6 @@ helio-core = { workspace = true }
 helio-feature-api = { workspace = true }
 cables_feature = { workspace = true }
 helio_component = { workspace = true }
-meshes_component = { workspace = true }
 pulsar_scene_model = { workspace = true }
 glam = { workspace = true }
 # The game's slim feature set (as portals_component): linking the plugin must

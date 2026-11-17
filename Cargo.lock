@@ -1584,7 +1584,6 @@ dependencies = [
  "helio-pass-cables",
  "helio-scene-join",
  "helio_component",
- "meshes_component",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",

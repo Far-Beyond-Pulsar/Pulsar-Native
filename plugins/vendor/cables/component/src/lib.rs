@@ -9,7 +9,6 @@ pub mod sync;
 pub use sync::{CableProblem, CableSync, Pairing, pair_cables};
 
 use engine_class_derive::{engine_class, world_component};
-use meshes_component::components::MeshAssetPath;
 use pulsar_reflection::{Reflectable, TextureSrc};
 use pulsar_scenedb::gpu::{GpuMirrorHandle, SceneGpuStore};
 use pulsar_scenedb_derive::SceneStore;
@@ -48,9 +47,6 @@ pub struct CableComponent {
     pub enabled: bool,
     #[property(category = "Appearance")]
     pub render_mode: CableRenderMode,
-    /// Resolved by the cable asset bindings when using 3D mode.
-    #[property(category = "Appearance")]
-    pub cylinder_mesh: MeshAssetPath,
     /// Resolved by the cable asset bindings when using 2D mode.
     #[property(category = "Appearance")]
     pub tile_texture: TextureSrc,
@@ -90,7 +86,6 @@ impl Default for CableComponent {
             id: 1,
             enabled: true,
             render_mode: CableRenderMode::TwoD,
-            cylinder_mesh: MeshAssetPath::default(),
             tile_texture: TextureSrc::default(),
             surface: CableSurface::TileTexture,
             color: [0.58, 0.52, 0.42, 1.0],
