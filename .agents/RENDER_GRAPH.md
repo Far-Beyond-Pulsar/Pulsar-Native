@@ -199,7 +199,7 @@ entity, so a click writes the rows of the objects whose selection changed and no
   `plugins/vendor/meshes/feature/gbuffer/tests/selection_shaders.rs`, and
   `helio-pass-selection-outline`'s shader test.
 
-Voxel is one `ChunkPass` (residency, generation, G-buffer, GI rays, sun pages are inside
+Voxel is one `ChunkPass` (residency, generation, G-buffer, the cut ray streams walk, sun pages are inside
 it), so it is one node. The debug overlay node takes the host's `DebugOverlayState` as the
 `DebugOverlayHost` setting (`RendererConfig::with_feature`); with none it owns a hidden state,
 reached through the built pass (`find_pass_mut::<DebugOverlayPass>()`); its `visible`
