@@ -6,11 +6,10 @@ struct Camera {
     view_proj: mat4x4<f32>,
 };
 @group(0) @binding(0) var<uniform> u: CableUniforms;
-@group(0) @binding(1) var<storage, read> connector_words: array<u32>;
-@group(0) @binding(2) var<storage, read> definition_words: array<u32>;
-@group(0) @binding(3) var<uniform> camera: Camera;
-@group(0) @binding(4) var<storage, read> instances: array<u32>;
-@group(0) @binding(5) var<storage, read> draw_args: array<u32>;
+@group(0) @binding(1) var<storage, read> definition_words: array<u32>;
+@group(0) @binding(2) var<uniform> camera: Camera;
+@group(0) @binding(3) var<storage, read> ribbon_words: array<u32>;
+@group(0) @binding(4) var<storage, read> tube_words: array<u32>;
 @group(1) @binding(0) var scene_sampler: sampler;
 @group(1) @binding(1) var scene_textures: binding_array<texture_2d<f32>, 256>;
 
@@ -22,6 +21,47 @@ struct VertexOut {
     @location(1) uv: vec2<f32>,
     @location(2) @interpolate(flat) texture_index: u32,
 };
+
+// One cable strand: the two ends in the frame's space, which strand of a
+// bundle it is, and the cable ID that names its definition row.
+struct Instance {
+    start: vec3<f32>,
+    lane: u32,
+    end: vec3<f32>,
+    id: u32,
+};
+
+fn ribbon_instance(i: u32) -> Instance {
+    let o = i * INSTANCE_WORDS;
+    var s: Instance;
+    s.start = vec3<f32>(fword(ribbon_words[o]), fword(ribbon_words[o + 1u]), fword(ribbon_words[o + 2u]));
+    s.lane = ribbon_words[o + 3u];
+    s.end = vec3<f32>(fword(ribbon_words[o + 4u]), fword(ribbon_words[o + 5u]), fword(ribbon_words[o + 6u]));
+    s.id = ribbon_words[o + 7u];
+    return s;
+}
+
+fn tube_instance(i: u32) -> Instance {
+    let o = i * INSTANCE_WORDS;
+    var s: Instance;
+    s.start = vec3<f32>(fword(tube_words[o]), fword(tube_words[o + 1u]), fword(tube_words[o + 2u]));
+    s.lane = tube_words[o + 3u];
+    s.end = vec3<f32>(fword(tube_words[o + 4u]), fword(tube_words[o + 5u]), fword(tube_words[o + 6u]));
+    s.id = tube_words[o + 7u];
+    return s;
+}
+
+// The packed definition row of `id` (the join keeps enabled definitions in the
+// leading rows), or 0xffffffff.
+fn find_definition(id: u32) -> u32 {
+    for (var k = 0u; k < u.definition_count; k++) {
+        let d = k * DEFINITION_WORDS;
+        if (definition_words[d] == id && definition_words[d + 1u] != 0u) {
+            return d;
+        }
+    }
+    return 0xffffffffu;
+}
 
 fn sample_cable_texture(texture_index: u32, uv: vec2<f32>) -> vec4<f32> {
     return textureSampleLevel(scene_textures[texture_index], scene_sampler, uv, 0.0);
@@ -36,20 +76,17 @@ fn dead_vertex() -> VertexOut {
     return out;
 }
 
-// `list` 0 is the camera-facing ribbon list, 1 the tube list; `face` is the
-// tube side (always 0 for a ribbon).
-fn emit(segment: u32, face: u32, corner: u32, instance: u32, list: u32) -> VertexOut {
-    if (instance >= INSTANCE_CAPACITY) { return dead_vertex(); }
-    let record = (list * INSTANCE_CAPACITY + instance) * 4u;
-    let ao = instances[record] * CONNECTOR_WORDS;
-    let bo = instances[record + 1u] * CONNECTOR_WORDS;
-    let definition = instances[record + 2u];
-    let lane = instances[record + 3u];
-    let tube = list != 0u;
+// `tube` selects the round cross-section; `face` is the tube side (0 for a
+// ribbon).
+fn emit(segment: u32, face: u32, corner: u32, strand: Instance, tube: bool) -> VertexOut {
+    let definition = find_definition(strand.id);
+    if (definition == 0xffffffffu) { return dead_vertex(); }
     let bundle_count = select(1u, clamp(definition_words[definition + 3u], 1u, BUNDLE_LANES), tube);
+    let lane = strand.lane;
+    if (lane >= bundle_count) { return dead_vertex(); }
 
-    let p0 = vec3<f32>(fword(connector_words[ao + 12u]), fword(connector_words[ao + 13u]), fword(connector_words[ao + 14u]));
-    let p1 = vec3<f32>(fword(connector_words[bo + 12u]), fword(connector_words[bo + 13u]), fword(connector_words[bo + 14u]));
+    let p0 = strand.start;
+    let p1 = strand.end;
     let t0 = f32(segment) / f32(SEGMENTS);
     let next = min(t0 + 1.0 / f32(SEGMENTS), 1.0);
     let t = select(t0, next, corner == 1u || corner == 2u || corner == 4u);
@@ -103,19 +140,19 @@ fn emit(segment: u32, face: u32, corner: u32, instance: u32, list: u32) -> Verte
 
 @vertex
 fn vs_ribbon(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> VertexOut {
-    return emit(vertex / 6u, 0u, vertex % 6u, instance, 0u);
+    return emit(vertex / 6u, 0u, vertex % 6u, ribbon_instance(instance), false);
 }
 
 @vertex
 fn vs_tube(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> VertexOut {
-    return emit(vertex / (TUBE_SIDES * 6u), (vertex / 6u) % TUBE_SIDES, vertex % 6u, instance, 1u);
+    return emit(vertex / (TUBE_SIDES * 6u), (vertex / 6u) % TUBE_SIDES, vertex % 6u, tube_instance(instance), true);
 }
 
 // ── Debug views ─────────────────────────────────────────────────────────────
 // "Cable Solid" (flag FLAG_SOLID) paints the generated geometry flat magenta,
 // separating geometry problems from surface/texture problems. "Cable
-// Diagnostics" draws a HUD of what each stage found, projected connector
-// markers and the first pair instances as screen-space lines.
+// Diagnostics" draws a HUD of what each stage found, a cross at every cable
+// end and straight lines along the first cables.
 
 struct Projected {
     px: vec2<f32>,
@@ -129,11 +166,6 @@ fn project(world: vec3<f32>) -> Projected {
     let ndc = clip.xy / max(clip.w, 0.0001);
     out.px = vec2<f32>((ndc.x * 0.5 + 0.5) * u.viewport.x, (0.5 - ndc.y * 0.5) * u.viewport.y);
     return out;
-}
-
-fn connector_position(row: u32) -> vec3<f32> {
-    let o = row * CONNECTOR_WORDS;
-    return vec3<f32>(fword(connector_words[o + 12u]), fword(connector_words[o + 13u]), fword(connector_words[o + 14u]));
 }
 
 fn segment_distance(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
@@ -160,24 +192,23 @@ fn bar(px: vec2<f32>, row: u32, value: u32, color: vec3<f32>) -> vec4<f32> {
     return vec4<f32>(0.0);
 }
 
+fn cross_hit(px: vec2<f32>, at: Projected) -> bool {
+    if (!at.visible) { return false; }
+    let d = abs(px - at.px);
+    return (d.x < 12.0 && d.y < 2.0) || (d.y < 12.0 && d.x < 2.0);
+}
+
 @fragment
 fn fs_debug(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let px = frag.xy;
     var color = vec4<f32>(0.0);
 
     // HUD: one bar per stage; length is the count (4 px per unit, 128 max).
-    if (px.x < 16.0 + 128.0 * 4.0 + 8.0 && px.y < 16.0 + 16.0 * 24.0) {
+    if (px.x < 16.0 + 128.0 * 4.0 + 8.0 && px.y < 16.0 + 13.0 * 24.0) {
         color = vec4<f32>(0.0, 0.0, 0.0, 0.45);
         var enabled = 0u;
-        var with_id = 0u;
-        var defs = 0u;
-        for (var c = 0u; c < u.connector_count; c++) {
-            let o = c * CONNECTOR_WORDS;
-            if (connector_words[o + 17u] != 0u) { enabled++; }
-            if (connector_words[o + 17u] != 0u && connector_words[o + 16u] != 0u) { with_id++; }
-        }
         for (var d = 0u; d < u.definition_count; d++) {
-            if (definition_words[d * DEFINITION_WORDS + 1u] != 0u) { defs++; }
+            if (definition_words[d * DEFINITION_WORDS + 1u] != 0u) { enabled++; }
         }
         // Raw definition buffer: how many rows it holds, how many carry any
         // data (scanning up to 1024 rows), and the first such row's words.
@@ -197,55 +228,43 @@ fn fs_debug(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         let first_base = select(0u, first_row * DEFINITION_WORDS, first_row != 0xffffffffu);
         let rows_live = u.flags & FLAG_ROWS_LIVE;
         let textures_ok = (u.flags & FLAG_TEXTURES_OK) >> 1u;
-        let ribbon = draw_args[1];
-        let tube = draw_args[5];
-        var layers: array<vec4<f32>, 16>;
-        layers[0] = bar(px, 0u, rows_live * 128u, vec3<f32>(0.2, 0.9, 0.2));      // both source buffers hold rows
-        layers[1] = bar(px, 1u, textures_ok * 128u, vec3<f32>(0.9, 0.9, 0.9));    // material texture table present
-        layers[2] = bar(px, 2u, u.connector_count, vec3<f32>(0.3, 0.4, 1.0));    // connector rows considered
-        layers[3] = bar(px, 3u, enabled, vec3<f32>(0.2, 0.8, 0.8));              // ... enabled (placement kept them)
-        layers[4] = bar(px, 4u, with_id, vec3<f32>(0.9, 0.9, 0.2));              // ... with a nonzero ID
-        layers[5] = bar(px, 5u, defs, vec3<f32>(0.4, 0.9, 1.0));                 // enabled definitions
-        layers[6] = bar(px, 6u, ribbon, vec3<f32>(1.0, 0.6, 0.1));               // ribbon instances built
-        layers[7] = bar(px, 7u, tube, vec3<f32>(1.0, 0.2, 0.9));                 // tube instances built
-        layers[8] = bar(px, 8u, u.definition_count, vec3<f32>(0.5, 0.5, 0.9));   // definition rows considered
-        layers[9] = bar(px, 9u, total_rows, vec3<f32>(0.8, 0.8, 0.8));           // rows in the definition buffer
-        layers[10] = bar(px, 10u, nonzero_rows, vec3<f32>(1.0, 0.5, 0.5));       // ... holding any data
-        layers[11] = bar(px, 11u, select(0u, first_row, first_row != 0xffffffffu), vec3<f32>(0.6, 1.0, 0.6)); // first such row's index
-        layers[12] = bar(px, 12u, definition_words[first_base], vec3<f32>(1.0, 1.0, 1.0));      // word 0: id (expect 1)
-        layers[13] = bar(px, 13u, definition_words[first_base + 1u], vec3<f32>(1.0, 1.0, 1.0)); // word 1: enabled (expect 1)
-        layers[14] = bar(px, 14u, definition_words[first_base + 2u], vec3<f32>(1.0, 1.0, 1.0)); // word 2: mode (0 = 2D, 1 = 3D)
-        layers[15] = bar(px, 15u, definition_words[first_base + 3u], vec3<f32>(1.0, 1.0, 1.0)); // word 3: bundle count (expect 1)
-        for (var k = 0u; k < 16u; k++) {
+        var layers: array<vec4<f32>, 13>;
+        layers[0] = bar(px, 0u, rows_live * 128u, vec3<f32>(0.2, 0.9, 0.2));         // definition sources hold rows
+        layers[1] = bar(px, 1u, textures_ok * 128u, vec3<f32>(0.9, 0.9, 0.9));       // material texture table present
+        layers[2] = bar(px, 2u, u.ribbon_count, vec3<f32>(1.0, 0.6, 0.1));           // ribbon strands published
+        layers[3] = bar(px, 3u, u.tube_count, vec3<f32>(1.0, 0.2, 0.9));             // tube strands published
+        layers[4] = bar(px, 4u, enabled, vec3<f32>(0.4, 0.9, 1.0));                  // enabled definitions packed
+        layers[5] = bar(px, 5u, u.definition_count, vec3<f32>(0.5, 0.5, 0.9));       // definition rows considered
+        layers[6] = bar(px, 6u, total_rows, vec3<f32>(0.8, 0.8, 0.8));               // rows in the definition buffer
+        layers[7] = bar(px, 7u, nonzero_rows, vec3<f32>(1.0, 0.5, 0.5));             // ... holding any data
+        layers[8] = bar(px, 8u, select(0u, first_row, first_row != 0xffffffffu), vec3<f32>(0.6, 1.0, 0.6)); // first such row's index
+        layers[9] = bar(px, 9u, definition_words[first_base], vec3<f32>(1.0, 1.0, 1.0));       // word 0: id (expect 1)
+        layers[10] = bar(px, 10u, definition_words[first_base + 1u], vec3<f32>(1.0, 1.0, 1.0)); // word 1: enabled (expect 1)
+        layers[11] = bar(px, 11u, definition_words[first_base + 2u], vec3<f32>(1.0, 1.0, 1.0)); // word 2: mode (0 = 2D, 1 = 3D)
+        layers[12] = bar(px, 12u, definition_words[first_base + 3u], vec3<f32>(1.0, 1.0, 1.0)); // word 3: bundle count (expect 1)
+        for (var k = 0u; k < 13u; k++) {
             if (layers[k].a > 0.0) { color = vec4<f32>(mix(color.rgb, layers[k].rgb, layers[k].a), max(color.a, 0.9)); }
         }
     }
 
-    // Connector markers: a cross at each enabled connector's projected spot,
-    // coloured by ID, so a wrong placement or a behind-camera row is visible.
-    for (var c = 0u; c < u.connector_count; c++) {
-        let o = c * CONNECTOR_WORDS;
-        if (connector_words[o + 17u] == 0u) { continue; }
-        let pr = project(connector_position(c));
-        if (!pr.visible) { continue; }
-        let d = abs(px - pr.px);
-        if ((d.x < 12.0 && d.y < 2.0) || (d.y < 12.0 && d.x < 2.0)) {
-            let id = connector_words[o + 16u];
-            color = vec4<f32>(f32(id & 1u), f32((id >> 1u) & 1u), 1.0 - f32((id >> 2u) & 1u) * 0.5, 1.0);
+    // The first strands of each list: a cross at both ends and a straight
+    // screen-space line (ribbon yellow, tube magenta), whatever the geometry does.
+    for (var i = 0u; i < min(u.ribbon_count, 16u); i++) {
+        let s = ribbon_instance(i);
+        let a = project(s.start);
+        let b = project(s.end);
+        if (cross_hit(px, a) || cross_hit(px, b)) { color = vec4<f32>(1.0, 0.6, 0.1, 1.0); }
+        if (a.visible && b.visible && segment_distance(px, a.px, b.px) < 1.5) {
+            color = vec4<f32>(1.0, 1.0, 0.0, 1.0);
         }
     }
-
-    // The first pair instances as straight screen-space lines (ribbon yellow,
-    // tube magenta): the spans the draw would cover, whatever the geometry does.
-    for (var list = 0u; list < 2u; list++) {
-        let count = min(draw_args[list * 4u + 1u], 16u);
-        for (var i = 0u; i < count; i++) {
-            let record = (list * INSTANCE_CAPACITY + i) * 4u;
-            let a = project(connector_position(instances[record]));
-            let b = project(connector_position(instances[record + 1u]));
-            if (a.visible && b.visible && segment_distance(px, a.px, b.px) < 1.5) {
-                color = select(vec4<f32>(1.0, 1.0, 0.0, 1.0), vec4<f32>(1.0, 0.0, 1.0, 1.0), list == 1u);
-            }
+    for (var i = 0u; i < min(u.tube_count, 16u); i++) {
+        let s = tube_instance(i);
+        let a = project(s.start);
+        let b = project(s.end);
+        if (cross_hit(px, a) || cross_hit(px, b)) { color = vec4<f32>(1.0, 0.2, 0.9, 1.0); }
+        if (a.visible && b.visible && segment_distance(px, a.px, b.px) < 1.5) {
+            color = vec4<f32>(1.0, 0.0, 1.0, 1.0);
         }
     }
     return color;

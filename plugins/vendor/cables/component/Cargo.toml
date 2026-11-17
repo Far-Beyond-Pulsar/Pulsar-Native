@@ -24,6 +24,12 @@ helio-feature-api = { workspace = true }
 cables_feature = { workspace = true }
 helio_component = { workspace = true }
 meshes_component = { workspace = true }
+pulsar_scene_model = { workspace = true }
+glam = { workspace = true }
+# The game's slim feature set (as portals_component): linking the plugin must
+# not pull the editor's features into a game build. A path dependency because
+# the workspace table cannot opt out of default features.
+engine_backend = { path = "../../../../crates/core/engine_backend", default-features = false, features = ["render"] }
 
 [features]
 default = ["gpu"]

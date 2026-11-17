@@ -1,8 +1,12 @@
 //! Authored cable definitions and connectors for `pulsar.cables`.
 //!
 //! A cable definition describes appearance and simulation for one nonzero ID.
-//! Connector components with that ID are paired by the rendering feature;
-//! pairing and simulation are not performed by this crate or on the CPU.
+//! Connectors sharing that ID are paired each frame on the CPU (`sync`, as
+//! portals pair by Link ID) and published as the frame's cable spans; the
+//! feature draws them with the definition's GPU row.
+
+pub mod sync;
+pub use sync::{CableProblem, CableSync, Pairing, pair_cables};
 
 use engine_class_derive::{engine_class, world_component};
 use meshes_component::components::MeshAssetPath;
@@ -172,18 +176,6 @@ impl Default for CableConnectorComponent {
     }
 }
 
-impl CableConnectorComponent {
-    /// Project the endpoint's matching key into the GPU contract row.
-    pub fn gpu_row(&self) -> cables_api::CableConnectorRow {
-        cables_api::CableConnectorRow {
-            transform: [0.0; 16],
-            id: self.id,
-            enabled: u32::from(self.enabled && self.id != 0),
-            _padding: [0; 2],
-        }
-    }
-}
-
 #[world_component]
 impl CableConnectorComponent {}
 
@@ -191,7 +183,7 @@ impl CableConnectorComponent {}
 /// are mirrored on component edits; rendering never walks component storage.
 #[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
-#[gpu(layout = packed, buffer = "cable_definitions")]
+#[gpu(layout = packed, buffer = "cable_definition_sources")]
 pub struct CableDefinitionSourceRow {
     #[gpu]
     pub id: u32,
@@ -228,33 +220,6 @@ impl CableDefinitionSourceRow {
     }
 }
 
-/// Connector source row; its local transform is written by the shared owner
-/// placement join, while the authored ID/enabled fields remain component data.
-#[derive(SceneStore, bytemuck::Pod, bytemuck::Zeroable, Clone, Copy, Debug, PartialEq)]
-#[repr(C)]
-#[gpu(layout = packed, buffer = "cable_connector_sources")]
-pub struct CableConnectorSourceRow {
-    #[gpu]
-    pub transform: [f32; 16],
-    #[gpu]
-    pub id: u32,
-    #[gpu]
-    pub enabled: u32,
-    #[gpu]
-    pub _padding: [u32; 2],
-}
-
-impl From<&CableConnectorComponent> for CableConnectorSourceRow {
-    fn from(c: &CableConnectorComponent) -> Self {
-        Self {
-            transform: [0.0; 16],
-            id: c.id,
-            enabled: u32::from(c.enabled && c.id != 0),
-            _padding: [0; 2],
-        }
-    }
-}
-
 fn definition_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_new: bool) {
     // SAFETY: SceneDB invokes this registration with the live component value.
     let component = unsafe { &*(data as *const CableComponent) };
@@ -280,21 +245,6 @@ fn definition_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_n
 
 fn definition_clear(mirror: &GpuMirrorHandle, row: u32) {
     pulsar_scenedb::gpu::clear_derived_row::<CableDefinitionSourceRow>(mirror, row);
-}
-
-fn connector_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_new: bool) {
-    // SAFETY: SceneDB invokes this registration with the live component value.
-    let component = unsafe { &*(data as *const CableConnectorComponent) };
-    pulsar_scenedb::gpu::write_derived_row(
-        mirror,
-        row,
-        &CableConnectorSourceRow::from(component),
-        is_new,
-    );
-}
-
-fn connector_clear(mirror: &GpuMirrorHandle, row: u32) {
-    pulsar_scenedb::gpu::clear_derived_row::<CableConnectorSourceRow>(mirror, row);
 }
 
 fn collect_cable_handles(
@@ -346,49 +296,39 @@ pulsar_scenedb::pulsar_reflection::inventory::submit! {
         clear: definition_clear,
     }
 }
-pulsar_scenedb::pulsar_reflection::inventory::submit! {
-    pulsar_scenedb::gpu::GpuMirrorRegistration {
-        component_id: pulsar_scenedb::component_id::<CableConnectorComponent>,
-        dispatch: connector_dispatch,
-    }
-}
-pulsar_scenedb::pulsar_reflection::inventory::submit! {
-    pulsar_scenedb::gpu::GpuClearRegistration {
-        component_id: pulsar_scenedb::component_id::<CableConnectorComponent>,
-        clear: connector_clear,
-    }
-}
 
-/// Registers growable SceneDB columns for authored cable data.
+/// Registers growable SceneDB columns for authored cable definitions.
 pub fn register_columns(store: &mut SceneGpuStore, device: &std::sync::Arc<wgpu::Device>) {
     CableDefinitionSourceRow::register_gpu_columns_growable(store, 16, device);
-    CableConnectorSourceRow::register_gpu_columns_growable(store, 64, device);
 }
 
-/// Places authored connector source rows at their owning scene transforms.
-pub fn connector_derivation(
+/// Packs the enabled cable definitions into the rows the feature draws from.
+///
+/// A source row sits at its owning object's scene slot, so a definition on
+/// the 1,700th object is row ~1,700; the join packs the enabled ones into
+/// the leading rows, as every kind's `*_sources` column is joined.
+pub fn row_derivation(
     device: &wgpu::Device,
     keys: helio_scene_join::RowJoinKeys,
 ) -> Box<dyn helio_scene_join::SceneDerivation> {
-    use helio_scene_join::{placement::*, BufferKey, Placement, RowJoin, RowTable};
-    const ENDPOINT_PLACEMENT: Placement =
-        Placement::new("cable_connectors", include_str!("connector_placement.wgsl"))
-            .from_owner();
-    const ENABLED_WORD: u32 = 17;
+    use helio_scene_join::{BufferKey, RowJoin, RowTable};
+    /// `CableDefinitionSourceRow::enabled` (word 1).
+    const ENABLED_WORD: u32 = 1;
+    /// Enabled definitions the draw can address.
+    const CAPACITY: u32 = 256;
     Box::new(RowJoin::new(
         device,
-        "CableConnectorPlacement",
+        "CableDefinitionRows",
         keys,
         vec![RowTable::new(
-            "Cable Connector Rows",
-            BufferKey::of("cable_connectors"),
-            BufferKey::of("cable_connector_sources"),
-            std::mem::size_of::<CableConnectorSourceRow>() as u64,
-            (std::mem::size_of::<CableConnectorSourceRow>() / 4) as u32,
-            GATE_HIDDEN,
+            "Cable Definition Rows",
+            BufferKey::of("cable_definitions"),
+            BufferKey::of("cable_definition_sources"),
+            std::mem::size_of::<CableDefinitionSourceRow>() as u64,
+            (std::mem::size_of::<CableDefinitionSourceRow>() / 4) as u32,
+            0,
         )
-        .placed_by(ENDPOINT_PLACEMENT)
-        .packed(65_536)
+        .packed(CAPACITY)
         .gated_on(ENABLED_WORD)],
     ))
 }

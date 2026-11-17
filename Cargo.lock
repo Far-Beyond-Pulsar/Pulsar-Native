@@ -1573,9 +1573,11 @@ name = "cables_component"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "engine_backend",
  "engine_class_derive",
  "engine_fs",
  "engine_state",
+ "glam 0.33.5",
  "helio-cables-api",
  "helio-core",
  "helio-feature-api",
@@ -1584,6 +1586,7 @@ dependencies = [
  "helio_component",
  "meshes_component",
  "pulsar_reflection",
+ "pulsar_scene_model",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
  "pulsar_world_registry",
@@ -5952,6 +5955,7 @@ dependencies = [
  "helio-mats",
  "naga",
  "pulsar_scenedb",
+ "tracing",
  "wgpu",
 ]
 

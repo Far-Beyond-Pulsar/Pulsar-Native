@@ -22,7 +22,13 @@ pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
         origin: p.origin(),
         name: "cables.rows",
         register_columns: cables_component::register_columns,
-        derivation: Some(cables_component::connector_derivation),
+        derivation: Some(cables_component::row_derivation),
+    });
+    // Each frame, every renderer pairs the connectors that share a cable ID.
+    p.add(engine_backend::scene::SpaceProducerRegistration {
+        origin: p.origin(),
+        name: "cables",
+        new: || Box::new(cables_component::CableSync::default()),
     });
     p.add(TextureBindingRegistration {
         origin: p.origin(),
