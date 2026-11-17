@@ -464,8 +464,14 @@ Known, not fixed. Ordered roughly by how much they matter.
   the cost is one cull and one draw per drawer, whatever the chain count.
   Foliage keeps tiles resident around the places chains show (eye sets,
   `project.foliage.portal_eyes`) and culls them per chain into its own
-  occurrence draw. **Virtual geometry does not draw through portals yet**
-  (its visibility-buffer pipeline needs a chain dimension, Pulsar-Native#1747).
+  occurrence draw. Virtual geometry runs its cluster pipeline a second time
+  (`helio_vg_format::VgRun::SECONDARY`, order 75) over virtual instances: per
+  chain, a GPU walk of the instance BVH against the chain's volume
+  (`PORTAL_CHAIN_VOLUMES`) copies each instance it may show with the chain's
+  map folded into its transforms (this frame's and last's), culled against its
+  own Hi-Z of the frame depth after the occurrences, clipped per pixel to the
+  chain, in the one cluster store. Classic occurrences skip VG-active
+  instances, as the direct cull does.
 - **Lighting and decals**: a chain's pixels carry its remap in the surface tag
   (`gbuffer_remap_tag`); lighting, transmission and decals map position and
   normal back to the content's world through `VIEW_REMAPS`. Normals are stored

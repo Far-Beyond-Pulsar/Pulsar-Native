@@ -6510,6 +6510,7 @@ dependencies = [
 name = "helio-pass-vg"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "glam 0.33.5",
  "helio",
  "helio-components",
@@ -6526,9 +6527,11 @@ dependencies = [
  "helio-pass-vg-dense",
  "helio-pass-vg-raster",
  "helio-pass-vg-shade",
+ "helio-portal-api",
  "helio-vg-format",
  "helio-vg-stream",
  "log",
+ "naga",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -6557,6 +6560,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-core",
  "helio-mats",
+ "helio-mesh-api",
  "helio-pass-vg-bvh",
  "helio-vg-build",
  "helio-vg-format",
@@ -6595,6 +6599,7 @@ dependencies = [
  "helio-frame-api",
  "helio-mats",
  "helio-pass-vg-cull",
+ "helio-portal-api",
  "helio-vg-format",
  "log",
  "naga",
