@@ -24,7 +24,10 @@ pairing, the definition GPU rows and the render feature.
 - **Drawing** is `CableRenderPass`: it turns the spans into two instance
   lists (camera-facing ribbons; 3D tubes, one instance per bundle lane),
   uploads them when the payload changes, and draws each list with one
-  instanced draw. The vertex stage generates the geometry and looks up the
+  instanced draw. Cables are opaque scene geometry: the pass tests against
+  the scene depth (reverse-Z, nearer wins) so meshes occlude cables, and
+  writes depth so later passes (billboards, particles, fog) see them; a
+  see-through texel (alpha below 0.5) is cut out rather than blended. The vertex stage generates the geometry and looks up the
   cable's definition row by ID.
 
 ## AAA comparison and scale

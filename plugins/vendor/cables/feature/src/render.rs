@@ -248,7 +248,7 @@ impl CableRenderPass {
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
-        let pipeline = |label, layout, vertex_entry, fragment_entry| {
+        let pipeline = |label, layout, vertex_entry, fragment_entry, solid: bool| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
@@ -263,7 +263,21 @@ impl CableRenderPass {
                     cull_mode: None,
                     ..Default::default()
                 },
-                depth_stencil: None,
+                // Cables are opaque scene geometry: tested against the scene depth
+                // and written to it, so meshes occlude them and later passes
+                // (billboards, particles, fog) see them. The diagnostics HUD
+                // neither tests nor writes.
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: wgpu::TextureFormat::Depth32Float,
+                    depth_write_enabled: Some(solid),
+                    depth_compare: Some(if solid {
+                        helio_core::depth::NEARER_EQUAL
+                    } else {
+                        wgpu::CompareFunction::Always
+                    }),
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
                 multisample: Default::default(),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -288,9 +302,9 @@ impl CableRenderPass {
             })
         };
         Self {
-            ribbon_pipeline: pipeline("GPU cable ribbons", &layout, "vs_ribbon", "fs_main"),
-            tube_pipeline: pipeline("GPU cable tubes", &layout, "vs_tube", "fs_main"),
-            debug_pipeline: pipeline("Cable diagnostics view", &debug_layout, "vs_debug", "fs_debug"),
+            ribbon_pipeline: pipeline("GPU cable ribbons", &layout, "vs_ribbon", "fs_main", true),
+            tube_pipeline: pipeline("GPU cable tubes", &layout, "vs_tube", "fs_main", true),
+            debug_pipeline: pipeline("Cable diagnostics view", &debug_layout, "vs_debug", "fs_debug", false),
             bind_group_layout,
             texture_binding,
             texture_bind_group_layout,
@@ -388,11 +402,11 @@ impl RenderPass for CableRenderPass {
     }
 
     fn reads(&self) -> &'static [&'static str] {
-        &[helio_frame_api::color::SCENE_COLOR]
+        &[helio_frame_api::color::SCENE_COLOR, helio_frame_api::gbuffer::DEPTH]
     }
 
     fn writes(&self) -> &'static [&'static str] {
-        &[helio_frame_api::color::SCENE_COLOR]
+        &[helio_frame_api::color::SCENE_COLOR, helio_frame_api::gbuffer::DEPTH]
     }
 
     fn declare_resources(&self, builder: &mut helio_core::graph::ResourceBuilder) {
@@ -404,7 +418,7 @@ impl RenderPass for CableRenderPass {
     fn render_pass_descriptor_with_storage<'a>(
         &'a self,
         target: &'a wgpu::TextureView,
-        _depth: &'a wgpu::TextureView,
+        depth: &'a wgpu::TextureView,
         resources: &'a helio_core::ResourceRegistry<'a>,
         storage: &'a mut helio_core::RenderFrameStorage,
     ) -> Option<wgpu::RenderPassDescriptor<'a>> {
@@ -425,7 +439,14 @@ impl RenderPass for CableRenderPass {
         Some(wgpu::RenderPassDescriptor {
             label: Some("Cable overlay"),
             color_attachments: attachments,
-            depth_stencil_attachment: None,
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
             timestamp_writes: None,
             occlusion_query_set: None,
             multiview_mask: None,
@@ -461,9 +482,9 @@ impl RenderPass for CableRenderPass {
             .registry
             .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures())
             .is_some();
-        let flags = u32::from(self.rows_live) * FLAG_ROWS_LIVE
-            | u32::from(textures_ok) * FLAG_TEXTURES_OK
-            | u32::from(self.debug_mode == CABLE_SOLID_VIEW) * FLAG_SOLID;
+        let flags = (u32::from(self.rows_live) * FLAG_ROWS_LIVE)
+            | (u32::from(textures_ok) * FLAG_TEXTURES_OK)
+            | (u32::from(self.debug_mode == CABLE_SOLID_VIEW) * FLAG_SOLID);
         ctx.write_buffer(
             &self.uniforms,
             0,

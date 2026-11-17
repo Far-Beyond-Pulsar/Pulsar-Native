@@ -273,5 +273,9 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     if (in.texture_index != 0xffffffffu) {
         texel = sample_cable_texture(in.texture_index, in.uv);
     }
-    return texel * in.color;
+    let lit = texel * in.color;
+    // Opaque geometry that writes depth: a see-through texel (a tiled texture's
+    // alpha, a thin cable edge) is cut out, not blended over the depth.
+    if (lit.a < 0.5) { discard; }
+    return lit;
 }
