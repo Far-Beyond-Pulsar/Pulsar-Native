@@ -1,10 +1,6 @@
 enable wgpu_binding_array;
+//!use helio_prelude
 
-struct Camera {
-    view: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    view_proj: mat4x4<f32>,
-};
 @group(0) @binding(0) var<uniform> u: CableUniforms;
 @group(0) @binding(1) var<storage, read> definition_words: array<u32>;
 @group(0) @binding(2) var<uniform> camera: Camera;

@@ -216,9 +216,8 @@ impl CableRenderPass {
             entries: &[
                 uniform_entry(0, std::mem::size_of::<CableUniforms>() as u64, v),
                 storage_entry(1, true, v),
-                // The WGSL camera prefix is view, projection and
-                // view-projection: three 64-byte matrices.
-                uniform_entry(2, 192, v),
+                // The prelude's `Camera`: the whole camera uniform.
+                uniform_entry(2, std::mem::size_of::<helio_core::GpuCameraUniforms>() as u64, v),
                 storage_entry(3, true, v),
                 storage_entry(4, true, v),
             ],
@@ -559,8 +558,16 @@ impl RenderPass for CableRenderPass {
     }
 }
 
+/// The draw shader as the GPU compiles it, before the texture table's size is
+/// fixed: the shared constants spliced in and the prelude (the one `Camera`)
+/// prepended.
+fn draw_wgsl() -> String {
+    let source = include_str!("cables.wgsl").replace("// @common", &common_wgsl());
+    helio_core::shader::resolve(&source).into_owned()
+}
+
 fn cable_shader_source(binding: helio_mats::MaterialBindingConfig) -> String {
-    let src = include_str!("cables.wgsl").replace("// @common", &common_wgsl());
+    let src = draw_wgsl();
     if binding.uses_binding_arrays() {
         src.replace(
             "binding_array<texture_2d<f32>, 256>",
@@ -599,6 +606,6 @@ mod tests {
 
     #[test]
     fn the_draw_shader_validates_as_compiled() {
-        validate(&include_str!("cables.wgsl").replace("// @common", &common_wgsl()));
+        validate(&draw_wgsl());
     }
 }

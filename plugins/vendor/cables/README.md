@@ -1,17 +1,22 @@
 # Cables plugin
 
 `pulsar.cables` is linked by `plugins/installed`. It contributes authored
-cable/connector components, SceneDB GPU rows, the endpoint placement join,
-and a Helio render-graph feature. The design and ownership boundary is
-recorded in [DESIGN.md](DESIGN.md).
+cable/connector components, the cable definition GPU rows, a per-frame
+connector pairing, and a Helio render-graph feature. The design and ownership
+boundary is recorded in [DESIGN.md](DESIGN.md).
 
-Cable definitions and connectors pair by a nonzero integer ID. For `n`
-connectors on an ID, the GPU vertex stage considers every unordered pair
-(`n * (n - 1) / 2`). The current GPU feature draws a sagged span with animated
-wind sway and bundle lanes. `reset_simulation()` increments a revision in the
-GPU row; persistent reset-driven physics, texture/model asset binding, and a
-dedicated editor reset action remain to be completed.
+A cable is a `CableComponent` (appearance and simulation, one nonzero ID) and
+two or more `CableConnectorComponent`s with the same ID. Each frame the plugin
+pairs the connectors that share an ID, as portals pair by Link ID (`n`
+connectors make `n * (n - 1) / 2` cables), and the feature draws each pair as
+a camera-facing ribbon (2D) or a round tube with bundle lanes (3D), with a
+sagged span and animated wind sway. An ID with connectors but no enabled
+definition is logged once as a warning.
 
-The render-mode field is present in the GPU ABI. The current pass still uses
-camera-facing ribbon geometry in both modes; true 3D tube meshes and sampled
-2D tile textures are not implemented yet.
+Debug views (Cables category): *Cable Diagnostics* shows what each stage
+found (definition rows, texture table, strands published) and projects every
+cable end; *Cable Solid* paints the geometry flat magenta.
+
+`reset_simulation()` increments a revision in the GPU row; persistent
+reset-driven physics, using `cylinder_mesh` for the 3D profile, and a dedicated
+editor reset action remain to be completed.
