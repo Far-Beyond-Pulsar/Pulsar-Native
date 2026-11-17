@@ -20,7 +20,6 @@ use winit::{
 
 use engine_backend::scene::RuntimeLevel;
 use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
-use helio::{required_wgpu_features, required_wgpu_limits, usable_adapter_features};
 
 use crate::camera_selection::{camera_for_frame, view_target_drives_camera};
 use crate::freecam::FreeCam;
@@ -275,7 +274,6 @@ struct GpuContext {
     /// Whether `device` was lost (`PulsarApp::recover_lost_device`).
     device_loss: Option<engine_backend::services::device_loss::DeviceLoss>,
     power_preference: wgpu::PowerPreference,
-    hardware_ray_queries: bool,
 }
 
 impl GpuContext {
@@ -296,15 +294,6 @@ impl GpuContext {
                 _ => wgpu::PowerPreference::HighPerformance,
             })
             .unwrap_or(wgpu::PowerPreference::HighPerformance);
-        let hardware_ray_queries = renderer_config
-            .get(
-                engine_state::settings::NS_EDITOR,
-                "renderer",
-                "hardware_ray_queries",
-            )
-            .ok()
-            .and_then(|value| value.as_bool().ok())
-            .unwrap_or(false);
         Self {
             instance: wgpu::Instance::new(
                 wgpu::InstanceDescriptor {
@@ -319,7 +308,6 @@ impl GpuContext {
             queue: None,
             device_loss: None,
             power_preference,
-            hardware_ray_queries,
         }
     }
 
@@ -337,30 +325,16 @@ impl GpuContext {
             }))
             .expect("No suitable GPU adapter found");
 
-        // `usable_adapter_features` drops ray queries on software adapters
-        // (llvmpipe/lavapipe), whose shader compiler loses the device on
-        // Helio's ray-query pipelines (#840), whatever the preference says.
-        let mut requested_features = required_wgpu_features(usable_adapter_features(&adapter));
-        if !self.hardware_ray_queries {
-            requested_features.remove(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
-        }
-        let experimental_features =
-            if requested_features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY) {
-                // SAFETY: the editor preference explicitly opts into wgpu's experimental ray query.
-                unsafe { wgpu::ExperimentalFeatures::enabled() }
-            } else {
-                wgpu::ExperimentalFeatures::disabled()
-            };
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("Pulsar GPU Device"),
-            required_features: requested_features,
-            required_limits: required_wgpu_limits(adapter.limits()),
-            // wgpu gates EXPERIMENTAL_* features (Helio requests EXPERIMENTAL_RAY_QUERY
-            // when the adapter supports it) behind a second acknowledgement token.
-            // Without it, device creation fails with ExperimentalFeaturesNotEnabled.
-            experimental_features,
-            ..Default::default()
-        }))
+        // The engine's device, as the editor's window gets it: Helio's
+        // features and limits, ray queries where the adapter runs them and
+        // the user left them on.
+        let (device, queue) = engine_backend::services::render_runtimes::request_engine_device(
+            &adapter,
+            &wgpu::DeviceDescriptor {
+                label: Some("Pulsar GPU Device"),
+                ..Default::default()
+            },
+        )
         .expect("Failed to create GPU device");
 
         let info = adapter.get_info();

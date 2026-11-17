@@ -361,15 +361,6 @@ fn main() {
         .and_then(|value| value.as_int().ok())
         .unwrap_or(2)
         .clamp(1, 4) as u32;
-    let hardware_ray_queries = renderer_settings
-        .get(
-            engine_state::settings::NS_EDITOR,
-            "renderer",
-            "hardware_ray_queries",
-        )
-        .ok()
-        .and_then(|value| value.as_bool().ok())
-        .unwrap_or(false);
 
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
@@ -378,7 +369,8 @@ fn main() {
         desired_maximum_frame_latency: max_frame_latency,
         backends: renderer_backends,
         power_preference,
-        hardware_ray_queries,
+        // Ray queries are the engine's to ask for, in the device factory below.
+        hardware_ray_queries: false,
         preferred_backends: wgpu::Backends::empty(),
         // The window's device is the engine's (`RenderRuntimes::offer_device`): request it with
         // Helio's features and limits on top of the window's own.
