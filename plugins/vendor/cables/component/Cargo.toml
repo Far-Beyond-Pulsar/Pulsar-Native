@@ -23,6 +23,7 @@ helio-core = { workspace = true }
 helio-feature-api = { workspace = true }
 cables_feature = { workspace = true }
 helio_component = { workspace = true }
+meshes_component = { workspace = true }
 
 [features]
 default = ["gpu"]

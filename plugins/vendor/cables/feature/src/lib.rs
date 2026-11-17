@@ -8,7 +8,7 @@ use helio_feature_api::{pass_node, Feature, FeatureRegistrar};
 use helio_frame_api::{FrameNode, Phase};
 
 mod render;
-pub use render::CableRenderPass;
+pub use render::{CableBuildPass, CableRenderPass};
 
 /// Cable rendering and simulation feature.
 pub struct CablesFeature;
@@ -30,11 +30,13 @@ impl Feature for CablesFeature {
                 "Passes: Overlays",
                 "GPU-driven cable strands.",
                 |build| {
-                    build.graph.add_pass(Box::new(CableRenderPass::new(
+                    let (expand, draw) = render::build_passes(
                         build.env.device,
                         helio_mats::MaterialBindingConfig::for_device(build.env.device),
                         build.env.scene_format(),
-                    )));
+                    );
+                    build.graph.add_pass(Box::new(expand));
+                    build.graph.add_pass(Box::new(draw));
                     Ok(())
                 },
             )

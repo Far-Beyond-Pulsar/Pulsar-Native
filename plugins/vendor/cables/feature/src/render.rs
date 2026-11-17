@@ -5,6 +5,14 @@ const MAX_CONNECTORS: u32 = 128;
 const MAX_BUNDLE_STRANDS: u32 = 64;
 const SEGMENTS: u32 = 32;
 const TUBE_SIDES: u32 = 12;
+/// Instances each list (ribbon, tube) can hold. A pair with a bundle adds one
+/// instance per lane; instances past this are dropped by the build pass and
+/// skipped by the vertex stage.
+const INSTANCE_CAPACITY: u32 = 32_768;
+const RIBBON_VERTICES: u32 = SEGMENTS * 6;
+const TUBE_VERTICES: u32 = SEGMENTS * TUBE_SIDES * 6;
+const UNIFORMS_WGSL: &str =
+    "struct CableUniforms { connector_count: u32, definition_count: u32, frame: u32, _pad: u32, };";
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -15,78 +23,335 @@ struct CableUniforms {
     _pad: u32,
 }
 
-/// GPU vertex generation for cable pairs. The shader searches the connector
-/// and definition rows directly; no endpoint pairs or vertices are built on
-/// the CPU.
+/// Two `DrawIndirect` records (ribbon, tube). The build pass bumps each
+/// `instance_count` on the GPU; the vertex counts are constant.
+fn indirect_args() -> [u32; 8] {
+    [RIBBON_VERTICES, 0, 0, 0, TUBE_VERTICES, 0, 0, 0]
+}
+
+/// The WGSL both shaders share, generated from the Rust constants so the two
+/// languages cannot drift.
+fn common_wgsl() -> String {
+    format!(
+        "const CONNECTOR_WORDS: u32 = {}u;\n\
+         const DEFINITION_WORDS: u32 = {}u;\n\
+         const BUNDLE_LANES: u32 = {MAX_BUNDLE_STRANDS}u;\n\
+         const SEGMENTS: u32 = {SEGMENTS}u;\n\
+         const TUBE_SIDES: u32 = {TUBE_SIDES}u;\n\
+         const INSTANCE_CAPACITY: u32 = {INSTANCE_CAPACITY}u;\n\
+         const TAU: f32 = 6.283185307179586;\n\
+         fn fword(word: u32) -> f32 {{ return bitcast<f32>(word); }}\n",
+        std::mem::size_of::<cables_api::CableConnectorRow>() / 4,
+        std::mem::size_of::<cables_api::CableDefinitionRow>() / 4,
+    )
+}
+
+/// Buffers the build and draw passes hand each other.
+#[derive(Clone)]
+struct CableBuffers {
+    uniforms: wgpu::Buffer,
+    args: wgpu::Buffer,
+    instances: wgpu::Buffer,
+    fallback_connectors: wgpu::Buffer,
+    fallback_definitions: wgpu::Buffer,
+}
+
+impl CableBuffers {
+    fn new(device: &wgpu::Device) -> Self {
+        let buffer = |label, size: u64, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage,
+                mapped_at_creation: false,
+            })
+        };
+        Self {
+            uniforms: buffer(
+                "Cable view uniforms",
+                std::mem::size_of::<CableUniforms>() as u64,
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            ),
+            args: buffer(
+                "Cable indirect args",
+                std::mem::size_of::<[u32; 8]>() as u64,
+                wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::INDIRECT
+                    | wgpu::BufferUsages::COPY_DST,
+            ),
+            instances: buffer(
+                "Cable pair instances",
+                u64::from(INSTANCE_CAPACITY) * 2 * 16,
+                wgpu::BufferUsages::STORAGE,
+            ),
+            fallback_connectors: buffer(
+                "Empty cable connector rows",
+                std::mem::size_of::<cables_api::CableConnectorRow>() as u64,
+                wgpu::BufferUsages::STORAGE,
+            ),
+            fallback_definitions: buffer(
+                "Empty cable definition rows",
+                std::mem::size_of::<cables_api::CableDefinitionRow>() as u64,
+                wgpu::BufferUsages::STORAGE,
+            ),
+        }
+    }
+
+    /// The scene's connector and definition rows, or empty stand-ins.
+    fn rows<'a>(
+        &'a self,
+        scene: &'a helio_core::SceneBufferProjection,
+    ) -> (&'a wgpu::Buffer, &'a wgpu::Buffer) {
+        (
+            scene
+                .get(CABLE_CONNECTORS.key())
+                .map(|handle| &handle.buffer)
+                .unwrap_or(&self.fallback_connectors),
+            scene
+                .get(CABLE_DEFINITIONS.key())
+                .map(|handle| &handle.buffer)
+                .unwrap_or(&self.fallback_definitions),
+        )
+    }
+}
+
+/// Rows the passes consider: buffer capacity capped at `MAX_CONNECTORS`. The
+/// placed rows are packed and dead ones are zero, so the GPU build pass skips
+/// them; the CPU never learns a live count.
+fn row_counts(scene: &helio_core::SceneBufferProjection) -> (u32, u32) {
+    let rows = |size: u64, stride: usize| {
+        (size / stride as u64).min(u64::from(MAX_CONNECTORS)) as u32
+    };
+    let connectors = scene.get(CABLE_CONNECTORS.key()).map_or(0, |h| {
+        rows(h.buffer.size(), std::mem::size_of::<cables_api::CableConnectorRow>())
+    });
+    let definitions = scene.get(CABLE_DEFINITIONS.key()).map_or(0, |h| {
+        rows(h.buffer.size(), std::mem::size_of::<cables_api::CableDefinitionRow>())
+    });
+    (connectors, definitions)
+}
+
+fn storage_entry(
+    binding: u32,
+    read_only: bool,
+    stage: wgpu::ShaderStages,
+) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: stage,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Storage { read_only },
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+fn uniform_entry(
+    binding: u32,
+    size: u64,
+    stage: wgpu::ShaderStages,
+) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: stage,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: wgpu::BufferSize::new(size),
+        },
+        count: None,
+    }
+}
+
+fn entry(binding: u32, buffer: &wgpu::Buffer) -> wgpu::BindGroupEntry<'_> {
+    wgpu::BindGroupEntry {
+        binding,
+        resource: buffer.as_entire_binding(),
+    }
+}
+
+/// The pair expansion and the draw are built together: the build pass fills
+/// the instance lists and indirect args the draw pass consumes.
+pub fn build_passes(
+    device: &wgpu::Device,
+    texture_binding: helio_mats::MaterialBindingConfig,
+    color_format: wgpu::TextureFormat,
+) -> (CableBuildPass, CableRenderPass) {
+    let buffers = CableBuffers::new(device);
+    (
+        CableBuildPass::new(device, buffers.clone()),
+        CableRenderPass::new(device, buffers, texture_binding, color_format),
+    )
+}
+
+/// Expands live connector pairs into ribbon and tube instance lists and
+/// indirect draw arguments on the GPU. Compute-only; runs just before
+/// [`CableRenderPass`] on the graphics stream.
+pub struct CableBuildPass {
+    pipeline: wgpu::ComputePipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    buffers: CableBuffers,
+    connector_count: u32,
+    definition_count: u32,
+    bound: Option<([wgpu::Buffer; 2], wgpu::BindGroup)>,
+}
+
+impl CableBuildPass {
+    fn new(device: &wgpu::Device, buffers: CableBuffers) -> Self {
+        let c = wgpu::ShaderStages::COMPUTE;
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Cable build bindings"),
+            entries: &[
+                uniform_entry(0, std::mem::size_of::<CableUniforms>() as u64, c),
+                storage_entry(1, true, c),
+                storage_entry(2, true, c),
+                storage_entry(3, false, c),
+                storage_entry(4, false, c),
+            ],
+        });
+        let source = format!(
+            "{}\n{UNIFORMS_WGSL}\n{}",
+            common_wgsl(),
+            include_str!("cables_build.wgsl"),
+        );
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("GPU cable pair expansion"),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Cable build pipeline layout"),
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
+        });
+        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("GPU cable pair expansion"),
+            layout: Some(&layout),
+            module: &shader,
+            entry_point: Some("build"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+        Self {
+            pipeline,
+            bind_group_layout,
+            buffers,
+            connector_count: 0,
+            definition_count: 0,
+            bound: None,
+        }
+    }
+}
+
+impl RenderPass for CableBuildPass {
+    fn name(&self) -> &'static str {
+        "CableBuildPass"
+    }
+
+    fn scene_buffers(&self) -> &'static [&'static str] {
+        &["cable_connectors", "cable_definitions"]
+    }
+
+    fn is_member(&mut self, scene: &mut helio_core::SceneContent<'_>) -> bool {
+        scene.holds_rows("cable_definitions") && scene.holds_rows("cable_connector_sources")
+    }
+
+    fn render_pass_descriptor<'a>(
+        &'a self,
+        _target: &'a wgpu::TextureView,
+        _depth: &'a wgpu::TextureView,
+        _resources: &'a helio_core::ResourceRegistry<'a>,
+    ) -> Option<wgpu::RenderPassDescriptor<'a>> {
+        None // compute-only pass
+    }
+
+    fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
+        (self.connector_count, self.definition_count) = row_counts(ctx.scene_buffers);
+        ctx.write_buffer(
+            &self.buffers.uniforms,
+            0,
+            bytemuck::bytes_of(&CableUniforms {
+                connector_count: self.connector_count,
+                definition_count: self.definition_count,
+                frame: ctx.frame_num as u32,
+                _pad: 0,
+            }),
+        );
+        ctx.write_buffer(&self.buffers.args, 0, bytemuck::bytes_of(&indirect_args()));
+        Ok(())
+    }
+
+    fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
+        if self.connector_count < 2 || self.definition_count == 0 {
+            return Ok(());
+        }
+        let (connectors, definitions) = self.buffers.rows(ctx.scene_buffers);
+        let key = [connectors.clone(), definitions.clone()];
+        if self.bound.as_ref().map(|(k, _)| k) != Some(&key) {
+            let group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Cable build rows"),
+                layout: &self.bind_group_layout,
+                entries: &[
+                    entry(0, &self.buffers.uniforms),
+                    entry(1, connectors),
+                    entry(2, definitions),
+                    entry(3, &self.buffers.args),
+                    entry(4, &self.buffers.instances),
+                ],
+            });
+            self.bound = Some((key, group));
+        }
+        let Some((_, group)) = self.bound.as_ref() else {
+            return Ok(());
+        };
+        let mut encoder = ctx.graphics_cmds();
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Cable pair expansion"),
+            timestamp_writes: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, group, &[]);
+        let threads = self.connector_count * self.connector_count;
+        pass.dispatch_workgroups(threads.div_ceil(64), 1, 1);
+        Ok(())
+    }
+}
+
+/// Draws the build pass's ribbon and tube lists with two indirect draws.
 pub struct CableRenderPass {
-    pipeline: wgpu::RenderPipeline,
+    ribbon_pipeline: wgpu::RenderPipeline,
+    tube_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     texture_binding: helio_mats::MaterialBindingConfig,
     texture_bind_group_layout: wgpu::BindGroupLayout,
     texture_bind_group: Option<wgpu::BindGroup>,
     texture_version: Option<u64>,
-    uniforms: wgpu::Buffer,
-    fallback_connectors: wgpu::Buffer,
-    fallback_definitions: wgpu::Buffer,
+    buffers: CableBuffers,
     connector_count: u32,
     definition_count: u32,
     bind_group: Option<wgpu::BindGroup>,
-    bound_buffers: Option<[wgpu::Buffer; 2]>,
+    bound_buffers: Option<[wgpu::Buffer; 3]>,
 }
 
 impl CableRenderPass {
-    pub fn new(
+    fn new(
         device: &wgpu::Device,
+        buffers: CableBuffers,
         texture_binding: helio_mats::MaterialBindingConfig,
         color_format: wgpu::TextureFormat,
     ) -> Self {
+        let v = wgpu::ShaderStages::VERTEX;
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Cable render bindings"),
             entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(
-                            std::mem::size_of::<CableUniforms>() as u64,
-                        ),
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        // The WGSL camera prefix is view, projection and
-                        // view-projection: three 64-byte matrices.
-                        min_binding_size: wgpu::BufferSize::new(192),
-                    },
-                    count: None,
-                },
+                uniform_entry(0, std::mem::size_of::<CableUniforms>() as u64, v),
+                storage_entry(1, true, v),
+                storage_entry(2, true, v),
+                // The WGSL camera prefix is view, projection and
+                // view-projection: three 64-byte matrices.
+                uniform_entry(3, 192, v),
+                storage_entry(4, true, v),
             ],
         });
         let mut texture_entries = Vec::new();
@@ -110,63 +375,46 @@ impl CableRenderPass {
             bind_group_layouts: &[Some(&bind_group_layout), Some(&texture_bind_group_layout)],
             immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("GPU cable ribbons and tubes"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Cable view uniforms"),
-            size: std::mem::size_of::<CableUniforms>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let fallback_connectors = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Empty cable connector rows"),
-            size: std::mem::size_of::<cables_api::CableConnectorRow>() as u64,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-        let fallback_definitions = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Empty cable definition rows"),
-            size: std::mem::size_of::<cables_api::CableDefinitionRow>() as u64,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
+        let pipeline = |label, vertex_entry| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(vertex_entry),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: color_format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
         Self {
-            pipeline,
+            ribbon_pipeline: pipeline("GPU cable ribbons", "vs_ribbon"),
+            tube_pipeline: pipeline("GPU cable tubes", "vs_tube"),
             bind_group_layout,
             texture_binding,
             texture_bind_group_layout,
             texture_bind_group: None,
             texture_version: None,
-            uniforms,
-            fallback_connectors,
-            fallback_definitions,
+            buffers,
             connector_count: 0,
             definition_count: 0,
             bind_group: None,
@@ -235,77 +483,36 @@ impl RenderPass for CableRenderPass {
     }
 
     fn prepare(&mut self, ctx: &PrepareContext) -> HelioResult<()> {
-        self.connector_count = CABLE_CONNECTORS
-            .resolve(ctx.scene_buffers)
-            .expect("cable connector row ABI")
-            .map_or(0, |buffer| {
-                (buffer.buffer.size() / std::mem::size_of::<cables_api::CableConnectorRow>() as u64)
-                    .min(u64::from(MAX_CONNECTORS)) as u32
-            });
-        self.definition_count = CABLE_DEFINITIONS
-            .resolve(ctx.scene_buffers)
-            .expect("cable definition row ABI")
-            .map_or(0, |buffer| {
-                (buffer.buffer.size() / std::mem::size_of::<cables_api::CableDefinitionRow>() as u64)
-                    .min(u64::from(MAX_CONNECTORS)) as u32
-            });
-        ctx.write_buffer(
-            &self.uniforms,
-            0,
-            bytemuck::bytes_of(&CableUniforms {
-                connector_count: self.connector_count,
-                definition_count: self.definition_count,
-                frame: ctx.frame_num as u32,
-                _pad: 0,
-            }),
-        );
+        (self.connector_count, self.definition_count) = row_counts(ctx.scene_buffers);
         Ok(())
     }
 
     fn execute(&mut self, ctx: &mut PassContext) -> HelioResult<()> {
-        let connector = ctx
-            .scene_buffers
-            .get(CABLE_CONNECTORS.key())
-            .map(|handle| &handle.buffer)
-            .unwrap_or(&self.fallback_connectors);
-        let definitions = ctx
-            .scene_buffers
-            .get(CABLE_DEFINITIONS.key())
-            .map(|handle| &handle.buffer)
-            .unwrap_or(&self.fallback_definitions);
-        let key = [connector.clone(), definitions.clone()];
+        if self.connector_count < 2 || self.definition_count == 0 {
+            return Ok(());
+        }
+        let (connectors, definitions) = self.buffers.rows(ctx.scene_buffers);
+        let key = [connectors.clone(), definitions.clone(), ctx.camera.clone()];
         if self.bound_buffers.as_ref() != Some(&key) {
             self.bind_group = Some(ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Cable scene rows"),
                 layout: &self.bind_group_layout,
                 entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.uniforms.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: connector.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: definitions.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: ctx.camera.as_entire_binding(),
-                    },
+                    entry(0, &self.buffers.uniforms),
+                    entry(1, connectors),
+                    entry(2, definitions),
+                    entry(3, ctx.camera),
+                    entry(4, &self.buffers.instances),
                 ],
             }));
             self.bound_buffers = Some(key);
         }
-        if self.connector_count < 2 || self.definition_count == 0 {
-            return Ok(());
-        }
         let textures = ctx
             .registry
             .get::<helio_mats::MaterialTextureBindings<'_>>(helio_mats::material_textures());
-        let Some(textures) = textures else { return Ok(()); };
+        let Some(textures) = textures else {
+            return Ok(());
+        };
         let mut pass = ctx.render_cmds().ok_or_else(|| {
             helio_core::Error::ResourceNotFound("cable overlay render pass".into())
         })?;
@@ -324,28 +531,26 @@ impl RenderPass for CableRenderPass {
             }));
             self.texture_version = Some(textures.version);
         }
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, self.bind_group.as_ref().expect("bind group built"), &[]);
         pass.set_bind_group(1, self.texture_bind_group.as_ref().expect("texture group built"), &[]);
-        // Each candidate endpoint pair and bundle lane is an instance. The
-        // vertex shader rejects nonmatching IDs and emits only valid spans.
-        let instances = self
-            .connector_count
-            .saturating_mul(self.connector_count.saturating_sub(1))
-            .saturating_mul(MAX_BUNDLE_STRANDS);
-        pass.draw(0..SEGMENTS * TUBE_SIDES * 6, 0..instances);
+        // The build pass wrote each list's instance count; the GPU decides how
+        // many pairs and lanes draw.
+        pass.set_pipeline(&self.ribbon_pipeline);
+        pass.draw_indirect(&self.buffers.args, 0);
+        pass.set_pipeline(&self.tube_pipeline);
+        pass.draw_indirect(&self.buffers.args, 16);
         Ok(())
     }
 }
 
 fn cable_shader_source(binding: helio_mats::MaterialBindingConfig) -> String {
-    let src = include_str!("cables.wgsl");
+    let src = include_str!("cables.wgsl").replace("// @common", &common_wgsl());
     if binding.uses_binding_arrays() {
         src.replace(
             "binding_array<texture_2d<f32>, 256>",
             &format!("binding_array<texture_2d<f32>, {}>", binding.max_textures),
         )
     } else {
-        helio_mats::apply_webgpu_decal_bindings(src, binding.max_textures)
+        helio_mats::apply_webgpu_decal_bindings(&src, binding.max_textures)
     }
 }
