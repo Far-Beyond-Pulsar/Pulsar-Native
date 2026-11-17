@@ -128,6 +128,8 @@ and `enabled` off bypasses them, probed flow pins, disabled plugin => absent).
 | meshes | `helio.pass.virtual_geometry` | Geometry: Virtual Geometry | phase GBuffer drawer, 30 |
 | meshes | `helio.pass.transparent` | Transparency: Accumulate | phase Transparent drawer; weighted blended OIT accumulation |
 | meshes | `helio.pass.transparent_composite` | Transparency: Composite | resolves accumulation/revealage into the advancing scene colour |
+| meshes | `helio.pass.mesh_selection_select` | Selection: Selected Meshes | before phase SelectionMask (editor only) |
+| meshes | `helio.pass.mesh_selection_mask` | Selection: Mesh Mask | phase SelectionMask drawer, 0 (editor only) |
 | decals | `helio.pass.decal` | Geometry: Decals | phase GBuffer drawer, 100 |
 | sprites | `helio.pass.sprite_overlay` | Output: Sprites | slot Display, 10 |
 | materials | `host.material_textures` | Host::material_textures | host inputs (data only: it supplies the texture table, no pass) |
@@ -165,6 +167,38 @@ Splines draw through the debug lines (no pass of their own). Tests:
 | kernel (spine) | `gbuffer_clear`, `background`, `hiz`, `unlit`, `tsr`, `post_process` | Scene: Clear G-Buffer, Scene: Clear Background, Culling: Depth Pyramid (Hi-Z), Lighting: Unlit, Anti-Aliasing: TSR, Post: Tone Map + Grade | as the preset places them |
 | kernel | `ssr`, `ssr_composite`, `planar_reflection`, `fxaa`, `buffer_view`, `perf_overlay`, `debug_draw_scene`, `debug_draw` | feature crates / `helio-presets` `RendererNodes` | see their features |
 | kernel | `helio.pass.debug_overlay` | Output: Debug Overlay | none: no shipped pipeline draws it; place it after the display slot's nodes |
+| kernel | `helio.pass.selection_mask_clear`, `helio.pass.selection_outline` | Selection: Clear Mask, Output: Selection Outline | opens phase SelectionMask; slot Display, 5 (editor only) |
+
+### The selection outline
+
+The editor outlines selected objects in yellow, drawn by Helio from world state.
+Selection is `Selected { order }` on each selected object
+(`pulsar_scene_model`); its derived GPU row `ObjectSelected` is published as
+`object_selected` (`helio_frame_api::selection::OBJECT_SELECTED`), one row per object
+entity, so a click writes the rows of the objects whose selection changed and nothing else.
+
+- **The phase.** `Phase::SelectionMask` (after the post-process, before the Display
+  slot) has one attachment, `selection_depth` (`helio_frame_api::selection::MASK_DEPTH`,
+  Depth32Float, reversed Z, unjittered). The kernel's `selection_mask_clear` opens it;
+  every kind that can be selected draws its selected geometry into it, as a kind draws
+  its shadow casters.
+- **Meshes.** The scene join publishes `static_object_owners`
+  (`helio_mesh_api::STATIC_OBJECT_OWNERS`: each object row's owner entity plus one), with
+  the rows' structure. `mesh_selection_select` turns this frame's culled draws of
+  selected objects into one indirect draw per instance (an invocation per visible draw).
+  `mesh_selection_mask` draws them depth only, placed as the G-buffer places them, without
+  the TSR jitter. A selection change never re-runs the join or re-sorts the batch.
+- **The outline.** `selection_outline` draws a 2-pixel line around the mask over the
+  final image, at full strength where the selected surface is in front of the scene and
+  dimmed where the scene hides it (Unreal's custom-depth outline).
+- **Editor only.** Every selection pass reads `RenderPass::set_editor_mode` and records
+  nothing outside the editor.
+- **Not yet drawn into the mask:** kinds other than meshes (light icons, sprites, voxels,
+  foliage), and cut-out materials (a card outlines as its quad).
+- Tests: `plugins/installed/tests/render_acceptance.rs`
+  (`a_selected_mesh_is_outlined_in_the_editor_and_the_outline_leaves_with_the_selection`),
+  `plugins/vendor/meshes/feature/gbuffer/tests/selection_shaders.rs`, and
+  `helio-pass-selection-outline`'s shader test.
 
 Voxel is one `ChunkPass` (residency, generation, G-buffer, GI rays, sun pages are inside
 it), so it is one node. The debug overlay node takes the host's `DebugOverlayState` as the
