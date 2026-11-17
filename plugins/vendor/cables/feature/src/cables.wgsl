@@ -1,11 +1,5 @@
 enable wgpu_binding_array;
 
-struct CableUniforms {
-    connector_count: u32,
-    definition_count: u32,
-    frame: u32,
-    _pad: u32,
-};
 struct Camera {
     view: mat4x4<f32>,
     proj: mat4x4<f32>,
@@ -16,6 +10,7 @@ struct Camera {
 @group(0) @binding(2) var<storage, read> definition_words: array<u32>;
 @group(0) @binding(3) var<uniform> camera: Camera;
 @group(0) @binding(4) var<storage, read> instances: array<u32>;
+@group(0) @binding(5) var<storage, read> draw_args: array<u32>;
 @group(1) @binding(0) var scene_sampler: sampler;
 @group(1) @binding(1) var scene_textures: binding_array<texture_2d<f32>, 256>;
 
@@ -116,8 +111,126 @@ fn vs_tube(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
     return emit(vertex / (TUBE_SIDES * 6u), (vertex / 6u) % TUBE_SIDES, vertex % 6u, instance, 1u);
 }
 
+// ── Debug views ─────────────────────────────────────────────────────────────
+// "Cable Solid" (flag FLAG_SOLID) paints the generated geometry flat magenta,
+// separating geometry problems from surface/texture problems. "Cable
+// Diagnostics" draws a HUD of what each stage found, projected connector
+// markers and the first pair instances as screen-space lines.
+
+struct Projected {
+    px: vec2<f32>,
+    visible: bool,
+};
+
+fn project(world: vec3<f32>) -> Projected {
+    let clip = camera.view_proj * vec4<f32>(world, 1.0);
+    var out: Projected;
+    out.visible = clip.w > 0.0001;
+    let ndc = clip.xy / max(clip.w, 0.0001);
+    out.px = vec2<f32>((ndc.x * 0.5 + 0.5) * u.viewport.x, (0.5 - ndc.y * 0.5) * u.viewport.y);
+    return out;
+}
+
+fn connector_position(row: u32) -> vec3<f32> {
+    let o = row * CONNECTOR_WORDS;
+    return vec3<f32>(fword(connector_words[o + 12u]), fword(connector_words[o + 13u]), fword(connector_words[o + 14u]));
+}
+
+fn segment_distance(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let ab = b - a;
+    let len2 = max(dot(ab, ab), 1e-4);
+    let t = clamp(dot(p - a, ab) / len2, 0.0, 1.0);
+    return length(p - (a + ab * t));
+}
+
+@vertex
+fn vs_debug(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    let p = vec2<f32>(f32((i << 1u) & 2u), f32(i & 2u));
+    return vec4<f32>(p * 2.0 - 1.0, 0.0, 1.0);
+}
+
+fn bar(px: vec2<f32>, row: u32, value: u32, color: vec3<f32>) -> vec4<f32> {
+    let y0 = 16.0 + f32(row) * 24.0;
+    if (px.y < y0 || px.y >= y0 + 18.0) { return vec4<f32>(0.0); }
+    let x = px.x - 16.0;
+    if (x < 0.0) { return vec4<f32>(0.0); }
+    if (x < f32(min(value, 128u)) * 4.0) { return vec4<f32>(color, 1.0); }
+    // A faint tick every 8 units so counts can be read off the bar.
+    if (u32(x) % 32u == 0u) { return vec4<f32>(1.0, 1.0, 1.0, 0.35); }
+    return vec4<f32>(0.0);
+}
+
+@fragment
+fn fs_debug(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let px = frag.xy;
+    var color = vec4<f32>(0.0);
+
+    // HUD: one bar per stage; length is the count (4 px per unit, 128 max).
+    if (px.x < 16.0 + 128.0 * 4.0 + 8.0 && px.y < 16.0 + 9.0 * 24.0) {
+        color = vec4<f32>(0.0, 0.0, 0.0, 0.45);
+        var enabled = 0u;
+        var with_id = 0u;
+        var defs = 0u;
+        for (var c = 0u; c < u.connector_count; c++) {
+            let o = c * CONNECTOR_WORDS;
+            if (connector_words[o + 17u] != 0u) { enabled++; }
+            if (connector_words[o + 17u] != 0u && connector_words[o + 16u] != 0u) { with_id++; }
+        }
+        for (var d = 0u; d < u.definition_count; d++) {
+            if (definition_words[d * DEFINITION_WORDS + 1u] != 0u) { defs++; }
+        }
+        let rows_live = u.flags & FLAG_ROWS_LIVE;
+        let textures_ok = (u.flags & FLAG_TEXTURES_OK) >> 1u;
+        let ribbon = draw_args[1];
+        let tube = draw_args[5];
+        var layers: array<vec4<f32>, 9>;
+        layers[0] = bar(px, 0u, rows_live * 128u, vec3<f32>(0.2, 0.9, 0.2));      // both source buffers hold rows
+        layers[1] = bar(px, 1u, textures_ok * 128u, vec3<f32>(0.9, 0.9, 0.9));    // material texture table present
+        layers[2] = bar(px, 2u, u.connector_count, vec3<f32>(0.3, 0.4, 1.0));    // connector rows considered
+        layers[3] = bar(px, 3u, enabled, vec3<f32>(0.2, 0.8, 0.8));              // ... enabled (placement kept them)
+        layers[4] = bar(px, 4u, with_id, vec3<f32>(0.9, 0.9, 0.2));              // ... with a nonzero ID
+        layers[5] = bar(px, 5u, defs, vec3<f32>(0.4, 0.9, 1.0));                 // enabled definitions
+        layers[6] = bar(px, 6u, ribbon, vec3<f32>(1.0, 0.6, 0.1));               // ribbon instances built
+        layers[7] = bar(px, 7u, tube, vec3<f32>(1.0, 0.2, 0.9));                 // tube instances built
+        layers[8] = bar(px, 8u, u.definition_count, vec3<f32>(0.5, 0.5, 0.9));   // definition rows considered
+        for (var k = 0u; k < 9u; k++) {
+            if (layers[k].a > 0.0) { color = vec4<f32>(mix(color.rgb, layers[k].rgb, layers[k].a), max(color.a, 0.9)); }
+        }
+    }
+
+    // Connector markers: a cross at each enabled connector's projected spot,
+    // coloured by ID, so a wrong placement or a behind-camera row is visible.
+    for (var c = 0u; c < u.connector_count; c++) {
+        let o = c * CONNECTOR_WORDS;
+        if (connector_words[o + 17u] == 0u) { continue; }
+        let pr = project(connector_position(c));
+        if (!pr.visible) { continue; }
+        let d = abs(px - pr.px);
+        if ((d.x < 12.0 && d.y < 2.0) || (d.y < 12.0 && d.x < 2.0)) {
+            let id = connector_words[o + 16u];
+            color = vec4<f32>(f32(id & 1u), f32((id >> 1u) & 1u), 1.0 - f32((id >> 2u) & 1u) * 0.5, 1.0);
+        }
+    }
+
+    // The first pair instances as straight screen-space lines (ribbon yellow,
+    // tube magenta): the spans the draw would cover, whatever the geometry does.
+    for (var list = 0u; list < 2u; list++) {
+        let count = min(draw_args[list * 4u + 1u], 16u);
+        for (var i = 0u; i < count; i++) {
+            let record = (list * INSTANCE_CAPACITY + i) * 4u;
+            let a = project(connector_position(instances[record]));
+            let b = project(connector_position(instances[record + 1u]));
+            if (a.visible && b.visible && segment_distance(px, a.px, b.px) < 1.5) {
+                color = select(vec4<f32>(1.0, 1.0, 0.0, 1.0), vec4<f32>(1.0, 0.0, 1.0, 1.0), list == 1u);
+            }
+        }
+    }
+    return color;
+}
+
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    if ((u.flags & FLAG_SOLID) != 0u) { return vec4<f32>(1.0, 0.0, 1.0, 1.0); }
     var texel = vec4<f32>(1.0);
     if (in.texture_index != 0xffffffffu) {
         texel = sample_cable_texture(in.texture_index, in.uv);

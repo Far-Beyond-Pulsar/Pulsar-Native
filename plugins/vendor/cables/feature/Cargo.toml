@@ -15,5 +15,8 @@ bytemuck = { workspace = true, features = ["derive"] }
 helio-mats = { workspace = true }
 wgpu = { workspace = true }
 
+[dev-dependencies]
+naga = { version = "30", features = ["wgsl-in"] }
+
 [lints]
 workspace = true
