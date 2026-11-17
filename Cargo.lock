@@ -6055,7 +6055,9 @@ dependencies = [
  "helio-foliage-api",
  "helio-frame-api",
  "helio-pass-foliage-place",
+ "helio-portal-api",
  "log",
+ "naga",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -6069,6 +6071,7 @@ dependencies = [
  "helio-core",
  "helio-foliage-api",
  "helio-frame-api",
+ "helio-portal-api",
  "helio-scene-join",
  "helio-settings",
  "log",
@@ -6120,6 +6123,7 @@ dependencies = [
  "helio-light-api",
  "helio-mats",
  "helio-mesh-api",
+ "helio-portal-api",
  "image",
  "log",
  "naga",
@@ -6291,6 +6295,7 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-hiz",
  "helio-pass-indirect-dispatch",
+ "helio-portal-api",
  "naga",
  "pollster 0.4.0",
  "wgpu",
@@ -6327,6 +6332,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-core",
  "helio-feature-api",
+ "helio-portal-api",
  "helio-settings",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -6342,6 +6348,7 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-pass-portal-cull",
+ "helio-portal-api",
  "naga",
  "wgpu",
 ]
@@ -6577,6 +6584,7 @@ dependencies = [
 name = "helio-pass-vg"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "glam 0.33.5",
  "helio",
  "helio-components",
@@ -6593,9 +6601,11 @@ dependencies = [
  "helio-pass-vg-dense",
  "helio-pass-vg-raster",
  "helio-pass-vg-shade",
+ "helio-portal-api",
  "helio-vg-format",
  "helio-vg-stream",
  "log",
+ "naga",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -6624,6 +6634,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-core",
  "helio-mats",
+ "helio-mesh-api",
  "helio-pass-vg-bvh",
  "helio-vg-build",
  "helio-vg-format",
@@ -6662,6 +6673,7 @@ dependencies = [
  "helio-frame-api",
  "helio-mats",
  "helio-pass-vg-cull",
+ "helio-portal-api",
  "helio-vg-format",
  "log",
  "naga",
@@ -6771,6 +6783,7 @@ dependencies = [
  "helio-light-api",
  "helio-pass-hiz",
  "helio-scene-join",
+ "helio-settings",
  "helio-water-api",
  "naga",
  "pollster 0.4.0",
@@ -6779,6 +6792,18 @@ dependencies = [
  "pulsar_scenedb_derive",
  "rayon",
  "serde_json",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-portal-api"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-frame-api",
+ "naga",
  "wgpu",
 ]
 
@@ -11833,6 +11858,7 @@ dependencies = [
  "helio-pass-portal-cull",
  "helio-pass-portal-instances",
  "helio-pass-sky",
+ "helio-portal-api",
  "helio-presets",
  "image",
  "log",
@@ -11858,6 +11884,7 @@ dependencies = [
  "helio-feature-api",
  "helio-pass-portal-cull",
  "helio-pass-portal-instances",
+ "helio-portal-api",
  "helio-scene-join",
  "helio-settings",
  "helio_component",
@@ -11895,6 +11922,7 @@ dependencies = [
  "helio-core",
  "helio-graph-asset",
  "helio-pass-portal-cull",
+ "helio-portal-api",
  "helio-presets",
  "pollster 0.4.0",
  "portals_component",
@@ -18895,6 +18923,7 @@ dependencies = [
  "pulsar_plugins",
  "pulsar_scene_model",
  "pulsar_scenedb",
+ "pulsar_settings",
  "pulsar_world_registry",
  "ui_level_editor",
  "water_component",

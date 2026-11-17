@@ -78,7 +78,10 @@ fn configs() -> Vec<(&'static str, RendererConfig)> {
     reflections.enable_planar_reflections = true;
     let mut lean = base
         .clone()
-        .with_feature(helio_pass_portal_cull::PortalSettings { enabled: false });
+        .with_feature(helio_pass_portal_cull::PortalSettings {
+            enabled: false,
+            ..Default::default()
+        });
     lean.features
         .edit::<helio_pass_foliage_place::FoliageSettings>()
         .enabled = false;
@@ -143,7 +146,10 @@ fn the_engines_presets_carry_the_plugins_passes() {
                     "Lens",
                     "LensFlare",
                     "DecalApply",
-                    "PortalViews",
+                    "PortalChains",
+                    "PortalMask",
+                    "PortalOccurrences",
+                    "GBufferPortalOccurrences",
                     "PortalEditorOverlay",
                     "VolumetricFogPass",
                     "FogComposite",

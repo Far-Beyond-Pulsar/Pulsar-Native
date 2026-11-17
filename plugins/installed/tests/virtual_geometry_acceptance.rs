@@ -774,10 +774,10 @@ fn virtual_geometry_debug_views_register_and_render() {
     assert!(lit.difference(&lit).covered > 1000);
 }
 
-/// A portal object with Link ID `link`, `RADIUS * 3` across, at `x` turned
-/// `yaw` degrees, by the editor's commands. An opening shows its far side to
-/// eyes on its local -Z side.
-fn add_portal(state: &mut LevelEditorState, name: &str, x: f32, yaw: f32, link: i32) {
+/// A portal object with Link ID `link`, `RADIUS * 3` across, at ground
+/// position `[x, z]` turned `yaw` degrees, by the editor's commands. An
+/// opening shows its far side to eyes on its local -Z side.
+fn add_portal(state: &mut LevelEditorState, name: &str, [x, z]: [f32; 2], yaw: f32, link: i32) {
     let id = execute_command(
         state,
         SceneCommand::AddObject {
@@ -803,7 +803,7 @@ fn add_portal(state: &mut LevelEditorState, name: &str, x: f32, yaw: f32, link: 
         state,
         SceneCommand::SetTransform {
             id: id.clone(),
-            position: Some([f64::from(x), 0.0, 0.0]),
+            position: Some([f64::from(x), 0.0, f64::from(z)]),
             rotation: Some([0.0, yaw, 0.0]),
             scale: None,
         },
@@ -852,38 +852,549 @@ fn move_to(state: &mut LevelEditorState, id: &str, position: [f32; 3]) {
     assert!(result.changed, "transform edit was refused");
 }
 
-/// Virtual geometry shows through a portal: the portal's inline view
-/// (`helio_core::view`) runs the cluster cull and raster for its own camera,
-/// clipped at the far portal's plane. The portal used to redraw classic
-/// meshes with a program of its own, which drew no virtual geometry. The
-/// sphere sits 1 km to the side, beside the far portal and out of the
-/// camera's view; the same scene with unlinked portals shows none of it.
+/// A viewport renderer of `state` with virtual geometry on.
+fn vg_renderer(harness: &Harness, state: &LevelEditorState) -> HelioRenderer {
+    let mut renderer = harness.renderer(state);
+    installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
+    renderer
+}
+
+/// The dense sphere (with virtual geometry, or classic) at `position`, and
+/// the portals `portals` places.
+fn sphere_scene(
+    vg: bool,
+    position: [f32; 3],
+    portals: impl FnOnce(&mut LevelEditorState),
+) -> LevelEditorState {
+    let (mut state, id) = scene(vg.then(VirtualGeometryComponent::default));
+    move_to(&mut state, &id, position);
+    portals(&mut state);
+    state
+}
+
+/// The pair the tests look through: the near opening at the origin facing
+/// the camera (on +Z), its partner `x` metres to the side; what lies beyond
+/// the partner (world -Z) shows, moved by `-x`.
+fn portal_pair(state: &mut LevelEditorState, [x, z]: [f32; 2], names: [&str; 2], links: [i32; 2]) {
+    add_portal(state, names[0], [x, z], 180.0, links[0]);
+    add_portal(state, names[1], [x + 1000.0, z], 0.0, links[1]);
+}
+
+/// The second run's passes (`helio_vg_format::VgRun::SECONDARY`).
+const THROUGH_PORTALS: [&str; 3] = [
+    "VgPortalInstances",
+    "VgCullEarlySecondary",
+    "VgShadeSecondary",
+];
+
+/// Virtual geometry shows through a portal: a second run of the cluster
+/// pipeline over the instances each live chain shows (placed where the chain
+/// draws them), culled against the frame's depth after the classic
+/// occurrences and clipped to the chain. The sphere sits 1 km to the side,
+/// beside the far portal and out of the camera's view; the same scene with
+/// unlinked portals shows none of it, and what shows covers what the classic
+/// mesh shows through the same portals (the classic draw skips the
+/// virtual-geometry instance, so only the second run can draw it).
 #[test]
 fn virtual_geometry_shows_through_a_portal() {
     let Some(harness) = setup() else { return };
-    let portal_scene = |link: i32| {
-        let (mut state, id) = scene(Some(VirtualGeometryComponent::default()));
-        move_to(&mut state, &id, [1000.0, 0.0, -RADIUS * 2.0]);
-        // The near one faces the camera (on +Z).
-        add_portal(&mut state, "near", 0.0, 180.0, 5);
-        add_portal(&mut state, "far", 1000.0, 0.0, link);
-        state
+    let portal_scene = |vg: bool, link: i32| {
+        sphere_scene(vg, [1000.0, 0.0, -RADIUS * 2.0], |state| {
+            portal_pair(state, [0.0, 0.0], ["near", "far"], [5, link]);
+        })
+    };
+    let render = |state: &LevelEditorState, vg: bool| {
+        let mut renderer = vg_renderer(&harness, state);
+        let frame = if vg {
+            harness.until_ready(&mut renderer)
+        } else {
+            harness.frames(&mut renderer, 16)
+        };
+        (frame, renderer.graph_members())
+    };
+    let (unlinked, _) = render(&portal_scene(true, 6), true);
+    let (linked, members) = render(&portal_scene(true, 5), true);
+    let (classic, _) = render(&portal_scene(false, 5), false);
+    linked.dump("portal");
+    classic.dump("portal_classic");
+    let d = linked.difference(&unlinked);
+    let c = classic.difference(&unlinked);
+    println!("VG through a portal vs unlinked: {d:?}; classic: {c:?}");
+    for pass in THROUGH_PORTALS {
+        assert!(
+            members.contains(&pass),
+            "{pass} is not scheduled: {members:?}"
+        );
+    }
+    assert!(
+        d.depth_texels > 1000 && d.color_pixels > 1000,
+        "the far side's virtual geometry did not show through the portal: {d:?}"
+    );
+    let ratio = d.depth_texels as f64 / c.depth_texels.max(1) as f64;
+    assert!(
+        (0.9..=1.1).contains(&ratio),
+        "virtual geometry through the portal covers {d:?}, the classic mesh {c:?}"
+    );
+}
+
+/// Virtual geometry shows through a chain two portals deep: the near pair
+/// shows a second pair's near opening, which shows the sphere beyond its
+/// partner. Unlinking the second pair hides the sphere; the first pair stays.
+#[test]
+fn virtual_geometry_shows_through_a_chain_of_two_portals() {
+    let Some(harness) = setup() else { return };
+    let chain_scene = |link: i32| {
+        sphere_scene(true, [2000.0, 0.0, -RADIUS * 6.0], |state| {
+            portal_pair(state, [0.0, 0.0], ["near", "far"], [5, 5]);
+            // Beyond the far one, where the near one shows it.
+            add_portal(state, "second near", [1000.0, -RADIUS * 4.0], 180.0, 7);
+            add_portal(state, "second far", [2000.0, -RADIUS * 4.0], 0.0, link);
+        })
     };
     let render = |state: &LevelEditorState| {
+        let mut renderer = vg_renderer(&harness, state);
+        harness.until_ready(&mut renderer)
+    };
+    let unlinked = render(&chain_scene(8));
+    let linked = render(&chain_scene(7));
+    linked.dump("chain");
+    unlinked.dump("chain_unlinked");
+    let d = linked.difference(&unlinked);
+    println!("VG through a chain of two portals vs unlinked: {d:?}");
+    assert!(
+        d.depth_texels > 200 && d.color_pixels > 200,
+        "the sphere two portals deep did not show: {d:?}"
+    );
+}
+
+/// The second run is scheduled only while live chains can show virtual
+/// geometry: not without portals, not through portals in a scene without
+/// virtual-geometry instances, and then with both.
+#[test]
+fn the_portal_run_is_scheduled_only_with_chains_and_virtual_geometry() {
+    let Some(harness) = setup() else { return };
+    let members = |state: &LevelEditorState| {
+        let mut renderer = vg_renderer(&harness, state);
+        harness.until_ready(&mut renderer);
+        renderer.graph_members()
+    };
+    let at = [1000.0, 0.0, -RADIUS * 2.0];
+    for (label, state) in [
+        ("no portals", sphere_scene(true, at, |_| {})),
+        (
+            "unlinked portals",
+            sphere_scene(true, at, |state| {
+                portal_pair(state, [0.0, 0.0], ["near", "far"], [5, 6])
+            }),
+        ),
+    ] {
+        let scheduled = members(&state);
+        assert!(scheduled.contains(&"VgShade"), "{label}: {scheduled:?}");
+        for pass in THROUGH_PORTALS {
+            assert!(
+                !scheduled.contains(&pass),
+                "{label}: {pass} is scheduled: {scheduled:?}"
+            );
+        }
+    }
+    // Classic geometry only: the portals' own drawers, no second run.
+    let classic = {
+        let mut renderer = vg_renderer(
+            &harness,
+            &sphere_scene(false, at, |state| {
+                portal_pair(state, [0.0, 0.0], ["near", "far"], [5, 5])
+            }),
+        );
+        harness.frames(&mut renderer, 16);
+        renderer.graph_members()
+    };
+    assert!(classic.contains(&"PortalChains"), "{classic:?}");
+    for pass in THROUGH_PORTALS {
+        assert!(
+            !classic.contains(&pass),
+            "classic only: {pass} is scheduled: {classic:?}"
+        );
+    }
+    let scheduled = members(&sphere_scene(true, at, |state| {
+        portal_pair(state, [0.0, 0.0], ["near", "far"], [5, 5])
+    }));
+    for pass in THROUGH_PORTALS {
+        assert!(
+            scheduled.contains(&pass),
+            "linked: {pass} is not scheduled: {scheduled:?}"
+        );
+    }
+}
+
+/// Virtual geometry seen through a portal moves with the camera under TSR:
+/// the second run's instances carry the chain's map of this frame and last
+/// frame's (`prev_map · prev_model`), so they reproject like the same sphere
+/// seen directly. The camera strafes and approaches a step a frame; where the
+/// sphere shows, the last moving frame is compared with the frame settled at
+/// the same camera, through the portal and, as the control, directly where
+/// the portal shows it.
+#[test]
+fn virtual_geometry_through_a_portal_moves_without_a_tsr_smear() {
+    let Some(harness) = setup() else { return };
+    let rendering = {
+        use engine_state::settings::{global_config, NS_PROJECT};
+        global_config()
+            .owner_handle(NS_PROJECT, "rendering")
+            .or_else(|| {
+                engine_state::register_default_settings();
+                global_config().owner_handle(NS_PROJECT, "rendering")
+            })
+            .expect("the project's rendering settings are registered")
+    };
+    rendering
+        .set("tsr_quality", "quality")
+        .expect("tsr_quality is a project setting");
+    let start = harness.camera;
+    let step = f64::from(RADIUS) * 4.0 * 0.02;
+    let at = |i: usize| EditorCameraState {
+        position: [
+            start.position[0] + step * i as f64,
+            start.position[1],
+            start.position[2] - step * i as f64,
+        ],
+        ..start
+    };
+    let view = harness.texture.create_view(&Default::default());
+    let render = |renderer: &mut HelioRenderer, camera: EditorCameraState| {
+        renderer.set_editor_camera_state(camera);
+        renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
+        renderer.render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT);
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+    };
+    // Renders at `camera` until the asset is ready, then settles there.
+    let ready_at = |renderer: &mut HelioRenderer, camera: EditorCameraState, vg: bool| {
+        let started = Instant::now();
+        // The runtime exists once the renderer drew a frame.
+        render(renderer, camera);
+        while vg
+            && !installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(renderer)
+                .expect("the viewport renderer is built")
+                .any_ready()
+        {
+            render(renderer, camera);
+            assert!(
+                started.elapsed() < Duration::from_secs(240),
+                "the virtual-geometry asset never became ready"
+            );
+        }
+        for _ in 0..16 {
+            render(renderer, camera);
+        }
+    };
+    const STEPS: usize = 12;
+    let settled_at = |state: &LevelEditorState, camera: EditorCameraState, vg: bool| {
+        let mut renderer = vg_renderer(&harness, state);
+        ready_at(&mut renderer, camera, vg);
+        harness.read_texture(&harness.texture, wgpu::TextureAspect::All)
+    };
+    let moved_in = |state: &LevelEditorState| {
+        let mut renderer = vg_renderer(&harness, state);
+        ready_at(&mut renderer, at(0), true);
+        for i in 1..=STEPS {
+            render(&mut renderer, at(i));
+        }
+        harness.read_texture(&harness.texture, wgpu::TextureAspect::All)
+    };
+    let differs = |a: &[u8], b: &[u8]| {
+        (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD
+    };
+    let lag = |name: &str, with: &LevelEditorState, without: &LevelEditorState, empty_vg: bool| {
+        let moved = moved_in(with);
+        let settled = settled_at(with, at(STEPS), true);
+        let empty = settled_at(without, at(STEPS), empty_vg);
+        let region: Vec<bool> = settled
+            .chunks_exact(4)
+            .zip(empty.chunks_exact(4))
+            .map(|(a, b)| differs(a, b))
+            .collect();
+        let shown = region.iter().filter(|r| **r).count();
+        let missed = moved
+            .chunks_exact(4)
+            .zip(settled.chunks_exact(4))
+            .zip(&region)
+            .filter(|((a, b), r)| **r && differs(a, b))
+            .count();
+        if let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") {
+            for (label, pixels) in [("moved", &moved), ("settled", &settled), ("empty", &empty)] {
+                let path = std::path::Path::new(&dir).join(format!("vg_tsr_{name}_{label}.png"));
+                image::save_buffer(&path, pixels, SIZE, SIZE, image::ColorType::Rgba8)
+                    .expect("write dump");
+            }
+        }
+        (missed, shown)
+    };
+    // The far portal 5 km away, the sphere beyond it.
+    let far_side = |link: i32| {
+        sphere_scene(true, [5000.0, 0.0, -RADIUS * 2.0], |state| {
+            add_portal(state, "near", [0.0, 0.0], 180.0, 5);
+            add_portal(state, "far", [5000.0, 0.0], 0.0, link);
+        })
+    };
+    let through = lag("through", &far_side(5), &far_side(6), true);
+    // The control: the sphere directly where the portal shows it.
+    let direct = lag(
+        "direct",
+        &sphere_scene(true, [0.0, 0.0, -RADIUS * 2.0], |_| {}),
+        &LevelEditorState::new(),
+        false,
+    );
+    rendering
+        .set("tsr_quality", "auto")
+        .expect("tsr_quality is a project setting");
+    let share = |(missed, shown): (usize, usize)| missed as f64 / shown.max(1) as f64;
+    println!(
+        "VG PORTAL TSR motion: through the portal {} of {} pixels differ from the settled frame ({:.3}); directly {} of {} ({:.3})",
+        through.0,
+        through.1,
+        share(through),
+        direct.0,
+        direct.1,
+        share(direct)
+    );
+    assert!(through.1 > 100, "the portal shows nothing: {through:?}");
+    assert!(direct.1 > 100, "the control shows nothing: {direct:?}");
+    assert!(
+        share(through) <= share(direct) * 1.5 + 0.02,
+        "virtual geometry through the portal lags its direct motion under TSR (a smear): {through:?} against {direct:?}"
+    );
+}
+
+/// A dense sphere object (with virtual geometry when `vg`) at `position`.
+fn add_sphere(state: &mut LevelEditorState, position: [f32; 3], vg: bool) {
+    let id = execute_command(
+        state,
+        SceneCommand::AddObject {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "dense sphere".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                props: HashMap::new(),
+                scene_path: String::new(),
+                component_instances: None,
+            },
+            parent_id: None,
+        },
+    )
+    .affected_ids[0]
+        .clone();
+    {
+        let mut world = state.scene.world_mut();
+        let object = world.entity_for(&id).expect("object exists");
+        pulsar_world_registry::attach_value(&mut world, object, dense_mesh()).expect("attach mesh");
+        if vg {
+            pulsar_world_registry::attach_value(
+                &mut world,
+                object,
+                VirtualGeometryComponent::default(),
+            )
+            .expect("attach VG component");
+        }
+    }
+    let placed = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id,
+            position: Some(position.map(f64::from)),
+            rotation: None,
+            scale: None,
+        },
+    );
+    assert!(placed.changed, "transform edit was refused");
+}
+
+/// A portal object (`diag_vg_portal_cost`) with Link ID `link`, `RADIUS * 3`
+/// across, at ground position `[x, z]` turned `yaw` degrees.
+fn add_diag_portal(
+    state: &mut LevelEditorState,
+    name: &str,
+    [x, z]: [f32; 2],
+    yaw: f32,
+    link: i32,
+) {
+    let id = execute_command(
+        state,
+        SceneCommand::AddObject {
+            data: SceneObjectData {
+                id: String::new(),
+                name: name.to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                props: HashMap::new(),
+                scene_path: String::new(),
+                component_instances: None,
+            },
+            parent_id: None,
+        },
+    )
+    .affected_ids[0]
+        .clone();
+    execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.clone(),
+            position: Some([f64::from(x), 0.0, f64::from(z)]),
+            rotation: Some([0.0, yaw, 0.0]),
+            scale: None,
+        },
+    );
+    execute_command(
+        state,
+        SceneCommand::AddComponent {
+            id: id.clone(),
+            class_name: "PortalComponent".into(),
+            value: None,
+        },
+    );
+    for (property, value) in [
+        ("link_id", Box::new(link) as Box<dyn std::any::Any + Send>),
+        ("width", Box::new(RADIUS * 3.0)),
+        ("height", Box::new(RADIUS * 3.0)),
+    ] {
+        execute_command(
+            state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "PortalComponent".into(),
+                component_index: 0,
+                prop_name: property.into(),
+                value,
+            },
+        );
+    }
+}
+
+/// GPU cost of virtual geometry through portals on a VG-heavy scene: a grid
+/// of 48 dense spheres in front of the camera (drawn directly) and the same
+/// grid beside a far portal, seen through one portal, and through a chain of
+/// two; each against the same scene with the (last) pair unlinked. The
+/// passes' own times of the frame and its views, over pipelined frames,
+/// rounds interleaved. Builds in both the inline-view design and the chains
+/// design (the A/B the plan doc reports).
+#[test]
+#[ignore = "diagnostic: prints GPU timings"]
+fn diag_vg_portal_cost() {
+    let Some(harness) = setup() else { return };
+    let grid = |state: &mut LevelEditorState, [cx, cz]: [f32; 2]| {
+        for k in 0..4 {
+            for j in 0..3 {
+                for i in 0..4 {
+                    add_sphere(
+                        state,
+                        [
+                            cx + (i as f32 - 1.5) * RADIUS * 0.9,
+                            (j as f32 - 1.0) * RADIUS * 0.9,
+                            cz - RADIUS * 2.0 - k as f32 * RADIUS * 2.0,
+                        ],
+                        true,
+                    );
+                }
+            }
+        }
+    };
+    let one = |link: i32| {
+        let mut state = LevelEditorState::new();
+        grid(&mut state, [RADIUS * 3.0, 0.0]);
+        grid(&mut state, [1000.0, 0.0]);
+        add_diag_portal(&mut state, "near", [0.0, 0.0], 180.0, 5);
+        add_diag_portal(&mut state, "far", [1000.0, 0.0], 0.0, link);
+        state
+    };
+    let chain = |link: i32| {
+        let mut state = LevelEditorState::new();
+        grid(&mut state, [RADIUS * 3.0, 0.0]);
+        grid(&mut state, [2000.0, -RADIUS * 4.0]);
+        add_diag_portal(&mut state, "near", [0.0, 0.0], 180.0, 5);
+        add_diag_portal(&mut state, "far", [1000.0, 0.0], 0.0, 5);
+        add_diag_portal(&mut state, "second near", [1000.0, -RADIUS * 4.0], 180.0, 7);
+        add_diag_portal(&mut state, "second far", [2000.0, -RADIUS * 4.0], 0.0, link);
+        state
+    };
+    let view = harness.texture.create_view(&Default::default());
+    let measure = |state: &LevelEditorState| {
         let mut renderer = harness.renderer(state);
         installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
             &mut renderer,
             Some(vg_settings(VirtualGeometryMode::Auto)),
         );
-        harness.until_ready(&mut renderer)
+        harness.until_ready(&mut renderer);
+        harness.frames(&mut renderer, 32);
+        let mut totals = Vec::new();
+        for _ in 0..8 {
+            for _ in 0..8 {
+                renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
+                renderer.render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT);
+            }
+            harness
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
+            let primary: f32 = renderer.gpu_timings().map_or(0.0, |(_, passes)| {
+                passes
+                    .iter()
+                    .filter(|(name, _)| !name.starts_with("__"))
+                    .map(|(_, ms)| ms)
+                    .sum()
+            });
+            let views: f32 = renderer
+                .view_gpu_timings()
+                .iter()
+                .map(|(_, _, ms)| ms)
+                .sum();
+            totals.push(primary + views);
+        }
+        totals.sort_by(f32::total_cmp);
+        let vg: f32 = renderer.gpu_timings().map_or(0.0, |(_, passes)| {
+            passes
+                .iter()
+                .filter(|(name, _)| name.starts_with("Vg"))
+                .map(|(_, ms)| ms)
+                .sum()
+        });
+        if let Some((_, passes)) = renderer.gpu_timings() {
+            let mut heavy: Vec<_> = passes
+                .iter()
+                .filter(|(name, ms)| !name.starts_with("__") && *ms > 0.1)
+                .collect();
+            heavy.sort_by(|a, b| b.1.total_cmp(&a.1));
+            println!("DIAG VG passes: {heavy:?}");
+        }
+        (
+            totals[totals.len() / 2],
+            vg,
+            renderer.view_gpu_timings().len(),
+        )
     };
-    let unlinked = render(&portal_scene(6));
-    let linked = render(&portal_scene(5));
-    linked.dump("portal");
-    let d = linked.difference(&unlinked);
-    println!("VG through a portal vs unlinked: {d:?}");
-    assert!(
-        d.depth_texels > 1000 && d.color_pixels > 1000,
-        "the far side's virtual geometry did not show through the portal: {d:?}"
-    );
+    for round in 0..3 {
+        for (label, state) in [
+            ("one unlinked", one(6)),
+            ("one linked", one(5)),
+            ("chain unlinked", chain(8)),
+            ("chain linked", chain(7)),
+        ] {
+            let (total, vg, views) = measure(&state);
+            println!(
+                "DIAG VG round {round} {label}: {total:.3} ms (frame VG passes {vg:.3} ms, {views} views)"
+            );
+        }
+    }
 }

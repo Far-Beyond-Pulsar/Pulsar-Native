@@ -441,32 +441,51 @@ Known, not fixed. Ordered roughly by how much they matter.
 17. **Industry claims** in this document are unverified; back them with the
     phase-2 and phase-4 benchmarks before repeating them.
 
-### Portals and reflections are views (p25, Helio#390)
+### Portals are coordinate spaces; reflections are capture views (p25b, Helio#390)
 
-- **What a portal shows is an inline view of the frame** (`helio_core::view`):
-  the portals' views drawer (`PortalViewsPass`, last in the G-buffer phase)
-  stamps each visible opening, makes the view's depth from the stamp (far
-  inside, near outside), and the frame renders the view (the camera seen
-  through the opening's map, clipped at the destination plane) with every
-  G-buffer drawer's own program into the frame's G-buffer. Portals seen
-  through portals are the same drawer inside that view, bounded by
-  `ViewBudget` (`RendererConfig::views`). The host publishes only the direct
-  openings (`PORTAL_OPENINGS` from `PortalSync`): no chains, no
-  coordinate-space slots, no camera to prune against (the producers' camera
-  seam, `SpaceSync::set_view`, is deleted: each view culls what it sees).
-- **Lighting of portal pixels**: an inline view's pixels carry its slot in the
-  surface tag (`gbuffer_view_tag`); `deferred_lighting.wgsl` maps position,
-  normal and eye back through the frame's view table (`VIEW_REMAPS`, group 0
-  binding 11, written by the graph) and walks all scene lights instead of the
-  host tile lists. Shadows are sampled at the content's real position, so
-  content outside the host camera's shadow cascades/local shadow maps is
-  unshadowed. SSR and planar reflections are skipped for portal pixels.
-- **Water's reflection is a mirrored capture view**: every feature at the
-  capture's slots and phases draws in it (meshes, foliage, decals, VG, the sky
-  composite, GI's resolve); voxel terrain does not draw secondary views yet.
-- **Cost**: each visible opening is a pass sequence (stamp, mask, the view's
-  culls and drawers, merge); openings facing away or off-screen cost a CPU
-  test. Measure with the views' GPU time (`RenderGraph::view_graphs`).
+- **A portal is a rigid map between coordinate spaces, never a view.** The
+  host publishes every opening and every route through them to the
+  configured depth (`helio_portal_api::PORTAL_CHAIN_SET` from `PortalSync`,
+  `project.portals.max_chain_depth`, default 3). A route's maps compose on the
+  CPU into one `content_to_drawn`, projected with the frame's own camera, so
+  what a chain shows lands in the frame's G-buffer at its true depth.
+- **Per frame** the portals' chains pass (Prepare) keeps the routes whose every
+  opening is faced and on screen, shallowest first, at most
+  `project.portals.max_chains` (default 300), and uploads `PORTAL_CHAINS`,
+  `PORTAL_STAGES` (each stage's opening and each chain's holes, the deeper
+  openings it shows), the remaps (`lighting::VIEW_REMAPS`) and, for CPU
+  consumers, `PORTAL_LIVE_CHAINS`. The mask pass (G-buffer order 60) stamps the
+  outermost openings into `PORTAL_MASK` and clears the depth behind them.
+- **Each drawer draws its content through the chains** (G-buffer order 70,
+  `OCCURRENCE_ORDER`): the meshes' occurrence cull emits (instance, chain)
+  pairs for one multi-draw, and the G-buffer program's occurrence entry maps
+  them, clips the outer stage by the mask and the inner stages and holes by
+  exact ray tests (`//!use portal_chain`). There are no per-portal passes:
+  the cost is one cull and one draw per drawer, whatever the chain count.
+  Foliage keeps tiles resident around the places chains show (eye sets,
+  `project.foliage.portal_eyes`) and culls them per chain into its own
+  occurrence draw. Virtual geometry runs its cluster pipeline a second time
+  (`helio_vg_format::VgRun::SECONDARY`, order 75) over virtual instances: per
+  chain, a GPU walk of the instance BVH against the chain's volume
+  (`PORTAL_CHAIN_VOLUMES`) copies each instance it may show with the chain's
+  map folded into its transforms (this frame's and last's), culled against its
+  own Hi-Z of the frame depth after the occurrences, clipped per pixel to the
+  chain, in the one cluster store. Classic occurrences skip VG-active
+  instances, as the direct cull does.
+- **Lighting and decals**: a chain's pixels carry its remap in the surface tag
+  (`gbuffer_remap_tag`); lighting, transmission and decals map position and
+  normal back to the content's world through `VIEW_REMAPS`. Normals are stored
+  in the drawn space. **Gap:** a chain's pixels walk the scene's lights (at
+  most 256) unshadowed (the shadow maps are the camera's world's), and no
+  light crosses an opening; an open design.
+- **Water's reflection is a mirrored capture view** (`ViewKind::Capture`,
+  `ViewContext::render_view`): every feature at the capture's slots draws in
+  it; voxel terrain does not draw secondary views yet. Captures resolve no
+  temporal history and run no exposure (they read the frame's). The capture
+  renders only while a placed water volume is in the frustum (bounds read back
+  two frames late, tested against this frame's camera), at
+  `project.water.reflection_scale` (default 0.5) of the internal size, within
+  `rendering.capture_depth` / `rendering.max_captures` (`ViewBudget`).
 - **Not a bug (was a test artefact)**: "content shifts with portal distance" came from
   the test scene (mesh radius ~173 m, so the far content was directly visible, and the
   near portal faced away from the camera). Portal tests must face the near portal at the
