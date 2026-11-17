@@ -184,6 +184,10 @@ impl RenderPass for CableRenderPass {
         &["cable_connectors", "cable_definitions"]
     }
 
+    fn is_member(&mut self, scene: &mut helio_core::SceneContent<'_>) -> bool {
+        scene.holds_rows("cable_definitions") && scene.holds_rows("cable_connector_sources")
+    }
+
     fn reads(&self) -> &'static [&'static str] {
         &[helio_frame_api::color::SCENE_COLOR]
     }

@@ -5,7 +5,7 @@
 //! pairing and simulation are not performed by this crate or on the CPU.
 
 use engine_class_derive::{engine_class, world_component};
-use pulsar_reflection::Reflectable;
+use pulsar_reflection::{Reflectable, TextureSrc};
 use pulsar_scenedb::gpu::{GpuMirrorHandle, SceneGpuStore};
 use pulsar_scenedb_derive::SceneStore;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,13 @@ pub enum CableRenderMode {
     TwoD,
     /// A round cable section rendered along the simulated path.
     ThreeD,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Reflectable)]
+pub enum CableSurface {
+    SolidColor,
+    #[default]
+    TileTexture,
 }
 
 #[engine_class(category = "Rendering", clone, debug, serialize, deserialize)]
@@ -41,7 +48,11 @@ pub struct CableComponent {
     pub cylinder_mesh: String,
     /// Resolved by the cable asset bindings when using 2D mode.
     #[property(category = "Appearance")]
-    pub tile_texture: String,
+    pub tile_texture: TextureSrc,
+    #[property(category = "Appearance")]
+    pub surface: CableSurface,
+    #[property(category = "Appearance")]
+    pub color: [f32; 4],
     /// Runtime binding for `tile_texture`; populated by the texture asset
     /// lifecycle and deliberately excluded from serialized scene data.
     #[serde(skip)]
@@ -75,7 +86,9 @@ impl Default for CableComponent {
             enabled: true,
             render_mode: CableRenderMode::TwoD,
             cylinder_mesh: String::new(),
-            tile_texture: String::new(),
+            tile_texture: TextureSrc::default(),
+            surface: CableSurface::TileTexture,
+            color: [0.58, 0.52, 0.42, 1.0],
             tile_image: Default::default(),
             radius: 0.025,
             bundle_count: 1,
@@ -90,6 +103,17 @@ impl Default for CableComponent {
 }
 
 impl CableComponent {
+    fn tile_path(&self) -> Option<std::path::PathBuf> {
+        if let Some(reference) = self.tile_texture.asset_ref() {
+            let root = std::path::PathBuf::from(engine_state::get_project_path()?);
+            let index = engine_fs::open_project_file_index(&root).ok().flatten()?;
+            let path = index.path_for_asset_id_kind("texture", reference.as_str()).ok().flatten()?;
+            return Some(root.join(path));
+        }
+        let path = self.tile_texture.legacy_path()?.trim();
+        (!path.is_empty()).then(|| std::path::PathBuf::from(path))
+    }
+
     /// Reset the next GPU simulation initialization to a straight span.
     /// The feature observes this authored revision; it never reads state back.
     pub fn reset_simulation(&mut self) {
@@ -118,7 +142,10 @@ impl CableComponent {
             ],
             reset_revision: self.reset_revision,
             texture_slot,
-            _padding: [0; 2],
+            color_rgba8: u32::from_le_bytes(
+                self.color.map(|channel| (channel.clamp(0.0, 1.0) * 255.0).round() as u8),
+            ),
+            _padding: 0,
         }
     }
 }
@@ -186,7 +213,11 @@ pub struct CableDefinitionSourceRow {
     #[gpu]
     pub reset_revision: u32,
     #[gpu]
-    pub _padding: [u32; 3],
+    pub texture_slot: u32,
+    #[gpu]
+    pub color_rgba8: u32,
+    #[gpu]
+    pub _padding: u32,
 }
 
 impl CableDefinitionSourceRow {
@@ -226,13 +257,15 @@ impl From<&CableConnectorComponent> for CableConnectorSourceRow {
 fn definition_dispatch(mirror: &GpuMirrorHandle, row: u32, data: *const (), is_new: bool) {
     // SAFETY: SceneDB invokes this registration with the live component value.
     let component = unsafe { &*(data as *const CableComponent) };
-    let texture_slot = if component.enabled {
-        helio_component::texture_assets::texture_slot(
-            &component.tile_image,
-            &component.tile_texture,
-            mirror,
-            "cable",
-        )
+    let texture_slot = if component.enabled && component.surface == CableSurface::TileTexture {
+        component.tile_path().map_or(u32::MAX, |path| {
+            helio_component::texture_assets::texture_slot(
+                &component.tile_image,
+                &path.to_string_lossy(),
+                mirror,
+                "cable",
+            )
+        })
     } else {
         u32::MAX
     };
@@ -269,14 +302,17 @@ fn collect_cable_handles(
 ) {
     // SAFETY: SceneDB calls this for the CableComponent attachment only.
     let cable = unsafe { &*(value as *const CableComponent) };
-    helio_component::texture_assets::collect_texture(&cable.tile_texture, out);
+    let path = cable.tile_path();
+    let path = path.as_deref().and_then(std::path::Path::to_str).unwrap_or_default();
+    helio_component::texture_assets::collect_texture(path, out);
 }
 
 /// Resolve the authored tile texture through the shared texture asset flow.
 pub fn bind_cable_texture(cable: &mut CableComponent, view: &pulsar_scenedb::AssetView) {
+    let Some(path) = cable.tile_path() else { return; };
     helio_component::texture_assets::bind_texture(
         &mut cable.tile_image,
-        &cable.tile_texture,
+        &path.to_string_lossy(),
         view,
         "cable",
     );

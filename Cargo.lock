@@ -1574,6 +1574,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
+ "engine_fs",
+ "engine_state",
  "helio-cables-api",
  "helio-core",
  "helio-feature-api",

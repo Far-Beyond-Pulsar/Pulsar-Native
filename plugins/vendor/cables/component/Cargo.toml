@@ -6,6 +6,8 @@ description = "Cable definition and connector components for pulsar.cables"
 
 [dependencies]
 engine_class_derive = { workspace = true }
+engine_fs = { workspace = true }
+engine_state = { workspace = true }
 cables_api = { workspace = true }
 pulsar_reflection = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

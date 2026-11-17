@@ -121,7 +121,7 @@ fn vs_main(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance
     let pos = curve + bundle_offset + final_width_axis * width;
     var out: VertexOut;
     out.clip = camera.view_proj * vec4<f32>(pos, 1.0);
-    out.color = vec4<f32>(0.58, 0.52, 0.42, 1.0);
+    out.color = unpack4x8unorm(definition_words[definition + 14u]);
     out.uv = vec2<f32>(t * span, side * 0.5 + 0.5);
     out.texture_index = definition_words[definition + 13u];
     return out;

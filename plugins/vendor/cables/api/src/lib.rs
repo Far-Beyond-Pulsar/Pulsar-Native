@@ -20,7 +20,8 @@ pub struct CableDefinitionRow {
     pub wind_direction_speed: [f32; 4],
     pub reset_revision: u32,
     pub texture_slot: u32,
-    pub _padding: [u32; 2],
+    pub color_rgba8: u32,
+    pub _padding: u32,
 }
 
 /// Connector authoring row. The owner transform is joined separately from
