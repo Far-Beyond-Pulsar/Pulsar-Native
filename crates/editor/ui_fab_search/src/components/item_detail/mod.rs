@@ -3,8 +3,6 @@ pub mod description;
 pub mod format_tags;
 pub mod gallery;
 pub mod header;
-pub mod license_section;
-pub mod meta_bar;
 
 mod left_column;
 mod sidebar;
@@ -253,9 +251,6 @@ fn build_gallery(
     let make_images = |urls: &Vec<String>| -> Vec<GalleryImage> {
         urls.iter()
             .map(|url| GalleryImage {
-                url: SharedString::from(url.clone()),
-                width: 1920,
-                height: 1080,
                 image: images.get(url.as_str()).cloned(),
             })
             .collect()

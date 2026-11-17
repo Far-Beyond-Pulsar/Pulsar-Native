@@ -309,10 +309,7 @@ impl SceneWorldExt for World {
         }
         for (order, &entity) in wanted.iter().enumerate() {
             let order = order as u64;
-            let current = previous
-                .iter()
-                .find(|(e, _)| *e == entity)
-                .map(|(_, o)| *o);
+            let current = previous.iter().find(|(e, _)| *e == entity).map(|(_, o)| *o);
             if current != Some(order) {
                 self.insert(entity, Selected { order });
             }

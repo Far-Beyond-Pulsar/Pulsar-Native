@@ -31,7 +31,7 @@ impl RendezvousCoordinator {
 
     /// Create a new rendezvous session
     pub fn create_session(&self, session_id: String, host_id: String) -> Result<()> {
-        let session = Arc::new(RendezvousSession::new(session_id.clone(), host_id));
+        let session = Arc::new(RendezvousSession::new(host_id));
         self.sessions.insert(session_id.clone(), session);
 
         info!(session = %session_id, "Created rendezvous session");

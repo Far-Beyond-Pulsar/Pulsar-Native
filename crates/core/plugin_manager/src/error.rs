@@ -101,13 +101,13 @@ impl std::fmt::Display for PluginManagerError {
                     f,
                     "Plugin version mismatch: expected engine v{}.{}.{} with rustc hash {:#x}, got v{}.{}.{} with rustc hash {:#x}. \
                     Plugin must be recompiled with the same Rust compiler version as the engine.",
-                    expected.engine_version.0,
-                    expected.engine_version.1,
-                    expected.engine_version.2,
+                    expected.engine_version[0],
+                    expected.engine_version[1],
+                    expected.engine_version[2],
                     expected.rustc_version_hash,
-                    actual.engine_version.0,
-                    actual.engine_version.1,
-                    actual.engine_version.2,
+                    actual.engine_version[0],
+                    actual.engine_version[1],
+                    actual.engine_version[2],
                     actual.rustc_version_hash,
                 )
             }

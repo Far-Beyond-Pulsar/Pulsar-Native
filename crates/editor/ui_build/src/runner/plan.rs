@@ -398,7 +398,14 @@ mod tests {
         let p = plan(&c, WIN).unwrap();
         assert_eq!(
             kinds(&p),
-            ["check", "pack_content", "build", "check", "pack_content", "build"]
+            [
+                "check",
+                "pack_content",
+                "build",
+                "check",
+                "pack_content",
+                "build"
+            ]
         );
         let check_only = config(BuildSteps {
             pack_content: true,

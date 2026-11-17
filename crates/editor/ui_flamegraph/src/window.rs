@@ -321,7 +321,7 @@ impl FlamegraphWindow {
             if let Some(file) = file_dialog.pick_file().await {
                 let db_path = file.path().to_path_buf();
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.load_from_database(db_path, cx);
                     });
                 });
@@ -373,27 +373,6 @@ impl FlamegraphWindow {
             }
             Err(e) => {
                 tracing::error!("[PROFILER] Failed to open database: {}", e);
-            }
-        }
-    }
-
-    fn open_file_dialog(&mut self, cx: &mut Context<Self>) {
-        if let Some(project_path) = engine_state::get_project_path() {
-            // List available sessions
-            match profiling::database::list_profiling_sessions(&project_path) {
-                Ok(sessions) => {
-                    tracing::trace!("[PROFILER] Found {} profiling sessions", sessions.len());
-                    if let Some(latest) = sessions.first() {
-                        // For now, just load the latest
-                        // TODO: Show a UI list to pick from
-                        self.load_from_database(latest.clone(), cx);
-                    } else {
-                        tracing::trace!("[PROFILER] No profiling sessions found");
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("[PROFILER] Failed to list sessions: {}", e);
-                }
             }
         }
     }

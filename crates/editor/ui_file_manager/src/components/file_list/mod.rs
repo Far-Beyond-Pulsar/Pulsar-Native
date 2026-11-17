@@ -6,19 +6,9 @@
 use engine_state::{ConfigValue, GlobalSettings};
 use gpui::prelude::*;
 use gpui::*;
-use rust_i18n::t;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use ui::{
-    button::{Button, ButtonGroup, ButtonVariants as _},
-    h_flex,
-    input::{InputState, TextInput},
-    menu::context_menu::ContextMenuExt,
-    popup_menu::PopupMenuExt as _,
-    resizable::{h_resizable, resizable_panel, ResizableState},
-    scroll::{Scrollbar, ScrollbarState},
-    v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
-};
+use std::path::PathBuf;
+use ui::{input::InputState, resizable::ResizableState, scroll::ScrollbarState, ActiveTheme as _};
 
 mod content;
 mod grid;
@@ -28,16 +18,8 @@ mod toolbar;
 use content::render_content;
 
 use crate::components::commit_picker::{CommitPicker, CommitSelected};
-use crate::components::sidebar;
 use crate::utils::{
-    actions::*,
-    fs_metadata::FsMetadataManager,
-    helpers::{
-        format_file_size, format_modified, get_icon_color_for_file_type, get_icon_for_file_type,
-        type_label,
-    },
-    operations::FileOperations,
-    tree::FolderNode,
+    actions::*, fs_metadata::FsMetadataManager, operations::FileOperations, tree::FolderNode,
     types::*,
 };
 
@@ -55,7 +37,6 @@ pub struct FileManagerDrawer {
     pub(crate) focus_handle: FocusHandle,
     pub(crate) operations: FileOperations,
     pub(crate) fs_metadata: FsMetadataManager,
-    pub(crate) drag_state: DragState,
     pub(crate) hovered_drop_folder: Option<PathBuf>,
     pub(crate) show_drop_hint: bool,
     pub(crate) breadcrumb_hover_timer: Option<gpui::Task<()>>,
@@ -186,7 +167,7 @@ impl FileManagerDrawer {
         )
         .detach();
 
-        let operations = FileOperations::new(project_path.clone());
+        let operations = FileOperations::new();
         let mut fs_metadata = FsMetadataManager::new();
         if let Some(ref p) = project_path {
             fs_metadata.load_from_project_root(p);
@@ -224,7 +205,6 @@ impl FileManagerDrawer {
             focus_handle: cx.focus_handle(),
             operations,
             fs_metadata,
-            drag_state: DragState::None,
             hovered_drop_folder: None,
             show_drop_hint: false,
             breadcrumb_hover_timer: None,

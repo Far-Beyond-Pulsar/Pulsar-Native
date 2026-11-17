@@ -17,7 +17,6 @@ pub struct ObjectHeaderSection {
     name_field: Entity<StringBoundField>,
     visible_field: Entity<BoolBoundField>,
     locked_field: Entity<BoolBoundField>,
-    object_id: String,
 }
 
 impl ObjectHeaderSection {
@@ -129,7 +128,6 @@ impl ObjectHeaderSection {
             name_field,
             visible_field,
             locked_field,
-            object_id,
         }
     }
 

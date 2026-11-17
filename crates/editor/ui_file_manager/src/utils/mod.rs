@@ -18,8 +18,6 @@ pub use drag_drop::*;
 pub use helpers::*;
 pub use project_files::free_name_in;
 pub use rename::*;
-pub use state::*;
-pub use thumbnails::*;
 pub use tree::FolderNode;
 pub use types::*;
 

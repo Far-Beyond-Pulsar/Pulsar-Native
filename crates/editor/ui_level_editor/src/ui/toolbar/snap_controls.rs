@@ -5,7 +5,7 @@ use ui::{
     h_flex,
     input::{InputState, TextInput},
     popover::Popover,
-    v_flex, ActiveTheme as _, IconName, Selectable as _, Sizable as _,
+    v_flex, ActiveTheme as _, IconName, Sizable as _,
 };
 
 use crate::LevelEditorState;

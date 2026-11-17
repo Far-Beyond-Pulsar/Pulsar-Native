@@ -417,7 +417,7 @@ pub(super) fn handle_scroll_wheel(
 
 pub(super) fn handle_left_mouse_down(
     event: &gpui::MouseDownEvent,
-    window: &mut gpui::Window,
+    _window: &mut gpui::Window,
     pointer_events: Option<
         Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>,
     >,

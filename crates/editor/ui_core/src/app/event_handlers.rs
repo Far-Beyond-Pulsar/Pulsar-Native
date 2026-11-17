@@ -12,12 +12,8 @@ use ui_problems::ProblemsDrawer;
 // plugin system when the plugin architecture is finalized.
 
 use engine_backend::services::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
-use futures::FutureExt;
 use plugin_manager;
 use rust_i18n::t;
-use smol::Timer;
-use std::path::PathBuf;
-use std::time::Duration;
 
 use super::PulsarApp;
 

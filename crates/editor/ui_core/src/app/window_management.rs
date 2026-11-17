@@ -104,7 +104,7 @@ impl PulsarApp {
                         > = std::sync::Arc::new(move |path, cx| {
                             crate::PulsarRoot::open(path, cx);
                             // Close the originating window only after the target editor opens.
-                            cx.update_window(originating_window_handle, |_, win, _| {
+                            let _ = cx.update_window(originating_window_handle, |_, win, _| {
                                 win.remove_window()
                             });
                         });

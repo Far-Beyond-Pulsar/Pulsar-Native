@@ -3,9 +3,9 @@
 //! This module uses the plugin system exclusively - NO match statements.
 //! All editors (built-in and plugin-based) are handled through the trait system.
 
-use gpui::{App, Context, Entity, Window};
+use gpui::{App, Context, Window};
 use std::path::{Path, PathBuf};
-use ui::dock::{DockItem, TabPanel};
+use ui::dock::DockItem;
 use ui_file_manager::FileSelected;
 
 use super::{open_editors::OpenEditorInfo, PulsarApp};

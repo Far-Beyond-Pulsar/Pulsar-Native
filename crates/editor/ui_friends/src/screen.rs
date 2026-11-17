@@ -1,16 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use friends_engine::{FriendInfo, RelationStatus};
+use friends_engine::RelationStatus;
 use gpui::{prelude::*, *};
 use ui::{
-    button::{Button, ButtonVariants as _},
     dropdown::{SearchableList, SearchableListEvent},
-    h_flex,
     input::{InputEvent, InputState},
-    popover::Popover,
-    skeleton::Skeleton,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName, StyledExt,
+    v_flex, ActiveTheme as _, StyledExt,
 };
 
 use crate::components::{

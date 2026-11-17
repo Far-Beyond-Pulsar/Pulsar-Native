@@ -31,7 +31,11 @@ fn probe_texture_heavy_level() {
     }
     let instance = wgpu::Instance::new(descriptor);
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
-    eprintln!("PROBE adapter {:?} {:?}", adapter.get_info().name, adapter.get_info().backend);
+    eprintln!(
+        "PROBE adapter {:?} {:?}",
+        adapter.get_info().name,
+        adapter.get_info().backend
+    );
     let features = helio::required_wgpu_features(adapter.features());
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("probe"),
@@ -79,7 +83,10 @@ fn probe_texture_heavy_level() {
                 pipelines::LEGACY_DEFAULT_PIPELINE.to_string(),
             )));
     }
-    if let Some(mode) = std::env::var("PROBE_DEBUG").ok().and_then(|m| m.parse().ok()) {
+    if let Some(mode) = std::env::var("PROBE_DEBUG")
+        .ok()
+        .and_then(|m| m.parse().ok())
+    {
         renderer.editor_mailbox().set_viewport_debug_mode(mode);
     }
     if let Some(camera) = camera {
@@ -183,7 +190,9 @@ fn report(scene: &engine_backend::scene::SharedScene, frames: u64, elapsed: Dura
         .as_ref()
         .map(|s| {
             let s = s.read().unwrap();
-            (0..s.slot_count()).filter(|i| s.texture(*i).is_some()).count()
+            (0..s.slot_count())
+                .filter(|i| s.texture(*i).is_some())
+                .count()
         })
         .unwrap_or(0);
     eprintln!(

@@ -1,4 +1,3 @@
-use agent_chat_core::{ChatMessage, ChatRole};
 use gpui::*;
 use ui::scroll::ScrollHandleOffsetable;
 
@@ -6,7 +5,6 @@ use super::panel::AgentChatPanel;
 use super::types::*;
 
 impl AgentChatPanel {
-    pub(super) const CONTEXT_CHAR_BUDGET: usize = 24_000;
     pub(super) const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
 
     pub(super) fn active_context_chars(&self) -> usize {
@@ -193,20 +191,6 @@ impl AgentChatPanel {
         let offset_y = self.messages_scroll_handle.offset().y;
         let viewport_h = self.chat_viewport_height;
         (content_h - offset_y - viewport_h).max(px(0.0))
-    }
-
-    pub(super) fn message_row_height(message: &ChatMessage) -> Pixels {
-        let explicit_lines = message.content.lines().collect::<Vec<_>>();
-        let visual_lines: usize = explicit_lines
-            .iter()
-            .map(|line| {
-                let chars = line.chars().count().max(1);
-                chars.div_ceil(64)
-            })
-            .sum::<usize>()
-            .max(1);
-        let estimated = 10.0 + 14.0 + 14.0 + (visual_lines as f32 * 18.0) + 6.0;
-        px(estimated)
     }
 
     pub(super) fn format_elapsed(started_ms: u64, finished_ms: Option<u64>, now_ms: u64) -> String {

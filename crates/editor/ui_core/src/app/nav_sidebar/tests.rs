@@ -127,7 +127,7 @@ fn open(cx: &mut TestAppContext, root: &Path) -> Editor {
                 cx.new(|cx| engine_backend::services::RustAnalyzerManager::new(window, cx));
             let view = cx.new(|cx| {
                 let mut app =
-                    PulsarApp::new_internal(Some(root), Some(analyzer), None, false, window, cx);
+                    PulsarApp::new_internal(Some(root), Some(analyzer), false, window, cx);
                 // No "project loaded" toast: it would outlive the test.
                 app.state.shown_welcome_notification = true;
                 app

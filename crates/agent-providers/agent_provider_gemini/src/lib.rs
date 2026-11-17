@@ -40,7 +40,6 @@ fn stream_error(event: &Value) -> Option<String> {
 pub struct GeminiProvider {
     client: Client,
     api_key: String,
-    models: Vec<ModelDescriptor>,
 }
 
 impl GeminiProvider {
@@ -48,41 +47,7 @@ impl GeminiProvider {
         Ok(Self {
             client: http_client()?,
             api_key,
-            models: Self::static_models(),
         })
-    }
-
-    fn static_models() -> Vec<ModelDescriptor> {
-        vec![
-            ModelDescriptor {
-                id: "gemini-2.5-pro".to_string(),
-                label: "Gemini 2.5 Pro".to_string(),
-                supports_tools: true,
-                context_tokens: 0,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "gemini-2.5-flash".to_string(),
-                label: "Gemini 2.5 Flash".to_string(),
-                supports_tools: true,
-                context_tokens: 0,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "gemini-2.0-flash".to_string(),
-                label: "Gemini 2.0 Flash".to_string(),
-                supports_tools: true,
-                context_tokens: 0,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "gemini-2.0-flash-lite".to_string(),
-                label: "Gemini 2.0 Flash Lite".to_string(),
-                supports_tools: false,
-                context_tokens: 0,
-                compact_model: None,
-            },
-        ]
     }
 
     fn map_role(role: ChatRole) -> &'static str {

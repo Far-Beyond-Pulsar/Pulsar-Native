@@ -22,20 +22,18 @@ pub mod performance;
 pub(crate) mod view_settings;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use device_query::{DeviceQuery, DeviceState, Keycode};
+use device_query::{DeviceState, Keycode};
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::menu::popup_menu::PopupMenu;
+use ui::ActiveTheme;
 use ui::Sizable;
-use ui::{h_flex, v_flex, ActiveTheme};
-use ui_common::ViewportControls;
 
 use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
@@ -203,12 +201,6 @@ pub struct ViewportPanel {
     /// View-mode picker of a split-off viewport.
     own_picker: Option<view_settings::OwnViewPicker>,
 
-    /// Viewport controls state
-    viewport_controls: ViewportControls,
-
-    /// Render enable/disable flag
-    render_enabled: Arc<AtomicBool>,
-
     /// Element bounds for coordinate conversion
     element_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
 
@@ -267,13 +259,6 @@ pub struct ViewportPanel {
     locked_cursor_y: Arc<AtomicI32>,
     locked_cursor_screen_x: Arc<AtomicI32>,
     locked_cursor_screen_y: Arc<AtomicI32>,
-
-    /// Keyboard state
-    keys_pressed: Rc<RefCell<HashSet<String>>>,
-    alt_pressed: Rc<RefCell<bool>>,
-
-    /// Focus handle
-    focus_handle: FocusHandle,
 }
 
 impl ViewportPanel {
@@ -290,7 +275,6 @@ impl ViewportPanel {
     /// Create a new viewport panel.
     pub fn new<V>(
         viewport: Entity<HelioViewport>,
-        render_enabled: Arc<AtomicBool>,
         input_state: Arc<InputState>,
         toolbar: Entity<crate::ui::toolbar::ToolbarView>,
         gpu_engine: Arc<Mutex<GpuRenderer>>,
@@ -302,8 +286,6 @@ impl ViewportPanel {
     where
         V: 'static,
     {
-        let focus_handle = cx.focus_handle();
-
         Self {
             viewport,
             toolbar,
@@ -314,8 +296,6 @@ impl ViewportPanel {
             ui_frames: Rc::default(),
             own_picker: None,
             cached_frame_snapshot: EngineFrameSnapshot::default(),
-            viewport_controls: ViewportControls::new(),
-            render_enabled,
             element_bounds: Rc::new(RefCell::new(None)),
             stats: SharedStats::default(),
             perf_overlay: RefCell::new(None),
@@ -347,9 +327,6 @@ impl ViewportPanel {
             // (Wayland); (0, 0) and negative multi-monitor coordinates are valid.
             locked_cursor_screen_x: Arc::new(AtomicI32::new(i32::MIN)),
             locked_cursor_screen_y: Arc::new(AtomicI32::new(i32::MIN)),
-            keys_pressed: Rc::new(RefCell::new(HashSet::new())),
-            alt_pressed: Rc::new(RefCell::new(false)),
-            focus_handle,
         }
     }
 

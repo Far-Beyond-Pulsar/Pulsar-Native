@@ -429,36 +429,6 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         }
     }
 
-    // Allowed std::fs: the destination folder is picked in a native dialog on
-    // this machine, not a project path; the chats themselves are read via the VFS.
-    #[allow(clippy::disallowed_methods)]
-    pub(super) fn export_all_chats(&self) {
-        let Some(dir) = rfd::FileDialog::new().pick_folder() else {
-            return;
-        };
-
-        if let Some(chats_dir) = Self::chats_dir() {
-            if let Ok(entries) = vfs::list_dir(&chats_dir) {
-                for entry in entries {
-                    let path = chats_dir.join(&entry.name);
-                    if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-                        if let Ok(content) = vfs::read_file(&path) {
-                            if let Some(file_name) = path.file_name() {
-                                let dest_path = dir.join(file_name);
-                                if let Err(error) = std::fs::write(&dest_path, &content) {
-                                    tracing::warn!(
-                                        "Could not export chat to {}: {error}",
-                                        dest_path.display()
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // Allowed std::fs: the source is a file picked in a native open dialog on
     // this machine, not a project file; the copy into the project uses the VFS.
     #[allow(clippy::disallowed_methods)]

@@ -1,10 +1,9 @@
 use gpui::*;
-use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     popup_menu::PopupMenuExt,
-    ActiveTheme, Sizable,
+    Sizable,
 };
 
 use super::actions::SetToolMode;

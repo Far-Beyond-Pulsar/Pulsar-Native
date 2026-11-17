@@ -44,10 +44,6 @@ impl Default for SearchCache {
 }
 
 impl SearchCache {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn evict(&mut self) {
         self.entries.retain(|e| e.inserted_at.elapsed() < CACHE_TTL);
     }

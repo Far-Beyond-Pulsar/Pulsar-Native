@@ -9,8 +9,6 @@ use gpui::{
 use engine_state::{NS_EDITOR, NS_PROJECT};
 
 use ui::{
-    button::{Button, ButtonVariants as _},
-    h_flex,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     v_flex, ActiveTheme, ColorBlindMode, Icon, IconName, Sizable, Theme, ThemeMode,
 };

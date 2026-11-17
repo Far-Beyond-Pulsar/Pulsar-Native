@@ -3,7 +3,6 @@ use std::path::Path;
 
 use crate::components::FileManagerDrawer;
 use crate::utils::cloud_join;
-use crate::utils::git_integration::DeletedFileEntry;
 use crate::utils::types::*;
 use plugin_editor_api::FileStructure;
 

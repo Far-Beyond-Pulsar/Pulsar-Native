@@ -3,17 +3,12 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use rust_i18n::t;
-use std::path::PathBuf;
+use ui::menu::context_menu::ContextMenuExt;
 use ui::{
-    button::ButtonVariants as _, h_flex, input::TextInput, popup_menu::PopupMenuExt as _,
-    scroll::Scrollbar, v_flex, ActiveTheme as _, Icon, Selectable as _, Sizable as _,
+    h_flex, input::TextInput, scroll::Scrollbar, v_flex, ActiveTheme as _, Icon, Sizable as _,
 };
-use ui::{menu::context_menu::ContextMenuExt, StyledExt};
 
-use crate::components::sidebar;
 use crate::utils::{
-    actions::*,
     helpers::{get_icon_color_for_file_type, get_icon_for_file_type},
     types::*,
 };
@@ -43,11 +38,10 @@ pub(super) fn render_grid_view(
     } else {
         (100.0, 144.0, 12.0)
     };
-    let (CW, CH, G) = (cw_min, ch, g);
     const HP: f32 = 16.0;
-    let aw = (pw - HP).max(CW);
-    let cols = (((aw + G) / (CW + G)).floor() as usize).max(1);
-    let cw = ((aw - (cols.saturating_sub(1)) as f32 * G) / cols as f32).max(CW);
+    let aw = (pw - HP).max(cw_min);
+    let cols = (((aw + g) / (cw_min + g)).floor() as usize).max(1);
+    let cw = ((aw - (cols.saturating_sub(1)) as f32 * g) / cols as f32).max(cw_min);
     let rows = n.div_ceil(cols);
     let handle = d.grid_scroll_handle.clone();
     if let Some(index) = d.take_pending_reveal(&items) {
@@ -72,9 +66,9 @@ pub(super) fn render_grid_view(
                             let e = (s + cols).min(n);
                             h_flex()
                                 .w_full()
-                                .h(px(CH + G))
-                                .gap(px(G))
-                                .py(px(G / 2.))
+                                .h(px(ch + g))
+                                .gap(px(g))
+                                .py(px(g / 2.))
                                 .items_start()
                                 .children(
                                     (0..cols)
@@ -85,7 +79,7 @@ pub(super) fn render_grid_view(
                                                 // text and of the other items in this row.
                                                 div()
                                                     .w(px(cw))
-                                                    .h(px(CH))
+                                                    .h(px(ch))
                                                     .flex_none()
                                                     .min_w_0()
                                                     .child(render_list_item(
@@ -103,7 +97,7 @@ pub(super) fn render_grid_view(
                                             } else {
                                                 div()
                                                     .w(px(cw))
-                                                    .h(px(CH))
+                                                    .h(px(ch))
                                                     .flex_none()
                                                     .invisible()
                                                     .into_any_element()

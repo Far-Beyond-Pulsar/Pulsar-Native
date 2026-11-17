@@ -3,7 +3,6 @@
 //! `load_repository_state`.
 
 use crate::models::*;
-use engine_fs::FsProvider as _;
 use git2::{BranchType, ErrorCode, Repository, StatusOptions};
 use std::path::Path;
 

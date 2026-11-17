@@ -1147,7 +1147,9 @@ fn render_threads(
             .count();
         rows.push(ThreadListRow::Group(format!(
             "{}  ·  {} thread(s), {} running",
-            role.label(), group.len(), running
+            role.label(),
+            group.len(),
+            running
         )));
         for (thread, title) in group {
             shown += 1;
@@ -1176,37 +1178,41 @@ fn render_threads(
         .flex_1()
         .min_w_0()
         .child(header)
-        .child(v_virtual_list(
-            cx.entity().clone(),
-            "editor-thread-rows",
-            Rc::new(vec![size(px(0.0), px(THREAD_ROW_HEIGHT)); count]),
-            move |_this,
-                  range: std::ops::Range<usize>,
-                  _window,
-                  cx: &mut Context<TaskQueuePanel>| {
-                range
-                    .map(|index| match rows.get(index) {
-                        Some(ThreadListRow::Group(label)) => {
-                            let theme = cx.theme().clone();
-                            h_flex()
-                                .w_full()
-                                .h(px(THREAD_ROW_HEIGHT))
-                                .px_4()
-                                .items_center()
-                                .bg(theme.muted.opacity(0.1))
-                                .text_xs()
-                                .font_semibold()
-                                .child(label.clone())
-                                .into_any_element()
-                        }
-                        Some(ThreadListRow::Thread(thread, title)) => {
-                            render_thread_row(thread, title.clone(), cx)
-                        }
-                        None => div().h(px(THREAD_ROW_HEIGHT)).into_any_element(),
-                    })
-                    .collect::<Vec<_>>()
-            },
-        ).flex_1().min_h_0())
+        .child(
+            v_virtual_list(
+                cx.entity().clone(),
+                "editor-thread-rows",
+                Rc::new(vec![size(px(0.0), px(THREAD_ROW_HEIGHT)); count]),
+                move |_this,
+                      range: std::ops::Range<usize>,
+                      _window,
+                      cx: &mut Context<TaskQueuePanel>| {
+                    range
+                        .map(|index| match rows.get(index) {
+                            Some(ThreadListRow::Group(label)) => {
+                                let theme = cx.theme().clone();
+                                h_flex()
+                                    .w_full()
+                                    .h(px(THREAD_ROW_HEIGHT))
+                                    .px_4()
+                                    .items_center()
+                                    .bg(theme.muted.opacity(0.1))
+                                    .text_xs()
+                                    .font_semibold()
+                                    .child(label.clone())
+                                    .into_any_element()
+                            }
+                            Some(ThreadListRow::Thread(thread, title)) => {
+                                render_thread_row(thread, title.clone(), cx)
+                            }
+                            None => div().h(px(THREAD_ROW_HEIGHT)).into_any_element(),
+                        })
+                        .collect::<Vec<_>>()
+                },
+            )
+            .flex_1()
+            .min_h_0(),
+        )
         .into_any_element()
 }
 

@@ -79,6 +79,7 @@ impl PaneStack {
         &self.panes
     }
 
+    #[cfg(test)]
     pub fn is_collapsed(&self, kind: PaneKind) -> bool {
         self.panes
             .iter()

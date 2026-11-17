@@ -14,10 +14,9 @@ mod world_settings;
 pub use hierarchy::HierarchyPanel;
 pub use panel::LevelEditorPanel;
 pub use properties::{
-    ComponentHierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,
-    TransformSection,
+    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
 };
 pub use toolbar::SetToolMode;
-pub use toolbar::{GlobalToolbarView, ToolbarPanel, ToolbarView, GLOBAL_TOOLBAR_HEIGHT};
+pub use toolbar::{GlobalToolbarView, ToolbarView, GLOBAL_TOOLBAR_HEIGHT};
 pub use viewport::ViewportPanel;
 pub use world_settings::WorldSettingsPanelImpl;

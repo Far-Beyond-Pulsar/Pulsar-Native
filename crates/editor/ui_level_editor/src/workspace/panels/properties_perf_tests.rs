@@ -25,8 +25,8 @@ use super::{LevelEditorState, PropertiesPanelWrapper};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use gpui::{
     div, px, render_stats, size, AnyElement, AnyView, AppContext as _, Context, Entity,
-    InteractiveElement as _, IntoElement as _, IntoElement, ParentElement as _, Render,
-    StyleRefinement, Styled as _, TestAppContext, VisualTestContext, Window,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, StyleRefinement, Styled as _,
+    TestAppContext, VisualTestContext, Window,
 };
 // Every installed plugin's components, registered as the editor has them
 // (their root crates without `editor`; not `installed_plugins`, whose editor crates
@@ -885,11 +885,10 @@ fn properties_panel_resize_report(cx: &mut TestAppContext) {
                 t.max.as_secs_f64() * 1e3
             );
         }
-        for (name, n) in s
-            .counters
-            .iter()
-            .filter(|(name, _)| name.starts_with("view cache: rebuilt: ") || name.starts_with("view cache: rebuilt (dependency changed): "))
-        {
+        for (name, n) in s.counters.iter().filter(|(name, _)| {
+            name.starts_with("view cache: rebuilt: ")
+                || name.starts_with("view cache: rebuilt (dependency changed): ")
+        }) {
             eprintln!("    {name:<90} {:>8.1} /frame", *n as f64 / frames as f64);
         }
         render_stats::set_force_enabled(false);

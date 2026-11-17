@@ -102,7 +102,10 @@ fn build_selection_menu(
         .action_context(action_context.clone())
         .label(title)
         .separator()
-        .menu(t!("LevelEditor.Menu.FocusSelected"), Box::new(FocusSelected))
+        .menu(
+            t!("LevelEditor.Menu.FocusSelected"),
+            Box::new(FocusSelected),
+        )
         .menu(t!("LevelEditor.Menu.Duplicate"), Box::new(DuplicateObject))
         .menu(t!("LevelEditor.Menu.Delete"), Box::new(DeleteObject))
         .separator()
@@ -122,9 +125,10 @@ fn build_selection_menu(
                     })
                     .separator();
                 let top = state.clone();
-                submenu = submenu.menu_handler(t!("LevelEditor.Selection.TopLevel"), move |_, _| {
-                    move_selection_to(&mut top.write(), None);
-                });
+                submenu =
+                    submenu.menu_handler(t!("LevelEditor.Selection.TopLevel"), move |_, _| {
+                        move_selection_to(&mut top.write(), None);
+                    });
                 if !folders.is_empty() {
                     submenu = submenu.separator();
                 }
@@ -145,9 +149,14 @@ fn build_selection_menu(
         )
         .separator();
     let level_context = action_context.clone();
-    menu.submenu(t!("LevelEditor.Selection.Level"), window, cx, move |submenu, window, cx| {
-        level_menu(submenu.action_context(level_context.clone()), window, cx)
-    })
+    menu.submenu(
+        t!("LevelEditor.Selection.Level"),
+        window,
+        cx,
+        move |submenu, window, cx| {
+            level_menu(submenu.action_context(level_context.clone()), window, cx)
+        },
+    )
 }
 
 impl ViewportPanel {
@@ -663,9 +672,7 @@ impl ViewportPanel {
                 let box_select = box_select.clone();
                 let element_bounds = element_bounds_for_click.clone();
 
-                move |event: &gpui::MouseUpEvent,
-                      _window: &mut gpui::Window,
-                      cx: &mut gpui::App| {
+                move |event: &gpui::MouseUpEvent, _window: &mut gpui::Window, cx: &mut gpui::App| {
                     if super::build_handlers::finish_box_select(
                         &box_select,
                         &element_bounds,

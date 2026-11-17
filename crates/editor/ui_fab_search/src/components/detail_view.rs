@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::{prelude::*, *};
-use ui::{ActiveTheme, StyledExt, button::Button};
+use ui::{ActiveTheme, button::Button};
 
 use crate::FabSearchWindow;
 use crate::components::item_detail::ItemDetailView;

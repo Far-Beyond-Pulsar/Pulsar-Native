@@ -131,7 +131,7 @@ impl AgentChatPanel {
                 .await;
 
             cx.update(|cx| {
-                this.update(cx, |panel, cx| {
+                let _ = this.update(cx, |panel, cx| {
                     match result {
                         Ok(models) => {
                             if models.is_empty() {
@@ -143,7 +143,6 @@ impl AgentChatPanel {
                                 .map(|m| ModelDefinition {
                                     id: Self::static_str(m.id.to_string()),
                                     label: Self::static_str(m.label.to_string()),
-                                    supports_tools: m.supports_tools,
                                     context_tokens: m.context_tokens,
                                     compact_model: None,
                                 })
@@ -219,7 +218,7 @@ impl AgentChatPanel {
                 .await;
 
             cx.update(|cx| {
-                this.update(cx, |panel, cx| {
+                let _ = this.update(cx, |panel, cx| {
                     match result {
                         Ok(models) => {
                             if models.is_empty() {
@@ -235,7 +234,6 @@ impl AgentChatPanel {
                                     .map(|model| ModelDefinition {
                                         id: Self::static_str(model.id.to_string()),
                                         label: Self::static_str(model.label.to_string()),
-                                        supports_tools: model.supports_tools,
                                         context_tokens: model.context_tokens,
                                         compact_model: model.compact_model.as_ref().map(|s| Self::static_str(s.clone())),
                                     })

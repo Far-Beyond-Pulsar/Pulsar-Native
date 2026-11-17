@@ -2,14 +2,12 @@ use std::rc::Rc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, Sizable, StyledExt, button::Button, download_item::DownloadItemStatus,
-    download_manager::DownloadEntry, h_flex, scroll::Scrollbar, skeleton::Skeleton,
+    ActiveTheme, Sizable, StyledExt, h_flex, scroll::Scrollbar, skeleton::Skeleton,
     spinner::Spinner, v_flex, v_virtual_list,
 };
 
 use crate::FabSearchWindow;
 use crate::parser::fmt_count;
-use crate::utils::actions::{DownloadState, LicenseFilter, SortBy};
 
 pub fn render_results_grid(
     window: &FabSearchWindow,

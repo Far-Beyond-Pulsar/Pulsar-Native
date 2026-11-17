@@ -110,9 +110,9 @@ pub mod panel_restore;
 #[cfg(feature = "editor")]
 pub mod plugin;
 #[cfg(feature = "editor")]
-pub mod registrar;
-#[cfg(feature = "editor")]
 pub mod read_only;
+#[cfg(feature = "editor")]
+pub mod registrar;
 pub mod runtime;
 pub mod scripting;
 #[cfg(feature = "editor")]

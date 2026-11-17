@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use ui::{ActiveTheme, StyledExt, button::Button, h_flex, input::TextInput};
+use ui::{StyledExt, button::Button, h_flex, input::TextInput};
 
 use crate::FabSearchWindow;
 

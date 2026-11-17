@@ -696,6 +696,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
+            .on_action(cx.listener(Self::on_toggle_multiplayer))
             .on_action(cx.listener(Self::on_toggle_agent_chat))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_toggle_unified_sidebar))

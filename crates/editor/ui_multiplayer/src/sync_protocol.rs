@@ -80,7 +80,7 @@ impl MultiplayerWindow {
 
         // Update UI state - still connecting, not yet fully connected
         cx.update(|cx| {
-            this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.apply_host_session_created(&server_address, &session_id, &join_token, cx);
             });
         });
@@ -130,7 +130,7 @@ impl MultiplayerWindow {
             Some(ServerMessage::Error { message }) => {
                 let text = session_logic::server_error_text(&message);
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.set_connection_error(text);
                         this.active_session = None;
                         cx.notify();
@@ -159,7 +159,7 @@ impl MultiplayerWindow {
         clear_session: bool,
     ) {
         cx.update(|cx| {
-            this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.set_connection_error(text);
                 if clear_session {
                     this.fs_event_forwarder = None;
@@ -200,7 +200,7 @@ impl MultiplayerWindow {
         joined: &JoinedReply,
     ) {
         cx.update(|cx| {
-            this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.apply_host_joined(client, server_address, session_id, joined, cx);
             });
         });
@@ -278,7 +278,7 @@ impl MultiplayerWindow {
                 ..
             } => {
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.apply_host_peer_joined(joined_peer_id, profile, cx);
                     });
                 });
@@ -288,7 +288,7 @@ impl MultiplayerWindow {
                 ..
             } => {
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.apply_peer_left(&left_peer_id, cx);
                     });
                 });
@@ -296,7 +296,7 @@ impl MultiplayerWindow {
             ServerMessage::Kicked { reason, .. } => {
                 tracing::warn!("{}: You were kicked from the session: {}", TAG, reason);
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.handle_kicked(format!("Kicked from session: {}", reason), cx);
                     });
                 });
@@ -316,7 +316,7 @@ impl MultiplayerWindow {
                     message
                 );
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.apply_chat_message(TAG, sender_peer_id, message, timestamp, cx);
                     });
                 });
@@ -324,7 +324,7 @@ impl MultiplayerWindow {
             ServerMessage::Error { message } => {
                 let text = session_logic::server_error_text(&message);
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.set_connection_error(text);
                         this.fs_event_forwarder = None;
                         cx.notify();

@@ -163,7 +163,11 @@ impl ViewportPanel {
                 id.clone(),
                 cx,
             );
-            overlays = overlays.panel(RndPanel::new(id).default_slot("toolbar-left").child(toolbar));
+            overlays = overlays.panel(
+                RndPanel::new(id)
+                    .default_slot("toolbar-left")
+                    .child(toolbar),
+            );
         }
         if view.overlays.state.show_camera_mode_selector {
             let id = panel("camera-selector");
@@ -177,7 +181,11 @@ impl ViewportPanel {
                 id.clone(),
                 cx,
             );
-            overlays = overlays.panel(RndPanel::new(id).default_slot("toolbar-right").child(toolbar));
+            overlays = overlays.panel(
+                RndPanel::new(id)
+                    .default_slot("toolbar-right")
+                    .child(toolbar),
+            );
         }
 
         // The plugins' debug overlays (the portals' links): each shown one
@@ -209,7 +217,10 @@ impl ViewportPanel {
                         .w(px(320.0))
                         .child(
                             div()
-                                .id(SharedString::from(format!("debug-overlay-scroll-{}", overlay.id)))
+                                .id(SharedString::from(format!(
+                                    "debug-overlay-scroll-{}",
+                                    overlay.id
+                                )))
                                 .w_full()
                                 .max_h(px(360.0))
                                 .overflow_y_scroll()
@@ -442,8 +453,18 @@ const BOTTOM_RIGHT: [&str; 3] = ["bottom-nerds", "bottom-right-spare", "bottom-r
 pub(super) fn overlay_slots() -> Vec<Slot> {
     let inset = px(8.0);
     let mut slots = vec![
-        Slot::new("toolbar-left", SlotAnchor::TopLeft, size(px(160.0), px(42.0))).inset(inset, inset),
-        Slot::new("toolbar-right", SlotAnchor::TopRight, size(px(160.0), px(42.0))).inset(inset, inset),
+        Slot::new(
+            "toolbar-left",
+            SlotAnchor::TopLeft,
+            size(px(160.0), px(42.0)),
+        )
+        .inset(inset, inset),
+        Slot::new(
+            "toolbar-right",
+            SlotAnchor::TopRight,
+            size(px(160.0), px(42.0)),
+        )
+        .inset(inset, inset),
         Slot::new("left", SlotAnchor::TopLeft, size(px(320.0), px(250.0)))
             .inset(inset, px(58.0))
             .flow(SlotFlow::Column),
@@ -453,12 +474,10 @@ pub(super) fn overlay_slots() -> Vec<Slot> {
     ];
     let bottom = size(px(BOTTOM_SLOT.0), px(BOTTOM_SLOT.1));
     slots.extend(
-        BOTTOM_LEFT
-            .map(|id| Slot::new(id, SlotAnchor::BottomLeft, bottom).group("bottom-left")),
+        BOTTOM_LEFT.map(|id| Slot::new(id, SlotAnchor::BottomLeft, bottom).group("bottom-left")),
     );
     slots.extend(
-        BOTTOM_RIGHT
-            .map(|id| Slot::new(id, SlotAnchor::BottomRight, bottom).group("bottom-right")),
+        BOTTOM_RIGHT.map(|id| Slot::new(id, SlotAnchor::BottomRight, bottom).group("bottom-right")),
     );
     slots
 }

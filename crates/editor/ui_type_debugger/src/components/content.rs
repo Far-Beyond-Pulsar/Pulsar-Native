@@ -1,7 +1,6 @@
 use crate::utils::types::TypeInfo;
 use gpui::{prelude::*, *};
 use plugin_editor_api::FileTypeId;
-use std::collections::HashMap;
 use ui::StyledExt;
 use ui::{h_flex, scroll::ScrollbarAxis, v_flex, ActiveTheme as _, Icon, IconName};
 

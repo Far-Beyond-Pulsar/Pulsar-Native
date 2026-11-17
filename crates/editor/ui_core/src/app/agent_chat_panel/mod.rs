@@ -1,4 +1,3 @@
-mod auth;
 mod builder;
 mod chat_history;
 mod chat_storage;
@@ -33,8 +32,7 @@ use agent_chat_core::{
 use agent_chat_tools::ToolRegistry;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
-    cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, RwLock},
@@ -42,20 +40,14 @@ use std::{
 use ui::{
     bubble::{Bubble, BubbleVariant},
     button::{Button, ButtonVariants as _},
-    dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    dropdown::{
-        SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
-    },
     h_flex,
-    input::Enter,
-    input::{InputState, TextInput},
+    input::TextInput,
     message::{Message, MessageAlignment, MessageContent},
-    popover::Popover,
-    scroll::{Scrollbar, ScrollbarState},
+    scroll::Scrollbar,
     spinner::Spinner,
     text::TextView,
     v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size,
-    StyledExt, VirtualListScrollHandle,
+    StyledExt,
 };
 
 impl Render for AgentChatPanel {

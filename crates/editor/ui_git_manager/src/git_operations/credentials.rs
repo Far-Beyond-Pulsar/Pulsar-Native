@@ -2,8 +2,6 @@
 //! detection and the libgit2 callbacks that supply them.
 
 use super::remote_context::same_credential_scope;
-use crate::models::*;
-use engine_fs::FsProvider as _;
 
 /// Returns true if the git2 error indicates an authentication failure.
 pub fn is_auth_error(e: &git2::Error) -> bool {

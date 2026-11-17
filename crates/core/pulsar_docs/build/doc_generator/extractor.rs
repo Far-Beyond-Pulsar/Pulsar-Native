@@ -45,7 +45,6 @@ pub fn extract_documentation(
         name: parsed_crate.crate_info.name.clone(),
         version: parsed_crate.crate_info.version.clone(),
         description: parsed_crate.crate_info.description.clone(),
-        modules: Vec::new(),
         structs: Vec::new(),
         enums: Vec::new(),
         traits: Vec::new(),
@@ -58,84 +57,43 @@ pub fn extract_documentation(
     // Extract from each file
     for file in &parsed_crate.files {
         let source_code = std::fs::read_to_string(&file.path)?;
-        extract_from_items(&file.ast.items, &mut docs, &file.path, vec![], &source_code);
+        extract_from_items(&file.ast.items, &mut docs, &source_code);
     }
 
     Ok(docs)
 }
 
 /// Extract documentation from a list of items
-fn extract_from_items(
-    items: &[Item],
-    docs: &mut CrateDocumentation,
-    file_path: &std::path::Path,
-    current_path: Vec<String>,
-    source_code: &str,
-) {
+fn extract_from_items(items: &[Item], docs: &mut CrateDocumentation, source_code: &str) {
     for item in items {
         match item {
             Item::Struct(item_struct) => {
-                docs.structs.push(extract_struct(
-                    item_struct,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.structs.push(extract_struct(item_struct, source_code));
             }
             Item::Enum(item_enum) => {
-                docs.enums.push(extract_enum(
-                    item_enum,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.enums.push(extract_enum(item_enum, source_code));
             }
             Item::Trait(item_trait) => {
-                docs.traits.push(extract_trait(
-                    item_trait,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.traits.push(extract_trait(item_trait, source_code));
             }
             Item::Fn(item_fn) => {
-                docs.functions.push(extract_function(
-                    item_fn,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.functions.push(extract_function(item_fn, source_code));
             }
             Item::Macro(item_macro) => {
-                docs.macros.push(extract_macro(
-                    item_macro,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.macros.push(extract_macro(item_macro, source_code));
             }
             Item::Const(item_const) => {
-                docs.constants.push(extract_constant(
-                    item_const,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.constants
+                    .push(extract_constant(item_const, source_code));
             }
             Item::Type(item_type) => {
-                docs.type_aliases.push(extract_type_alias(
-                    item_type,
-                    file_path,
-                    &current_path,
-                    source_code,
-                ));
+                docs.type_aliases
+                    .push(extract_type_alias(item_type, source_code));
             }
             Item::Mod(item_mod) => {
                 // Recursively process module
                 if let Some((_, items)) = &item_mod.content {
-                    let mut mod_path = current_path.clone();
-                    mod_path.push(item_mod.ident.to_string());
-                    extract_from_items(items, docs, file_path, mod_path, source_code);
+                    extract_from_items(items, docs, source_code);
                 }
             }
             _ => {}
@@ -144,12 +102,7 @@ fn extract_from_items(
 }
 
 /// Extract documentation from a struct
-fn extract_struct(
-    item: &ItemStruct,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> StructDoc {
+fn extract_struct(item: &ItemStruct, source_code: &str) -> StructDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -161,7 +114,6 @@ fn extract_struct(
             .map(|f| FieldDoc {
                 name: f.ident.as_ref().unwrap().to_string(),
                 doc_comment: extract_doc_comments(&f.attrs),
-                visibility: extract_visibility(&f.vis),
                 type_: extract_source_from_span(&f.ty, source_code),
             })
             .collect(),
@@ -172,7 +124,6 @@ fn extract_struct(
             .map(|(i, f)| FieldDoc {
                 name: format!("{}", i),
                 doc_comment: extract_doc_comments(&f.attrs),
-                visibility: extract_visibility(&f.vis),
                 type_: extract_source_from_span(&f.ty, source_code),
             })
             .collect(),
@@ -181,29 +132,16 @@ fn extract_struct(
 
     StructDoc {
         name: item.ident.to_string(),
-        path: path.to_vec(),
         doc_comment,
         visibility,
         generics,
         fields,
-        is_tuple_struct: matches!(item.fields, syn::Fields::Unnamed(_)),
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0, // Line info not available
-            column: 0,
-        },
         source_code: extract_source_from_span(item, source_code),
-        impls: Vec::new(), // Will be filled later
     }
 }
 
 /// Extract documentation from an enum
-fn extract_enum(
-    item: &ItemEnum,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> EnumDoc {
+fn extract_enum(item: &ItemEnum, source_code: &str) -> EnumDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.generics);
@@ -213,18 +151,7 @@ fn extract_enum(
         .iter()
         .map(|v| {
             let fields = match &v.fields {
-                syn::Fields::Named(fields) => VariantFields::Struct(
-                    fields
-                        .named
-                        .iter()
-                        .map(|f| FieldDoc {
-                            name: f.ident.as_ref().unwrap().to_string(),
-                            doc_comment: extract_doc_comments(&f.attrs),
-                            visibility: extract_visibility(&f.vis),
-                            type_: extract_source_from_span(&f.ty, source_code),
-                        })
-                        .collect(),
-                ),
+                syn::Fields::Named(_) => VariantFields::Struct,
                 syn::Fields::Unnamed(fields) => VariantFields::Tuple(
                     fields
                         .unnamed
@@ -245,90 +172,39 @@ fn extract_enum(
 
     EnumDoc {
         name: item.ident.to_string(),
-        path: path.to_vec(),
         doc_comment,
         visibility,
         generics,
         variants,
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0, // Line info not available
-            column: 0,
-        },
         source_code: extract_source_from_span(item, source_code),
-        impls: Vec::new(),
     }
 }
 
 /// Extract documentation from a trait
-fn extract_trait(
-    item: &ItemTrait,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> TraitDoc {
+fn extract_trait(item: &ItemTrait, source_code: &str) -> TraitDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
-    let generics = extract_generics(&item.generics);
 
-    let supertraits = item
-        .supertraits
+    let methods = item
+        .items
         .iter()
-        .map(|t| t.to_token_stream().to_string())
+        .filter_map(|trait_item| match trait_item {
+            syn::TraitItem::Fn(method) => Some(extract_trait_method(method, source_code)),
+            _ => None,
+        })
         .collect();
-
-    let mut associated_types = Vec::new();
-    let mut methods = Vec::new();
-
-    for trait_item in &item.items {
-        match trait_item {
-            syn::TraitItem::Type(ty) => {
-                associated_types.push(AssociatedTypeDoc {
-                    name: ty.ident.to_string(),
-                    doc_comment: extract_doc_comments(&ty.attrs),
-                    bounds: ty
-                        .bounds
-                        .iter()
-                        .map(|b| b.to_token_stream().to_string())
-                        .collect(),
-                    default: ty
-                        .default
-                        .as_ref()
-                        .map(|(_, ty)| ty.to_token_stream().to_string()),
-                });
-            }
-            syn::TraitItem::Fn(method) => {
-                methods.push(extract_trait_method(method, source_code));
-            }
-            _ => {}
-        }
-    }
 
     TraitDoc {
         name: item.ident.to_string(),
-        path: path.to_vec(),
         doc_comment,
         visibility,
-        generics,
-        supertraits,
-        associated_types,
         methods,
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0, // Line info not available
-            column: 0,
-        },
         source_code: extract_source_from_span(item, source_code),
     }
 }
 
 /// Extract documentation from a function
-fn extract_function(
-    item: &ItemFn,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> FunctionDoc {
+fn extract_function(item: &ItemFn, source_code: &str) -> FunctionDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
     let generics = extract_generics(&item.sig.generics);
@@ -356,7 +232,6 @@ fn extract_function(
 
     FunctionDoc {
         name: item.sig.ident.to_string(),
-        path: path.to_vec(),
         doc_comment,
         visibility,
         generics,
@@ -365,22 +240,12 @@ fn extract_function(
         is_async: item.sig.asyncness.is_some(),
         is_unsafe: item.sig.unsafety.is_some(),
         is_const: item.sig.constness.is_some(),
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0,
-            column: 0,
-        },
         source_code: extract_source_from_span(item, source_code),
     }
 }
 
 /// Extract documentation from a macro
-fn extract_macro(
-    item: &ItemMacro,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> MacroDoc {
+fn extract_macro(item: &ItemMacro, source_code: &str) -> MacroDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let name = item
         .ident
@@ -390,81 +255,46 @@ fn extract_macro(
 
     MacroDoc {
         name,
-        path: path.to_vec(),
         doc_comment,
-        visibility: Visibility::Public, // Macros are typically public
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0, // Macro span handling is complex
-            column: 0,
-        },
         source_code: extract_source_from_span(item, source_code),
-        example_usage: Vec::new(),
     }
 }
 
 /// Extract documentation from a constant
-fn extract_constant(
-    item: &ItemConst,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> ConstantDoc {
+fn extract_constant(item: &ItemConst, source_code: &str) -> ConstantDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
 
     ConstantDoc {
         name: item.ident.to_string(),
-        path: path.to_vec(),
         doc_comment,
         visibility,
         type_: extract_source_from_span(&*item.ty, source_code),
         value: Some(extract_source_from_span(&*item.expr, source_code)),
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0, // Line info not available
-            column: 0,
-        },
     }
 }
 
 /// Extract documentation from a type alias
-fn extract_type_alias(
-    item: &ItemType,
-    file_path: &std::path::Path,
-    path: &[String],
-    source_code: &str,
-) -> TypeAliasDoc {
+fn extract_type_alias(item: &ItemType, source_code: &str) -> TypeAliasDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
     let visibility = extract_visibility(&item.vis);
-    let generics = extract_generics(&item.generics);
 
     TypeAliasDoc {
         name: item.ident.to_string(),
-        path: path.to_vec(),
         doc_comment,
         visibility,
-        generics,
         target_type: extract_source_from_span(&*item.ty, source_code),
-        source_location: SourceLocation {
-            file: file_path.to_path_buf(),
-            line: 0, // Line info not available
-            column: 0,
-        },
     }
 }
 
 /// Extract method from trait item
 fn extract_trait_method(item: &syn::TraitItemFn, source_code: &str) -> MethodDoc {
     let doc_comment = extract_doc_comments(&item.attrs);
-    let generics = extract_generics(&item.sig.generics);
 
     let self_param = item.sig.inputs.iter().find_map(|arg| {
         if let syn::FnArg::Receiver(recv) = arg {
             Some(if recv.reference.is_some() {
-                SelfParam::Reference {
-                    mutable: recv.mutability.is_some(),
-                }
+                SelfParam::Reference
             } else {
                 SelfParam::Value
             })
@@ -494,14 +324,9 @@ fn extract_trait_method(item: &syn::TraitItemFn, source_code: &str) -> MethodDoc
     MethodDoc {
         name: item.sig.ident.to_string(),
         doc_comment,
-        visibility: Visibility::Public,
-        generics,
         self_param,
         parameters,
         return_type,
-        is_async: item.sig.asyncness.is_some(),
-        is_unsafe: item.sig.unsafety.is_some(),
-        is_const: item.sig.constness.is_some(),
         source_code: extract_source_from_span(item, source_code),
     }
 }
@@ -595,10 +420,6 @@ fn extract_generics(generics: &syn::Generics) -> Vec<Generic> {
                     .iter()
                     .map(|b| b.to_token_stream().to_string())
                     .collect(),
-                default: type_param
-                    .default
-                    .as_ref()
-                    .map(|ty| ty.to_token_stream().to_string()),
             }),
             _ => None,
         })

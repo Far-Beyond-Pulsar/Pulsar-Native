@@ -54,7 +54,7 @@ impl MultiplayerWindow {
 
                 // Update local state (will also update when server confirms via PeerLeft)
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         // Remove from local participants list
                         if let Some(session) = &mut this.active_session {
                             session.connected_users.retain(|p| p != &peer_id);
@@ -111,29 +111,5 @@ impl MultiplayerWindow {
         } else {
             tracing::warn!("No presence data for peer {}", peer_id);
         }
-    }
-
-    /// Update our own presence to broadcast to others
-    pub(super) fn update_own_presence(
-        &mut self,
-        tab: Option<String>,
-        editing_file: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(our_peer_id) = self.current_peer_id.clone() {
-            if let Some(presence) = self.get_presence_mut(&our_peer_id) {
-                presence.current_tab = tab;
-                presence.editing_file = editing_file;
-                presence.last_activity = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                presence.is_idle = false;
-
-                // TODO: Send presence update to server
-                // This would broadcast our current state to all peers
-            }
-        }
-        cx.notify();
     }
 }

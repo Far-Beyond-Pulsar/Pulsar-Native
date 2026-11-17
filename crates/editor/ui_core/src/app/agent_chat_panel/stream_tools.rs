@@ -6,7 +6,7 @@
 //! Entry points: [`make_agent_tool_context`] and [`execute_tool_calls`], both
 //! called from `stream_worker.rs` on the worker thread.
 
-use super::stream_event::{StreamEvent, UiWaiter};
+use super::stream_event::StreamEvent;
 use super::*;
 use agent_chat_core::{ChatRequest, ToolCall};
 use std::sync::{Condvar, Mutex};

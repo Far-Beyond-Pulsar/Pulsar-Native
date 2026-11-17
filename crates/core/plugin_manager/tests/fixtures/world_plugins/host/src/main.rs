@@ -133,7 +133,6 @@ fn main() {
 
     if host_sees_class {
         // A live component of the host's World, through the registry alone.
-        use pulsar_reflection::EngineClass as _;
         let mut world = pulsar_scenedb::World::new();
         let entity = world.spawn();
         let value = pulsar_world_registry::new_world_component_value("PluginWidget")
@@ -175,7 +174,6 @@ fn main() {
     if host_sees_class {
         // Placed on an object, saved as level records, loaded into a fresh
         // World: the level file's path, through the plugin's own codec.
-        use pulsar_reflection::EngineClass as _;
         use pulsar_world_registry::pulsar_scene_model::{
             attachments::NewInstance, ComponentInstance,
         };

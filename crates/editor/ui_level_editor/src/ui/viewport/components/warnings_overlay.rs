@@ -13,10 +13,10 @@ use std::{
 
 use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable as _, h_flex,
+    h_flex,
     panel_canvas::{DragHandle, HandleEdge, PanelRef, RndPanel},
     scroll::{Scrollbar, ScrollbarState},
-    v_flex,
+    v_flex, ActiveTheme, Icon, IconName, Sizable as _,
 };
 
 use crate::ui::viewport::performance::RendererStatsSource;
@@ -55,8 +55,7 @@ impl Entry {
             ("info:", Severity::Note),
         ];
         for (prefix, severity) in prefixes {
-            if trimmed.len() >= prefix.len()
-                && trimmed[..prefix.len()].eq_ignore_ascii_case(prefix)
+            if trimmed.len() >= prefix.len() && trimmed[..prefix.len()].eq_ignore_ascii_case(prefix)
             {
                 return Self {
                     severity,
@@ -119,19 +118,17 @@ impl WarningsOverlay {
             _tick: Task::ready(()),
         };
         this.poll();
-        this._tick = cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(REFRESH).await;
-                if this
-                    .update(cx, |this, cx| {
-                        if this.poll() {
-                            cx.notify();
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
+        this._tick = cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(REFRESH).await;
+            if this
+                .update(cx, |this, cx| {
+                    if this.poll() {
+                        cx.notify();
+                    }
+                })
+                .is_err()
+            {
+                break;
             }
         });
         this
@@ -142,7 +139,13 @@ impl WarningsOverlay {
             .source
             .latest()
             .and_then(|stats| stats.details)
-            .map(|details| details.warnings.iter().map(|line| Entry::parse(line)).collect())
+            .map(|details| {
+                details
+                    .warnings
+                    .iter()
+                    .map(|line| Entry::parse(line))
+                    .collect()
+            })
             .unwrap_or_else(|| Rc::from([]));
         if self.entries == next {
             return false;
@@ -152,7 +155,10 @@ impl WarningsOverlay {
     }
 
     fn count(&self, severity: Severity) -> usize {
-        self.entries.iter().filter(|e| e.severity == severity).count()
+        self.entries
+            .iter()
+            .filter(|e| e.severity == severity)
+            .count()
     }
 }
 
@@ -180,13 +186,21 @@ where
         .default_size(size(px(410.0), px(250.0)))
         .min_size(size(px(300.0), px(150.0)))
         .max_size(size(px(760.0), px(560.0)))
-        .resizable([HandleEdge::Right, HandleEdge::Bottom, HandleEdge::BottomRight])
+        .resizable([
+            HandleEdge::Right,
+            HandleEdge::Bottom,
+            HandleEdge::BottomRight,
+        ])
         .bg(theme.background.opacity(0.88))
         .rounded_lg()
         .border_1()
         .border_color(theme.border.opacity(0.5))
         .shadow_lg()
-        .child(AnyView::from(overlay).cached(StyleRefinement::default().size_full()).isolated())
+        .child(
+            AnyView::from(overlay)
+                .cached(StyleRefinement::default().size_full())
+                .isolated(),
+        )
 }
 
 /// A count of one severity in the header: its icon and number, dimmed at 0.
@@ -203,7 +217,13 @@ fn badge(severity: Severity, count: usize, cx: &App) -> impl IntoElement {
         .rounded(px(4.0))
         .when(count > 0, |el| el.bg(severity.color(cx).opacity(0.12)))
         .child(Icon::new(severity.icon()).xsmall().text_color(color))
-        .child(div().text_xs().font_family("monospace").text_color(color).child(count.to_string()))
+        .child(
+            div()
+                .text_xs()
+                .font_family("monospace")
+                .text_color(color)
+                .child(count.to_string()),
+        )
 }
 
 /// One log line: a severity stripe and icon, its number, and the message
@@ -301,7 +321,12 @@ impl Render for WarningsOverlay {
                 .justify_center()
                 .gap_2()
                 .child(Icon::new(IconName::CircleCheck).text_color(theme.success.opacity(0.8)))
-                .child(div().text_xs().text_color(muted).child("No active renderer warnings"))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child("No active renderer warnings"),
+                )
                 .into_any_element()
         } else {
             div()
@@ -318,7 +343,9 @@ impl Render for WarningsOverlay {
                 .child(
                     uniform_list("viewport-warnings", entries.len(), move |range, _, cx| {
                         range
-                            .filter_map(|index| entries.get(index).map(|entry| row(index, entry, cx)))
+                            .filter_map(|index| {
+                                entries.get(index).map(|entry| row(index, entry, cx))
+                            })
                             .collect()
                     })
                     .track_scroll(&self.scroll)

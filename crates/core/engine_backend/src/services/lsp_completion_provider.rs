@@ -19,8 +19,6 @@ pub struct GlobalRustAnalyzerCompletionProvider {
     analyzer: Entity<RustAnalyzerManager>,
     /// Current file path
     file_path: PathBuf,
-    /// Workspace root
-    workspace_root: PathBuf,
     /// Tracks whether this document has been didOpen'd in the current analyzer session.
     did_open_sent: Arc<AtomicBool>,
     /// Monotonically increasing version for textDocument/didChange notifications.
@@ -31,12 +29,11 @@ impl GlobalRustAnalyzerCompletionProvider {
     pub fn new(
         analyzer: Entity<RustAnalyzerManager>,
         file_path: PathBuf,
-        workspace_root: PathBuf,
+        _workspace_root: PathBuf,
     ) -> Self {
         Self {
             analyzer,
             file_path,
-            workspace_root,
             did_open_sent: Arc::new(AtomicBool::new(false)),
             text_version: Arc::new(AtomicI32::new(1)),
         }

@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use crate::file_types::FileTypeDefinition;
-use crate::identifiers::{EditorId, FileTypeId};
 use crate::manifest::PluginManifest;
 use crate::metadata::{EditorMetadata, PluginMetadata};
 use crate::version::VersionInfo;

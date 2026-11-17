@@ -21,8 +21,7 @@ use engine_class_derive::{engine_class, register_world_component};
 use pulsar_reflection::{EngineClass as _, Reflectable};
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
-    EngineGpuContext, GpuColumnSet, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig,
-    SceneGpuStore,
+    EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 use pulsar_world_registry::{GpuMirrored, GpuRepr, NoGpuMirror};
 use std::sync::Arc;

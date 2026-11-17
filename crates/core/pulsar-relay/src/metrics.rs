@@ -239,8 +239,8 @@ impl Metrics {
             .iter()
             .map(|family| {
                 serde_json::json!({
-                    "name": family.get_name(),
-                    "help": family.get_help(),
+                    "name": family.name(),
+                    "help": family.help(),
                     "type": format!("{:?}", family.get_field_type()),
                     "metrics": family.get_metric().len(),
                 })

@@ -9,7 +9,6 @@ use ui::{
 };
 
 mod actions;
-mod feature_toggles;
 mod global_toolbar;
 mod level_editor_menus;
 mod mode_indicator;

@@ -1,5 +1,4 @@
-use pulsar_reflection::EngineClass as _;
-use pulsar_reflection::{EngineClass, PropertyMetadata};
+use pulsar_reflection::EngineClass;
 
 use crate::plugin::EditorPlugin;
 

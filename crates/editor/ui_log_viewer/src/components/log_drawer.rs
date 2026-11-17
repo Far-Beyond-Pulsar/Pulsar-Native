@@ -256,22 +256,6 @@ impl LogStore {
         }
     }
 
-    fn matches_filters(&self, row: &LogRow) -> bool {
-        if let Some(level) = self.level_filter {
-            if row.level != level {
-                return false;
-            }
-        }
-
-        if self.search_query.is_empty() {
-            return true;
-        }
-
-        row.text
-            .to_ascii_lowercase()
-            .contains(&self.search_query.to_ascii_lowercase())
-    }
-
     fn refilter_all(&mut self) {
         self.filtered_indices.clear();
         if !self.has_active_filter() {
@@ -1015,14 +999,20 @@ mod tests {
             format!("2026-11-13 21:52:22.117 {level} cargo: {message}")
         };
         assert_eq!(
-            LogLevel::from_line(&line("WARN", "warning: unused import: `pulsar_error::Error`")),
+            LogLevel::from_line(&line(
+                "WARN",
+                "warning: unused import: `pulsar_error::Error`"
+            )),
             LogLevel::Warn
         );
         assert_eq!(
             LogLevel::from_line(&line("INFO", "Compiling error-chain v0.12.4")),
             LogLevel::Info
         );
-        assert_eq!(LogLevel::from_line(&line("ERROR", "error[E0432]")), LogLevel::Error);
+        assert_eq!(
+            LogLevel::from_line(&line("ERROR", "error[E0432]")),
+            LogLevel::Error
+        );
         assert_eq!(LogLevel::from_line(&line("DEBUG", "x")), LogLevel::Debug);
         assert_eq!(LogLevel::from_line(&line("TRACE", "x")), LogLevel::Trace);
         assert_eq!(

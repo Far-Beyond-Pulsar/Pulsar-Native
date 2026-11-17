@@ -28,8 +28,6 @@ pub struct AppState {
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
     pub task_queue_refresh_task: Option<Task<()>>,
 
-    // Tab management
-    pub next_tab_id: usize,
     /// Tab panels that already have preview callbacks and event handlers.
     pub preview_tab_panels: Vec<gpui::EntityId>,
 
@@ -40,9 +38,6 @@ pub struct AppState {
     pub analyzer_status_text: String,
     pub analyzer_detail_message: String,
     pub analyzer_progress: f32,
-
-    // Window management
-    pub window_id: Option<u64>,
 
     // Notifications
     pub shown_welcome_notification: bool,
@@ -60,8 +55,8 @@ pub struct AppState {
     // Focus management
     pub focus_handle: FocusHandle,
 
-    // Multiuser status refresh listener
-    pub multiuser_refresh_task: Option<Task<()>>,
+    // Multiuser status refresh listener, held so it keeps running
+    pub _multiuser_refresh_task: Option<Task<()>>,
 
     // Git auto-fetch listener for the primary project window
 

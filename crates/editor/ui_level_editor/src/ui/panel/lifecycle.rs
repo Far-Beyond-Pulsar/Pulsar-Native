@@ -472,7 +472,7 @@ impl LevelEditorPanel {
 
                 if pie_changed || title_changed {
                     cx.update(|cx| {
-                        this.update(cx, |_, cx| cx.notify());
+                        let _ = this.update(cx, |_, cx| cx.notify());
                     });
                 }
 
@@ -513,7 +513,7 @@ impl LevelEditorPanel {
             workspace: None,
             viewport_panel: None,
             game_panel: None,
-            playback_host,
+            _playback_host: playback_host,
             applied_pie_signature: None,
             applied_mode_layout: None,
             mode_panels: std::collections::HashMap::new(),

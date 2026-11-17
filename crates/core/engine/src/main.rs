@@ -94,16 +94,16 @@ mod dev_bootstrap;
 pub mod discord; // Discord Rich Presence integration
 #[cfg(all(windows, target_arch = "aarch64"))]
 mod dxc; // Install and select DXC: Windows on ARM has no static DXC and FXC rejects our shaders
-pub mod file_association;
 pub mod gpu_policy; // GPU detection and policy enforcement
 pub mod init; // Initialization dependency graph
 pub mod logging; // Logging setup and configuration
 pub mod macos_permissions;
-mod prompts; // Startup prompts, shown by the pulsar-dialog helper
+#[cfg(all(windows, target_arch = "aarch64"))]
+mod prompts; // Startup prompts, shown by the pulsar-dialog helper (only DXC install prompts them)
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
 mod steps;
-pub mod uri; // URI scheme handling // Project file association management
+pub mod uri; // URI scheme handling
 
 // --- Engine context re-exports ---
 pub use engine_state::{
@@ -314,9 +314,6 @@ fn main() {
         [RUNTIME],
         steps::uri_registration::run
     );
-
-    // Task 11: Project file association prompt (depends on global context)
-    // (disabled — handled by the OS on first launch)
 
     // Execute the initialization graph
     {

@@ -79,8 +79,6 @@ pub(super) const LEADING_ITEMS: usize = 5;
 pub struct ObjectTypeFieldsSection {
     pub(super) object_id: String,
     pub(super) scene_db: SharedScene,
-    /// Currently selected component index (reserved for future highlight use).
-    pub(super) selected_component: Option<usize>,
     /// Searchable component list for the add-component popover.
     pub(super) component_list: Entity<SearchableList<String>>,
     /// Shared level-editor state (expand/collapse, selection).
@@ -229,7 +227,6 @@ impl ObjectTypeFieldsSection {
         Self {
             object_id,
             scene_db,
-            selected_component: None,
             component_list,
             state_arc,
             property_state,

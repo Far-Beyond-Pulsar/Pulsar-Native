@@ -32,7 +32,6 @@ const ANTHROPIC_MODEL_ENV: &str = "PULSAR_ANTHROPIC_MODEL";
 pub struct AnthropicProvider {
     client: Client,
     api_key: String,
-    models: Vec<ModelDescriptor>,
 }
 
 impl AnthropicProvider {
@@ -40,48 +39,7 @@ impl AnthropicProvider {
         Ok(Self {
             client: http_client()?,
             api_key,
-            models: Self::static_models(),
         })
-    }
-
-    fn static_models() -> Vec<ModelDescriptor> {
-        vec![
-            ModelDescriptor {
-                id: "claude-opus-4-5".to_string(),
-                label: "Claude Opus 4.5".to_string(),
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "claude-sonnet-4-5".to_string(),
-                label: "Claude Sonnet 4.5".to_string(),
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "claude-haiku-4-5".to_string(),
-                label: "Claude Haiku 4.5".to_string(),
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "claude-3-7-sonnet-latest".to_string(),
-                label: "Claude 3.7 Sonnet".to_string(),
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "claude-3-5-haiku-latest".to_string(),
-                label: "Claude 3.5 Haiku".to_string(),
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: None,
-            },
-        ]
     }
 
     fn resolve_model(request_model: &str) -> String {

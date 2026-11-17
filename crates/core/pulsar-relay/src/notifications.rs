@@ -129,7 +129,6 @@ pub struct NotificationStore {
 
 #[derive(Debug, Clone)]
 struct VerifiedUser {
-    github_id: u64,
     verified_at: u64,
 }
 
@@ -176,13 +175,8 @@ impl NotificationStore {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
 
-        self.verified_users.insert(
-            user.login.clone(),
-            VerifiedUser {
-                github_id: user.id,
-                verified_at: now,
-            },
-        );
+        self.verified_users
+            .insert(user.login.clone(), VerifiedUser { verified_at: now });
 
         Ok((user.login, user.id))
     }

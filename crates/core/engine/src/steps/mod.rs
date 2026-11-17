@@ -9,7 +9,6 @@ pub mod backend;
 pub mod dev_detect;
 pub mod discord;
 pub mod engine_context;
-pub mod file_association;
 pub mod logging;
 pub mod runtime;
 pub mod set_global;

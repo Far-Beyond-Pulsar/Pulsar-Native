@@ -2,7 +2,7 @@ use gpui::{Context, Styled, Window};
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use ui::{Icon, Sizable as _};
+use ui::Icon;
 
 use crate::utils::actions::*;
 use crate::utils::types::FileItem;
@@ -70,9 +70,7 @@ pub fn folder_context_menu(
                         } else if file_type.categories.len() == 1 {
                             category_tree
                                 .entry(file_type.categories[0].clone())
-                                .or_insert_with(|| {
-                                    CategoryNode::new(file_type.categories[0].clone())
-                                })
+                                .or_default()
                                 .items
                                 .push(file_type.clone());
                         } else if file_type.categories.len() == 2 {
@@ -80,11 +78,11 @@ pub fn folder_context_menu(
                             let sub_cat = file_type.categories[1].clone();
 
                             category_tree
-                                .entry(root_cat.clone())
-                                .or_insert_with(|| CategoryNode::new(root_cat.clone()))
+                                .entry(root_cat)
+                                .or_default()
                                 .subcategories
-                                .entry(sub_cat.clone())
-                                .or_insert_with(|| CategoryNode::new(sub_cat))
+                                .entry(sub_cat)
+                                .or_default()
                                 .items
                                 .push(file_type.clone());
                         }
@@ -246,21 +244,10 @@ pub fn folder_context_menu(
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct CategoryNode {
-    name: String,
     items: Vec<plugin_editor_api::FileTypeDefinition>,
     subcategories: HashMap<String, CategoryNode>,
-}
-
-impl CategoryNode {
-    fn new(name: String) -> Self {
-        Self {
-            name,
-            items: Vec::new(),
-            subcategories: HashMap::new(),
-        }
-    }
 }
 
 /// Import actions for a file with an import state (#1102), followed by a

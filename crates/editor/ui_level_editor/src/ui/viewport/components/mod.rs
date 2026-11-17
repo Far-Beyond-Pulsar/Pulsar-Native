@@ -8,6 +8,5 @@ pub mod nerds_overlay;
 pub mod overlay_table;
 pub mod performance_overlay;
 pub mod render_stats_overlay;
-pub mod toggle_button;
 pub mod viewport_options;
 pub mod warnings_overlay;

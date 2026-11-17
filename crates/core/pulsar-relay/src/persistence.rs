@@ -45,8 +45,6 @@ pub struct SnapshotRecord {
 /// Persistence layer (local storage only, no AWS)
 pub struct PersistenceLayer {
     db_pool: Option<Arc<PgPool>>,
-    storage_dir: Option<String>, // Local directory for snapshots
-    config: Config,
 }
 
 impl PersistenceLayer {
@@ -65,18 +63,13 @@ impl PersistenceLayer {
         };
 
         // Use local storage directory instead of S3
-        let storage_dir = config.storage_dir.clone();
-        if storage_dir.is_some() {
+        if config.storage_dir.is_some() {
             info!("Using local storage for snapshots");
         } else {
             warn!("No storage directory configured - snapshot storage disabled");
         }
 
-        Ok(Self {
-            db_pool,
-            storage_dir,
-            config,
-        })
+        Ok(Self { db_pool })
     }
 
     async fn create_pool(database_url: &str) -> Result<PgPool> {

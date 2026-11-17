@@ -416,7 +416,7 @@ mod tests {
 
         // Accept connection in background
         tokio::spawn(async move {
-            listener.accept().await;
+            let _ = listener.accept().await;
         });
 
         // Try to connect

@@ -2,7 +2,9 @@
 
 use crate::utils::gpu_info;
 use std::collections::VecDeque;
-use sysinfo::{Components, Networks, ProcessesToUpdate, System};
+#[cfg(not(windows))]
+use sysinfo::Components;
+use sysinfo::{Networks, ProcessesToUpdate, System};
 use ui_common::SharedState;
 
 /// Maximum number of data points to keep in history
@@ -117,6 +119,8 @@ pub struct PerformanceMetrics {
     // System info
     system: System,
     networks: Networks,
+    /// Temperature sensors; Windows has no reliable access to them.
+    #[cfg(not(windows))]
     components: Components,
     current_pid: sysinfo::Pid,
 }
@@ -126,9 +130,8 @@ impl PerformanceMetrics {
     pub fn empty() -> Self {
         let system = System::new();
         let networks = Networks::new();
-        let components = Components::new();
         let current_pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from_u32(0));
-        Self::build(system, networks, components, current_pid)
+        Self::build(system, networks, current_pid)
     }
 
     pub fn new() -> Self {
@@ -136,17 +139,17 @@ impl PerformanceMetrics {
         system.refresh_all();
 
         let networks = Networks::new_with_refreshed_list();
-        let components = Components::new_with_refreshed_list();
         let current_pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from_u32(0));
-        Self::build(system, networks, components, current_pid)
+        let metrics = Self::build(system, networks, current_pid);
+        #[cfg(not(windows))]
+        let metrics = Self {
+            components: Components::new_with_refreshed_list(),
+            ..metrics
+        };
+        metrics
     }
 
-    fn build(
-        system: System,
-        networks: Networks,
-        components: Components,
-        current_pid: sysinfo::Pid,
-    ) -> Self {
+    fn build(system: System, networks: Networks, current_pid: sysinfo::Pid) -> Self {
         Self {
             cpu_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
             cpu_counter: 0,
@@ -190,7 +193,8 @@ impl PerformanceMetrics {
 
             system,
             networks,
-            components,
+            #[cfg(not(windows))]
+            components: Components::new(),
             current_pid,
         }
     }

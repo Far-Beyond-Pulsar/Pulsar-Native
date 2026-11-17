@@ -7,5 +7,3 @@ pub mod panel_render;
 mod view_mode_tests;
 pub mod workspace;
 pub mod workspace_panels;
-
-pub use panel::AssetViewerPanel;

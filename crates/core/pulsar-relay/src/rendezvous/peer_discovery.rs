@@ -13,7 +13,6 @@ pub(super) struct PeerSession {
     pub(super) peer_id: String,
     pub(super) session_id: String,
     pub(super) tx: mpsc::Sender<ServerMessage>,
-    pub(super) joined_at: SystemTime,
     pub(super) profile: Option<PeerProfile>,
 }
 
@@ -28,7 +27,6 @@ impl PeerSession {
             peer_id,
             session_id,
             tx,
-            joined_at: SystemTime::now(),
             profile,
         }
     }
@@ -37,16 +35,14 @@ impl PeerSession {
 /// Rendezvous session
 #[derive(Debug)]
 pub(super) struct RendezvousSession {
-    pub(super) session_id: String,
     pub(super) host_id: String,
     peers: DashMap<String, PeerSession>,
     pub(super) created_at: SystemTime,
 }
 
 impl RendezvousSession {
-    pub(super) fn new(session_id: String, host_id: String) -> Self {
+    pub(super) fn new(host_id: String) -> Self {
         Self {
-            session_id,
             host_id,
             peers: DashMap::new(),
             created_at: SystemTime::now(),

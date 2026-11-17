@@ -121,7 +121,6 @@ pub struct TransformSection {
     scale_y: Entity<NumberBoundField>,
     scale_z: Entity<NumberBoundField>,
 
-    object_id: String,
     collapsed: bool,
 }
 
@@ -245,7 +244,6 @@ impl TransformSection {
             scale_x,
             scale_y,
             scale_z,
-            object_id,
             collapsed: false,
         }
     }
@@ -272,33 +270,6 @@ impl TransformSection {
         for (field, value) in fields {
             field.update(cx, |field, cx| field.show(value, window, cx));
         }
-    }
-
-    /// Refresh all fields when scene data changes externally (e.g., from undo/redo or gizmo manipulation)
-    pub fn refresh(&self, window: &mut Window, cx: &mut App) {
-        // Position
-        self.position_x
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.position_y
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.position_z
-            .update(cx, |field, cx| field.refresh(window, cx));
-
-        // Rotation
-        self.rotation_x
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.rotation_y
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.rotation_z
-            .update(cx, |field, cx| field.refresh(window, cx));
-
-        // Scale
-        self.scale_x
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.scale_y
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.scale_z
-            .update(cx, |field, cx| field.refresh(window, cx));
     }
 
     fn toggle_collapsed(&mut self, cx: &mut Context<Self>) {
@@ -411,7 +382,6 @@ impl TransformSection {
 
 impl Render for TransformSection {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let section_name = "Transform".to_string();
         let chevron_icon = if self.collapsed {
             IconName::ChevronRight
         } else {

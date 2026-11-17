@@ -104,7 +104,11 @@ fn multi_selection_keeps_pick_order_and_the_last_pick_is_primary() {
     let c = spawn(&mut world, "c", None);
 
     world.select_all(&[c, a, c, b]);
-    assert_eq!(world.selection(), vec![c, a, b], "repeats dropped, order kept");
+    assert_eq!(
+        world.selection(),
+        vec![c, a, b],
+        "repeats dropped, order kept"
+    );
     assert_eq!(world.selected_entity(), Some(b));
 
     // Re-selecting a subset drops the rest; a plain select clears to one.

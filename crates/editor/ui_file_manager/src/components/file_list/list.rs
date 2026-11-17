@@ -5,15 +5,13 @@ use engine_state::ConfigValue;
 use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
-use std::path::PathBuf;
 use ui::{
-    button::ButtonVariants as _, h_flex, input::TextInput, popup_menu::PopupMenuExt as _,
-    scroll::Scrollbar, v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
+    h_flex, input::TextInput, scroll::Scrollbar, v_flex, ActiveTheme as _, Icon, IconName,
+    Sizable as _,
 };
 use ui::{menu::context_menu::ContextMenuExt, StyledExt};
 
 use crate::utils::{
-    actions::*,
     helpers::{
         format_file_size, format_modified, get_icon_color_for_file_type, get_icon_for_file_type,
         type_label,

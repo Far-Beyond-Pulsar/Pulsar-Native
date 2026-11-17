@@ -236,7 +236,7 @@ impl FlamegraphView {
             .unwrap_or_default();
 
         // Debug overlay (stats)
-        let debug_rects = canvas::build_debug_overlay(frame, &cache.lod_tree, level, vs, w);
+        let debug_rects = canvas::build_debug_overlay(frame, level, vs, w);
 
         // Combine overlays + frame lines + labels + arrows + debug into
         // one rects vec (drawn in order, arrows last = on top).

@@ -60,7 +60,7 @@ fn open(
         })
         .unwrap()
     });
-    let mut cx = VisualTestContext::from_window(window.into(), cx);
+    let cx = VisualTestContext::from_window(window.into(), cx);
     cx.run_until_parked();
     (view.unwrap(), cx)
 }

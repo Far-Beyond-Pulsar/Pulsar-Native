@@ -74,7 +74,6 @@
 
 #![warn(clippy::undocumented_unsafe_blocks)]
 
-use parking_lot::RwLock;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::PathBuf;

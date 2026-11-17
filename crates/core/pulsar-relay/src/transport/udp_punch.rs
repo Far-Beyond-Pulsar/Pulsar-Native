@@ -63,15 +63,11 @@ struct PunchStats {
     total_attempts: AtomicU64,
     successful_punches: AtomicU64,
     failed_punches: AtomicU64,
-    avg_punch_duration_ms: AtomicU64,
 }
 
 /// Active punch session
 struct PunchSession {
     session_id: String,
-    peer_addr: SocketAddr,
-    started_at: Instant,
-    nat_type: NatType,
 }
 
 /// NAT type classification
@@ -192,9 +188,6 @@ impl UdpHolePuncher {
         // Register punch session
         self.active_punches.write().await.push(PunchSession {
             session_id: session_id.clone(),
-            peer_addr,
-            started_at: start,
-            nat_type,
         });
 
         // Perform punch with retry logic

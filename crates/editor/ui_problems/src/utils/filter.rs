@@ -79,12 +79,6 @@ impl ProblemsDrawer {
         cx.notify();
     }
 
-    pub(crate) fn set_search_query(&mut self, query: String, cx: &mut Context<Self>) {
-        self.search_query = query;
-        self.selected_index = None;
-        cx.notify();
-    }
-
     pub(crate) fn get_display_path(&self, absolute_path: &str) -> String {
         display_path(self.project_root.as_deref(), absolute_path)
     }

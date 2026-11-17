@@ -1,7 +1,7 @@
 //! Project Switcher - uses GenericPalette for searchable project selection
 
 use directories::ProjectDirs;
-use gpui::{Context, DismissEvent, EventEmitter};
+use gpui::EventEmitter;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use ui::IconName;

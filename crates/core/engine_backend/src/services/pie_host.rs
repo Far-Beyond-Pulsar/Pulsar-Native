@@ -117,7 +117,11 @@ impl PieWorldBridge {
     }
 }
 
-extern "C" fn pie_lock_world(userdata: *mut c_void) -> *mut c_void {
+/// The host side of [`pulsar_pie_abi::LockWorldFn`].
+///
+/// # Safety
+/// `userdata` must be the `PieWorldBridge` pointer the host handed out at init.
+unsafe extern "C" fn pie_lock_world(userdata: *mut c_void) -> *mut c_void {
     // SAFETY: `userdata` is the `*mut PieWorldBridge` the host boxed at load
     // time and handed to the guest; it outlives the session and the guest
     // contract forbids writing through it.
@@ -125,7 +129,11 @@ extern "C" fn pie_lock_world(userdata: *mut c_void) -> *mut c_void {
     bridge.lock()
 }
 
-extern "C" fn pie_unlock_world(userdata: *mut c_void) {
+/// The host side of [`pulsar_pie_abi::UnlockWorldFn`].
+///
+/// # Safety
+/// As for [`pie_lock_world`].
+unsafe extern "C" fn pie_unlock_world(userdata: *mut c_void) {
     // SAFETY: as in `pie_lock_world`: `userdata` is the boxed
     // `*mut PieWorldBridge` handed to the guest at init, alive for the whole
     // session, and the guest calls the callbacks one at a time on the render
@@ -766,7 +774,6 @@ mod tests {
             }
         };
         let mut bridge = PieWorldBridge::new(Arc::clone(&store));
-        let userdata = &bridge as *const PieWorldBridge as *mut c_void;
 
         let ptr = bridge.lock() as *mut pulsar_scenedb::SceneDb;
         assert!(!ptr.is_null());

@@ -1,6 +1,6 @@
 use crate::constants::*;
 use crate::coordinates::{time_to_x, visible_range};
-use crate::lod_tree::{LODTree, MergedSpan};
+use crate::lod_tree::{LODTree, BUCKET_SIZES_NS};
 use crate::rendering::text::{push_text, CHAR_H, CHAR_W};
 use crate::rendering::types::{GpuSpan, RectInstance};
 use crate::state::{SpanCache, ViewState};
@@ -234,7 +234,6 @@ pub fn build_text_instances(
 /// Build a debug overlay with rendering stats (top-left corner).
 pub fn build_debug_overlay(
     frame: &TraceFrame,
-    lod_tree: &LODTree,
     level_idx: usize,
     vs: &ViewState,
     viewport_w: f32,
@@ -252,7 +251,7 @@ pub fn build_debug_overlay(
     } else {
         0.0
     };
-    let bs = lod_tree.bucket_sizes[level_idx.min(lod_tree.bucket_sizes.len() - 1)];
+    let bs = BUCKET_SIZES_NS[level_idx.min(BUCKET_SIZES_NS.len() - 1)];
     let info = format!(
         "LOD:{}  z:{:.2e}  {:.1}ms  bs:{}μs  bucket_w:{:.0}px",
         level_idx,

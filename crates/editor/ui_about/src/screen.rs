@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gpui::*;
 use ui::{
-    ActiveTheme, Icon, IconName, Root, TitleBar,
+    ActiveTheme, IconName, Root, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };

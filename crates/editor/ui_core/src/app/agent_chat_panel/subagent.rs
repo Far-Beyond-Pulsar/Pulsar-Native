@@ -1,7 +1,5 @@
 use gpui::*;
-use std::collections::VecDeque;
 
-use super::context;
 use super::panel::AgentChatPanel;
 use super::panel::SubagentCompletionMode;
 use super::types::*;

@@ -9,7 +9,6 @@ use super::{CommandResult, SceneCommand, TypedComponent};
 use crate::scene_edit::SceneObjectData;
 use crate::state::LevelEditorState;
 use engine_backend::scene::level_rules;
-use engine_backend::scene::SceneWorldExt;
 
 /// Why a command with a non-finite transform did nothing
 /// (`scene_edit::objects::validate_transform` refuses it; this names it for

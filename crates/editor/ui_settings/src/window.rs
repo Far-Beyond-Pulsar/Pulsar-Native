@@ -1,7 +1,7 @@
 use crate::screen::ModernSettingsScreen;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::path::PathBuf;
-use ui::{v_flex, ActiveTheme, TitleBar};
+use ui::{v_flex, TitleBar};
 
 /// Parameters for opening a [`SettingsWindow`].
 ///
@@ -25,7 +25,6 @@ impl SettingsParams {
 
 pub struct SettingsWindow {
     settings_screen: Option<Entity<ModernSettingsScreen>>,
-    window_id: Option<engine_state::WindowId>,
 }
 
 impl SettingsWindow {
@@ -54,7 +53,6 @@ impl SettingsWindow {
 
         Self {
             settings_screen: Some(settings_screen),
-            window_id: None,
         }
     }
 

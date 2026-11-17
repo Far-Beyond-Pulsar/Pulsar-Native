@@ -157,7 +157,6 @@ pub enum ProviderKind {
 pub struct ModelDefinition {
     pub id: &'static str,
     pub label: &'static str,
-    pub supports_tools: bool,
     /// Maximum context window in tokens. 0 means unknown.
     pub context_tokens: u32,
     /// Cheaper model in the same provider used for context compaction summaries.
@@ -170,7 +169,6 @@ pub struct ProviderDefinition {
     pub id: &'static str,
     pub label: &'static str,
     pub kind: ProviderKind,
-    pub endpoint: &'static str,
     pub models: Arc<Vec<ModelDefinition>>,
     /// A saved connection made from a template; the list offers Delete.
     pub deletable: bool,

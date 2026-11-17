@@ -267,12 +267,6 @@ impl TraceData {
         frame.frame_times_ms = frame_times;
         frame.frame_boundaries_ns = frame_boundaries;
 
-        let threads: HashMap<u64, String> = thread_names
-            .into_iter()
-            .enumerate()
-            .map(|(id, name)| (id as u64, name))
-            .collect();
-
         // Build frame with spans
         for span in all_spans {
             frame.add_span(span);

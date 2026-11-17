@@ -210,7 +210,12 @@ fn store_module(root: &Path, dir: &Path, guid: &str, module: &Module) {
         dir: dir.to_path_buf(),
     };
     pulsar_class::ModuleStore::of_project(root)
-        .write(&entry, "blueprint", String::new(), module.to_json().unwrap().as_bytes())
+        .write(
+            &entry,
+            "blueprint",
+            String::new(),
+            module.to_json().unwrap().as_bytes(),
+        )
         .unwrap();
 }
 
@@ -2128,7 +2133,7 @@ fn a_shared_frame_reports_its_lock_times_and_releases_the_scene() {
         registry,
         Default::default(),
     );
-    let log = install_log(&mut driver);
+    let _log = install_log(&mut driver);
     let scene: engine_backend::scene::SharedScene =
         std::sync::Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
 

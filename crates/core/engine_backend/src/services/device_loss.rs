@@ -35,7 +35,7 @@ pub struct DeviceLoss {
     /// resources are only released by the device, and a device held here is
     /// never polled again). `None` for an adopted device, whose owner keeps
     /// it for the process.
-    release: Option<Arc<Release>>,
+    _release: Option<Arc<Release>>,
 }
 
 /// Removes its entry from the watched list when dropped.
@@ -69,7 +69,7 @@ impl Entry {
         };
         Some(DeviceLoss {
             lost: Arc::clone(&self.lost),
-            release,
+            _release: release,
         })
     }
 }
@@ -139,7 +139,7 @@ impl DeviceLoss {
         });
         DeviceLoss {
             lost,
-            release: Some(release),
+            _release: Some(release),
         }
     }
 
@@ -165,7 +165,7 @@ impl DeviceLoss {
         });
         DeviceLoss {
             lost,
-            release: None,
+            _release: None,
         }
     }
 

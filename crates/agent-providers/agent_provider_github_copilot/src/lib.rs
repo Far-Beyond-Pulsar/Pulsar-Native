@@ -47,7 +47,6 @@ const GITHUB_MODEL_ENV: &str = "PULSAR_GITHUB_MODEL";
 pub struct GithubCopilotProvider {
     client: Client,
     api_key: String,
-    models: Vec<ModelDescriptor>,
 }
 
 impl GithubCopilotProvider {
@@ -55,69 +54,7 @@ impl GithubCopilotProvider {
         Ok(Self {
             client: http_client()?,
             api_key,
-            models: Self::static_models(),
         })
-    }
-
-    fn static_models() -> Vec<ModelDescriptor> {
-        vec![
-            ModelDescriptor {
-                id: "openai/gpt-4.1".to_string(),
-                label: "OpenAI GPT-4.1 (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 131072,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "openai/gpt-4.1-mini".to_string(),
-                label: "OpenAI GPT-4.1 Mini (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 131072,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "openai/gpt-4.1-nano".to_string(),
-                label: "OpenAI GPT-4.1 Nano (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 131072,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "openai/o4-mini".to_string(),
-                label: "OpenAI o4 Mini (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 200000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "openai/o3".to_string(),
-                label: "OpenAI o3 (GitHub Models)".to_string(),
-                supports_tools: false,
-                context_tokens: 200000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "google/gemini-2.5-pro".to_string(),
-                label: "Gemini 2.5 Pro (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 1048576,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "google/gemini-2.5-flash".to_string(),
-                label: "Gemini 2.5 Flash (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 1048576,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "meta/llama-4-scout".to_string(),
-                label: "Llama 4 Scout (GitHub Models)".to_string(),
-                supports_tools: true,
-                context_tokens: 131072,
-                compact_model: None,
-            },
-        ]
     }
 
     fn map_role(role: ChatRole) -> &'static str {

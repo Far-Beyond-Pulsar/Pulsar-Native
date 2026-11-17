@@ -15,7 +15,6 @@ rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]
 
 [build]
 jobs = 4
-rustflags = ["-A", "warnings"]
 
 [alias]
 set-logo = "run --manifest-path tools/set-logo/Cargo.toml --"

@@ -59,8 +59,6 @@ fn emitted_actor_signatures_match_the_native_actor_trait() {
 /// resumes on a later tick and `tick` runs once per tick, per actor.
 #[test]
 fn the_generated_actor_registers_and_ticks_through_the_real_tick_loop() {
-    use crate::prelude::*;
-
     let mut game = crate::tick::TickLoop::new(pulsar_core::TickMode::default(), 0);
     game.register_native_actor(generated::ExportProbe::new());
     game.register_native_actor(generated::ExportProbe::new());

@@ -972,8 +972,6 @@ struct LevelPrefabEntry {
     class_name: String,
     #[serde(default = "default_spawn_count")]
     count: usize,
-    #[serde(default)]
-    variable_overrides: std::collections::HashMap<String, serde_json::Value>,
 }
 
 fn default_spawn_count() -> usize {

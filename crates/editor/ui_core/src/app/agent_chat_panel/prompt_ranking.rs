@@ -1,4 +1,4 @@
-use agent_chat_core::{ChatMessage, ChatRole, ToolCall};
+use agent_chat_core::{ChatMessage, ChatRole};
 
 #[derive(Clone, Debug)]
 struct PromptBlock {
@@ -271,6 +271,7 @@ pub(crate) fn compact_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent_chat_core::ToolCall;
 
     fn msg(role: ChatRole, content: &str) -> ChatMessage {
         ChatMessage {
