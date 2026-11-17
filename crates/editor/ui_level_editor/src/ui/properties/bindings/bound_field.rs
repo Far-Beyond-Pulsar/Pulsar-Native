@@ -7,11 +7,10 @@
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
-    button::ButtonVariants as _,
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction, TextInput},
-    v_flex, ActiveTheme, Sizable,
+    ActiveTheme, Sizable,
 };
 
 use super::field_bindings::{
@@ -57,9 +56,6 @@ impl NumberBoundField {
         }
 
         // Subscribe to input events for bidirectional sync
-        let binding_clone = binding.clone();
-        let object_id_clone = object_id.clone();
-        let scene_db_clone = scene_db.clone();
 
         let subscription = cx.subscribe_in(
             &input,
@@ -168,13 +164,6 @@ impl NumberBoundField {
         }
     }
 
-    /// Update the field when scene data changes externally (e.g., from undo/redo)
-    pub fn refresh(&self, window: &mut Window, cx: &mut App) {
-        if let Some(value) = self.binding.get(&self.object_id, &self.scene_db) {
-            self.show(value, window, cx);
-        }
-    }
-
     /// Show `value`, delivered by the object's subscription, without
     /// reading the scene. A field being typed into keeps the user's text:
     /// the delivered value is the echo of their own edit.
@@ -190,7 +179,7 @@ impl NumberBoundField {
 }
 
 impl Render for NumberBoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -241,9 +230,6 @@ impl StringBoundField {
         }
 
         // Subscribe to input events
-        let binding_clone = binding.clone();
-        let object_id_clone = object_id.clone();
-        let scene_db_clone = scene_db.clone();
 
         let subscription = cx.subscribe_in(
             &input,
@@ -306,7 +292,7 @@ impl StringBoundField {
 }
 
 impl Render for StringBoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -341,8 +327,8 @@ impl BoolBoundField {
         label: impl Into<String>,
         object_id: String,
         scene_db: SharedScene,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) -> Self {
         let binding = Arc::new(binding);
 
@@ -372,7 +358,7 @@ impl BoolBoundField {
 }
 
 impl Render for BoolBoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Refresh checked state from scene database
         if let Some(value) = self.binding.get(&self.object_id, &self.scene_db) {
             self.checked = value;

@@ -81,8 +81,9 @@ pub struct LevelEditorPanel {
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::ui::viewport::game_viewport::GameViewport>>,
 
-    /// Subscribes this editor to playback commands; see `playback_host`.
-    playback_host: playback_host::PlaybackHostBinding,
+    /// Subscribes this editor to playback commands while held (dropping it
+    /// releases the host); see `playback_host`.
+    _playback_host: playback_host::PlaybackHostBinding,
 
     /// Last `(building, active, pending_start, has_error)` tuple that
     /// [`Self::sync_game_tab`] acted on. Render runs several times per second
@@ -390,7 +391,7 @@ impl Render for LevelEditorPanel {
                         // Move selected object up in hierarchy
                         let selected = this.shared_state.read().scene.selected_object();
                         if let Some(id) = selected {
-                            let mut state = this.shared_state.write();
+                            let state = this.shared_state.write();
                             crate::scene_edit::objects::move_object_up(
                                 &mut state.scene.world_mut(),
                                 &id,
@@ -402,7 +403,7 @@ impl Render for LevelEditorPanel {
                         // Move selected object down in hierarchy
                         let selected = this.shared_state.read().scene.selected_object();
                         if let Some(id) = selected {
-                            let mut state = this.shared_state.write();
+                            let state = this.shared_state.write();
                             crate::scene_edit::objects::move_object_down(
                                 &mut state.scene.world_mut(),
                                 &id,

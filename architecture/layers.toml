@@ -49,7 +49,6 @@ names_kinds = true
 "crates/core" = { layer = "kernel" }
 "crates/editor" = { layer = "kernel" }
 "crates/subsystems" = { layer = "kernel" }
-"crates/profiling" = { layer = "kernel" }
 "crates/agent-providers" = { layer = "tool" }
 "crates/editor/ui_git_manager" = { layer = "tool" }
 "crates/editor/ui_flamegraph" = { layer = "tool" }

@@ -57,7 +57,7 @@ Pulsar-Native/
 ├── plugins/vendor/               Plugins (submodules): kinds, physics, animation, input, editor tools
 ├── plugins/installed/            The generated installed set; its tests/ hold every cross-plugin test
 ├── tools/                        Standalone CLI tools
-├── scripts/                      CI checks (fmt-check.sh, plugin-pins.sh, submodule-pins.sh, …)
+├── scripts/                      CI checks (fmt-check.sh, no-pulsar-native-git-deps.sh, submodule-pins.sh, …)
 └── Cargo.toml                    Workspace root: [workspace.dependencies] and the [patch] tables
 ```
 

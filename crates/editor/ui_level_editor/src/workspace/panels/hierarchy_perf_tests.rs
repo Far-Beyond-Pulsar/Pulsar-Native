@@ -10,12 +10,14 @@
 
 use super::super::properties::perf_tests::RENDER_LOCK;
 use gpui::{
-    div, px, render_stats, size, AppContext as _, Context, IntoElement, ParentElement as _,
-    Render, Styled as _, TestAppContext, VisualTestContext, Window,
+    div, px, render_stats, size, Context, IntoElement, ParentElement as _, Render, Styled as _,
+    TestAppContext, VisualTestContext, Window,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use ui::{HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, HierarchyListState};
+use ui::{
+    HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, HierarchyListState,
+};
 
 #[derive(Clone)]
 struct Node {
@@ -131,11 +133,11 @@ fn run(cx: &mut TestAppContext, persistent: bool) {
     cx.update(|cx| ui::init(cx));
     let (nodes, roots) = tree();
     let window = cx.open_window(size(px(320.), px(700.)), |_window, _cx| Host {
-            nodes,
-            roots,
-            list_state: persistent.then(HierarchyListState::new),
-            content_key: 1,
-            renders: 0,
+        nodes,
+        roots,
+        list_state: persistent.then(HierarchyListState::new),
+        content_key: 1,
+        renders: 0,
     });
     let host = window.root(cx).unwrap();
     let mut vcx = VisualTestContext::from_window(window.into(), cx);
@@ -180,7 +182,13 @@ fn run(cx: &mut TestAppContext, persistent: bool) {
         per("list: item built (visible)"),
         per("list: item built (measure only)"),
     );
-    for name in ["test host: clone items", "hierarchy tree: flatten", "hierarchy tree: list sync", "frame: render", "taffy: compute layout"] {
+    for name in [
+        "test host: clone items",
+        "hierarchy tree: flatten",
+        "hierarchy tree: list sync",
+        "frame: render",
+        "taffy: compute layout",
+    ] {
         eprintln!("  {name:<28} {:.2} ms/step", ms(name));
     }
     render_stats::set_force_enabled(false);
@@ -206,11 +214,11 @@ fn hierarchy_list_keeps_its_scroll_across_renders(cx: &mut TestAppContext) {
     let (nodes, roots) = tree();
     let state = HierarchyListState::new();
     let window = cx.open_window(size(px(320.), px(700.)), |_window, _cx| Host {
-            nodes,
-            roots,
-            list_state: Some(state.clone()),
-            content_key: 1,
-            renders: 0,
+        nodes,
+        roots,
+        list_state: Some(state.clone()),
+        content_key: 1,
+        renders: 0,
     });
     let host = window.root(cx).unwrap();
     let mut vcx = VisualTestContext::from_window(window.into(), cx);

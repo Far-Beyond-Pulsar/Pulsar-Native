@@ -5,8 +5,7 @@
 use super::credentials::*;
 use super::remote_context::*;
 use super::repository::open_repo;
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::FsProvider as _;
+use crate::auto_fetch::RemoteOperationGuard;
 use git2::{BranchType, Oid, Repository, build::CheckoutBuilder};
 use std::path::Path;
 

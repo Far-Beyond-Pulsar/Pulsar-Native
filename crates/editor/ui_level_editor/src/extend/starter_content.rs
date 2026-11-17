@@ -473,7 +473,7 @@ pub fn extend_tools_menu(menu: EditorMenu) -> EditorMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Read as _, Write as _};
+    use std::io::Write as _;
     use std::net::TcpListener;
 
     /// Serves `body` once per connection on a loopback port, slowly when

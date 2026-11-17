@@ -365,7 +365,7 @@ impl SavedWindowLayout {
     /// panels keeps `nth` 0.
     pub fn assign_owner_nth(&mut self, ranks: &OwnerRanks) {
         let empty = Vec::new();
-        let mut assign = |root: DormantRoot, tree: &mut PanelState| {
+        let assign = |root: DormantRoot, tree: &mut PanelState| {
             let live = ranks.get(&root).unwrap_or(&empty);
             if !owned::assign_nth_in_tree(tree, live) {
                 tracing::debug!("layout: owned panels of {root:?} do not line up; nth left at 0");

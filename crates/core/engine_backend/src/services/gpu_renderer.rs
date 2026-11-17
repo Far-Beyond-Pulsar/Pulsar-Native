@@ -53,7 +53,6 @@ impl GpuRendererBuilder {
                 renderer
             }),
             frame_count: 0,
-            start_time: Instant::now(),
             fps_window_start: Instant::now(),
             fps_window_frames: 0,
             fps: 0.0,
@@ -146,8 +145,7 @@ const GPU_MEMORY_REFRESH: std::time::Duration = std::time::Duration::from_secs(1
 pub struct GpuRenderer {
     helio_renderer: Option<HelioRenderer>,
     frame_count: u64,
-    start_time: Instant,
-    // Rolling-window frame rate. `frame_count / start_time.elapsed()` is a
+    // Rolling-window frame rate. Frames over the process's age would be a
     // lifetime average: it converges to the mean over the whole process and
     // barely moves in response to a change, which makes it useless for judging
     // whether a pacing or caching change did anything. These three fields

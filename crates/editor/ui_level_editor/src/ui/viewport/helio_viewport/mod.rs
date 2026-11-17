@@ -334,7 +334,7 @@ impl Render for HelioViewport {
             .take();
         if let Some(path) = capture_path {
             if let Some(ref surface) = self.surface {
-                if let Some((view, (w, h))) = surface.back_view_with_size() {
+                if let Some((_view, (w, h))) = surface.back_view_with_size() {
                     if let Ok(mut engine) = self.gpu_engine.try_lock() {
                         capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);
                     }

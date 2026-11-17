@@ -8,9 +8,6 @@ use ui::{
 
 /// A single gallery image entry.
 pub struct GalleryImage {
-    pub url: SharedString,
-    pub width: u32,
-    pub height: u32,
     /// Pre-decoded image ready for synchronous rendering; `None` while downloading.
     pub image: Option<Arc<gpui::RenderImage>>,
 }

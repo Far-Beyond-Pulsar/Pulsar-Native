@@ -73,7 +73,14 @@ fn content_dir(
         .current_dir(project_root)
         .stdin(Stdio::null())
         .output()
-        .map_err(|e| t!("Build.Error.CouldNotStart", subcommand = "metadata", error = e).to_string())?;
+        .map_err(|e| {
+            t!(
+                "Build.Error.CouldNotStart",
+                subcommand = "metadata",
+                error = e
+            )
+            .to_string()
+        })?;
     if !output.status.success() {
         return Err(t!(
             "Build.Error.CommandFailed",
@@ -110,8 +117,14 @@ mod tests {
     #[test]
     fn content_goes_beside_the_binary_the_build_makes() {
         let target = Path::new("t");
-        assert_eq!(output_dir(target, None, BuildProfile::Debug), Path::new("t/debug"));
-        assert_eq!(output_dir(target, None, BuildProfile::Shipping), Path::new("t/release"));
+        assert_eq!(
+            output_dir(target, None, BuildProfile::Debug),
+            Path::new("t/debug")
+        );
+        assert_eq!(
+            output_dir(target, None, BuildProfile::Shipping),
+            Path::new("t/release")
+        );
         let linux = Some(TargetPlatform::LinuxX86_64Gnu);
         let triple = TargetPlatform::LinuxX86_64Gnu.triple().unwrap();
         assert_eq!(

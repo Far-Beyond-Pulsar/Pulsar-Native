@@ -158,7 +158,7 @@ fn trait_vtable_dispatch() {
 fn version_info_abi() {
     // VersionInfo is #[repr(C)] — verify it crosses the FFI boundary correctly
     let v = VersionInfo::current();
-    assert_eq!(v.engine_version.0, 0);
+    assert_eq!(v.engine_version[0], 0);
     // rustc_version_hash should be non-zero
     assert!(
         v.rustc_version_hash != 0,
@@ -166,6 +166,6 @@ fn version_info_abi() {
     );
     eprintln!(
         "✅ VersionInfo ABI: engine ({}.{}.{}), rustc_hash 0x{:016x}",
-        v.engine_version.0, v.engine_version.1, v.engine_version.2, v.rustc_version_hash
+        v.engine_version[0], v.engine_version[1], v.engine_version[2], v.rustc_version_hash
     );
 }

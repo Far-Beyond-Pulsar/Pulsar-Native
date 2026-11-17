@@ -1,8 +1,7 @@
 //! Committing the staged changes. Entry point: `commit_staged_changes`.
 
 use super::repository::open_repo;
-use crate::{auto_fetch::RemoteOperationGuard, models::*};
-use engine_fs::FsProvider as _;
+use crate::auto_fetch::RemoteOperationGuard;
 use git2::{ErrorCode, Oid};
 use std::path::Path;
 

@@ -831,10 +831,10 @@ mod tests {
         let handle: gpui::AnyWindowHandle = window.into();
         let headless = gpui::headless::HeadlessWindow::attach(handle, &mut cx).expect("GPU");
         let view = view.unwrap();
-        let mut vcx = VisualTestContext::from_window(handle, &mut cx);
+        let vcx = VisualTestContext::from_window(handle, &mut cx);
         vcx.run_until_parked();
         std::fs::create_dir_all(&dir).unwrap();
-        let mut save = |cx: &mut TestAppContext, name: &str| {
+        let save = |cx: &mut TestAppContext, name: &str| {
             for _ in 0..3 {
                 headless.draw(cx, true);
             }

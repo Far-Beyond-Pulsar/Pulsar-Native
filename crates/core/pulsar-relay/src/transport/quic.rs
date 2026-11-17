@@ -55,9 +55,7 @@ struct ServerStats {
 
 /// Handle to an active connection
 struct ConnectionHandle {
-    remote_addr: SocketAddr,
     session_id: String,
-    established_at: Instant,
 }
 
 /// Connection type for metrics
@@ -163,9 +161,7 @@ impl QuicServer {
 
         // Register connection
         self.connections.write().await.push(ConnectionHandle {
-            remote_addr,
             session_id: session_id.clone(),
-            established_at: Instant::now(),
         });
 
         // Handle bidirectional streams

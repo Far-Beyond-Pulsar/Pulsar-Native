@@ -103,13 +103,11 @@ pub static GLOBAL_LIVE_BYTES: std::sync::atomic::AtomicI64 = std::sync::atomic::
 /// A resolved row for display in the UI.
 #[derive(Clone, Debug)]
 pub struct CallerRow {
-    pub key: StackKey,
     pub symbol: String,
     pub total_allocs: u64,
     pub total_deallocs: u64,
     pub total_bytes: u64,
     pub live_bytes: i64,
-    pub avg_size: u64,
     /// Estimated live bytes: live_bytes.max(0) — exact when dealloc pairing succeeds.
     pub leaked_estimate: u64,
 }
@@ -274,23 +272,15 @@ pub fn refresh_snapshot(filter: &str) {
                     return None;
                 }
             }
-            let avg_size = if r.total_allocs > 0 {
-                r.total_bytes / r.total_allocs
-            } else {
-                0
-            };
             // Use live_bytes directly — it's maintained atomically (add on alloc, sub on dealloc).
-            // Much more accurate than (allocs - deallocs) * avg_size which breaks if sizes vary.
+            // Much more accurate than (allocs - deallocs) * average size, which breaks if sizes vary.
             let leaked_estimate = r.live_bytes.max(0) as u64;
-            let key = StackKey::from_frames(&[r.first_frame as usize]);
             Some(CallerRow {
-                key,
                 symbol,
                 total_allocs: r.total_allocs,
                 total_deallocs: r.total_deallocs,
                 total_bytes: r.total_bytes,
                 live_bytes: r.live_bytes,
-                avg_size,
                 leaked_estimate,
             })
         })

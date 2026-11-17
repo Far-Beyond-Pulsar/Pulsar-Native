@@ -1,6 +1,5 @@
 use gpui::*;
-use rust_i18n::t;
-use ui::{ActiveTheme, Sizable};
+use ui::ActiveTheme;
 
 use crate::state::LevelEditorState;
 

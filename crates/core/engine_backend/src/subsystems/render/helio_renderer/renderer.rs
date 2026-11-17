@@ -282,7 +282,10 @@ pub enum PendingPointerEvent {
     /// select the objects inside it (normalized viewport corners, either
     /// first). A box too small to be a drag adds or removes the object under
     /// the pointer instead.
-    BoxSelect { from: [f32; 2], to: [f32; 2] },
+    BoxSelect {
+        from: [f32; 2],
+        to: [f32; 2],
+    },
 }
 
 impl PendingPointerEvent {
@@ -2361,7 +2364,6 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.gizmo_dirty = true;
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
-        let ortho_half_height = self.ortho_half_height();
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
         if inner
@@ -2405,7 +2407,6 @@ impl HelioRenderer {
     pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
         self.configure_gizmo_view();
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
-        let ortho_half_height = self.ortho_half_height();
         let Some(inner) = &mut self.inner else { return };
         if inner.interaction.is_dragging() {
             let mut store = self.scene_store.write();

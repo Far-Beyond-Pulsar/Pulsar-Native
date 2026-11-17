@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ui::download_manager::DownloadEntry;
 
 use crate::FabSearchWindow;

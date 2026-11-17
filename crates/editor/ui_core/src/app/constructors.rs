@@ -20,7 +20,7 @@ use super::PulsarApp;
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(None, None, None, true, window, cx)
+        Self::new_internal(None, None, true, window, cx)
     }
 
     pub fn new_with_project(
@@ -32,22 +32,7 @@ impl PulsarApp {
             "PulsarApp::new_with_project called with path: {:?}",
             project_path
         );
-        Self::new_internal(Some(project_path), None, None, true, window, cx)
-    }
-
-    /// Create a new PulsarApp for the window `window_id`
-    pub fn new_with_project_and_window_id(
-        project_path: PathBuf,
-        window_id: u64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        tracing::debug!(
-            "PulsarApp::new_with_project_and_window_id called with path: {:?}, window_id: {}",
-            project_path,
-            window_id
-        );
-        Self::new_internal(Some(project_path), None, Some(window_id), true, window, cx)
+        Self::new_internal(Some(project_path), None, true, window, cx)
     }
 
     /// Create a new PulsarApp with a pre-initialized rust analyzer
@@ -64,7 +49,6 @@ impl PulsarApp {
         let app = Self::new_internal(
             Some(project_path.clone()),
             Some(rust_analyzer.clone()),
-            None,
             true,
             window,
             cx,
@@ -85,7 +69,7 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_internal(project_path, Some(rust_analyzer), None, false, window, cx)
+        Self::new_internal(project_path, Some(rust_analyzer), false, window, cx)
     }
 
     /// Builds the app by running the steps in `construction.rs` in order; the
@@ -93,7 +77,6 @@ impl PulsarApp {
     pub(super) fn new_internal(
         project_path: Option<PathBuf>,
         shared_rust_analyzer: Option<Entity<RustAnalyzerManager>>,
-        window_id: Option<u64>,
         create_level_editor: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -135,7 +118,7 @@ impl PulsarApp {
         ui_common::command_palette::PaletteManager::init(cx);
 
         let t_plugins = std::time::Instant::now();
-        let (mut plugin_manager, plugins_staged) = create_plugin_manager(&rust_analyzer, t_plugins);
+        let (plugin_manager, plugins_staged) = create_plugin_manager(&rust_analyzer, t_plugins);
 
         let multiuser_refresh_task = spawn_multiuser_refresh(cx);
 
@@ -150,12 +133,10 @@ impl PulsarApp {
                 task_queue_refresh_task: None,
                 center_tabs,
                 preview_tab_panels: Vec::new(),
-                next_tab_id: 1,
                 rust_analyzer,
                 analyzer_status_text: "Idle".to_string(),
                 analyzer_detail_message: String::new(),
                 analyzer_progress: 0.0,
-                window_id,
                 shown_welcome_notification: false,
                 command_palette_open: false,
                 command_palette_id: None,
@@ -168,7 +149,7 @@ impl PulsarApp {
                 nav_sidebar: drawers.nav_sidebar,
                 nav_overlay: drawers.nav_overlay,
                 status_bar: drawers.status_bar,
-                multiuser_refresh_task: Some(multiuser_refresh_task),
+                _multiuser_refresh_task: Some(multiuser_refresh_task),
                 layout_persist: false,
                 layout_slot: None,
                 window_bounds: None,

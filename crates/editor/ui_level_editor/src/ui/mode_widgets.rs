@@ -3,7 +3,6 @@
 //! (`ui/toolbar/mod.rs`).
 
 use gpui::*;
-use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -165,24 +164,23 @@ where
             }
             ToolWidget::Toggle { id, label, on } => {
                 let state_clone = state_arc.clone();
-                let mut btn =
-                    Button::new(id)
-                        .label(label.clone())
-                        .small()
-                        .on_click(move |_, _, _| {
-                            let mut st = state_clone.write();
-                            ToolModeDispatcher::dispatch_widget_edit(
-                                &mut st,
-                                &ToolWidgetEdit::SetToggle { id, on: !on },
-                            );
-                        });
+                let btn = Button::new(id)
+                    .label(label.clone())
+                    .small()
+                    .on_click(move |_, _, _| {
+                        let mut st = state_clone.write();
+                        ToolModeDispatcher::dispatch_widget_edit(
+                            &mut st,
+                            &ToolWidgetEdit::SetToggle { id, on: !on },
+                        );
+                    });
 
                 let btn = if on { btn.primary() } else { btn.ghost() };
                 container = container.child(btn);
             }
             ToolWidget::Action { id, label } => {
                 let state_clone = state_arc.clone();
-                let mut btn = Button::new(id)
+                let btn = Button::new(id)
                     .icon(IconName::Plus)
                     .label(label.clone())
                     .small()

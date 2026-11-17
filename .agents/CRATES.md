@@ -13,13 +13,16 @@ crates/
   ui/                Vendored GPUI repos (submodules with path deps)
   graphics/          Graphics-related docs and integration notes
   third-party/       Vendored smaller deps (graphy, pulsar-config)
+  external/          Shared Far-Beyond-Pulsar crates Helio and SceneDB also pin
+                     by git rev (submodules, patched onto by the root manifest):
+                     pulsar-reflection, pulsar-profiling
 ```
 
 ## The layers (`architecture/layers.toml`, `just arch`)
 
 Core and editor know no kind, subsystem or tool (Pulsar-Native#1605). Every crate
 has a layer by directory: **kernel** (`crates/core`, `crates/editor`,
-`crates/subsystems`, `crates/profiling`, and the chat's `agent_chat_core` /
+`crates/subsystems`, and the chat's `agent_chat_core` /
 `agent_chat_tools`), **tool** (the optional editor tools: `ui_git_manager`,
 `ui_flamegraph`, `ui_log_viewer`, `ui_fab_search`, the agent providers), **plugin**
 (`plugins/vendor`), **host** (the `engine` binary, `plugins/installed`,
@@ -49,7 +52,6 @@ The heart of the engine.
 | `friends_engine` | Multiplayer friends backend |
 | `plugin_editor_api` | Plugin SDK. Runtime cooking/scripting contracts are default and UI-free; editor panels and editor services require its `editor` feature |
 | `plugin_manager` | Plugin host — DLL loading, registries, tool bridge |
-| `profiling` | Performance tracing (Tracy) |
 | `pulsar_auth` | Authentication |
 | `pulsar_core` | Core types, math, utilities |
 | `pulsar_docs` | Doc generation from reflected types |

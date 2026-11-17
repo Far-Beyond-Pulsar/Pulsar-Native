@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionInfo {
-    /// Engine version (major, minor, patch)
-    pub engine_version: (u32, u32, u32),
+    /// Engine version `[major, minor, patch]` (an array: a tuple has no C layout)
+    pub engine_version: [u32; 3],
     /// Rustc version hash (hash of semver part only)
     pub rustc_version_hash: u64,
 }
@@ -29,7 +29,7 @@ impl VersionInfo {
     /// Check if two versions are compatible
     pub fn is_compatible(&self, other: &Self) -> bool {
         // Engine major version must match
-        if self.engine_version.0 != other.engine_version.0 {
+        if self.engine_version[0] != other.engine_version[0] {
             return false;
         }
 
@@ -93,7 +93,7 @@ const fn hash_semver_only(version: &str) -> u64 {
 
 /// Parse engine version from CARGO_PKG_VERSION at compile time
 /// Expects format "major.minor.patch" e.g. "0.1.47"
-const fn parse_engine_version() -> (u32, u32, u32) {
+const fn parse_engine_version() -> [u32; 3] {
     const VERSION_STR: &str = env!("CARGO_PKG_VERSION");
     let bytes = VERSION_STR.as_bytes();
 
@@ -119,5 +119,5 @@ const fn parse_engine_version() -> (u32, u32, u32) {
         i += 1;
     }
 
-    (major, minor, patch)
+    [major, minor, patch]
 }

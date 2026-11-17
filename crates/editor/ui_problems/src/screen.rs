@@ -3,14 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use gpui::{prelude::*, *};
-use rust_i18n::t;
-use ui::{
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    input::{InputState, TextInput},
-    popup_menu::PopupMenuExt,
-    v_flex, ActiveTheme as _, IconName, Sizable as _,
-};
+use ui::{input::InputState, v_flex, ActiveTheme as _};
 
 use crate::utils::types::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic};
 

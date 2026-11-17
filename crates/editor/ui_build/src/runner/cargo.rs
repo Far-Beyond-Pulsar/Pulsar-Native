@@ -184,7 +184,9 @@ fn log_cargo_line(line: &str) {
 fn log_compiler_message(level: Option<&str>, rendered: &str) {
     let rendered = rendered.trim_end();
     match level {
-        Some(level) if level.starts_with("error") => tracing::error!(target: LOG_TARGET, "{rendered}"),
+        Some(level) if level.starts_with("error") => {
+            tracing::error!(target: LOG_TARGET, "{rendered}")
+        }
         Some("warning") => tracing::warn!(target: LOG_TARGET, "{rendered}"),
         _ => tracing::info!(target: LOG_TARGET, "{rendered}"),
     }

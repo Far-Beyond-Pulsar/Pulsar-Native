@@ -3,7 +3,14 @@
 Function-level CPU profiling is wired through the [`profiling`](https://crates.io/crates/profiling)
 crate (v1.x) so backends stay swappable. Tracy is the active backend; a second,
 independent collector (the custom SQLite-backed one feeding the Flamegraph
-panel) continues to run alongside it. The Inspector's Profiler tab uses
+panel) continues to run alongside it: the `profiling` crate of the public
+[Pulsar-Profiling](https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling)
+repository (submodule `crates/external/pulsar-profiling`; Helio and SceneDB pin
+it by git rev and the root manifest patches every pin onto the submodule, so
+there is one collector). A process publishes itself to other processes'
+flamegraphs with `profiling::remote::publish_process`, passing
+`editor_task_queue::service_spawner` so the publisher thread is listed in the
+Tasks window. The Inspector's Profiler tab uses
 WGPUI's bounded capture engine directly.
 
 ## Build

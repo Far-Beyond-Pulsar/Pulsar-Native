@@ -3,9 +3,7 @@ use gpui::{Context, Window};
 use plugin_editor_api::FileTypeId;
 
 use crate::components::TypeDebuggerDrawer;
-use crate::utils::{
-    FilterAliases, FilterAll, FilterEnums, FilterStructs, FilterTraits, NavigateToType,
-};
+use crate::utils::{FilterAliases, FilterAll, FilterEnums, FilterStructs, FilterTraits};
 
 pub fn on_filter_all(
     d: &mut TypeDebuggerDrawer,

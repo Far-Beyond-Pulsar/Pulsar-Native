@@ -1139,8 +1139,14 @@ pub fn request_engine_device(
     // Helio's clamp stands (`helio::required_wgpu_limits`).
     let helio_limits = helio::required_wgpu_limits(adapter.limits());
     let required_limits = wgpu::Limits {
-        max_buffer_size: host.required_limits.max_buffer_size.min(helio_limits.max_buffer_size),
-        ..host.required_limits.clone().or_better_values_from(&helio_limits)
+        max_buffer_size: host
+            .required_limits
+            .max_buffer_size
+            .min(helio_limits.max_buffer_size),
+        ..host
+            .required_limits
+            .clone()
+            .or_better_values_from(&helio_limits)
     };
     let experimental_features = if features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY) {
         helio::required_experimental_features(features)
@@ -1150,7 +1156,8 @@ pub fn request_engine_device(
     let ray_queries = features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
     if ray_queries {
         tracing::info!("Engine device: hardware ray queries on (meshes trace GI)");
-    } else if helio::usable_adapter_features(adapter).contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
+    } else if helio::usable_adapter_features(adapter)
+        .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
     {
         tracing::info!(
             "Engine device: hardware ray queries supported but not requested; meshes get no GI \

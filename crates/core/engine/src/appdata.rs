@@ -3,7 +3,6 @@
 // This module handles creation and management of app data directories, themes, and config files.
 
 use crate::settings::EngineSettings;
-use rust_embed::RustEmbed;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};

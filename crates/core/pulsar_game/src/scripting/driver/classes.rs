@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry};
 use pulsar_scenedb::{Entity, World};
-use pulsar_script_runtime::{RuntimeError, ScriptRuntime};
+use pulsar_script_runtime::RuntimeError;
 
 use super::config::{module_file, read_module_bytes};
 use super::reconcile::{depth, sort_roots};

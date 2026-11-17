@@ -7,7 +7,6 @@
 
 use super::{CommandResult, SceneCommand};
 use crate::state::LevelEditorState;
-use engine_backend::scene::SceneWorldExt;
 
 /// The Edit-menu translation key for the class commands, `None` when `cmd`
 /// is not one of them.

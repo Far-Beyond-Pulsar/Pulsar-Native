@@ -12,18 +12,11 @@ pub use transform_section::TransformSection;
 use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::sync::Arc;
-use ui::{
-    button::Button,
-    h_flex,
-    input::{InputState, TextInput},
-    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
-};
+use ui::{input::InputState, v_flex, ActiveTheme, IconName};
 use ui_common::properties_inspector;
 
-use crate::scene_edit::{ObjectType, Transform};
 use crate::state::LevelEditorState;
 use crate::workspace::panels::PropertiesPanelWrapper;
-use crate::SceneObjectData;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;
@@ -36,13 +29,13 @@ impl PropertiesPanel {
     pub fn render(
         &self,
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        editing_property: &Option<String>,
-        property_input: &Entity<InputState>,
-        object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
-        transform_section: &Option<Entity<super::TransformSection>>,
+        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        _editing_property: &Option<String>,
+        _property_input: &Entity<InputState>,
+        _object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
+        _transform_section: &Option<Entity<super::TransformSection>>,
         object_type_fields_section: &Option<Entity<super::ObjectTypeFieldsSection>>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
         let _scope = gpui::render_stats::scope("properties: inner render");

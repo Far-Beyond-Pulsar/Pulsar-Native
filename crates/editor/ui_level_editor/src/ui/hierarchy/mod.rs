@@ -13,8 +13,7 @@ use ui::{
     hierarchical_tree::tree_colors,
     menu::popup_menu::PopupMenu,
     ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
-    HierarchyListState, Icon,
-    IconName, Sizable, StyledExt,
+    HierarchyListState, IconName, Sizable,
 };
 
 /// GPUI Render impl for the hierarchy drag ghost label.
@@ -789,8 +788,7 @@ impl HierarchyPanel {
                 } else {
                     ClassRole::None
                 };
-                let movability =
-                    helio_component::components::object_movability(&world, entity);
+                let movability = helio_component::components::object_movability(&world, entity);
                 SceneObjectItem {
                     object: Rc::new(obj),
                     state_arc: state_arc.clone(),
@@ -839,7 +837,6 @@ impl HierarchyPanel {
         let wrapper_for_select = wrapper_entity.clone();
         let state_arc_for_drop = state_arc.clone();
         let wrapper_for_drop = wrapper_entity.clone();
-        let state_arc_for_root_click = state_arc.clone();
 
         // Header buttons
         let header_buttons = vec![

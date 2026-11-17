@@ -18,7 +18,6 @@ impl LevelEditorPanel {
         let shared_state = self.shared_state.clone();
         let gpu = self.gpu_engine.clone();
         let viewport = self.viewport.clone();
-        let render_enabled = self.render_enabled.clone();
         let viewport_input_state = self.viewport_input_state.clone();
         let toolbar = self.toolbar.clone();
 
@@ -29,7 +28,6 @@ impl LevelEditorPanel {
                 // Create viewport in center
                 let viewport_panel_inner = ViewportPanel::new(
                     viewport.clone(),
-                    render_enabled.clone(),
                     viewport_input_state.clone(),
                     toolbar.clone(),
                     gpu.clone(),

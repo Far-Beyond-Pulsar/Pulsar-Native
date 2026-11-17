@@ -309,7 +309,7 @@ pub fn render_pending_outbound_state(cx: &mut Context<FriendsScreen>) -> impl In
     )
 }
 
-pub fn render_mutual_actions(cx: &mut Context<FriendsScreen>) -> impl IntoElement {
+pub fn render_mutual_actions(_cx: &mut Context<FriendsScreen>) -> impl IntoElement {
     h_flex().gap_1().child(
         Button::new("friend-actions")
             .ghost()

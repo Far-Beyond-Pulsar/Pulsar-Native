@@ -9,4 +9,4 @@ mod screen;
 mod utils;
 
 pub(crate) use screen::FabSearchWindow;
-pub(crate) use utils::actions::{DownloadState, LicenseFilter, SortBy};
+pub(crate) use utils::actions::DownloadState;

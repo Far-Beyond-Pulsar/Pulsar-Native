@@ -104,3 +104,7 @@
 [submodule "plugins/vendor/bake"]
 	path = plugins/vendor/bake
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Bake
+[submodule "crates/external/pulsar-profiling"]
+	path = crates/external/pulsar-profiling
+	url = https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling.git
+	branch = main

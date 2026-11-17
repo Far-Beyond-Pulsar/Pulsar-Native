@@ -67,7 +67,9 @@ impl<'de> Deserialize<'de> for ObjectType {
         #[serde(untagged)]
         enum Repr {
             Name(String),
-            Tagged(std::collections::BTreeMap<String, serde::de::IgnoredAny>),
+            // Never read: the map is only there so this arm takes exactly a map, as
+            // tagged object types were saved; anything else stays an error.
+            Tagged(#[allow(dead_code)] std::collections::BTreeMap<String, serde::de::IgnoredAny>),
         }
         Ok(match Repr::deserialize(de)? {
             Repr::Name(name) => match name.as_str() {

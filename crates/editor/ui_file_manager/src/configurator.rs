@@ -10,15 +10,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use pulsar_reflection::{Reflectable, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
 use serde_json::Value as JsonValue;
 use ui::checkbox::Checkbox;
 use ui::notification::Notification;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Sizable as _,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _,
 };
 use ui_common::reflected_properties_panel::PropertyStateManager;
 use ui_common::render_property_row_runtime;

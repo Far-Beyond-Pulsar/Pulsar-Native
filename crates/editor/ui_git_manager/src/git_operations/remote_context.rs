@@ -2,8 +2,6 @@
 //! and the repository state it was resolved from, so a credential retry can
 //! tell the repository changed underneath it.
 
-use super::credentials::*;
-use crate::models::*;
 use engine_fs::{FsProvider as _, LocalFsProvider};
 use git2::{ErrorCode, Oid, Repository};
 use std::path::{Path, PathBuf};

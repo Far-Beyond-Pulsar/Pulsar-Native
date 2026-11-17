@@ -33,7 +33,7 @@ impl HierarchyPanelWrapper {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {

@@ -6,7 +6,7 @@
 //!
 //! Provides utilities for emitting and handling custom events.
 
-use crate::{blueprint, exec_output, NodeTypes};
+use crate::{blueprint, exec_output};
 
 // =============================================================================
 // Entry Points / Event Definitions

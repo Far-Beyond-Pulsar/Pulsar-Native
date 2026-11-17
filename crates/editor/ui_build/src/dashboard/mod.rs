@@ -107,7 +107,9 @@ impl BuildDashboard {
                     let Some(this) = this.upgrade() else {
                         return false;
                     };
-                    this.update(cx, |dashboard, cx| dashboard.apply(sample, root.is_some(), cx));
+                    this.update(cx, |dashboard, cx| {
+                        dashboard.apply(sample, root.is_some(), cx)
+                    });
                     true
                 });
                 if !alive {
@@ -140,7 +142,10 @@ impl BuildDashboard {
         {
             return;
         }
-        let Some(log) = latest.task().and_then(|id| editor_task_queue::global().log(id)) else {
+        let Some(log) = latest
+            .task()
+            .and_then(|id| editor_task_queue::global().log(id))
+        else {
             return;
         };
         let drawer = cx.new(|cx| LogDrawer::for_task(log, cx));
@@ -266,7 +271,12 @@ impl BuildDashboard {
                 theme.danger,
                 cx,
             ))
-            .child(processes(&sample.processes, running, history.peak_processes, cx))
+            .child(processes(
+                &sample.processes,
+                running,
+                history.peak_processes,
+                cx,
+            ))
     }
 }
 
@@ -495,7 +505,11 @@ fn empty_state(cx: &App) -> impl IntoElement {
         .justify_center()
         .gap_2()
         .text_color(theme.muted_foreground)
-        .child(div().text_sm().child(t!("Build.Dashboard.NoBuild").to_string()))
+        .child(
+            div()
+                .text_sm()
+                .child(t!("Build.Dashboard.NoBuild").to_string()),
+        )
 }
 
 fn mib(bytes: u64) -> f64 {
@@ -540,15 +554,16 @@ impl window_manager::PulsarWindow for BuildDashboard {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: that brings in `gpui::test`, which would replace `#[test]`.
-    use super::{
-        format_bytes, format_duration, History, ProcessKind, ProcessRow, Sample, HISTORY,
-    };
+    use super::{HISTORY, History, ProcessKind, ProcessRow, Sample, format_bytes, format_duration};
     use std::time::Duration;
 
     #[test]
     fn sizes_and_durations_read_naturally() {
         assert_eq!(format_bytes(512 * 1024 * 1024), "512 MB");
-        assert_eq!(format_bytes(3 * 1024 * 1024 * 1024 + 512 * 1024 * 1024), "3.5 GB");
+        assert_eq!(
+            format_bytes(3 * 1024 * 1024 * 1024 + 512 * 1024 * 1024),
+            "3.5 GB"
+        );
         assert_eq!(format_duration(Duration::from_secs(75)), "1:15");
         assert_eq!(format_duration(Duration::from_secs(3_725)), "1:02:05");
     }
@@ -575,7 +590,10 @@ mod tests {
             history.push(&sample, true);
         }
         assert_eq!(history.build_memory.len(), HISTORY);
-        assert_eq!(history.peak_build_memory, (HISTORY as u64 + 19) * 1024 * 1024);
+        assert_eq!(
+            history.peak_build_memory,
+            (HISTORY as u64 + 19) * 1024 * 1024
+        );
         assert_eq!(history.peak_processes, 6);
         // Between builds only the machine's series grow.
         history.push(&Sample::default(), false);

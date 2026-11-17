@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, IconName, Root, StyledExt, TitleBar, VirtualListScrollHandle,
+    ActiveTheme, IconName, Root, TitleBar, VirtualListScrollHandle,
     button::Button,
-    download_manager::{DownloadEntry, DownloadManagerDrawer},
+    download_manager::DownloadManagerDrawer,
     h_flex,
     input::{InputEvent, InputState, TextInput},
     scroll::ScrollbarState,
@@ -16,7 +16,7 @@ use ui::{
 use crate::components;
 use crate::parser::{SketchfabMe, SketchfabModel, SketchfabModelDetail};
 use crate::search_index::fetch_sketchfab_me;
-use crate::utils::actions::{DownloadMsg, DownloadState, LicenseFilter, SortBy};
+use crate::utils::actions::{DownloadState, LicenseFilter, SortBy};
 
 pub struct FabSearchWindow {
     pub(crate) focus_handle: FocusHandle,
@@ -179,14 +179,14 @@ impl FabSearchWindow {
             )
             .owner("ui_fab_search"),
             move || {
-                smol::block_on(tx.send(fetch_sketchfab_me(&token)));
+                let _ = smol::block_on(tx.send(fetch_sketchfab_me(&token)));
             },
         );
 
         cx.spawn(async move |this, cx| {
             if let Ok(result) = rx.recv().await {
                 cx.update(|cx| {
-                    this.update(cx, |view, cx| {
+                    let _ = this.update(cx, |view, cx| {
                         view.me_loading = false;
                         match result {
                             Ok(me) => {
@@ -270,14 +270,14 @@ impl FabSearchWindow {
             .owner("ui_fab_search"),
             move || {
                 let maybe = crate::image_loader::fetch_and_decode(&url_thread).ok();
-                smol::block_on(tx.send(maybe));
+                let _ = smol::block_on(tx.send(maybe));
             },
         );
 
         cx.spawn(async move |this, cx| {
             if let Ok(maybe) = rx.recv().await {
                 cx.update(|cx| {
-                    this.update(cx, |view, cx| {
+                    let _ = this.update(cx, |view, cx| {
                         view.image_cache.insert(url, maybe);
                         view.image_inflight -= 1;
                         if let Some(next_url) = view.image_queue.pop_front() {

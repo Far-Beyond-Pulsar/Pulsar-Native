@@ -4,17 +4,16 @@
 //! `render_*` helpers below; [`chat_history_label`] and
 //! [`context_window_label`] are the pure text rules, unit tested.
 
-use gpui::{prelude::FluentBuilder as _, Corner, *};
+use gpui::{Corner, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    dropdown::{SearchableList, SearchableListEvent},
+    dropdown::SearchableList,
     h_flex,
     menu::popup_menu::PopupMenuExt,
     popover::Popover,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
+    v_flex, ActiveTheme as _, IconName, Sizable,
 };
 
-use super::chat_storage;
 use super::panel::AgentChatPanel;
 use super::types::*;
 
@@ -179,7 +178,7 @@ impl AgentChatPanel {
             .tooltip("More actions")
             .popup_menu_with_anchor(Corner::TopRight, {
                 let p = panel.clone();
-                move |menu, window, cx| {
+                move |menu, _window, _cx| {
                     let menu = menu
                         .menu_handler_with_icon("Import Chat", IconName::Upload, {
                             let p = p.clone();

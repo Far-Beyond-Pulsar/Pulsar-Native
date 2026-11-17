@@ -1,4 +1,4 @@
-use gpui::{prelude::*, *};
+use gpui::*;
 
 actions!(
     type_debugger_drawer,

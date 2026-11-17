@@ -181,21 +181,6 @@ impl Mesh {
             );
         }
     }
-    pub(crate) fn arch(&mut self, a: Vec3, b: Vec3, rise: f32, radius: f32) {
-        // Two curved halves meet at a pointed crown.
-        let mid = (a + b) * 0.5 + Vec3::Y * rise;
-        for (start, end) in [(a, mid), (b, mid)] {
-            let mut previous = start;
-            for i in 1..=24 {
-                let t = i as f32 / 24.;
-                let mut p = start.lerp(end, t);
-                p.y += rise * 0.24 * (t * std::f32::consts::PI).sin();
-                self.rod(previous, p, radius, 10);
-                previous = p;
-            }
-        }
-    }
-
     /// One connected tube along a planar pointed arch. Adjacent rings share
     /// vertices; there are no overlapping cylinder end caps at every segment.
     pub(crate) fn smooth_arch(&mut self, a: Vec3, b: Vec3, rise: f32, radius: f32) {

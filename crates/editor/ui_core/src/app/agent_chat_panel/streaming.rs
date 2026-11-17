@@ -14,7 +14,7 @@ use super::*;
 use agent_chat_core::{ChatMessage, ChatRole};
 use smol::Timer;
 use std::{sync::atomic::AtomicBool, time::Duration};
-use ui::{input::Enter, scroll::ScrollHandleOffsetable};
+use ui::input::Enter;
 
 /// Wall-clock milliseconds since the Unix epoch.
 pub(super) fn now_ms() -> u64 {
@@ -42,7 +42,7 @@ impl AgentChatPanel {
         dropped: &[ChatMessage],
         provider: &Arc<dyn agent_chat_core::ChatProvider>,
         compact_model: &str,
-        token: &str,
+        _token: &str,
     ) -> String {
         let formatted: String = dropped
             .iter()
@@ -114,49 +114,6 @@ impl AgentChatPanel {
             })
     }
 
-    pub(super) fn stream_assistant_chunks(
-        &mut self,
-        chunks: Vec<String>,
-        fallback_message: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        let chunks = if chunks.is_empty() {
-            fallback_message
-                .map(|text| vec![text])
-                .unwrap_or_else(|| vec!["Provider returned an empty response.".to_string()])
-        } else {
-            chunks
-        };
-
-        let message_ix = self.messages.len();
-        self.messages.push(ChatMessage {
-            role: ChatRole::Assistant,
-            content: String::new(),
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
-        self.scroll_messages_to_bottom();
-        cx.notify();
-
-        cx.spawn(async move |this, cx| {
-            for chunk in chunks {
-                cx.update(|cx| {
-                    this.update(cx, |panel, cx| {
-                        if let Some(message) = panel.messages.get_mut(message_ix) {
-                            message.content.push_str(&chunk);
-                        }
-                        panel.save_current_chat();
-                        panel.scroll_messages_to_bottom();
-                        cx.notify();
-                    });
-                });
-
-                Timer::after(Duration::from_millis(14)).await;
-            }
-        })
-        .detach();
-    }
-
     pub(super) fn on_prompt_enter(
         &mut self,
         enter: &Enter,
@@ -225,8 +182,6 @@ impl AgentChatPanel {
             cx.notify();
             return false;
         };
-
-        let token = self.auth_token_for_provider(provider_id);
 
         self.launch_provider_request(provider, None, cx);
         true
@@ -387,7 +342,7 @@ impl AgentChatPanel {
             while let Ok(event) = rx.recv().await {
                 let should_break = matches!(event, StreamEvent::Finished(_));
                 cx.update(|cx| {
-                    this.update(cx, |panel, cx| {
+                    let _ = this.update(cx, |panel, cx| {
                         panel.apply_stream_event(event, message_ix, cx);
                     });
                 });
@@ -466,7 +421,6 @@ impl AgentChatPanel {
         let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
             return;
         };
-        let token = self.auth_token_for_provider(provider_id);
         self.launch_provider_request(provider, None, cx);
     }
 

@@ -113,6 +113,7 @@ pub(crate) fn level_contents(
 }
 
 /// [`save_to_file_with_editor_camera`] with an explicit class registry.
+#[cfg(test)]
 pub(crate) fn save_with_classes<P: AsRef<Path>>(
     world: &World,
     path: P,
@@ -370,6 +371,7 @@ pub fn load_from_file_with_editor_state<P: AsRef<Path>>(
 /// Old class references are migrated first (`ScriptComponent` class paths
 /// and `blueprint_bindings` become `ClassInstance`), then every placed class
 /// is rebuilt from its current definition with its overrides applied.
+#[cfg(test)]
 pub(crate) fn load_with_classes<P: AsRef<Path>>(
     world: &mut World,
     path: P,

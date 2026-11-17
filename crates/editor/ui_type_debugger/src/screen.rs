@@ -3,8 +3,7 @@ use gpui::{prelude::*, *};
 use plugin_editor_api::FileTypeId;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use ui::StyledExt;
-use ui::{h_flex, input::InputState, v_flex, ActiveTheme as _};
+use ui::{input::InputState, v_flex, ActiveTheme as _};
 
 use crate::utils::NavigateToType;
 
@@ -78,12 +77,6 @@ impl TypeDebuggerDrawer {
 
     pub(crate) fn set_filter(&mut self, kind: Option<FileTypeId>, cx: &mut Context<Self>) {
         self.filtered_kind = kind;
-        self.selected_index = None;
-        cx.notify();
-    }
-
-    pub(crate) fn set_search_query(&mut self, query: String, cx: &mut Context<Self>) {
-        self.search_query = query;
         self.selected_index = None;
         cx.notify();
     }

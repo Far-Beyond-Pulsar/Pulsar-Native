@@ -79,16 +79,6 @@ pub enum SortOrder {
     Descending,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum DragState {
-    None,
-    Dragging {
-        source_paths: Vec<PathBuf>,
-        is_folder: bool,
-        drag_offset: Point<Pixels>,
-    },
-}
-
 #[derive(Clone, Debug)]
 pub struct DraggedFile {
     pub paths: Vec<PathBuf>,

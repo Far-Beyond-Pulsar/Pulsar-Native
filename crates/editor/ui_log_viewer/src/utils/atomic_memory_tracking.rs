@@ -348,7 +348,7 @@ impl AtomicMemoryCounters {
 /// wrapped to ~2^64 is worse than one that is briefly low.
 #[inline]
 fn sub_saturating(counter: &AtomicUsize, n: usize) {
-    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+    let _ = counter.try_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
         Some(v.saturating_sub(n))
     });
 }

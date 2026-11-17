@@ -27,7 +27,6 @@ struct ApiDirEntry {
 struct ApiReadResponse {
     /// Base64-encoded file contents.
     content: String,
-    size: u64,
 }
 
 #[derive(Debug, Serialize)]

@@ -46,15 +46,12 @@ struct GistRequest {
 #[derive(Debug, Deserialize)]
 struct GistResponse {
     id: Option<String>,
-    html_url: Option<String>,
     files: Option<std::collections::HashMap<String, GistFileResponse>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GistFileResponse {
-    filename: Option<String>,
     content: Option<String>,
-    raw_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

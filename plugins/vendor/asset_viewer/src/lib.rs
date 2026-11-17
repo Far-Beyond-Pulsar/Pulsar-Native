@@ -2,8 +2,6 @@ use gpui::*;
 use plugin_editor_api::*;
 use rust_i18n::t;
 use serde_json::json;
-use std::collections::HashMap;
-use std::sync::Mutex;
 use std::{path::PathBuf, sync::Arc};
 use ui::dock::PanelView;
 
@@ -12,23 +10,8 @@ rust_i18n::i18n!("locales", fallback = "en");
 mod editor;
 pub use editor::panel::AssetViewerPanel;
 
-struct EditorStorage {
-    panel: Arc<dyn PanelView>,
-}
-
-pub struct AssetViewerPlugin {
-    editors: Arc<Mutex<HashMap<usize, EditorStorage>>>,
-    next_editor_id: Arc<Mutex<usize>>,
-}
-
-impl Default for AssetViewerPlugin {
-    fn default() -> Self {
-        Self {
-            editors: Arc::new(Mutex::new(HashMap::new())),
-            next_editor_id: Arc::new(Mutex::new(0)),
-        }
-    }
-}
+#[derive(Default)]
+pub struct AssetViewerPlugin;
 
 impl EditorPlugin for AssetViewerPlugin {
     fn metadata(&self) -> PluginMetadata {
@@ -154,24 +137,8 @@ impl AssetViewerPlugin {
         let panel =
             cx.new(|cx| editor::panel::AssetViewerPanel::new(file_path.clone(), window, cx));
 
-        let panel_arc: Arc<dyn PanelView> = Arc::new(panel.clone());
-
-        let id = {
-            let mut next_id = self.next_editor_id.lock().unwrap();
-            let id = *next_id;
-            *next_id += 1;
-            id
-        };
-
-        self.editors.lock().unwrap().insert(
-            id,
-            EditorStorage {
-                panel: panel_arc.clone(),
-            },
-        );
-
-        log::info!("Created asset viewer instance {} for {:?}", id, file_path);
-        Ok(panel_arc)
+        log::info!("Created asset viewer for {:?}", file_path);
+        Ok(Arc::new(panel))
     }
 }
 

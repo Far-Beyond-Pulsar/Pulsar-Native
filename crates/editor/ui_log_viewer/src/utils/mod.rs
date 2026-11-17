@@ -5,7 +5,6 @@ pub mod gpu_engines;
 pub mod gpu_info;
 pub mod large_allocs;
 pub mod live_logs;
-pub mod log_reader;
 pub mod mem_details;
 pub mod memory_database;
 pub mod memory_report;

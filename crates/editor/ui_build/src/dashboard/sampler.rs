@@ -209,7 +209,9 @@ fn flag_value<'a>(cmd: &'a [String], flag: &str) -> Option<&'a str> {
 /// `<crate>-<16 hex digits>`.
 fn strip_hash(dir: &str) -> &str {
     match dir.rsplit_once('-') {
-        Some((krate, hash)) if hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit()) => krate,
+        Some((krate, hash)) if hash.len() == 16 && hash.chars().all(|c| c.is_ascii_hexdigit()) => {
+            krate
+        }
         _ => dir,
     }
 }
@@ -236,7 +238,11 @@ mod tests {
             (40, Some(40)),
         ];
         assert_eq!(descendants(10, &parents), [10, 11, 13, 12]);
-        assert_eq!(descendants(30, &parents), [31], "a gone root still finds its children");
+        assert_eq!(
+            descendants(30, &parents),
+            [31],
+            "a gone root still finds its children"
+        );
         assert_eq!(descendants(40, &parents), [40]);
         assert!(descendants(99, &parents).is_empty());
     }
@@ -263,11 +269,22 @@ mod tests {
             classify("cargo", &args(&["cargo", "build", "--release"]), None),
             (ProcessKind::Cargo, "cargo build".to_owned())
         );
-        assert_eq!(classify("link.exe", &[], None), (ProcessKind::Linker, "link".to_owned()));
-        assert_eq!(classify("python3", &[], None), (ProcessKind::Other, "python3".to_owned()));
+        assert_eq!(
+            classify("link.exe", &[], None),
+            (ProcessKind::Linker, "link".to_owned())
+        );
+        assert_eq!(
+            classify("python3", &[], None),
+            (ProcessKind::Other, "python3".to_owned())
+        );
         // A rustc wrapper (sccache) still names the crate.
         assert_eq!(
-            classify("sccache", &args(&["sccache", "rustc", "--crate-name", "serde"]), None).1,
+            classify(
+                "sccache",
+                &args(&["sccache", "rustc", "--crate-name", "serde"]),
+                None
+            )
+            .1,
             "serde"
         );
     }

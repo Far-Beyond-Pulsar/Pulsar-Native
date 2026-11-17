@@ -18,13 +18,10 @@ pub struct AllocationSite {
     pub align: usize,
 }
 
-/// Simple allocation record sent through channel (no processing)
+/// Signal sent through the channel on every tracked alloc or dealloc: the
+/// background thread only needs to know that something changed.
 #[derive(Clone, Debug)]
-struct AllocRecord {
-    size: usize,
-    align: usize,
-    is_alloc: bool, // true = alloc, false = dealloc
-}
+struct AllocRecord;
 
 /// Type tracker using Layout (size + alignment) to identify allocations
 pub struct TypeTracker {
@@ -97,11 +94,7 @@ impl TypeTracker {
         }
 
         // Send to background thread for DB processing (non-blocking)
-        let _ = self.sender.send(AllocRecord {
-            size: layout.size(),
-            align: layout.align(),
-            is_alloc: true,
-        });
+        let _ = self.sender.send(AllocRecord);
     }
 
     /// Record a deallocation by its layout (FAST - just send to channel)
@@ -118,11 +111,7 @@ impl TypeTracker {
         }
 
         // Send to background thread for DB processing (non-blocking)
-        let _ = self.sender.send(AllocRecord {
-            size: layout.size(),
-            align: layout.align(),
-            is_alloc: false,
-        });
+        let _ = self.sender.send(AllocRecord);
     }
 
     /// Get the count of unique layouts being tracked (cheap - just DashMap len)

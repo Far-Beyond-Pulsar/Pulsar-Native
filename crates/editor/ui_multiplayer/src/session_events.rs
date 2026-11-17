@@ -289,7 +289,7 @@ impl MultiplayerWindow {
             client_guard.latency_ms().await
         };
         cx.update(|cx| {
-            this.update(cx, |this, _| {
+            let _ = this.update(cx, |this, _| {
                 this.sync_engine_multiuser_latency(latency_ms);
             });
         });

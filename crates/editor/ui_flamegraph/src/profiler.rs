@@ -189,7 +189,7 @@ fn collector_loop(
 ) {
     tracing::trace!("[PROFILER] Starting instrumentation collector");
 
-    let mut accumulator = TraceAccumulator::from_frame(&trace_data.get_frame());
+    let mut known_threads = KnownThreads::from_frame(&trace_data.get_frame());
     let mut last_report = std::time::Instant::now();
     let mut batches = 0u64;
     while running.load(Ordering::Acquire) {
@@ -218,7 +218,7 @@ fn collector_loop(
         let mut delta_times = Vec::new();
         let mut delta_boundaries = Vec::new();
         for event in &new_events {
-            accumulator.apply_event(event);
+            known_threads.apply_event(event);
             if event.name == "__FRAME_MARKER__" {
                 delta_times.push(event.duration_ns as f32 / 1_000_000.0);
                 delta_boundaries.push(event.start_ns);
@@ -230,7 +230,7 @@ fn collector_loop(
                     // Only publish a real nickname. A later unnamed event must
                     // never erase a meaningful name already on this lane.
                     delta_thread_names.push((thread_id, lane_name(event)));
-                } else if let Some(name) = accumulator.thread_names.get(&event.thread_id) {
+                } else if let Some(name) = known_threads.thread_names.get(&event.thread_id) {
                     delta_thread_names.push((thread_id, name.name.clone()));
                 }
                 delta_spans.push(TraceSpan {
@@ -316,30 +316,20 @@ fn lane_name(event: &profiling::ProfileEvent) -> String {
         .unwrap_or_else(|| format!("Thread {}", event.thread_id))
 }
 
-#[derive(Default)]
-struct TraceAccumulator {
-    spans: Vec<TraceSpan>,
+/// The name of every thread the collector has seen events from.
+struct KnownThreads {
     thread_names: HashMap<u64, ThreadInfo>,
-    frame_times: Vec<f32>,
-    frame_boundaries: Vec<u64>,
 }
 
-impl TraceAccumulator {
+impl KnownThreads {
     fn from_frame(frame: &TraceFrame) -> Self {
         Self {
-            spans: frame.spans.clone(),
             thread_names: frame.threads.clone(),
-            frame_times: frame.frame_times_ms.clone(),
-            frame_boundaries: frame.frame_boundaries_ns.clone(),
         }
     }
 
     fn apply_event(&mut self, event: &profiling::ProfileEvent) {
         if event.name == "__FRAME_MARKER__" {
-            self.frame_times
-                .push(event.duration_ns as f32 / 1_000_000.0);
-            // The marker's start timestamp is where the new frame begins.
-            self.frame_boundaries.push(event.start_ns);
             return;
         }
 
@@ -355,29 +345,6 @@ impl TraceAccumulator {
                 name: thread_name,
             },
         );
-
-        self.spans.push(TraceSpan {
-            name: event.name.clone(),
-            start_ns: event.start_ns,
-            duration_ns: event.duration_ns,
-            depth: event.depth,
-            thread_id: event.thread_id,
-            color_index: (self.spans.len() % 16) as u8,
-        });
-    }
-
-    fn publish(&self, trace_data: &TraceData) -> Result<(), Box<dyn std::error::Error>> {
-        // Build through with_data so min/max time and depth are recomputed from spans.
-        let thread_names: HashMap<u64, String> = self
-            .thread_names
-            .iter()
-            .map(|(id, info)| (*id, info.name.clone()))
-            .collect();
-        let mut frame = TraceFrame::with_data(self.spans.clone(), thread_names);
-        frame.frame_times_ms = self.frame_times.clone();
-        frame.frame_boundaries_ns = self.frame_boundaries.clone();
-        trace_data.set_frame(frame);
-        Ok(())
     }
 }
 
@@ -490,7 +457,7 @@ mod tests {
             name: "g".into(),
             project: String::new(),
         };
-        let publisher = remote::serve_in(&dir, description, 1 << 20).unwrap();
+        let publisher = remote::serve_in(&dir, description, 1 << 20, remote::std_thread).unwrap();
         let target = remote::list_targets_in(&dir).pop().expect("listed");
         assert!(target.is_current_process());
 

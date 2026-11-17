@@ -120,11 +120,9 @@ fn without_a_kind_the_shipped_graph_has_none_of_its_nodes_and_still_runs() {
     let project = open_project("[plugins]\n\"pulsar.voxel\" = false\n");
     let text = engine_fs::virtual_fs::read_to_string(&project.path().join(DEFERRED))
         .expect("the plugin serves the file");
-    assert!(
-        !node_kinds(&text)
-            .iter()
-            .any(|k| k == "helio.pass.voxel_chunks")
-    );
+    assert!(!node_kinds(&text)
+        .iter()
+        .any(|k| k == "helio.pass.voxel_chunks"));
     assert!(matches!(
         pipelines::pipeline_state(Some(DEFERRED)),
         pipelines::PipelineState::Assigned { .. }
@@ -608,7 +606,7 @@ fn every_shipped_pipeline_draws_an_opaque_frame() {
     };
     // The project's TSR setting, as the editor's Project Settings write it.
     let rendering = {
-        use engine_state::settings::{NS_PROJECT, global_config};
+        use engine_state::settings::{global_config, NS_PROJECT};
         global_config()
             .owner_handle(NS_PROJECT, "rendering")
             .or_else(|| {

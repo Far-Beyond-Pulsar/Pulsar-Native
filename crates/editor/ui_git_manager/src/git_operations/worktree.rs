@@ -2,9 +2,8 @@
 //! revealing a path in the OS file manager.
 
 use super::repository::open_repo;
-use crate::models::*;
 use engine_fs::{FsProvider as _, LocalFsProvider};
-use git2::{StatusOptions, build::CheckoutBuilder};
+use git2::StatusOptions;
 use std::path::Path;
 
 /// Stage a file (blocking — run on background executor)

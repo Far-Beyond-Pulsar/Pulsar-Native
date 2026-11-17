@@ -5,7 +5,6 @@
 
 use super::{CommandResult, SceneCommand};
 use crate::state::LevelEditorState;
-use engine_backend::scene::SceneWorldExt;
 
 /// Selection changes touch no object data, so nothing is captured for undo.
 pub(super) fn scope(cmd: &SceneCommand) -> Option<Vec<String>> {

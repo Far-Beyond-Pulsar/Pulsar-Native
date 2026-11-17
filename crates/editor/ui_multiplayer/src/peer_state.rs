@@ -131,7 +131,7 @@ impl MultiplayerWindow {
     /// Shows a join failure in the UI and the engine status.
     fn report_join_error(this: &WeakEntity<Self>, cx: &mut AsyncApp, text: String) {
         cx.update(|cx| {
-            this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.set_connection_error(text);
                 cx.notify();
             });
@@ -151,7 +151,7 @@ impl MultiplayerWindow {
         joined: &JoinedReply,
     ) {
         cx.update(|cx| {
-            this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.apply_guest_joined(client, server_address, session_id, join_token, joined, cx);
             });
         });
@@ -266,7 +266,7 @@ impl MultiplayerWindow {
                 ..
             } => {
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.apply_guest_peer_joined(joined_peer_id, profile, cx);
                     });
                 });
@@ -276,7 +276,7 @@ impl MultiplayerWindow {
                 ..
             } => {
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.apply_peer_left(&left_peer_id, cx);
                     });
                 });
@@ -284,7 +284,7 @@ impl MultiplayerWindow {
             ServerMessage::Kicked { reason, .. } => {
                 tracing::warn!("{}: You were kicked from the session: {}", TAG, reason);
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.handle_kicked(format!("Kicked from session: {}", reason), cx);
                     });
                 });
@@ -304,7 +304,7 @@ impl MultiplayerWindow {
                     message
                 );
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.apply_chat_message(TAG, sender_peer_id, message, timestamp, cx);
                     });
                 });
@@ -605,7 +605,7 @@ impl MultiplayerWindow {
     ) {
         // Set progress indicator - receiving data
         cx.update(|cx| {
-            this.update(cx, |this, cx| {
+            let _ = this.update(cx, |this, cx| {
                 this.set_sync_progress("Receiving files...".to_string(), 0.1, cx);
             });
         });
@@ -616,7 +616,7 @@ impl MultiplayerWindow {
             if let Some(project_root) = Self::read_project_root(this, cx) {
                 // Update progress - starting sync
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.set_sync_progress("Processing files...".to_string(), 0.2, cx);
                     });
                 });
@@ -652,7 +652,7 @@ impl MultiplayerWindow {
             files_data.len()
         );
 
-        // Update FileSyncUI with file contents for preview
+        // Queue the file contents for the diff preview
         for (file_path, content) in session_logic::text_previews(&files_data) {
             cx.update(|cx| {
                 this.update(cx, |this, cx| {

@@ -2,14 +2,12 @@ use crate::utils::types::TypeInfo;
 use gpui::{prelude::*, *};
 use plugin_editor_api::FileTypeId;
 use rust_i18n::t;
-use std::path::PathBuf;
-use ui::StyledExt;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
     popup_menu::PopupMenuExt,
-    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
+    v_flex, ActiveTheme as _, IconName, Sizable as _,
 };
 
 use crate::components::{kind_color, kind_icon, kind_label};
@@ -186,7 +184,7 @@ pub fn render_header(
 }
 
 pub fn render_type_badge(
-    drawer: &TypeDebuggerDrawer,
+    _drawer: &TypeDebuggerDrawer,
     kind: &FileTypeId,
     count: usize,
     cx: &App,

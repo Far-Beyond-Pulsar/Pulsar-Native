@@ -596,8 +596,8 @@ mod tests {
     use crate::state::LevelEditorState;
     use crate::ui::viewport::performance::{LiveStats, Metric, Sampler, SharedStats};
     use gpui::{
-        div, px, size, AppContext as _, Context, Entity, EventEmitter, IntoElement,
-        ParentElement as _, Render, Styled as _, TestAppContext, Window,
+        div, px, size, Context, Entity, EventEmitter, IntoElement, ParentElement as _, Render,
+        Styled as _, TestAppContext, Window,
     };
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;

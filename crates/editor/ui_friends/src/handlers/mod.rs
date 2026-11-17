@@ -1,7 +1,7 @@
 use crate::components::popover::FriendsPopover;
 use crate::screen::FriendsScreen;
 use crate::utils::avatar::fetch_avatar_image;
-use crate::utils::types::{AddFriendState, FriendEntry, FriendTab};
+use crate::utils::types::{AddFriendState, FriendEntry};
 use friends_engine::{FriendInfo, FriendsError, RelationStatus};
 use gpui::{prelude::*, *};
 use std::sync::Arc;
@@ -137,7 +137,7 @@ pub fn on_send_friend_request(this: &mut FriendsScreen, cx: &mut Context<Friends
 }
 
 pub fn on_accept_request(
-    this: &mut FriendsScreen,
+    _this: &mut FriendsScreen,
     username: &str,
     cx: &mut Context<FriendsScreen>,
 ) {
@@ -166,7 +166,7 @@ pub fn on_accept_request(
 }
 
 pub fn on_decline_request(
-    this: &mut FriendsScreen,
+    _this: &mut FriendsScreen,
     username: &str,
     cx: &mut Context<FriendsScreen>,
 ) {
@@ -241,7 +241,7 @@ pub fn on_fetch_friend_homes(this: &mut FriendsScreen, cx: &mut Context<FriendsS
     .detach();
 }
 
-pub fn on_add_friend(this: &mut FriendsScreen, username: &str, cx: &mut Context<FriendsScreen>) {
+pub fn on_add_friend(_this: &mut FriendsScreen, username: &str, cx: &mut Context<FriendsScreen>) {
     let target = username.to_string();
     let is_self = friends_engine::get_own_username().ok().as_deref() == Some(&target);
 
@@ -312,7 +312,7 @@ pub fn on_add_friend(this: &mut FriendsScreen, username: &str, cx: &mut Context<
 }
 
 pub fn on_invite_to_session(
-    this: &mut FriendsPopover,
+    _this: &mut FriendsPopover,
     username: &str,
     cx: &mut Context<FriendsPopover>,
 ) {

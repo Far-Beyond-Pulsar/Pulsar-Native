@@ -20,7 +20,6 @@ use crate::ui::toolbar::view_mode_dropdown::{ViewModeDropdown, ViewModePickerSta
 struct CameraModeButton {
     id: &'static str,
     icon: IconName,
-    tooltip: &'static str,
     mode: CameraMode,
 }
 
@@ -28,31 +27,26 @@ const CAMERA_MODES: &[CameraModeButton] = &[
     CameraModeButton {
         id: "camera_perspective",
         icon: IconName::Cube,
-        tooltip: "Perspective View",
         mode: CameraMode::Perspective,
     },
     CameraModeButton {
         id: "camera_orthographic",
         icon: IconName::Square,
-        tooltip: "Orthographic View",
         mode: CameraMode::Orthographic,
     },
     CameraModeButton {
         id: "camera_top",
         icon: IconName::ArrowUp,
-        tooltip: "Top View",
         mode: CameraMode::Top,
     },
     CameraModeButton {
         id: "camera_front",
         icon: IconName::ArrowRight,
-        tooltip: "Front View",
         mode: CameraMode::Front,
     },
     CameraModeButton {
         id: "camera_side",
         icon: IconName::ArrowLeft,
-        tooltip: "Side View",
         mode: CameraMode::Side,
     },
 ];

@@ -4,9 +4,6 @@ use rust_i18n::t;
 use ui::dock::{Panel, PanelEvent};
 use ui::{h_flex, v_flex, ActiveTheme};
 
-use solid_fbx::FbxLoader;
-use solid_rs::registry::Registry;
-
 use super::panel::{AssetViewerPanel, MeshProps, MeshRenderMode, SceneStats};
 
 /// Bytes of one draw's uniforms: view-projection, render mode, base colour.
@@ -1714,7 +1711,7 @@ impl AssetViewerPanel {
         let Some(bgl) = self.quad_bind_group_layout.as_ref() else {
             return;
         };
-        let Some(sampler) = self.quad_sampler.as_ref() else {
+        let Some(_sampler) = self.quad_sampler.as_ref() else {
             return;
         };
 
@@ -2613,30 +2610,5 @@ impl Render for AssetViewerPanel {
                     )
                 }
             }))
-    }
-}
-
-impl AssetViewerPanel {
-    fn surface_element(&self) -> AnyElement {
-        if let Some(surface) = &self.surface_handle {
-            wgpu_surface(surface.clone())
-                .defer_resize_until_mouse_up(true)
-                .size_full()
-                .into_any_element()
-        } else {
-            div()
-                .size_full()
-                .bg(gpui::rgb(0x1a1a1a))
-                .child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(gpui::rgb(0x888888))
-                        .child(t!("AssetViewer.Loading").to_string()),
-                )
-                .into_any_element()
-        }
     }
 }

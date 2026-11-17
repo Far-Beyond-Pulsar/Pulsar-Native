@@ -400,7 +400,7 @@ impl Render for PropertiesPanelWrapper {
                 window,
                 cx,
             ))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if this.editing_property.is_some() {
                     match event.keystroke.key.as_str() {
                         "enter" => {

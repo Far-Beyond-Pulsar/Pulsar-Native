@@ -285,7 +285,6 @@ impl LevelEditorPanel {
         });
         let inner = ViewportPanel::new(
             viewport,
-            self.render_enabled.clone(),
             Arc::new(InputState::new()),
             self.toolbar.clone(),
             gpu.clone(),

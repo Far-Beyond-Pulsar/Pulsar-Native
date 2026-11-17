@@ -641,11 +641,6 @@ mod tests {
         "editor": {"camera": {"position": [10.0, 20.0, 30.0], "yaw": 1.0, "pitch": -0.25}}
     }"#;
 
-    /// The object's attached component records, in order.
-    fn records(world: &World, id: &str) -> Vec<pulsar_scene_model::ComponentInstance> {
-        pulsar_world_registry::component_records(world, world.entity_for(id).unwrap())
-    }
-
     fn sample_level() -> RuntimeLevel {
         let file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
         RuntimeLevel::from_scene_file(file).expect("sample hydrates")
@@ -718,15 +713,6 @@ mod tests {
         let group = world.entity_for("group").unwrap();
         assert_eq!(world.parent_of(cube), Some(group));
         assert_eq!(world.children_of(Some(group)), vec![cube]);
-    }
-
-    fn level_with_sun_components(components_section: Value, instances: Option<Value>) -> SceneFile {
-        let mut file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
-        if let Some(instances) = instances {
-            file.objects[0].component_instances = Some(instances);
-        }
-        file.components = components_section;
-        file
     }
 
     #[test]

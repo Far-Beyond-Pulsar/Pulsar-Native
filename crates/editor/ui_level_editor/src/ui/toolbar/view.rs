@@ -26,7 +26,7 @@ use engine_backend::subsystems::render::{HelioEditorMailbox, ViewportDebugView};
 use gpui::*;
 use ui::dock::PanelEvent;
 use ui::dropdown::{DropdownEvent, SearchableVec};
-use ui::input::{InputEvent, InputState, TextInput};
+use ui::input::{InputEvent, InputState};
 
 use super::snap_controls::{SnapKind, SnapPanel};
 use super::view_mode_dropdown::{
@@ -48,7 +48,7 @@ pub struct ToolbarSignature {
     tool_mode: ToolModeId,
     // mode_indicator
     editor_mode: EditorMode,
-    // feature_toggles
+    // viewport feature toggles
     feature_lighting_enabled: bool,
     feature_shadows_enabled: bool,
     feature_bloom_enabled: bool,
@@ -115,7 +115,6 @@ pub struct ToolbarView {
     input_state: Arc<crate::ui::viewport::input_state::InputState>,
     last_signature: ToolbarSignature,
     pump_started: bool,
-    custom_snaps: [Entity<InputState>; 3],
     pub(crate) snap_panels: [Entity<SnapPanel>; 3],
     _custom_snap_subscriptions: Vec<Subscription>,
     _view_mode_picker_subscription: Subscription,
@@ -235,7 +234,6 @@ impl ToolbarView {
             input_state,
             last_signature,
             pump_started: false,
-            custom_snaps,
             snap_panels,
             _custom_snap_subscriptions: custom_snap_subscriptions,
             _view_mode_picker_subscription: view_mode_picker_subscription,

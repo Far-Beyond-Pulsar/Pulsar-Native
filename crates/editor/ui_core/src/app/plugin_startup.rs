@@ -71,7 +71,7 @@ impl PulsarApp {
                         .timer(Duration::from_millis(1))
                         .await;
                 }
-                cx.update(|cx| {
+                cx.update(|_cx| {
                     // Drain plugin components into the engine backend before
                     // the manager becomes globally accessible.
                     let components = manager.drain_component_registrations();

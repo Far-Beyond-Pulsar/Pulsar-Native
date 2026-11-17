@@ -254,17 +254,7 @@ impl SessionAuth for AuthService {
     }
 }
 
-// Hex encoding/decoding helpers
-fn hex_encode(data: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut result = String::new();
-    for byte in data {
-        // Writing to a String never fails.
-        let _ = write!(&mut result, "{:02x}", byte);
-    }
-    result
-}
-
+// Hex decoding helper
 fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
     // The slicing below is by byte index; a multi-byte character in a
     // (client-supplied) token would make it panic at a char boundary.

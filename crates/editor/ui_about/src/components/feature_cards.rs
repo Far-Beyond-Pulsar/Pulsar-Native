@@ -1,5 +1,5 @@
 use gpui::*;
-use ui::{ActiveTheme, Icon, IconName, h_flex, v_flex};
+use ui::{Icon, IconName, h_flex, v_flex};
 
 pub fn render_feature_cards(theme: &ui::Theme) -> impl IntoElement {
     h_flex()

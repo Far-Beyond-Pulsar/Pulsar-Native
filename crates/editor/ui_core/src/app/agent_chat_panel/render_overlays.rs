@@ -8,15 +8,12 @@
 use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    dropdown::SearchableList,
     h_flex,
     input::TextInput,
-    popover::Popover,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
+    v_flex, ActiveTheme as _, Sizable,
 };
 
 use super::panel::AgentChatPanel;
-use super::types::*;
 
 impl AgentChatPanel {
     /// The provider configuration card, or `None` when no provider is being

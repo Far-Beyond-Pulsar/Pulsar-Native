@@ -435,7 +435,7 @@ fn generate_enums_pages(crate_dir: &Path, enums: &[EnumDoc]) -> Result<(), Box<d
                 VariantFields::Tuple(types) => {
                     write!(md, "({})", types.join(", "))?;
                 }
-                VariantFields::Struct(_) => {
+                VariantFields::Struct => {
                     write!(md, " {{ ... }}")?;
                 }
             }

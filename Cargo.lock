@@ -1584,7 +1584,6 @@ dependencies = [
  "helio-pass-cables",
  "helio-scene-join",
  "helio_component",
- "meshes_component",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -4009,16 +4008,6 @@ name = "fiat-crypto"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
-
-[[package]]
-name = "file-association-manager"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/file-association-manager?rev=6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3#6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3"
-dependencies = [
- "tempfile",
- "thiserror 2.0.20",
- "winreg 0.52.0",
-]
 
 [[package]]
 name = "filetime"
@@ -8363,7 +8352,6 @@ dependencies = [
  "env_logger",
  "glam 0.33.5",
  "helio",
- "helio-components",
  "helio-core",
  "helio-light-api",
  "helio-light-host",
@@ -8372,8 +8360,6 @@ dependencies = [
  "helio-mesh-host",
  "helio-pass-deferred-light",
  "helio-pass-forward-lit",
- "helio-pass-postprocess",
- "helio-vg-stream",
  "image",
  "log",
  "pollster 0.4.0",
@@ -9359,12 +9345,6 @@ dependencies = [
  "num-traits",
  "pxfm",
 ]
-
-[[package]]
-name = "multimap"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
 name = "mysql"
@@ -12211,7 +12191,6 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "crossbeam-queue",
- "editor_task_queue",
  "libc",
  "memmap2",
  "once_cell",
@@ -12282,25 +12261,6 @@ checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
  "prost-derive",
-]
-
-[[package]]
-name = "prost-build"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
-dependencies = [
- "heck",
- "itertools 0.14.0",
- "log",
- "multimap",
- "petgraph 0.8.3",
- "prettyplease",
- "prost",
- "prost-types",
- "regex",
- "syn 2.0.119",
- "tempfile",
 ]
 
 [[package]]
@@ -12463,7 +12423,6 @@ dependencies = [
  "parking_lot",
  "prometheus",
  "proptest",
- "prost-build",
  "pulsar-multiplayer-core",
  "quinn",
  "rand 0.10.2",
@@ -12620,7 +12579,6 @@ dependencies = [
  "engine_backend",
  "engine_fs",
  "engine_state",
- "file-association-manager",
  "futures",
  "gpui-ce",
  "installed_plugins",

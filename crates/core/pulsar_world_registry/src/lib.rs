@@ -973,7 +973,6 @@ impl pulsar_reflection::Reflectable for NoGpuMirror {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     #[derive(Clone, Debug, PartialEq, Default, serde::Deserialize)]
     pub(crate) struct TestComponent {

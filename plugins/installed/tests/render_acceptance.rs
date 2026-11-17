@@ -924,7 +924,7 @@ fn history_level_replacement_and_viewports_need_no_resync() {
             ui_level_editor::scene_edit::level_io::save_to_file(&authored.scene.world(), &path)
                 .unwrap();
         }
-        let mut state = LevelEditorState::new();
+        let state = LevelEditorState::new();
         let mut renderer = harness.renderer(&state);
         harness.frames(&mut renderer, || {});
         ui_level_editor::scene_edit::level_io::load_from_file(&mut state.scene.world_mut(), &path)
@@ -1908,7 +1908,7 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     harness.frames(&mut renderer, || {});
 
     let view = harness.texture.create_view(&Default::default());
-    let mut encode = |renderer: &mut HelioRenderer| {
+    let encode = |renderer: &mut HelioRenderer| {
         let encoded = renderer
             .render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT)
             .is_some();
@@ -2471,7 +2471,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     harness.frames(&mut renderer, || {});
 
     let view = harness.texture.create_view(&Default::default());
-    let mut encode = |renderer: &mut HelioRenderer| {
+    let encode = |renderer: &mut HelioRenderer| {
         let encoded = renderer
             .render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT)
             .is_some();
@@ -2483,11 +2483,11 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
     };
     // Whether the renderer settles to idle within a few frames and then
     // stays idle.
-    let mut goes_idle = |renderer: &mut HelioRenderer| {
+    let goes_idle = |renderer: &mut HelioRenderer| {
         let settled = (0..16).any(|_| !encode(renderer));
         settled && (0..20).all(|_| !encode(renderer))
     };
-    let mut keeps_rendering = |renderer: &mut HelioRenderer| (0..20).all(|_| encode(renderer));
+    let keeps_rendering = |renderer: &mut HelioRenderer| (0..20).all(|_| encode(renderer));
     let add = |state: &mut LevelEditorState, name: &str, component: TypedComponent| {
         let added = execute_command(
             state,
@@ -4250,32 +4250,6 @@ fn portal_content_keeps_its_materials_when_the_scene_grows() {
     );
 }
 
-/// Mean colour of the pixels where `frame`'s scene depth differs from `reference`'s: the
-/// geometry that appeared, without the sky around it. Depth may be a different
-/// resolution than colour, so it is sampled at the matching position.
-fn mean_color_where_depth_differs(frame: &Frame, reference: &Frame) -> Option<([f32; 3], usize)> {
-    let width = frame.depth_width.max(1) as usize;
-    let height = (frame.depth.len() / width).max(1);
-    let mut sum = [0.0f64; 3];
-    let mut count = 0usize;
-    for y in 0..SIZE as usize {
-        for x in 0..SIZE as usize {
-            let dx = x * width / SIZE as usize;
-            let dy = y * height / SIZE as usize;
-            let d = dy * width + dx;
-            if !depth_differs(frame.depth[d], reference.depth[d]) {
-                continue;
-            }
-            let p = (y * SIZE as usize + x) * 4;
-            for i in 0..3 {
-                sum[i] += f64::from(frame.color[p + i]);
-            }
-            count += 1;
-        }
-    }
-    (count > 0).then(|| (sum.map(|v| (v / count as f64) as f32), count))
-}
-
 /// Mean `[r, g, b]` (0-255) and count of the strongly red pixels of `frame`: the
 /// red mesh, without the sky and the ground line around it.
 fn mean_of_red_pixels(frame: &Frame) -> Option<([f32; 3], usize)> {
@@ -4339,7 +4313,7 @@ fn diag_portal_lighting() {
         let mesh = drop_red_mesh(&mut direct);
         move_to(&mut direct, &mesh, [0.0, 0.0, -radius * 2.0]);
         environment(&mut direct);
-        let (empty_f, direct_f) = (render(&empty), render(&direct));
+        let (_empty_f, direct_f) = (render(&empty), render(&direct));
         direct_f.dump(&format!("diag_direct_sun{sun_on}"));
         // Through a portal.
         let portal = |link: i32| {
@@ -4351,7 +4325,7 @@ fn diag_portal_lighting() {
             environment(&mut state);
             state
         };
-        let (unlinked, linked) = (render(&portal(1)), render(&portal(5)));
+        let (_unlinked, linked) = (render(&portal(1)), render(&portal(5)));
         linked.dump(&format!("diag_portal_sun{sun_on}"));
         println!(
             "DIAG sun={sun_on}: direct {:?}  portal {:?}",

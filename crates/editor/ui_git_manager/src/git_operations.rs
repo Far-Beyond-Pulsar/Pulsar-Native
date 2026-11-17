@@ -17,7 +17,7 @@ mod worktree;
 pub use branch::*;
 pub use commit::*;
 pub use credentials::*;
-pub use remote_context::*;
+pub(crate) use remote_context::*;
 pub use remote_ops::*;
 pub use repository::*;
 pub use worktree::*;
@@ -25,8 +25,6 @@ pub use worktree::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::*;
-    use engine_fs::FsProvider as _;
     use git2::{Oid, Repository, build::CheckoutBuilder};
     use git2::{RepositoryInitOptions, Signature};
     use std::path::Path;

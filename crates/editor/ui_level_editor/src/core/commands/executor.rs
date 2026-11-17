@@ -9,7 +9,6 @@
 use super::{class, component, object, selection, CommandResult, SceneCommand};
 use crate::scene_edit::history::{capture_history_subset, UndoLabel};
 use crate::state::LevelEditorState;
-use engine_backend::scene::SceneWorldExt;
 
 /// What a command's undo entry is called in the Edit menu; `None` for
 /// commands that leave no undo entry (selection).

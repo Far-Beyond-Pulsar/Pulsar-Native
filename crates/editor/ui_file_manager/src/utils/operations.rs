@@ -5,10 +5,6 @@ use std::path::{Path, PathBuf};
 // Through the virtual filesystem, local or remote: its operations announce
 // each change, which keeps the project's file index (what the drawer and the
 // sidebar list) current without waiting for a watcher.
-fn fs_write(path: &Path, content: &[u8]) -> Result<()> {
-    engine_fs::virtual_fs::write_file(path, content)
-}
-
 fn fs_mkdir(path: &Path) -> Result<()> {
     engine_fs::virtual_fs::create_dir_all(path)
 }
@@ -44,13 +40,12 @@ pub(crate) fn copy_local(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub struct FileOperations {
-    project_path: Option<PathBuf>,
-}
+#[derive(Default)]
+pub struct FileOperations;
 
 impl FileOperations {
-    pub fn new(project_path: Option<PathBuf>) -> Self {
-        Self { project_path }
+    pub fn new() -> Self {
+        Self
     }
 
     pub fn rename_item(&self, old_path: &Path, new_name: &str) -> Result<PathBuf> {

@@ -346,13 +346,13 @@ impl PluginManager {
         if !self.engine_version.is_compatible(&plugin_version) {
             tracing::error!(
                 "Plugin version mismatch! Expected engine v{}.{}.{} (rustc hash {:#x}), got v{}.{}.{} (rustc hash {:#x})",
-                self.engine_version.engine_version.0,
-                self.engine_version.engine_version.1,
-                self.engine_version.engine_version.2,
+                self.engine_version.engine_version[0],
+                self.engine_version.engine_version[1],
+                self.engine_version.engine_version[2],
                 self.engine_version.rustc_version_hash,
-                plugin_version.engine_version.0,
-                plugin_version.engine_version.1,
-                plugin_version.engine_version.2,
+                plugin_version.engine_version[0],
+                plugin_version.engine_version[1],
+                plugin_version.engine_version[2],
                 plugin_version.rustc_version_hash,
             );
 

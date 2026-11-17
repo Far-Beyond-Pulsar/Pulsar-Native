@@ -126,7 +126,6 @@ struct DragState {
     view: View,
     length: f32,
     start: Vec2,
-    screen_axis: Vec2,
     plane_normal: Vec3,
     plane_start: Vec3,
     /// Where on the axis line the cursor grabbed it (axis handles only).
@@ -321,7 +320,7 @@ impl SceneInteraction {
         let relative_origin = self.view.relative(origin.to_array());
         let nearest = world
             .query::<&StableId>()
-            .filter_map(|(entity, id)| {
+            .filter_map(|(entity, _id)| {
                 if ignore_id.is_some_and(|ignored| {
                     let mut current = Some(entity);
                     while let Some(candidate) = current {
@@ -391,9 +390,9 @@ impl SceneInteraction {
             [] => return None,
             [(_, transform)] => *transform,
             many => {
-                let sum = many
-                    .iter()
-                    .fold(DVec3::ZERO, |sum, (_, t)| sum + DVec3::from_array(t.position));
+                let sum = many.iter().fold(DVec3::ZERO, |sum, (_, t)| {
+                    sum + DVec3::from_array(t.position)
+                });
                 Transform {
                     position: (sum / many.len() as f64).to_array(),
                     rotation: [0.0; 3],
@@ -502,12 +501,10 @@ impl SceneInteraction {
         let pivot = self.view.relative(initial.position);
         let length = self.view.length(pivot).unwrap();
         let basis = rotation_matrix(initial);
-        let center = self.view.project(pivot).unwrap();
         let axis = match handle {
             Handle::Axis(i) | Handle::Plane(i) => basis.col(i),
             Handle::Center => self.view.forward,
         };
-        let screen_axis = self.view.project(pivot + axis * length).unwrap_or(center) - center;
         let plane_normal = if matches!(handle, Handle::Plane(_)) {
             axis
         } else {
@@ -538,7 +535,10 @@ impl SceneInteraction {
             .map(|&(entity, world_pose)| DragTarget {
                 entity,
                 initial: world_pose,
-                initial_local: world.get::<Transform>(entity).copied().unwrap_or(world_pose),
+                initial_local: world
+                    .get::<Transform>(entity)
+                    .copied()
+                    .unwrap_or(world_pose),
             })
             .collect();
         self.drag = Some(DragState {
@@ -550,7 +550,6 @@ impl SceneInteraction {
             view: self.view,
             length,
             start,
-            screen_axis,
             plane_normal,
             plane_start,
             axis_start,
@@ -573,7 +572,10 @@ impl SceneInteraction {
                 .is_some_and(|v| v.visible && !v.locked)
         };
         if world.selected_entity() != drag.primary
-            || !self.drag_targets.iter().all(|target| movable(target.entity))
+            || !self
+                .drag_targets
+                .iter()
+                .all(|target| movable(target.entity))
         {
             self.cancel_drag();
             return;
@@ -1291,7 +1293,12 @@ mod tests {
         interaction.set_view(
             DVec3::ZERO,
             -Vec3::Z,
-            Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 10000.0),
+            glam::camera::rh::proj::directx::perspective(
+                std::f32::consts::FRAC_PI_4,
+                1.0,
+                0.1,
+                10000.0,
+            ),
             Vec2::splat(900.0),
             10_000.0,
         );
@@ -1723,7 +1730,11 @@ mod tests {
     fn group_gizmo_sits_at_the_average_and_moves_every_object() {
         let (mut world, mut interaction, left, right) = two_cubes(GizmoType::Translate);
         world.select_all(&[left, right]);
-        assert_eq!(world.selected_entity(), Some(right), "the last picked is primary");
+        assert_eq!(
+            world.selected_entity(),
+            Some(right),
+            "the last picked is primary"
+        );
         let (_, pivot) = interaction.selected(&world).unwrap();
         assert_eq!(pivot.position, [0.0, 0.0, -10.0]);
         assert_eq!(pivot.rotation, [0.0; 3], "world axes for a group");
@@ -1737,16 +1748,27 @@ mod tests {
         let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
         let travel = f64::from((3.3 * length / step).round() * step);
         let x = |e| world.get::<Transform>(e).unwrap().position[0];
-        assert!((x(left) - (-2.0 + travel)).abs() < 1e-3, "left at {}", x(left));
-        assert!((x(right) - (2.0 + travel)).abs() < 1e-3, "right at {}", x(right));
+        assert!(
+            (x(left) - (-2.0 + travel)).abs() < 1e-3,
+            "left at {}",
+            x(left)
+        );
+        assert!(
+            (x(right) - (2.0 + travel)).abs() < 1e-3,
+            "right at {}",
+            x(right)
+        );
 
         // One undo step holds both starting transforms.
         let moved = interaction.finish_drag().unwrap();
         assert_eq!(moved.len(), 2);
-        assert!(moved.contains(&(left, Transform {
-            position: [-2.0, 0.0, -10.0],
-            ..Default::default()
-        })));
+        assert!(moved.contains(&(
+            left,
+            Transform {
+                position: [-2.0, 0.0, -10.0],
+                ..Default::default()
+            }
+        )));
     }
 
     #[test]
@@ -1755,7 +1777,11 @@ mod tests {
         world.reparent(right, Some(left)).unwrap();
         world.select_all(&[left, right]);
         let targets = interaction.gizmo_targets(&world).unwrap();
-        assert_eq!(targets.objects.len(), 1, "the child rides along with its parent");
+        assert_eq!(
+            targets.objects.len(),
+            1,
+            "the child rides along with its parent"
+        );
         assert_eq!(targets.objects[0].0, left);
     }
 }

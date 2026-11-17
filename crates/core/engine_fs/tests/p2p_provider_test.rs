@@ -60,7 +60,7 @@ async fn test_read_file_sends_request() {
         sent: sent.clone(),
         responses: responses.clone(),
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     let result = provider.read_file(Path::new("hello.txt"));
     assert!(result.is_ok());
@@ -99,7 +99,7 @@ async fn test_read_file_assembles_chunks() {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     let result = provider.read_file(Path::new("chunked.txt"));
     assert!(result.is_ok());
@@ -145,7 +145,7 @@ async fn test_list_dir_filters_manifest() {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     let result = provider.list_dir(Path::new("src"));
     assert!(result.is_ok());
@@ -188,7 +188,7 @@ async fn test_list_dir_root() {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     let result = provider.list_dir(Path::new(""));
     assert!(result.is_ok());
@@ -208,7 +208,7 @@ fn make_exist_provider(entries: Vec<ManifestEntry>) -> P2pFsProvider {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
     };
-    P2pFsProvider::new(Arc::new(channel), "test-proj".into())
+    P2pFsProvider::new(Arc::new(channel))
 }
 
 #[tokio::test]
@@ -240,7 +240,7 @@ async fn test_write_file_sends_chunk() {
         sent: sent.clone(),
         responses: Arc::new(Mutex::new(VecDeque::new())),
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     provider
         .write_file(Path::new("out.txt"), b"content")
@@ -285,7 +285,7 @@ async fn test_manifest_returns_all_entries() {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     let manifest = provider.manifest(Path::new("")).unwrap();
     assert_eq!(manifest.len(), 2);
@@ -310,7 +310,7 @@ async fn test_metadata_returns_entry_info() {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
 
     let meta = provider.metadata(Path::new("data.bin")).unwrap();
     assert!(!meta.is_dir);
@@ -324,7 +324,7 @@ async fn test_is_remote_returns_true() {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses: Arc::new(Mutex::new(VecDeque::new())),
     };
-    let provider = P2pFsProvider::new(Arc::new(channel), "test-proj".into());
+    let provider = P2pFsProvider::new(Arc::new(channel));
     assert!(provider.is_remote());
     assert_eq!(provider.label(), "P2P");
 }

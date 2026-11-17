@@ -221,11 +221,14 @@ pub fn run_with(
     }
     let content = install_content(&options)?;
     if options.profile || profiling::remote::requested() {
-        let published = profiling::remote::publish_process(profiling::remote::TargetDescription {
-            kind: "game".into(),
-            name: game_name(),
-            project: content.root().display().to_string(),
-        });
+        let published = profiling::remote::publish_process(
+            profiling::remote::TargetDescription {
+                kind: "game".into(),
+                name: game_name(),
+                project: content.root().display().to_string(),
+            },
+            editor_task_queue::service_spawner("profiling"),
+        );
         if published {
             tracing::info!("Profiling enabled: the editor's profiler can record this process");
         }

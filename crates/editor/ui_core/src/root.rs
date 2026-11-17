@@ -7,7 +7,6 @@ use gpui::{
 };
 use rust_i18n::t;
 use std::path::PathBuf;
-use std::time::Duration;
 use ui::{
     h_flex, notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon,
     IconName, Root, StyledExt as _,
@@ -75,10 +74,10 @@ impl EditorWindowShell {
             )
         });
 
-        let mut subscriptions = vec![cx.subscribe_in(
+        let subscriptions = vec![cx.subscribe_in(
             &title_bar,
             window,
-            |this, _, event: &AppTitleBarEvent, window, cx| match event {
+            |this, _, event: &AppTitleBarEvent, _window, cx| match event {
                 AppTitleBarEvent::MultiplayerSessionsRequested => {
                     this.show_multiplayer = !this.show_multiplayer;
                     cx.notify();

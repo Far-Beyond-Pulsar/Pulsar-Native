@@ -1,6 +1,5 @@
 use crate::custom_providers;
 use agent_chat_core::{ChatMessage, ChatRole, ProviderConfig, ProviderCrate};
-use agent_chat_tools::ToolRegistry;
 use gpui::*;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use ui::{
@@ -15,7 +14,6 @@ use ui::{
 
 use super::panel::AgentChatPanel;
 use super::types::*;
-use super::{chat_storage, provider_selection};
 
 impl AgentChatPanel {
     pub fn new(
@@ -117,8 +115,6 @@ impl AgentChatPanel {
 
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
-        let auth_token_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Paste provider token..."));
         let custom_provider_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Enter provider field value..."));
 
@@ -238,7 +234,6 @@ impl AgentChatPanel {
             messages_scroll_handle: VirtualListScrollHandle::new(),
             messages_scroll_state: ScrollbarState::default(),
             prompt_input,
-            auth_token_input,
             custom_provider_input,
             chat_history_list,
             provider_list,
@@ -256,9 +251,6 @@ impl AgentChatPanel {
             config_error: None,
             tool_registry: agent_chat_tools::build_default_registry(),
             plugin_bridge,
-            provider_tokens: HashMap::new(),
-            pending_auth_provider: None,
-            pending_device_code: None,
             current_chat_id: String::new(),
             current_chat_created_at: 0,
             loaded_chat_project_root: None,

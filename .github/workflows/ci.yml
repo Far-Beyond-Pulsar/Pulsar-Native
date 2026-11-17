@@ -46,6 +46,11 @@ permissions:
   contents: read
 
 env:
+  # Set (empty) so setup-rust-toolchain does not inject its default
+  # `RUSTFLAGS=-D warnings`, which would deny warnings in every crate compiled,
+  # the vendored third-party path dependencies included. First-party warnings
+  # fail in the clippy lane instead (`-D warnings` on the workspace members,
+  # minus crates/third-party).
   RUSTFLAGS: ""
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
@@ -544,22 +549,21 @@ jobs:
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: cargo test -p pulsar_game --test generated_project_compiles -- --ignored
 
-  # The plugins pin Pulsar-Native crates by git rev (#847): every pin must be a
-  # commit this repository already contains, so standalone plugin builds can
-  # fetch it. Fix with `just bump-plugin-pins`.
-  plugin-pins:
-    name: plugin pins are ancestors of HEAD
+  # No manifest may take Pulsar-Native as a git source (#1662): cargo would
+  # fetch the whole engine with its submodules, some private, so a generated
+  # game or a plugin would not build without access to them.
+  no-pulsar-native-git-deps:
+    name: no git dependency on Pulsar-Native
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
-          fetch-depth: 0
           persist-credentials: false
 
-      - name: Check plugin pins
-        run: scripts/plugin-pins.sh check
+      - name: Check manifests
+        run: scripts/no-pulsar-native-git-deps.sh
 
   # Every submodule must pin a commit on its upstream default branch, so main
   # never depends on a dependency's feature branch. Merge the dependency PR

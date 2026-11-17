@@ -330,6 +330,21 @@ pub(crate) fn set_current_task(id: u64) -> u64 {
     })
 }
 
+/// A thread spawner for a library that starts its own long-lived thread
+/// through a caller-supplied `(name, work)` callback, as Pulsar-Profiling's
+/// publisher does (`profiling::remote::SpawnThread`): the thread is a
+/// registered [`ThreadRole::Service`] owned by `owner`.
+pub fn service_spawner(
+    owner: &'static str,
+) -> impl FnOnce(&str, Box<dyn FnOnce() + Send>) -> std::io::Result<std::thread::JoinHandle<()>> {
+    move |name, work| {
+        spawn_thread(
+            ThreadSpec::new(name, ThreadRole::Service).owner(owner),
+            work,
+        )
+    }
+}
+
 /// Spawn a registered thread. The replacement for `std::thread::spawn` in the
 /// engine and editor: the thread is named, listed in the Tasks window with its
 /// role and owner, and unlisted when it ends.

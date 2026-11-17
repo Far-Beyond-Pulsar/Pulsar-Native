@@ -28,7 +28,7 @@
 //! [`PluginAdapter`] presents a registrar plugin to the host through the
 //! existing traits, so the host loads it like any other plugin.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use crate::components::{ComponentDefinition, ComponentFactory, EditorPluginComponents};
 use crate::editor_element::{EditorFactoryRegistry, EditorPluginEditor};
@@ -257,7 +257,6 @@ macro_rules! export_plugin_v2 {
 mod tests {
     use super::*;
     use crate::manifest::PluginDependency;
-    use crate::plugin::EditorPlugin as _;
 
     #[derive(Default)]
     struct Sample;

@@ -51,7 +51,7 @@ impl Panel for AssetPropertiesPanel {
 }
 
 impl Render for AssetPropertiesPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(editor_entity) = self.editor.upgrade() else {
             return div()
                 .size_full()
@@ -79,7 +79,6 @@ impl Render for AssetPropertiesPanel {
             .unwrap_or_default();
         let has_undo = ed.can_undo();
         let has_redo = ed.can_redo();
-        drop(ed);
 
         if is_3d {
             return render_3d_table(cx, &file_name, &ew);
@@ -288,14 +287,6 @@ fn section<C: IntoElement>(cx: &App, title: &str, content: C) -> impl IntoElemen
         .gap_2()
         .child(div().text_xs().text_color(muted).child(title.to_string()))
         .child(content)
-}
-
-fn info_field(cx: &App, label: &str, value: &str) -> impl IntoElement {
-    let muted = cx.theme().muted_foreground;
-    v_flex()
-        .gap_1()
-        .child(div().text_xs().text_color(muted).child(label.to_string()))
-        .child(div().text_sm().child(value.to_string()))
 }
 
 fn render_3d_table(cx: &mut App, file_name: &str, ew: &Entity<AssetViewerPanel>) -> AnyElement {

@@ -134,14 +134,11 @@ inspect: build
 check-typescript-declarations:
     cargo test -p pulsar_script_ts --test tsc -- --ignored
 
-# ── Plugin pins (#847) ────────────────────────────────────────────────────────
-# Rewrite every Pulsar-Native `rev = ...` in plugins/vendor to REV (default
-# HEAD) and refresh the plugins' lockfiles; `check` is what CI runs.
-bump-plugin-pins rev="HEAD":
-    bash scripts/plugin-pins.sh bump {{rev}}
-
-check-plugin-pins:
-    bash scripts/plugin-pins.sh check
+# ── No git dependency on Pulsar-Native (#1662) ───────────────────────────────
+# Fail if any manifest (Helio, a plugin, a vendored crate) takes Pulsar-Native
+# as a git source; what CI runs.
+check-pulsar-native-git-deps:
+    bash scripts/no-pulsar-native-git-deps.sh
 
 # ── Submodule pins ────────────────────────────────────────────────────────────
 # Fail unless every submodule pins a commit on its upstream default branch (or

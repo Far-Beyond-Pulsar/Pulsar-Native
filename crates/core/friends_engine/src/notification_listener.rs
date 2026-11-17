@@ -1,7 +1,6 @@
 use crate::gist_storage;
 use parking_lot::Mutex;
 use std::collections::VecDeque;
-use std::sync::Arc;
 use std::time::Duration;
 
 static LISTENER: once_cell::sync::Lazy<Mutex<Option<ListenerHandle>>> =

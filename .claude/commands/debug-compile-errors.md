@@ -17,13 +17,13 @@ root `[patch]` tables don't redirect to the in-tree copy.
 
 **Fix:**
 - Check the `[patch."https://github.com/Far-Beyond-Pulsar/<repo>"]` tables in the root
-  `Cargo.toml`. They point git references to Pulsar-Native, Graphy, Pulsar-Reflection, WGPUI and
+  `Cargo.toml`. They point git references to Pulsar-Profiling, Graphy, Pulsar-Reflection, WGPUI and
   others at the submodules; without them Cargo builds a second copy.
 - Find the git pins in the plugins:
   ```bash
   grep -rn 'rev =' --include=Cargo.toml plugins/vendor
   ```
-  `just check-plugin-pins` checks the Pulsar-Native revs; `just bump-plugin-pins` rewrites them.
+  No manifest may name Pulsar-Native as a git source (`just check-pulsar-native-git-deps`).
 - `cargo tree -i <crate> -e normal` shows which package pulls in each copy.
 - For `pulsar_scenedb` ("expected `World`, found `World`"), every `rev =` must be the same sha in the
   root `Cargo.toml` (workspace entries and `[patch]`) and `crates/renderer/helio/Cargo.toml`

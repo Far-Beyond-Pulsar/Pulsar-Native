@@ -16,7 +16,6 @@ pub(super) fn capture_viewport_png_tiled(
     mut on_tile_complete: impl FnMut(u64, u64),
 ) -> Result<(), String> {
     let device = surface.device();
-    let queue = surface.queue();
     if width == 0 || height == 0 {
         return Err("Screenshot dimensions must be non-zero".into());
     }

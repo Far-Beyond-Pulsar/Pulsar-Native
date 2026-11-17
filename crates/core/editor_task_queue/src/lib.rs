@@ -35,8 +35,9 @@ pub use log::{LogRead, TaskLog, TaskLogLayer, MAX_LOG_LINES};
 pub use micro::{micro, micro_snapshots, MicroSnapshot};
 pub use services::{spawn_service, PersistentTask, ServiceDescription, ServiceHandle};
 pub use threads::{
-    current_thread, register_current_thread, spawn_named, spawn_thread, thread_snapshots,
-    ThreadGuard, ThreadHandle, ThreadRole, ThreadSnapshot, ThreadSpec, ThreadState,
+    current_thread, register_current_thread, service_spawner, spawn_named, spawn_thread,
+    thread_snapshots, ThreadGuard, ThreadHandle, ThreadRole, ThreadSnapshot, ThreadSpec,
+    ThreadState,
 };
 pub use track::{scope, tracked, TaskOutcome, Tracked};
 

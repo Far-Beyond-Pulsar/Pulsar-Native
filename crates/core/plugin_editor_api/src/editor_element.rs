@@ -392,7 +392,7 @@ pub trait EditorHandle: Send + Sync + 'static {
     ///
     /// Use this to flush files, release GPU resources, or clean up
     /// background tasks.
-    fn teardown(&mut self, window: &mut Window, cx: &mut App) {}
+    fn teardown(&mut self, _window: &mut Window, _cx: &mut App) {}
 }
 
 // ============================================================================

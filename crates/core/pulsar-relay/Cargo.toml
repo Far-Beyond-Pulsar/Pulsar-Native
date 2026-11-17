@@ -85,9 +85,6 @@ base64 = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-[build-dependencies]
-prost-build = "0.14"
-
 [dev-dependencies]
 criterion = { version = "=0.8.2", features = ["async_tokio"] }
 proptest = "=1.11.0"

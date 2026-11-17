@@ -6,6 +6,7 @@ use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
 use std::path::PathBuf;
+use ui::StyledExt;
 use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
@@ -13,10 +14,7 @@ use ui::{
     popup_menu::PopupMenuExt as _,
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
 };
-use ui::{menu::context_menu::ContextMenuExt, StyledExt};
 
-use crate::components::commit_picker::CommitPicker;
-use crate::components::sidebar;
 use crate::utils::{actions::*, types::*};
 
 use super::FileManagerDrawer;

@@ -1,5 +1,4 @@
 use gpui::*;
-use rust_i18n::t;
 use std::path::PathBuf;
 
 use plugin_editor_api::undo::lock;
@@ -321,7 +320,7 @@ impl AssetViewerPanel {
         img.save(path).map_err(|e| format!("Save failed: {e}"))
     }
 
-    pub fn zoom_to_fit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn zoom_to_fit(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some((img_w, img_h, _)) = self.image_data else {
             return;
         };
@@ -534,23 +533,6 @@ impl AssetViewerPanel {
             image::imageops::resize(&img, new_w, new_h, image::imageops::FilterType::Lanczos3);
         self.image_data = Some((new_w, new_h, resized.into_raw()));
         self.edit_apply();
-    }
-
-    fn zoom_to_fit_after_edit(&mut self) {
-        if let (Some((w, h, _)), Some(surface)) = (&self.image_data, &self.surface_handle) {
-            let (vw, vh) = surface.size();
-            if vw > 0 && vh > 0 {
-                let fit = (vw as f32 / *w as f32).min(vh as f32 / *h as f32);
-                let prev_fit =
-                    (vw as f32 / (*w as f32 / self.zoom)).min(vh as f32 / (*h as f32 / self.zoom));
-                let zoom_ratio = if prev_fit > 0.0 { fit / prev_fit } else { 1.0 };
-                self.zoom = (self.zoom * zoom_ratio).clamp(0.01, 100.0);
-                let dw = *w as f32 * fit * self.zoom;
-                let dh = *h as f32 * fit * self.zoom;
-                self.pan_x = ((vw as f32 - dw) * 0.5).max(0.0);
-                self.pan_y = ((vh as f32 - dh) * 0.5).max(0.0);
-            }
-        }
     }
 
     pub fn new(file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {

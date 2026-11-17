@@ -5,16 +5,14 @@
 use gpui::prelude::*;
 use gpui::*;
 use std::path::PathBuf;
-use ui::{
-    button::ButtonVariants as _,
-    popup_menu::PopupMenuExt as _,
-    resizable::{h_resizable, resizable_panel},
-    v_flex, ActiveTheme as _, Selectable as _, Sizable as _,
-};
 use ui::{menu::context_menu::ContextMenuExt, StyledExt};
+use ui::{
+    resizable::{h_resizable, resizable_panel},
+    v_flex, ActiveTheme as _,
+};
 
 use crate::components::sidebar;
-use crate::utils::{actions::*, types::*};
+use crate::utils::types::*;
 
 use super::grid::render_grid_view;
 use super::list::render_list_view;

@@ -92,8 +92,8 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     let detail = Arc::new(Mutex::new(String::new()));
     let step_title = Arc::new(Mutex::new(t!("Build.Progress.Starting").to_string()));
     let cargo_pid = Arc::new(AtomicU32::new(0));
-    let progress = Progress::new(Arc::clone(&pct), Arc::clone(&detail))
-        .with_cargo_pid(Arc::clone(&cargo_pid));
+    let progress =
+        Progress::new(Arc::clone(&pct), Arc::clone(&detail)).with_cargo_pid(Arc::clone(&cargo_pid));
     let session = Arc::new(session::BuildSession::new(
         name.clone(),
         Arc::clone(&pct),

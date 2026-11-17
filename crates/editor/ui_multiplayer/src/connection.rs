@@ -19,7 +19,7 @@ impl MultiplayerWindow {
                 let _ = client_guard.disconnect(session_id, peer_id).await;
 
                 cx.update(|cx| {
-                    this.update(cx, |this, cx| {
+                    let _ = this.update(cx, |this, cx| {
                         this.connection_status = ConnectionStatus::Disconnected;
                         this.active_session = None;
                         this.client = None;
@@ -58,7 +58,7 @@ impl MultiplayerWindow {
             }
 
             cx.update(|cx| {
-                this.update(cx, |this, cx| {
+                let _ = this.update(cx, |this, cx| {
                     this.active_session = None;
                     this.client = None;
                     this.current_peer_id = None;

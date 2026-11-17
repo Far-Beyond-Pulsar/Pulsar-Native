@@ -19,10 +19,6 @@ pub struct CrateInfo {
     pub entry_point: PathBuf,
     /// Description from Cargo.toml
     pub description: Option<String>,
-    /// Authors from Cargo.toml
-    pub authors: Vec<String>,
-    /// Whether this is a binary crate
-    pub is_bin: bool,
 }
 
 #[derive(Deserialize)]
@@ -36,7 +32,6 @@ struct Package {
     name: String,
     version: String,
     description: Option<String>,
-    authors: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -141,10 +136,10 @@ fn parse_crate_info(crate_dir: &Path) -> Result<CrateInfo, Box<dyn Error>> {
     let lib_rs = src_dir.join("lib.rs");
     let main_rs = src_dir.join("main.rs");
 
-    let (entry_point, is_bin) = if lib_rs.exists() {
-        (lib_rs, false)
+    let entry_point = if lib_rs.exists() {
+        lib_rs
     } else if main_rs.exists() {
-        (main_rs, true)
+        main_rs
     } else {
         return Err("No lib.rs or main.rs found".into());
     };
@@ -155,7 +150,5 @@ fn parse_crate_info(crate_dir: &Path) -> Result<CrateInfo, Box<dyn Error>> {
         root_dir: crate_dir.to_path_buf(),
         entry_point,
         description: package.description,
-        authors: package.authors.unwrap_or_default(),
-        is_bin,
     })
 }

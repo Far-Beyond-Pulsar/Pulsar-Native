@@ -38,19 +38,9 @@ git add plugins/vendor/blueprint_editor
 
 ## After a Pulsar-Native change a plugin needs
 
-The plugins pin Pulsar-Native crates by `rev =` (in the Blueprint plugin: `gpui-ce`, `ui`,
-`plugin_editor_api`, `plugin_manager`, `ui_common`, `engine_backend`, `engine_fs`,
-`ui_types_common`, `pulsar_reflection`, `pulsar_std`, `pulsar_script_vm`, `pulsar_script_codegen`;
-its `compiler/` crate pins `pulsar_script_vm` separately). Inside Pulsar-Native the root
-`[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]` points them at local paths.
-
-```bash
-just bump-plugin-pins <rev>   # rewrite every Pulsar-Native rev under plugins/vendor, refresh lockfiles
-just check-plugin-pins        # what CI runs: every pinned rev must be an ancestor of HEAD
-```
-
-Commit the rewritten manifests in each plugin repo, merge there, then re-pin the submodules as
-above.
+Nothing to bump: plugins use Pulsar crates through `workspace = true` and build
+inside this workspace. No manifest may take Pulsar-Native as a git source
+(`just check-pulsar-native-git-deps`, #1662).
 
 ## Bumping SceneDB
 

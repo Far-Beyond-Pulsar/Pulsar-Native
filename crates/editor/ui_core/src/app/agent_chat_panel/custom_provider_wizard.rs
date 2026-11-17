@@ -224,7 +224,6 @@ impl AgentChatPanel {
                 id: Self::static_str(id.clone()),
                 label: Self::static_str(provider.display_name().to_string()),
                 kind: kind_of(id),
-                endpoint: "",
                 models: old_models
                     .get(id.as_str())
                     .cloned()
@@ -240,7 +239,6 @@ impl AgentChatPanel {
                     id: e.id,
                     label: Self::static_str(format!("New {} connection…", e.display_name)),
                     kind: kind_of(e.id),
-                    endpoint: e.default_endpoint.unwrap_or(""),
                     models: Arc::new(vec![]),
                     deletable: false,
                 }),

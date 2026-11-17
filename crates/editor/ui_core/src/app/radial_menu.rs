@@ -20,7 +20,7 @@
 use std::time::Duration;
 
 use gpui::{
-    div, prelude::FluentBuilder as _, Action, AnyElement, App, Bounds, Context, FocusHandle,
+    div, prelude::FluentBuilder as _, AnyElement, App, Bounds, Context, FocusHandle,
     InteractiveElement as _, IntoElement, KeyUpEvent, KeystrokeEvent, ParentElement, Pixels, Point,
     Styled, Subscription, Window,
 };

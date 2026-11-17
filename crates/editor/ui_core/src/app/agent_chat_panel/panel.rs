@@ -1,8 +1,6 @@
-use agent_chat_core::{
-    ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
-};
+use agent_chat_core::{ChatMessage, ProviderCrate, ProviderEntry, ProviderRegistry};
 use agent_chat_tools::ToolRegistry;
-use gpui::{prelude::FluentBuilder as _, *};
+use gpui::*;
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
@@ -12,14 +10,12 @@ use std::{
 };
 use ui::{
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    dropdown::{SearchableList, SearchableListItemAction, SearchableListItemState},
+    dropdown::SearchableList,
     input::InputState,
     scroll::ScrollbarState,
     VirtualListScrollHandle,
 };
 
-use super::chat_storage;
-use super::provider_selection;
 use super::types::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,7 +32,6 @@ pub struct AgentChatPanel {
     pub(crate) messages_scroll_handle: VirtualListScrollHandle,
     pub(crate) messages_scroll_state: ScrollbarState,
     pub(crate) prompt_input: Entity<InputState>,
-    pub(crate) auth_token_input: Entity<InputState>,
     pub(crate) custom_provider_input: Entity<InputState>,
     pub(crate) chat_history_list: Entity<SearchableList<ChatHistoryEntry>>,
     pub(crate) provider_list: Entity<SearchableList<ProviderDefinition>>,
@@ -55,9 +50,6 @@ pub struct AgentChatPanel {
     pub(crate) config_error: Option<String>,
     pub(crate) tool_registry: ToolRegistry,
     pub(crate) plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
-    pub(crate) provider_tokens: HashMap<&'static str, String>,
-    pub(crate) pending_auth_provider: Option<&'static str>,
-    pub(crate) pending_device_code: Option<String>,
     pub(crate) current_chat_id: String,
     pub(crate) current_chat_created_at: u64,
     pub(crate) loaded_chat_project_root: Option<PathBuf>,
@@ -81,12 +73,6 @@ pub struct AgentChatPanel {
 }
 
 impl AgentChatPanel {
-    /// Get stored auth token for a provider (from the old token-based auth system).
-    /// In the new config-based system, tokens are handled via provider config.
-    pub(super) fn auth_token_for_provider(&self, provider_id: &str) -> Option<String> {
-        self.provider_tokens.get(provider_id).cloned()
-    }
-
     pub(crate) fn refresh_open_editor_snapshot(&self, cx: &App) {
         let mut snapshot = Vec::new();
         let mut global_index = 0usize;

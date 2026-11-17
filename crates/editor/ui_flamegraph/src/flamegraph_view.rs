@@ -329,37 +329,7 @@ impl FlamegraphView {
             self.view_state.zoom
         };
         let pixels_per_ns = zoom.max(1e-10) as f64;
-        // Can't call LODTree::select_level without the tree — we compute inline.
-        // Target: bucket >= 4.0 / pixels_per_ns
-        let min_bucket = (4.0 / pixels_per_ns) as u64;
-        let sizes: &[u64] = &[
-            50_000,
-            100_000,
-            500_000,
-            1_000_000,
-            5_000_000,
-            10_000_000,
-            50_000_000,
-            100_000_000,
-            200_000_000,
-            500_000_000,
-            1_000_000_000,
-        ];
-        if min_bucket >= sizes[sizes.len() - 1] {
-            return sizes.len() - 1;
-        }
-        let mut best = sizes.len() - 1;
-        let mut best_diff = u64::MAX;
-        for (i, &s) in sizes.iter().enumerate() {
-            if s >= min_bucket {
-                let diff = s - min_bucket;
-                if diff < best_diff {
-                    best_diff = diff;
-                    best = i;
-                }
-            }
-        }
-        best
+        crate::lod_tree::LODTree::level_for(pixels_per_ns)
     }
 
     /// Rebuild cached spans from the LOD tree at the given level, limited to

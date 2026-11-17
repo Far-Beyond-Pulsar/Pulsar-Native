@@ -616,7 +616,7 @@ impl NavSidebar {
                     .child(self.render_tab_row(tab, drag_of(&list.drags, tab), cx))
                     .into_any_element()
             }
-            EditorRow::Hint(_) => cell()
+            EditorRow::Hint => cell()
                 .flex()
                 .items_center()
                 .pl(px(22.))
@@ -953,7 +953,7 @@ pub(super) enum EditorRow {
     /// Tab `1` of section `0`.
     Tab(usize, usize),
     /// The hint in an empty group of the user's.
-    Hint(usize),
+    Hint,
     /// No editors are open.
     Empty,
 }
@@ -976,7 +976,7 @@ impl EditorList {
                 continue;
             }
             if section.tabs.is_empty() && matches!(section.id, SectionId::Custom(_)) {
-                rows.push(EditorRow::Hint(ix));
+                rows.push(EditorRow::Hint);
             }
             rows.extend((0..section.tabs.len()).map(|tab| EditorRow::Tab(ix, tab)));
         }

@@ -212,8 +212,7 @@ own examples and tests, games) runs them on named std threads.
 ### The raw-thread ratchet
 
 `crates/core/editor_task_queue/tests/raw_threads.rs` fails when a file in
-`crates/core`, `crates/editor`, `crates/subsystems`, `crates/profiling` or
-`plugins/vendor` calls `thread::spawn`, `thread::Builder::new`,
+`crates/core`, `crates/editor`, `crates/subsystems` or `plugins/vendor` calls `thread::spawn`, `thread::Builder::new`,
 `Runtime::new`, `Builder::new_multi_thread`/`new_current_thread` or
 `ThreadPoolBuilder::new` (outside `#[cfg(test)]` items; code after a test
 module is checked, and a call is matched as written, so `ScriptRuntime::new`

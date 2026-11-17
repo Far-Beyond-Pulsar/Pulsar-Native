@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
 use gpui::{prelude::*, *};
-use ui::input::InputEvent;
 
 use crate::FabSearchWindow;
 use crate::search_index::{
@@ -137,7 +134,7 @@ pub(crate) fn on_start_download(
                     let elapsed = last_sample.elapsed();
                     if elapsed >= std::time::Duration::from_millis(500) {
                         let speed = bytes_since_sample as f64 / elapsed.as_secs_f64();
-                        smol::block_on(tx.send(DownloadMsg::Progress {
+                        let _ = smol::block_on(tx.send(DownloadMsg::Progress {
                             bytes_received: bytes_total,
                             total,
                             speed_bps: speed,
@@ -148,7 +145,7 @@ pub(crate) fn on_start_download(
                 }
 
                 file.flush().map_err(|e| format!("flush: {e}"))?;
-                smol::block_on(tx.send(DownloadMsg::Done {
+                let _ = smol::block_on(tx.send(DownloadMsg::Done {
                     path: dest,
                     total: bytes_total,
                 }));
@@ -156,7 +153,7 @@ pub(crate) fn on_start_download(
             };
 
             if let Err(e) = run() {
-                smol::block_on(tx.send(DownloadMsg::Error(e)));
+                let _ = smol::block_on(tx.send(DownloadMsg::Error(e)));
             }
         },
     );
@@ -170,7 +167,7 @@ pub(crate) fn on_start_download(
                     speed_bps,
                 } => {
                     cx.update(|cx| {
-                        this.update(cx, |view, cx| {
+                        let _ = this.update(cx, |view, cx| {
                             if let Some(DownloadState::InProgress {
                                 bytes_received: br,
                                 total_bytes: tb,
@@ -193,7 +190,7 @@ pub(crate) fn on_start_download(
                 }
                 DownloadMsg::Done { path, total } => {
                     cx.update(|cx| {
-                        this.update(cx, |view, cx| {
+                        let _ = this.update(cx, |view, cx| {
                             let filename = view
                                 .download_state
                                 .get(&uid)
@@ -214,7 +211,7 @@ pub(crate) fn on_start_download(
                 }
                 DownloadMsg::Error(msg) => {
                     cx.update(|cx| {
-                        this.update(cx, |view, cx| {
+                        let _ = this.update(cx, |view, cx| {
                             let filename = view
                                 .download_state
                                 .get(&uid)
@@ -273,14 +270,14 @@ pub(crate) fn on_toggle_like(
             } else {
                 sketchfab_like_model(&uid_thread, &token)
             };
-            smol::block_on(tx.send(result));
+            let _ = smol::block_on(tx.send(result));
         },
     );
 
     cx.spawn(async move |this, cx| {
         if let Ok(result) = rx.recv().await {
             cx.update(|cx| {
-                this.update(cx, |view, cx| {
+                let _ = this.update(cx, |view, cx| {
                     view.like_inflight.remove(&uid);
                     if let Err(_) = result {
                         if currently_liked {
@@ -323,14 +320,14 @@ pub(crate) fn on_open_item_detail(
         )
         .owner("ui_fab_search"),
         move || {
-            smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid)));
+            let _ = smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid)));
         },
     );
 
     cx.spawn(async move |this, cx| {
         if let Ok((_, result)) = rx.recv().await {
             cx.update(|cx| {
-                this.update(cx, |view, cx| {
+                let _ = this.update(cx, |view, cx| {
                     view.detail_loading = false;
                     match result {
                         Ok(detail) => {
@@ -384,14 +381,14 @@ pub(crate) fn on_begin_search(window: &mut FabSearchWindow, cx: &mut Context<Fab
         )
         .owner("ui_fab_search"),
         move || {
-            smol::block_on(tx.send(fetch_sketchfab_models(&url)));
+            let _ = smol::block_on(tx.send(fetch_sketchfab_models(&url)));
         },
     );
 
     cx.spawn(async move |this, cx| {
         if let Ok((_, result)) = rx.recv().await {
             cx.update(|cx| {
-                this.update(cx, |view, cx| {
+                let _ = this.update(cx, |view, cx| {
                     view.is_loading = false;
                     match result {
                         Ok(page) => {
@@ -434,14 +431,14 @@ pub(crate) fn on_load_more(window: &mut FabSearchWindow, cx: &mut Context<FabSea
         )
         .owner("ui_fab_search"),
         move || {
-            smol::block_on(tx.send(fetch_sketchfab_models(&url)));
+            let _ = smol::block_on(tx.send(fetch_sketchfab_models(&url)));
         },
     );
 
     cx.spawn(async move |this, cx| {
         if let Ok((_, result)) = rx.recv().await {
             cx.update(|cx| {
-                this.update(cx, |view, cx| {
+                let _ = this.update(cx, |view, cx| {
                     view.is_loading_more = false;
                     match result {
                         Ok(page) => {
