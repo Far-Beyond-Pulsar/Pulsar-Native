@@ -145,7 +145,7 @@ fn configure_pipeline_cache_path() {
             std::env::current_exe().ok().and_then(|executable| {
                 executable
                     .ancestors()
-                    .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "target"))
+                    .find(|ancestor| ancestor.file_name().is_some_and(|name| "target" == name))
                     .map(std::path::Path::to_path_buf)
             })
         });
@@ -392,7 +392,7 @@ fn main() {
     // Reuse the system snapshot already used by Mission Control so startup
     // compatibility checks and the diagnostics panel report the same device.
     let system_info = ui_log_viewer::SystemInfo::gather();
-    let backend_alternatives = if renderer_backends == wgpu::Backends::VULKAN {
+    let backend_alternatives = if wgpu::Backends::VULKAN == renderer_backends {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             flags: wgpu::InstanceFlags::default(),
@@ -420,7 +420,7 @@ fn main() {
         Vec::new()
     };
     let hardware_profile = ui_loading_screen::HardwareProfile {
-        backend: if renderer_backends == wgpu::Backends::VULKAN {
+        backend: if wgpu::Backends::VULKAN == renderer_backends {
             "Vulkan".to_owned()
         } else {
             format!("{renderer_backends:?}")
