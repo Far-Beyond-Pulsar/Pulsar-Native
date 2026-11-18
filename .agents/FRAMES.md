@@ -443,6 +443,18 @@ Known, not fixed. Ordered roughly by how much they matter.
 
 ### Portals are coordinate spaces; reflections are capture views (p25b, Helio#390)
 
+- **Camera traversal**: the floating perspective camera toolbar's **Follow
+  portals** toggle enables a sweep of each movement segment through the linked
+  apertures in the camera's space. The Portals plugin implements the generic
+  `SpaceProducer::traverse_camera` hook with the same f64 maps used to draw
+  portal contents. At a crossing, the inverse draw map transports the remaining
+  movement, rotates the full flight frame, and sets the destination slot.
+  Helio carries this slot in the camera so direct mesh draws, billboard and
+  deferred light consumers, and routes entering the view can match it. The
+  built-in game free camera uses the same hook. Authored cameras use their
+  owner's placement. Both endpoints need to be present in the scene. In this
+  editor mode W/S follows the view direction, including pitch.
+
 - **A portal is a rigid map between coordinate spaces, never a view.** The
   host publishes every opening and every route through them to the
   configured depth (`helio_portal_api::PORTAL_CHAIN_SET` from `PortalSync`,
@@ -456,6 +468,9 @@ Known, not fixed. Ordered roughly by how much they matter.
   openings it shows), the remaps (`lighting::VIEW_REMAPS`) and, for CPU
   consumers, `PORTAL_LIVE_CHAINS`. The mask pass (G-buffer order 60) stamps the
   outermost openings into `PORTAL_MASK` and clears the depth behind them.
+  The aperture keeps its projected coverage when the eye is within one near
+  plane of the opening. The stamp clamps its depth per pixel for the depth
+  test and mask, while the traversal sweep still crosses at the authored plane.
 - **Each drawer draws its content through the chains** (G-buffer order 70,
   `OCCURRENCE_ORDER`): the meshes' occurrence cull emits (instance, chain)
   pairs for one multi-draw, and the G-buffer program's occurrence entry maps

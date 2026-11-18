@@ -353,6 +353,7 @@ pub struct HelioEditorMailbox {
     viewport_debug_mode: Arc<AtomicU32>,
     view_kind: Arc<AtomicU8>,
     camera_sync_locked: Arc<AtomicBool>,
+    follow_space_transitions: Arc<AtomicBool>,
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     viewport_debug_views: Arc<Mutex<Vec<ViewportDebugView>>>,
     pending_view_payloads: Arc<Mutex<Vec<(&'static str, Option<ViewPayload>)>>>,
@@ -398,6 +399,11 @@ pub struct StaticDragWarning {
 }
 
 impl HelioEditorMailbox {
+    pub fn set_follow_space_transitions(&self, follow: bool) {
+        self.follow_space_transitions
+            .store(follow, Ordering::Release);
+    }
+
     /// Apply a loaded level camera at the next render-frame boundary.
     pub fn queue_camera(&self, camera: EditorCameraState) {
         if let Ok(mut pending) = self.pending_camera_state.lock() {
@@ -570,6 +576,7 @@ pub struct HelioRenderer {
     view_kind: Arc<AtomicU8>,
     /// See [`HelioEditorMailbox::set_camera_sync_locked`].
     camera_sync_locked: Arc<AtomicBool>,
+    follow_space_transitions: Arc<AtomicBool>,
     /// See [`HelioEditorMailbox::join_camera_sync`].
     camera_sync_join: Arc<Mutex<Option<Arc<CameraSync>>>>,
     camera_sync: Option<CameraSyncMember>,
@@ -621,6 +628,8 @@ pub struct HelioRenderer {
     /// The perspective camera's pose: its frame follows the ground's local
     /// vertical (the game's free camera flies the same way).
     cam: FlyCamera,
+    camera_space: u32,
+    active_space_traversal: bool,
     // Smoothed local-space velocity: x=right, y=up, z=forward (units/sec).
     cam_local_velocity: Vec3,
     viewport_size: (u32, u32),
@@ -785,6 +794,7 @@ impl HelioRenderer {
             viewport_debug_mode: Arc::new(AtomicU32::new(0)),
             view_kind: Arc::new(AtomicU8::new(ViewKind::Perspective.to_u8())),
             camera_sync_locked: Arc::new(AtomicBool::new(true)),
+            follow_space_transitions: Arc::new(AtomicBool::new(false)),
             camera_sync_join: Arc::new(Mutex::new(None)),
             camera_sync: None,
             active_view: ViewKind::Perspective,
@@ -808,6 +818,8 @@ impl HelioRenderer {
             applied_pipeline: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam: FlyCamera::new(DVec3::new(8.0, 6.0, 12.0), -0.5, -0.3),
+            camera_space: 0,
+            active_space_traversal: false,
             cam_local_velocity: Vec3::ZERO,
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
@@ -846,6 +858,7 @@ impl HelioRenderer {
     }
 
     pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
+        self.camera_space = 0;
         // Over a voxel world the frame at the new position is known next frame.
         self.cam.set_pose(
             DVec3::from_array(state.position),
@@ -1295,6 +1308,15 @@ impl HelioRenderer {
         let _engine_frame_diagnostic = (self.frame_count, width, height);
 
         let view_kind_changed = self.apply_view_kind();
+        let follow = self.follow_space_transitions.load(Ordering::Acquire)
+            && self
+                .inner
+                .as_ref()
+                .is_some_and(|inner| inner.scene.camera_traversal_enabled());
+        if self.active_space_traversal != follow {
+            self.active_space_traversal = follow;
+            self.reset_taa_next_frame = true;
+        }
         if crop.is_none() {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
@@ -1514,7 +1536,9 @@ impl HelioRenderer {
         let ground = inner.scene.camera_ground(self.cam.position);
         self.camera_ground = ground;
         phases.mark("ground");
-        self.cam.follow_ground(ground.up);
+        if ground.up.is_some() || !self.active_space_traversal {
+            self.cam.follow_ground(ground.up);
+        }
         let t_prepare = Instant::now();
         let (forward, frame_up) = match self.active_view.axis_basis() {
             Some((forward, _, up)) => (forward, up),
@@ -1526,6 +1550,9 @@ impl HelioRenderer {
             inner.scene.prepare_frame(
                 &FrameView {
                     eye: self.cam.position,
+                    coordinate_space: (!self.active_view.is_orthographic()
+                        && self.active_space_traversal)
+                        .then_some(self.camera_space),
                     forward,
                     up: frame_up,
                     aspect: crop.map_or(width as f32 / height.max(1) as f32, |crop| {
@@ -1801,9 +1828,14 @@ impl HelioRenderer {
         self.cam
             .look(input.mouse_delta_x * LOOK, -input.mouse_delta_y * LOOK);
 
-        // Movement is level within the camera frame: W/S along the horizontal
-        // view direction, Q/E along the local vertical.
-        let (fwd, right, frame_up) = self.cam.level_axes();
+        // Ordinary flight stays level. While traversing, aim W/S through
+        // the aperture even when it is above or below the eye.
+        let (level_forward, right, frame_up) = self.cam.level_axes();
+        let fwd = if self.active_space_traversal && !self.active_view.is_orthographic() {
+            self.cam.forward()
+        } else {
+            level_forward
+        };
         // Over ground the scene reports, speed grows with height above it.
         let altitude = altitude_speed_scale(&self.camera_ground) as f32;
         let speed = altitude
@@ -1832,6 +1864,31 @@ impl HelioRenderer {
             (fwd * self.cam_local_velocity.z * dt).as_dvec3(),
         ];
         self.cam.position += steps[0] + steps[1] + steps[2];
+        // Middle-mouse (or Shift + right-click) pans in the view plane.
+        let pan = if input.pan_delta_x != 0.0 || input.pan_delta_y != 0.0 {
+            const PAN: f32 = 0.01;
+            let (_, _, screen_up) = self.camera_basis();
+            let pan_speed = PAN * input.move_speed.max(1.0);
+            (right * (-input.pan_delta_x) * pan_speed).as_dvec3()
+                + (screen_up * input.pan_delta_y * pan_speed).as_dvec3()
+        } else {
+            DVec3::ZERO
+        };
+        let end = self.cam.position + pan;
+        if before != end && !self.active_view.is_orthographic() && self.active_space_traversal {
+            // The aperture can be inset into terrain. Sweep before the source
+            // ground's endpoint check can clamp the eye back to its own side.
+            if let Some((position, rotation, space)) = self
+                .inner
+                .as_ref()
+                .and_then(|inner| inner.scene.traverse_camera(before, end, self.camera_space))
+            {
+                self.cam.transport(position, rotation);
+                self.camera_space = space;
+                self.reset_taa_next_frame = true;
+                return;
+            }
+        }
         // The editor camera never enters solid ground. From air (a
         // cave, a dig, above ground) it slides along what it touches: each
         // axis of the move is kept only if it stays in air. Lifting to the
@@ -1857,19 +1914,7 @@ impl HelioRenderer {
             }
         }
 
-        // Middle-mouse (or right-click + Shift) view-plane pan: translate the camera
-        // along its screen right/up axes for a 1:1 "grab" feel. Applied directly from
-        // the accumulated pixel delta (not velocity-smoothed, not dt-scaled).
-        if input.pan_delta_x != 0.0 || input.pan_delta_y != 0.0 {
-            const PAN: f32 = 0.01;
-            // Screen-up is right x full view forward.
-            let (_, _, screen_up) = self.camera_basis();
-            let pan_speed = PAN * input.move_speed.max(1.0);
-            // Grab convention: dragging right moves content right (camera goes left);
-            // dragging down moves content down (camera goes up).
-            self.cam.position += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
-            self.cam.position += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
-        }
+        self.cam.position += pan;
     }
 
     /// Half the height of the orthographic view: what a 45 degree perspective
@@ -2199,6 +2244,7 @@ impl HelioRenderer {
             viewport_debug_mode: self.viewport_debug_mode.clone(),
             view_kind: self.view_kind.clone(),
             camera_sync_locked: self.camera_sync_locked.clone(),
+            follow_space_transitions: self.follow_space_transitions.clone(),
             camera_sync_join: self.camera_sync_join.clone(),
             viewport_debug_views: self.viewport_debug_views.clone(),
             pending_view_payloads: self.pending_view_payloads.clone(),

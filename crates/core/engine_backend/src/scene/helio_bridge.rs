@@ -511,6 +511,20 @@ pub trait SpaceProducer: Send + Sync {
     /// `RendererBuilder::with_scene_derivation`; asked once, when the
     /// renderer is built.
     fn derivation(&self, device: &wgpu::Device) -> Option<Box<dyn SceneDerivation>>;
+
+    fn camera_traversal_enabled(&self) -> bool {
+        false
+    }
+
+    /// Map a camera's world-space movement across a boundary owned by this producer.
+    fn traverse_camera(
+        &self,
+        _start: glam::DVec3,
+        _end: glam::DVec3,
+        _space: u32,
+    ) -> Option<(glam::DVec3, glam::DQuat, u32)> {
+        None
+    }
 }
 
 /// Keeps a renderer's coordinate-space table current. Each frame it makes sure
@@ -537,6 +551,23 @@ impl Default for SpaceSync {
 }
 
 impl SpaceSync {
+    pub fn camera_traversal_enabled(&self) -> bool {
+        self.producers
+            .iter()
+            .any(|producer| producer.camera_traversal_enabled())
+    }
+
+    pub fn traverse_camera(
+        &self,
+        start: glam::DVec3,
+        end: glam::DVec3,
+        space: u32,
+    ) -> Option<(glam::DVec3, glam::DQuat, u32)> {
+        self.producers
+            .iter()
+            .find_map(|producer| producer.traverse_camera(start, end, space))
+    }
+
     /// The producers' scene derivations, for `RendererBuilder::with_scene_derivation`.
     pub fn derivations(&self, device: &wgpu::Device) -> Vec<Box<dyn SceneDerivation>> {
         self.producers

@@ -987,7 +987,19 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             && view_target_drives_camera(&self.scene_store.read(), self.view_targets.local());
         for gw in self.windows.values_mut() {
             gw.freecam.set_suspended(pawn_view);
+            let start = gw.freecam.position();
             gw.freecam.update(dt);
+            let end = gw.freecam.position();
+            if start != end {
+                if let Some((position, rotation, space)) = gw.renderer.traverse_camera(
+                    start,
+                    end,
+                    gw.freecam.coordinate_space.unwrap_or_default(),
+                ) {
+                    gw.freecam.pose.transport(position, rotation);
+                    gw.freecam.coordinate_space = Some(space);
+                }
+            }
             if now >= gw.next_redraw {
                 gw.window.request_redraw();
             } else {

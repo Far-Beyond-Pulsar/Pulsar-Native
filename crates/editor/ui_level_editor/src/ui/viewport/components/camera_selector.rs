@@ -178,7 +178,21 @@ where
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
         .child(camera_speed_controls(input_state, cx))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-        .child(camera_mode_buttons(state_arc, camera_mode))
+        .child(camera_mode_buttons(state_arc.clone(), camera_mode))
+        .child(
+            Button::new("follow_space_transitions")
+                .label(t!("LevelEditor.Camera.FollowSpaceTransitions"))
+                .tooltip(t!("LevelEditor.Camera.FollowSpaceTransitionsTooltip"))
+                .small()
+                .selected(state.overlays.state.follow_space_transitions)
+                .on_click(move |_, _, cx| {
+                    let mut state = state_arc.write();
+                    state.overlays.state.follow_space_transitions =
+                        !state.overlays.state.follow_space_transitions;
+                    drop(state);
+                    cx.refresh_windows();
+                }),
+        )
         .child(
             Button::new("collapse_camera_mode")
                 .icon(IconName::Close)

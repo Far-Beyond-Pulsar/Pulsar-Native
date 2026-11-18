@@ -3756,6 +3756,82 @@ fn portal_scene_at(
     state
 }
 
+#[test]
+fn linked_portal_keeps_showing_content_inside_the_near_plane() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let render = |far_id| {
+        let mut renderer = harness.renderer(&portal_scene(radius, 5, far_id, true));
+        renderer.set_editor_camera_state(EditorCameraState {
+            position: [0.0, 0.0, 0.001],
+            yaw: 0.0,
+            pitch: 0.0,
+        });
+        harness.frames(&mut renderer, || {})
+    };
+    let shown = render(5).difference(&render(2));
+    assert!(
+        shown.depth_texels > 0,
+        "destination geometry disappeared inside the near plane: {shown:?}"
+    );
+}
+
+#[test]
+fn editor_camera_follows_a_link_across_rigid_frames_when_enabled() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let far_x = 5000.0;
+    let mut state = LevelEditorState::new();
+    let near = add_portal(&mut state, 1.0, "near", [0.0; 3], 5);
+    rotate_y(&mut state, &near, 180.0);
+    let far = add_portal(&mut state, 1.0, "far", [far_x, 0.0, 0.0], 5);
+    let room = add_object(&mut state, "destination", ObjectType::Folder);
+    let parent = state.scene.world().entity_for(&room).unwrap();
+    engine_backend::scene::frames::set_rigid_frame(&mut state.scene.world_mut(), parent, true)
+        .unwrap();
+    assert!(execute_command(
+        &mut state,
+        SceneCommand::ReparentObject { id: far, new_parent_id: Some(room) },
+    ).changed);
+
+    let mut renderer = harness.renderer(&state);
+    // The eye starts above the opening. Level flight misses while flight
+    // along the pitched view direction passes through its centre.
+    let start = EditorCameraState {
+        position: [0.0, 2.0, 2.0],
+        yaw: 0.0,
+        pitch: -std::f32::consts::FRAC_PI_4,
+    };
+    for follow in [false, true] {
+        renderer.set_editor_camera_state(start);
+        renderer.editor_mailbox().set_follow_space_transitions(follow);
+        harness.frames(&mut renderer, || {});
+        {
+            let mut input = renderer.camera_input.lock().unwrap();
+            input.forward = 1.0;
+            input.move_speed = 1000.0;
+        }
+        harness.frames(&mut renderer, || {});
+        renderer.camera_input.lock().unwrap().forward = 0.0;
+        let [x, _, z] = renderer.editor_camera_state().position;
+        assert!(z < 0.0, "camera did not cross the aperture plane");
+        let expected_x = if follow { f64::from(far_x) } else { 0.0 };
+        assert!((x - expected_x).abs() < 1e-3, "follow={follow}, eye x={x}");
+    }
+}
+
 /// Mean `[r, g, b]` (0-255) over the pixels where `frame` differs from `reference`.
 fn mean_color_of_difference(frame: &Frame, reference: &Frame) -> Option<[f32; 3]> {
     let mut sum = [0.0f64; 3];
