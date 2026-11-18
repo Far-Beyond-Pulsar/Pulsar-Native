@@ -461,6 +461,9 @@ Known, not fixed. Ordered roughly by how much they matter.
   `project.portals.max_chain_depth`, default 3). A route's maps compose on the
   CPU into one `content_to_drawn`, projected with the frame's own camera, so
   what a chain shows lands in the frame's G-buffer at its true depth.
+  The Portals plugin exposes that same project setting as the **Portal depth**
+  stepper in the floating camera toolbar. It changes the current session's
+  setting and applies through the existing project settings refresh.
 - **Per frame** the portals' chains pass (Prepare) keeps the routes whose every
   opening is faced and on screen, shallowest first, at most
   `project.portals.max_chains` (default 300), and uploads `PORTAL_CHAINS`,

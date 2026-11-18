@@ -59,6 +59,16 @@ pub struct DebugOverlay {
 
 super::extension_point!(DebugOverlay: "editor.debug_overlay", |r| r.id, r.menu_label;);
 
+/// An integer project rendering setting exposed in the floating camera toolbar.
+pub struct CameraToolbarInteger {
+    pub origin: &'static str,
+    pub group: &'static helio::helio_settings::Group,
+    pub key: &'static str,
+    pub label: &'static str,
+}
+
+super::extension_point!(CameraToolbarInteger: "editor.camera_toolbar_integer", |r| format!("{}.{}", r.group.key, r.key), r.label;);
+
 /// Every registered debug overlay.
 pub fn debug_overlays() -> impl Iterator<Item = &'static DebugOverlay> {
     pulsar_plugins::registered::<DebugOverlay>()

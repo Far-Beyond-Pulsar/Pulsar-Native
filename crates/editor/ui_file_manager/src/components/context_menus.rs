@@ -336,6 +336,14 @@ pub fn item_context_menu(
                 Box::new(Copy),
             );
 
+        menu = menu.separator().menu_with_icon(
+            "Sketchfab Viewer".to_string(),
+            ui::Icon::new(ui::IconName::Globe),
+            Box::new(ui_common::menu::OpenEditorTool {
+                id: "tool.sketchfab_viewer".to_string(),
+            }),
+        );
+
         if has_clipboard {
             menu = menu.menu_with_icon(
                 t!("FileManager.Paste").to_string(),

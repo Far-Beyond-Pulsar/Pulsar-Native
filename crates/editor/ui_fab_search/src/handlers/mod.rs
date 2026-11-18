@@ -2,10 +2,11 @@ use gpui::{prelude::*, *};
 
 use crate::FabSearchWindow;
 use crate::search_index::{
-    SearchPage, fetch_sketchfab_download_info, fetch_sketchfab_model_detail,
-    fetch_sketchfab_models, sketchfab_like_model, sketchfab_unlike_model,
+    SearchPage, fetch_sketchfab_download_info, fetch_sketchfab_library_page,
+    fetch_sketchfab_model_detail, fetch_sketchfab_models, sketchfab_like_model,
+    sketchfab_unlike_model,
 };
-use crate::utils::actions::{DownloadMsg, DownloadState};
+use crate::utils::actions::{DownloadMsg, DownloadState, LibrarySection};
 
 pub(crate) fn on_go_back(window: &mut FabSearchWindow, cx: &mut Context<FabSearchWindow>) {
     window.selected_item_uid = None;
@@ -29,6 +30,10 @@ pub(crate) fn on_set_token(
     window.me = None;
     window.show_token_input = false;
     window.fetch_me(cx);
+    if let Some(url) = window.library_section.endpoint().map(str::to_owned) {
+        let saved_token = window.api_token.clone();
+        begin_page_load(window, url, saved_token, cx);
+    }
 }
 
 pub(crate) fn on_clear_token(window: &mut FabSearchWindow, cx: &mut Context<FabSearchWindow>) {
@@ -36,6 +41,13 @@ pub(crate) fn on_clear_token(window: &mut FabSearchWindow, cx: &mut Context<FabS
     window.api_token = None;
     window.me = None;
     window.me_loading = false;
+    window.library_section = LibrarySection::Discover;
+    window.request_generation = window.request_generation.wrapping_add(1);
+    window.is_loading = false;
+    window.is_loading_more = false;
+    window.error = None;
+    window.results.clear();
+    window.next_url = None;
     window.liked_uids.clear();
     window.like_inflight.clear();
     cx.notify();
@@ -364,7 +376,51 @@ pub(crate) fn on_begin_search(window: &mut FabSearchWindow, cx: &mut Context<Fab
         return;
     }
 
+    window.library_section = LibrarySection::Discover;
     let url = window.build_search_url();
+    begin_page_load(window, url, None, cx);
+}
+
+pub(crate) fn on_select_library_section(
+    window: &mut FabSearchWindow,
+    section: LibrarySection,
+    cx: &mut Context<FabSearchWindow>,
+) {
+    window.request_generation = window.request_generation.wrapping_add(1);
+    if section == LibrarySection::Discover {
+        window.library_section = section;
+        if !window.search_query.trim().is_empty() {
+            on_begin_search(window, cx);
+        } else {
+            window.results.clear();
+            window.next_url = None;
+            window.error = None;
+            window.is_loading = false;
+            window.is_loading_more = false;
+            cx.notify();
+        }
+        return;
+    }
+    window.library_section = section;
+    let Some(token) = window.api_token.clone() else {
+        window.show_token_input = true;
+        cx.notify();
+        return;
+    };
+    let Some(url) = section.endpoint().map(str::to_owned) else {
+        return;
+    };
+    begin_page_load(window, url, Some(token), cx);
+}
+
+fn begin_page_load(
+    window: &mut FabSearchWindow,
+    url: String,
+    token: Option<String>,
+    cx: &mut Context<FabSearchWindow>,
+) {
+    window.request_generation = window.request_generation.wrapping_add(1);
+    let request_generation = window.request_generation;
     window.is_loading = true;
     window.is_loading_more = false;
     window.results.clear();
@@ -381,7 +437,11 @@ pub(crate) fn on_begin_search(window: &mut FabSearchWindow, cx: &mut Context<Fab
         )
         .owner("ui_fab_search"),
         move || {
-            let _ = smol::block_on(tx.send(fetch_sketchfab_models(&url)));
+            let result = match token {
+                Some(token) => fetch_sketchfab_library_page(&url, &token),
+                None => fetch_sketchfab_models(&url),
+            };
+            let _ = smol::block_on(tx.send(result));
         },
     );
 
@@ -389,6 +449,9 @@ pub(crate) fn on_begin_search(window: &mut FabSearchWindow, cx: &mut Context<Fab
         if let Ok((_, result)) = rx.recv().await {
             cx.update(|cx| {
                 let _ = this.update(cx, |view, cx| {
+                    if view.request_generation != request_generation {
+                        return;
+                    }
                     view.is_loading = false;
                     match result {
                         Ok(page) => {
@@ -421,6 +484,12 @@ pub(crate) fn on_load_more(window: &mut FabSearchWindow, cx: &mut Context<FabSea
         None => return,
     };
     window.is_loading_more = true;
+    window.request_generation = window.request_generation.wrapping_add(1);
+    let request_generation = window.request_generation;
+    let token = window
+        .api_token
+        .clone()
+        .filter(|_| window.library_section != LibrarySection::Discover);
     cx.notify();
 
     let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
@@ -431,7 +500,11 @@ pub(crate) fn on_load_more(window: &mut FabSearchWindow, cx: &mut Context<FabSea
         )
         .owner("ui_fab_search"),
         move || {
-            let _ = smol::block_on(tx.send(fetch_sketchfab_models(&url)));
+            let result = match token {
+                Some(token) => fetch_sketchfab_library_page(&url, &token),
+                None => fetch_sketchfab_models(&url),
+            };
+            let _ = smol::block_on(tx.send(result));
         },
     );
 
@@ -439,6 +512,9 @@ pub(crate) fn on_load_more(window: &mut FabSearchWindow, cx: &mut Context<FabSea
         if let Ok((_, result)) = rx.recv().await {
             cx.update(|cx| {
                 let _ = this.update(cx, |view, cx| {
+                    if view.request_generation != request_generation {
+                        return;
+                    }
                     view.is_loading_more = false;
                     match result {
                         Ok(page) => {

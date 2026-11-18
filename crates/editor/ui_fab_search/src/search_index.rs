@@ -154,6 +154,41 @@ pub(crate) fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPa
     (log, result)
 }
 
+/// Fetch an authenticated page from the viewer's account library. The same
+/// response type is used by Sketchfab's likes, own-models and purchases APIs.
+pub(crate) fn fetch_sketchfab_library_page(
+    url: &str,
+    token: &str,
+) -> (Vec<String>, Result<SearchPage, String>) {
+    let mut log = vec![format!("→ GET {url} (authenticated library)")];
+    let result = (|| {
+        let mut headers = reqwest::header::HeaderMap::new();
+        let auth = reqwest::header::HeaderValue::from_str(&format!("Token {token}"))
+            .map_err(|e| format!("invalid Sketchfab token: {e}"))?;
+        headers.insert(reqwest::header::AUTHORIZATION, auth);
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("Pulsar-Native/1.0")
+            .default_headers(headers)
+            .build()
+            .map_err(|e| e.to_string())?;
+        let response = client.get(url).send().map_err(|e| e.to_string())?;
+        let status = response.status();
+        let text = response.text().map_err(|e| e.to_string())?;
+        if !status.is_success() {
+            return Err(format!("HTTP {} — {}", status, truncated(&text, 160)));
+        }
+        let parsed = serde_json::from_str::<crate::parser::SketchfabSearchResponse>(&text)
+            .map_err(|e| format!("Could not read Sketchfab library response: {e}"))?;
+        log.push(format!("← HTTP {status}; {} models", parsed.results.len()));
+        Ok(SearchPage {
+            models: parsed.results,
+            next: parsed.next,
+        })
+    })();
+    (std::mem::take(&mut log), result)
+}
+
 pub(crate) fn fetch_sketchfab_model_detail(
     uid: &str,
 ) -> (Vec<String>, Result<Box<SketchfabModelDetail>, String>) {

@@ -167,7 +167,7 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_core` | Editor shell — tab management, plugin wiring, statusbar (the tools' buttons from `ui_common::editor_tools`); layout persistence (`app/layout/`, `app/chrome.rs`, see `LAYOUT.md`) |
 | `ui_documentation` | In-editor doc viewer |
 | `ui_entry` | Window entry creation and setup |
-| `ui_fab_search` | Fab asset search (a tool) |
+| `ui_fab_search` | Sketchfab Viewer — discovery and account library (a tool) |
 | `ui_file_manager` | File tree and project browser |
 | `ui_flamegraph` | CPU/GPU flamegraph viewer (a tool) |
 | `ui_friends` | Friends list |
@@ -306,7 +306,7 @@ cargo cannot load the workspace without them.
 editor's and the game's tests with every plugin. The editor-tool plugins (the
 asset viewer, the render graph, trait and Blueprint editors, the code, matter and
 table editors, TypeScript) stay plugins of their own (Pulsar-Native#1605); the
-optional editor tools in `crates/` (git, flamegraph, Mission Control, Fab search,
+optional editor tools in `crates/` (git, flamegraph, Mission Control, Sketchfab Viewer,
 the chat's providers) are tools the editor binary links (above, "The layers").
 
 A change to a plugin is committed in its repository and pinned here, like any
