@@ -6746,6 +6746,7 @@ dependencies = [
  "helio-feature-api",
  "helio-foliage-api",
  "helio-frame-api",
+ "helio-graph-asset",
  "helio-light-api",
  "helio-light-host",
  "helio-mats",

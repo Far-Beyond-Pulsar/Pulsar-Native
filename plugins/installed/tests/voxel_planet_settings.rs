@@ -1,7 +1,8 @@
 //! The example planet's project settings (`assets/examples/voxel_planet/
 //! .pulsar/project/`), loaded as the editor loads a project's: GI's probes
 //! a metre apart over open ground (GI's default, half a metre, is for
-//! rooms), and the terrain's sky rays walking two of their spacings.
+//! rooms). The terrain's sky rays follow the probes through the frame
+//! (`helio_frame_api::lighting::indirect_occlusion`): no setting of theirs.
 
 // The project's settings groups come from every plugin.
 use installed_plugins as _;
@@ -24,6 +25,4 @@ fn the_example_planet_keeps_open_ground_probe_spacing() {
     use engine_backend::subsystems::render::helio_renderer::project_settings;
     let gi = project_settings::resolved(group("gi"));
     assert_eq!(gi.optional("probe_spacing"), Some(1.0));
-    let voxels = project_settings::resolved(group("voxels"));
-    assert_eq!(voxels.optional("sky_reach"), Some(2.0));
 }

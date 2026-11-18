@@ -1,6 +1,0 @@
-# PulsarConfig — project/voxels
-# Edit this file to override application defaults.
-# Missing keys fall back to the schema default.
-# Read-only settings are managed by the application and are not listed here.
-
-sky_reach = 2.0
