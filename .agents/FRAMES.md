@@ -472,12 +472,26 @@ Known, not fixed. Ordered roughly by how much they matter.
   own Hi-Z of the frame depth after the occurrences, clipped per pixel to the
   chain, in the one cluster store. Classic occurrences skip VG-active
   instances, as the direct cull does.
-- **Lighting and decals**: a chain's pixels carry its remap in the surface tag
-  (`gbuffer_remap_tag`); lighting, transmission and decals map position and
-  normal back to the content's world through `VIEW_REMAPS`. Normals are stored
-  in the drawn space. **Gap:** a chain's pixels walk the scene's lights (at
-  most 256) unshadowed (the shadow maps are the camera's world's), and no
-  light crosses an opening; an open design.
+- **Materials, lighting and decals**: a chain's pixels carry its remap in the
+  surface tag (`gbuffer_remap_tag`). Mesh material programs evaluate
+  world-space inputs in content space. The G-buffer stores normals in drawn
+  space, and lighting, transmission and decals use `VIEW_REMAPS` to recover
+  the content-space position and normal. Deferred lighting bins active lights
+  against the content-space bounds of remapped pixels, matching the light's
+  authored coordinate-space slot to the chain destination. Resident
+  local-light shadows can be sampled for unpartitioned portal content.
+  Directional shadow coverage and screen-space visibility still depend on the
+  primary camera. Light transport across the opening remains outside this path.
+- **Billboards** draw matching destination-space occurrences through the same
+  aperture, stage and hole tests. The overlay preserves direct billboards in
+  front of the aperture and clips their fragments behind it.
+- **Participating media**: the aperture carries its plane depth alongside
+  its opening ID. The fog composite samples the primary camera's integrated
+  medium up to that plane. The primary froxel and analytic lens paths use
+  lights from slot zero. The analytic lens visibility test treats the aperture
+  as the end of that world. Integrating destination-space fog and scattering
+  beyond the plane requires a separate ray segment and destination sources.
+  Bloom and image-based lens response consume the composited HDR image.
 - **Water's reflection is a mirrored capture view** (`ViewKind::Capture`,
   `ViewContext::render_view`): every feature at the capture's slots draws in
   it; voxel terrain does not draw secondary views yet. Captures resolve no

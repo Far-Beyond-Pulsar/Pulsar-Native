@@ -5913,6 +5913,7 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-portal-api",
  "image",
  "pollster 0.4.0",
  "pulsar_reflection",
@@ -6029,6 +6030,7 @@ dependencies = [
  "helio-lens-api",
  "helio-light-api",
  "helio-pass-lens",
+ "helio-portal-api",
  "naga",
  "pollster 0.4.0",
  "wgpu",
@@ -6705,6 +6707,7 @@ dependencies = [
  "helio-light-api",
  "helio-pass-post-volumes",
  "helio-pass-volumetric-fog",
+ "helio-portal-api",
  "helio-scene-join",
  "pollster 0.4.0",
  "pulsar_reflection",
@@ -8403,7 +8406,9 @@ name = "lights_editor"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "glam 0.33.5",
  "gpui-ce",
+ "helio",
  "lights_component",
  "pulsar_scenedb",
  "rust-i18n",
