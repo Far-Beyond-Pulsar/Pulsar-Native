@@ -17767,8 +17767,6 @@ dependencies = [
  "engine_state",
  "gpui-ce",
  "image",
- "inventory",
- "pulsar_plugins",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -17778,7 +17776,6 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_shell",
  "urlencoding",
  "window_manager",
 ]

@@ -15,6 +15,7 @@ use gpui::{prelude::*, *};
 use ui::{
     ActiveTheme, h_flex,
     scroll::{Scrollbar, ScrollbarState},
+    v_flex,
 };
 
 use crate::DownloadState;
@@ -156,7 +157,7 @@ impl ItemDetailView {
 }
 
 impl RenderOnce for ItemDetailView {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let ItemDetailView {
             detail: d,
             images,
@@ -172,6 +173,7 @@ impl RenderOnce for ItemDetailView {
         } = self;
 
         let theme = cx.theme().clone();
+        let viewport_width: f32 = window.viewport_size().width.into();
         let bg = theme.background;
         let colors = DetailColors {
             border: theme.border,
@@ -202,11 +204,9 @@ impl RenderOnce for ItemDetailView {
         let left_col = render_left_column(
             hero,
             thumb_row,
-            &author,
             build_description(&d),
             build_tags(&d),
             build_stats(&d),
-            &colors,
         );
 
         // ════════════════════════════════════════════════════════════════
@@ -220,7 +220,6 @@ impl RenderOnce for ItemDetailView {
                 on_download,
                 download_status,
                 formats: sidebar_formats(&d),
-                viewer_url,
             },
             &colors,
         );
@@ -228,7 +227,15 @@ impl RenderOnce for ItemDetailView {
         // ════════════════════════════════════════════════════════════════
         //  ASSEMBLY — single scroll, everything flows together
         // ════════════════════════════════════════════════════════════════
-        render_detail_root(bg, header, left_col, sidebar, scroll_handle, scroll_state)
+        render_detail_root(
+            bg,
+            header,
+            left_col,
+            sidebar,
+            scroll_handle,
+            scroll_state,
+            viewport_width,
+        )
     }
 }
 
@@ -309,9 +316,6 @@ fn build_tags(d: &SketchfabModelDetail) -> Option<FormatTagsSection> {
 /// Model statistics section (counts, geometry and asset totals).
 fn build_stats(d: &SketchfabModelDetail) -> ModelStatsSection {
     ModelStatsSection::new(
-        d.view_count,
-        d.like_count,
-        d.download_count,
         d.face_count,
         d.vertex_count,
         d.material_count,
@@ -343,7 +347,24 @@ fn render_detail_root(
     sidebar: impl IntoElement,
     scroll_handle: ScrollHandle,
     scroll_state: ScrollbarState,
+    viewport_width: f32,
 ) -> impl IntoElement {
+    let columns: AnyElement = if viewport_width < 900.0 {
+        v_flex()
+            .w_full()
+            .gap_5()
+            .child(left_col)
+            .child(sidebar)
+            .into_any_element()
+    } else {
+        h_flex()
+            .w_full()
+            .gap_6()
+            .items_start()
+            .child(left_col)
+            .child(sidebar)
+            .into_any_element()
+    };
     div()
         .id("item-detail-root")
         .flex_1()
@@ -367,16 +388,7 @@ fn render_detail_root(
                         .size_full()
                         .overflow_y_scroll()
                         .track_scroll(&scroll_handle)
-                        .child(
-                            div().w_full().px_6().pt_6().pb_16().child(
-                                h_flex()
-                                    .w_full()
-                                    .gap_6()
-                                    .items_start()
-                                    .child(left_col)
-                                    .child(sidebar),
-                            ),
-                        ),
+                        .child(div().w_full().px_6().pt_6().pb_10().child(columns)),
                 )
                 .child(
                     div()

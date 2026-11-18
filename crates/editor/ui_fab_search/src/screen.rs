@@ -505,11 +505,8 @@ impl Render for FabSearchWindow {
         let dl_entries = components::build_download_entries(self);
         let entity_for_drawer = cx.entity().clone();
 
-        let layout =
+        let browser_chrome =
             v_flex()
-                .size_full()
-                .bg(bg)
-                .child(TitleBar::new().child("Sketchfab Viewer"))
                 .child(
                     div()
                         .w_full()
@@ -564,11 +561,16 @@ impl Render for FabSearchWindow {
                 .when(self.library_section == LibrarySection::Discover, |el| {
                     el.child(filter_bar)
                 })
-                .when(
-                    self.selected_item_uid.is_none() && !self.results.is_empty(),
-                    |el| el.child(section_summary),
-                )
-                .child(body);
+                .when(!self.results.is_empty(), |el| el.child(section_summary));
+
+        let layout = v_flex()
+            .size_full()
+            .bg(bg)
+            .child(TitleBar::new().child("Sketchfab Viewer"))
+            .when(self.selected_item_uid.is_none(), |el| {
+                el.child(browser_chrome)
+            })
+            .child(body);
 
         div()
             .size_full()

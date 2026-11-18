@@ -204,6 +204,12 @@ pub fn folder_context_menu(
             );
         }
 
+        menu = menu.separator().menu_with_icon(
+            "Sketchfab Viewer".to_string(),
+            ui::Icon::new(ui::IconName::Globe),
+            Box::new(ui_common::menu::OpenSketchfabViewer),
+        );
+
         menu = menu
             .separator()
             .menu_with_icon(
@@ -339,9 +345,7 @@ pub fn item_context_menu(
         menu = menu.separator().menu_with_icon(
             "Sketchfab Viewer".to_string(),
             ui::Icon::new(ui::IconName::Globe),
-            Box::new(ui_common::menu::OpenEditorTool {
-                id: "tool.sketchfab_viewer".to_string(),
-            }),
+            Box::new(ui_common::menu::OpenSketchfabViewer),
         );
 
         if has_clipboard {

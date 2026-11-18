@@ -1,19 +1,15 @@
+use crate::parser::fmt_count;
 use gpui::{prelude::*, *};
 use ui::{ActiveTheme, StyledExt, h_flex, v_flex};
-
-use crate::parser::fmt_count;
 
 struct StatRow {
     label: &'static str,
     value: String,
 }
 
-/// Displays model statistics: views, likes, downloads, geometry, textures, PBR, etc.
+/// Displays technical model statistics: geometry, textures, PBR, and similar metadata.
 #[derive(IntoElement)]
 pub struct ModelStatsSection {
-    pub view_count: i64,
-    pub like_count: i64,
-    pub download_count: i64,
     pub face_count: Option<i64>,
     pub vertex_count: Option<i64>,
     pub material_count: Option<i32>,
@@ -25,9 +21,6 @@ pub struct ModelStatsSection {
 
 impl ModelStatsSection {
     pub fn new(
-        view_count: i64,
-        like_count: i64,
-        download_count: i64,
         face_count: Option<i64>,
         vertex_count: Option<i64>,
         material_count: Option<i32>,
@@ -37,9 +30,6 @@ impl ModelStatsSection {
         pbr_type: Option<String>,
     ) -> Self {
         Self {
-            view_count,
-            like_count,
-            download_count,
             face_count,
             vertex_count,
             material_count,
@@ -58,20 +48,6 @@ impl RenderOnce for ModelStatsSection {
         let muted = cx.theme().muted_foreground;
 
         let mut rows: Vec<StatRow> = Vec::new();
-        rows.push(StatRow {
-            label: "Views",
-            value: fmt_count(self.view_count),
-        });
-        rows.push(StatRow {
-            label: "Likes",
-            value: fmt_count(self.like_count),
-        });
-        if self.download_count > 0 {
-            rows.push(StatRow {
-                label: "Downloads",
-                value: fmt_count(self.download_count),
-            });
-        }
         if let Some(f) = self.face_count {
             rows.push(StatRow {
                 label: "Faces",
