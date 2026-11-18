@@ -271,8 +271,7 @@ impl AgentChatPanel {
         }
 
         if enqueued > 0 {
-            self.save_current_chat();
-            self.refresh_chat_history_list(cx);
+            self.save_current_chat(cx);
         }
 
         if self.subagent_completion_mode == SubagentCompletionMode::Auto {

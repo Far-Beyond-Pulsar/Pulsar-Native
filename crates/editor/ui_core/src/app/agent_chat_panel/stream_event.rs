@@ -5,7 +5,7 @@
 //! mutates `messages` / `display_items` for each event (prose chunks, thinking
 //! blocks, tool call groups and results, compaction cards, open-file requests
 //! and the final `Finished`). The event pump in `streaming.rs` calls
-//! `apply_stream_event` once per received event, on the UI thread.
+//! `apply_stream_event` for batches of events on the UI thread.
 
 use super::streaming::now_ms;
 use super::*;
@@ -15,10 +15,21 @@ use std::sync::{Condvar, Mutex};
 /// Shared slot a worker thread blocks on while the UI thread services a request.
 pub(super) type UiWaiter = Arc<(Mutex<Option<Result<(), String>>>, Condvar)>;
 
+pub(super) struct StartedSubagent {
+    pub(super) id: String,
+    pub(super) name: String,
+    pub(super) task: String,
+    pub(super) created_at_ms: Option<u64>,
+}
+
 /// One event from the worker thread; events are applied in channel order.
 pub(super) enum StreamEvent {
     /// AI prose text chunk — appended to the current streaming assistant bubble.
     Chunk(String),
+    UserContextExpanded {
+        index: usize,
+        content: String,
+    },
     /// A `<think>` tag was opened; UI inserts a ThinkingBlock.
     ThinkingStarted,
     /// Incremental thinking content — appended to the open ThinkingBlock.
@@ -31,7 +42,7 @@ pub(super) enum StreamEvent {
     /// A tool finished executing; update the matching call's result in the UI.
     ToolCallResult {
         id: String,
-        tool_name: String,
+        subagent: Option<StartedSubagent>,
         result_preview: String,
         result_full: String,
         is_error: bool,
@@ -75,6 +86,12 @@ impl AgentChatPanel {
                 cx.notify();
             }
 
+            StreamEvent::UserContextExpanded { index, content } => {
+                if let Some(message) = self.messages.get_mut(index) {
+                    message.content = content;
+                }
+            }
+
             StreamEvent::ThinkingStarted => {
                 if let Some(dix) = self.streaming_display_item_ix {
                     let is_empty = self.display_items.get(dix).map(|item|
@@ -87,7 +104,6 @@ impl AgentChatPanel {
                         self.display_items.get_mut(dix)
                     {
                         *is_streaming = false;
-                        self.display_item_heights.remove(&dix);
                     }
                 }
                 self.display_items.push(DisplayItem::ThinkingBlock {
@@ -173,7 +189,6 @@ impl AgentChatPanel {
                         self.display_items.get_mut(dix)
                     {
                         *is_streaming = false;
-                        self.display_item_heights.remove(&dix);
                     }
                 }
                 let group_start = now_ms();
@@ -218,13 +233,12 @@ impl AgentChatPanel {
 
             StreamEvent::ToolCallResult {
                 id,
-                tool_name,
+                subagent,
                 result_preview,
                 result_full,
                 is_error,
             } => {
                 let done_ms = now_ms();
-                let result_full_for_parse = result_full.clone();
                 for item in self.display_items.iter_mut().rev() {
                     if let DisplayItem::ToolCallGroup {
                         calls,
@@ -234,7 +248,7 @@ impl AgentChatPanel {
                     {
                         if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
                             call.result_preview = Some(result_preview);
-                            call.result_full = Some(result_full.clone());
+                            call.result_full = Some(result_full);
                             call.is_error = is_error;
                             call.finished_at_ms = Some(done_ms);
                         }
@@ -246,36 +260,14 @@ impl AgentChatPanel {
                     }
                 }
 
-                if tool_name == "spawn_subagent" && !is_error {
-                    if let Ok(parsed) =
-                        serde_json::from_str::<serde_json::Value>(&result_full_for_parse)
-                    {
-                        let subagent_id = parsed
-                            .get("subagent_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default();
-                        if !subagent_id.is_empty() {
-                            let name = parsed
-                                .get("name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Subagent");
-                            let task = parsed
-                                .get("task")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Subagent task");
-                            let created_at_ms = parsed
-                                .get("created_at_ms")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(done_ms);
-                            self.update_subagent_invocation_started(
-                                subagent_id,
-                                name,
-                                task,
-                                created_at_ms,
-                                cx,
-                            );
-                        }
-                    }
+                if let Some(subagent) = subagent {
+                    self.update_subagent_invocation_started(
+                        &subagent.id,
+                        &subagent.name,
+                        &subagent.task,
+                        subagent.created_at_ms.unwrap_or(done_ms),
+                        cx,
+                    );
                 }
 
                 cx.notify();
@@ -321,7 +313,6 @@ impl AgentChatPanel {
                                 *content = text.clone();
                             }
                         }
-                        self.display_item_heights.remove(&dix);
                     }
                 }
 
@@ -332,8 +323,7 @@ impl AgentChatPanel {
                         }
                     }
                 }
-                self.save_current_chat();
-                self.refresh_chat_history_list(cx);
+                self.save_current_chat(cx);
                 if self.subagent_completion_mode == SubagentCompletionMode::Auto {
                     self.maybe_start_next_subagent_processing(cx);
                 }
@@ -389,8 +379,7 @@ impl AgentChatPanel {
                 if let Some(message) = self.messages.get_mut(message_ix) {
                     message.content = error_text;
                 }
-                self.save_current_chat();
-                self.refresh_chat_history_list(cx);
+                self.save_current_chat(cx);
                 if self.subagent_completion_mode == SubagentCompletionMode::Auto {
                     self.maybe_start_next_subagent_processing(cx);
                 }

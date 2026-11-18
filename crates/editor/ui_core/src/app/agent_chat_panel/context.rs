@@ -138,11 +138,8 @@ impl AgentChatPanel {
         }
     }
 
-    pub(super) fn expand_file_references(text: &str) -> String {
+    pub(super) fn expand_file_references(text: &str, workspace_root: &std::path::Path) -> String {
         use engine_fs::virtual_fs as fs;
-        let workspace_root = engine_state::get_project_path()
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("."));
 
         let mut injections = Vec::new();
         for word in text.split_whitespace() {

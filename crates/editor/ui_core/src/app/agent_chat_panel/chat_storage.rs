@@ -1,12 +1,98 @@
 use super::*;
 use agent_chat_core::ChatRole;
 use agent_chat_tools::ToolRegistry;
-use engine_fs::virtual_fs as vfs;
+use editor_task_queue::{TaskDescription, TaskDuration};
+use engine_fs::{virtual_fs as vfs, FsChangeKind, FsProvider};
 use engine_state;
 use std::{
+    collections::VecDeque,
     path::{Path, PathBuf},
+    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+// Keep the active write in the FIFO until it is durable, so a chat opened
+// immediately after a save can still read the newest snapshot.
+static CHAT_SAVES: Mutex<VecDeque<PendingSave>> = Mutex::new(VecDeque::new());
+
+// A queued task can be cancelled before its closure runs. Release the FIFO
+// in that case and on panic so the next save can start a fresh worker.
+struct SaveDrain(bool);
+
+impl Drop for SaveDrain {
+    fn drop(&mut self) {
+        if self.0 {
+            CHAT_SAVES.lock().unwrap().clear();
+        }
+    }
+}
+
+struct PendingSave {
+    provider: Arc<dyn FsProvider>,
+    path: PathBuf,
+    chat: Arc<ChatSessionFile>,
+}
+
+fn pending_chat(path: &Path) -> Option<Arc<ChatSessionFile>> {
+    let provider = vfs::provider();
+    CHAT_SAVES
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|save| save.path == path && Arc::ptr_eq(&save.provider, &provider))
+        .map(|save| save.chat.clone())
+}
+
+fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessionFile) {
+    let mut saves = CHAT_SAVES.lock().unwrap();
+    let start_worker = saves.is_empty();
+    saves.push_back(PendingSave {
+        provider,
+        path,
+        chat: Arc::new(chat),
+    });
+    drop(saves);
+    if !start_worker {
+        return;
+    }
+
+    let mut drain = SaveDrain(true);
+    editor_task_queue::global().submit(
+        TaskDescription::new("Save AI chats", "AI chat", TaskDuration::Short),
+        move |task| {
+            let drain = &mut drain;
+            let mut failure = None;
+            loop {
+                let (provider, path, chat) = {
+                    let saves = CHAT_SAVES.lock().unwrap();
+                    let save = saves.front().expect("the drain owns the nonempty queue");
+                    (save.provider.clone(), save.path.clone(), save.chat.clone())
+                };
+                task.set_phase("Serializing chat");
+                let result = serde_json::to_string_pretty(&*chat)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|serialized| {
+                        task.set_phase("Writing chat file");
+                        let dir = path.parent().expect("chat path has a parent");
+                        provider.create_dir_all(dir)?;
+                        write_chat_file(&provider, &path, &serialized)
+                    });
+                if let Err(error) = result {
+                    let error = format!("Could not save chat to {}: {error}", path.display());
+                    tracing::warn!("{error}");
+                    failure = Some(error);
+                }
+                let mut saves = CHAT_SAVES.lock().unwrap();
+                saves.pop_front();
+                if saves.is_empty() {
+                    drain.0 = false;
+                    return failure.map_or(Ok(()), Err);
+                }
+            }
+        },
+    );
+}
 
 impl AgentChatPanel {
     pub(super) fn chats_dir() -> Option<PathBuf> {
@@ -31,7 +117,7 @@ impl AgentChatPanel {
             tracing::warn!("Refusing chat id {chat_id:?}: not a plain file name");
             return None;
         }
-        Some(Self::ensure_chats_dir()?.join(format!("{chat_id}.json")))
+        Some(Self::chats_dir()?.join(format!("{chat_id}.json")))
     }
 
     pub(super) fn now_epoch_secs() -> u64 {
@@ -91,7 +177,7 @@ impl AgentChatPanel {
             *is_outdated = false;
         }
         self.display_item_heights.remove(&0);
-        self.save_current_chat();
+        self.save_current_chat(cx);
         cx.notify();
     }
 
@@ -179,14 +265,18 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         entries
     }
 
-    pub(super) fn save_current_chat(&self) {
+    pub(super) fn save_current_chat(&mut self, cx: &mut Context<Self>) {
         if self.current_chat_id.is_empty() {
             return;
         }
 
-        let Some(path) = Self::chat_file_path(&self.current_chat_id) else {
+        let Some(project_root) = &self.loaded_chat_project_root else {
             return;
         };
+        let path = project_root
+            .join(".pulsar")
+            .join("chats")
+            .join(format!("{}.json", self.current_chat_id));
 
         // Snapshot display items: strip ephemeral state and SystemPrompt (reconstructed on load).
         let persisted_display_items: Vec<DisplayItem> = self
@@ -261,34 +351,42 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             display_items: persisted_display_items,
         };
 
-        match serde_json::to_string_pretty(&payload) {
-            Ok(serialized) => {
-                if let Err(error) = write_chat_file(&path, &serialized) {
-                    tracing::warn!("Could not save chat to {}: {error}", path.display());
-                }
-            }
-            Err(error) => {
-                tracing::warn!("Could not serialize chat {}: {error}", self.current_chat_id);
-            }
-        }
+        self.update_chat_history_entry(&payload, cx);
+        queue_chat_save(self.chat_storage_provider.clone(), path, payload);
     }
 
-    pub(super) fn refresh_chat_history_list(&mut self, cx: &mut Context<Self>) {
-        let entries = Self::read_chat_index();
+    fn update_chat_history_entry(&mut self, chat: &ChatSessionFile, cx: &mut Context<Self>) {
+        self.chat_history_entries
+            .retain(|entry| entry.id != chat.id);
+        self.chat_history_entries.push(ChatHistoryEntry {
+            id: chat.id.clone(),
+            title: chat.title.clone(),
+            updated_at: chat.updated_at,
+        });
+        self.chat_history_entries
+            .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         self.chat_history_list.update(cx, |list, cx| {
-            list.set_items(entries, cx);
+            list.set_items(self.chat_history_entries.clone(), cx);
         });
     }
 
     pub(super) fn load_chat_session(&mut self, chat_id: &str, cx: &mut Context<Self>) {
+        if self.is_request_in_flight {
+            return;
+        }
         let Some(path) = Self::chat_file_path(chat_id) else {
             return;
         };
-        let Ok(raw) = vfs::read_to_string(&path) else {
-            return;
-        };
-        let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
-            return;
+        let chat = if let Some(chat) = pending_chat(&path) {
+            (*chat).clone()
+        } else {
+            let Ok(raw) = vfs::read_to_string(&path) else {
+                return;
+            };
+            let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
+                return;
+            };
+            chat
         };
 
         // The id the chat was opened by (a checked file name), not the one
@@ -359,6 +457,9 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
     }
 
     pub(super) fn start_new_chat(&mut self, cx: &mut Context<Self>) {
+        if self.is_request_in_flight {
+            return;
+        }
         self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
         self.current_chat_created_at = Self::now_epoch_secs();
         self.display_item_heights.clear();
@@ -370,14 +471,16 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
             is_outdated: false,
         }];
         self.messages = vec![system_msg];
-        self.save_current_chat();
-        self.refresh_chat_history_list(cx);
+        self.save_current_chat(cx);
         self.scroll_messages_to_bottom();
         cx.notify();
     }
 
     pub(super) fn bootstrap_chat_storage(&mut self, cx: &mut Context<Self>) {
+        self.loaded_chat_project_root = engine_state::get_project_path().map(PathBuf::from);
+        self.chat_storage_provider = vfs::provider();
         let entries = Self::read_chat_index();
+        self.chat_history_entries = entries.clone();
         self.chat_history_list.update(cx, |list, cx| {
             list.set_items(entries.clone(), cx);
         });
@@ -387,13 +490,11 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         } else {
             self.start_new_chat(cx);
         }
-
-        self.loaded_chat_project_root = engine_state::get_project_path().map(PathBuf::from);
     }
 
     pub(super) fn maybe_reload_chats_from_disk(&mut self, cx: &mut Context<Self>) {
         let current_root = engine_state::get_project_path().map(PathBuf::from);
-        if current_root.is_none() {
+        if current_root.is_none() || self.is_request_in_flight {
             return;
         }
 
@@ -409,8 +510,16 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         let Some(path) = Self::chat_file_path(&self.current_chat_id) else {
             return;
         };
-        let Ok(raw) = vfs::read_to_string(&path) else {
-            return;
+        let raw = if let Some(chat) = pending_chat(&path) {
+            let Ok(raw) = serde_json::to_string_pretty(&*chat) else {
+                return;
+            };
+            raw
+        } else {
+            let Ok(raw) = vfs::read_to_string(&path) else {
+                return;
+            };
+            raw
         };
 
         let file = rfd::FileDialog::new()
@@ -433,6 +542,9 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
     // this machine, not a project file; the copy into the project uses the VFS.
     #[allow(clippy::disallowed_methods)]
     pub(super) fn import_chat(&mut self, cx: &mut Context<Self>) {
+        if self.is_request_in_flight {
+            return;
+        }
         let file = rfd::FileDialog::new()
             .add_filter("JSON Chat Files", &["json"])
             .add_filter("All Files", &["*"])
@@ -459,7 +571,8 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         // here) and may collide with an existing chat: the copy gets a fresh
         // one.
         chat.id = format!("chat-{}", Self::now_epoch_nanos());
-        let Some(save_path) = Self::chat_file_path(&chat.id) else {
+        let Some(save_path) = Self::ensure_chats_dir().and_then(|_| Self::chat_file_path(&chat.id))
+        else {
             return;
         };
         let serialized = match serde_json::to_string_pretty(&chat) {
@@ -469,11 +582,11 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
                 return;
             }
         };
-        if let Err(error) = write_chat_file(&save_path, &serialized) {
+        if let Err(error) = write_chat_file(&vfs::provider(), &save_path, &serialized) {
             tracing::warn!("Could not import chat to {}: {error}", save_path.display());
             return;
         }
-        self.refresh_chat_history_list(cx);
+        self.update_chat_history_entry(&chat, cx);
         self.load_chat_session(&chat.id, cx);
     }
 }
@@ -492,11 +605,20 @@ pub(super) fn is_valid_chat_id(id: &str) -> bool {
 /// Write `contents` to `path` atomically, so a crash or a full disk mid-write
 /// cannot leave a truncated chat behind. A remote or P2P provider has no
 /// atomic replace yet and writes directly.
-fn write_chat_file(path: &Path, contents: &str) -> anyhow::Result<()> {
-    if vfs::is_remote() {
-        return vfs::write_file(path, contents.as_bytes());
+fn write_chat_file(
+    provider: &Arc<dyn FsProvider>,
+    path: &Path,
+    contents: &str,
+) -> anyhow::Result<()> {
+    if provider.is_remote() {
+        provider.write_file(path, contents.as_bytes())?;
+    } else {
+        provider.write_file_atomically(path, contents.as_bytes())?;
     }
-    vfs::write_file_atomically(path, contents.as_bytes())
+    if Arc::ptr_eq(provider, &vfs::provider()) {
+        engine_fs::emit(path, FsChangeKind::Modified);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
