@@ -50,8 +50,16 @@ pub trait RenderHostPart: Any + Send {
     /// frame renders: what the part publishes from the uploaded scene for
     /// the frame's passes (`Renderer::set_scene_payload`), such as the
     /// meshes' ray-traced scene, whose acceleration structures read the
-    /// mirrored geometry.
-    fn publish_frame(&mut self, _scene: &SharedScene, _renderer: &mut helio::Renderer) {}
+    /// mirrored geometry. `eye`: the frame's camera position, in world space
+    /// (what a part's per-view choices, such as which meshes rays see, are
+    /// made from).
+    fn publish_frame(
+        &mut self,
+        _scene: &SharedScene,
+        _renderer: &mut helio::Renderer,
+        _eye: glam::DVec3,
+    ) {
+    }
 
     /// Whether `world` holds content of the part's kind the scene's ground
     /// knows nothing about, so a camera keeps its own near plane even where

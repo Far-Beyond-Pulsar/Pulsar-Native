@@ -5855,6 +5855,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-components",
  "helio-core",
+ "helio-settings",
  "helio-vg-format",
  "naga",
  "pulsar_reflection",

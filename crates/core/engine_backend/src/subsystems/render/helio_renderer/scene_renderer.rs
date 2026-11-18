@@ -133,6 +133,8 @@ pub struct SceneRenderer {
     /// read at: camera-only frames reuse it.
     read: Option<(u64, Arc<SceneRead>)>,
     last_errors: Vec<String>,
+    /// The eye of the frame [`Self::prepare_frame`] placed, in world space.
+    eye: DVec3,
     /// The ground under cameras, as the scene's content reports it.
     ground: GroundQueries,
     /// The plugins' per-renderer state (`RenderHostPartRegistration`).
@@ -238,6 +240,7 @@ impl SceneRenderer {
             spaces,
             read: None,
             last_errors: Vec::new(),
+            eye: DVec3::ZERO,
             ground: GroundQueries::default(),
             host_parts,
             pipeline: super::pipelines::PipelineState::Unassigned,
@@ -431,6 +434,7 @@ impl SceneRenderer {
         // (Helio's `Renderer::origin_for`), and the rows the joins derive are
         // relative to it. Voxel coordinates stay global.
         let origin = self.renderer.origin_for(view.eye);
+        self.eye = view.eye;
         let camera = match view.projection {
             FrameProjection::Perspective { fov_y, near, far } => {
                 // The planes the scene's ground certifies (a voxel world's
@@ -516,7 +520,7 @@ impl SceneRenderer {
         // ray-traced scene).
         profiling::profile_scope!("helio_publish_host_parts");
         for part in &mut self.host_parts {
-            part.publish_frame(&self.scene, &mut self.renderer);
+            part.publish_frame(&self.scene, &mut self.renderer, self.eye);
         }
     }
 
