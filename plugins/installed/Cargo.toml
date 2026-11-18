@@ -111,6 +111,8 @@ glam = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
+# The skinned frames (tests/skinned_frames.rs): a procedural rig.
+skeletal_assets = { workspace = true }
 # The level editor as the editor assembles it (tests/level_editor.rs): the
 # shell with every installed plugin's root registering through its
 # extension points.
