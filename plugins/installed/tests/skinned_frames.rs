@@ -411,22 +411,34 @@ fn skinned_frames() {
     // What rays see: the indirect view with the tree, then also the tube,
     // left out of the ray-traced scene by its culling (`ray_tracing`'s
     // radius, the angle at 90 degrees). The tube's centre is 9.2 m from the
-    // eye, the tree's 10.9 m. Only where the project settings register (the
-    // meshes' `ray_tracing` group).
+    // eye, the tree's 10.9 m. A traced instance leaves only past 1.1 times
+    // the radius, so the scenarios go from fewest to most traced: at 8 m
+    // both leave (8.8 < 9.2), at 9.6 m the tube joins and the tree stays
+    // out. Only where the project settings register (the meshes'
+    // `ray_tracing` group).
     if let Some(rays) = config.owner_handle(engine_state::settings::NS_PROJECT, "ray_tracing") {
         renderer
             .editor_mailbox()
             .set_viewport_debug_mode(INDIRECT_VIEW);
         pose(0.0);
         for (radius, name) in [
-            (1000.0f64, "traced_all"),
-            (10.0, "traced_no_tree"),
-            (9.0, "traced_none"),
+            (8.0f64, "traced_none"),
+            (9.6, "traced_no_tree"),
+            (1000.0, "traced_all"),
         ] {
             rays.set("culling_radius", radius).unwrap();
             rays.set("culling_angle", 90.0f64).unwrap();
             let frame = render(&mut renderer, 240);
             save(&dir, &format!("{tag}_indirect_{name}"), &frame);
+            if let Some(stats) = renderer.frame_stats() {
+                let stat = |key: &str| stats.get(key).unwrap_or(0);
+                println!(
+                    "{name}: {} ray instances, {} culled, skin cache {} bytes",
+                    stat("meshes.ray_instances"),
+                    stat("meshes.ray_instances_culled"),
+                    stat("meshes.skin_cache_bytes"),
+                );
+            }
         }
     } else {
         println!("no ray_tracing settings group: the TLAS membership scenarios are skipped");
