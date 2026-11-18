@@ -762,22 +762,22 @@ files.extend-exclude = ["**/fixtures/*"]
 gpui-ce = { path = "crates/ui/wgpui" }
 
 # Helio's wgpu: the upstream v30.0.1 tag plus Helio's patches, on our fork's
-# helio/as-refit branch (helio/v30.0.1 plus acceleration-structure refit and
-# safe compaction; texture tracker start states, which put HiZ mips in
-# the wrong Vulkan layout; handles compared by instance and id). Patches only
+# helio/v30.0.1 branch (acceleration-structure refit and safe compaction;
+# texture tracker start states, which put HiZ mips in the wrong Vulkan
+# layout; handles compared by instance and id). Patches only
 # apply from the root manifest, so this mirrors Helio's own
 # `[patch.crates-io]`; patching the whole wgpu workspace keeps naga and
 # wgpu-types a single version. Change it together with Helio's.
 [patch.crates-io]
-naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-core-deps-emscripten = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-naga-bridge = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
-wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/as-refit" }
+naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core-deps-emscripten = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-naga-bridge = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
 
 # The flamegraph reads ONE global profiler. Helio and SceneDB pin the
 # Pulsar-Profiling repository by git rev (different revs); unpatched, each

@@ -9443,7 +9443,7 @@ dependencies = [
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -9468,7 +9468,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -19092,7 +19092,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.1",
@@ -19121,7 +19121,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -19154,7 +19154,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19162,7 +19162,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19170,7 +19170,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19178,7 +19178,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -19234,7 +19234,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -19243,7 +19243,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fas-refit#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",
