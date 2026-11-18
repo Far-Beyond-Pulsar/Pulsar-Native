@@ -1,13 +1,13 @@
 //! Right-hand info card of the item detail view.
 //!
 //! Owns the floating sidebar: seller, quick stats, license, the download
-//! call-to-action (idle / in progress / done / error), available formats and the
-//! "View on Sketchfab" link. Entry point: [`render_sidebar`]; the download label
+//! call-to-action (idle / in progress / done / error) and available formats.
+//! Entry point: [`render_sidebar`]; the download label
 //! formatting is the pure [`download_progress_text`].
 
 use gpui::{prelude::*, *};
 use ui::{
-    Icon, IconName, Sizable, Size, StyledExt,
+    Sizable, Size, StyledExt,
     avatar::Avatar,
     button::{Button, ButtonVariants as _},
     fmt_speed, h_flex, reveal_in_file_manager,
@@ -27,7 +27,6 @@ pub(super) struct SidebarContent {
     pub on_download: Option<Box<dyn Fn(&mut Window, &mut App) + 'static>>,
     pub download_status: Option<DownloadState>,
     pub formats: Vec<String>,
-    pub viewer_url: SharedString,
 }
 
 /// Floating info card with its sections stacked top to bottom.
@@ -42,7 +41,6 @@ pub(super) fn render_sidebar(
         on_download,
         download_status,
         formats,
-        viewer_url,
     } = content;
 
     v_flex()
@@ -67,8 +65,6 @@ pub(super) fn render_sidebar(
         .when(!formats.is_empty(), |card| {
             card.child(render_formats_block(formats, colors))
         })
-        // ── view on sketchfab ─────────────────────────────────────
-        .child(render_view_on_sketchfab(viewer_url, colors))
 }
 
 /// Seller avatar, name and category at the top of the card.
@@ -124,7 +120,8 @@ fn render_sidebar_stats(author: &AuthorInfo, colors: &DetailColors) -> impl Into
     h_flex()
         .px_5()
         .py_3()
-        .gap_5()
+        .gap_4()
+        .flex_wrap()
         .border_b_1()
         .border_color(border)
         .child(mini_stat(
@@ -348,29 +345,6 @@ fn render_formats_block(formats: Vec<String>, colors: &DetailColors) -> impl Int
                     .into_iter()
                     .map(|fmt| Tag::primary().small().rounded_full().child(fmt)),
             ),
-        )
-}
-
-/// Footer button that opens the model on Sketchfab.
-fn render_view_on_sketchfab(
-    viewer_url: SharedString,
-    colors: &DetailColors,
-) -> impl IntoElement + use<> {
-    div()
-        .px_5()
-        .pt_3()
-        .pb_5()
-        .border_t_1()
-        .border_color(colors.border)
-        .child(
-            Button::new("sidebar-view-sketchfab")
-                .ghost()
-                .small()
-                .icon(Icon::new(IconName::ExternalLink).small())
-                .label("View on Sketchfab")
-                .on_click(move |_, _, cx| {
-                    cx.open_url(viewer_url.as_ref());
-                }),
         )
 }
 

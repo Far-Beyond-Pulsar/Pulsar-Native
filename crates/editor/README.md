@@ -9,7 +9,7 @@ Editor UI panels — the workspace chrome rendered around the engine. These were
 | `ui_core` | Core editor shell — plugin loading, layout, menus |
 | `ui_documentation` | In-editor documentation viewer |
 | `ui_entry` | Application entry point and window setup |
-| `ui_fab_search` | Floating action button with omnibox search |
+| `ui_fab_search` | Sketchfab Viewer: model discovery and library |
 | `ui_file_manager` | File tree and project browser |
 | `ui_flamegraph` | CPU/GPU profiling flamegraph viewer |
 | `ui_friends` | Friends list and social panel |

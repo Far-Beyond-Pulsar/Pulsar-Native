@@ -47,8 +47,10 @@ fn render_camera(
     let (_, rotation, position) = matrix.to_scale_rotation_translation();
     let rotation = rotation.as_quat();
     let free = FreeCam::default();
+    let space = engine_backend::scene::frames::space_of(world, owner);
     let mut camera = RenderCamera {
         position,
+        coordinate_space: (space != 0).then_some(space),
         forward: rotation * glam::Vec3::NEG_Z,
         up: rotation * glam::Vec3::Y,
         fov_y: free.fov_y,

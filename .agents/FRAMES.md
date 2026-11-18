@@ -443,12 +443,27 @@ Known, not fixed. Ordered roughly by how much they matter.
 
 ### Portals are coordinate spaces; reflections are capture views (p25b, Helio#390)
 
+- **Camera traversal**: the floating perspective camera toolbar's **Follow
+  portals** toggle enables a sweep of each movement segment through the linked
+  apertures in the camera's space. The Portals plugin implements the generic
+  `SpaceProducer::traverse_camera` hook with the same f64 maps used to draw
+  portal contents. At a crossing, the inverse draw map transports the remaining
+  movement, rotates the full flight frame, and sets the destination slot.
+  Helio carries this slot in the camera so direct mesh draws, billboard and
+  deferred light consumers, and routes entering the view can match it. The
+  built-in game free camera uses the same hook. Authored cameras use their
+  owner's placement. Both endpoints need to be present in the scene. In this
+  editor mode W/S follows the view direction, including pitch.
+
 - **A portal is a rigid map between coordinate spaces, never a view.** The
   host publishes every opening and every route through them to the
   configured depth (`helio_portal_api::PORTAL_CHAIN_SET` from `PortalSync`,
   `project.portals.max_chain_depth`, default 3). A route's maps compose on the
   CPU into one `content_to_drawn`, projected with the frame's own camera, so
   what a chain shows lands in the frame's G-buffer at its true depth.
+  The Portals plugin exposes that same project setting as the **Portal depth**
+  stepper in the floating camera toolbar. It changes the current session's
+  setting and applies through the existing project settings refresh.
 - **Per frame** the portals' chains pass (Prepare) keeps the routes whose every
   opening is faced and on screen, shallowest first, at most
   `project.portals.max_chains` (default 300), and uploads `PORTAL_CHAINS`,
@@ -456,6 +471,9 @@ Known, not fixed. Ordered roughly by how much they matter.
   openings it shows), the remaps (`lighting::VIEW_REMAPS`) and, for CPU
   consumers, `PORTAL_LIVE_CHAINS`. The mask pass (G-buffer order 60) stamps the
   outermost openings into `PORTAL_MASK` and clears the depth behind them.
+  The aperture keeps its projected coverage when the eye is within one near
+  plane of the opening. The stamp clamps its depth per pixel for the depth
+  test and mask, while the traversal sweep still crosses at the authored plane.
 - **Each drawer draws its content through the chains** (G-buffer order 70,
   `OCCURRENCE_ORDER`): the meshes' occurrence cull emits (instance, chain)
   pairs for one multi-draw, and the G-buffer program's occurrence entry maps
@@ -472,12 +490,26 @@ Known, not fixed. Ordered roughly by how much they matter.
   own Hi-Z of the frame depth after the occurrences, clipped per pixel to the
   chain, in the one cluster store. Classic occurrences skip VG-active
   instances, as the direct cull does.
-- **Lighting and decals**: a chain's pixels carry its remap in the surface tag
-  (`gbuffer_remap_tag`); lighting, transmission and decals map position and
-  normal back to the content's world through `VIEW_REMAPS`. Normals are stored
-  in the drawn space. **Gap:** a chain's pixels walk the scene's lights (at
-  most 256) unshadowed (the shadow maps are the camera's world's), and no
-  light crosses an opening; an open design.
+- **Materials, lighting and decals**: a chain's pixels carry its remap in the
+  surface tag (`gbuffer_remap_tag`). Mesh material programs evaluate
+  world-space inputs in content space. The G-buffer stores normals in drawn
+  space, and lighting, transmission and decals use `VIEW_REMAPS` to recover
+  the content-space position and normal. Deferred lighting bins active lights
+  against the content-space bounds of remapped pixels, matching the light's
+  authored coordinate-space slot to the chain destination. Resident
+  local-light shadows can be sampled for unpartitioned portal content.
+  Directional shadow coverage and screen-space visibility still depend on the
+  primary camera. Light transport across the opening remains outside this path.
+- **Billboards** draw matching destination-space occurrences through the same
+  aperture, stage and hole tests. The overlay preserves direct billboards in
+  front of the aperture and clips their fragments behind it.
+- **Participating media**: the aperture carries its plane depth alongside
+  its opening ID. The fog composite samples the primary camera's integrated
+  medium up to that plane. The primary froxel and analytic lens paths use
+  lights from slot zero. The analytic lens visibility test treats the aperture
+  as the end of that world. Integrating destination-space fog and scattering
+  beyond the plane requires a separate ray segment and destination sources.
+  Bloom and image-based lens response consume the composited HDR image.
 - **Water's reflection is a mirrored capture view** (`ViewKind::Capture`,
   `ViewContext::render_view`): every feature at the capture's slots draws in
   it; voxel terrain does not draw secondary views yet. Captures resolve no

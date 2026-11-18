@@ -1,5 +1,38 @@
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum LibrarySection {
+    #[default]
+    Discover,
+    Liked,
+    MyModels,
+    Purchases,
+}
+
+impl LibrarySection {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Discover => "Discover",
+            Self::Liked => "Liked",
+            Self::MyModels => "My models",
+            Self::Purchases => "Purchases",
+        }
+    }
+
+    pub(crate) fn endpoint(self) -> Option<&'static str> {
+        match self {
+            Self::Discover => None,
+            Self::Liked => Some("https://api.sketchfab.com/v3/me/likes?count=24&sort_by=-likedAt"),
+            Self::MyModels => Some("https://api.sketchfab.com/v3/me/models?count=24"),
+            Self::Purchases => Some("https://api.sketchfab.com/v3/me/models/purchases?count=24"),
+        }
+    }
+
+    pub(crate) fn all() -> [Self; 4] {
+        [Self::Discover, Self::Liked, Self::MyModels, Self::Purchases]
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum DownloadState {
     InProgress {

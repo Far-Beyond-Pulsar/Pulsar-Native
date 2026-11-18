@@ -22,8 +22,7 @@ impl AgentChatPanel {
         self.streaming_message_ix = None;
         self.streaming_display_item_ix = None;
         self.display_item_heights.clear();
-        self.save_current_chat();
-        self.refresh_chat_history_list(cx);
+        self.save_current_chat(cx);
         self.scroll_messages_to_bottom();
         cx.notify();
     }
@@ -52,8 +51,7 @@ impl AgentChatPanel {
         self.streaming_display_item_ix = None;
         self.display_item_heights.clear();
 
-        self.save_current_chat();
-        self.refresh_chat_history_list(cx);
+        self.save_current_chat(cx);
         self.scroll_messages_to_bottom();
         cx.notify();
     }

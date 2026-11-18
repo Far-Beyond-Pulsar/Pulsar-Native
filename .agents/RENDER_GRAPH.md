@@ -105,8 +105,9 @@ are the frame's, `Phase` drawers and `before_phase` compute as placed by the fea
 | foliage | `foliage_gbuffer` | Foliage: Draw to GBuffer | `GBuffer` drawer 20 (takes what placement made) |
 | particles | `corona` | Overlay: Light Coronas | `Overlay` drawer 10 |
 
-Not nodes: the water plugin's planar-reflection capture builds a private second graph
-(`reflection_capture.rs`) for its own offscreen view, not a pass of the pipeline.
+The water plugin requests its planar reflection as a mirrored capture through
+`ViewContext::render_view` (`reflection_capture.rs`). The capture uses the frame's
+configured view phases and is submitted before the `WaterSim` execution timestamp.
 
 ### Nodes of meshes, materials, decals and sprites
 

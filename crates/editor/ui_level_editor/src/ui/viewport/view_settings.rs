@@ -138,11 +138,18 @@ impl ViewportPanel {
             return;
         };
 
-        let (camera_mode, debug_mode) = {
+        let (camera_mode, debug_mode, follow_space_transitions) = {
             let view = self.view_state.read();
-            (view.editor.camera_mode, view.editor.viewport_debug_mode)
+            (
+                view.editor.camera_mode,
+                view.editor.viewport_debug_mode,
+                view.overlays.state.follow_space_transitions,
+            )
         };
         mailbox.set_view_kind(view_kind_of(camera_mode));
+        // The primary viewport shares editor state. Its camera controls
+        // still need to reach the renderer before the split-view-only path.
+        mailbox.set_follow_space_transitions(follow_space_transitions);
 
         if !self.has_own_view_state() {
             return;

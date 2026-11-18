@@ -42,13 +42,15 @@ impl RenderOnce for GalleryHero {
         div()
             .id("gallery-hero")
             .w_full()
-            .h(px(460.0))
+            .aspect_ratio(16.0 / 9.0)
+            .max_h(px(560.0))
             .rounded_xl()
             .overflow_hidden()
             .bg(bg)
             .border_1()
             .border_color(border)
             .relative()
+            .p_3()
             .map(|el| {
                 if let Some(arc) = image_arc {
                     let arc_modal = arc.clone();
@@ -56,7 +58,7 @@ impl RenderOnce for GalleryHero {
                         img(gpui::ImageSource::Render(arc))
                             .w_full()
                             .h_full()
-                            .object_fit(gpui::ObjectFit::Cover),
+                            .object_fit(gpui::ObjectFit::Contain),
                     )
                     .child(
                         div()

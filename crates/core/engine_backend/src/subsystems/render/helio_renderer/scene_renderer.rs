@@ -83,6 +83,8 @@ pub struct FrameView {
     /// The eye in world space, in f64: a planet's surface is millions of
     /// metres from the origin.
     pub eye: DVec3,
+    /// The authored space of a camera traversing space boundaries.
+    pub coordinate_space: Option<u32>,
     pub forward: Vec3,
     pub up: Vec3,
     /// Width over height.
@@ -149,6 +151,20 @@ pub struct SceneRenderer {
 }
 
 impl SceneRenderer {
+    pub fn camera_traversal_enabled(&self) -> bool {
+        self.spaces.camera_traversal_enabled()
+    }
+
+    /// Travel through coordinate-space connections supplied by the scene's plugins.
+    pub fn traverse_camera(
+        &self,
+        start: DVec3,
+        end: DVec3,
+        space: u32,
+    ) -> Option<(DVec3, glam::DQuat, u32)> {
+        self.spaces.traverse_camera(start, end, space)
+    }
+
     /// A renderer over `scene` with the project's settings. SceneDB's GPU
     /// mirror is attached first (idempotent: renderers on one scene share
     /// it, and on a new device it moves there); Helio's derivations make the
@@ -434,7 +450,7 @@ impl SceneRenderer {
         // (Helio's `Renderer::origin_for`), and the rows the joins derive are
         // relative to it. Voxel coordinates stay global.
         let origin = self.renderer.origin_for(view.eye);
-        let camera = match view.projection {
+        let mut camera = match view.projection {
             FrameProjection::Perspective { fov_y, near, far } => {
                 // The planes the scene's ground certifies (a voxel world's
                 // empty space around the eye): they say nothing about other
@@ -464,6 +480,7 @@ impl SceneRenderer {
                 ortho_camera(view.eye, view.forward, view.up, view.aspect, half_height)
             }
         };
+        camera.coordinate_space = view.coordinate_space;
         // A view that maps past the frame (a fisheye or barrel-distorted
         // lens) needs a wider render than the frame, which it then crops
         // back; whatever owns the camera's optics says how much

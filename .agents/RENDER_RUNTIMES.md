@@ -131,3 +131,12 @@ asset thumbnails use its CPU `render_preview`. The materials graph editor's
 preview, the SKM editor's viewport and Matter's canvas draw with their own wgpu
 code on the window's device (see the p23 section of
 `.agents/PLUGIN_API_REFACTOR_PLAN.md` for what moves next).
+
+## Editor selection guides
+
+The lights plugin registers a persistent `EditorLinesRegistration` layer in
+editor builds. It reads SceneDB's full selection, resolves the selected
+lights' world poses, and supplies the existing Helio debug pass with range
+spheres, spot cones, direction markers, and authored source dimensions.
+Property, transform, and selection edits refresh the layer when its geometry
+changes. Clearing selection removes the layer.

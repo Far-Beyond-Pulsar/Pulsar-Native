@@ -6,7 +6,7 @@
 //! Entry points: [`make_agent_tool_context`] and [`execute_tool_calls`], both
 //! called from `stream_worker.rs` on the worker thread.
 
-use super::stream_event::StreamEvent;
+use super::stream_event::{StartedSubagent, StreamEvent};
 use super::*;
 use agent_chat_core::{ChatRequest, ToolCall};
 use std::sync::{Condvar, Mutex};
@@ -51,19 +51,7 @@ fn open_file_request(tx: &smol::channel::Sender<StreamEvent>) -> agent_chat_tool
             .try_send(StreamEvent::OpenFile(path, waiter.clone()))
             .map_err(|err| format!("Failed to dispatch open-file request to UI thread: {}", err))?;
 
-        let (lock, cvar) = &*waiter;
-        let mut guard = lock
-            .lock()
-            .map_err(|_| "OpenFile waiter mutex poisoned".to_string())?;
-        while guard.is_none() {
-            guard = cvar
-                .wait(guard)
-                .map_err(|_| "OpenFile waiter mutex poisoned".to_string())?;
-        }
-
-        guard
-            .take()
-            .unwrap_or_else(|| Err("OpenFile waiter signaled without a result".to_string()))
+        wait_for_editor(&tx_for_open, &waiter)
     })
 }
 
@@ -101,20 +89,29 @@ fn activate_open_editor_request(
                 )
             })?;
 
-        let (lock, cvar) = &*waiter;
-        let mut guard = lock
-            .lock()
-            .map_err(|_| "ActivateOpenEditor waiter mutex poisoned".to_string())?;
-        while guard.is_none() {
-            guard = cvar
-                .wait(guard)
-                .map_err(|_| "ActivateOpenEditor waiter mutex poisoned".to_string())?;
-        }
-
-        guard.take().unwrap_or_else(|| {
-            Err("ActivateOpenEditor waiter signaled without a result".to_string())
-        })
+        wait_for_editor(&tx_for_activate, &waiter)
     })
+}
+
+fn wait_for_editor(
+    tx: &smol::channel::Sender<StreamEvent>,
+    waiter: &super::stream_event::UiWaiter,
+) -> Result<(), String> {
+    let (lock, cvar) = &**waiter;
+    let mut result = lock
+        .lock()
+        .map_err(|_| "Editor reply lock poisoned".to_string())?;
+    loop {
+        if let Some(result) = result.take() {
+            return result;
+        }
+        if tx.is_closed() {
+            return Err("Chat ended while the tool was waiting for the editor.".into());
+        }
+        (result, _) = cvar
+            .wait_timeout(result, std::time::Duration::from_millis(250))
+            .map_err(|_| "Editor reply lock poisoned".to_string())?;
+    }
 }
 
 /// Executor used by the `spawn_subagent` tool: runs a bounded tool-calling loop
@@ -176,10 +173,10 @@ fn subagent_executor(
         );
 
         let mut current_messages = vec![
-                                    ChatMessage {
-                                        role: ChatRole::System,
-                                        content: format!(
-                                            "You are an AI assistant completing a specific task.\n\
+            ChatMessage {
+                role: ChatRole::System,
+                content: format!(
+                    "You are an AI assistant completing a specific task.\n\
                                          \n\
                                          TASK NAME: {name}\n\
                                          \n\
@@ -192,21 +189,21 @@ fn subagent_executor(
                                          Use the available tools to read files, search the codebase, and gather evidence.\n\
                                          Include file paths, line numbers, and direct quotes in your answer.\n\
                                          When you have enough information, write your final answer and stop calling tools.",
-                                            name = req.name,
-                                            task = req.task,
-                                            instructions = instructions,
-                                            workspace = req.workspace_root.display(),
-                                        ),
-                                        tool_call_id: None,
-                                        tool_calls: vec![],
-                                    },
-                                    ChatMessage {
-                                        role: ChatRole::User,
-                                        content: "Complete the task.".to_string(),
-                                        tool_call_id: None,
-                                        tool_calls: vec![],
-                                    },
-                                ];
+                    name = req.name,
+                    task = req.task,
+                    instructions = instructions,
+                    workspace = req.workspace_root.display(),
+                ),
+                tool_call_id: None,
+                tool_calls: vec![],
+            },
+            ChatMessage {
+                role: ChatRole::User,
+                content: "Complete the task.".to_string(),
+                tool_call_id: None,
+                tool_calls: vec![],
+            },
+        ];
 
         let mut all_chunks: Vec<String> = Vec::new();
         let mut last_raw_response = serde_json::Value::Null;
@@ -312,61 +309,105 @@ fn subagent_executor(
     })
 }
 
-/// Execute `tool_calls` on one thread each and return `(id, name, result)` in
-/// the original call order. Each result is also sent to the UI as it lands.
+/// Execute tools in parallel and return results in the original call order.
+/// Each result is also sent to the UI as it lands.
 pub(super) fn execute_tool_calls(
     tool_registry: &ToolRegistry,
     tool_context: &agent_chat_tools::ToolContext,
     tx: &smol::channel::Sender<StreamEvent>,
     tool_calls: &[ToolCall],
 ) -> Vec<(String, String, String)> {
-    // Spawn one thread per tool call so they execute concurrently.
-    let mut all_results = Vec::new();
-    let handles: Vec<_> = tool_calls
+    use editor_task_queue::{TaskDescription, TaskDuration};
+
+    // The request runs on the long pool. Use the separate short pool so
+    // requests waiting for tools cannot occupy the workers their tools need.
+    let pending: Vec<_> = tool_calls
         .iter()
-        .map(|tool_call| {
-            let name = tool_call.name.clone();
-            let args = tool_call.arguments_json.clone();
-            let id = tool_call.id.clone();
+        .map(|call| {
+            let name = call.name.clone();
+            let id = call.id.clone();
+            let args = call.arguments_json.clone();
             let registry = tool_registry.clone();
             let ctx = tool_context.clone();
             let tx = tx.clone();
-            editor_task_queue::spawn_named(
-                editor_task_queue::ThreadSpec::new(
-                    "ui core: execute tool calls",
-                    editor_task_queue::ThreadRole::Io,
-                )
-                .owner("ui_core"),
-                move || {
-                    let result = registry.execute(&name, args, &ctx);
-                    let (tool_result, is_error) = match result {
-                        Ok(value) => (value.to_string(), false),
-                        Err(err) => (format!("Tool error: {}", err), true),
+            let (done, result) = smol::channel::bounded(1);
+            let event_id = id.clone();
+            let event_name = name.clone();
+            editor_task_queue::global().submit(
+                TaskDescription::new(
+                    format!("Run chat tool: {name}"),
+                    "AI chat",
+                    TaskDuration::Short,
+                ),
+                move |task| {
+                    task.set_phase("Executing chat tool");
+                    if tx.is_closed() {
+                        return Err("Chat request ended before the tool started.".into());
+                    }
+                    let result = registry
+                        .execute(&event_name, args, &ctx)
+                        .map_err(|error| error.to_string());
+                    let subagent = match &result {
+                        Ok(value) if event_name == "spawn_subagent" => started_subagent(value),
+                        _ => None,
+                    };
+                    let tool_result = match &result {
+                        Ok(value) => value.to_string(),
+                        Err(error) => format!("Tool error: {error}"),
                     };
                     let result_preview =
-                        AgentChatPanel::format_tool_result_preview(&name, &tool_result);
+                        AgentChatPanel::format_tool_result_preview(&event_name, &tool_result);
                     let _ = tx.try_send(StreamEvent::ToolCallResult {
-                        id: id.clone(),
-                        tool_name: name.clone(),
+                        id: event_id,
+                        subagent,
                         result_preview,
                         result_full: tool_result.clone(),
-                        is_error,
+                        is_error: result.is_err(),
                     });
-                    (id, name, tool_result)
+                    let _ = done.try_send(tool_result);
+                    result.map(|_| ())
                 },
-            )
+            );
+            (id, name, result)
         })
         .collect();
 
-    // Collect parallel results in original order for message threading.
-    for handle in handles {
-        all_results.push(handle.join().unwrap_or_else(|_| {
-            (
-                "".to_string(),
-                "unknown".to_string(),
-                "Tool thread panicked".to_string(),
-            )
-        }));
+    pending
+        .into_iter()
+        .map(|(id, name, result)| {
+            let result = result.recv_blocking().unwrap_or_else(|_| {
+                let error = "Tool task ended before returning a result.".to_string();
+                let _ = tx.try_send(StreamEvent::ToolCallResult {
+                    id: id.clone(),
+                    subagent: None,
+                    result_preview: error.clone(),
+                    result_full: error.clone(),
+                    is_error: true,
+                });
+                error
+            });
+            (id, name, result)
+        })
+        .collect()
+}
+
+fn started_subagent(value: &serde_json::Value) -> Option<StartedSubagent> {
+    let id = value.get("subagent_id")?.as_str()?.to_string();
+    if id.is_empty() {
+        return None;
     }
-    all_results
+    Some(StartedSubagent {
+        id,
+        name: value
+            .get("name")
+            .and_then(|name| name.as_str())
+            .unwrap_or("Subagent")
+            .to_string(),
+        task: value
+            .get("task")
+            .and_then(|task| task.as_str())
+            .unwrap_or("Subagent task")
+            .to_string(),
+        created_at_ms: value.get("created_at_ms").and_then(|time| time.as_u64()),
+    })
 }

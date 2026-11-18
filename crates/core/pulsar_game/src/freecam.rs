@@ -45,6 +45,7 @@ struct KeyState {
 pub struct FreeCam {
     /// The pose: the eye, and yaw/pitch within the frame of the ground below.
     pub pose: FlyCamera,
+    pub coordinate_space: Option<u32>,
 
     /// Movement speed in units per second near the ground; it grows with the
     /// height above the ground.
@@ -72,6 +73,7 @@ impl Default for FreeCam {
             // downward tilt. The first rendered frame will show something
             // sensible even with an empty scene.
             pose: FlyCamera::new(DVec3::new(0.0, 3.0, 10.0), 0.0, -0.15),
+            coordinate_space: None,
             move_speed: 8.0,
             mouse_sensitivity: 0.002,
             fov_y: std::f32::consts::FRAC_PI_4,
@@ -156,7 +158,9 @@ impl FreeCam {
     /// the scene's content reports through its ground methods): its local
     /// vertical becomes the camera's up, its height the speed.
     pub fn follow_ground(&mut self, ground: CameraGround) {
-        self.pose.follow_ground(ground.up);
+        if ground.up.is_some() || self.coordinate_space.is_none() {
+            self.pose.follow_ground(ground.up);
+        }
         self.ground = ground;
     }
 
@@ -186,6 +190,7 @@ impl FreeCam {
     pub fn to_render_camera(&self) -> RenderCamera {
         RenderCamera {
             position: self.pose.position,
+            coordinate_space: self.coordinate_space,
             forward: self.pose.forward(),
             up: self.pose.frame_up(),
             fov_y: self.fov_y,

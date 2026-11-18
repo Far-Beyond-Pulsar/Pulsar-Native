@@ -1,9 +1,9 @@
-//! Builds the `ChatRequest` for a provider call before the worker thread starts.
+//! Builds the `ChatRequest` for a provider call on an editor task worker.
 //!
 //! Owns history trimming (budget + AI summary of dropped messages), the live
 //! orchestration-state system message, and tool-schema validation, all
 //! returned as a plain [`PreparedRequest`]. Entry point:
-//! `AgentChatPanel::prepare_provider_request`. The pure helpers
+//! `RequestInputs::prepare`. The pure helpers
 //! ([`build_live_state_message`], [`insert_compaction_summary`],
 //! [`insert_system_message`]) are unit tested without any UI.
 
@@ -117,45 +117,39 @@ fn to_provider_tool(name: String, description: String, params: Value) -> Option<
     })
 }
 
-impl AgentChatPanel {
-    /// Build the first provider request: trim history to the context budget
-    /// (summarising dropped messages), add live orchestration state and attach
-    /// the validated tool schemas.
-    pub(super) fn prepare_provider_request(
-        &self,
+pub(super) struct RequestInputs {
+    pub(super) model: String,
+    pub(super) history_budget: usize,
+    pub(super) compact_model: String,
+    pub(super) messages: Vec<ChatMessage>,
+}
+
+impl RequestInputs {
+    pub(super) fn prepare(
+        self,
         provider: &Arc<dyn ChatProvider>,
-        token: Option<String>,
+        tool_registry: &ToolRegistry,
+        task: &editor_task_queue::TaskContext,
     ) -> PreparedRequest {
-        let provider_id = provider.id();
-        let model = self
-            .active_model()
-            .map(|m| m.id.to_string())
-            .unwrap_or_else(|| "default".to_string());
-
-        // Leave a sliver for the compaction-instructions block itself.
-        let context_chars = self.active_context_chars();
-        let history_budget = context_chars.saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET);
-
-        // Unwrap token early so it can be used for the compaction summary call.
-        let token = token.unwrap_or_default();
-
-        // Resolve the compact model: use the specified one or fall back to the current model.
-        let compact_model: String = self
-            .active_model()
-            .and_then(|m| m.compact_model)
-            .unwrap_or_else(|| model.as_str())
-            .to_string();
-
-        let provider_messages_raw = self.build_provider_history_messages();
-        let (mut provider_messages, dropped_opt) = super::prompt_ranking::compact_messages(
-            provider_messages_raw,
+        let Self {
+            model,
             history_budget,
-            Self::COMPACTION_SUMMARY_CHAR_BUDGET,
+            compact_model,
+            messages,
+        } = self;
+        let token = String::new();
+        let provider_id = provider.id();
+        let (mut provider_messages, dropped_opt) = super::prompt_ranking::compact_messages(
+            messages,
+            history_budget,
+            AgentChatPanel::COMPACTION_SUMMARY_CHAR_BUDGET,
         );
 
         // If messages were dropped, call the compact model to produce a real summary.
         let compaction_summary: Option<String> = if let Some(dropped) = dropped_opt {
-            let summary = Self::ai_summarize_dropped(&dropped, provider, &compact_model, &token);
+            task.set_phase("Summarizing chat history");
+            let summary =
+                AgentChatPanel::ai_summarize_dropped(&dropped, provider, &compact_model, &token);
             insert_compaction_summary(&mut provider_messages, &summary);
             Some(summary)
         } else {
@@ -172,8 +166,7 @@ impl AgentChatPanel {
         }
 
         // Validate and convert tool schemas
-        let tools: Vec<ToolDefinition> = self
-            .tool_registry
+        let tools: Vec<ToolDefinition> = tool_registry
             .definitions()
             .into_iter()
             .filter_map(|def| to_provider_tool(def.name, def.description, def.parameters_schema))

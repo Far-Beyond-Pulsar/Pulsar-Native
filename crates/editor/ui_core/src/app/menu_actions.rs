@@ -6,7 +6,7 @@
 //! shortcuts and toolbar already use, so a menu entry is never a second
 //! implementation.
 
-use gpui::{px, Context, InteractiveElement, Window};
+use gpui::{Context, InteractiveElement, Window, px};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt as _;
 use std::path::PathBuf;
@@ -93,6 +93,12 @@ impl PulsarApp {
             }))
             .on_action(cx.listener(|this, _: &menu::ImportAssets, window, cx| {
                 this.import_assets(window, cx)
+            }))
+            .on_action(cx.listener(|_, _: &menu::OpenSketchfabViewer, _, cx| {
+                use gpui::UpdateGlobal as _;
+                window_manager::WindowRegistry::update_global(cx, |registry, cx| {
+                    registry.open("FabSearchWindow", cx)
+                });
             }))
             // Tools
             .on_action(

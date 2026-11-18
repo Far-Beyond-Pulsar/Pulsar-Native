@@ -89,6 +89,8 @@ impl Default for WindowDescriptor {
 pub struct RenderCamera {
     /// The eye in world space.
     pub position: glam::DVec3,
+    /// The authored coordinate-space slot, when the view is restricted to it.
+    pub coordinate_space: Option<u32>,
     /// The view direction in world space.
     pub forward: glam::Vec3,
     /// The view's up in world space (over a planet, its local vertical).
@@ -108,6 +110,7 @@ impl RenderCamera {
     pub fn look_at(position: glam::DVec3, target: glam::DVec3, up: glam::Vec3) -> Self {
         Self {
             position,
+            coordinate_space: None,
             forward: (target - position)
                 .as_vec3()
                 .normalize_or(glam::Vec3::NEG_Z),
@@ -123,6 +126,7 @@ impl RenderCamera {
     pub fn frame_view(&self, aspect: f32) -> engine_backend::subsystems::render::FrameView {
         use engine_backend::subsystems::render::{FrameProjection, FrameView};
         FrameView {
+            coordinate_space: self.coordinate_space,
             eye: self.position,
             forward: self.forward.normalize_or(glam::Vec3::NEG_Z),
             up: self.up.normalize_or(glam::Vec3::Y),

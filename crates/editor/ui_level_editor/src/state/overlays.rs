@@ -33,6 +33,8 @@ pub struct OverlayState {
     /// Whether a split-off viewport's camera is kept in step with the other
     /// viewports' (its lock button). The primary viewport is always locked.
     pub camera_sync_locked: bool,
+    /// Sweep camera movement through linked coordinate-space boundaries.
+    pub follow_space_transitions: bool,
     pub performance_overlay_collapsed: bool,
     pub gpu_pipeline_overlay_collapsed: bool,
 
@@ -64,6 +66,7 @@ impl Default for OverlayState {
             camera_mode_selector_collapsed: false,
             viewport_options_collapsed: false,
             camera_sync_locked: true,
+            follow_space_transitions: false,
             performance_overlay_collapsed: false,
             gpu_pipeline_overlay_collapsed: false,
             fps_graph_is_line: true,

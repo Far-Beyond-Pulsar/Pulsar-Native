@@ -205,8 +205,7 @@ impl AgentChatPanel {
                 tool_calls: vec![],
             });
             self.scroll_messages_to_bottom();
-            self.save_current_chat();
-            self.refresh_chat_history_list(cx);
+            self.save_current_chat(cx);
             cx.notify();
             return;
         };
@@ -267,8 +266,7 @@ impl AgentChatPanel {
                         }
                     }
                     panel.scroll_messages_to_bottom();
-                    panel.save_current_chat();
-                    panel.refresh_chat_history_list(cx);
+                    panel.save_current_chat(cx);
                     cx.notify();
                 });
             });

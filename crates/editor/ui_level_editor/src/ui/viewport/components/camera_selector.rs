@@ -8,11 +8,13 @@ use std::sync::Arc;
 use gpui::*;
 use rust_i18n::t;
 use ui::{
+    ActiveTheme, Disableable, IconName, Selectable, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme, IconName, Selectable, Sizable,
+    h_flex,
 };
 
-use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle, HandleSide};
+use super::floating_toolbar::{HandleSide, create_drag_handle, toolbar_with_drag_handle};
+use crate::extend::viewport::CameraToolbarInteger;
 use crate::state::{CameraMode, LevelEditorState};
 use crate::ui::toolbar::view_mode_dropdown::{ViewModeDropdown, ViewModePickerState};
 
@@ -138,6 +140,64 @@ pub trait CameraSpeedControl {
     fn get_move_speed(&self) -> f32;
 }
 
+fn camera_toolbar_integer(
+    control: &'static CameraToolbarInteger,
+    cx: &App,
+) -> Option<impl IntoElement> {
+    use engine_backend::subsystems::render::helio_renderer::project_settings;
+    use engine_state::settings::{NS_PROJECT, global_config};
+    use helio::helio_settings::Kind;
+
+    let setting = control.group.setting(control.key)?;
+    let Kind::Integer { min, max } = setting.kind else {
+        return None;
+    };
+    let owner = global_config().owner_handle(NS_PROJECT, control.group.key)?;
+    let value = project_settings::resolved(control.group).number(control.key) as i64;
+    let button = |direction, icon, step, disabled| {
+        let owner = owner.clone();
+        Button::new(SharedString::from(format!(
+            "{}.{}.{}",
+            control.group.key, control.key, direction
+        )))
+        .icon(icon)
+        .small()
+        .disabled(disabled)
+        .tooltip(format!("{direction} {}", setting.label))
+        .on_click(move |_, _, cx| {
+            let value = project_settings::resolved(control.group).number(control.key) as i64;
+            let next = value.saturating_add(step).clamp(min, max);
+            if next != value {
+                match owner.set(control.key, next as f64) {
+                    Ok(()) => cx.refresh_windows(),
+                    Err(error) => tracing::warn!(setting = control.key, %error, "Could not update camera toolbar setting"),
+                }
+            }
+        })
+    };
+
+    Some(
+        h_flex()
+            .gap_1()
+            .items_center()
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(control.label),
+            )
+            .child(button("Decrease", IconName::Minus, -1, value <= min))
+            .child(
+                div()
+                    .text_xs()
+                    .min_w(px(20.0))
+                    .text_center()
+                    .child(value.to_string()),
+            )
+            .child(button("Increase", IconName::Plus, 1, value >= max)),
+    )
+}
+
 /// Render the complete camera mode selector overlay.
 pub fn render_camera_selector<V, S>(
     state: &LevelEditorState,
@@ -178,7 +238,25 @@ where
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
         .child(camera_speed_controls(input_state, cx))
         .child(div().h(px(20.0)).w_px().bg(cx.theme().border))
-        .child(camera_mode_buttons(state_arc, camera_mode))
+        .child(camera_mode_buttons(state_arc.clone(), camera_mode))
+        .child(
+            Button::new("follow_space_transitions")
+                .label(t!("LevelEditor.Camera.FollowSpaceTransitions"))
+                .tooltip(t!("LevelEditor.Camera.FollowSpaceTransitionsTooltip"))
+                .small()
+                .selected(state.overlays.state.follow_space_transitions)
+                .on_click(move |_, _, cx| {
+                    let mut state = state_arc.write();
+                    state.overlays.state.follow_space_transitions =
+                        !state.overlays.state.follow_space_transitions;
+                    drop(state);
+                    cx.refresh_windows();
+                }),
+        )
+        .children(
+            pulsar_plugins::registered::<CameraToolbarInteger>()
+                .filter_map(|control| camera_toolbar_integer(control, cx)),
+        )
         .child(
             Button::new("collapse_camera_mode")
                 .icon(IconName::Close)

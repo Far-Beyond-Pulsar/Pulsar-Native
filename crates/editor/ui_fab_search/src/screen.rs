@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme, IconName, Root, TitleBar, VirtualListScrollHandle,
+    ActiveTheme, IconName, Root, StyledExt, TitleBar, VirtualListScrollHandle,
     button::Button,
     download_manager::DownloadManagerDrawer,
     h_flex,
@@ -16,7 +16,7 @@ use ui::{
 use crate::components;
 use crate::parser::{SketchfabMe, SketchfabModel, SketchfabModelDetail};
 use crate::search_index::fetch_sketchfab_me;
-use crate::utils::actions::{DownloadState, LicenseFilter, SortBy};
+use crate::utils::actions::{DownloadState, LibrarySection, LicenseFilter, SortBy};
 
 pub struct FabSearchWindow {
     pub(crate) focus_handle: FocusHandle,
@@ -24,6 +24,7 @@ pub struct FabSearchWindow {
     pub(crate) search_input: Entity<InputState>,
 
     pub(crate) sort_by: SortBy,
+    pub(crate) library_section: LibrarySection,
     pub(crate) filter_downloadable: bool,
     pub(crate) filter_animated: bool,
     pub(crate) filter_staffpicked: bool,
@@ -37,6 +38,7 @@ pub struct FabSearchWindow {
     pub(crate) is_loading_more: bool,
     pub(crate) error: Option<String>,
     pub(crate) last_url: Option<String>,
+    pub(crate) request_generation: u64,
 
     pub(crate) selected_item_uid: Option<String>,
     pub(crate) item_detail: Option<Box<SketchfabModelDetail>>,
@@ -94,6 +96,7 @@ impl FabSearchWindow {
             search_query: String::new(),
             search_input,
             sort_by: SortBy::Relevance,
+            library_section: LibrarySection::Discover,
             filter_downloadable: false,
             filter_animated: false,
             filter_staffpicked: false,
@@ -105,6 +108,7 @@ impl FabSearchWindow {
             is_loading_more: false,
             error: None,
             last_url: None,
+            request_generation: 0,
             selected_item_uid: None,
             item_detail: None,
             detail_loading: false,
@@ -312,7 +316,7 @@ impl window_manager::PulsarWindow for FabSearchWindow {
     }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
-        window_manager::default_window_options(900.0, 650.0)
+        window_manager::default_window_options(1180.0, 780.0)
     }
 
     fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
@@ -379,12 +383,31 @@ impl Render for FabSearchWindow {
                 .flex_1()
                 .min_h_0()
                 .flex()
+                .flex_col()
                 .items_center()
                 .justify_center()
+                .gap_2()
+                .child(div().text_lg().font_semibold().text_color(fg).child(
+                    match self.library_section {
+                        LibrarySection::Discover => "Find your next model",
+                        LibrarySection::Liked => "Your liked models will appear here",
+                        LibrarySection::MyModels => "Your published models will appear here",
+                        LibrarySection::Purchases => "Your purchased models will appear here",
+                    },
+                ))
                 .child(
                     div()
+                        .text_sm()
                         .text_color(muted_fg)
-                        .child("Search Sketchfab to browse free 3D models"),
+                        .child(match self.library_section {
+                            LibrarySection::Discover => {
+                                "Search Sketchfab or browse your personal library."
+                            }
+                            _ if self.api_token.is_none() => {
+                                "Connect your Sketchfab account to view this library."
+                            }
+                            _ => "This section is empty, or Sketchfab returned no models.",
+                        }),
                 )
                 .into_any_element()
         } else {
@@ -396,6 +419,75 @@ impl Render for FabSearchWindow {
         let filter_bar = components::render_filter_bar(
             self, border_col, muted_fg, accent_bg, accent_fg, active_bg, active_fg, cx,
         );
+
+        let library_tabs = h_flex()
+            .w_full()
+            .px_4()
+            .py_2()
+            .gap_2()
+            .items_center()
+            .border_b_1()
+            .border_color(border_col)
+            .children(LibrarySection::all().into_iter().map(|section| {
+                let active = self.library_section == section;
+                let requires_account = section != LibrarySection::Discover;
+                div()
+                    .id(SharedString::from(format!("library-{:?}", section)))
+                    .cursor_pointer()
+                    .px_3()
+                    .py_2()
+                    .rounded_md()
+                    .text_sm()
+                    .font_medium()
+                    .bg(if active { active_bg } else { accent_bg })
+                    .text_color(if active { active_fg } else { accent_fg })
+                    .child(section.label())
+                    .when(requires_account && self.api_token.is_none(), |el| {
+                        el.child(div().ml_2().text_xs().text_color(muted_fg).child("Account"))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        crate::handlers::on_select_library_section(this, section, cx);
+                    }))
+            }));
+
+        let result_count = if self.next_url.is_some() {
+            format!("{}+ models", self.results.len())
+        } else {
+            format!("{} models", self.results.len())
+        };
+        let section_summary = h_flex()
+            .w_full()
+            .px_5()
+            .py_3()
+            .items_center()
+            .border_b_1()
+            .border_color(border_col)
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .text_color(fg)
+                            .child(self.library_section.label()),
+                    )
+                    .child(div().text_xs().text_color(muted_fg).child(
+                        match self.library_section {
+                            LibrarySection::Discover => "Browse the Sketchfab community",
+                            LibrarySection::Liked => "Models you’ve saved from across Sketchfab",
+                            LibrarySection::MyModels => "Your published work",
+                            LibrarySection::Purchases => "Assets in your Sketchfab collection",
+                        },
+                    )),
+            )
+            .child(
+                div()
+                    .ml_auto()
+                    .text_sm()
+                    .text_color(muted_fg)
+                    .child(result_count),
+            );
 
         // ── Auth section ──────────────────────────────────────────────────────
         let auth_section = components::render_auth_section(self, fg, muted_fg, border_col, cx);
@@ -413,11 +505,8 @@ impl Render for FabSearchWindow {
         let dl_entries = components::build_download_entries(self);
         let entity_for_drawer = cx.entity().clone();
 
-        let layout =
+        let browser_chrome =
             v_flex()
-                .size_full()
-                .bg(bg)
-                .child(TitleBar::new().child("Sketchfab"))
                 .child(
                     div()
                         .w_full()
@@ -468,8 +557,20 @@ impl Render for FabSearchWindow {
                                 }),
                         ),
                 )
-                .child(filter_bar)
-                .child(body);
+                .child(library_tabs)
+                .when(self.library_section == LibrarySection::Discover, |el| {
+                    el.child(filter_bar)
+                })
+                .when(!self.results.is_empty(), |el| el.child(section_summary));
+
+        let layout = v_flex()
+            .size_full()
+            .bg(bg)
+            .child(TitleBar::new().child("Sketchfab Viewer"))
+            .when(self.selected_item_uid.is_none(), |el| {
+                el.child(browser_chrome)
+            })
+            .child(body);
 
         div()
             .size_full()

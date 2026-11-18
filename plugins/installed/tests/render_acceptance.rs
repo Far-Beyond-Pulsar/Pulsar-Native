@@ -1305,6 +1305,56 @@ fn add_light(
     id
 }
 
+#[test]
+fn selected_light_guides_draw_and_clear_in_the_editor_frame() {
+    use installed_plugins::lights_plugin::lights_component::LightType;
+
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let mut state = LevelEditorState::new();
+    let mut lights = Vec::new();
+    for (x, kind) in [(-radius, LightType::Point), (radius, LightType::Spot)] {
+        let id = add_light(&mut state, [x, 0.0, 0.0], kind, 0.0);
+        set_light(&mut state, &id, "range", Box::new(radius * 0.65));
+        set_light(&mut state, &id, "cast_shadows", Box::new(false));
+        lights.push(id);
+    }
+
+    state.scene.world_mut().select(None);
+    let mut renderer = harness.renderer(&state);
+    let clear = harness.frames(&mut renderer, || {});
+    let selected: Vec<_> = lights
+        .iter()
+        .map(|id| state.scene.world().entity_for(id).expect("light owner"))
+        .collect();
+    state.scene.world_mut().select_all(&selected);
+    let both = harness.frames(&mut renderer, || {});
+    // Both halves contain a line layer. The icons are present in both frames.
+    let mut changed = [0; 2];
+    for (i, (a, b)) in both
+        .color
+        .chunks_exact(4)
+        .zip(clear.color.chunks_exact(4))
+        .enumerate()
+    {
+        let delta: u32 = (0..3).map(|c| u32::from(a[c].abs_diff(b[c]))).sum();
+        if delta > PIXEL_THRESHOLD {
+            changed[usize::from(i % SIZE as usize >= SIZE as usize / 2)] += 1;
+        }
+    }
+    assert!(changed.iter().all(|&count| count > 20), "{changed:?}");
+
+    state.scene.world_mut().select(None);
+    let cleared = harness.frames(&mut renderer, || {});
+    assert_eq!(cleared.difference(&clear).color_pixels, 0);
+}
+
 fn set_light(
     state: &mut LevelEditorState,
     id: &str,
@@ -3706,6 +3756,82 @@ fn portal_scene_at(
     state
 }
 
+#[test]
+fn linked_portal_keeps_showing_content_inside_the_near_plane() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let render = |far_id| {
+        let mut renderer = harness.renderer(&portal_scene(radius, 5, far_id, true));
+        renderer.set_editor_camera_state(EditorCameraState {
+            position: [0.0, 0.0, 0.001],
+            yaw: 0.0,
+            pitch: 0.0,
+        });
+        harness.frames(&mut renderer, || {})
+    };
+    let shown = render(5).difference(&render(2));
+    assert!(
+        shown.depth_texels > 0,
+        "destination geometry disappeared inside the near plane: {shown:?}"
+    );
+}
+
+#[test]
+fn editor_camera_follows_a_link_across_rigid_frames_when_enabled() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let far_x = 5000.0;
+    let mut state = LevelEditorState::new();
+    let near = add_portal(&mut state, 1.0, "near", [0.0; 3], 5);
+    rotate_y(&mut state, &near, 180.0);
+    let far = add_portal(&mut state, 1.0, "far", [far_x, 0.0, 0.0], 5);
+    let room = add_object(&mut state, "destination", ObjectType::Folder);
+    let parent = state.scene.world().entity_for(&room).unwrap();
+    engine_backend::scene::frames::set_rigid_frame(&mut state.scene.world_mut(), parent, true)
+        .unwrap();
+    assert!(execute_command(
+        &mut state,
+        SceneCommand::ReparentObject { id: far, new_parent_id: Some(room) },
+    ).changed);
+
+    let mut renderer = harness.renderer(&state);
+    // The eye starts above the opening. Level flight misses while flight
+    // along the pitched view direction passes through its centre.
+    let start = EditorCameraState {
+        position: [0.0, 2.0, 2.0],
+        yaw: 0.0,
+        pitch: -std::f32::consts::FRAC_PI_4,
+    };
+    for follow in [false, true] {
+        renderer.set_editor_camera_state(start);
+        renderer.editor_mailbox().set_follow_space_transitions(follow);
+        harness.frames(&mut renderer, || {});
+        {
+            let mut input = renderer.camera_input.lock().unwrap();
+            input.forward = 1.0;
+            input.move_speed = 1000.0;
+        }
+        harness.frames(&mut renderer, || {});
+        renderer.camera_input.lock().unwrap().forward = 0.0;
+        let [x, _, z] = renderer.editor_camera_state().position;
+        assert!(z < 0.0, "camera did not cross the aperture plane");
+        let expected_x = if follow { f64::from(far_x) } else { 0.0 };
+        assert!((x - expected_x).abs() < 1e-3, "follow={follow}, eye x={x}");
+    }
+}
+
 /// Mean `[r, g, b]` (0-255) over the pixels where `frame` differs from `reference`.
 fn mean_color_of_difference(frame: &Frame, reference: &Frame) -> Option<[f32; 3]> {
     let mut sum = [0.0f64; 3];
@@ -4513,6 +4639,8 @@ fn rotate_y(state: &mut LevelEditorState, id: &str, degrees: f32) {
 /// through the near portal, and the other way round.
 #[test]
 fn portal_content_is_lit_by_the_lights_of_its_own_world() {
+    use engine_backend::scene::frames::set_rigid_frame;
+
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
@@ -4528,15 +4656,43 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
     let far_x = 5000.0;
     // `None`: no light; otherwise a light at that x, in front of the content
     // (which sits beside the far portal), reaching about 1200 m.
-    let render = |light_x: Option<f32>| {
+    let render = |light_x: Option<f32>, matches_space: bool| {
         let mut state = LevelEditorState::new();
+        // Allocate the relevant light after the old portal shader's 256-row
+        // scan limit. These lights cannot reach either portal or its content.
+        for index in 0..256 {
+            let light = add_light(
+                &mut state,
+                [10_000.0 + index as f32 * 20.0, 0.0, 0.0],
+                installed_plugins::lights_plugin::lights_component::LightType::Point,
+                BRIGHT,
+            );
+            set_light(&mut state, &light, "range", Box::new(10.0f32));
+            set_light(&mut state, &light, "cast_shadows", Box::new(false));
+        }
+        let frame = add_object(&mut state, "Destination frame", ObjectType::Folder);
+        let parent_to_destination = |state: &mut LevelEditorState, id: String| {
+            let result = execute_command(
+                state,
+                SceneCommand::ReparentObject {
+                    id,
+                    new_parent_id: Some(frame.clone()),
+                },
+            );
+            assert!(result.changed, "the object was not placed in the destination");
+        };
+        let entity = state.scene.world().entity_for(&frame).expect("destination");
+        set_rigid_frame(&mut state.scene.world_mut(), entity, true).expect("a free frame slot");
+
         // The near portal faces the camera.
         let near = add_portal(&mut state, radius, "near", [0.0; 3], 5);
-        add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], 5);
+        let far = add_portal(&mut state, radius, "far", [far_x, 0.0, 0.0], 5);
+        parent_to_destination(&mut state, far);
         rotate_y(&mut state, &near, 180.0);
         for z in [radius * 2.0, -radius * 2.0] {
             let mesh = drop_red_mesh(&mut state);
             move_to(&mut state, &mesh, [far_x, 0.0, z]);
+            parent_to_destination(&mut state, mesh);
         }
         if let Some(x) = light_x {
             let light = add_light(
@@ -4547,6 +4703,9 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
             );
             set_light(&mut state, &light, "range", Box::new(1200.0f32));
             set_light(&mut state, &light, "cast_shadows", Box::new(false));
+            if matches_space {
+                parent_to_destination(&mut state, light);
+            }
         }
         let mut renderer = harness.renderer(&state);
         harness.frames(&mut renderer, || {})
@@ -4559,9 +4718,10 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
             .sum::<f64>()
             / (frame.color.len() / 4) as f64
     };
-    let dark = brightness(&render(None));
-    let beside_content = brightness(&render(Some(far_x))) - dark;
-    let beside_portal = brightness(&render(Some(0.0))) - dark;
+    let dark = brightness(&render(None, false));
+    let beside_content = brightness(&render(Some(far_x), true)) - dark;
+    let wrong_space = brightness(&render(Some(far_x), false)) - dark;
+    let beside_portal = brightness(&render(Some(0.0), false)) - dark;
     println!(
         "lights: beside content {beside_content:+.2}, beside portal {beside_portal:+.2} (dark {dark:.2})"
     );
@@ -4575,6 +4735,41 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
         "a light beside the portal lit the content it shows, which is far from it \
          ({beside_portal:+.2} against {beside_content:+.2} for a light beside the content)"
     );
+    assert!(
+        wrong_space.abs() < beside_content * 0.25,
+        "a light at the same XYZ lit portal content from the wrong space \
+         ({wrong_space:+.2} against {beside_content:+.2})"
+    );
+}
+
+#[test]
+fn portal_aperture_clips_direct_billboards_and_shows_destination_billboards() {
+    use installed_plugins::lights_plugin::lights_component::LightType;
+
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let far_x = 5000.0;
+    let render = |positions: &[[f32; 3]]| {
+        let mut state = portal_scene_at(radius, 5, 5, false, far_x);
+        for &position in positions {
+            let id = add_light(&mut state, position, LightType::Point, 0.0);
+            set_light(&mut state, &id, "cast_shadows", Box::new(false));
+        }
+        harness.frames(&mut harness.renderer(&state), || {})
+    };
+    let empty = render(&[]);
+    let foreground = render(&[[0.0, 0.0, radius]]).difference(&empty);
+    let behind = render(&[[0.0, 0.0, -radius]]).difference(&empty);
+    let destination = render(&[[far_x, 0.0, radius], [far_x, 0.0, -radius]]).difference(&empty);
+    assert!(foreground.color_pixels > 0, "foreground icon missing: {foreground:?}");
+    assert_eq!(behind.color_pixels, 0, "icon leaked past the plane: {behind:?}");
+    assert!(destination.color_pixels > 0, "destination icon missing: {destination:?}");
 }
 
 /// The sky, wind and sprite plugins' create entries, through the shell's

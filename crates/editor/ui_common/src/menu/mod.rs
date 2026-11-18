@@ -4,19 +4,19 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
-    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
-    MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
+    AnyElement, App, AppContext, ClickEvent, Context, Corner, Entity, FocusHandle,
+    InteractiveElement as _, IntoElement, Menu, MenuItem, MouseButton, ParentElement as _, Render,
+    SharedString, Styled as _, Subscription, Window, actions, div, prelude::FluentBuilder as _, px,
 };
 use ui::{
+    ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme, ThemeMode,
+    TitleBar,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     locale,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
-    ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme, ThemeMode,
-    TitleBar,
 };
 
 use crate::profile_dropdown::ProfileDropdownEvent;
@@ -55,6 +55,11 @@ pub struct NewAsset {
 pub struct OpenEditorTool {
     pub id: String,
 }
+
+/// Open the Sketchfab Viewer window from a host menu such as the content drawer.
+#[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
+#[action(namespace = menu, no_json)]
+pub struct OpenSketchfabViewer;
 
 // Define actions for the main menu
 actions!(

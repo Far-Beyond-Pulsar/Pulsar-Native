@@ -487,8 +487,6 @@ impl AgentChatPanel {
         panel: Entity<Self>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let content = content.to_string();
-        let copy_content = content.clone();
         let think_elapsed = Self::format_elapsed(started_at_ms, finished_at_ms, render_now_ms);
         let accent = cx.theme().info;
         let status_icon = if is_done {
@@ -570,10 +568,15 @@ impl AgentChatPanel {
                                     .ghost()
                                     .icon(IconName::Copy)
                                     .tooltip("Copy full thinking block")
-                                    .on_click(cx.listener(move |_, _, _, cx| {
-                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                            copy_content.clone(),
-                                        ));
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(DisplayItem::ThinkingBlock {
+                                            content, ..
+                                        }) = this.display_items.get(ix)
+                                        {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                                content.clone(),
+                                            ));
+                                        }
                                     })),
                             )
                             .child(Icon::new(status_icon).size_3().text_color(accent))
@@ -599,7 +602,7 @@ impl AgentChatPanel {
                                 .font_family("JetBrains Mono")
                                 .text_color(cx.theme().muted_foreground)
                                 .whitespace_normal()
-                                .child(content),
+                                .child(SharedString::from(content)),
                         )
                     }),
             )
@@ -802,8 +805,7 @@ impl AgentChatPanel {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let this = self;
-        let content = content.to_string();
-        let copy_content = content.clone();
+        let content: SharedString = content.into();
         let msg_index = message_index;
         let hover_group = format!("agent-chat-msg-hover-{ix}");
         let is_confirming_rollback = this.pending_rollback_confirm_ix == Some(ix);
@@ -821,6 +823,12 @@ impl AgentChatPanel {
                         panel.update(cx, |panel, cx| {
                             let measured = bounds.size.height;
                             if panel.display_item_heights.get(&ix).copied() != Some(measured) {
+                                // The final Markdown layout can arrive after the streaming
+                                // timer stops. Keep the bottom anchored if it was already visible.
+                                if ix + 1 == display_count && panel.distance_from_bottom() < px(8.0)
+                                {
+                                    panel.scroll_messages_to_bottom();
+                                }
                                 panel.display_item_heights.insert(ix, measured);
                                 cx.notify();
                             }
@@ -876,6 +884,7 @@ impl AgentChatPanel {
                                                 window,
                                                 cx,
                                             )
+                                            .defer_initial_parse()
                                             .debounce_ms(0)
                                             .selectable()
                                             .into_any_element()
@@ -956,10 +965,16 @@ impl AgentChatPanel {
                                     .ghost()
                                     .icon(IconName::Copy)
                                     .tooltip("Copy message")
-                                    .on_click(cx.listener(move |_, _, _, cx| {
-                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                            copy_content.clone(),
-                                        ));
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(
+                                            DisplayItem::UserMessage { content, .. }
+                                            | DisplayItem::AssistantMessage { content, .. },
+                                        ) = this.display_items.get(ix)
+                                        {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                                content.clone(),
+                                            ));
+                                        }
                                     }))
                             })
                             .when(is_user && !is_confirming_rollback, |el| {

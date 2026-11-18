@@ -26,6 +26,13 @@ pub struct FlyCamera {
 }
 
 impl FlyCamera {
+    /// Place the eye at the new position and rotate the whole flight frame.
+    pub fn transport(&mut self, position: DVec3, rotation: glam::DQuat) {
+        self.position = position;
+        self.frame = (rotation.as_quat() * self.frame).normalize();
+        self.pending_forward = None;
+    }
+
     /// At `position`, looking along world-space yaw and pitch (about +Y,
     /// yaw 0 = -Z): the convention a level's saved camera uses.
     pub fn new(position: DVec3, yaw: f32, pitch: f32) -> Self {

@@ -5,8 +5,8 @@
 //! [`MAX_ITERATIONS`] rounds of "stream a response, run any tool calls,
 //! compact if over budget". Events go to the UI through the channel in the
 //! context; the terminal `Finished` event is sent exactly once via
-//! [`send_finished_once`], shared with the watchdog timer in `streaming.rs`.
-//! Entry point: [`run_agent_loop`], called inside `std::thread::spawn`.
+//! [`send_finished_once`], using a completion flag that the UI also sets on timeout.
+//! Entry point: [`run_agent_loop`], called by a blocking editor task.
 
 use super::request_prep::insert_compaction_summary;
 use super::stream_event::StreamEvent;
@@ -87,15 +87,27 @@ pub(super) fn loop_stop_reason(
     None
 }
 
-/// Run the agent loop to completion, then return (ending the thread).
-pub(super) fn run_agent_loop(ctx: WorkerContext) {
+/// Run the agent loop to completion on the editor worker.
+pub(super) fn run_agent_loop(
+    ctx: WorkerContext,
+    task: &editor_task_queue::TaskContext,
+) -> Result<(), String> {
     let mut current_messages = ctx.request.messages.clone();
     let mut iteration = 0u32;
 
     loop {
-        if let Some(reason) = loop_stop_reason(&ctx.cancel_rx, iteration) {
-            send_finished_once(&ctx.completion_sent, &ctx.tx, Err(reason));
-            break;
+        if ctx.completion_sent.load(Ordering::SeqCst) || ctx.tx.is_closed() {
+            return Err("Chat request ended before the provider finished.".to_string());
+        }
+        if let Some(reason) = loop_stop_reason(&ctx.cancel_rx, iteration).or_else(|| {
+            task.is_cancelled()
+                .then(|| "Request cancelled.".to_string())
+        }) {
+            if iteration < MAX_ITERATIONS {
+                task.mark_cancelled();
+            }
+            send_finished_once(&ctx.completion_sent, &ctx.tx, Err(reason.clone()));
+            return Err(reason);
         }
         iteration += 1;
 
@@ -109,28 +121,36 @@ pub(super) fn run_agent_loop(ctx: WorkerContext) {
             max_tokens: ctx.request.max_tokens,
         };
 
-        let result = stream_one_response(&ctx, current_request.clone());
+        task.set_phase("Streaming provider response");
+        let result = stream_one_response(&ctx, current_request);
+        if ctx.completion_sent.load(Ordering::SeqCst) || ctx.tx.is_closed() {
+            return Err("Chat request ended before the provider finished.".to_string());
+        }
 
+        if let Some(reason) = loop_stop_reason(&ctx.cancel_rx, 0).or_else(|| {
+            task.is_cancelled()
+                .then(|| "Request cancelled.".to_string())
+        }) {
+            send_finished_once(&ctx.completion_sent, &ctx.tx, Err(reason.clone()));
+            return Err(reason);
+        }
         match result {
             Ok(response) => {
                 if !response.tool_calls.is_empty() {
-                    run_tool_round(
-                        &ctx,
-                        &mut current_messages,
-                        &response,
-                        &current_request.model,
-                    );
+                    task.set_phase("Running chat tools");
+                    run_tool_round(&ctx, &mut current_messages, &response, &ctx.request.model);
+                    task.set_phase("Checking chat context budget");
                     compact_if_over_budget(&ctx, &mut current_messages);
                     continue;
                 } else {
                     send_finished_once(&ctx.completion_sent, &ctx.tx, Ok(response));
-                    break;
+                    return Ok(());
                 }
             }
             Err(err) => {
                 tracing::error!("[agent_chat] provider error (iter {iteration}): {err}");
-                send_finished_once(&ctx.completion_sent, &ctx.tx, Err(err));
-                break;
+                send_finished_once(&ctx.completion_sent, &ctx.tx, Err(err.clone()));
+                return Err(err);
             }
         }
     }

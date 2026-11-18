@@ -7,13 +7,17 @@
 //! (`stream_event.rs`) that this module's event pump applies on the UI thread.
 //! Also holds regenerate/edit helpers that roll the history back and re-send.
 
-use super::request_prep::PreparedRequest;
+use super::request_prep::{PreparedRequest, RequestInputs};
 use super::stream_event::StreamEvent;
 use super::stream_worker::{run_agent_loop, send_finished_once, WorkerContext};
 use super::*;
 use agent_chat_core::{ChatMessage, ChatRole};
+use editor_task_queue::{TaskDescription, TaskDuration};
 use smol::Timer;
-use std::{sync::atomic::AtomicBool, time::Duration};
+use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
+};
 use ui::input::Enter;
 
 /// Wall-clock milliseconds since the Unix epoch.
@@ -25,19 +29,6 @@ pub(super) fn now_ms() -> u64 {
 }
 
 impl AgentChatPanel {
-    pub(super) fn build_provider_history_messages(&self) -> Vec<ChatMessage> {
-        self.messages
-            .iter()
-            .filter(|m| !m.content.trim().is_empty())
-            .map(|m| ChatMessage {
-                role: m.role,
-                content: m.content.clone(),
-                tool_call_id: m.tool_call_id.clone(),
-                tool_calls: m.tool_calls.clone(),
-            })
-            .collect()
-    }
-
     pub(super) fn ai_summarize_dropped(
         dropped: &[ChatMessage],
         provider: &Arc<dyn agent_chat_core::ChatProvider>,
@@ -134,26 +125,18 @@ impl AgentChatPanel {
         }
     }
 
-    fn submit_user_prompt_text(
-        &mut self,
-        raw_prompt: String,
-        prompt_for_model: String,
-        display_user_bubble: bool,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    fn submit_user_prompt_text(&mut self, raw_prompt: String, cx: &mut Context<Self>) -> bool {
         let user_message_index = self.messages.len();
         self.messages.push(ChatMessage {
             role: ChatRole::User,
-            content: prompt_for_model,
+            content: raw_prompt.clone(),
             tool_call_id: None,
             tool_calls: vec![],
         });
-        if display_user_bubble {
-            self.display_items.push(DisplayItem::UserMessage {
-                content: raw_prompt,
-                message_index: user_message_index,
-            });
-        }
+        self.display_items.push(DisplayItem::UserMessage {
+            content: raw_prompt,
+            message_index: user_message_index,
+        });
         self.scroll_messages_to_bottom();
 
         let provider_id = self
@@ -176,14 +159,13 @@ impl AgentChatPanel {
                 tool_call_id: None,
                 tool_calls: vec![],
             });
-            self.save_current_chat();
-            self.refresh_chat_history_list(cx);
+            self.save_current_chat(cx);
             self.scroll_messages_to_bottom();
             cx.notify();
             return false;
         };
 
-        self.launch_provider_request(provider, None, cx);
+        self.launch_provider_request(provider, Some(user_message_index), cx);
         true
     }
 
@@ -198,14 +180,10 @@ impl AgentChatPanel {
             return;
         }
 
-        // @file injection: resolve `@/some/path` or `@filename` references and
-        // prepend their contents as a context block before the user's message.
-        let prompt = Self::expand_file_references(&raw_prompt);
-
         self.prompt_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
         });
-        let _ = self.submit_user_prompt_text(raw_prompt, prompt, true, cx);
+        let _ = self.submit_user_prompt_text(raw_prompt, cx);
     }
 
     /// Push an empty streaming assistant bubble and fire off the provider request.
@@ -214,59 +192,111 @@ impl AgentChatPanel {
     pub(super) fn launch_provider_request(
         &mut self,
         provider: Arc<dyn agent_chat_core::ChatProvider>,
-        token: Option<String>,
+        expand_message: Option<usize>,
         cx: &mut Context<Self>,
     ) {
         let message_ix = self.begin_streaming_bubble();
 
-        let PreparedRequest {
-            request,
-            history_budget,
-            compact_model,
-            token,
-            compaction_summary,
-        } = self.prepare_provider_request(&provider, token);
+        let model = self
+            .active_model()
+            .map(|model| model.id)
+            .unwrap_or("default");
+        let inputs = RequestInputs {
+            model: model.to_string(),
+            history_budget: self
+                .active_context_chars()
+                .saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET),
+            compact_model: self
+                .active_model()
+                .and_then(|model| model.compact_model)
+                .unwrap_or(model)
+                .to_string(),
+            messages: self.messages[..message_ix].to_vec(),
+        };
+        let workspace_root = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let tool_registry = self.tool_registry.clone();
+        let plugin_bridge = self.plugin_bridge.clone();
 
-        // Handle initial compaction synchronously — insert the summary card before
-        // the streaming bubble so the user sees the context was trimmed.
-        if let Some(summary) = compaction_summary {
-            self.insert_initial_compaction_card(summary);
-        }
-
-        let (tx, rx) = smol::channel::unbounded::<StreamEvent>();
+        let (worker_tx, rx) = smol::channel::unbounded::<StreamEvent>();
         let completion_sent = Arc::new(AtomicBool::new(false));
 
         // Per-request cancel channel — UI sends () to abort.
         let (cancel_tx, cancel_rx) = smol::channel::bounded::<()>(1);
         self.cancel_tx = Some(cancel_tx);
 
-        let worker = WorkerContext {
-            provider,
-            request,
-            token,
-            compact_model,
-            context_budget: history_budget,
-            tool_registry: self.tool_registry.clone(),
-            plugin_bridge: self.plugin_bridge.clone(),
-            tx: tx.clone(),
-            cancel_rx,
-            completion_sent: completion_sent.clone(),
-        };
-        editor_task_queue::spawn_named(
-            editor_task_queue::ThreadSpec::new(
-                "ui core: launch provider request",
-                editor_task_queue::ThreadRole::Io,
-            )
-            .owner("ui_core"),
-            move || run_agent_loop(worker),
+        let worker_completion = completion_sent.clone();
+        editor_task_queue::global().submit(
+            TaskDescription::new("Process AI chat request", "AI chat", TaskDuration::Long),
+            move |task| {
+                task.set_phase("Preparing chat request");
+                if worker_tx.is_closed() {
+                    return Err("Chat request ended before preparation started.".into());
+                }
+                if task.is_cancelled() || cancel_rx.try_recv().is_ok() {
+                    task.mark_cancelled();
+                    let reason = "Request cancelled.".to_string();
+                    send_finished_once(&worker_completion, &worker_tx, Err(reason.clone()));
+                    return Err(reason);
+                }
+                let mut inputs = inputs;
+                if let Some(index) = expand_message {
+                    let message = &mut inputs.messages[index];
+                    if message
+                        .content
+                        .split_whitespace()
+                        .any(|word| word.starts_with('@'))
+                    {
+                        task.set_phase("Reading attached files");
+                        message.content =
+                            Self::expand_file_references(&message.content, &workspace_root);
+                        let _ = worker_tx.try_send(StreamEvent::UserContextExpanded {
+                            index,
+                            content: message.content.clone(),
+                        });
+                    }
+                }
+                inputs
+                    .messages
+                    .retain(|message| !message.content.trim().is_empty());
+                if let Some(reason) = super::stream_worker::loop_stop_reason(&cancel_rx, 0) {
+                    task.mark_cancelled();
+                    send_finished_once(&worker_completion, &worker_tx, Err(reason.clone()));
+                    return Err(reason);
+                }
+                let PreparedRequest {
+                    request,
+                    history_budget,
+                    compact_model,
+                    token,
+                    compaction_summary,
+                } = inputs.prepare(&provider, &tool_registry, &task);
+                if let Some(summary) = compaction_summary {
+                    let _ = worker_tx.try_send(StreamEvent::ContextCompacted(summary));
+                }
+                run_agent_loop(
+                    WorkerContext {
+                        provider,
+                        request,
+                        token,
+                        compact_model,
+                        context_budget: history_budget,
+                        tool_registry,
+                        plugin_bridge,
+                        tx: worker_tx,
+                        cancel_rx,
+                        completion_sent: worker_completion,
+                    },
+                    &task,
+                )
+            },
         );
 
-        Self::spawn_request_watchdog(tx, completion_sent, cx);
-        Self::spawn_stream_event_pump(rx, message_ix, cx);
+        Self::spawn_stream_event_pump(rx, completion_sent, message_ix, cx);
         Self::spawn_in_flight_tick(cx);
 
-        self.save_current_chat();
-        self.refresh_chat_history_list(cx);
+        self.save_current_chat(cx);
         self.scroll_messages_to_bottom();
         cx.notify();
     }
@@ -294,63 +324,81 @@ impl AgentChatPanel {
         message_ix
     }
 
-    /// Insert a compaction card just before the trailing streaming bubble.
-    fn insert_initial_compaction_card(&mut self, summary: String) {
-        let t = now_ms();
-        if let Some(dix) = self.streaming_display_item_ix {
-            if dix + 1 == self.display_items.len() {
-                let bubble = self.display_items.pop().unwrap();
-                self.display_items.push(DisplayItem::CompactionSummary {
-                    summary,
-                    is_expanded: false,
-                    started_at_ms: t,
-                    finished_at_ms: Some(t),
-                });
-                self.display_items.push(bubble);
-                self.streaming_display_item_ix = Some(dix + 1);
-            }
-        }
-    }
-
-    /// Background timer that ends a request still running after 10 minutes.
-    fn spawn_request_watchdog(
-        tx: smol::channel::Sender<StreamEvent>,
-        completion_sent: Arc<AtomicBool>,
-        cx: &mut Context<Self>,
-    ) {
-        cx.background_spawn(async move {
-            // 10-minute ceiling — long enough for extended agentic runs.
-            Timer::after(Duration::from_secs(600)).await;
-            if send_finished_once(
-                &completion_sent,
-                &tx,
-                Err("Request timed out after 10 minutes.".to_string()),
-            ) {
-                tracing::error!("[agent_chat] watchdog: 10-minute limit reached");
-            }
-        })
-        .detach();
-    }
-
     /// UI-thread task that applies worker events until `Finished` arrives.
     fn spawn_stream_event_pump(
         rx: smol::channel::Receiver<StreamEvent>,
+        completion_sent: Arc<AtomicBool>,
         message_ix: usize,
         cx: &mut Context<Self>,
     ) {
+        let deadline = Instant::now() + Duration::from_secs(600);
         cx.spawn(async move |this, cx| {
-            while let Ok(event) = rx.recv().await {
-                let should_break = matches!(event, StreamEvent::Finished(_));
-                cx.update(|cx| {
-                    let _ = this.update(cx, |panel, cx| {
-                        panel.apply_stream_event(event, message_ix, cx);
-                    });
-                });
-
-                if should_break {
-                    break;
-                }
-            }
+            editor_task_queue::tracked(
+                TaskDescription::new("Apply AI chat updates", "AI chat", TaskDuration::Short),
+                async move {
+                    if let Some(task) = editor_task_queue::current() {
+                        task.set_phase("Delivering chat updates to the editor");
+                    }
+                    loop {
+                        let first = smol::future::or(
+                            async {
+                                rx.recv().await.unwrap_or_else(|_| {
+                                    StreamEvent::Finished(Err(
+                                        "Chat task ended before returning a response.".into(),
+                                    ))
+                                })
+                            },
+                            async {
+                                Timer::at(deadline).await;
+                                completion_sent.store(true, Ordering::SeqCst);
+                                StreamEvent::Finished(Err(
+                                    "Request timed out after 10 minutes.".into()
+                                ))
+                            },
+                        )
+                        .await;
+                        if matches!(
+                            &first,
+                            StreamEvent::Chunk(_) | StreamEvent::ThinkingChunk(_)
+                        ) {
+                            Timer::after(Duration::from_millis(16)).await;
+                        }
+                        let mut events = vec![first];
+                        for _ in 1..64 {
+                            if matches!(events.last(), Some(StreamEvent::Finished(_))) {
+                                break;
+                            }
+                            let Ok(event) = rx.try_recv() else { break };
+                            match (events.last_mut(), event) {
+                                (Some(StreamEvent::Chunk(text)), StreamEvent::Chunk(chunk))
+                                | (
+                                    Some(StreamEvent::ThinkingChunk(text)),
+                                    StreamEvent::ThinkingChunk(chunk),
+                                ) => {
+                                    text.push_str(&chunk);
+                                }
+                                (_, event) => events.push(event),
+                            }
+                        }
+                        let finished = matches!(events.last(), Some(StreamEvent::Finished(_)));
+                        let active = cx.update(|cx| {
+                            this.update(cx, |panel, cx| {
+                                for event in events {
+                                    panel.apply_stream_event(event, message_ix, cx);
+                                }
+                                true
+                            })
+                            .unwrap_or(false)
+                        });
+                        if finished || !active {
+                            rx.close();
+                            break;
+                        }
+                        Timer::after(Duration::from_millis(1)).await;
+                    }
+                },
+            )
+            .await;
         })
         .detach();
     }
@@ -449,8 +497,7 @@ impl AgentChatPanel {
         self.display_item_heights.clear();
         self.streaming_display_item_ix = None;
         self.streaming_message_ix = None;
-        self.save_current_chat();
-        self.refresh_chat_history_list(cx);
+        self.save_current_chat(cx);
         self.scroll_messages_to_bottom();
         self.prompt_input.update(cx, |input, cx| {
             input.set_value(&content, window, cx);
