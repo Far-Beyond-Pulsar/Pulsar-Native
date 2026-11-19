@@ -21,7 +21,12 @@ pub mod subsystems;
 // linker can dead-strip the rest of `helio_component`'s `#[used]` inventory
 // statics in an optimized build.
 use helio_component as _;
-pub use scene::{component_asset_events, ComponentEventCatalog};
+pub use scene::{
+    asset_slots, component_events, component_events_with, node_title, AssetEventSource, AssetEvents, AssetPathSlot, AssetSlot,
+    AssetUse, CacheStats, CatalogEvent, ComponentData, ComponentEventCatalog, EventCache,
+    EventFamily, EventView, FamilyOption, FamilyParam, ParamKind, ParamValues, ResolvedFamily,
+    ResolvedOutput, SourceCx,
+};
 
 #[cfg(feature = "render")]
 pub use services::GpuRenderer;

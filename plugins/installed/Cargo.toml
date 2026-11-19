@@ -142,6 +142,8 @@ lifecycle_fixture_plugin = { path = "tests/fixtures/lifecycle_plugin" }
 pulsar_game = { workspace = true }
 pulsar_events = { workspace = true }
 pulsar_reflection = { workspace = true }
+engine_class_derive = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 pulsar_script_vm = { workspace = true }
 pulsar_std = { workspace = true }
 pulsar_class = { workspace = true }

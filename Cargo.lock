@@ -1234,6 +1234,7 @@ dependencies = [
  "graphy-blueprint",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_script_math",
  "pulsar_script_vm",
  "serde_json",
 ]
@@ -7672,6 +7673,7 @@ dependencies = [
  "default_pipelines_plugin",
  "editor_table_plugin",
  "engine_backend",
+ "engine_class_derive",
  "engine_fs",
  "engine_state",
  "fog_plugin",
@@ -7727,6 +7729,7 @@ dependencies = [
  "render_bps_plugin",
  "rust_plugin",
  "script_editor_plugin",
+ "serde",
  "serde_json",
  "skeletal_animation_plugin",
  "skeletal_assets",

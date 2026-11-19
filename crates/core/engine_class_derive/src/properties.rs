@@ -15,6 +15,9 @@ pub(crate) struct PropertyAttrOptions {
     pub(crate) category_color: Option<String>,
     /// Display label (`label = "..."`), replacing the title-cased field name.
     pub(crate) label: Option<String>,
+    /// `events = false`: the asset this property names raises no events for
+    /// scripts through the component.
+    pub(crate) no_events: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -79,6 +82,12 @@ pub(crate) fn parse_property_attr(field: &Field) -> PropertyAttrOptions {
                     && let Lit::Str(lit_str) = &expr_lit.lit
                 {
                     out.category_color = Some(lit_str.value());
+                }
+                if name_value.path.is_ident("events")
+                    && let Expr::Lit(expr_lit) = &name_value.value
+                    && let Lit::Bool(lit_bool) = &expr_lit.lit
+                {
+                    out.no_events = !lit_bool.value;
                 }
                 if name_value.path.is_ident("label")
                     && let Expr::Lit(expr_lit) = &name_value.value

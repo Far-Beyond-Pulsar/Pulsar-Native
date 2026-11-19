@@ -1240,3 +1240,46 @@ mod tests {
         );
     }
 }
+
+// ---- events a component's own values add ------------------------------------
+
+/// An event a component offers scripts because of its values (a mode that
+/// changes what it raises), not because of an asset it names.
+///
+/// The descriptor must be namespaced (`EventDescriptor::dynamic_in`): a
+/// namespaced name is how a script editor tells an event the component's data
+/// declares from one the component class declares statically
+/// (`#[component_events]`), and it is delivered on the component's entity
+/// channel like any other component event. The component raises it itself,
+/// by that name.
+#[derive(Clone, Debug)]
+pub struct DynamicEvent {
+    /// The node is titled "On <label>".
+    pub label: String,
+    /// The palette group under the component.
+    pub group: String,
+    pub descriptor: pulsar_events::gamma::EventDescriptor,
+}
+
+/// The events a component's data adds for scripts, from
+/// `#[bp_event_source] fn events(&self) -> Vec<DynamicEvent>` in its
+/// `#[world_component]` impl; submitted by that macro, not by hand.
+///
+/// Pure: the same values give the same events. A script editor calls it with a
+/// component's saved data, so the events follow the property values the same way
+/// the asset events follow the assets a property names.
+pub struct ComponentEventSourceRegistration {
+    pub class_name: &'static str,
+    pub events: fn(&serde_json::Value) -> Vec<DynamicEvent>,
+}
+
+inventory::collect!(ComponentEventSourceRegistration);
+
+/// The value-dependent event sources of `class_name`.
+pub fn component_event_sources(
+    class_name: &str,
+) -> impl Iterator<Item = &'static ComponentEventSourceRegistration> + '_ {
+    inventory::iter::<ComponentEventSourceRegistration>
+        .into_iter()
+        .filter(move |source| source.class_name == class_name)
+}
