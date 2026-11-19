@@ -1,7 +1,6 @@
 # UI Core Translations - ar
 
 # Status Bar
-StatusBar.RustAnalyzer: "محلل Rust"
 StatusBar.Stop: "إيقاف"
 StatusBar.Restart: "إعادة تشغيل"
 StatusBar.Start: "بدء"
@@ -12,9 +11,8 @@ Notification.Title.Dev: "تطوير"
 Notification.Title.BuildInfo: "معلومات البناء"
 Notification.Title.Build: "بناء"
 Notification.Title.Run: "تجميع و تشغيل"
-Notification.Title.RustAnalyzerReady: "محلل Rust جاهز"
-Notification.Title.AnalyzerError: "خطأ في المحلل"
-Notification.Title.CodeIntelligenceReady: "مكمل الكود جاهز"
+Notification.Title.LanguageServerReady: "%{name} جاهز"
+Notification.Title.LanguageServerError: "خطأ في المحلل"
 Notification.Title.ProjectLoaded: "تم تحميل المشروع"
 Notification.Message.UseSaveAsDefault: "استخدم\"الحفظ كافتراضي\"في شريط أدوات محرر المستويات."
 Notification.Message.Opening: "جارٍ فتح %{path}"
@@ -23,5 +21,4 @@ Notification.Message.EngineInspectorNotImplemented: "مفتش حالة المح�
 Notification.Message.BuildingProject: "جارٍ بناء المشروع..."
 Notification.Message.RunningProject: "جارٍ تشغيل المشروع..."
 Notification.Message.CodeIntelligenceAvailable: "مكمل الكود متاح الآن"
-Notification.Message.RustAnalyzerIndexingComplete: "اكتملت فهرسة محلل Rust"
 Notification.Message.WelcomeToProject: "مرحبًا بك في %{project}"

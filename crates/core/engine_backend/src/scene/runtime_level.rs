@@ -614,6 +614,10 @@ fn editor_camera(editor: &Value) -> Option<EditorCamera> {
 
 #[cfg(test)]
 mod tests {
+    // A class of these tests has the marker of a language (a kernel crate's
+    // tests never link a plugin).
+    pulsar_language::submit_test_language!("test.graph", ["graph_save.json"]);
+
     use super::*;
     use crate::scene::StableId;
 

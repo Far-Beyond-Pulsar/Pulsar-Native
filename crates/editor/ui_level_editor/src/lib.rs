@@ -64,3 +64,10 @@ impl window_manager::PulsarWindow for LevelEditorPanel {
         cx.new(|cx| LevelEditorPanel::new(window, cx))
     }
 }
+
+/// A test language whose class marker the tests' class directories carry (a
+/// kernel crate's tests never link a plugin).
+#[cfg(test)]
+mod test_languages {
+    pulsar_language::submit_test_language!("test.graph", ["graph_save.json"]);
+}

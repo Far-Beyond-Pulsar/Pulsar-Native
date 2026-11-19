@@ -120,6 +120,11 @@ pub struct FileItem {
     pub name: String,
     pub file_type_def: Option<plugin_editor_api::FileTypeDefinition>,
     pub is_folder: bool,
+    /// The folder is a class of a language (it holds that language's class
+    /// marker file, `Language::class_markers`) that has no file type of its own:
+    /// it is listed as one item, the way a Blueprint class is, and opening it
+    /// opens the class's source. The language's name.
+    pub class_language: Option<&'static str>,
     pub size: u64,
     pub modified: Option<std::time::SystemTime>,
     pub is_ghost: bool,
@@ -131,6 +136,15 @@ pub struct FileItem {
 }
 
 impl FileItem {
+    /// The language whose class marker `path` (a folder) holds, among the
+    /// enabled languages: a disabled plugin's classes are plain folders.
+    pub fn class_language_of(path: &Path) -> Option<&'static str> {
+        pulsar_language::LanguageRegistry::current()
+            .class_languages(path)
+            .first()
+            .map(|language| language.display_name)
+    }
+
     pub fn from_path(
         path: &Path,
         file_types: &[plugin_editor_api::FileTypeDefinition],
@@ -166,10 +180,21 @@ impl FileItem {
             found.cloned()
         };
 
+        let class_language = if file_type_def.is_none() && engine_fs::virtual_fs::is_dir(path) {
+            Self::class_language_of(path)
+        } else {
+            None
+        };
         let (size, modified, is_folder) =
             if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
                 let (s, u, d) = engine_fs::virtual_fs::metadata(path)
-                    .map(|m| (m.size, m.modified, m.is_dir && file_type_def.is_none()))
+                    .map(|m| {
+                        (
+                            m.size,
+                            m.modified,
+                            m.is_dir && file_type_def.is_none() && class_language.is_none(),
+                        )
+                    })
                     .unwrap_or((0, None, false));
                 (
                     s,
@@ -183,7 +208,9 @@ impl FileItem {
                     m.modified
                         .map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
                 });
-                let d = meta.as_ref().map(|m| m.is_dir).unwrap_or(false) && file_type_def.is_none();
+                let d = meta.as_ref().map(|m| m.is_dir).unwrap_or(false)
+                    && file_type_def.is_none()
+                    && class_language.is_none();
                 (s, m, d)
             };
 
@@ -192,6 +219,7 @@ impl FileItem {
             name,
             file_type_def,
             is_folder,
+            class_language,
             size,
             modified,
             is_ghost: false,
@@ -228,3 +256,35 @@ pub struct PopoutFileManagerEvent {
 
 #[derive(Clone, Debug)]
 pub struct DockFileManagerEvent;
+
+#[cfg(test)]
+mod tests {
+    use super::FileItem;
+
+    // A language with a class marker and no editor of its own, like a script
+    // language whose class is a source file.
+
+
+    #[test]
+    fn a_class_folder_of_a_language_is_one_item_not_a_folder() {
+        let project = tempfile::tempdir().unwrap();
+        let class = project.path().join("Door");
+        std::fs::create_dir_all(&class).unwrap();
+        std::fs::write(class.join("class.fmscript"), "").unwrap();
+        let plain = project.path().join("Plain");
+        std::fs::create_dir_all(&plain).unwrap();
+
+        let item = FileItem::from_path(&class, &[]).unwrap();
+        assert!(!item.is_folder, "it is listed as one item and opens as a class");
+        assert_eq!(item.class_language, Some("fm-script"));
+        assert_eq!(super::super::helpers::type_label(&item), "fm-script Class");
+
+        let folder = FileItem::from_path(&plain, &[]).unwrap();
+        assert!(folder.is_folder && folder.class_language.is_none());
+    }
+}
+
+// A language with a class marker and no editor of its own, like a script
+// language whose class is a source file (for the test above).
+#[cfg(test)]
+pulsar_language::submit_test_language!("fm-script", ["class.fmscript"]);

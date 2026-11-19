@@ -9,6 +9,8 @@ publish = false
 engine_fs = { workspace = true }
 # Roles, implementer sources and native implementers are origin-gated contributions.
 pulsar_plugins = { workspace = true }
+# The class marker files of the enabled languages (asset path to class name).
+pulsar_language = { workspace = true }
 inventory = { workspace = true }
 # The published trait snapshot, and the component methods native implementers bind onto.
 pulsar_reflection = { workspace = true }

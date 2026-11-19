@@ -57,7 +57,8 @@ The heart of the engine.
 | `pulsar_docs` | Doc generation from reflected types |
 | `pulsar_events` | Event bus |
 | `pulsar_game` | The game runtime: tick loop, scripting, native script actors on the component lifecycle (`lifecycle::NativeActor`, `register_native_actor`), possession (plugins join through `game_hooks::GameSessionRegistration`), cameras and view targets |
-| `pulsar_lsp` | LSP client integration. One engine-owned rust-analyzer; editors attach with `ensure_started` (never `start`), share documents by refcount, sync incrementally (`did_change_file_incremental`), and receive per-file `AnalyzerEvent::FileDiagnostics` |
+| `pulsar_language` | GPUI-free kernel crate: the `Language` registration one plugin makes per language (id, display name, file extensions, `class_markers`, an optional `ScriptLanguage` compiler, an optional `LanguageServerSpec`) and `LanguageRegistry` (`current()` cached against `pulsar_plugins::generation()`: `for_path`, `class_languages`, `is_class_dir`, `compilers`, `with_servers`). A disabled plugin's language, markers and server are absent. The one-language-per-class rule is `pulsar_class::language`; the standard server settings group is derived from each `Language` with a server (`.agents/LANGUAGE_PLUGINS_PLAN.md`) |
+| `pulsar_lsp` | The language-server layer. `LanguageServers` (the service in `EditorServices`) routes a file to its `LanguageServer` (one per server and root: generic client, its own service thread, server requests answered, documents refcounted with incremental sync, readiness by the spec's rule, no timers) through the `LanguageServerSpec` of the `Language` that owns the file (`pulsar_language::LanguageRegistry`; it names no server: each server's plugin brings its spec, rust-analyzer's is `pulsar.rust`; `.agents/LANGUAGE_PLUGINS_PLAN.md`). `DiagnosticsStore` holds diagnostics by file and source; `edit` applies a `WorkspaceEdit` to open buffers and files. Editors attach to the service and never start a server. The service also runs the live compiler checks (`check_source`: debounced per file, an editor task, one in flight, latest text wins, source `Compiler`), a spec's managed install on the person's action (`install`), and `testing` scripts a server on a pipe for tests |
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
@@ -70,7 +71,6 @@ The heart of the engine.
 | `pulsar_script_math` | glam math types (Vec2/3/4, DVec3, Quat, Mat4) as script value types with natives |
 | `pulsar_script_codegen` | Rust export: generates compiled step functions (and the `pulsar_game::lifecycle::NativeActor` wrapper) from a script module |
 | `pulsar_script_conformance` | Runs modules interpreted and as generated Rust and compares everything observable (`just conformance`) |
-| `pulsar_script_ts` | TypeScript subset compiled to script modules (oxc parser, type checking against the native registry, `.d.ts` generation, field identity) |
 | `pulsar_std` | Blueprint standard library (kind-neutral domains; a kind's script API is its component methods) |
 | `pulsar-multiplayer-core` | Multiplayer protocol and state |
 | `pulsar-relay` | Relay server client |
@@ -292,7 +292,7 @@ cargo cannot load the workspace without them.
 | `input_plugin` | [Plugin_Input](https://github.com/Far-Beyond-Pulsar/Plugin_Input) | Input actions and mappings, their editors and runtime |
 | `ui_editor` | [Plugin_UI](https://github.com/Far-Beyond-Pulsar/Plugin_UI) | Widget assets and the WYSIWYG widget editor |
 | `blueprint_editor` | [Plugin_Blueprints](https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints) | Blueprint visual scripting, plus its `compiler/` crate |
-| `code_editor` | [Plugin_CodeEditor](https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor) | Script/code editor, a host for Mockaco (`WgpuiEditorView`); `text_editor/lsp.rs` answers Mockaco's requests through the shared analyzer |
+| `code_editor` | [Plugin_CodeEditor](https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor) | Script/code editor, a host for Mockaco (`WgpuiEditorView`); `text_editor/lsp.rs` answers Mockaco's requests through the language server of the open file (`LanguageServers::server_for`) |
 | `table_editor` | [Plugin_DBTable](https://github.com/Far-Beyond-Pulsar/Plugin_DBTable) | Database table editor |
 | `matter_editor` | [Plugin_Matter](https://github.com/Far-Beyond-Pulsar/Plugin_Matter) | Texture painting in the Pulsar Image Format (`.pif`) |
 | `asset_viewer` | in-tree | Viewers for model files, meshes and images |
@@ -300,7 +300,8 @@ cargo cannot load the workspace without them.
 | `default_pipelines` | [Plugin_DefaultPipelines](https://github.com/Far-Beyond-Pulsar/Plugin_DefaultPipelines) | `pulsar.default_pipelines`: the render pipelines the engine ships, as `.rendergraph` assets in its folder, made for the enabled plugins (`.agents/RENDER_GRAPH.md`) |
 | `render_bps` | in-tree | Render graph editor (`.rendergraph`) on the Graphy canvas, no Blueprint code (`.agents/RENDER_GRAPH.md`) |
 | `trait_editor` | in-tree | `pulsar.trait_editor`: the trait definition editor (`.trait.json`, `.agents/TRAITS.md`) |
-| `typescript` | in-tree | `pulsar.typescript`: TypeScript as a scripting language (`class.ts` compiles to script modules) |
+| `typescript` | in-tree | `pulsar.typescript`: TypeScript as a scripting language (`class.ts` compiles to script modules) and its language server. One `Language`: the compiler, typescript-language-server's spec (`locate.rs`: setting, project `node_modules`, `PATH`, then the approved managed install; launched through Node's entry point, not the `.cmd` shim; `install.rs`: pinned versions and digests, offered in the footer, never silent; `server.rs`: roots, tsconfig and `Pulsar/types/pulsar.d.ts` written before start, readiness on `Initializing JS/TS language features`), the live compiler check (`ScriptLanguage::check_source`, source `Pulsar`) and the plugin setting `compiler_diagnostics`. `typescript/compiler` is the package `pulsar_script_ts` (TypeScript subset compiled to script modules: oxc parser, type checking against the native registry, `.d.ts` generation, field identity; moved from `crates/core`, D12) |
+| `rust` | in-tree (becomes `Plugin_Rust`) | `pulsar.rust`, root crate `rust_plugin`, enabled by default, `editor_only`: the Rust `Language` (`.rs`, `Cargo.toml`/`rust-project.json`) and rust-analyzer's `LanguageServerSpec` (discovery and install, initialization options, `serverStatus` readiness, progress wording, quick fixes, the Go to Parent Module / Open Cargo.toml / Expand Macro / Reload Workspace commands); its server group's settings moved here from `engine.pulsar_lsp` (`SettingsMove`). Not a script language: no compiler, no class markers |
 
 `plugins/installed` (the generated installed set) is in-tree too; its tests are the
 editor's and the game's tests with every plugin. The editor-tool plugins (the

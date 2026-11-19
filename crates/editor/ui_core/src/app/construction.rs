@@ -4,9 +4,9 @@
 //! what the step sets up and which earlier step it depends on. The command
 //! palette has its own file (`command_palette_setup.rs`).
 
-use engine_backend::services::RustAnalyzerManager;
 use gpui::{AppContext, Context, Entity, Task, WeakEntity, Window};
 use plugin_manager::PluginManager;
+use pulsar_lsp::LanguageServers;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use ui::dock::{DockArea, DockItem, TabPanel};
@@ -281,43 +281,38 @@ pub(super) fn subscribe_drawer_events(
     .detach();
 }
 
-/// Uses the shared rust-analyzer when one is passed, otherwise creates one
-/// (started when there is a project), and subscribes the app to its events.
-/// Depends on nothing; the plugin manager step needs its result.
-pub(super) fn connect_rust_analyzer(
-    shared_rust_analyzer: Option<Entity<RustAnalyzerManager>>,
+/// Creates the language servers service, opens the project in it (the
+/// servers its languages start eagerly begin now; the rest start on their
+/// first file) and subscribes the app to its events and to the diagnostics
+/// store. Depends on the project path being published (the plugins' settings
+/// are registered by then); the plugin manager step needs its result.
+pub(super) fn connect_language_servers(
     project_path: Option<&PathBuf>,
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
-) -> Entity<RustAnalyzerManager> {
-    // Create rust analyzer manager or use shared one
-    let rust_analyzer = if let Some(shared_analyzer) = shared_rust_analyzer {
-        shared_analyzer
-    } else {
-        let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
-
-        // Start rust analyzer if we have a project
-        if let Some(project) = project_path {
-            analyzer.update(cx, |analyzer, cx| {
-                analyzer.start(project.clone(), window, cx);
-            });
-        }
-
-        analyzer
-    };
-
-    // Subscribe to analyzer events
-    cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
+) -> Entity<LanguageServers> {
+    let language_servers = cx.new(LanguageServers::new);
+    if let Some(project) = project_path {
+        language_servers.update(cx, |servers, cx| servers.set_project(project.clone(), cx));
+    }
+    cx.subscribe_in(
+        &language_servers,
+        window,
+        event_handlers::on_language_servers_event,
+    )
+    .detach();
+    let store = language_servers.read(cx).diagnostics();
+    cx.subscribe_in(&store, window, event_handlers::on_diagnostics_event)
         .detach();
-    rust_analyzer
+    language_servers
 }
 
 /// Takes the manager the splash screen staged (or makes a fresh one), gives
 /// it the editor services and registers the built-in editors. Returns the
 /// manager and whether it was staged (so plugins are already installed).
-/// Depends on [`connect_rust_analyzer`].
+/// Depends on [`connect_language_servers`].
 pub(super) fn create_plugin_manager(
-    rust_analyzer: &Entity<RustAnalyzerManager>,
+    language_servers: &Entity<LanguageServers>,
     t_plugins: std::time::Instant,
 ) -> (PluginManager, bool) {
     tracing::info!("[PulsarApp] plugin init start");
@@ -327,10 +322,10 @@ pub(super) fn create_plugin_manager(
     let plugins_staged = staged_manager.is_some();
     let mut plugin_manager = staged_manager.unwrap_or_else(PluginManager::new);
     // Every editor -- built-in or a plugin library -- is created with a handle
-    // to the engine's one language server and its one set of undo
+    // to the engine's language servers and its one set of undo
     // histories (one per document, Pulsar-Native#931).
     plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
-        language_server: Some(rust_analyzer.clone()),
+        language_servers: Some(language_servers.clone()),
         undo: plugin_editor_api::UndoService::new(),
     });
 

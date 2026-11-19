@@ -16,6 +16,8 @@ ui_types_common.workspace = true
 
 # Engine
 engine_fs = { workspace = true }
+# Class marker files of the enabled languages (folders shown as one file).
+pulsar_language = { workspace = true }
 
 # Reflection system
 pulsar_reflection = { workspace = true }

@@ -32,6 +32,7 @@ physics_plugin = { workspace = true }
 portals_plugin = { workspace = true }
 post_plugin = { workspace = true }
 render_bps_plugin = { workspace = true, optional = true }
+rust_plugin = { workspace = true, optional = true }
 sky_plugin = { workspace = true }
 splines_plugin = { workspace = true }
 sprites_plugin = { workspace = true }
@@ -72,6 +73,7 @@ editor = [
     "portals_plugin/editor",
     "post_plugin/editor",
     "dep:render_bps_plugin",
+    "dep:rust_plugin",
     "sky_plugin/editor",
     "splines_plugin/editor",
     "sprites_plugin/editor",
@@ -141,6 +143,12 @@ pulsar_reflection = { workspace = true }
 pulsar_script_vm = { workspace = true }
 pulsar_std = { workspace = true }
 pulsar_class = { workspace = true }
+# The language tests (tests/languages.rs): the registry the host routes through.
+pulsar_language = { workspace = true }
+# The language-server service the Rust tests drive (tests/languages.rs).
+pulsar_lsp = { workspace = true }
+ui = { workspace = true }
+pulsar-config = { workspace = true }
 ui_common = { workspace = true }
 gpui-ce = { workspace = true, features = ["test-support"] }
 tracing = { workspace = true }

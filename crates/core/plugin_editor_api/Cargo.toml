@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Linked script languages count only while their plugin is enabled.
+# The plugin gate and the engine's file layer.
 engine_fs = { workspace = true }
 pulsar_plugins = { workspace = true }
-# Scripting languages register themselves at link time (`LinkedScriptLanguage`).
+# Registrations (`pub use inventory` for plugin authors).
 inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -32,6 +32,9 @@ pulsar_events = { workspace = true }
 # components of the editor once the library is attached (#1083).
 pulsar_world_registry = { workspace = true }
 profiling = { workspace = true }
+# Languages: the `Language` registration, its compiler trait and its server
+# spec (defined there, re-exported here for plugin authors).
+pulsar_language = { workspace = true }
 # Headless script compiles (`ScriptLanguage::compile_project`) link against
 # the engine's native registry.
 pulsar_script_vm = { workspace = true }

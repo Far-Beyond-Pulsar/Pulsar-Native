@@ -13,12 +13,16 @@ use ui::{v_flex, TitleBar};
 #[derive(Debug, Clone, Default)]
 pub struct SettingsParams {
     pub project_path: Option<PathBuf>,
+    /// The page to open on (a plugin's, by its title: `plugin_page`); the
+    /// first page when `None` or not found.
+    pub page: Option<String>,
 }
 
 impl SettingsParams {
     pub fn scoped(project_path: impl Into<PathBuf>) -> Self {
         Self {
             project_path: Some(project_path.into()),
+            page: None,
         }
     }
 }
@@ -49,7 +53,7 @@ impl SettingsWindow {
 
         let project_path = Self::resolve_project_path(&params);
         let settings_screen =
-            cx.new(|cx| ModernSettingsScreen::new(project_path.clone(), window, cx));
+            cx.new(|cx| ModernSettingsScreen::new(project_path.clone(), params.page.clone(), window, cx));
 
         Self {
             settings_screen: Some(settings_screen),
@@ -72,7 +76,27 @@ impl SettingsWindow {
     /// Focuses the existing settings window if one is already open.
     pub fn open_scoped(project_path: Option<PathBuf>, cx: &mut App) {
         use ui_shell::PulsarWindowExt;
-        Self::open(SettingsParams { project_path }, cx);
+        Self::open(
+            SettingsParams {
+                project_path,
+                page: None,
+            },
+            cx,
+        );
+    }
+
+    /// Open the settings window on a plugin's page (`plugin_page`'s title),
+    /// for the footer's "settings" link. An open window is focused and keeps
+    /// its page.
+    pub fn open_page(project_path: Option<PathBuf>, page: String, cx: &mut App) {
+        use ui_shell::PulsarWindowExt;
+        Self::open(
+            SettingsParams {
+                project_path,
+                page: Some(page),
+            },
+            cx,
+        );
     }
 
     fn title(&self, cx: &App) -> String {

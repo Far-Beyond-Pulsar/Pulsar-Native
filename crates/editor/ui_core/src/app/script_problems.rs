@@ -5,7 +5,7 @@
 //! graph node) on the process-wide host bus
 //! (`pulsar_events::publish_script_problem`). This keeps the latest
 //! session's in the problems drawer, under their own source, next to the
-//! language server's diagnostics.
+//! language servers' diagnostics.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -67,7 +67,7 @@ pub(crate) fn watch<T: 'static>(drawer: Entity<ProblemsDrawer>, cx: &mut Context
                 .collect();
             if drawer
                 .update(cx, |drawer, cx| {
-                    drawer.set_external_diagnostics(SOURCE, diagnostics, cx)
+                    drawer.set_source_diagnostics(SOURCE, diagnostics, cx)
                 })
                 .is_err()
             {

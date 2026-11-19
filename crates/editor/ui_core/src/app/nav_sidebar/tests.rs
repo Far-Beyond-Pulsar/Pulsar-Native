@@ -123,11 +123,9 @@ fn open(cx: &mut TestAppContext, root: &Path) -> Editor {
             ..Default::default()
         };
         cx.open_window(options, |window, cx| {
-            let analyzer =
-                cx.new(|cx| engine_backend::services::RustAnalyzerManager::new(window, cx));
             let view = cx.new(|cx| {
                 let mut app =
-                    PulsarApp::new_internal(Some(root), Some(analyzer), false, window, cx);
+                    PulsarApp::new_internal(Some(root), false, window, cx);
                 // No "project loaded" toast: it would outlive the test.
                 app.state.shown_welcome_notification = true;
                 app
@@ -217,7 +215,7 @@ fn sidebar_screenshots() {
     walk(&mut cx, Some(dir));
 }
 
-/// The footer's background updates (the task count, rust-analyzer's
+/// The footer's background updates (the task count, the language servers'
 /// progress, the multiuser session) repaint the footer. The sidebar reads the
 /// app's state, so these used to rebuild it on every update, by notifying the
 /// app; now it replays.

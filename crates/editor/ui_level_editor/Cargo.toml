@@ -97,6 +97,7 @@ wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
+pulsar_language.workspace = true
 # Every installed plugin's root crate (`installed_plugins`, without its
 # `editor` feature unless the build enables it): a few unit tests edit kinds
 # through their components (the commands, the scene edits, the properties

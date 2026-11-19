@@ -53,7 +53,7 @@ impl FileTypeLookup {
             }
 
             // If no extension found, check for marker files
-            // This handles folders like "ExampleClass/" that contain "graph_save.json"
+            // This handles folders like "ExampleClass/" that contain a file type's marker file
             for (file_type_id, marker_file) in &self.folder_markers {
                 if engine_fs::virtual_fs::exists(&path.join(marker_file)).unwrap_or(false) {
                     return Some(file_type_id.clone());

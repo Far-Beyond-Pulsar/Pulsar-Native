@@ -14,6 +14,8 @@ engine_class_derive   = { workspace = true }
 inventory             = { workspace = true }
 # Plugins' record migrations are gated by their origin.
 pulsar_plugins        = { workspace = true }
+# Which language a class is: the registry of enabled languages.
+pulsar_language       = { workspace = true }
 serde                 = { workspace = true, features = ["derive"] }
 serde_json            = { workspace = true }
 # The module store's source hashes.

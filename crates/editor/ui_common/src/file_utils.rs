@@ -13,17 +13,19 @@ use serde::{de::DeserializeOwned, Serialize};
 #[derive(Clone, Debug, PartialEq)]
 pub enum FileType {
     Folder,
-    Class, // A folder containing graph_save.json
+    /// A folder holding a language's class marker file: the language's name
+    /// (`Language::display_name`).
+    Class(&'static str),
     File,  // Any other file - plugin system will determine if openable
 }
 
 impl FileType {
     /// Get a display name for the file type
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> String {
         match self {
-            FileType::Folder => "Folder",
-            FileType::Class => "Blueprint Class",
-            FileType::File => "File",
+            FileType::Folder => "Folder".to_owned(),
+            FileType::Class(language) => format!("{language} Class"),
+            FileType::File => "File".to_owned(),
         }
     }
 }
@@ -36,19 +38,24 @@ pub struct FileInfo {
 }
 
 impl FileInfo {
-    /// Check if a path is a blueprint class folder (contains graph_save.json)
-    pub fn is_class_folder(path: &Path) -> bool {
-        engine_fs::virtual_fs::is_dir(path)
-            && engine_fs::virtual_fs::exists(&path.join("graph_save.json")).unwrap_or(false)
+    /// The language whose class marker file the folder holds (the registry
+    /// of enabled languages: a disabled plugin's classes are plain folders).
+    pub fn class_language(path: &Path) -> Option<&'static str> {
+        if !engine_fs::virtual_fs::is_dir(path) {
+            return None;
+        }
+        pulsar_language::LanguageRegistry::current()
+            .class_languages(path)
+            .first()
+            .map(|language| language.display_name)
     }
 
     /// Detect file type from path (for display purposes only)
     pub fn detect_file_type(path: &Path) -> FileType {
         if engine_fs::virtual_fs::is_dir(path) {
-            if Self::is_class_folder(path) {
-                FileType::Class
-            } else {
-                FileType::Folder
+            match Self::class_language(path) {
+                Some(language) => FileType::Class(language),
+                None => FileType::Folder,
             }
         } else {
             FileType::File
@@ -105,7 +112,7 @@ fn find_files_recursive(
         }
 
         if let Some(file_info) = FileInfo::from_path(&path) {
-            let is_class = file_info.file_type == FileType::Class;
+            let is_class = matches!(file_info.file_type, FileType::Class(_));
             let is_file = file_info.file_type == FileType::File;
 
             // Add all non-folder items (classes and files)

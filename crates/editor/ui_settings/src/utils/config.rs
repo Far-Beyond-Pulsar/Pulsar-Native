@@ -89,7 +89,7 @@ fn replacement_number_value(input_value: f64, actual_value: f64) -> Option<Share
 }
 
 #[allow(clippy::too_many_arguments)]
-fn number_setting_field(
+pub(crate) fn number_setting_field(
     namespace: String,
     owner: String,
     key: String,
@@ -99,6 +99,7 @@ fn number_setting_field(
     max: f64,
     step: f64,
     mark_dirty: Arc<dyn Fn(&mut App) + Send + Sync>,
+    write: Arc<dyn Fn(ConfigValue) -> Result<(), String>>,
 ) -> SettingField<SharedString> {
     SettingField::render(move |options, window: &mut Window, cx: &mut App| {
         let initial_value = current_number_value(&namespace, &owner, &key).unwrap_or(0.0);
@@ -112,6 +113,7 @@ fn number_setting_field(
         let current_value = current_value.clone();
         let default_value = default_value.clone();
         let mark_dirty = mark_dirty.clone();
+        let write = write.clone();
 
         let state = window
             .use_keyed_state(state_key, cx, move |window, cx| {
@@ -156,14 +158,7 @@ fn number_setting_field(
                             let result =
                                 number_config_value(clamped_value, &current_value, &default_value)
                                     .map_err(str::to_owned)
-                                    .and_then(|value| {
-                                        let handle = global_config()
-                                            .owner_handle(&namespace, &owner)
-                                            .ok_or_else(|| {
-                                                "setting owner is not registered".to_string()
-                                            })?;
-                                        handle.set(&key, value).map_err(|error| error.to_string())
-                                    });
+                                    .and_then(|value| write(value));
 
                             if let Err(error) = &result {
                                 tracing::error!(
@@ -281,6 +276,16 @@ pub fn item_from_info(
         FieldType::NumberInput { min, max, step } => {
             let current_value = info.current_value.clone();
             let default_value = info.default_value.clone();
+            let write: Arc<dyn Fn(ConfigValue) -> Result<(), String>> = {
+                let (ns, owner, key) = (ns.clone(), owner.clone(), key.clone());
+                Arc::new(move |value| {
+                    global_config()
+                        .owner_handle(&ns, &owner)
+                        .ok_or_else(|| "setting owner is not registered".to_string())?
+                        .set(&key, value)
+                        .map_err(|error| error.to_string())
+                })
+            };
             SettingItem::new(
                 label,
                 number_setting_field(
@@ -293,6 +298,7 @@ pub fn item_from_info(
                     max.unwrap_or(f64::MAX),
                     step.unwrap_or(1.0),
                     mark_dirty,
+                    write,
                 ),
             )
             .description(desc)

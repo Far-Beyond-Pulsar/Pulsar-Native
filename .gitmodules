@@ -108,3 +108,21 @@
 	path = crates/external/pulsar-profiling
 	url = https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling.git
 	branch = main
+[submodule "plugins/vendor/asset_viewer"]
+	path = plugins/vendor/asset_viewer
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_AssetViewer
+[submodule "plugins/vendor/cables"]
+	path = plugins/vendor/cables
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Cables
+[submodule "plugins/vendor/render_bps"]
+	path = plugins/vendor/render_bps
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_RenderGraph
+[submodule "plugins/vendor/trait_editor"]
+	path = plugins/vendor/trait_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_TraitEditor
+[submodule "plugins/vendor/typescript"]
+	path = plugins/vendor/typescript
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_TypeScript
+[submodule "plugins/vendor/rust"]
+	path = plugins/vendor/rust
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Rust

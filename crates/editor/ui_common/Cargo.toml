@@ -34,6 +34,8 @@ pulsar_auth.workspace = true
 ui_auth.workspace = true
 open.workspace = true
 engine_fs = { workspace = true }
+# Which folders are classes, and of which language: the language registry.
+pulsar_language = { workspace = true }
 plugin_editor_api = { workspace = true, features = ["editor"] }
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here —
 # `property_editor_registry.rs` iterates `inventory::iter::<UiPropertyEditorHint>`

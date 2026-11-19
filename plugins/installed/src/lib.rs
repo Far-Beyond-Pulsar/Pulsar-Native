@@ -50,6 +50,8 @@ pub use post_plugin;
 #[cfg(feature = "editor")]
 pub use render_bps_plugin;
 #[cfg(feature = "editor")]
+pub use rust_plugin;
+#[cfg(feature = "editor")]
 pub use script_editor_plugin;
 pub use skeletal_animation_plugin;
 pub use sky_plugin;

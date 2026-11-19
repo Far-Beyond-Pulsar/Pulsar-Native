@@ -1,7 +1,7 @@
 //! The footer under the editor, as its own view.
 //!
 //! What it shows changes in the background (the editor task count,
-//! rust-analyzer's progress, the multiuser session), and a notify reaches
+//! the language servers' progress, the multiuser session), and a notify reaches
 //! every view that reads the notified entity. Those updates notify this view
 //! instead of [`PulsarApp`], so the views that read the app's state (the left
 //! sidebar) replay rather than rebuild. The footer itself is still

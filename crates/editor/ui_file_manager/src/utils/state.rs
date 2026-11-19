@@ -96,6 +96,7 @@ impl FileManagerDrawer {
                     name,
                     file_type_def: None,
                     is_folder: false,
+                    class_language: None,
                     size: 0,
                     modified: None,
                     is_ghost: true,
@@ -173,6 +174,7 @@ impl FileManagerDrawer {
                             name: name.to_string(),
                             file_type_def: ft.clone(),
                             is_folder: e.is_dir && ft.is_none(),
+                            class_language: None,
                             size: e.size,
                             modified: e
                                 .modified
@@ -222,6 +224,23 @@ impl FileManagerDrawer {
                                     .collect::<Vec<_>>()
                             })
                             .collect();
+                        // Folders that hold a language's class marker: one item each.
+                        let class_dirs: HashSet<String> = pulsar_language::LanguageRegistry::current()
+                            .class_markers()
+                            .flat_map(|marker| {
+                                index
+                                    .query(&engine_fs::FileIndexQuery {
+                                        name_equals: Some(marker.to_owned()),
+                                        ..Default::default()
+                                    })
+                                    .unwrap_or_default()
+                                    .into_iter()
+                                    .filter_map(|entry| {
+                                        entry.path.rsplit_once('/').map(|(dir, _)| dir.to_string())
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect();
                         return entries
                             .into_iter()
                             .map(|entry| {
@@ -264,12 +283,20 @@ impl FileManagerDrawer {
                                         })
                                         .cloned()
                                 };
+                                let class_language = (entry.is_dir
+                                    && file_type_def.is_none()
+                                    && class_dirs.contains(&entry.path))
+                                .then(|| FileItem::class_language_of(&path))
+                                .flatten();
                                 FileItem {
                                     read_only_mount: engine_fs::virtual_fs::mount_of(&path),
                                     path,
                                     name: entry.name,
                                     file_type_def: file_type_def.clone(),
-                                    is_folder: entry.is_dir && file_type_def.is_none(),
+                                    is_folder: entry.is_dir
+                                        && file_type_def.is_none()
+                                        && class_language.is_none(),
+                                    class_language,
                                     size: entry.size,
                                     modified: entry.modified.map(|seconds| {
                                         std::time::UNIX_EPOCH

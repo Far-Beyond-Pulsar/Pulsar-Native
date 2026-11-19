@@ -1,6 +1,5 @@
 //! Rendering implementation for PulsarApp
 
-use engine_backend::services::AnalyzerStatus;
 use gpui::UpdateGlobal as _;
 use gpui::{
     div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, AnyView, App,
@@ -32,9 +31,9 @@ impl PulsarApp {
         drawer_open: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let analyzer = self.state.rust_analyzer.read(cx);
-        let status = analyzer.status();
-        let is_running = analyzer.is_running();
+        let server_entries =
+            super::language_server_footer::entries(self.state.language_servers.read(cx), cx);
+        let server_progress = super::language_server_footer::progress_of(&server_entries);
 
         let error_count = self
             .state
@@ -64,34 +63,21 @@ impl PulsarApp {
             .read(cx)
             .is_dock_open(DockPlacement::Left, cx);
 
-        let (status_color, status_icon) = match status {
-            AnalyzerStatus::Ready => (cx.theme().success, IconName::CheckCircle),
-            AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Starting => {
-                (cx.theme().warning, IconName::Loader)
-            }
-            AnalyzerStatus::Error(_) => (cx.theme().danger, IconName::TriangleAlert),
-            AnalyzerStatus::Stopped => (cx.theme().muted_foreground, IconName::Circle),
-            AnalyzerStatus::Idle => (cx.theme().muted_foreground, IconName::Circle),
-        };
-
         div()
             .w_full()
             .relative()
-            .when(
-                self.state.analyzer_progress > 0.0 && self.state.analyzer_progress < 1.0,
-                |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .h(px(2.))
-                            .w(relative(self.state.analyzer_progress))
-                            .bg(cx.theme().primary)
-                            .shadow_md(),
-                    )
-                },
-            )
+            .when(server_progress > 0.0, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .h(px(2.))
+                        .w(relative(server_progress))
+                        .bg(cx.theme().primary)
+                        .shadow_md(),
+                )
+            })
             .child(
                 h_flex()
                     .w_full()
@@ -316,98 +302,9 @@ impl PulsarApp {
                             .flex_1()
                             .items_center()
                             .gap_2()
-                            .child(
-                                Icon::new(status_icon)
-                                    .size(px(14.))
-                                    .text_color(status_color),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_medium()
-                                    .text_color(cx.theme().foreground)
-                                    .child(t!("StatusBar.RustAnalyzer").to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(status_color)
-                                    .child(self.state.analyzer_status_text.clone()),
-                            )
-                            .when(!self.state.analyzer_detail_message.is_empty(), |this| {
-                                this.child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground.opacity(0.7))
-                                        .child("—"),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(self.state.analyzer_detail_message.clone()),
-                                )
-                            })
-                            .child(
-                                h_flex()
-                                    .gap_0p5()
-                                    .ml_2()
-                                    .when(is_running, |this| {
-                                        this.child(
-                                            Button::new("analyzer-stop")
-                                                .ghost()
-                                                .icon(
-                                                    Icon::new(IconName::Close)
-                                                        .size(px(12.))
-                                                        .text_color(cx.theme().muted_foreground),
-                                                )
-                                                .p_1()
-                                                .rounded(px(3.))
-                                                .hover(|s| s.bg(cx.theme().danger.opacity(0.2)))
-                                                .tooltip(t!("StatusBar.Stop").to_string())
-                                                .on_click(cx.listener(|app, _, window, cx| {
-                                                    app.state.rust_analyzer.update(
-                                                        cx,
-                                                        |analyzer, cx| {
-                                                            analyzer.stop(window, cx);
-                                                        },
-                                                    );
-                                                })),
-                                        )
-                                    })
-                                    .child(
-                                        Button::new("analyzer-restart")
-                                            .ghost()
-                                            .icon(
-                                                Icon::new(IconName::Undo)
-                                                    .size(px(12.))
-                                                    .text_color(cx.theme().muted_foreground),
-                                            )
-                                            .p_1()
-                                            .rounded(px(3.))
-                                            .tooltip(if is_running {
-                                                t!("StatusBar.Restart").to_string()
-                                            } else {
-                                                t!("StatusBar.Start").to_string()
-                                            })
-                                            .on_click(cx.listener(move |app, _, window, cx| {
-                                                if let Some(project) =
-                                                    app.state.project_path.clone()
-                                                {
-                                                    app.state.rust_analyzer.update(
-                                                        cx,
-                                                        |analyzer, cx| {
-                                                            if is_running {
-                                                                analyzer.restart(window, cx);
-                                                            } else {
-                                                                analyzer.start(project, window, cx);
-                                                            }
-                                                        },
-                                                    );
-                                                }
-                                            })),
-                                    ),
-                            ),
+                            // One "LSP Servers" entry: aggregate state and
+                            // progress; a click lists every server.
+                            .children(self.render_language_server_entries(&server_entries, cx)),
                     )
                     .child(div().w(px(1.)).h(px(18.)).bg(cx.theme().border))
                     // Render plugin statusbar buttons for right position
@@ -666,11 +563,6 @@ impl Render for PulsarApp {
         }
 
         self.sync_sidebar_mode(window, cx);
-
-        // Update rust-analyzer progress if indexing
-        self.state.rust_analyzer.update(cx, |analyzer, cx| {
-            analyzer.update_progress_from_thread(cx);
-        });
 
         let command_palette = if self.state.command_palette_open {
             self.state.command_palette_view.clone()

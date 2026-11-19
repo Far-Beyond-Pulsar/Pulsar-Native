@@ -25,8 +25,6 @@ pub use scene::{component_asset_events, ComponentEventCatalog};
 
 #[cfg(feature = "render")]
 pub use services::GpuRenderer;
-#[cfg(feature = "editor-ui")]
-pub use services::RustAnalyzerManager;
 use std::sync::OnceLock;
 #[cfg(feature = "render")]
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};

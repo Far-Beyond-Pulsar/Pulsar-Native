@@ -1,13 +1,15 @@
 //! Scripting-language plugins are part of a build exactly when their crates
 //! are linked (the installed set's Blueprints and TypeScript plugins),
 //! through the plugin API alone: the editor shell (`ui_core`) depends on none
-//! of them (#882), and editor and headless tools discover the same languages.
+//! of them (#882), and the editor and headless tools discover the same
+//! languages, because a language is one `pulsar_language::Language`
+//! registration that both read through the language registry.
 
 // Linking the installed set is what includes them, as `main.rs` does.
 use installed_plugins as _;
 
-use plugin_editor_api::linked_script_languages;
 use plugin_manager::BuiltinEditorRegistry;
+use pulsar_language::LanguageRegistry;
 
 const BLUEPRINT: &str = "com.pulsar.blueprint-editor";
 
@@ -24,29 +26,37 @@ fn the_blueprint_editor_is_installed() {
 
 #[test]
 fn each_language_comes_with_its_crate_and_only_with_it() {
-    let ids: Vec<String> = registry()
-        .get_all_script_languages()
+    let languages = LanguageRegistry::current();
+    let compilers: Vec<&str> = languages
+        .all()
         .iter()
-        .map(|l| l.id().to_owned())
+        .filter(|language| language.compiler.is_some())
+        .map(|language| language.id)
         .collect();
-    assert!(ids.iter().any(|i| i == "blueprint"), "{ids:?}");
-    assert!(ids.iter().any(|i| i == "typescript"), "{ids:?}");
+    assert!(compilers.contains(&"blueprint"), "{compilers:?}");
+    assert!(compilers.contains(&"typescript"), "{compilers:?}");
 }
 
 #[test]
-fn the_editor_and_headless_tools_find_the_same_languages() {
-    let mut editor: Vec<String> = registry()
-        .get_all_script_languages()
+fn the_editor_and_headless_tools_find_the_same_compilers() {
+    // One registration: the packager's list and the editor's pre-Play
+    // validation read `LanguageRegistry::compilers`, so there is nothing to
+    // keep equal; this pins that each compiled language has its compiler.
+    let languages = LanguageRegistry::current();
+    let mut ids: Vec<&str> = languages
+        .compilers()
         .iter()
-        .map(|l| l.id().to_owned())
+        .map(|(language, _)| language.id)
         .collect();
-    let mut headless: Vec<String> = linked_script_languages()
+    ids.sort_unstable();
+    let mut expected: Vec<&str> = languages
+        .all()
         .iter()
-        .map(|l| l.id().to_owned())
+        .filter(|language| language.compiler.is_some())
+        .map(|language| language.id)
         .collect();
-    editor.sort();
-    headless.sort();
-    assert_eq!(editor, headless);
+    expected.sort_unstable();
+    assert_eq!(ids, expected);
 }
 
 #[test]

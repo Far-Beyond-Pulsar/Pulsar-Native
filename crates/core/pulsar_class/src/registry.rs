@@ -199,6 +199,9 @@ impl ClassDefinition {
 #[derive(Clone, Debug, Default)]
 pub struct ClassRegistry {
     entries: Vec<ClassEntry>,
+    /// Classes that do not have exactly one language, found by the scan
+    /// ([`ClassProblem`]); empty for a registry built from known entries.
+    problems: Vec<crate::language::ClassProblem>,
 }
 
 /// `<project>/src/classes`.
@@ -323,16 +326,20 @@ pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// Whether `dir` looks like a class directory. A class from before the
-/// module store may have only its old compiled module
-/// (`events/.build/module.json`): it is found, so the store's migration
+/// Whether `dir` looks like a class directory: it has class metadata, a
+/// prefab, or a class marker of any enabled language
+/// (`pulsar_language::Language::class_markers`, from the language registry:
+/// a disabled plugin's classes are not found). A class from before the module
+/// store may have only its old compiled module (`events/.build/module.json`):
+/// it is found, so the store's migration
 /// (`crate::modules::migrate_legacy_modules`) can move it.
 pub fn is_class_dir(dir: &Path) -> bool {
     let module = dir.join("events").join(".build").join("module.json");
     virtual_fs::is_dir(dir)
-        && ([CLASS_META_FILE, PREFAB_FILE, "graph_save.json", "class.ts"]
+        && ([CLASS_META_FILE, PREFAB_FILE]
             .iter()
             .any(|f| virtual_fs::is_file(&dir.join(f)))
+            || pulsar_language::LanguageRegistry::current().is_class_dir(dir)
             || virtual_fs::is_file(&module))
 }
 
@@ -372,6 +379,7 @@ impl ClassRegistry {
         dirs.sort();
         dirs.dedup();
         let mut registry = Self::default();
+        let scanned = dirs.clone();
         for dir in dirs {
             let name = class_name_of_dir(&dir);
             let id = ensure_class_id(&dir);
@@ -390,12 +398,22 @@ impl ClassRegistry {
             }
             registry.entries.push(ClassEntry { id, name, dir });
         }
+        registry.problems = crate::language::problems_of_dirs(&scanned);
         registry
     }
 
     /// Build a registry from known entries (tests, tools).
     pub fn from_entries(entries: Vec<ClassEntry>) -> Self {
-        Self { entries }
+        Self {
+            entries,
+            problems: Vec::new(),
+        }
+    }
+
+    /// The classes with a problem the one-language rule found at scan: a
+    /// class that is two languages', or whose module another language wrote.
+    pub fn problems(&self) -> &[crate::language::ClassProblem] {
+        &self.problems
     }
 
     pub fn entries(&self) -> &[ClassEntry] {

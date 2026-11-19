@@ -52,8 +52,6 @@ pub struct RustClass {
     pub source: String,
 }
 
-/// A class's `graph_save.json` key naming its compile target.
-pub const COMPILE_TARGET_KEY: &str = "compile_target";
 /// The compile target that generates the class into the game crate.
 pub const COMPILE_TARGET_RUST: &str = "rust";
 
@@ -207,23 +205,23 @@ fn is_absolute_anywhere(path: &str) -> bool {
 
 /// The classes whose saved compile target is Rust, generated. A class that
 /// cannot be generated is a problem, not an error: it still runs as a
-/// script.
+/// script. The target is the class's language's to read
+/// (`ScriptLanguage::compile_target`): this names no language.
 fn rust_classes(project_root: &Path, problems: &mut Vec<String>) -> Vec<RustClass> {
-    #[derive(serde::Deserialize)]
-    struct Graph {
-        #[serde(default)]
-        compile_target: Option<String>,
-    }
     let mut classes: Vec<RustClass> = Vec::new();
     for dir in pulsar_class::registry::find_class_dirs(project_root) {
-        let graph = dir.join("graph_save.json");
-        let Ok(text) = virtual_fs::read_to_string(&graph) else {
+        let Some(compiler) = pulsar_class::language_of(&dir)
+            .ok()
+            .flatten()
+            .and_then(|language| language.compiler)
+            .map(|create| create())
+        else {
             continue;
         };
-        let target = match serde_json::from_str::<Graph>(&text) {
-            Ok(graph) => graph.compile_target,
+        let target = match compiler.compile_target(&dir) {
+            Ok(target) => target,
             Err(error) => {
-                problems.push(format!("{}: {error}", graph.display()));
+                problems.push(error);
                 continue;
             }
         };

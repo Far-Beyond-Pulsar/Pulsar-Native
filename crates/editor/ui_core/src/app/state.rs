@@ -1,6 +1,5 @@
 //! Application state structure
 
-use engine_backend::services::RustAnalyzerManager;
 use gpui::{Entity, FocusHandle, Task};
 use std::path::PathBuf;
 use ui::dock::{DockArea, TabPanel};
@@ -33,11 +32,8 @@ pub struct AppState {
 
     // Note: PluginManager is now globally accessible via plugin_manager::global()
 
-    // Rust Analyzer
-    pub rust_analyzer: Entity<RustAnalyzerManager>,
-    pub analyzer_status_text: String,
-    pub analyzer_detail_message: String,
-    pub analyzer_progress: f32,
+    // Language servers (the footer, the editors and the diagnostics read them)
+    pub language_servers: Entity<pulsar_lsp::LanguageServers>,
 
     // Notifications
     pub shown_welcome_notification: bool,

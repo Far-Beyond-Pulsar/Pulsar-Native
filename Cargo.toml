@@ -20,6 +20,10 @@ members = [
     # (`pulsar.typescript`): in-tree editor-tool plugins.
     "plugins/vendor/trait_editor",
     "plugins/vendor/typescript",
+    # The TypeScript subset compiler (oxc parser, lowering to script modules): the plugin's own crate.
+    "plugins/vendor/typescript/compiler",
+    # Rust (`pulsar.rust`): rust-analyzer as a language plugin, enabled by default.
+    "plugins/vendor/rust",
     "crates/core/*",
     "crates/editor/*",
     "crates/subsystems/*",
@@ -155,6 +159,7 @@ members = [
     "plugins/vendor/meshes/feature/indirect-dispatch",
     "plugins/vendor/meshes/feature/object-batch",
     "plugins/vendor/meshes/feature/occlusion-cull",
+    "plugins/vendor/meshes/feature/rays",
     "plugins/vendor/meshes/feature/shadow",
     "plugins/vendor/meshes/feature/shadow-dirty",
     "plugins/vendor/meshes/feature/transparent",
@@ -430,6 +435,7 @@ pulsar_auth                        = { path = "crates/core/pulsar_auth" }
 pulsar_settings                    = { path = "crates/core/pulsar_settings" }
 engine_backend                     = { path = "crates/core/engine_backend" }
 pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
+pulsar_language                    = { path = "crates/core/pulsar_language" }
 window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
@@ -586,6 +592,7 @@ helio-pass-shadow-matrix = { path = "plugins/vendor/lights/feature/shadows" }
 helio-pass-hiz = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-hiz" }
 helio-pass-indirect-dispatch = { path = "plugins/vendor/meshes/feature/indirect-dispatch" }
 helio-pass-occlusion-cull = { path = "plugins/vendor/meshes/feature/occlusion-cull" }
+helio-pass-mesh-rays = { path = "plugins/vendor/meshes/feature/rays" }
 helio-pass-transparent = { path = "plugins/vendor/meshes/feature/transparent" }
 helio-pass-shadow = { path = "plugins/vendor/meshes/feature/shadow" }
 helio-pass-shadow-dirty = { path = "plugins/vendor/meshes/feature/shadow-dirty" }
@@ -701,8 +708,9 @@ regex = "1"
 pulsar_script_vm = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_math = { path = "crates/core/pulsar_script_math" }
 pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
-pulsar_script_ts = { path = "crates/core/pulsar_script_ts" }
+pulsar_script_ts = { path = "plugins/vendor/typescript/compiler" }
 plugin_typescript = { path = "plugins/vendor/typescript" }
+rust_plugin = { path = "plugins/vendor/rust" }
 trait_editor_plugin = { path = "plugins/vendor/trait_editor" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }

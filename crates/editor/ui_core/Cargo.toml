@@ -9,6 +9,8 @@ pulsar_install_layout = { workspace = true }
 profiling = { workspace = true }
 # The level editor provider names the engine as its origin.
 pulsar_plugins = { workspace = true }
+# The one-language-per-class rule's problems, shown in the Problems drawer.
+pulsar_class = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
@@ -35,6 +37,8 @@ engine_state.workspace = true
 engine_fs = { workspace = true }
 pulsar_settings.workspace = true
 engine_backend.workspace = true
+pulsar_lsp.workspace = true
+pulsar_language.workspace = true
 pulsar_reflection.workspace = true
 window_manager.workspace = true
 

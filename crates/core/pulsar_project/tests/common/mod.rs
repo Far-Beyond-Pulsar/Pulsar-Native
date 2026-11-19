@@ -18,7 +18,7 @@ pub fn write_module(class_dir: &Path, module_json: &str) {
     std::fs::create_dir_all(class_dir).unwrap();
     let (entry, store) = pulsar_class::ModuleStore::for_class_dir(class_dir).unwrap();
     store
-        .write(&entry, "blueprint", String::new(), module_json.as_bytes())
+        .write(&entry, "stub", String::new(), module_json.as_bytes())
         .unwrap();
 }
 
@@ -244,4 +244,46 @@ pub fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
     }
     out.sort();
     out
+}
+
+/// A stand-in language for the classes of these tests (a kernel crate's tests
+/// never link a plugin): its class marker is `graph_save.json`, and it reads
+/// the class's compile target from that file as a real language would from
+/// wherever it keeps it.
+pub struct StubLanguage;
+
+impl pulsar_language::ScriptLanguage for StubLanguage {
+    fn compile_target(&self, class_dir: &Path) -> Result<Option<String>, String> {
+        #[derive(serde::Deserialize)]
+        struct Source {
+            #[serde(default)]
+            compile_target: Option<String>,
+        }
+        let file = class_dir.join("graph_save.json");
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            return Ok(None);
+        };
+        serde_json::from_str::<Source>(&text)
+            .map(|source| source.compile_target)
+            .map_err(|error| format!("{}: {error}", file.display()))
+    }
+}
+
+fn stub_compiler() -> std::sync::Arc<dyn pulsar_language::ScriptLanguage> {
+    std::sync::Arc::new(StubLanguage)
+}
+
+pulsar_plugins::inventory::submit! {
+    pulsar_language::Language {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "stub",
+        display_name: "Stub",
+        file_extensions: &[],
+        language_ids: &[],
+        highlight_id: "",
+        class_markers: &["graph_save.json"],
+        config_files: &[],
+        compiler: Some(stub_compiler),
+        server: None,
+    }
 }

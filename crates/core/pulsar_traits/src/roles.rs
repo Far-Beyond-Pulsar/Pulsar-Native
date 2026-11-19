@@ -164,21 +164,13 @@ pub struct RoleBinding {
 
 impl RoleBinding {
     /// The script class to spawn: the index's binding, else (no index) the
-    /// asset's folder name for `<Class>/graph_save.json`, else its file stem.
+    /// asset's folder name for `<Class>/<class marker file>`
+    /// ([`class_name_of_asset`]), else its file stem.
     pub fn class_name(&self) -> Option<&str> {
         if let Some(Binding::ScriptClass { dir }) = &self.binding {
             return Path::new(dir).file_name().and_then(|name| name.to_str());
         }
-        let path = Path::new(&self.asset);
-        if path.file_name().and_then(|name| name.to_str()) == Some("graph_save.json") {
-            return path
-                .parent()
-                .and_then(Path::file_name)
-                .and_then(|name| name.to_str());
-        }
-        self.asset
-            .strip_suffix(".blueprint.json")
-            .or_else(|| path.file_stem().and_then(|stem| stem.to_str()))
+        class_name_of_asset(&self.asset)
     }
 
     /// Safe to instantiate: checked and valid, or not checkable.
@@ -301,6 +293,27 @@ impl WorldRoles {
             })
             .collect()
     }
+}
+
+/// The class an asset path names: the folder of a language's class marker file
+/// (`<Class>/<marker>`, markers from the language registry), else the file
+/// stem (`.blueprint.json` stripped).
+pub fn class_name_of_asset(asset: &str) -> Option<&str> {
+    let path = Path::new(asset);
+    let file_name = path.file_name().and_then(|name| name.to_str());
+    if file_name.is_some_and(|name| {
+        pulsar_language::LanguageRegistry::current()
+            .language_of_marker(name)
+            .is_some()
+    }) {
+        return path
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str());
+    }
+    asset
+        .strip_suffix(".blueprint.json")
+        .or_else(|| path.file_stem().and_then(|stem| stem.to_str()))
 }
 
 #[cfg(test)]

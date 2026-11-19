@@ -4,13 +4,12 @@
 //! which is a short list of named steps defined in `construction.rs` (and
 //! `command_palette_setup.rs` for the palette).
 
-use engine_backend::services::RustAnalyzerManager;
-use gpui::{Context, Entity, Window};
+use gpui::{Context, Window};
 use std::path::PathBuf;
 
 use super::command_palette_setup::register_command_palette;
 use super::construction::{
-    build_center_dock, build_drawers, connect_rust_analyzer, create_dock_area,
+    build_center_dock, build_drawers, connect_language_servers, create_dock_area,
     create_plugin_manager, finish_construction, install_docks, persistent_center_tabs,
     publish_component_event_catalog, publish_project_path, register_drawer_windows,
     spawn_multiuser_refresh, spawn_task_queue_refresh, subscribe_drawer_events,
@@ -20,7 +19,7 @@ use super::PulsarApp;
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_internal(None, None, true, window, cx)
+        Self::new_internal(None, true, window, cx)
     }
 
     pub fn new_with_project(
@@ -32,51 +31,13 @@ impl PulsarApp {
             "PulsarApp::new_with_project called with path: {:?}",
             project_path
         );
-        Self::new_internal(Some(project_path), None, true, window, cx)
-    }
-
-    /// Create a new PulsarApp with a pre-initialized rust analyzer
-    pub fn new_with_project_and_analyzer(
-        project_path: PathBuf,
-        rust_analyzer: Entity<RustAnalyzerManager>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        tracing::debug!(
-            "PulsarApp::new_with_project_and_analyzer called with path: {:?}",
-            project_path
-        );
-        let app = Self::new_internal(
-            Some(project_path.clone()),
-            Some(rust_analyzer.clone()),
-            true,
-            window,
-            cx,
-        );
-
-        // Start rust-analyzer in the background
-        rust_analyzer.update(cx, |analyzer, cx| {
-            analyzer.start(project_path, window, cx);
-        });
-
-        app
-    }
-
-    /// Create a new window that shares the rust analyzer from an existing window
-    pub fn new_with_shared_analyzer(
-        project_path: Option<PathBuf>,
-        rust_analyzer: Entity<RustAnalyzerManager>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        Self::new_internal(project_path, Some(rust_analyzer), false, window, cx)
+        Self::new_internal(Some(project_path), true, window, cx)
     }
 
     /// Builds the app by running the steps in `construction.rs` in order; the
     /// order matters (each step's doc names what it depends on).
     pub(super) fn new_internal(
         project_path: Option<PathBuf>,
-        shared_rust_analyzer: Option<Entity<RustAnalyzerManager>>,
         create_level_editor: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -104,6 +65,8 @@ impl PulsarApp {
         // Script problems from Play-in-Editor (#854, #868) join the
         // language server's in the problems panel.
         super::script_problems::watch(drawers.problems_drawer.clone(), cx);
+        // Classes that are two languages' (the host's one-language rule).
+        super::class_problems::watch(drawers.problems_drawer.clone(), project_path.clone(), cx);
 
         subscribe_drawer_events(
             &drawers.file_manager_drawer,
@@ -111,14 +74,13 @@ impl PulsarApp {
             window,
             cx,
         );
-        let rust_analyzer =
-            connect_rust_analyzer(shared_rust_analyzer, project_path.as_ref(), window, cx);
+        let language_servers = connect_language_servers(project_path.as_ref(), window, cx);
 
         // Initialize palette manager global
         ui_common::command_palette::PaletteManager::init(cx);
 
         let t_plugins = std::time::Instant::now();
-        let (plugin_manager, plugins_staged) = create_plugin_manager(&rust_analyzer, t_plugins);
+        let (plugin_manager, plugins_staged) = create_plugin_manager(&language_servers, t_plugins);
 
         let multiuser_refresh_task = spawn_multiuser_refresh(cx);
 
@@ -133,10 +95,7 @@ impl PulsarApp {
                 task_queue_refresh_task: None,
                 center_tabs,
                 preview_tab_panels: Vec::new(),
-                rust_analyzer,
-                analyzer_status_text: "Idle".to_string(),
-                analyzer_detail_message: String::new(),
-                analyzer_progress: 0.0,
+                language_servers,
                 shown_welcome_notification: false,
                 command_palette_open: false,
                 command_palette_id: None,
@@ -193,11 +152,6 @@ impl PulsarApp {
         );
 
         app
-    }
-
-    /// Get the global rust analyzer manager
-    pub fn rust_analyzer(&self) -> &Entity<RustAnalyzerManager> {
-        &self.state.rust_analyzer
     }
 
     /// Get the current workspace root

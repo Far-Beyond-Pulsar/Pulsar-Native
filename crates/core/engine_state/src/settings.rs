@@ -320,7 +320,45 @@ fn has_io_kind(error: &anyhow::Error, kind: ErrorKind) -> bool {
     })
 }
 
-fn config_value_to_toml(value: &ConfigValue) -> toml::Value {
+/// The config value a TOML value stands for, typed by the setting's default
+/// (`None`: it does not fit that type).
+pub(crate) fn toml_to_config_value(value: &toml::Value, expected: &ConfigValue) -> Option<ConfigValue> {
+    Some(match expected {
+        ConfigValue::Bool(_) => ConfigValue::Bool(value.as_bool()?),
+        ConfigValue::Int(_) => ConfigValue::Int(value.as_integer()?),
+        ConfigValue::Float(_) => ConfigValue::Float(
+            value
+                .as_float()
+                .or_else(|| value.as_integer().map(|i| i as f64))?,
+        ),
+        ConfigValue::String(_) => ConfigValue::String(value.as_str()?.to_owned()),
+        ConfigValue::Color(_) => {
+            let table = value.as_table()?;
+            let channel = |name: &str| -> Option<u8> { u8::try_from(table.get(name)?.as_integer()?).ok() };
+            ConfigValue::Color(Color {
+                r: channel("r")?,
+                g: channel("g")?,
+                b: channel("b")?,
+                a: channel("a")?,
+            })
+        }
+        ConfigValue::Array(defaults) => {
+            let items = value.as_array()?;
+            let element = defaults.first();
+            ConfigValue::Array(
+                items
+                    .iter()
+                    .map(|item| match element {
+                        Some(element) => toml_to_config_value(item, element),
+                        None => None,
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+            )
+        }
+    })
+}
+
+pub(crate) fn config_value_to_toml(value: &ConfigValue) -> toml::Value {
     match value {
         ConfigValue::Bool(value) => toml::Value::Boolean(*value),
         ConfigValue::Int(value) => toml::Value::Integer(*value),

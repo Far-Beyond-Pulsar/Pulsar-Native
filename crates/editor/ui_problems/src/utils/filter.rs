@@ -46,7 +46,14 @@ pub fn compute_aligned_diff(
 
 impl ProblemsDrawer {
     pub(crate) fn get_filtered_diagnostics(&self) -> Vec<Diagnostic> {
-        let diagnostics = lock_diagnostics(&self.diagnostics);
+        let diagnostics = match &self.filtered_source {
+            Some(source) => self
+                .sources
+                .get(source)
+                .map(|slot| slot.current.clone())
+                .unwrap_or_default(),
+            None => lock_diagnostics(&self.diagnostics).clone(),
+        };
         filter_diagnostics(
             &diagnostics,
             self.filtered_severity.as_ref(),
@@ -75,6 +82,12 @@ impl ProblemsDrawer {
         cx: &mut Context<Self>,
     ) {
         self.filtered_severity = severity;
+        self.selected_index = None;
+        cx.notify();
+    }
+
+    pub(crate) fn set_source_filter(&mut self, source: Option<String>, cx: &mut Context<Self>) {
+        self.filtered_source = source;
         self.selected_index = None;
         cx.notify();
     }

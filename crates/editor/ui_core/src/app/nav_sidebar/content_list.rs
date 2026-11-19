@@ -225,6 +225,7 @@ mod tests {
                 .into_owned(),
             file_type_def: None,
             is_folder: false,
+            class_language: None,
             size: 0,
             modified: None,
             is_ghost: false,

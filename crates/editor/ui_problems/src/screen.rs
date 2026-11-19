@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -16,14 +16,30 @@ pub(crate) fn lock_diagnostics(m: &Mutex<Vec<Diagnostic>>) -> MutexGuard<'_, Vec
     })
 }
 
+/// What one source (a language server, a compiler, a play session) last
+/// published.
+#[derive(Default)]
+pub(crate) struct SourceSlot {
+    /// The set as the source published it, before fetched code-action hints
+    /// were added. A republish of the same set is compared against this, not
+    /// against the enriched copy (which always differs from a fresh publish).
+    pub(crate) published: Vec<Diagnostic>,
+    /// The set with the hints fetched since.
+    pub(crate) current: Vec<Diagnostic>,
+}
+
 pub struct ProblemsDrawer {
     pub(crate) focus_handle: FocusHandle,
+    /// Every source's diagnostics, in source-name order: what the drawer shows
+    /// (the severity and source filters and the search apply to it).
     pub(crate) diagnostics: Arc<Mutex<Vec<Diagnostic>>>,
-    /// The last set handed to `set_diagnostics`, before fetched code-action hints were
-    /// added to `diagnostics`. A republish of the same set is compared against this,
-    /// not against the enriched copy (which always differs from a fresh publish).
-    pub(crate) last_published: Vec<Diagnostic>,
+    /// Each source's own slot. A source publishes its complete set (an empty
+    /// set removes its slot), so several files from several sources are shown
+    /// at once and a fixed one goes.
+    pub(crate) sources: BTreeMap<String, SourceSlot>,
     pub(crate) filtered_severity: Option<DiagnosticSeverity>,
+    /// Show only this source's diagnostics.
+    pub(crate) filtered_source: Option<String>,
     pub(crate) selected_index: Option<usize>,
     pub(crate) search_query: String,
     pub(crate) group_by_file: bool,
@@ -31,10 +47,6 @@ pub struct ProblemsDrawer {
     pub(crate) diff_editors: HashMap<(usize, usize), (Entity<InputState>, Entity<InputState>)>,
     pub(crate) search_input: Entity<InputState>,
     pub(crate) project_root: Option<PathBuf>,
-    /// Diagnostics from other sources than the language server (e.g. the
-    /// running game's script problems), by source; shown after the
-    /// language server's, which keep their indices.
-    pub(crate) external: std::collections::BTreeMap<String, Vec<Diagnostic>>,
 }
 
 impl EventEmitter<NavigateToDiagnostic> for ProblemsDrawer {}
@@ -48,8 +60,9 @@ impl ProblemsDrawer {
         Self {
             focus_handle,
             diagnostics,
-            last_published: Vec::new(),
+            sources: BTreeMap::new(),
             filtered_severity: None,
+            filtered_source: None,
             selected_index: None,
             search_query: String::new(),
             group_by_file: true,
@@ -57,45 +70,65 @@ impl ProblemsDrawer {
             diff_editors: HashMap::new(),
             search_input,
             project_root: None,
-            external: std::collections::BTreeMap::new(),
         }
-    }
-
-    pub fn add_diagnostic(&mut self, diagnostic: Diagnostic, cx: &mut Context<Self>) {
-        lock_diagnostics(&self.diagnostics).push(diagnostic);
-        cx.notify();
     }
 
     pub fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
-        lock_diagnostics(&self.diagnostics).clear();
-        self.last_published.clear();
-        self.external.clear();
+        self.sources.clear();
+        self.filtered_source = None;
+        self.rebuild();
         self.selected_index = None;
         self.preview_inputs.clear();
+        self.diff_editors.clear();
         cx.notify();
     }
 
-    /// Replace the diagnostics. Returns whether anything changed.
+    /// The shown list again from the slots, in source-name order.
+    fn rebuild(&mut self) {
+        let all: Vec<Diagnostic> = self
+            .sources
+            .values()
+            .flat_map(|slot| slot.current.iter().cloned())
+            .collect();
+        *lock_diagnostics(&self.diagnostics) = all;
+    }
+
+    /// Replace everything `source` publishes (empty removes it). Returns
+    /// whether anything changed.
     ///
-    /// The language server republishes the same set repeatedly. Treating each
-    /// publish as a change reset the selection and caches and notified the
-    /// drawer (and, through the caller, the whole app) several times a second
-    /// with nothing new to show -- each notify turning a ~0.5 ms display-only
+    /// A server republishes the same set repeatedly. Treating each publish as
+    /// a change reset the selection and caches and notified the drawer (and,
+    /// through the caller, the whole app) several times a second with
+    /// nothing new to show -- each notify turning a ~0.5 ms display-only
     /// frame into a multi-millisecond full draw.
-    pub fn set_diagnostics(
+    pub fn set_source_diagnostics(
         &mut self,
+        source: &str,
         diagnostics: Vec<Diagnostic>,
         cx: &mut Context<Self>,
     ) -> bool {
-        // Compare with the previous *publish*: the stored copy also carries the
-        // code-action hints fetched since, so it never equals a fresh publish.
-        if self.last_published == diagnostics {
+        let unchanged = match self.sources.get(source) {
+            Some(slot) => slot.published == diagnostics,
+            None => diagnostics.is_empty(),
+        };
+        if unchanged {
             return false;
         }
-        self.last_published = diagnostics.clone();
-        let mut all = diagnostics;
-        all.extend(self.external.values().flatten().cloned());
-        *lock_diagnostics(&self.diagnostics) = all;
+        if diagnostics.is_empty() {
+            self.sources.remove(source);
+            if self.filtered_source.as_deref() == Some(source) {
+                self.filtered_source = None;
+            }
+        } else {
+            self.sources.insert(
+                source.to_owned(),
+                SourceSlot {
+                    published: diagnostics.clone(),
+                    current: diagnostics,
+                },
+            );
+        }
+        self.rebuild();
         self.selected_index = None;
         self.preview_inputs.clear();
         self.diff_editors.clear();
@@ -103,86 +136,49 @@ impl ProblemsDrawer {
         true
     }
 
-    /// Replace the diagnostics of an external `source` (anything but the
-    /// language server, which uses [`Self::set_diagnostics`]). Returns
-    /// whether anything changed.
-    pub fn set_external_diagnostics(
+    /// Add fetched code-action `new_hints` to the `index`th diagnostic of
+    /// `source`, and clear its loading indicator. Only a real change is worth
+    /// a redraw: new hints, or clearing a loading indicator that was showing.
+    pub fn update_source_hints(
         &mut self,
         source: &str,
-        diagnostics: Vec<Diagnostic>,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if self
-            .external
-            .get(source)
-            .map_or(diagnostics.is_empty(), |d| *d == diagnostics)
-        {
-            return false;
-        }
-        if diagnostics.is_empty() {
-            self.external.remove(source);
-        } else {
-            self.external.insert(source.to_owned(), diagnostics);
-        }
-        {
-            let mut all = lock_diagnostics(&self.diagnostics);
-            // The language server's entries (with their fetched hints) stay
-            // first; the external ones follow.
-            all.truncate(self.last_published.len());
-            all.extend(self.external.values().flatten().cloned());
-        }
-        self.selected_index = None;
-        cx.notify();
-        true
-    }
-
-    pub fn update_diagnostic_hints(
-        &mut self,
-        diagnostic_index: usize,
+        index: usize,
         new_hints: Vec<Hint>,
         cx: &mut Context<Self>,
     ) {
-        // Only a real change is worth a redraw: new hints, or clearing a loading
-        // indicator that was showing. The common outcome of a code-action fetch is
-        // "no actions" for a diagnostic that was never shown as loading, and that
-        // used to notify anyway (~27 times a second across a publish).
+        let Some(slot) = self.sources.get_mut(source) else {
+            return;
+        };
+        let Some(diagnostic) = slot.current.get_mut(index) else {
+            return;
+        };
         let mut changed = false;
-        {
-            let mut diagnostics = lock_diagnostics(&self.diagnostics);
-            if let Some(diag) = diagnostics.get_mut(diagnostic_index) {
-                if !new_hints.is_empty() {
-                    for hint in new_hints {
-                        diag.hints.push(hint);
-                    }
-                    changed = true;
-                }
-                if diag.loading_actions {
-                    diag.loading_actions = false;
-                    changed = true;
-                }
-            }
-        }
-        let editors_before = self.diff_editors.len();
-        self.diff_editors
-            .retain(|(d_idx, _), _| *d_idx != diagnostic_index);
-        if self.diff_editors.len() != editors_before {
+        if !new_hints.is_empty() {
+            diagnostic.hints.extend(new_hints);
             changed = true;
         }
-        if changed {
-            cx.notify();
+        if diagnostic.loading_actions {
+            diagnostic.loading_actions = false;
+            changed = true;
         }
+        if !changed {
+            return;
+        }
+        self.rebuild();
+        self.diff_editors.clear();
+        cx.notify();
     }
 
-    pub fn set_diagnostic_loading(
-        &mut self,
-        diagnostic_index: usize,
-        loading: bool,
-        cx: &mut Context<Self>,
-    ) {
-        if let Some(diag) = lock_diagnostics(&self.diagnostics).get_mut(diagnostic_index) {
-            diag.loading_actions = loading;
-        }
-        cx.notify();
+    /// The sources that currently have something to show.
+    pub fn source_names(&self) -> Vec<String> {
+        self.sources.keys().cloned().collect()
+    }
+
+    /// The number of diagnostics of `source`.
+    pub fn source_count(&self, source: &str) -> usize {
+        self.sources
+            .get(source)
+            .map_or(0, |slot| slot.current.len())
     }
 
     pub fn get_diagnostic_info(
@@ -272,6 +268,8 @@ impl Render for ProblemsDrawer {
             .on_action(cx.listener(crate::handlers::on_filter_errors))
             .on_action(cx.listener(crate::handlers::on_filter_warnings))
             .on_action(cx.listener(crate::handlers::on_filter_info))
+            .on_action(cx.listener(crate::handlers::on_filter_source))
+            .on_action(cx.listener(crate::handlers::on_clear_source_filter))
             .child(crate::components::render_header(
                 self,
                 error_count,
@@ -286,7 +284,7 @@ impl Render for ProblemsDrawer {
 
 #[cfg(test)]
 mod tests {
-    use super::{lock_diagnostics, Diagnostic};
+    use super::{lock_diagnostics, Diagnostic, ProblemsDrawer};
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -302,5 +300,137 @@ mod tests {
         assert!(diagnostics.is_poisoned());
 
         assert!(lock_diagnostics(&diagnostics).is_empty());
+    }
+
+    fn problem(file: &str, message: &str) -> Diagnostic {
+        Diagnostic {
+            file_path: file.into(),
+            line: 1,
+            column: 1,
+            end_line: None,
+            end_column: None,
+            severity: crate::DiagnosticSeverity::Error,
+            message: message.into(),
+            source: None,
+            hints: Vec::new(),
+            subitems: Vec::new(),
+            loading_actions: false,
+        }
+    }
+
+    struct Host;
+
+    impl gpui::Render for Host {
+        fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+            gpui::div()
+        }
+    }
+
+    /// The drawer showed only the last file a server published and never
+    /// cleared a fixed one. A source now publishes its complete set: two
+    /// files are shown at once, and fixing one removes only it.
+    #[gpui::test]
+    fn several_files_show_at_once_and_a_fixed_file_clears(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext as _;
+        let (_host, cx) = cx.add_window_view(|_, _| Host);
+        let drawer = cx.update(|window, app| {
+            ui::init(app);
+            app.new(|cx| ProblemsDrawer::new(window, cx))
+        });
+        drawer.update(cx, |drawer, cx| {
+            assert!(drawer.set_source_diagnostics(
+                "rust-analyzer",
+                vec![problem("/p/a.rs", "in a"), problem("/p/b.rs", "in b")],
+                cx
+            ));
+            assert_eq!(drawer.total_count(), 2);
+            let files = drawer.get_grouped_diagnostics();
+            assert_eq!(files.len(), 2, "both files are listed");
+
+            // The same set again is not a change.
+            assert!(!drawer.set_source_diagnostics(
+                "rust-analyzer",
+                vec![problem("/p/a.rs", "in a"), problem("/p/b.rs", "in b")],
+                cx
+            ));
+
+            // a.rs was fixed: the server's next complete set no longer has it.
+            assert!(drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/b.rs", "in b")], cx));
+            assert_eq!(drawer.total_count(), 1);
+            assert_eq!(drawer.get_grouped_diagnostics().len(), 1);
+
+            // All fixed: the source disappears.
+            assert!(drawer.set_source_diagnostics("rust-analyzer", Vec::new(), cx));
+            assert_eq!(drawer.total_count(), 0);
+            assert!(drawer.source_names().is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn sources_are_independent_and_filterable(cx: &mut gpui::TestAppContext) {
+        use gpui::AppContext as _;
+        let (_host, cx) = cx.add_window_view(|_, _| Host);
+        let drawer = cx.update(|window, app| {
+            ui::init(app);
+            app.new(|cx| ProblemsDrawer::new(window, cx))
+        });
+        drawer.update(cx, |drawer, cx| {
+            drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/a.rs", "ra")], cx);
+            drawer.set_source_diagnostics("typescript compiler", vec![problem("/p/c.ts", "ts")], cx);
+            assert_eq!(drawer.source_names(), ["rust-analyzer", "typescript compiler"]);
+            assert_eq!(drawer.total_count(), 2);
+
+            // One source's republish does not touch the other's.
+            drawer.set_source_diagnostics("rust-analyzer", Vec::new(), cx);
+            assert_eq!(drawer.source_names(), ["typescript compiler"]);
+
+            drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/a.rs", "ra")], cx);
+            drawer.set_source_filter(Some("typescript compiler".into()), cx);
+            let shown = drawer.get_filtered_diagnostics();
+            assert_eq!(shown.len(), 1);
+            assert_eq!(shown[0].message, "ts");
+            drawer.set_source_filter(None, cx);
+            assert_eq!(drawer.get_filtered_diagnostics().len(), 2);
+
+            // A source that empties while it is the filter drops the filter.
+            drawer.set_source_filter(Some("rust-analyzer".into()), cx);
+            drawer.set_source_diagnostics("rust-analyzer", Vec::new(), cx);
+            assert_eq!(drawer.get_filtered_diagnostics().len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    fn fetched_hints_attach_to_their_diagnostic_and_survive_other_sources_changing(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::AppContext as _;
+        let (_host, cx) = cx.add_window_view(|_, _| Host);
+        let drawer = cx.update(|window, app| {
+            ui::init(app);
+            app.new(|cx| ProblemsDrawer::new(window, cx))
+        });
+        drawer.update(cx, |drawer, cx| {
+            let mut loading = problem("/p/a.rs", "ra");
+            loading.loading_actions = true;
+            drawer.set_source_diagnostics("rust-analyzer", vec![loading], cx);
+            drawer.update_source_hints(
+                "rust-analyzer",
+                0,
+                vec![crate::Hint {
+                    message: "fix".into(),
+                    before_content: None,
+                    after_content: None,
+                    file_path: None,
+                    line: None,
+                    loading: false,
+                }],
+                cx,
+            );
+            drawer.set_source_diagnostics("play", vec![problem("Class", "boom")], cx);
+            let shown = drawer.get_filtered_diagnostics();
+            let ra = shown.iter().find(|d| d.message == "ra").unwrap();
+            assert_eq!(ra.hints.len(), 1);
+            assert!(!ra.loading_actions);
+        });
     }
 }

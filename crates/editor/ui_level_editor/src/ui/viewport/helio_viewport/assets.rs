@@ -23,7 +23,7 @@ impl HelioViewport {
         let path = PathBuf::from(&payload.engine_path);
         if !engine_fs::virtual_fs::exists(&path).unwrap_or(false)
             || (payload.kind == AssetKind::Blueprint
-                && !engine_fs::virtual_fs::exists(&path.join("graph_save.json")).unwrap_or(false))
+                && !pulsar_class::registry::is_class_dir(&path))
         {
             return;
         }
@@ -402,9 +402,9 @@ impl HelioViewport {
                         format!("Blueprint path is not a directory: {}", path.display()).into(),
                     );
                 }
-                if !engine_fs::virtual_fs::exists(&path.join("graph_save.json")).unwrap_or(false) {
+                if !pulsar_class::registry::is_class_dir(&path) {
                     return Err(format!(
-                        "Not a valid blueprint class (missing graph_save.json): {}",
+                        "Not a valid class (no source of any enabled language): {}",
                         path.display()
                     )
                     .into());

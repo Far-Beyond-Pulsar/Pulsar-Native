@@ -692,16 +692,7 @@ fn blueprint_label(path: &String) -> String {
     if path == "None" {
         return "None".to_string();
     }
-    if Path::new(path).file_name().and_then(|name| name.to_str()) == Some("graph_save.json") {
-        return Path::new(path)
-            .parent()
-            .and_then(Path::file_name)
-            .and_then(|name| name.to_str())
-            .unwrap_or(path)
-            .to_string();
-    }
-    path.strip_suffix(".blueprint.json")
-        .or_else(|| Path::new(path).file_stem().and_then(|stem| stem.to_str()))
+    pulsar_traits::class_name_of_asset(path)
         .unwrap_or(path)
         .to_string()
 }

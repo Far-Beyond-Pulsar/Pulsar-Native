@@ -114,3 +114,18 @@ gi = ["gi", "ddgi"]
 physics = ["physics", "rapier", "collider", "colliders", "rigidbody", "rigid body", "ragdoll", "physasset"]
 input = ["player input", "input mapping", "input action", "input actions"]
 baked-lighting = ["lightmap", "lightmaps", "pvs"]
+
+# Languages. A language is a plugin too (pulsar.rust, pulsar.typescript,
+# pulsar.blueprints: crates/core/pulsar_language), reached through its
+# `Language` registration, never by name. These are identifier words that
+# belong to one language's server, tooling or files, never the bare word
+# "rust" (the engine is written in it) and not "blueprint" (the engine's own
+# node vocabulary, `pulsar_std`, not the language plugin's). Each term was
+# checked against the tree before it was added: the ones kernel code still
+# hits are recorded, with their reason, in architecture/kind-names.txt.
+typescript = ["typescript", "tsserver", "tsconfig", "class ts", "oxc"]
+rust-analyzer = ["rust analyzer", "rustup", "rust project"]
+blueprint-lang = ["graph save"]
+# A class compiled to Rust (the generated game crate): what the kernel still
+# knows of the Rust compile target.
+rust-target = ["rust class", "rust classes", "rust script", "rust target"]

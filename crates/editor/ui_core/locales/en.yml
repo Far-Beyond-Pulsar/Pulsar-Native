@@ -1,7 +1,6 @@
 # UI Core Translations - en
 
 # Status Bar
-StatusBar.RustAnalyzer: "rust-analyzer"
 StatusBar.Stop: "Stop"
 StatusBar.Restart: "Restart"
 StatusBar.Start: "Start"
@@ -12,9 +11,9 @@ Notification.Title.Dev: "Dev"
 Notification.Title.BuildInfo: "Build Info"
 Notification.Title.Build: "Build"
 Notification.Title.Run: "Run"
-Notification.Title.RustAnalyzerReady: "Rust Analyzer Ready"
-Notification.Title.AnalyzerError: "Analyzer Error"
-Notification.Title.CodeIntelligenceReady: "Code Intelligence Ready"
+Notification.Title.LanguageServerReady: "%{name} Ready"
+Notification.Title.LanguageServerError: "Analyzer Error"
+Notification.Message.LanguageServerSeeFooter: "Open LSP Servers in the status bar for restart, install and settings."
 Notification.Title.ProjectLoaded: "Project Loaded"
 Notification.Message.UseSaveAsDefault: "Use \"Save as Default\" in the level editor toolbar."
 Notification.Message.Opening: "Opening %{path}"
@@ -23,5 +22,4 @@ Notification.Message.EngineInspectorNotImplemented: "Engine state inspector not 
 Notification.Message.BuildingProject: "Building project..."
 Notification.Message.RunningProject: "Running project..."
 Notification.Message.CodeIntelligenceAvailable: "Code intelligence is now available"
-Notification.Message.RustAnalyzerIndexingComplete: "Rust Analyzer indexing complete"
 Notification.Message.WelcomeToProject: "Welcome to %{project}"

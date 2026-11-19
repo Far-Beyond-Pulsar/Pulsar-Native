@@ -13,7 +13,12 @@ use ui::{
     v_flex, ActiveTheme, ColorBlindMode, Icon, IconName, Sizable, Theme, ThemeMode,
 };
 
-use crate::utils::config;
+use engine_state::plugin_settings::SettingScope;
+
+use crate::utils::{config, plugins};
+
+/// The pages before the plugins': UI Controls, Editor, Project.
+const BUILTIN_PAGES: usize = 3;
 
 pub struct ModernSettingsScreen {
     pub(crate) focus_handle: FocusHandle,
@@ -24,10 +29,19 @@ pub struct ModernSettingsScreen {
     /// A changed setting applies only after the editor restarts
     /// (`SettingInfo::requires_restart`).
     pub(crate) restart_required: bool,
+    /// Where this window writes plugin settings (user or project).
+    pub(crate) plugin_scope: SettingScope,
+    /// The page the window opens on, by title (a plugin's page).
+    pub(crate) initial_page: Option<String>,
 }
 
 impl ModernSettingsScreen {
-    pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        project_path: Option<PathBuf>,
+        initial_page: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let _ = window;
         Self {
             focus_handle: cx.focus_handle(),
@@ -36,6 +50,8 @@ impl ModernSettingsScreen {
             project_path,
             has_pending_changes: false,
             restart_required: false,
+            plugin_scope: SettingScope::User,
+            initial_page,
         }
     }
 
@@ -47,7 +63,13 @@ impl ModernSettingsScreen {
         self.project_path.as_deref()
     }
 
-    fn setting_pages(&self, _window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
+    /// The pages, and the titles of the plugin pages among them (the pages
+    /// after the [`BUILTIN_PAGES`]).
+    fn setting_pages(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (Vec<SettingPage>, Vec<String>) {
         let view = cx.entity();
 
         let mark_dirty: Arc<dyn Fn(&mut App) + Send + Sync> = {
@@ -194,7 +216,43 @@ impl ModernSettingsScreen {
             .icon(Icon::new(IconName::Folder))
             .groups(project_groups);
 
-        vec![ui_controls_page, editor_page, project_page]
+        let has_project = self.project_path.is_some();
+        let scope = if has_project { self.plugin_scope } else { SettingScope::User };
+        let scope_group = {
+            let get = view.clone();
+            let set = view.clone();
+            let mut options = vec![("user".into(), "User (all projects)".into())];
+            if has_project {
+                options.push(("project".into(), "Project (shared with the project)".into()));
+            }
+            SettingGroup::new().title("Scope").items(vec![SettingItem::new(
+                "Save changes to",
+                SettingField::dropdown(
+                    options,
+                    move |cx: &App| plugins::scope_to_value(get.read(cx).plugin_scope),
+                    move |val: SharedString, cx: &mut App| {
+                        set.update(cx, |this, cx| {
+                            this.plugin_scope = plugins::scope_from_value(val.as_ref());
+                            cx.notify();
+                        });
+                    },
+                )
+                .default_value("user"),
+            )
+            .description(
+                "Your value beats the project's. Setting a value back to its default removes the override in the chosen scope.",
+            )])
+        };
+        let mut pages = vec![ui_controls_page, editor_page, project_page];
+        let plugin_pages = plugins::plugin_pages(
+            scope,
+            scope_group,
+            mark_dirty.clone(),
+            mark_restart.clone(),
+        );
+        let titles = plugin_pages.iter().map(|(title, _)| title.clone()).collect();
+        pages.extend(plugin_pages.into_iter().map(|(_, page)| page));
+        (pages, titles)
     }
 }
 
@@ -216,10 +274,23 @@ impl Render for ModernSettingsScreen {
             })
             .child(
                 div().flex_1().min_h_0().size_full().child(
-                    Settings::new("app-settings")
-                        .with_size(self.size)
-                        .with_group_variant(self.group_variant)
-                        .pages(self.setting_pages(window, cx)),
+                    {
+                        let (pages, plugin_titles) = self.setting_pages(window, cx);
+                        let selected = self
+                            .initial_page
+                            .as_deref()
+                            .and_then(|title| plugin_titles.iter().position(|t| t == title))
+                            .map(|plugin_ix| ui::setting::SelectIndex {
+                                page_ix: BUILTIN_PAGES + plugin_ix,
+                                ..Default::default()
+                            })
+                            .unwrap_or_default();
+                        Settings::new("app-settings")
+                            .with_size(self.size)
+                            .with_group_variant(self.group_variant)
+                            .default_selected_index(selected)
+                            .pages(pages)
+                    },
                 ),
             )
     }

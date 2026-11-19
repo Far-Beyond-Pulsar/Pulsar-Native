@@ -241,7 +241,6 @@ impl<P: Plugin> EditorPluginComponents for PluginAdapter<P> {
     }
 }
 
-impl<P: Plugin> crate::scripting::EditorPluginScripting for PluginAdapter<P> {}
 
 impl<P: Plugin> crate::plugin::EditorPluginFull for PluginAdapter<P> {}
 

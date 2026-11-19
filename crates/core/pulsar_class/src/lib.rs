@@ -8,6 +8,7 @@
 //! | Module | What |
 //! |--------|------|
 //! | [`id`] | [`ClassId`], the class GUID, kept in the class dir's `class.json` |
+//! | [`language`] | which language a class is, the one-language rule ([`ClassProblem`]) |
 //! | [`prefab`] | the `prefab.json` read model, with a stable slot id per component |
 //! | [`registry`] | [`ClassRegistry`]: GUID → class dir, by scanning `src/classes/*` |
 //! | [`component`] | the [`ClassInstance`] world component a placed class carries |
@@ -29,6 +30,7 @@
 
 pub mod component;
 pub mod id;
+pub mod language;
 pub mod lifecycle;
 pub mod migrate;
 pub mod modules;
@@ -43,6 +45,7 @@ pub mod world;
 
 pub use component::ClassInstance;
 pub use id::{ClassId, ClassMeta, CLASS_META_FILE};
+pub use language::{check_owned, class_problems, is_owned_by, language_of, ClassProblem};
 pub use lifecycle::{ClassEvent, ClassInbox};
 pub use modules::{module_file, ModuleSource, ModuleStore};
 pub use native_script::NativeScriptComponent;
@@ -103,4 +106,12 @@ pub fn slot_of_variable(name: &str) -> Option<&str> {
 /// root `root_id`.
 pub fn child_stable_id(root_id: &str, slot_id: &str) -> String {
     format!("{root_id}#{slot_id}")
+}
+
+/// Test languages: a class of the tests below has the marker of the language
+/// the test names (a kernel crate's tests never link a plugin).
+#[cfg(test)]
+mod test_languages {
+    pulsar_language::submit_test_language!("test.blueprint", ["graph_save.json"]);
+    pulsar_language::submit_test_language!("test.text", ["class.ts"]);
 }

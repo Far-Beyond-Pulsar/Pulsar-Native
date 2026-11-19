@@ -1261,6 +1261,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_class",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -3560,7 +3561,6 @@ dependencies = [
  "editor_task_queue",
  "engine_fs",
  "engine_state",
- "flume",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -3576,7 +3576,6 @@ dependencies = [
  "helio_component",
  "inventory",
  "libloading 0.9.0",
- "lsp-types",
  "parking_lot",
  "pollster 0.4.0",
  "profiling 0.1.0",
@@ -3585,7 +3584,7 @@ dependencies = [
  "pulsar_content",
  "pulsar_error",
  "pulsar_events",
- "pulsar_lsp",
+ "pulsar_language",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -3596,7 +3595,6 @@ dependencies = [
  "pulsar_settings",
  "pulsar_traits",
  "pulsar_world_registry",
- "ropey 2.0.0-beta.1",
  "scenedb-inspector-agent",
  "serde",
  "serde_json",
@@ -5855,6 +5853,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-components",
  "helio-core",
+ "helio-frame-api",
  "helio-vg-format",
  "naga",
  "pulsar_reflection",
@@ -5885,6 +5884,7 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-pass-hlfs",
  "helio-pass-materials",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
@@ -6131,7 +6131,6 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
- "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -6141,7 +6140,7 @@ dependencies = [
  "helio-mats",
  "helio-mesh-api",
  "helio-mesh-host",
- "helio-pass-forward-lit",
+ "helio-pass-mesh-rays",
  "helio-presets",
  "helio-settings",
  "helio-vg-build",
@@ -6244,6 +6243,26 @@ dependencies = [
  "helio-mats",
  "log",
  "naga",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-mesh-rays"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-presets",
+ "helio-settings",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -6429,8 +6448,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-frame-api",
  "helio-light-api",
  "helio-mesh-api",
+ "naga",
  "wgpu",
 ]
 
@@ -6730,15 +6751,17 @@ dependencies = [
  "helio-feature-api",
  "helio-foliage-api",
  "helio-frame-api",
- "helio-gi-api",
+ "helio-graph-asset",
  "helio-light-api",
  "helio-light-host",
  "helio-mats",
+ "helio-mesh-api",
  "helio-mesh-host",
  "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gi",
+ "helio-pass-mesh-rays",
  "helio-pass-post-volumes",
  "helio-pass-sky",
  "helio-pass-tsr",
@@ -7688,9 +7711,12 @@ dependencies = [
  "pollster 1.0.1",
  "portals_plugin",
  "post_plugin",
+ "pulsar-config",
  "pulsar_class",
  "pulsar_events",
  "pulsar_game",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -7700,6 +7726,7 @@ dependencies = [
  "pulsar_traits",
  "pulsar_world_registry",
  "render_bps_plugin",
+ "rust_plugin",
  "script_editor_plugin",
  "serde_json",
  "skeletal_animation_plugin",
@@ -7712,6 +7739,7 @@ dependencies = [
  "tracing-subscriber",
  "trait_editor_plugin",
  "trait_fixture_plugin",
+ "ui",
  "ui_common",
  "ui_editor_plugin",
  "ui_level_editor",
@@ -8237,6 +8265,7 @@ dependencies = [
  "engine_fs",
  "installed_plugins",
  "pulsar_class",
+ "pulsar_language",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
@@ -8980,6 +9009,7 @@ dependencies = [
  "helio-pass-gi",
  "helio-pass-hlfs",
  "helio-pass-light-cull",
+ "helio-pass-mesh-rays",
  "helio-pass-perf-overlay",
  "helio-pass-postprocess",
  "helio-pass-sky",
@@ -9035,6 +9065,7 @@ dependencies = [
  "helio-mesh-host",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
@@ -9108,6 +9139,7 @@ dependencies = [
  "helio-graph-asset",
  "helio-mats",
  "helio-mesh-api",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-presets",
  "helio-vg-build",
@@ -9422,7 +9454,7 @@ dependencies = [
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -9447,7 +9479,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -11647,6 +11679,7 @@ dependencies = [
  "inventory",
  "profiling 0.1.0",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -11688,7 +11721,9 @@ dependencies = [
  "plugin_editor_api",
  "plugin_loader_fixture",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_world_registry",
@@ -11732,16 +11767,23 @@ dependencies = [
 name = "plugin_typescript"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "engine_fs",
+ "flate2",
  "gpui-ce",
  "plugin_editor_api",
- "plugin_manager",
+ "pulsar-config",
  "pulsar_class",
+ "pulsar_install_layout",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_script_math",
  "pulsar_script_ts",
  "pulsar_script_vm",
+ "pulsar_settings",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "tracing",
  "ui",
@@ -12471,6 +12513,7 @@ dependencies = [
  "glam 0.33.5",
  "inventory",
  "pulsar_component_lifecycle",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -12587,7 +12630,6 @@ dependencies = [
  "futures",
  "gpui-ce",
  "installed_plugins",
- "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
  "profiling 1.0.18",
@@ -12596,6 +12638,7 @@ dependencies = [
  "pulsar_dialog_protocol",
  "pulsar_error",
  "pulsar_install_layout",
+ "pulsar_language",
  "pulsar_package",
  "pulsar_std",
  "reqwest 0.13.4",
@@ -12720,14 +12763,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_language"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "pulsar-config",
+ "pulsar_plugins",
+ "pulsar_script_vm",
+ "pulsar_settings",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_lsp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "editor_task_queue",
+ "engine_fs",
  "flume",
+ "futures",
  "gpui-ce",
  "lsp-types",
+ "pulsar_language",
+ "pulsar_plugins",
+ "pulsar_settings",
  "ropey 2.0.0-beta.1",
  "serde",
  "serde_json",
@@ -12763,6 +12826,7 @@ dependencies = [
  "pulsar_core",
  "pulsar_events",
  "pulsar_game",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_script_runtime",
  "pulsar_script_vm",
@@ -12798,6 +12862,7 @@ dependencies = [
  "engine_fs",
  "pulsar_class",
  "pulsar_install_layout",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_script_codegen",
  "pulsar_script_vm",
@@ -13011,6 +13076,7 @@ dependencies = [
  "inventory",
  "pulsar-config",
  "pulsar_plugins",
+ "tracing",
 ]
 
 [[package]]
@@ -13052,6 +13118,7 @@ dependencies = [
  "anyhow",
  "engine_fs",
  "inventory",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "serde",
@@ -14117,6 +14184,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "pulsar_language",
+ "pulsar_lsp",
+ "pulsar_plugins",
+ "pulsar_settings",
+ "serde_json",
+ "sha2 0.11.0",
+ "tracing",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14472,6 +14554,8 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "rust-i18n",
  "rust-i18n-macro",
@@ -17650,6 +17734,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "pulsar_auth",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "reqwest 0.13.4",
@@ -17688,8 +17773,11 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_events",
  "pulsar_install_layout",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_settings",
@@ -17795,6 +17883,7 @@ dependencies = [
  "notify 8.2.0",
  "parking_lot",
  "plugin_editor_api",
+ "pulsar_language",
  "pulsar_reflection",
  "rust-i18n",
  "schemars",
@@ -17960,6 +18049,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_class",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -18000,7 +18090,6 @@ dependencies = [
  "chrono",
  "directories 6.0.0",
  "editor_task_queue",
- "engine_backend",
  "engine_fs",
  "engine_state",
  "gpui-ce",
@@ -18008,6 +18097,8 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_class",
+ "pulsar_language",
+ "pulsar_lsp",
  "serde",
  "serde_json",
  "smallvec",
@@ -18119,7 +18210,9 @@ version = "0.1.0"
 dependencies = [
  "engine_fs",
  "gpui-ce",
+ "pulsar_language",
  "rust-i18n",
+ "serde",
  "similar 3.2.0",
  "tracing",
  "ui",
@@ -18133,6 +18226,7 @@ version = "0.1.0"
 dependencies = [
  "engine_state",
  "gpui-ce",
+ "pulsar_settings",
  "tracing",
  "ui",
  "ui_shell",
@@ -19070,7 +19164,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.1",
@@ -19099,7 +19193,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -19132,7 +19226,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19140,7 +19234,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19148,7 +19242,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19156,7 +19250,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -19212,7 +19306,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -19221,7 +19315,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",

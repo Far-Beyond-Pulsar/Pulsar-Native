@@ -14,6 +14,8 @@ pulsar_plugins = { workspace = true }
 pulsar_install_layout = { workspace = true }
 # Classes whose compile target is Rust are generated into the game crate.
 pulsar_class = { workspace = true }
+# A class's language says what it compiles to (`ScriptLanguage::compile_target`).
+pulsar_language = { workspace = true }
 pulsar_script_vm = { workspace = true }
 pulsar_script_codegen = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

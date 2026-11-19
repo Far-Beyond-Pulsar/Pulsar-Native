@@ -1,0 +1,23 @@
+[package]
+name = "pulsar_language"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Languages as plugin contributions: the Language registration (metadata, an optional script compiler, an optional language server spec) and the registry that routes files and classes to it. GPUI-free."
+
+[dependencies]
+# The plugin gate: a disabled plugin's languages are absent.
+pulsar_plugins = { workspace = true }
+# The standard settings group every language server gets.
+pulsar_settings = { workspace = true }
+pulsar-config = { workspace = true }
+# The bytecode a script compiler produces and the natives it checks against.
+pulsar_script_vm = { workspace = true }
+engine_fs = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true
