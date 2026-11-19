@@ -4668,6 +4668,7 @@ name = "gameplay_plugin"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "engine_fs",
  "pulsar_events",
  "pulsar_plugins",
  "pulsar_scenedb",
@@ -7653,6 +7654,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "ui_common",
  "ui_level_editor",
  "uuid",
 ]

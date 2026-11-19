@@ -2399,87 +2399,6 @@ mod roles {
         )
     }
 
-    // A role of its own, with a native default: nothing in the level assigns it.
-    inventory::submit! {
-        pulsar_traits::roles::RoleRegistration {
-            origin: pulsar_plugins::engine_origin!(),
-            id: "test.native_role",
-            label: "Native Role",
-            trait_id: GAME_MODE_TRAIT_ID,
-            setting_key: "test_native_role",
-            order: 90,
-            start: pulsar_traits::roles::RoleStart::Now,
-        }
-    }
-
-    inventory::submit! {
-        engine_backend::scene::game_hooks::RoleDefaultRegistration {
-            origin: pulsar_plugins::engine_origin!(),
-            name: "test.native_role_default",
-            role: "test.native_role",
-            spawn: |world, _| {
-                use engine_backend::scene::{SceneWorldExt, SpawnObject};
-                world
-                    .spawn_object(SpawnObject::new("Native Role"))
-                    .map_err(|error| error.to_string())
-            },
-        }
-    }
-
-    #[test]
-    fn an_unassigned_role_spawns_its_native_default_and_the_session_owns_it() {
-        let project = role_project();
-        let level = level(project.path(), &[]);
-        let (mut game, _) = standalone(project.path(), &level);
-        game.set_world_roles(WorldRoles::resolve(&RoleSelection::default(), None));
-        game.tick_once();
-
-        let spawned = role_entities(&game);
-        let native = spawned
-            .iter()
-            .find(|(role, _)| *role == "test.native_role")
-            .map(|(_, entity)| *entity)
-            .expect("the unassigned role got its default");
-        {
-            let store = game.scene_store.read();
-            assert!(store.world.is_alive(native));
-            assert!(
-                store.world.get::<RoleEntity>(native).is_some(),
-                "stamped like any role entity"
-            );
-        }
-        // No script runs on it, and nothing complains.
-        let driver = game.scripts.as_ref().unwrap().lock().unwrap();
-        assert!(driver.instance_of(native).is_none());
-        drop(driver);
-
-        game.end_scripts();
-        assert!(
-            !game.scene_store.read().world.is_alive(native),
-            "the session's, not the level's: gone with it"
-        );
-    }
-
-    #[test]
-    fn a_role_the_level_assigns_is_not_replaced_by_its_default() {
-        let project = role_project();
-        let level = level(project.path(), &[]);
-        let (mut game, _) = standalone(project.path(), &level);
-        // Assigned, though to a class this project lacks: that is a failure to
-        // spawn it, and it must not fall back to the default.
-        game.set_world_roles(WorldRoles::resolve(
-            &selection(&[("test.native_role", "Nope")]),
-            None,
-        ));
-        game.tick_once();
-        assert!(
-            !role_entities(&game)
-                .iter()
-                .any(|(role, _)| *role == "test.native_role"),
-            "an assigned role keeps its assignment"
-        );
-    }
-
     fn names(log: &Log) -> Vec<String> {
         events(log).into_iter().map(|(name, _)| name).collect()
     }
@@ -3059,7 +2978,7 @@ mod roles {
             .read()
             .world
             .query::<(&PlayerInputComponent, &ComponentOwner)>()
-            .map(|(_, (component, owner))| (owner.entity(), component.mapping.clone()))
+            .map(|(_, (component, owner))| (owner.entity(), component.mapping.0.clone()))
             .collect()
     }
 

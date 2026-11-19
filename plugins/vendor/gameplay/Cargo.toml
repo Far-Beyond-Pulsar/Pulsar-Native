@@ -14,6 +14,8 @@ editor = []
 [dependencies]
 # The plugin's descriptor and its build.
 pulsar_plugins = { workspace = true }
+# The plugin's folder (`FileProvider`), served from embedded files.
+engine_fs = { workspace = true }
 # The roles (`RoleRegistration`) and the engine's role and trait ids.
 pulsar_traits = { workspace = true }
 # The role default and tick phase registrations.

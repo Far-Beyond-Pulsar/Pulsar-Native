@@ -318,6 +318,10 @@ pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
     }
     parent
         .ancestors()
+        // A plugin's mounted folder (`<project>/plugins/...`, whose engine folder
+        // looks like a project's `Pulsar/`) is never the project: the project is
+        // what the mount is in.
+        .filter(|dir| virtual_fs::mount_of(dir).is_none())
         .find(|dir| {
             virtual_fs::is_file(&dir.join("Pulsar.toml"))
                 || virtual_fs::is_dir(&dir.join("Pulsar"))

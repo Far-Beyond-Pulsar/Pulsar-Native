@@ -1,0 +1,126 @@
+// The default Player Character, shipped with the Gameplay plugin.
+// A level selects it in World Settings > Player Character. The file is
+// read-only (a plugin folder); copy the .class folder into your project to
+// edit it. It implements the engine's PlayerCharacter trait with empty
+// handlers: what moves it is the character component its prefab places and
+// the input plugin's mapping, which the Gameplay plugin routes to it.
+{
+  "format_version": 2,
+  "main_graph": {
+    "nodes": {
+      "spawned": {
+        "id": "spawned",
+        "node_type": "custom_event:on_spawned",
+        "position": { "x": 0, "y": 0 },
+        "properties": { "event_uid": "on_spawned" },
+        "inputs": [
+          {
+            "id": "__return__",
+            "name": "__return__",
+            "pin_type": "Input",
+            "data_type": { "Data": { "base_type": "wildcard", "wrappers": [], "is_wildcard": true } },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "possessed": {
+        "id": "possessed",
+        "node_type": "custom_event:on_possessed",
+        "position": { "x": 0, "y": 200 },
+        "properties": { "event_uid": "on_possessed" },
+        "inputs": [
+          {
+            "id": "__return__",
+            "name": "__return__",
+            "pin_type": "Input",
+            "data_type": { "Data": { "base_type": "wildcard", "wrappers": [], "is_wildcard": true } },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "controller_id",
+            "name": "controller_id",
+            "pin_type": "Output",
+            "data_type": { "Data": { "base_type": "i64", "wrappers": [], "is_wildcard": false } },
+            "connected_to": []
+          }
+        ]
+      },
+      "unpossessed": {
+        "id": "unpossessed",
+        "node_type": "custom_event:on_unpossessed",
+        "position": { "x": 0, "y": 400 },
+        "properties": { "event_uid": "on_unpossessed" },
+        "inputs": [
+          {
+            "id": "__return__",
+            "name": "__return__",
+            "pin_type": "Input",
+            "data_type": { "Data": { "base_type": "wildcard", "wrappers": [], "is_wildcard": true } },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      }
+    },
+    "connections": [],
+    "metadata": {
+      "name": "EventGraph",
+      "description": "The default player character.",
+      "version": "1.0.0",
+      "created_at": "2026-11-19T00:00:00Z",
+      "modified_at": "2026-11-19T00:00:00Z"
+    },
+    "custom_event_defs": {}
+  },
+  "subgraphs": [],
+  "local_events": [
+    { "uid": "on_spawned", "name": "on_spawned", "fields": [], "return_type": "" },
+    {
+      "uid": "on_possessed",
+      "name": "on_possessed",
+      "fields": [{ "name": "controller_id", "type_name": "i64" }],
+      "return_type": ""
+    },
+    { "uid": "on_unpossessed", "name": "on_unpossessed", "fields": [], "return_type": "" }
+  ],
+  "variables": [],
+  "editor_state": {
+    "open_tab_ids": ["main"],
+    "active_tab_index": 0,
+    "graph_view_states": { "main": { "pan_offset_x": 0.0, "pan_offset_y": 0.0, "zoom": 1.0 } }
+  },
+  "blueprint_metadata": {
+    "blueprint_type": "Actor",
+    "parent_class": null,
+    "description": "The default player character: a character body, a camera and the player's input.",
+    "category": "Gameplay",
+    "tags": ["gameplay", "character"],
+    "implemented_trait_ids": ["pulsar.PlayerCharacter"]
+  }
+}
