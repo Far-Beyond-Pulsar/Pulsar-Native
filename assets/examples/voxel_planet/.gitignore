@@ -1,2 +1,7 @@
 # What the editor writes while the example is open: its caches and layout.
-/.pulsar/
+/.pulsar/*
+# But the project's settings that differ from the defaults are the
+# example's: GI's probes a metre apart over open ground.
+!/.pulsar/project/
+/.pulsar/project/*
+!/.pulsar/project/gi.toml

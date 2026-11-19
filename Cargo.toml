@@ -768,8 +768,9 @@ files.extend-exclude = ["**/fixtures/*"]
 gpui-ce = { path = "crates/ui/wgpui" }
 
 # Helio's wgpu: the upstream v30.0.1 tag plus Helio's patches, on our fork's
-# helio/v30.0.1 branch (texture tracker start states, which put HiZ mips in
-# the wrong Vulkan layout; handles compared by instance and id). Patches only
+# helio/v30.0.1 branch (acceleration-structure refit and safe compaction;
+# texture tracker start states, which put HiZ mips in the wrong Vulkan
+# layout; handles compared by instance and id). Patches only
 # apply from the root manifest, so this mirrors Helio's own
 # `[patch.crates-io]`; patching the whole wgpu workspace keeps naga and
 # wgpu-types a single version. Change it together with Helio's.

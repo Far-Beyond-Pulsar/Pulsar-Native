@@ -1102,14 +1102,10 @@ enum Step {
 fn headless_device() -> Option<(wgpu::Device, wgpu::Queue)> {
     let instance = wgpu::Instance::new(helio_core::wgpu_instance_descriptor());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-    // A headless process opts in to everything Helio can use, ray queries included.
     request_engine_device(
         &adapter,
         &wgpu::DeviceDescriptor {
             label: Some("Pulsar engine device"),
-            required_features: helio::required_wgpu_features(helio::usable_adapter_features(
-                &adapter,
-            )),
             ..Default::default()
         },
     )
@@ -1124,47 +1120,58 @@ fn headless_device() -> Option<(wgpu::Device, wgpu::Queue)> {
 /// shares with the engine) passes this as its device factory, so the shared
 /// device carries Helio's features and the adapter's full binding-array
 /// limits, which size the material texture table
-/// (`helio_core::texture_table_capacity`). Experimental ray queries come only
-/// from `host` (the editor enables them through the user's persisted opt-in).
+/// (`helio_core::texture_table_capacity`).
+///
+/// Hardware ray queries are the engine's decision, the same for every host:
+/// on where the adapter runs them (`helio::usable_adapter_features`: not a
+/// software adapter, whatever it advertises) unless the user turned
+/// `editor.renderer.hardware_ray_queries` off. What `host` asked for them is
+/// not read.
 pub fn request_engine_device(
     adapter: &wgpu::Adapter,
     host: &wgpu::DeviceDescriptor<'_>,
 ) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
-    let helio_features = helio::required_wgpu_features(helio::usable_adapter_features(adapter))
-        - wgpu::Features::EXPERIMENTAL_RAY_QUERY;
-    let features = host.required_features | helio_features;
+    let ray_query = wgpu::Features::EXPERIMENTAL_RAY_QUERY;
+    let adapter_features = helio::usable_adapter_features(adapter);
+    let wanted = engine_state::settings::hardware_ray_queries();
+    let helio_features = if wanted {
+        helio::required_wgpu_features(adapter_features)
+    } else {
+        helio::required_wgpu_features(adapter_features - ray_query)
+    };
+    let features = (host.required_features - ray_query) | helio_features;
     // Each limit the better of the host's and Helio's (the texture table holds
     // as many textures as the binding arrays allow), except the buffer size:
     // wgpu-core asserts `max_buffer_size <= u32::MAX` at device creation, so
-    // Helio's clamp stands (`helio::required_wgpu_limits`).
+    // it is Helio's clamp of the adapter's (`helio::required_wgpu_limits`).
     let helio_limits = helio::required_wgpu_limits(adapter.limits());
     let required_limits = wgpu::Limits {
-        max_buffer_size: host
-            .required_limits
-            .max_buffer_size
-            .min(helio_limits.max_buffer_size),
+        max_buffer_size: helio_limits.max_buffer_size,
         ..host
             .required_limits
             .clone()
             .or_better_values_from(&helio_limits)
     };
-    let experimental_features = if features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY) {
+    // The acknowledgement wgpu wants beside an experimental feature: Helio's
+    // for ray queries, else whatever the host passed for its own.
+    let ray_queries = features.contains(ray_query);
+    let experimental_features = if ray_queries {
         helio::required_experimental_features(features)
     } else {
         host.experimental_features
     };
-    let ray_queries = features.contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
     if ray_queries {
-        tracing::info!("Engine device: hardware ray queries on (meshes trace GI)");
-    } else if helio::usable_adapter_features(adapter)
-        .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
-    {
+        tracing::info!("Engine device: hardware ray queries on");
+    } else if adapter_features.contains(ray_query) {
         tracing::info!(
-            "Engine device: hardware ray queries supported but not requested; meshes get no GI \
-             (Editor settings > Renderer > Hardware Ray Queries, then restart)"
+            "Engine device: hardware ray queries turned off; rendering on the tier without ray \
+             tracing (Editor settings > Renderer > Hardware Ray Queries, then restart)"
         );
     } else {
-        tracing::info!("Engine device: no hardware ray queries on this adapter; meshes get no GI");
+        tracing::info!(
+            "Engine device: this adapter runs no hardware ray queries; rendering on the tier \
+             without ray tracing"
+        );
     }
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: host.label,

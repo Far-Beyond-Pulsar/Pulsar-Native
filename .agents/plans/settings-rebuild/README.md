@@ -150,15 +150,13 @@ editable settings.
 |---|---|---|
 | `backend_preference` | `auto`; `auto`, plus backends available on this build/platform | Add backend selection to WGPUI `WgpuOptions` and instance creation. `auto` keeps current all-backend behavior. An explicit unavailable backend must report a clear startup error; do not silently claim it was selected. Restart required. |
 | `gpu_preference` | `high_performance`; `high_performance`, `low_power`, `auto` | Feed adapter selection and replace the unconditional high-performance environment policy in `engine/src/gpu_policy.rs`. Log the effective adapter. Restart required. |
-| `hardware_ray_queries` | `false` | When enabled, request wgpu's experimental `EXPERIMENTAL_RAY_QUERY` only on supporting native adapters, and pass the experimental-feature acknowledgement through WGPUI device creation. If unsupported, leave it disabled and report why. Restart required. |
+| `hardware_ray_queries` | `true` | The engine's device (`request_engine_device`: editor window, game window, headless) asks for wgpu's `EXPERIMENTAL_RAY_QUERY` where the adapter runs it (`helio::usable_adapter_features`: never a software adapter). Off, or on an adapter without it, the renderer uses its tier without ray tracing, and the device log line says which. Restart required. |
 | `max_frame_latency` | `2`; integer 1–4 | Wire WGPUI's existing `desired_maximum_frame_latency` through editor and game surfaces. Lower values favor input latency; higher values can improve throughput. Apply to newly created surfaces, and report the effective value. |
 
-Ray queries here mean the hardware acceleration feature only. The current
-renderer uses it as an optional path in screen-space reflections and radiance
-cascades; Pulsar does **not** currently expose a full path-tracing renderer.
-The editor's GPUI device does not currently request this experimental feature,
-while the standalone game path requests it whenever the adapter reports
-support. The new preference must make those paths consistent.
+Ray queries here mean the hardware acceleration feature. Ray tracing is the
+renderer's default tier (Helio `docs/architecture/rendering.md`); the editor
+and the game take the same decision, in the one place that requests the
+engine's device.
 
 #### Quality and effects — `project.rendering`
 
