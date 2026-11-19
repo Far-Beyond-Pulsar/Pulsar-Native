@@ -593,6 +593,7 @@ fn every_shipped_pipeline_draws_an_opaque_frame() {
     let view = texture.create_view(&Default::default());
     let eye = glam::Vec3::new(0.0, 2.0, 5.0);
     let camera = FrameView {
+        coordinate_space: None,
         eye: eye.as_dvec3(),
         forward: (-eye).normalize(),
         up: glam::Vec3::Y,

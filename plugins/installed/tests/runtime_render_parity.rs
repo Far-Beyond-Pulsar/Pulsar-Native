@@ -123,6 +123,7 @@ fn game_renderer(target: &Target, scene: &SharedScene, owner: DeviceOwner) -> Sc
 /// The game's view from `eye` towards `target`, as a `RenderCamera` gives it.
 fn look_at(eye: glam::Vec3, target: glam::Vec3, far: f32) -> FrameView {
     FrameView {
+        coordinate_space: None,
         eye: eye.as_dvec3(),
         forward: (target - eye).normalize(),
         up: glam::Vec3::Y,

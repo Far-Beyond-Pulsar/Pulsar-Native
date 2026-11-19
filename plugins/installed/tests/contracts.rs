@@ -310,10 +310,11 @@ fn opening_a_project_names_a_disabled_provider() {
         .activation_problems()
         .iter()
         .any(|p| p.to_string() == named));
-    // The plugins that only optionally read meshes stay.
-    assert!(resolution.is_enabled("pulsar.gi"));
+    // The plugins that only optionally read meshes stay (the bake renders
+    // mesh rows into lightmaps when the meshes are there).
+    assert!(resolution.is_enabled("pulsar.bake"));
     assert!(resolution
         .absent_optional
         .iter()
-        .any(|absent| absent.consumer == "pulsar.gi" && absent.contract == "pulsar.meshes.rows"));
+        .any(|absent| absent.consumer == "pulsar.bake" && absent.contract == "pulsar.meshes.rows"));
 }
