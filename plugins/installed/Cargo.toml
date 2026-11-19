@@ -111,6 +111,8 @@ glam = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 image = { workspace = true }
+# The skinned frames (tests/skinned_frames.rs): a procedural rig.
+skeletal_assets = { workspace = true }
 # The level editor as the editor assembles it (tests/level_editor.rs): the
 # shell with every installed plugin's root registering through its
 # extension points.
@@ -151,7 +153,6 @@ helio-vg-format = { workspace = true }
 helio-pass-buffer-view = { workspace = true }
 helio-pass-water-sim = { workspace = true }
 helio-pass-portal-cull = { workspace = true }
-helio-pass-gi = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 blueprint_compiler = { path = "../vendor/blueprint_editor/compiler" }
 graphy-blueprint = { workspace = true }

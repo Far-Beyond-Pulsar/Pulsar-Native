@@ -177,12 +177,21 @@ fn the_engines_presets_carry_the_plugins_passes() {
                         "{name} is missing from the engine's deferred preset"
                     );
                 }
-                // GI builds where something can trace its probes: in a
-                // mesh scene, hardware ray queries.
-                if helio_pass_gi::mesh_rays_supported(&device) {
-                    for name in ["GI", "GIMeshRays", "GIResolve"] {
+                // GI builds where some kind's tracer answers ray streams
+                // (`helio_frame_api::rays::stream::traced`): the installed
+                // meshes trace with hardware ray queries, so a device with
+                // them has GI. Its update comes whole: the probe stream's
+                // generator, the hits' light, the integration, the resolve.
+                let gi = ["GI", "GILight", "GIIntegrate", "GIResolve"];
+                let has = |name: &str| passes.iter().any(|(pass, _)| pass.pass == name);
+                let ray_queries = device
+                    .features()
+                    .contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY)
+                    && device.limits().max_tlas_instance_count > 0;
+                if ray_queries || has("GI") {
+                    for name in gi {
                         assert!(
-                            passes.iter().any(|(pass, _)| pass.pass == name),
+                            has(name),
                             "{name} is missing from the engine's deferred preset"
                         );
                     }

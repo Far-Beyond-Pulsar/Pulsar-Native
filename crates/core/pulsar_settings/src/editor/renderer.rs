@@ -5,6 +5,14 @@ use pulsar_config::{
 pub const NS: &str = "editor";
 pub const OWNER: &str = "renderer";
 
+/// Whether the engine's device asks for hardware ray queries where the
+/// adapter runs them (`engine_state::settings::hardware_ray_queries` reads
+/// it). On unless the user turns it off: ray tracing is the renderer's
+/// default tier, and the tier without it is what an adapter that has none
+/// (or this setting, off) gets.
+pub const HARDWARE_RAY_QUERIES: &str = "hardware_ray_queries";
+pub const HARDWARE_RAY_QUERIES_DEFAULT: bool = true;
+
 pub fn register(cfg: &'static ConfigManager) {
     let schema = NamespaceSchema::new(
         "Renderer Device",
@@ -41,11 +49,12 @@ pub fn register(cfg: &'static ConfigManager) {
             }),
     )
     .setting(
-        "hardware_ray_queries",
+        HARDWARE_RAY_QUERIES,
         SchemaEntry::new(
-            "Request experimental hardware ray queries when the GPU supports them. Global \
-             illumination traces meshes with them: without, mesh scenes get no GI",
-            false,
+            "Trace rays with the GPU's hardware ray queries when it has them. Meshes are traced \
+             with them (global illumination, traced reflections and shadows); without, the \
+             renderer uses its tier that needs none",
+            HARDWARE_RAY_QUERIES_DEFAULT,
         )
         .label("Hardware Ray Queries")
         .page("Renderer / Device")
@@ -78,10 +87,22 @@ mod tests {
     fn every_device_setting_requires_a_restart() {
         let cfg: &'static ConfigManager = Box::leak(Box::new(ConfigManager::new()));
         register(cfg);
-        let settings = cfg.list_settings(NS, OWNER).expect("the renderer owner is registered");
-        assert!(settings.iter().any(|s| s.key == "hardware_ray_queries"));
+        let settings = cfg
+            .list_settings(NS, OWNER)
+            .expect("the renderer owner is registered");
+        assert!(settings.iter().any(|s| s.key == HARDWARE_RAY_QUERIES));
+        // Ray tracing is the default tier: a fresh install asks for ray queries.
+        let ray_queries = cfg.get(NS, OWNER, HARDWARE_RAY_QUERIES).ok();
+        assert_eq!(
+            ray_queries.and_then(|value| value.as_bool().ok()),
+            Some(true)
+        );
         for setting in settings {
-            assert!(setting.requires_restart(), "{} must require a restart", setting.key);
+            assert!(
+                setting.requires_restart(),
+                "{} must require a restart",
+                setting.key
+            );
         }
     }
 }

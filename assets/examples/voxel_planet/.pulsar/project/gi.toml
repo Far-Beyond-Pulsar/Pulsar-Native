@@ -1,0 +1,6 @@
+# PulsarConfig — project/gi
+# Edit this file to override application defaults.
+# Missing keys fall back to the schema default.
+# Read-only settings are managed by the application and are not listed here.
+
+probe_spacing = 1.0

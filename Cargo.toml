@@ -155,6 +155,7 @@ members = [
     "plugins/vendor/meshes/feature/indirect-dispatch",
     "plugins/vendor/meshes/feature/object-batch",
     "plugins/vendor/meshes/feature/occlusion-cull",
+    "plugins/vendor/meshes/feature/rays",
     "plugins/vendor/meshes/feature/shadow",
     "plugins/vendor/meshes/feature/shadow-dirty",
     "plugins/vendor/meshes/feature/transparent",
@@ -586,6 +587,7 @@ helio-pass-shadow-matrix = { path = "plugins/vendor/lights/feature/shadows" }
 helio-pass-hiz = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-hiz" }
 helio-pass-indirect-dispatch = { path = "plugins/vendor/meshes/feature/indirect-dispatch" }
 helio-pass-occlusion-cull = { path = "plugins/vendor/meshes/feature/occlusion-cull" }
+helio-pass-mesh-rays = { path = "plugins/vendor/meshes/feature/rays" }
 helio-pass-transparent = { path = "plugins/vendor/meshes/feature/transparent" }
 helio-pass-shadow = { path = "plugins/vendor/meshes/feature/shadow" }
 helio-pass-shadow-dirty = { path = "plugins/vendor/meshes/feature/shadow-dirty" }
@@ -760,8 +762,9 @@ files.extend-exclude = ["**/fixtures/*"]
 gpui-ce = { path = "crates/ui/wgpui" }
 
 # Helio's wgpu: the upstream v30.0.1 tag plus Helio's patches, on our fork's
-# helio/v30.0.1 branch (texture tracker start states, which put HiZ mips in
-# the wrong Vulkan layout; handles compared by instance and id). Patches only
+# helio/v30.0.1 branch (acceleration-structure refit and safe compaction;
+# texture tracker start states, which put HiZ mips in the wrong Vulkan
+# layout; handles compared by instance and id). Patches only
 # apply from the root manifest, so this mirrors Helio's own
 # `[patch.crates-io]`; patching the whole wgpu workspace keeps naga and
 # wgpu-types a single version. Change it together with Helio's.

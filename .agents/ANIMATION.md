@@ -364,8 +364,14 @@ graph's toward zero).
   animation clock: the animation keeps advancing and the drawn pose blends toward the physics
   pose by `set_physics_blend_weight` (default 1; `physics_blend_weight()` reads it).
   `clear_physics_pose` returns ownership; the animation is already where it should be.
-  The component is the only writer of its GPU palettes (current + previous in
-  `gpu_bone_palettes`), written under the scene write lock.
+  The skinned mesh (`meshes_component::SkeletalMeshComponent`) is the only writer of
+  its palette (`bone_palette`, set through `set_palette`), written under the scene
+  write lock; the GPU mirror (`gpu_bone_palettes`) holds the current palette then the
+  previous pose's. The meshes' skin cache (`meshes_component::skin_cache`) blends both
+  into the instance's posed vertices once a frame, only when the palette changed and the
+  instance is in view or traced (previous positions for motion vectors come from the
+  previous palette, never a read of the cache); a stopped pose only marks its row
+  settled. Every drawer and the ray-traced scene read that cache.
 - **Meshes an animator drives** (`component/src/notifies.rs`, `assign_meshes` and
   `driven_meshes`): one animator drives every skinned mesh of its owner that is bound to
   its skeleton, so a modular character (body, head, gear on one skeleton) needs one

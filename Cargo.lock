@@ -5855,6 +5855,7 @@ dependencies = [
  "glam 0.33.5",
  "helio-components",
  "helio-core",
+ "helio-frame-api",
  "helio-vg-format",
  "naga",
  "pulsar_reflection",
@@ -5885,6 +5886,7 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-pass-hlfs",
  "helio-pass-materials",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
@@ -6131,7 +6133,6 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
- "helio-components",
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
@@ -6141,7 +6142,7 @@ dependencies = [
  "helio-mats",
  "helio-mesh-api",
  "helio-mesh-host",
- "helio-pass-forward-lit",
+ "helio-pass-mesh-rays",
  "helio-presets",
  "helio-settings",
  "helio-vg-build",
@@ -6244,6 +6245,26 @@ dependencies = [
  "helio-mats",
  "log",
  "naga",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-mesh-rays"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "helio-mesh-api",
+ "helio-mesh-host",
+ "helio-presets",
+ "helio-settings",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -6429,8 +6450,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-frame-api",
  "helio-light-api",
  "helio-mesh-api",
+ "naga",
  "wgpu",
 ]
 
@@ -6730,15 +6753,17 @@ dependencies = [
  "helio-feature-api",
  "helio-foliage-api",
  "helio-frame-api",
- "helio-gi-api",
+ "helio-graph-asset",
  "helio-light-api",
  "helio-light-host",
  "helio-mats",
+ "helio-mesh-api",
  "helio-mesh-host",
  "helio-pass-foliage-gbuffer",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gi",
+ "helio-pass-mesh-rays",
  "helio-pass-post-volumes",
  "helio-pass-sky",
  "helio-pass-tsr",
@@ -7665,7 +7690,6 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-buffer-view",
  "helio-pass-foliage-place",
- "helio-pass-gi",
  "helio-pass-portal-cull",
  "helio-pass-water-sim",
  "helio-presets",
@@ -7703,6 +7727,7 @@ dependencies = [
  "script_editor_plugin",
  "serde_json",
  "skeletal_animation_plugin",
+ "skeletal_assets",
  "sky_plugin",
  "splines_plugin",
  "sprites_plugin",
@@ -8980,6 +9005,7 @@ dependencies = [
  "helio-pass-gi",
  "helio-pass-hlfs",
  "helio-pass-light-cull",
+ "helio-pass-mesh-rays",
  "helio-pass-perf-overlay",
  "helio-pass-postprocess",
  "helio-pass-sky",
@@ -9035,6 +9061,7 @@ dependencies = [
  "helio-mesh-host",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-pass-occlusion-cull",
  "helio-pass-shadow",
@@ -9108,6 +9135,7 @@ dependencies = [
  "helio-graph-asset",
  "helio-mats",
  "helio-mesh-api",
+ "helio-pass-mesh-rays",
  "helio-pass-object-batch",
  "helio-presets",
  "helio-vg-build",
@@ -9422,7 +9450,7 @@ dependencies = [
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -9447,7 +9475,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -19070,7 +19098,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.1",
@@ -19099,7 +19127,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -19132,7 +19160,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19140,7 +19168,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19148,7 +19176,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "wgpu-hal",
 ]
@@ -19156,7 +19184,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -19212,7 +19240,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "naga",
  "wgpu-types",
@@ -19221,7 +19249,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#2344ca70355200f886113d39434e5f1d4274828c"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#205c219ee4ec66c18b9e7bca70ec5d82914c6cdf"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",

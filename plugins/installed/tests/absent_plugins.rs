@@ -633,6 +633,7 @@ fn render_with_stand_ins(scene: &SharedScene) {
     let eye = glam::Vec3::new(0.0, distance / 6.0, distance);
     let camera = FrameView {
         eye: eye.as_dvec3(),
+        coordinate_space: None,
         forward: (-eye).normalize(),
         up: glam::Vec3::Y,
         aspect: 1.0,

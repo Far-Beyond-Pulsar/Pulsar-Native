@@ -157,8 +157,7 @@ Splines draw through the debug lines (no pass of their own). Tests:
 | post | `helio.pass.post_process_volume_blend` | Post: Blend Volumes | slot Media, -10 |
 | lens | `helio.pass.lens` | Lens: Elements | slot Resolved, 0 |
 | lens | `helio.pass.lens_flare` | Lens: Flares | slot Resolved, 10 |
-| gi | `helio.pass.gi` | GI: Probe Update | before `GBuffer`, 10 |
-| gi | `helio.pass.gi_mesh_trace` | GI: Mesh Rays | slot Geometry, 20 |
+| gi | `helio.pass.gi` | GI: Probe Update (its ray streams traced by every kind's tracer between its passes) | slot Geometry, 20 |
 | gi | `helio.pass.gi_resolve` | GI: Resolve | slot LightingInputs, 0 |
 | portals | `helio.pass.portal_cull` | Portals: Cull | before `GBuffer`, -10 |
 | portals | `helio.pass.portal_mask` | Portals: Footprint Mask | `GBuffer` drawer 10 |
@@ -201,7 +200,7 @@ entity, so a click writes the rows of the objects whose selection changed and no
   `plugins/vendor/meshes/feature/gbuffer/tests/selection_shaders.rs`, and
   `helio-pass-selection-outline`'s shader test.
 
-Voxel is one `ChunkPass` (residency, generation, G-buffer, GI rays, sun pages are inside
+Voxel is one `ChunkPass` (residency, generation, G-buffer, the cut ray streams walk, sun pages are inside
 it), so it is one node. The debug overlay node takes the host's `DebugOverlayState` as the
 `DebugOverlayHost` setting (`RendererConfig::with_feature`); with none it owns a hidden state,
 reached through the built pass (`find_pass_mut::<DebugOverlayPass>()`); its `visible`

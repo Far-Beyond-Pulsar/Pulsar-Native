@@ -88,6 +88,18 @@ pub fn renderer_backends() -> wgpu::Backends {
     }
 }
 
+/// Whether the engine's device asks for hardware ray queries where the adapter
+/// runs them: the `editor.renderer.hardware_ray_queries` setting, its schema
+/// default in a process that registered no settings.
+pub fn hardware_ray_queries() -> bool {
+    use pulsar_settings::editor::renderer;
+    global_config()
+        .get(NS_EDITOR, renderer::OWNER, renderer::HARDWARE_RAY_QUERIES)
+        .ok()
+        .and_then(|value| value.as_bool().ok())
+        .unwrap_or(renderer::HARDWARE_RAY_QUERIES_DEFAULT)
+}
+
 // ─── Disk persistence ─────────────────────────────────────────────────────────
 
 /// Engine-wide (editor) settings backed by PulsarConfig's [`ConfigStore`].
