@@ -18,12 +18,14 @@
 # the tracers answer.
 #
 # Environment: TARGET (cargo target dir), OUT (results), BASE_CATHEDRAL,
-# R0_CRAFT, R1_CRAFT (kept executables), FRAMES (the reference's frames).
+# R0_CRAFT, R1_CRAFT (kept executables), FRAMES (the reference's frames),
+# PART (cathedral, craft or all).
 set -u
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 TARGET=${TARGET:-C:/t/pulsar-r2d}
 OUT=${OUT:-C:/t/r2d/compare}
 FRAMES=${FRAMES:-2400}
+PART=${PART:-all}
 GPU=${GPU:-C:/Users/thiag/shared-locks/gpu.sh}
 WHO=${WHO:-r2-reference}
 BASE_CATHEDRAL=${BASE_CATHEDRAL:-C:/t/int/indoor_cathedral_gi_r2.exe}
@@ -31,10 +33,10 @@ R0_CRAFT=${R0_CRAFT:-C:/Users/thiag/rewrite-baselines/voxel_craft_r0.exe}
 R1_CRAFT=${R1_CRAFT:-C:/t/int/voxel_craft_r1_merged.exe}
 COMPARE="python $ROOT/scripts/r2/reference_compare.py"
 mkdir -p "$OUT/cathedral" "$OUT/craft"
-cp "$TARGET/release/indoor_cathedral_gi.exe" "$OUT/cathedral/cathedral_new.exe"
-cp "$TARGET/release/voxel_craft.exe" "$OUT/craft/voxel_craft_new.exe"
 
 # ── 1. The cathedral ─────────────────────────────────────────────────────
+if [ "$PART" != craft ]; then
+cp "$TARGET/release/indoor_cathedral_gi.exe" "$OUT/cathedral/cathedral_new.exe"
 cd "$OUT/cathedral" || exit 1
 cathedral() { # exe name [env...]
     local exe=$1 name=$2
@@ -70,7 +72,11 @@ $COMPARE png "$OUT/cathedral/reference_diffuse.png" "$OUT/cathedral" \
 echo "== cathedral: GPU timings (ms)"
 grep -h "\[timings\]" "$OUT"/cathedral/*_[ab].log | sort | head -200
 
+fi
+
 # ── 2. voxel_craft, the tour's first pose ────────────────────────────────
+if [ "$PART" != cathedral ]; then
+cp "$TARGET/release/voxel_craft.exe" "$OUT/craft/voxel_craft_new.exe"
 cd "$OUT/craft" || exit 1
 craft() { # exe dir [env...]
     local exe=$1 dir=$2
@@ -106,3 +112,4 @@ $COMPARE png "$OUT/craft/reference/mean.png" "$OUT/craft" \
 echo "== voxel_craft: indirect diffuse (view 23) against the reference's (63)"
 $COMPARE png "$OUT/craft/reference_diffuse/mean.png" "$OUT/craft" \
     r0_indirect="$OUT/craft/r0_indirect/mean.png" r1_indirect="$OUT/craft/r1_indirect/mean.png"
+fi
