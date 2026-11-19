@@ -19,7 +19,9 @@
 #
 # Environment: TARGET (cargo target dir), OUT (results), BASE_CATHEDRAL,
 # R0_CRAFT, R1_CRAFT (kept executables), FRAMES (the reference's frames),
-# PART (cathedral, craft or all).
+# PART (cathedral, craft or all), NO_FOLIAGE (1: voxel_craft without its
+# procedural grass in every run; the reference does not trace grass, so with
+# it the real-time image has a meadow where the reference has bare turf).
 set -u
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 TARGET=${TARGET:-C:/t/pulsar-r2d}
@@ -83,7 +85,8 @@ craft() { # exe dir [env...]
     shift 2
     rm -rf "$OUT/craft/$dir"
     mkdir -p "$OUT/craft/$dir"
-    env "$@" VOXEL_CRAFT_SHOTS="$OUT/craft/$dir" VOXEL_CRAFT_POSES=1 VOXEL_CRAFT_NO_CLOUDS=1 \
+    env "$@" ${NO_FOLIAGE:+VOXEL_CRAFT_NO_FOLIAGE=1} \
+        VOXEL_CRAFT_SHOTS="$OUT/craft/$dir" VOXEL_CRAFT_POSES=1 VOXEL_CRAFT_NO_CLOUDS=1 \
         RUST_LOG=info,helio_pass_reference=debug \
         bash "$GPU" "$WHO" "$exe" > "$OUT/craft/$dir/log.txt" 2>&1
 }
