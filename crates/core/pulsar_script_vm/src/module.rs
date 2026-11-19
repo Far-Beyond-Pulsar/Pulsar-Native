@@ -528,6 +528,16 @@ pub struct SourceLoc {
 }
 
 impl SourceLoc {
+    /// A location in a text source: `file` at `line` and `column`.
+    pub fn at(file: impl Into<String>, line: u32, column: u32) -> Self {
+        Self {
+            file: file.into(),
+            node: String::new(),
+            line: Some(line),
+            column: Some(column),
+        }
+    }
+
     /// A location naming graph node `node` in `file`.
     pub fn node(file: impl Into<String>, node: impl Into<String>) -> Self {
         Self {

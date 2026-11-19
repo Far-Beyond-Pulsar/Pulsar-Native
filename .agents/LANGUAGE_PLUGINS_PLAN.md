@@ -1,6 +1,6 @@
 # Language plugins: audit and plan
 
-**Status: Phase 1 (the audit) is written and Phases 2, 3, 4 and 5 are built (section 6 "As built", section 8); P6 has not started.** Every claim about
+**Status: Phase 1 (the audit) is written and Phases 2 to 6 are built (section 6 "As built", section 8); what remains is the cleanup pass ("After P6").** Every claim about
 current code was read for this document, with `file:line` (lines are at the commit this
 branch is based on, `d4ae72365`). Anything not read is marked **UNVERIFIED** (section 9).
 The decisions in section 5 are **Proposed**; section 6 says which need the user's answer
@@ -981,6 +981,42 @@ on Windows (CI Windows job: `.agents/CI.md`).
 
 ### P6: language-neutral `ModuleBuilder`; docs and skill
 
+**Status: built** (working trees, nothing committed; P2 to P5 are under it). As built:
+
+- **Placement (the P6 review question).** `pulsar_script_vm::module_builder`, not a sibling
+  `pulsar_script_builder`. The builder is the module format's other half (a format change and the
+  builder's rules change in one commit), it needs only `Module`, `verify`, `NativeRegistry` and
+  `TypeRegistry`, and a language plugin already depends on `pulsar_script_vm`. A sibling crate would be a
+  one-to-one dependency of the VM with a version to keep in step, a new workspace member and nothing a
+  plugin could not already reach. It has no syntax, no GPUI and no plugin in it, so the layer gate has
+  nothing to say about it (the kind scanner port: 973 files, 23 hits, 0 new; the VM gained no dependency).
+- **The API** (`.agents/SCRIPT_LANGUAGES.md` is the reference): `ModuleBuilder` (constant pool and import
+  de-duplication, `declare_function` reserving an index before bodies, variables with a stable `id`,
+  `set_class_version`, events, subscriptions, native calls resolved and argument-checked against the registry,
+  `load_var`/`store_var`/`call`/`call_native`/`load_constant`, `finish()` which verifies), `FunctionBuilder`
+  (typed registers, `Label`s with forward patching, a loop stack, scopes of named locals, `SourceLoc` debug
+  info, `unreachable`), `binary_result`/`unary_result` (the verifier's operand rules), `BuildError`.
+  `SourceLoc::at` was added.
+- **The TypeScript lowering is a client.** `lower.rs` lost its own register, label, loop, scope, constant,
+  import, variable and debug code (`Fx` is a `FunctionBuilder` plus `is_async`; `if`/`while`/`for`/`&&`/`||`/`?:`
+  use labels instead of patching pcs; calls, constants, variable access and the binary result rules go through
+  the builder; the old verify step is `finish()`). A builder error is a diagnostic (too many registers keeps its
+  text; any other is "internal error: ..."), and a half-lowered method's builder error is dropped when the
+  method already has errors. One ordering change: fields are added to the builder after the schema reconciles
+  (so each carries its id) instead of while they are read; no output depends on it.
+- **No behaviour change, pinned.** `plugins/vendor/typescript/compiler/tests/golden.rs` was recorded
+  **before** the refactor against `tests/golden/*.module.txt`: a fixture that uses every construct the lowering
+  emits (`Constructs.ts`), the four examples and the Beacon class, each as JSON and as the shipped binary
+  encoding, with the new-field ids normalised (they are fresh uuids). They pass unchanged after it, as do the
+  conformance, compile, migration, blueprint parity and tsc tests, the plugin's tests, `typescript_compile.rs`
+  and the installed `typescript_language`/`languages` tests.
+- **A second language.** `crates/core/pulsar_script_vm/tests/module_builder.rs`: an s-expression language (parser,
+  typing, `if`, a `sum` loop, calls to functions declared later) compiled through `ModuleBuilder`, verified and run
+  on the VM, carrying debug info through the binary format, with its own mistakes reported by the front end and the
+  builder's arity check. 19 builder unit tests in `module_builder.rs`, and a doc test.
+- **Docs and skill.** `.agents/SCRIPT_LANGUAGES.md`, `.claude/commands/add-language.md`, rows in `AGENTS.md`
+  (index and skills), `CRATES.md` and `PLUGIN_SYSTEM.md`.
+
 Extract a `ModuleBuilder` from `crates/core/pulsar_script_ts/src/lower.rs` (2,092 lines;
 `Cx` `:116`, `lower_method` `:756`, `Target` `:2018`: emission of functions, locals,
 loops, waits, debug info, field identity) into a crate a *second* text language can use
@@ -993,7 +1029,27 @@ and `.claude/commands/add-language.md` (a skill beside `/add-plugin`), update
 
 ### After P6: the cleanup pass
 
-Everything in section 8, in order of severity.
+Everything in section 8, in order of severity. The open items now (rows marked "no" or "verify by running"),
+most severe first:
+
+1. **16 and 33** (medium). The footer, Settings page, Problems menus, the file manager's class item and
+   opening a class folder compile and their data is tested; nobody rendered or clicked them. Needs a run.
+2. **32** (medium). The real typescript-language-server was never run against a class (progress titles,
+   how it reads the generated tsconfig, whether classes type-check clean against `pulsar.d.ts`).
+3. **31** (medium). The managed install pins npm's sha512, not a sha256 of the tarballs, and the bundled-single-file
+   assumption for typescript-language-server 4.4.0 was not confirmed by unpacking.
+4. **13, 23, 27** (medium). `just arch` was never run with python (the node port of the scanner is clean:
+   973 files, 23 hits, all recorded); rerun the real gate.
+5. **1, 8, 20** (medium). A DLL plugin gets no plugin-settings handle; resource operations of a `WorkspaceEdit` do not
+   tell an editor that has the file open; a class of a language that is not linked or enabled drops out silently.
+6. **37** (medium for a second text language). `ClassSchema` (stable field ids and the class version) is the
+   TypeScript compiler's; a second text language reimplements it. Move the reconcile logic next to `ModuleBuilder`
+   when the second language is written.
+7. **26** (user action). `plugins/vendor/rust` is not yet its own repository.
+8. Low: **2, 3, 4, 10, 15, 18, 19, 21, 22, 25, 28, 29, 30, 34, 35, 36, 38, 39, 40**.
+
+Fixed in the P6 pass: none of section 8's open rows was small and safe without a GUI, a network, another
+repository or a design decision, so none was changed.
 
 ## 7. Risks
 
@@ -1054,8 +1110,12 @@ Format: `P<n>: <what>, <where>, <severity>, <resolved in cleanup pass: yes/no>`.
 | 34 | P5 | A TypeScript server is lazy (first `.ts` file), so the footer has no "LSP Servers" entry, and so no Install, until a class is opened; a project with classes could start it at open (`start = project` is the person's setting, or `config_files` could gate an eager start). Also the compiler's range is the word at the point, not an oxc span; `CompileDiagnostic` carries no end | `server.rs`, `checks.rs` | low | no |
 | 35 | P5 | The install downloads with the system's `curl` (PowerShell on Windows as the second try), like rust-analyzer's, not with an HTTP client of the engine (`reqwest` needs a TLS provider the plugin cannot assume); a machine with neither cannot install. The tar reader skips pax records but `path` and GNU long names, which npm does not use for these packages | `install.rs`, `archive.rs` | low | no |
 | 36 | P5 | The rust-analyzer digest is the one GitHub publishes with the asset (same origin as the file), not a pin; a Windows install unpacks the zip with PowerShell. `code_editor` (submodule) was edited for the checks (`lsp_check`, `forget_source`, the `Missing` status), uncommitted like the rest | `plugins/vendor/rust/src/discovery.rs`, `plugins/vendor/code_editor` | low | no |
+| 37 | P6 | `ClassSchema` (stable field identity, `class_version`, `@renamedFrom`) lives in the TypeScript compiler and writes `class.schema.json`; `ModuleBuilder` takes the ids and the version as data. A second text language needs the same reconcile logic and would copy it | `plugins/vendor/typescript/compiler/src/schema.rs` | medium | no |
+| 38 | P6 | The golden test pins successful compiles only (the emitted bytes); the error paths (diagnostics and their order) are covered by the existing compile tests. A builder error maps to a diagnostic at 0:0 with no span (as too-many-registers always did) | `compiler/tests/golden.rs`, `lower.rs` (`builder_error`) | low | no |
+| 39 | P6 | The lowering still emits `Move`, `Branch` operands, `Return` and unary conversions with `emit` and checks types itself with its own messages and literal steering; `FunctionBuilder::unary`/`binary` are exercised by the builder's tests and the toy language, not by TypeScript | `lower.rs`, `module_builder.rs` | low | no |
+| 40 | P6 | `cargo clippy --all-targets` on `pulsar_script_vm` fails on the existing `tests/libraries.rs` (`std::fs` and `Path::is_file`, disallowed methods): pre-existing, tests only; the library and the new tests are clean. `golden.rs` allows the lint with a reason (it reads and re-records its own fixtures) | `pulsar_script_vm/tests/libraries.rs` | low | no |
 
-Known before building: the unverified download checksum (row 7) is fixed in P5; the open items are rows 31 to 36 and the earlier ones marked no.
+Known before building: the unverified download checksum (row 7) is fixed in P5; the open items are rows 31 to 40 and the earlier ones marked no. Section 7's last risk (a 2,000-line refactor with no second consumer) is closed: the toy language is the second consumer and the golden files are the oracle.
 
 ## 9. Unverified or not read
 
