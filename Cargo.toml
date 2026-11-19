@@ -193,6 +193,7 @@ members = [
     "plugins/vendor/lights/feature/cull",
     "plugins/vendor/lights/feature/deferred",
     "plugins/vendor/lights/feature/hlfs",
+    "plugins/vendor/lights/feature/sampler",
     "plugins/vendor/lights/feature/shadows",
     "plugins/vendor/lights/host",
     "plugins/vendor/lights/component",
@@ -561,6 +562,7 @@ helio-core = { path = "crates/renderer/helio/crates/helio-core" }
 helio-mesh-api = { path = "plugins/vendor/meshes/api" }
 helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
 helio-pass-light-cull = { path = "plugins/vendor/lights/feature/cull" }
+helio-pass-light-sampler = { path = "plugins/vendor/lights/feature/sampler" }
 helio-light-api = { path = "plugins/vendor/lights/api" }
 helio-light-host = { path = "plugins/vendor/lights/host" }
 helio-frame-api = { path = "crates/renderer/helio/crates/helio-frame-api" }
@@ -601,6 +603,7 @@ helio-mesh-host = { path = "plugins/vendor/meshes/host" }
 helio-web-demos = { path = "plugins/vendor/meshes/web-demos" }
 helio-controls = { path = "crates/renderer/helio/crates/helio-controls" }
 helio-pass-fxaa = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-fxaa" }
+helio-pass-reference = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-reference" }
 helio-pass-hlfs = { path = "plugins/vendor/lights/feature/hlfs" }
 helio-wasm = { path = "crates/renderer/helio/crates/helio-wasm" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
