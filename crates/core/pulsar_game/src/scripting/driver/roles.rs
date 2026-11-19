@@ -56,6 +56,9 @@ pub(super) struct RoleHook {
 pub(super) struct SessionRole {
     role: &'static str,
     entity: Entity,
+    /// Built by a plugin's `RoleDefaultRegistration`, with no script: it is
+    /// running as soon as it exists.
+    native: bool,
 }
 
 /// The local player's character between being queued for spawn and running.
@@ -273,6 +276,11 @@ impl ScriptDriver {
         let label = pulsar_traits::roles::role(role).map_or(role, |r| r.label);
         let Some(binding) = roles.usable(role) else {
             if roles.get(role).is_none() {
+                // Nothing assigned: the plugin that owns the role may have a
+                // native default.
+                if let Some(entity) = self.spawn_default_role(role, label, world, report) {
+                    return Some(entity);
+                }
                 tracing::info!("{label} is not set for this level; skipped");
             }
             return None;
@@ -301,7 +309,11 @@ impl ScriptDriver {
                     parent: None,
                     position: [0.0; 3],
                 };
-                self.role_entities.push(SessionRole { role, entity });
+                self.role_entities.push(SessionRole {
+                    role,
+                    entity,
+                    native: false,
+                });
                 if now {
                     self.apply_commands(world, vec![command], report);
                     if !world.is_alive(entity) {
@@ -332,6 +344,41 @@ impl ScriptDriver {
         }
         tracing::info!(class = %entry.name, "{label} spawned");
         Some(entity)
+    }
+
+    /// The role's native default (`RoleDefaultRegistration`), spawned in place
+    /// of an unassigned role's script class. It has no script to start, so it
+    /// is running from the moment it exists; the session owns and despawns it
+    /// like any role entity.
+    fn spawn_default_role(
+        &mut self,
+        role: &'static str,
+        label: &str,
+        world: &mut World,
+        report: &mut DriverReport,
+    ) -> Option<Entity> {
+        let default = engine_backend::scene::game_hooks::role_default(role)?;
+        if let Some(existing) = self.role_entity(role) {
+            return Some(existing);
+        }
+        match (default.spawn)(world, &self.project_root) {
+            Ok(entity) => {
+                self.role_entities.push(SessionRole {
+                    role,
+                    entity,
+                    native: true,
+                });
+                world.insert(entity, RoleEntity { role });
+                tracing::info!("{label} spawned from its default ({})", default.name);
+                Some(entity)
+            }
+            Err(error) => {
+                let message = format!("The default {label} could not be spawned: {error}");
+                tracing::warn!("{message}");
+                report.failures.push(message);
+                None
+            }
+        }
     }
 
     /// Role entities a previous session left in a world this one adopted
@@ -365,7 +412,11 @@ impl ScriptDriver {
             let same_class = matches!((&wanted, &present), (Some(w), Some(p)) if w.id == p.id);
             if same_class && self.role_entity(role).is_none() {
                 tracing::info!(?role, "Re-binding a role entity left by a previous session");
-                self.role_entities.push(SessionRole { role, entity });
+                self.role_entities.push(SessionRole {
+                    role,
+                    entity,
+                    native: false,
+                });
             } else {
                 tracing::info!(
                     ?role,
@@ -636,7 +687,11 @@ impl ScriptDriver {
         let running = self
             .tracked
             .get(&character)
-            .is_some_and(|tracked| tracked.instance.is_some());
+            .is_some_and(|tracked| tracked.instance.is_some())
+            || self
+                .role_entities
+                .iter()
+                .any(|owned| owned.native && owned.entity == character);
         if !running {
             // The reserved entity is alive until its spawn command ran; if it
             // is gone the spawn failed (already logged).
@@ -650,14 +705,22 @@ impl ScriptDriver {
             return;
         };
         let character_trait = PLAYER_CHARACTER_TRAIT_ID;
-        if self.entity_trait_check(world, character, character_trait) == TraitCheck::DoesNot {
+        // A native default has no script and no class: there is no trait to
+        // check and no handler to call; it is the player character by role.
+        let native = self
+            .role_entities
+            .iter()
+            .any(|owned| owned.native && owned.entity == character);
+        if !native && self.entity_trait_check(world, character, character_trait) == TraitCheck::DoesNot {
             let message = format!(
                 "The possessed entity does not implement {character_trait}; possession skipped"
             );
             self.note_once(report, message);
             return;
         }
-        self.call_trait(world, character, character_trait, "on_spawned", &[], report);
+        if !native {
+            self.call_trait(world, character, character_trait, "on_spawned", &[], report);
+        }
         if let Some(controller) = pending.controller {
             let pawn = pulsar_script_vm::Value::Int(character.bits() as i64);
             self.call_trait(
@@ -674,14 +737,16 @@ impl ScriptDriver {
                 .controller
                 .map_or(0, |controller| controller.bits() as i64),
         );
-        self.call_trait(
-            world,
-            character,
-            character_trait,
-            "on_possessed",
-            &[controller_id],
-            report,
-        );
+        if !native {
+            self.call_trait(
+                world,
+                character,
+                character_trait,
+                "on_possessed",
+                &[controller_id],
+                report,
+            );
+        }
         let attached = self.possession_hooks(world, character, report);
         self.possessed = Some(Possessed {
             controller: pending.controller,

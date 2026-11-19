@@ -33,6 +33,7 @@ pub use default_pipelines_plugin;
 pub use editor_table_plugin;
 pub use fog_plugin;
 pub use foliage_plugin;
+pub use gameplay_plugin;
 pub use gi_plugin;
 pub use input_plugin;
 pub use lens_plugin;

@@ -187,3 +187,49 @@ pub fn game_sessions() -> Vec<&'static GameSessionRegistration> {
     hooks.sort_by_key(|hook| hook.name);
     hooks
 }
+
+// ---- role defaults ---------------------------------------------------------------
+
+/// A native default for a gameplay role: what a session spawns for the role
+/// when the level assigns none.
+///
+/// Roles are normally script classes a level picks in World Settings. A plugin
+/// that owns the roles can also say what plays when nothing was picked (the
+/// default player character), built natively out of components, so a project
+/// with no Blueprints is still a game. A role the level does assign is never
+/// replaced by its default.
+///
+/// How others do it: Unreal's `DefaultPawnClass` of the game mode, used when
+/// the map's World Settings leave it unset.
+pub struct RoleDefaultRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// Its stable id in the plugin catalog.
+    pub name: &'static str,
+    /// The role it is the default of (`pulsar_traits::roles::RoleRegistration::id`).
+    pub role: &'static str,
+    /// Spawn the role's entity in `world` (a scene object with its
+    /// components) for the project at `project_root`. An error is reported
+    /// once and the role is skipped, as an unset one is.
+    pub spawn: fn(world: &mut World, project_root: &std::path::Path) -> Result<Entity, String>,
+}
+
+impl pulsar_plugins::Contribution for RoleDefaultRegistration {
+    const CATEGORY: &'static str = "game.role_default";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(RoleDefaultRegistration);
+
+/// The enabled default of `role`, if a plugin registered one.
+pub fn role_default(role: &str) -> Option<&'static RoleDefaultRegistration> {
+    pulsar_plugins::registered::<RoleDefaultRegistration>().find(|default| default.role == role)
+}

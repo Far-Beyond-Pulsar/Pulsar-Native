@@ -22,6 +22,14 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+pulsar_traits = { path = ".", features = ["test-roles"] }
+
+[features]
+# The engine's four gameplay roles (`GAME_MODE_ROLE`, ...) as engine-owned
+# registrations. A game does not enable it: the gameplay plugin registers the
+# roles. The tests of the kernel crates that exercise roles enable it as a
+# dev-dependency, since a kernel crate cannot depend on a plugin.
+test-roles = []
 
 [lints]
 workspace = true

@@ -4664,6 +4664,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameplay_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "pulsar_events",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+ "pulsar_traits",
+ "pulsar_world_registry",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "gamma"
 version = "0.2.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b#c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b"
@@ -7678,6 +7692,7 @@ dependencies = [
  "engine_state",
  "fog_plugin",
  "foliage_plugin",
+ "gameplay_plugin",
  "gi_plugin",
  "glam 0.33.5",
  "gpui-ce",
@@ -13124,6 +13139,7 @@ dependencies = [
  "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
+ "pulsar_traits",
  "serde",
  "serde_json",
  "tempfile",

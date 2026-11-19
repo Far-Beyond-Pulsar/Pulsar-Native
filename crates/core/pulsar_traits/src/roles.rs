@@ -82,10 +82,13 @@ impl pulsar_plugins::Contribution for RoleRegistration {
 
 pulsar_plugins::registration!(RoleRegistration);
 
-/// The enabled roles, in `order`.
+/// The enabled roles, in `order`. A role registered twice (the engine's
+/// test registration beside the gameplay plugin's) is one role: the first by
+/// id wins.
 pub fn roles() -> Vec<&'static RoleRegistration> {
     let mut all: Vec<_> = pulsar_plugins::registered::<RoleRegistration>().collect();
     all.sort_by_key(|role| (role.order, role.id));
+    all.dedup_by_key(|role| role.id);
     all
 }
 

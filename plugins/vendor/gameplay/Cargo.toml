@@ -1,0 +1,30 @@
+[package]
+name = "gameplay_plugin"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "pulsar.gameplay: the gameplay roles as scene defaults, and a default player character the input plugin drives"
+
+[features]
+# The plugin has no editor-only registration (a level's role pickers are
+# World Settings', built from the registered roles); the installed set enables
+# `editor` on every root.
+editor = []
+
+[dependencies]
+# The plugin's descriptor and its build.
+pulsar_plugins = { workspace = true }
+# The roles (`RoleRegistration`) and the engine's role and trait ids.
+pulsar_traits = { workspace = true }
+# The role default and tick phase registrations.
+engine_backend = { path = "../../../crates/core/engine_backend", default-features = false, features = ["render"] }
+# The default character is a scene object with components placed by class name.
+pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
+# The input events the character is driven by, heard on the hub.
+pulsar_events = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

@@ -153,7 +153,7 @@ category `gameplay.roles`): `id` (`pulsar.game_mode`), `label`, `trait_id`,
 `setting_key` (the key in the level's `world_settings`), `order` and `start`
 (`Now`: spawned and started in the session's first script phase;
 `EndOfFrame`: queued like a script's spawn). The engine registers its four
-(`pulsar_traits::builtin`: `game_mode_blueprint`, `game_state_blueprint`,
+(registered by the gameplay plugin, `plugins/vendor/gameplay`; the ids and traits stay `pulsar_traits::builtin`: `game_mode_blueprint`, `game_state_blueprint`,
 `player_controller_blueprint`, `player_character_blueprint`, the keys levels
 always used); a plugin registers its own from its root, and a disabled plugin's
 roles are absent. Adding a role is one registration and a trait.

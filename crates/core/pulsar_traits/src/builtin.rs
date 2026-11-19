@@ -15,6 +15,7 @@
 //! spawn path hands Blueprints typed actor references; changing a parameter
 //! type is a contract version bump.
 
+#[cfg(feature = "test-roles")]
 use crate::roles::{RoleRegistration, RoleStart};
 
 /// Id of the `IntoGraph` trait: Helio builds a renderer from anything that
@@ -68,6 +69,7 @@ inventory::submit! {
 // state and the controller begin within the first script phase (so they
 // `begin_play` before the level's own objects); the character's spawn is
 // queued like a script's and possession follows when it runs.
+#[cfg(feature = "test-roles")]
 inventory::submit! {
     RoleRegistration {
         origin: pulsar_plugins::engine_origin!(),
@@ -80,6 +82,7 @@ inventory::submit! {
     }
 }
 
+#[cfg(feature = "test-roles")]
 inventory::submit! {
     RoleRegistration {
         origin: pulsar_plugins::engine_origin!(),
@@ -92,6 +95,7 @@ inventory::submit! {
     }
 }
 
+#[cfg(feature = "test-roles")]
 inventory::submit! {
     RoleRegistration {
         origin: pulsar_plugins::engine_origin!(),
@@ -104,6 +108,7 @@ inventory::submit! {
     }
 }
 
+#[cfg(feature = "test-roles")]
 inventory::submit! {
     RoleRegistration {
         origin: pulsar_plugins::engine_origin!(),
