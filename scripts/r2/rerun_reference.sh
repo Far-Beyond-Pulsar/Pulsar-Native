@@ -99,7 +99,7 @@ mean_burst() { # dir -> dir/mean.png
     python -c "
 import sys, glob, numpy as np
 from PIL import Image
-files = sorted(glob.glob(sys.argv[1] + '/shot_00_*.png'))
+files = sorted(glob.glob(sys.argv[1] + '/shot_00*.png'))
 mean = np.mean([np.array(Image.open(f).convert('RGB'), dtype=np.float64) for f in files], axis=0)
 Image.fromarray((mean + 0.5).astype(np.uint8)).save(sys.argv[1] + '/mean.png')
 print(sys.argv[1], len(files), 'frames')" "$OUT/craft/$1"
