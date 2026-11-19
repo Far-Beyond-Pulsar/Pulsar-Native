@@ -5836,6 +5836,7 @@ dependencies = [
  "bytemuck",
  "helio-components",
  "helio-core",
+ "helio-frame-api",
  "image",
  "log",
  "naga",
