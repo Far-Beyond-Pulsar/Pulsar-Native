@@ -7687,6 +7687,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
+ "ui_common",
  "ui_level_editor",
  "uuid",
 ]
