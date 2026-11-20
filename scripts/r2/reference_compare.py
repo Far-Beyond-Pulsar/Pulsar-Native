@@ -14,6 +14,12 @@ Two forms of input:
 
     python reference_compare.py dump <prefix> <out_dir>
     python reference_compare.py png <reference.png> <out_dir> <name=a.png> [<name=b.png> ...]
+    python reference_compare.py parts <name=prefix> [<name=prefix> ...]
+
+`parts`: for each linear dump, the mean luminance (linear) of the
+reference's sum and of the real-time snapshot taken with it, over pixels
+the reference covers: the reference's parts (`reference_parts.py`) against
+the real-time image's views (direct 22, indirect 23, the whole frame).
 
 Prints, for each image against the reference: the mean and 99th
 percentile of the absolute error (luminance), the mean relative error where
@@ -116,9 +122,25 @@ def run_png(reference_png, out_dir, others):
     return rows
 
 
+def run_parts(specs):
+    print(f"{'part':>12}  {'reference':>10}  {'real-time':>10}  paths a pixel")
+    for spec in specs:
+        name, prefix = spec.split("=", 1)
+        ref = load_dump(prefix + "_reference.f32")
+        mask = ref[..., 3] > 0
+        reference = (mean_of(ref) @ LUMA)[mask].mean()
+        realtime = float("nan")
+        if os.path.exists(prefix + "_realtime.f32"):
+            realtime = (load_dump(prefix + "_realtime.f32")[..., :3] @ LUMA)[mask].mean()
+        count = ref[..., 3][mask]
+        print(f"{name:>12}  {reference:10.5f}  {realtime:10.5f}  {count.min():.0f}..{count.max():.0f}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) >= 4 and sys.argv[1] == "dump":
         run_dump(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) >= 3 and sys.argv[1] == "parts":
+        run_parts(sys.argv[2:])
     elif len(sys.argv) >= 5 and sys.argv[1] == "png":
         run_png(sys.argv[2], sys.argv[3], sys.argv[4:])
     else:
