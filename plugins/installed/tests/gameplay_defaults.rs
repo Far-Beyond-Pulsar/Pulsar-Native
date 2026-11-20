@@ -11,20 +11,18 @@
 
 use std::sync::Mutex;
 
-use gameplay_plugin::files::{FILES, PLAYER_CHARACTER_GRAPH};
-use gameplay_plugin::player_input::{drive, CHARACTER_CLASS};
-use installed_plugins::input_plugin::runtime::events::action_descriptor;
-use installed_plugins::input_plugin::runtime::system::Phase;
+use installed_plugins as _;
+
+use gameplay_plugin::files::{DEFAULT_MAPPING, FILES, PLAYER_CHARACTER_GRAPH};
+const CHARACTER_CLASS: &str = "CharacterComponent";
 use pulsar_events::gamma::{Channel, DynEvent, DynValue};
-use pulsar_events::{EventCategory, EventHub, FlushPoint};
+use pulsar_events::{EventHub, FlushPoint};
 use pulsar_scenedb::{Entity, World};
 use pulsar_traits::builtin::{
     GAME_MODE_ROLE, GAME_STATE_ROLE, PLAYER_CHARACTER_ROLE, PLAYER_CHARACTER_TRAIT_ID,
     PLAYER_CONTROLLER_ROLE,
 };
 use pulsar_traits::{BindingStatus, RoleSelection, TraitIndex, WorldRoles};
-use pulsar_world_registry::pulsar_scene_model::attachments::NewInstance;
-use pulsar_world_registry::{place_component, ComponentPayload};
 
 /// The tests change the process's activated plugins: one at a time.
 static ACTIVATION: Mutex<()> = Mutex::new(());
@@ -135,9 +133,9 @@ fn the_mounted_class_can_be_selected_for_the_player_character_role() {
     engine_fs::virtual_fs::unmount_project(root);
 }
 
-fn action_event(hub: &EventHub, name: &str, phase: Phase, pawn: Entity, x: f64, y: f64) {
+fn action_event(hub: &EventHub, name: &str, phase: &str, pawn: Entity, x: f64, y: f64) {
     let id = hub
-        .descriptor_by_name(&format!("input::{name}.{}", phase.word()))
+        .descriptor_by_name(&format!("input::{name}.{phase}"))
         .unwrap()
         .id;
     hub.publish_dyn(
@@ -158,107 +156,11 @@ fn action_event(hub: &EventHub, name: &str, phase: Phase, pawn: Entity, x: f64, 
     .unwrap();
 }
 
-fn possess(hub: &EventHub, pawn: Entity, possessed: bool) {
-    let id = hub.descriptor_by_name("PossessionChanged").unwrap().id;
-    hub.publish_dyn(
-        Channel::Global,
-        DynEvent::new(
-            id,
-            vec![
-                DynValue::U64(0),
-                DynValue::U64(pawn.bits()),
-                DynValue::Bool(possessed),
-            ],
-        ),
-    )
-    .unwrap();
-}
-
 fn read(world: &World, pawn: Entity, property: &str) -> serde_json::Value {
     pulsar_world_registry::get_component_property(world, pawn, CHARACTER_CLASS, 0, property)
         .unwrap()
 }
 
-#[test]
-fn the_possessed_pawns_move_and_jump_actions_drive_its_character() {
-    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
-    everything_on();
-    let mut world = World::new();
-    let pawn = {
-        use engine_backend::scene::{SceneWorldExt, SpawnObject};
-        let pawn = world.spawn_object(SpawnObject::new("Pawn")).unwrap();
-        place_component(
-            &mut world,
-            pawn,
-            NewInstance::new(CHARACTER_CLASS),
-            ComponentPayload::Default,
-        )
-        .unwrap();
-        pawn
-    };
-
-    let hub = EventHub::new();
-    for (name, phase) in [
-        ("Move", Phase::Triggered),
-        ("Move", Phase::Completed),
-        ("Jump", Phase::Started),
-    ] {
-        hub.register(
-            action_descriptor(name, phase).unwrap(),
-            EventCategory::Input,
-        )
-        .unwrap();
-    }
-    let resolve = |_: Entity, _: &str| None;
-
-    // Nothing possessed: nothing moves.
-    drive(&mut world, &hub, &resolve);
-    assert_eq!(
-        read(&world, pawn, "move_input"),
-        serde_json::json!([0.0, 0.0])
-    );
-
-    // The driver announces the possession; the next frame subscribes the pawn.
-    possess(&hub, pawn, true);
-    hub.flush(FlushPoint::Manual);
-    drive(&mut world, &hub, &resolve);
-
-    action_event(&hub, "Move", Phase::Triggered, pawn, 0.0, 1.0);
-    hub.flush(FlushPoint::Manual);
-    drive(&mut world, &hub, &resolve);
-    assert_eq!(
-        read(&world, pawn, "move_input"),
-        serde_json::json!([0.0, 1.0])
-    );
-
-    action_event(&hub, "Jump", Phase::Started, pawn, 1.0, 0.0);
-    hub.flush(FlushPoint::Manual);
-    drive(&mut world, &hub, &resolve);
-    assert_eq!(read(&world, pawn, "jump"), serde_json::json!(true));
-
-    action_event(&hub, "Move", Phase::Completed, pawn, 0.0, 0.0);
-    hub.flush(FlushPoint::Manual);
-    drive(&mut world, &hub, &resolve);
-    assert_eq!(
-        read(&world, pawn, "move_input"),
-        serde_json::json!([0.0, 0.0])
-    );
-
-    // Another object's input is not this pawn's.
-    let other = world.spawn();
-    action_event(&hub, "Move", Phase::Triggered, other, 1.0, 0.0);
-    hub.flush(FlushPoint::Manual);
-    drive(&mut world, &hub, &resolve);
-    assert_eq!(
-        read(&world, pawn, "move_input"),
-        serde_json::json!([0.0, 0.0])
-    );
-}
-
-/// A level that selects the plugin's character gets it from the roles system:
-/// the mounted class compiles into the project's module store (the class
-/// folder is read-only), the driver spawns it as the role's entity with its
-/// prefab's components, and its script runs.
 #[test]
 fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     use pulsar_class::{ClassRegistry, ModuleStore};
@@ -319,6 +221,53 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
             "{expected}: {classes:?}"
         );
     }
+
+    // The class's own Blueprint moves it. The project's action events are declared
+    // when the session attaches to the hub; the plugin's mounted actions are the
+    // project's, so IA_Move and the rest exist without any file of the project's.
+    let hub = EventHub::new();
+    driver.attach_events(hub.clone());
+    driver.run_frame(&mut world, 0.0);
+    let send = |driver: &mut ScriptDriver, world: &mut World, action: &str, phase: &str, x: f64, y: f64| {
+        action_event(&hub, action, phase, pawn, x, y);
+        hub.flush(FlushPoint::Manual);
+        let frame = driver.run_frame(world, 0.0);
+        assert!(frame.script_errors.is_empty(), "{:?}", frame.script_errors);
+    };
+    assert_eq!(read(&world, pawn, "move_input"), serde_json::json!([0.0, 0.0]));
+
+    // Move: held forward and to the right, then released.
+    send(&mut driver, &mut world, "IA_Move", "triggered", 0.5, 1.0);
+    assert_eq!(read(&world, pawn, "move_input"), serde_json::json!([0.5, 1.0]));
+    send(&mut driver, &mut world, "IA_Move", "completed", 0.0, 0.0);
+    assert_eq!(read(&world, pawn, "move_input"), serde_json::json!([0.0, 0.0]));
+
+    // Jump: asks the character to jump.
+    assert_eq!(read(&world, pawn, "jump"), serde_json::json!(false));
+    send(&mut driver, &mut world, "IA_Jump", "triggered", 1.0, 0.0);
+    assert_eq!(read(&world, pawn, "jump"), serde_json::json!(true));
+
+    // Sprint: faster while held, the walk speed again when released.
+    assert_eq!(read(&world, pawn, "walk_speed"), serde_json::json!(4.0));
+    send(&mut driver, &mut world, "IA_Sprint", "started", 1.0, 0.0);
+    assert_eq!(read(&world, pawn, "walk_speed"), serde_json::json!(7.0));
+    send(&mut driver, &mut world, "IA_Sprint", "completed", 0.0, 0.0);
+    assert_eq!(read(&world, pawn, "walk_speed"), serde_json::json!(4.0));
+
+    // Look: the horizontal axis turns the object (yaw, in degrees).
+    let yaw = |world: &World| world.get::<engine_backend::scene::Transform>(pawn).unwrap().rotation[1];
+    let before = yaw(&world);
+    send(&mut driver, &mut world, "IA_Look", "triggered", 10.0, 3.0);
+    assert!(
+        (yaw(&world) - (before - 10.0)).abs() < 1e-3,
+        "turned by the axis times turn_rate: {before} -> {}",
+        yaw(&world)
+    );
+
+    // Only a wired phase is listened to: IA_Jump.started has no chain, so it
+    // changes nothing (jump is already set, so this only checks it does not fail).
+    send(&mut driver, &mut world, "IA_Jump", "started", 1.0, 0.0);
+    assert_eq!(read(&world, pawn, "jump"), serde_json::json!(true));
     engine_fs::virtual_fs::unmount_project(root);
 }
 

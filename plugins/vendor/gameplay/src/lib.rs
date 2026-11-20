@@ -8,10 +8,9 @@
 //! other. The roles system spawns it; nothing is spawned for a level that
 //! selects no character (the free camera is the only fallback).
 //!
-//! `player_input` follows the possessed pawn the driver announces
-//! (`PossessionChanged`) and drives its `CharacterComponent` from the input
-//! plugin's `Move` and `Jump` events, for the shipped class and for any class
-//! of a project that has a character on it.
+//! The character moves itself: its Blueprint hears the input plugin's actions
+//! (IA_Move, IA_Look, IA_Jump, IA_Sprint from the shipped IMC_Default mapping) on its
+//! own Player Input component and drives its `CharacterComponent` and transform.
 //!
 //! The plugin owns no object kind and links no other plugin's crate: it
 //! requires the input and character `class` contracts (`pulsar-plugin.toml`)
@@ -25,7 +24,6 @@
 //! This crate is the plugin's root: [`build`] registers everything.
 
 pub mod files;
-pub mod player_input;
 pub mod roles;
 
 pulsar_plugins::installed!("pulsar-plugin.toml", build);
@@ -35,7 +33,6 @@ pulsar_plugins::installed!("pulsar-plugin.toml", build);
 pub fn build(p: &mut pulsar_plugins::PluginBuilder) {
     roles::build(p);
     p.add(files::provider(p.origin()));
-    player_input::build(p);
 }
 
 #[cfg(test)]

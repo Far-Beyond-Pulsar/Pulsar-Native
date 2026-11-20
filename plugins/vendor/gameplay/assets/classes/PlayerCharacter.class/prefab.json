@@ -18,7 +18,7 @@
       "slot_id": "e07b5d93-1c48-4a6f-9e32-b8d6a2f4c015",
       "class_name": "PlayerInputComponent",
       "enabled": true,
-      "data": {}
+      "data": { "mapping": "plugins/Gameplay/input/mappings/IMC_Default.inputmap" }
     },
     {
       "slot_id": "1a9e4c68-5d27-4b03-8f71-3c6e0b9a2d58",
