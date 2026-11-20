@@ -4820,6 +4820,7 @@ dependencies = [
  "helio-pass-forward-lit",
  "helio-pass-gi",
  "helio-pass-perf-overlay",
+ "helio-pass-reference",
  "helio-pass-sky",
  "helio-presets",
  "helio-vg-stream",
@@ -5835,6 +5836,7 @@ dependencies = [
  "helio-pass-fxaa",
  "helio-pass-hlfs",
  "helio-pass-light-cull",
+ "helio-pass-light-sampler",
  "helio-pass-shadow-matrix",
  "helio-pass-tsr",
  "helio-presets",
@@ -5850,6 +5852,7 @@ dependencies = [
  "bytemuck",
  "helio-components",
  "helio-core",
+ "helio-frame-api",
  "image",
  "log",
  "naga",
@@ -6026,7 +6029,6 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-light-api",
- "helio-mats",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -6156,6 +6158,7 @@ dependencies = [
  "helio-mats",
  "helio-mesh-api",
  "helio-mesh-host",
+ "helio-pass-light-sampler",
  "helio-pass-mesh-rays",
  "helio-presets",
  "helio-settings",
@@ -6243,6 +6246,21 @@ dependencies = [
  "helio-pass-billboard",
  "helio-scene-join",
  "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-light-sampler"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-light-api",
  "pollster 0.4.0",
  "pulsar_scenedb",
  "wgpu",
@@ -6424,6 +6442,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-reference"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-settings",
+ "log",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-selection-outline"
 version = "0.1.0"
 dependencies = [
@@ -6481,7 +6513,6 @@ dependencies = [
  "helio-feature-api",
  "helio-frame-api",
  "helio-light-api",
- "helio-mats",
  "naga",
  "pollster 0.4.0",
  "pulsar_scenedb",
@@ -6855,6 +6886,7 @@ dependencies = [
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
  "helio-pass-postprocess",
+ "helio-pass-reference",
  "helio-pass-selection-outline",
  "helio-pass-ssr",
  "helio-pass-tsr",
@@ -7004,6 +7036,7 @@ dependencies = [
  "helio-pass-portal-instances",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
+ "helio-pass-reference",
  "helio-pass-sky",
  "helio-pass-sprite-batch",
  "helio-pass-tsr",
@@ -7707,6 +7740,7 @@ dependencies = [
  "helio-mesh-api",
  "helio-pass-buffer-view",
  "helio-pass-foliage-place",
+ "helio-pass-mesh-rays",
  "helio-pass-portal-cull",
  "helio-pass-water-sim",
  "helio-presets",
@@ -7729,6 +7763,7 @@ dependencies = [
  "pollster 1.0.1",
  "portals_plugin",
  "post_plugin",
+ "psgc",
  "pulsar-config",
  "pulsar_class",
  "pulsar_events",
@@ -8436,6 +8471,7 @@ dependencies = [
  "helio-pass-deferred-light",
  "helio-pass-hlfs",
  "helio-pass-light-cull",
+ "helio-pass-light-sampler",
  "helio-pass-shadow-matrix",
  "helio-scene-join",
  "helio_component",

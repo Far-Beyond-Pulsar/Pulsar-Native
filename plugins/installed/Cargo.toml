@@ -117,6 +117,10 @@ tempfile = { workspace = true }
 image = { workspace = true }
 # The skinned frames (tests/skinned_frames.rs): a procedural rig.
 skeletal_assets = { workspace = true }
+# The ray-traced tier's acceptance (tests/ray_tier_acceptance.rs): material
+# graphs written as a project's materials.
+psgc = { workspace = true }
+helio-pass-mesh-rays = { workspace = true }
 # The level editor as the editor assembles it (tests/level_editor.rs): the
 # shell with every installed plugin's root registering through its
 # extension points.
