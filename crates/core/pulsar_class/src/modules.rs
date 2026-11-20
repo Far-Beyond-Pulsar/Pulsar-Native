@@ -7,7 +7,7 @@
 //! ```text
 //! <project>/target/pulsar/scripts/<class id>/
 //!   module.json     the compiled module (engine script module, JSON)
-//!   language        the language that wrote it (`blueprint`, `typescript`)
+//!   language        the id of the language that wrote it
 //!   source.json     which source it was compiled from (`ModuleSource`)
 //! ```
 //!
@@ -260,11 +260,22 @@ pub fn migrate_legacy_modules(project_root: &Path, registry: &crate::ClassRegist
             let Ok(bytes) = virtual_fs::read_file(&module) else {
                 continue;
             };
+            // The language file says who wrote it; a module from before it was
+            // written belongs to the one language whose marker the class has.
             let language = virtual_fs::read_to_string(&legacy.join(LANGUAGE_FILE))
                 .ok()
                 .map(|l| l.trim().to_owned())
                 .filter(|l| !l.is_empty())
-                .unwrap_or_else(|| "blueprint".to_owned());
+                .or_else(|| match crate::language::language_of(&entry.dir) {
+                    Ok(Some(language)) => Some(language.id.to_owned()),
+                    _ => None,
+                });
+            let Some(language) = language else {
+                // No language owns it (its plugin is disabled, or the class is
+                // two languages'): the old folder stays until one does.
+                tracing::debug!(class = %entry.name, "Old module kept: no language to attribute it to");
+                continue;
+            };
             // Unknown source: an empty hash, so the next build compiles it.
             if let Err(error) = store.write(entry, &language, String::new(), &bytes) {
                 tracing::warn!(class = %entry.name, "Module not moved to the store: {error}");

@@ -88,6 +88,7 @@ pub mod store;
 // Settings system — backed by PulsarConfig
 pub mod settings;
 pub mod settings_defaults;
+pub mod plugin_settings;
 
 pub use discord::DiscordPresence;
 pub use pulsar_auth::AuthProfile;
@@ -146,6 +147,9 @@ pub fn set_project_path(path: String) {
         std::path::Path::new(&path),
         project_plugins(std::path::Path::new(&path)),
     );
+    // Their settings: the enabled plugins' groups register, the disabled ones'
+    // withdraw, and the user and project scopes reload.
+    plugin_settings::activate(Some(std::path::Path::new(&path)));
     if let Some(ctx) = EngineContext::global() {
         let current = get_project_path();
         if current.as_deref() != Some(path.as_str()) {

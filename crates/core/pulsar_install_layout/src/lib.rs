@@ -53,6 +53,13 @@ pub fn registries_dir() -> PathBuf {
     appdata_dir().join("registries")
 }
 
+/// Where the engine keeps the tools it installs for the person, each under
+/// its own folder (`<tools>/<tool>/<pinned version>/`): language servers and
+/// the like, never silently, only on the person's explicit action.
+pub fn tools_dir() -> PathBuf {
+    appdata_dir().join("tools")
+}
+
 /// The file extension of a native plugin library on this platform.
 pub const fn plugin_library_extension() -> &'static str {
     if cfg!(target_os = "windows") {

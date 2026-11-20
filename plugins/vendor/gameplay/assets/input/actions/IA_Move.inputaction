@@ -1,0 +1,22 @@
+{
+  "id": "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b01",
+  "identifier": "IA_Move",
+  "description": "Walk: a 2D axis, X right and Y forward. Keys become directions through the modifiers on the mapping's entries; a stick comes through as it is. Held, so the character keeps walking until the keys are released.",
+  "value_type": "axis2d",
+  "consume_input": true,
+  "trigger_when_paused": false,
+  "actuation_threshold": 0.5,
+  "triggers": [
+    {
+      "type": "down"
+    }
+  ],
+  "modifiers": [
+    {
+      "type": "dead_zone",
+      "lower": 0.15,
+      "upper": 1.0,
+      "radial": true
+    }
+  ]
+}

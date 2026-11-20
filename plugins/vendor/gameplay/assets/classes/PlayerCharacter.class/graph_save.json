@@ -1,0 +1,1932 @@
+// The default Player Character, shipped with the Gameplay plugin.
+// A level selects it in World Settings > Player Character. The file is read-only
+// (a plugin folder); copy the .class folder into your project to edit it. It is
+// written by plugins/installed/tests/regenerate_player_character_graph.rs.
+{
+  "format_version": 2,
+  "main_graph": {
+    "nodes": {
+      "spawned": {
+        "id": "spawned",
+        "node_type": "custom_event:on_spawned",
+        "position": {
+          "x": 0.0,
+          "y": 40.0
+        },
+        "properties": {
+          "event_uid": "on_spawned"
+        },
+        "inputs": [
+          {
+            "id": "__return__",
+            "name": "__return__",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "wildcard",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "possessed": {
+        "id": "possessed",
+        "node_type": "custom_event:on_possessed",
+        "position": {
+          "x": 0.0,
+          "y": 200.0
+        },
+        "properties": {
+          "event_uid": "on_possessed"
+        },
+        "inputs": [
+          {
+            "id": "__return__",
+            "name": "__return__",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "wildcard",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "controller_id",
+            "name": "controller_id",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "unpossessed": {
+        "id": "unpossessed",
+        "node_type": "custom_event:on_unpossessed",
+        "position": {
+          "x": 0.0,
+          "y": 400.0
+        },
+        "properties": {
+          "event_uid": "on_unpossessed"
+        },
+        "inputs": [
+          {
+            "id": "__return__",
+            "name": "__return__",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "wildcard",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "mv": {
+        "id": "mv",
+        "node_type": "event::family::input.action:6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b01",
+        "position": {
+          "x": 0.0,
+          "y": 780.0
+        },
+        "properties": {
+          "action": "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b01",
+          "phases": "started,ongoing,triggered,completed,canceled",
+          "events": "Started=input::IA_Move.started,Ongoing=input::IA_Move.ongoing,Triggered=input::IA_Move.triggered,Completed=input::IA_Move.completed,Canceled=input::IA_Move.canceled",
+          "lowering": "Value=vec2:x,y;Elapsed=f64:elapsed;TriggeredFor=f64:triggered_for;Entity=entity:entity",
+          "family": "input.action",
+          "title": "On IA_Move",
+          "component_type": "PlayerInputComponent",
+          "scope": "self"
+        },
+        "inputs": [
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "PlayerInputComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Started",
+            "name": "Started",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c1"
+            ]
+          },
+          {
+            "id": "Ongoing",
+            "name": "Ongoing",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c2"
+            ]
+          },
+          {
+            "id": "Triggered",
+            "name": "Triggered",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c3"
+            ]
+          },
+          {
+            "id": "Completed",
+            "name": "Completed",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c4"
+            ]
+          },
+          {
+            "id": "Canceled",
+            "name": "Canceled",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c5"
+            ]
+          },
+          {
+            "id": "Value",
+            "name": "Value",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c6",
+              "c7"
+            ]
+          },
+          {
+            "id": "Elapsed",
+            "name": "Elapsed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "TriggeredFor",
+            "name": "TriggeredFor",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "Entity",
+            "name": "Entity",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Entity",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "mv_x": {
+        "id": "mv_x",
+        "node_type": "native::Vec2::x",
+        "position": {
+          "x": 640.0,
+          "y": 1100.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "v",
+            "name": "v",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c6"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c8"
+            ]
+          }
+        ]
+      },
+      "mv_y": {
+        "id": "mv_y",
+        "node_type": "native::Vec2::y",
+        "position": {
+          "x": 640.0,
+          "y": 1220.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "v",
+            "name": "v",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c7"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c9"
+            ]
+          }
+        ]
+      },
+      "mv_set": {
+        "id": "mv_set",
+        "node_type": "comp_call::CharacterComponent::set_move",
+        "position": {
+          "x": 1180.0,
+          "y": 780.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c1",
+              "c2",
+              "c3"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "CharacterComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "x",
+            "name": "x",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c8"
+            ]
+          },
+          {
+            "id": "y",
+            "name": "y",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c9"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "mv_stop": {
+        "id": "mv_stop",
+        "node_type": "comp_call::CharacterComponent::set_move",
+        "position": {
+          "x": 1180.0,
+          "y": 1100.0
+        },
+        "properties": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c4",
+              "c5"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "CharacterComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "x",
+            "name": "x",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "y",
+            "name": "y",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "jp": {
+        "id": "jp",
+        "node_type": "event::family::input.action:6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b03",
+        "position": {
+          "x": 0.0,
+          "y": 1720.0
+        },
+        "properties": {
+          "action": "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b03",
+          "phases": "started,ongoing,triggered,completed,canceled",
+          "events": "Started=input::IA_Jump.started,Ongoing=input::IA_Jump.ongoing,Triggered=input::IA_Jump.triggered,Completed=input::IA_Jump.completed,Canceled=input::IA_Jump.canceled",
+          "lowering": "Pressed=bool:value;Elapsed=f64:elapsed;TriggeredFor=f64:triggered_for;Entity=entity:entity",
+          "family": "input.action",
+          "title": "On IA_Jump",
+          "component_type": "PlayerInputComponent",
+          "scope": "self"
+        },
+        "inputs": [
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "PlayerInputComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Started",
+            "name": "Started",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Ongoing",
+            "name": "Ongoing",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Triggered",
+            "name": "Triggered",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c10"
+            ]
+          },
+          {
+            "id": "Completed",
+            "name": "Completed",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Canceled",
+            "name": "Canceled",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Pressed",
+            "name": "Pressed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "Elapsed",
+            "name": "Elapsed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "TriggeredFor",
+            "name": "TriggeredFor",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "Entity",
+            "name": "Entity",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Entity",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "jp_do": {
+        "id": "jp_do",
+        "node_type": "comp_call::CharacterComponent::request_jump",
+        "position": {
+          "x": 640.0,
+          "y": 1720.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c10"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "CharacterComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "sp": {
+        "id": "sp",
+        "node_type": "event::family::input.action:6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b04",
+        "position": {
+          "x": 0.0,
+          "y": 2300.0
+        },
+        "properties": {
+          "action": "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b04",
+          "phases": "started,ongoing,triggered,completed,canceled",
+          "events": "Started=input::IA_Sprint.started,Ongoing=input::IA_Sprint.ongoing,Triggered=input::IA_Sprint.triggered,Completed=input::IA_Sprint.completed,Canceled=input::IA_Sprint.canceled",
+          "lowering": "Pressed=bool:value;Elapsed=f64:elapsed;TriggeredFor=f64:triggered_for;Entity=entity:entity",
+          "family": "input.action",
+          "title": "On IA_Sprint",
+          "component_type": "PlayerInputComponent",
+          "scope": "self"
+        },
+        "inputs": [
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "PlayerInputComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Started",
+            "name": "Started",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c13"
+            ]
+          },
+          {
+            "id": "Ongoing",
+            "name": "Ongoing",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Triggered",
+            "name": "Triggered",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c14"
+            ]
+          },
+          {
+            "id": "Completed",
+            "name": "Completed",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c15"
+            ]
+          },
+          {
+            "id": "Canceled",
+            "name": "Canceled",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c16"
+            ]
+          },
+          {
+            "id": "Pressed",
+            "name": "Pressed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "Elapsed",
+            "name": "Elapsed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "TriggeredFor",
+            "name": "TriggeredFor",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "Entity",
+            "name": "Entity",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Entity",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "sp_fast_speed": {
+        "id": "sp_fast_speed",
+        "node_type": "get_sprint_speed",
+        "position": {
+          "x": 640.0,
+          "y": 2300.0
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "sprint_speed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c11"
+            ]
+          }
+        ]
+      },
+      "sp_slow_speed": {
+        "id": "sp_slow_speed",
+        "node_type": "get_walk_speed",
+        "position": {
+          "x": 640.0,
+          "y": 2560.0
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "walk_speed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c12"
+            ]
+          }
+        ]
+      },
+      "sp_fast": {
+        "id": "sp_fast",
+        "node_type": "comp_set_prop::CharacterComponent::walk_speed",
+        "position": {
+          "x": 1180.0,
+          "y": 2300.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c13",
+              "c14"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "CharacterComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "value",
+            "name": "value",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c11"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "sp_slow": {
+        "id": "sp_slow",
+        "node_type": "comp_set_prop::CharacterComponent::walk_speed",
+        "position": {
+          "x": 1180.0,
+          "y": 2560.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c15",
+              "c16"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "CharacterComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "value",
+            "name": "value",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c12"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "lk": {
+        "id": "lk",
+        "node_type": "event::family::input.action:6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b02",
+        "position": {
+          "x": 0.0,
+          "y": 3120.0
+        },
+        "properties": {
+          "action": "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b02",
+          "phases": "started,ongoing,triggered,completed,canceled",
+          "events": "Started=input::IA_Look.started,Ongoing=input::IA_Look.ongoing,Triggered=input::IA_Look.triggered,Completed=input::IA_Look.completed,Canceled=input::IA_Look.canceled",
+          "lowering": "Value=vec2:x,y;Elapsed=f64:elapsed;TriggeredFor=f64:triggered_for;Entity=entity:entity",
+          "family": "input.action",
+          "title": "On IA_Look",
+          "component_type": "PlayerInputComponent",
+          "scope": "self"
+        },
+        "inputs": [
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "PlayerInputComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Started",
+            "name": "Started",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c17"
+            ]
+          },
+          {
+            "id": "Ongoing",
+            "name": "Ongoing",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c18"
+            ]
+          },
+          {
+            "id": "Triggered",
+            "name": "Triggered",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c19"
+            ]
+          },
+          {
+            "id": "Completed",
+            "name": "Completed",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Canceled",
+            "name": "Canceled",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          },
+          {
+            "id": "Value",
+            "name": "Value",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c21"
+            ]
+          },
+          {
+            "id": "Elapsed",
+            "name": "Elapsed",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "TriggeredFor",
+            "name": "TriggeredFor",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "Entity",
+            "name": "Entity",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Entity",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "lk_rate": {
+        "id": "lk_rate",
+        "node_type": "get_turn_rate",
+        "position": {
+          "x": 640.0,
+          "y": 3120.0
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "turn_rate",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c22"
+            ]
+          }
+        ]
+      },
+      "lk_scale": {
+        "id": "lk_scale",
+        "node_type": "native::Vec2::scale",
+        "position": {
+          "x": 1080.0,
+          "y": 3120.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "v",
+            "name": "v",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c21"
+            ]
+          },
+          {
+            "id": "k",
+            "name": "k",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c22"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c23"
+            ]
+          }
+        ]
+      },
+      "lk_yaw": {
+        "id": "lk_yaw",
+        "node_type": "native::Vec2::x",
+        "position": {
+          "x": 1520.0,
+          "y": 3120.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "v",
+            "name": "v",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec2",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c23"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c24"
+            ]
+          }
+        ]
+      },
+      "lk_delta": {
+        "id": "lk_delta",
+        "node_type": "native::Vec3::new",
+        "position": {
+          "x": 1960.0,
+          "y": 3120.0
+        },
+        "properties": {
+          "x": 0.0,
+          "z": 0.0
+        },
+        "inputs": [
+          {
+            "id": "x",
+            "name": "x",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "y",
+            "name": "y",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c24"
+            ]
+          },
+          {
+            "id": "z",
+            "name": "z",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec3",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c26"
+            ]
+          }
+        ]
+      },
+      "lk_get": {
+        "id": "lk_get",
+        "node_type": "comp_call::Transform::rotation_degrees",
+        "position": {
+          "x": 640.0,
+          "y": 3480.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c17",
+              "c18",
+              "c19"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Transform",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c20"
+            ]
+          },
+          {
+            "id": "return_value",
+            "name": "return_value",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec3",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c25"
+            ]
+          }
+        ]
+      },
+      "lk_add": {
+        "id": "lk_add",
+        "node_type": "native::Vec3::add",
+        "position": {
+          "x": 1960.0,
+          "y": 3480.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec3",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c25"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec3",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c26"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec3",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c27"
+            ]
+          }
+        ]
+      },
+      "lk_set": {
+        "id": "lk_set",
+        "node_type": "comp_call::Transform::set_rotation_degrees",
+        "position": {
+          "x": 2400.0,
+          "y": 3480.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c20"
+            ]
+          },
+          {
+            "id": "component_ref",
+            "name": "component_ref",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Transform",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "rotation",
+            "name": "rotation",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "Vec3",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c27"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      }
+    },
+    "connections": [
+      {
+        "id": "c1",
+        "source_node": "mv",
+        "source_pin": "Started",
+        "target_node": "mv_set",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c2",
+        "source_node": "mv",
+        "source_pin": "Ongoing",
+        "target_node": "mv_set",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c3",
+        "source_node": "mv",
+        "source_pin": "Triggered",
+        "target_node": "mv_set",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c4",
+        "source_node": "mv",
+        "source_pin": "Completed",
+        "target_node": "mv_stop",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c5",
+        "source_node": "mv",
+        "source_pin": "Canceled",
+        "target_node": "mv_stop",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c6",
+        "source_node": "mv",
+        "source_pin": "Value",
+        "target_node": "mv_x",
+        "target_pin": "v",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c7",
+        "source_node": "mv",
+        "source_pin": "Value",
+        "target_node": "mv_y",
+        "target_pin": "v",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c8",
+        "source_node": "mv_x",
+        "source_pin": "result",
+        "target_node": "mv_set",
+        "target_pin": "x",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c9",
+        "source_node": "mv_y",
+        "source_pin": "result",
+        "target_node": "mv_set",
+        "target_pin": "y",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c10",
+        "source_node": "jp",
+        "source_pin": "Triggered",
+        "target_node": "jp_do",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c11",
+        "source_node": "sp_fast_speed",
+        "source_pin": "value",
+        "target_node": "sp_fast",
+        "target_pin": "value",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c12",
+        "source_node": "sp_slow_speed",
+        "source_pin": "value",
+        "target_node": "sp_slow",
+        "target_pin": "value",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c13",
+        "source_node": "sp",
+        "source_pin": "Started",
+        "target_node": "sp_fast",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c14",
+        "source_node": "sp",
+        "source_pin": "Triggered",
+        "target_node": "sp_fast",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c15",
+        "source_node": "sp",
+        "source_pin": "Completed",
+        "target_node": "sp_slow",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c16",
+        "source_node": "sp",
+        "source_pin": "Canceled",
+        "target_node": "sp_slow",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c17",
+        "source_node": "lk",
+        "source_pin": "Started",
+        "target_node": "lk_get",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c18",
+        "source_node": "lk",
+        "source_pin": "Ongoing",
+        "target_node": "lk_get",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c19",
+        "source_node": "lk",
+        "source_pin": "Triggered",
+        "target_node": "lk_get",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c20",
+        "source_node": "lk_get",
+        "source_pin": "exec_out",
+        "target_node": "lk_set",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c21",
+        "source_node": "lk",
+        "source_pin": "Value",
+        "target_node": "lk_scale",
+        "target_pin": "v",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c22",
+        "source_node": "lk_rate",
+        "source_pin": "value",
+        "target_node": "lk_scale",
+        "target_pin": "k",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c23",
+        "source_node": "lk_scale",
+        "source_pin": "result",
+        "target_node": "lk_yaw",
+        "target_pin": "v",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c24",
+        "source_node": "lk_yaw",
+        "source_pin": "result",
+        "target_node": "lk_delta",
+        "target_pin": "y",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c25",
+        "source_node": "lk_get",
+        "source_pin": "return_value",
+        "target_node": "lk_add",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c26",
+        "source_node": "lk_delta",
+        "source_pin": "result",
+        "target_node": "lk_add",
+        "target_pin": "b",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c27",
+        "source_node": "lk_add",
+        "source_pin": "result",
+        "target_node": "lk_set",
+        "target_pin": "rotation",
+        "connection_type": "Data"
+      }
+    ],
+    "metadata": {
+      "name": "EventGraph",
+      "description": "The default player character.",
+      "version": "1.0.0",
+      "created_at": "2026-11-19T00:00:00Z",
+      "modified_at": "2026-11-19T00:00:00Z"
+    },
+    "comments": [
+      {
+        "id": "title",
+        "text": "DEFAULT PLAYER CHARACTER\nShipped with the Gameplay plugin (read-only: copy the .class folder into your project to edit it).\nThe Player Input component below uses the IMC_Default mapping, whose actions IA_Move, IA_Look, IA_Jump and IA_Sprint\nraise the events these sections handle, on this object only. Every action node offers all of its phases as exec\noutputs; only the ones wired here are listened to. The sections run top to bottom: the trait, Move, Jump, Sprint, Look.",
+        "position": [
+          -40.0,
+          -330.0
+        ],
+        "size": [
+          2900.0,
+          200.0
+        ],
+        "color": [
+          0.9,
+          0.75,
+          0.2,
+          0.28
+        ],
+        "contained_node_ids": []
+      },
+      {
+        "id": "sec_trait",
+        "text": "1. PLAYER CHARACTER TRAIT\nThe engine's Player Character role calls these when the character is placed in the world and when a controller\ntakes or lets go of it. This character has nothing to do on them; they exist because the trait requires them.",
+        "position": [
+          -40.0,
+          -90.0
+        ],
+        "size": [
+          1100.0,
+          640.0
+        ],
+        "color": [
+          0.25,
+          0.45,
+          0.75,
+          0.22
+        ],
+        "contained_node_ids": [
+          "spawned",
+          "possessed",
+          "unpossessed"
+        ]
+      },
+      {
+        "id": "sec_move",
+        "text": "2. MOVE  (IA_Move: a 2D axis, X right and Y forward)\nWhile the keys or stick are held the axis is read into x and y and handed to the character, which walks that way\nin the direction it faces. Released or canceled, it stands still.",
+        "position": [
+          -40.0,
+          640.0
+        ],
+        "size": [
+          1780.0,
+          760.0
+        ],
+        "color": [
+          0.25,
+          0.65,
+          0.35,
+          0.22
+        ],
+        "contained_node_ids": [
+          "mv",
+          "mv_x",
+          "mv_y",
+          "mv_set",
+          "mv_stop"
+        ]
+      },
+      {
+        "id": "sec_jump",
+        "text": "3. JUMP  (IA_Jump: pressed once)\nAsks the character to jump. It jumps on the next frame its controller is on the ground, so a press in the air\nis not remembered once it lands.",
+        "position": [
+          -40.0,
+          1540.0
+        ],
+        "size": [
+          1380.0,
+          460.0
+        ],
+        "color": [
+          0.85,
+          0.5,
+          0.25,
+          0.22
+        ],
+        "contained_node_ids": [
+          "jp",
+          "jp_do"
+        ]
+      },
+      {
+        "id": "sec_sprint",
+        "text": "4. SPRINT  (IA_Sprint: held)\nWhile held the walk speed is the sprint speed; released or canceled it goes back to the walk speed. Both speeds are\nvariables of this class (Variables panel), so they are changed in one place.",
+        "position": [
+          -40.0,
+          2140.0
+        ],
+        "size": [
+          1780.0,
+          800.0
+        ],
+        "color": [
+          0.6,
+          0.35,
+          0.75,
+          0.22
+        ],
+        "contained_node_ids": [
+          "sp",
+          "sp_fast_speed",
+          "sp_slow_speed",
+          "sp_fast",
+          "sp_slow"
+        ]
+      },
+      {
+        "id": "sec_look",
+        "text": "5. LOOK  (IA_Look: a 2D axis from the mouse or the right stick)\nThe horizontal turn is scaled by the turn_rate variable (negative: moving right turns right; flip its sign to invert)\nand added to this object's yaw. The character walks along the way it faces, so turning steers it. Looking up\nand down needs a camera rig on top of this, which the character does not have yet.",
+        "position": [
+          -40.0,
+          2980.0
+        ],
+        "size": [
+          3000.0,
+          1020.0
+        ],
+        "color": [
+          0.2,
+          0.65,
+          0.65,
+          0.22
+        ],
+        "contained_node_ids": [
+          "lk",
+          "lk_rate",
+          "lk_scale",
+          "lk_yaw",
+          "lk_delta",
+          "lk_get",
+          "lk_add",
+          "lk_set"
+        ]
+      }
+    ],
+    "custom_event_defs": {}
+  },
+  "subgraphs": [],
+  "local_events": [
+    {
+      "uid": "on_spawned",
+      "name": "on_spawned",
+      "fields": [],
+      "return_type": ""
+    },
+    {
+      "uid": "on_possessed",
+      "name": "on_possessed",
+      "fields": [
+        {
+          "name": "controller_id",
+          "type_name": "i64"
+        }
+      ],
+      "return_type": ""
+    },
+    {
+      "uid": "on_unpossessed",
+      "name": "on_unpossessed",
+      "fields": [],
+      "return_type": ""
+    }
+  ],
+  "variables": [
+    {
+      "id": "v_walk",
+      "name": "walk_speed",
+      "data_type": {
+        "Data": {
+          "base_type": "f64",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "4.0",
+      "description": "Metres per second at full input, restored when sprint ends."
+    },
+    {
+      "id": "v_sprint",
+      "name": "sprint_speed",
+      "data_type": {
+        "Data": {
+          "base_type": "f64",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "7.0",
+      "description": "Metres per second while IA_Sprint is held."
+    },
+    {
+      "id": "v_turn",
+      "name": "turn_rate",
+      "data_type": {
+        "Data": {
+          "base_type": "f64",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "-1.0",
+      "description": "Degrees of yaw per unit of IA_Look X. Negative turns right when the axis is positive."
+    }
+  ],
+  "editor_state": {
+    "open_tab_ids": [
+      "main"
+    ],
+    "active_tab_index": 0,
+    "graph_view_states": {
+      "main": {
+        "pan_offset_x": 0.0,
+        "pan_offset_y": 0.0,
+        "zoom": 0.5
+      }
+    }
+  },
+  "blueprint_metadata": {
+    "blueprint_type": "Actor",
+    "parent_class": null,
+    "description": "The default player character: a character body, a camera and the player's input.",
+    "category": "Gameplay",
+    "tags": [
+      "gameplay",
+      "character",
+      "input"
+    ],
+    "implemented_trait_ids": [
+      "pulsar.PlayerCharacter"
+    ]
+  }
+}

@@ -28,6 +28,8 @@ pub fn render_header(
         Some(DiagnosticSeverity::Hint) => "Hints".to_string(),
     };
 
+    let source_names = drawer.source_names();
+    let current_source = drawer.filtered_source.clone();
     let is_all_selected = drawer.filtered_severity.is_none();
     let is_errors_selected = drawer.filtered_severity == Some(DiagnosticSeverity::Error);
     let is_warnings_selected = drawer.filtered_severity == Some(DiagnosticSeverity::Warning);
@@ -156,7 +158,42 @@ pub fn render_header(
                                 Box::new(FilterInfo),
                             )
                         }),
-                ),
+                )
+                .when(!source_names.is_empty(), |this| {
+                    let source_label = match &current_source {
+                        Some(source) => source.clone(),
+                        None => format!("All sources ({})", source_names.len()),
+                    };
+                    let menu_sources = source_names.clone();
+                    let menu_current = current_source.clone();
+                    this.child(
+                        Button::new("source-filter-dropdown")
+                            .ghost()
+                            .small()
+                            .icon(IconName::Cpu)
+                            .label(source_label)
+                            .popup_menu_with_anchor(
+                                Corner::BottomRight,
+                                move |menu, _window, _cx| {
+                                    let mut menu = menu.menu_with_check(
+                                        "All sources".to_string(),
+                                        menu_current.is_none(),
+                                        Box::new(ClearSourceFilter),
+                                    );
+                                    for source in menu_sources.iter() {
+                                        menu = menu.menu_with_check(
+                                            source.clone(),
+                                            menu_current.as_deref() == Some(source.as_str()),
+                                            Box::new(FilterSource {
+                                                source: source.clone(),
+                                            }),
+                                        );
+                                    }
+                                    menu
+                                },
+                            ),
+                    )
+                }),
         )
 }
 

@@ -1,6 +1,6 @@
 //! The plugin API's context hands every editor the engine's language server.
 //!
-//! Editors used to find the analyzer through a process global, which a plugin
+//! Editors used to find the servers through a process global, which a plugin
 //! library does not share with the host, and one creation path attached
 //! nothing at all -- so an editor could open, look fine, and never get hover,
 //! completion or diagnostics. These tests pin the contract from the host side:
@@ -9,7 +9,7 @@
 use gpui::{div, AppContext as _, Context, IntoElement, Render, TestAppContext, Window};
 use plugin_editor_api::*;
 use plugin_manager::{BuiltinEditorProvider, EditorContext, PluginManager};
-use pulsar_lsp::RustAnalyzerManager;
+use pulsar_lsp::LanguageServers;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::PanelView;
@@ -67,8 +67,8 @@ impl BuiltinEditorProvider for Probe {
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         Err(PluginError::Other {
             message: format!(
-                "language_server={}",
-                editor_context.services.language_server.is_some()
+                "language_servers={}",
+                editor_context.services.language_servers.is_some()
             ),
         })
     }
@@ -94,22 +94,22 @@ fn created_with(manager: &mut PluginManager, cx: &mut gpui::VisualTestContext) -
 }
 
 #[gpui::test]
-fn a_builtin_editor_is_created_with_the_language_server(cx: &mut TestAppContext) {
+fn a_builtin_editor_is_created_with_the_language_servers(cx: &mut TestAppContext) {
     let (_root, cx) = cx.add_window_view(|_, _| Blank);
-    let analyzer = cx.update(|window, app| app.new(|cx| RustAnalyzerManager::new(window, cx)));
+    let servers = cx.update(|_, app| app.new(LanguageServers::new));
 
     let mut manager = manager_with_probe();
     assert!(
-        created_with(&mut manager, cx).contains("language_server=false"),
+        created_with(&mut manager, cx).contains("language_servers=false"),
         "nothing was provided yet"
     );
 
     manager.set_editor_services(EditorServices {
-        language_server: Some(analyzer.clone()),
+        language_servers: Some(servers.clone()),
         ..Default::default()
     });
     assert!(
-        created_with(&mut manager, cx).contains("language_server=true"),
+        created_with(&mut manager, cx).contains("language_servers=true"),
         "the editor context must carry the handle the host was given"
     );
 }
@@ -117,17 +117,17 @@ fn a_builtin_editor_is_created_with_the_language_server(cx: &mut TestAppContext)
 #[gpui::test]
 fn plugin_libraries_receive_the_same_handle_through_the_settings_snapshot(cx: &mut TestAppContext) {
     let (_root, cx) = cx.add_window_view(|_, _| Blank);
-    let analyzer = cx.update(|window, app| app.new(|cx| RustAnalyzerManager::new(window, cx)));
+    let servers = cx.update(|_, app| app.new(LanguageServers::new));
 
     let mut manager = PluginManager::new();
     assert!(manager
         .snapshot_for_editor()
         .services()
-        .language_server
+        .language_servers
         .is_none());
 
     manager.set_editor_services(EditorServices {
-        language_server: Some(analyzer.clone()),
+        language_servers: Some(servers.clone()),
         ..Default::default()
     });
     // The host replaces the snapshot wholesale whenever a setting changes;
@@ -137,34 +137,34 @@ fn plugin_libraries_receive_the_same_handle_through_the_settings_snapshot(cx: &m
     assert_eq!(
         snapshot
             .services()
-            .language_server
+            .language_servers
             .as_ref()
             .map(|a| a.entity_id()),
-        Some(analyzer.entity_id())
+        Some(servers.entity_id())
     );
 }
 
 /// The manager is a process-wide static: it must not keep the host's
 /// language server alive once the host lets it go (Pulsar-Native CI: the
-/// editor's tests failed with a leaked `RustAnalyzerManager`).
+/// editor's tests failed with a leaked `LanguageServers` service).
 #[gpui::test]
 fn the_manager_does_not_keep_the_language_server_alive(cx: &mut TestAppContext) {
     let (_root, cx) = cx.add_window_view(|_, _| Blank);
-    let analyzer = cx.update(|window, app| app.new(|cx| RustAnalyzerManager::new(window, cx)));
+    let servers = cx.update(|_, app| app.new(LanguageServers::new));
 
     let mut manager = PluginManager::new();
     manager.set_editor_services(EditorServices {
-        language_server: Some(analyzer.clone()),
+        language_servers: Some(servers.clone()),
         ..Default::default()
     });
-    assert!(manager.editor_services().language_server.is_some());
+    assert!(manager.editor_services().language_servers.is_some());
 
-    drop(analyzer);
+    drop(servers);
     cx.run_until_parked();
-    assert!(manager.editor_services().language_server.is_none());
+    assert!(manager.editor_services().language_servers.is_none());
     assert!(manager
         .snapshot_for_editor()
         .services()
-        .language_server
+        .language_servers
         .is_none());
 }

@@ -7,6 +7,8 @@
 //!
 //! - [`module`]: the serializable module format (functions over typed
 //!   registers, explicit jumps, imports by name and signature).
+//! - [`module_builder`]: [`ModuleBuilder`], what a language front end builds a
+//!   module with (typed registers, labels, loops, imports, variables, debug info).
 //! - [`verify`]: structural and type verification.
 //! - [`native`]: natives (Rust functions scripts call) and the
 //!   [`NativeRegistry`] they are linked from, with a query API for
@@ -39,6 +41,7 @@ pub mod library;
 pub mod link;
 pub mod migrate;
 pub mod module;
+pub mod module_builder;
 pub mod native;
 pub(crate) mod stdlib;
 pub mod types;
@@ -64,6 +67,7 @@ pub use module::{
     SourceLoc, Subscription, SubscriptionScope, UnOp, Variable, BINARY_MAGIC, FORMAT_VERSION,
     MIN_FORMAT_VERSION,
 };
+pub use module_builder::{BuildError, FunctionBuilder, FunctionHandle, Label, Local, ModuleBuilder};
 pub use native::{
     Access, GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider,
     NativeRegistration, NativeRegistry, Origin, PolyNative,

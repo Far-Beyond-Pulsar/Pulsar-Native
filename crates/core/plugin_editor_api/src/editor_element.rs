@@ -21,7 +21,7 @@ use gpui::{
     AnyElement, App, Bounds, Element, ElementArenaScope, ElementId, Entity, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, WeakEntity, Window,
 };
-use pulsar_lsp::RustAnalyzerManager;
+use pulsar_lsp::LanguageServers;
 use ui::dock::PanelView;
 
 use crate::error::PluginError;
@@ -37,9 +37,10 @@ use crate::identifiers::EditorId;
 /// provider through the editor context.
 #[derive(Clone, Default)]
 pub struct EditorServices {
-    /// The one rust-analyzer the engine runs for the project. Editors attach
-    /// to it; they never start, restart or replace it.
-    pub language_server: Option<Entity<RustAnalyzerManager>>,
+    /// The language servers the engine runs for the project (one per server and
+    /// root; a file is routed to its server by `server_for`). Editors attach
+    /// to the service; they never start, restart or replace a server.
+    pub language_servers: Option<Entity<LanguageServers>>,
     /// The host's undo histories, one per document (Pulsar-Native#931).
     /// The host makes one and hands the same to every editor.
     pub undo: crate::undo::UndoService,
@@ -49,7 +50,7 @@ impl EditorServices {
     /// These services without keeping them alive.
     pub fn downgrade(&self) -> WeakEditorServices {
         WeakEditorServices {
-            language_server: self.language_server.as_ref().map(Entity::downgrade),
+            language_servers: self.language_servers.as_ref().map(Entity::downgrade),
             undo: self.undo.clone(),
         }
     }
@@ -60,7 +61,7 @@ impl EditorServices {
 /// that owns them.
 #[derive(Clone, Default)]
 pub struct WeakEditorServices {
-    language_server: Option<WeakEntity<RustAnalyzerManager>>,
+    language_servers: Option<WeakEntity<LanguageServers>>,
     /// Holds only the registry; each history lives with its views.
     undo: crate::undo::UndoService,
 }
@@ -69,7 +70,7 @@ impl WeakEditorServices {
     /// The services that are still alive.
     pub fn upgrade(&self) -> EditorServices {
         EditorServices {
-            language_server: self.language_server.as_ref().and_then(WeakEntity::upgrade),
+            language_servers: self.language_servers.as_ref().and_then(WeakEntity::upgrade),
             undo: self.undo.clone(),
         }
     }
@@ -84,7 +85,7 @@ impl std::fmt::Debug for WeakEditorServices {
 impl std::fmt::Debug for EditorServices {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EditorServices")
-            .field("language_server", &self.language_server.is_some())
+            .field("language_servers", &self.language_servers.is_some())
             .finish()
     }
 }

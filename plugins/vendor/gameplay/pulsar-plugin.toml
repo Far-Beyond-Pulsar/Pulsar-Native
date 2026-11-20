@@ -1,0 +1,15 @@
+# The gameplay roles and what plays when a level assigns none: the four roles
+# (game mode, game state, player controller, player character) as scene
+# defaults, and a native default player character the input plugin's mapping
+# drives. Its only job; it owns no object kind.
+id = "pulsar.gameplay"
+name = "Gameplay"
+description = "The gameplay roles as scene defaults, and a default player character the input plugin drives"
+enabled_by_default = true
+root = "gameplay_plugin"
+# The classes the default character is built from and the input that drives
+# it: by contract, so the plugin links none of their crates.
+requires = [
+    { id = "pulsar.input.classes" },
+    { id = "pulsar.character.classes" },
+]

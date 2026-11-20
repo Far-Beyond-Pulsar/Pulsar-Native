@@ -1,0 +1,21 @@
+{
+  "id": "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b02",
+  "identifier": "IA_Look",
+  "description": "Turn: a 2D axis from the mouse or the right stick; X turns right. The response curve gives small movements fine control and large ones full speed, and smoothing takes the jitter out of a mouse.",
+  "value_type": "axis2d",
+  "consume_input": true,
+  "trigger_when_paused": false,
+  "actuation_threshold": 0.5,
+  "triggers": [],
+  "modifiers": [
+    {
+      "type": "response_curve",
+      "curve": "exponential",
+      "exponent": 1.6
+    },
+    {
+      "type": "smooth",
+      "speed": 18.0
+    }
+  ]
+}

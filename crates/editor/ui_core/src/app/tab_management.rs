@@ -10,6 +10,27 @@ use ui_file_manager::FileSelected;
 
 use super::{open_editors::OpenEditorInfo, PulsarApp};
 
+/// A class folder of a language with no editor of its own for the folder
+/// (a script language whose class is a source file) opens its source: the
+/// first of the language's class marker files that an editor claims. `None`
+/// when `path` is not such a folder: a Blueprint class has its own editor for
+/// the folder, so it is left alone.
+fn class_source_file(
+    path: &Path,
+    languages: &pulsar_language::LanguageRegistry,
+    claimed: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    if !engine_fs::virtual_fs::is_dir(path) || claimed(path) {
+        return None;
+    }
+    languages
+        .class_languages(path)
+        .into_iter()
+        .flat_map(|language| language.class_markers.iter())
+        .map(|marker| path.join(marker))
+        .find(|source| engine_fs::virtual_fs::is_file(source) && claimed(source))
+}
+
 impl PulsarApp {
     pub(crate) fn refresh_open_editor_snapshot(&self, cx: &App) {
         let mut snapshot = Vec::new();
@@ -187,6 +208,13 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A script class folder opens as its source file.
+        let path = class_source_file(
+            &path,
+            &pulsar_language::LanguageRegistry::current(),
+            |candidate| plugin_manager::file_type_for_path(candidate).is_some(),
+        )
+        .unwrap_or(path);
         tracing::debug!("Opening path: {:?}", path);
 
         if record_history {
@@ -254,5 +282,41 @@ impl PulsarApp {
     ) {
         tracing::debug!("File selected from external window: {:?}", event.path);
         self.open_path(event.path.clone(), window, cx);
+    }
+}
+
+#[cfg(test)]
+mod class_source_tests {
+    use super::class_source_file;
+
+    // A script language: its class is a folder holding one source file.
+    pulsar_language::submit_test_language!("tab-script", ["class.tabscript"]);
+
+    #[test]
+    fn a_script_class_folder_opens_its_source_and_other_folders_and_files_do_not() {
+        let project = tempfile::tempdir().unwrap();
+        let class = project.path().join("Door");
+        std::fs::create_dir_all(&class).unwrap();
+        std::fs::write(class.join("class.tabscript"), "").unwrap();
+        let plain = project.path().join("Plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        let languages = pulsar_language::LanguageRegistry::current();
+        // An editor claims the source file by its extension, not the folder.
+        let claimed = |path: &std::path::Path| path.extension().is_some_and(|e| e == "tabscript");
+
+        assert_eq!(
+            class_source_file(&class, &languages, claimed),
+            Some(class.join("class.tabscript"))
+        );
+        assert_eq!(class_source_file(&plain, &languages, claimed), None, "a plain folder");
+        assert_eq!(
+            class_source_file(&class.join("class.tabscript"), &languages, claimed),
+            None,
+            "a file is opened as it is"
+        );
+        // A class folder an editor claims as a folder (a Blueprint class) is left to it.
+        assert_eq!(class_source_file(&class, &languages, |p: &std::path::Path| p == class), None);
+        // No editor claims the source: nothing to open instead.
+        assert_eq!(class_source_file(&class, &languages, |_: &std::path::Path| false), None);
     }
 }

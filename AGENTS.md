@@ -12,8 +12,11 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend (no subsystem registry), EngineContext |
 | `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
+| `.agents/SCRIPT_LANGUAGES.md` | Script languages as built: the `Language` registration, the `ScriptLanguage` contract, the module store and one-language-per-class rule, class markers, the server spec and settings, diagnostics sources, `ModuleBuilder` (what a text language emits modules through) with a worked example, what the VM can and cannot express, plugin layout, testing, the layer gate. Read before adding a language |
 | `.agents/PLUGIN_API_REFACTOR_PLAN.md` | The plugin API plan (#1608): the phase 0 audit (registration matrix, raw `inventory` paths, plugin-to-plugin edges), its review, the Q1-Q4 decisions, phases, as built |
 | `.agents/COMPONENT_LIFECYCLE_PLAN.md` | The component lifecycle plan: audit of SceneDB `Actor`/`ActorRegistry`, `ComponentTickRegistration` and the script driver, the target (capability registry, `construct`, session scope, physics, Blueprint class instances), decisions, phases P1-P6, risks |
+| `.agents/LANGUAGE_PLUGINS_PLAN.md` | The language plugins plan: one `Language` registration (metadata, script compiler, language server), `LanguageServers` + `DiagnosticsStore`, rust-analyzer and typescript-language-server as plugins; audit of `pulsar_lsp`, its consumers and the `class.ts`/`graph_save.json` hardcoding, decisions, phases P1-P6, risks, issues log |
+| `.agents/COMPONENT_EVENT_SOURCES_PLAN.md` | The component event sources plan: asset kinds (and reflected properties) declare the Blueprint events a component offers, generic for any plugin; parametric event families, the `On Input Action` node, cache/invalidation and performance budgets, migration of animation and input, phases P0-P6, unverified list |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
@@ -43,6 +46,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | Skill | When |
 |---|---|
 | `/add-plugin` | create a project plugin: descriptor, contracts, root crate and `build`, tests, pins |
+| `/add-language` | add a scripting language (and its server): `Language`, front end through `ModuleBuilder`, `ScriptLanguage`, tests, checklist |
 | `/add-component` | create a world component: class, `ClassSpec`, `Actor`/`WorldActor` lifecycle, session scope, script methods and events |
 | `/add-blueprint-node`, `/blueprint-system` | add a `pulsar_std` node; how a Blueprint compiles and runs |
 | `/add-editor-panel`, `/gpui-patterns` | add a dockable editor panel; GPUI idioms |

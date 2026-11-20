@@ -12,6 +12,7 @@ ui_shell.workspace = true
 window_manager.workspace = true
 # Engine
 engine_state.workspace = true
+pulsar_settings.workspace = true
 # Logging
 tracing.workspace = true
 

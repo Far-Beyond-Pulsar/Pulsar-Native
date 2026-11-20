@@ -13,7 +13,7 @@ path = "src/main.rs"
 # build-scripts` compile every class headlessly
 # (ScriptLanguage::compile_project, #879): each language is an editor-tool
 # plugin (Blueprints, TypeScript), linked by the installed set's `editor`
-# feature, and registers itself (`plugin_editor_api::LinkedScriptLanguage`).
+# feature, and registers itself (`pulsar_language::Language`).
 # Without it, classes must already have compiled modules (the editor writes
 # them on save); they are still verified and linked.
 default = ["scripting"]
@@ -23,6 +23,8 @@ scripting = ["installed_plugins/editor"]
 pulsar_content = { workspace = true }
 engine_fs = { workspace = true }
 pulsar_class = { workspace = true }
+# The languages linked into this tool: compilers, class markers (messages).
+pulsar_language = { workspace = true }
 pulsar_script_vm = { workspace = true }
 pulsar_script_runtime = { workspace = true }
 # The engine's full native registry and event hub: modules are linked

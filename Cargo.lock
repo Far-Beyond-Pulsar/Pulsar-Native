@@ -1234,6 +1234,7 @@ dependencies = [
  "graphy-blueprint",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_script_math",
  "pulsar_script_vm",
  "serde_json",
 ]
@@ -1261,6 +1262,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_class",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -3560,7 +3562,6 @@ dependencies = [
  "editor_task_queue",
  "engine_fs",
  "engine_state",
- "flume",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -3576,7 +3577,6 @@ dependencies = [
  "helio_component",
  "inventory",
  "libloading 0.9.0",
- "lsp-types",
  "parking_lot",
  "pollster 0.4.0",
  "profiling 0.1.0",
@@ -3585,7 +3585,7 @@ dependencies = [
  "pulsar_content",
  "pulsar_error",
  "pulsar_events",
- "pulsar_lsp",
+ "pulsar_language",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -3596,7 +3596,6 @@ dependencies = [
  "pulsar_settings",
  "pulsar_traits",
  "pulsar_world_registry",
- "ropey 2.0.0-beta.1",
  "scenedb-inspector-agent",
  "serde",
  "serde_json",
@@ -4662,6 +4661,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "gameplay_plugin"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_fs",
+ "pulsar_events",
+ "pulsar_plugins",
+ "pulsar_scenedb",
+ "pulsar_traits",
+ "pulsar_world_registry",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -7707,10 +7721,12 @@ dependencies = [
  "default_pipelines_plugin",
  "editor_table_plugin",
  "engine_backend",
+ "engine_class_derive",
  "engine_fs",
  "engine_state",
  "fog_plugin",
  "foliage_plugin",
+ "gameplay_plugin",
  "gi_plugin",
  "glam 0.33.5",
  "gpui-ce",
@@ -7747,9 +7763,12 @@ dependencies = [
  "portals_plugin",
  "post_plugin",
  "psgc",
+ "pulsar-config",
  "pulsar_class",
  "pulsar_events",
  "pulsar_game",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -7759,7 +7778,9 @@ dependencies = [
  "pulsar_traits",
  "pulsar_world_registry",
  "render_bps_plugin",
+ "rust_plugin",
  "script_editor_plugin",
+ "serde",
  "serde_json",
  "skeletal_animation_plugin",
  "skeletal_assets",
@@ -7772,6 +7793,7 @@ dependencies = [
  "tracing-subscriber",
  "trait_editor_plugin",
  "trait_fixture_plugin",
+ "ui",
  "ui_common",
  "ui_editor_plugin",
  "ui_level_editor",
@@ -8297,6 +8319,7 @@ dependencies = [
  "engine_fs",
  "installed_plugins",
  "pulsar_class",
+ "pulsar_language",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
@@ -11711,6 +11734,7 @@ dependencies = [
  "inventory",
  "profiling 0.1.0",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -11752,7 +11776,9 @@ dependencies = [
  "plugin_editor_api",
  "plugin_loader_fixture",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_world_registry",
@@ -11796,16 +11822,23 @@ dependencies = [
 name = "plugin_typescript"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "engine_fs",
+ "flate2",
  "gpui-ce",
  "plugin_editor_api",
- "plugin_manager",
+ "pulsar-config",
  "pulsar_class",
+ "pulsar_install_layout",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_script_math",
  "pulsar_script_ts",
  "pulsar_script_vm",
+ "pulsar_settings",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "tracing",
  "ui",
@@ -12535,6 +12568,7 @@ dependencies = [
  "glam 0.33.5",
  "inventory",
  "pulsar_component_lifecycle",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -12651,7 +12685,6 @@ dependencies = [
  "futures",
  "gpui-ce",
  "installed_plugins",
- "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
  "profiling 1.0.18",
@@ -12660,6 +12693,7 @@ dependencies = [
  "pulsar_dialog_protocol",
  "pulsar_error",
  "pulsar_install_layout",
+ "pulsar_language",
  "pulsar_package",
  "pulsar_std",
  "reqwest 0.13.4",
@@ -12784,14 +12818,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_language"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "pulsar-config",
+ "pulsar_plugins",
+ "pulsar_script_vm",
+ "pulsar_settings",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_lsp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "editor_task_queue",
+ "engine_fs",
  "flume",
+ "futures",
  "gpui-ce",
  "lsp-types",
+ "pulsar_language",
+ "pulsar_plugins",
+ "pulsar_settings",
  "ropey 2.0.0-beta.1",
  "serde",
  "serde_json",
@@ -12827,6 +12881,7 @@ dependencies = [
  "pulsar_core",
  "pulsar_events",
  "pulsar_game",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_script_runtime",
  "pulsar_script_vm",
@@ -12862,6 +12917,7 @@ dependencies = [
  "engine_fs",
  "pulsar_class",
  "pulsar_install_layout",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_script_codegen",
  "pulsar_script_vm",
@@ -13075,6 +13131,7 @@ dependencies = [
  "inventory",
  "pulsar-config",
  "pulsar_plugins",
+ "tracing",
 ]
 
 [[package]]
@@ -13116,8 +13173,10 @@ dependencies = [
  "anyhow",
  "engine_fs",
  "inventory",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
+ "pulsar_traits",
  "serde",
  "serde_json",
  "tempfile",
@@ -14181,6 +14240,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "flate2",
+ "pulsar_language",
+ "pulsar_lsp",
+ "pulsar_plugins",
+ "pulsar_settings",
+ "serde_json",
+ "sha2 0.11.0",
+ "tracing",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14536,6 +14610,8 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "rust-i18n",
  "rust-i18n-macro",
@@ -17714,6 +17790,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "pulsar_auth",
+ "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
  "reqwest 0.13.4",
@@ -17752,8 +17829,11 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_events",
  "pulsar_install_layout",
+ "pulsar_language",
+ "pulsar_lsp",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_settings",
@@ -17859,6 +17939,7 @@ dependencies = [
  "notify 8.2.0",
  "parking_lot",
  "plugin_editor_api",
+ "pulsar_language",
  "pulsar_reflection",
  "rust-i18n",
  "schemars",
@@ -18024,6 +18105,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_class",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
@@ -18064,7 +18146,6 @@ dependencies = [
  "chrono",
  "directories 6.0.0",
  "editor_task_queue",
- "engine_backend",
  "engine_fs",
  "engine_state",
  "gpui-ce",
@@ -18072,6 +18153,8 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_class",
+ "pulsar_language",
+ "pulsar_lsp",
  "serde",
  "serde_json",
  "smallvec",
@@ -18183,7 +18266,9 @@ version = "0.1.0"
 dependencies = [
  "engine_fs",
  "gpui-ce",
+ "pulsar_language",
  "rust-i18n",
+ "serde",
  "similar 3.2.0",
  "tracing",
  "ui",
@@ -18197,6 +18282,7 @@ version = "0.1.0"
 dependencies = [
  "engine_state",
  "gpui-ce",
+ "pulsar_settings",
  "tracing",
  "ui",
  "ui_shell",

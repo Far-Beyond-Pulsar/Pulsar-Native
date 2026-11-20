@@ -39,3 +39,21 @@ pub fn on_filter_info(
 ) {
     d.set_filter(Some(DiagnosticSeverity::Information), cx);
 }
+
+pub fn on_filter_source(
+    d: &mut ProblemsDrawer,
+    action: &FilterSource,
+    _: &mut Window,
+    cx: &mut Context<ProblemsDrawer>,
+) {
+    d.set_source_filter(Some(action.source.clone()), cx);
+}
+
+pub fn on_clear_source_filter(
+    d: &mut ProblemsDrawer,
+    _: &ClearSourceFilter,
+    _: &mut Window,
+    cx: &mut Context<ProblemsDrawer>,
+) {
+    d.set_source_filter(None, cx);
+}

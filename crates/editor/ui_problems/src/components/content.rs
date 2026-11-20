@@ -731,22 +731,25 @@ pub fn render_file_preview(
                 existing.clone()
             } else {
                 let num_lines = end_line - start_line;
-                let language = std::path::Path::new(&diagnostic.file_path)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|ext| match ext {
-                        "rs" => "rust",
-                        "js" => "javascript",
-                        "ts" => "typescript",
-                        "py" => "python",
-                        "toml" => "toml",
-                        "json" => "json",
-                        "md" => "markdown",
-                        "html" => "html",
-                        "css" => "css",
-                        _ => "text",
-                    })
-                    .unwrap_or("text");
+                // A language's own grammar (its registration names it); the
+                // languages with no plugin keep a small table.
+                let path = std::path::Path::new(&diagnostic.file_path);
+                let language = pulsar_language::LanguageRegistry::current()
+                    .for_path(path)
+                    .map(|language| language.highlight_id)
+                    .filter(|id| !id.is_empty())
+                    .unwrap_or_else(|| {
+                        match path.extension().and_then(|e| e.to_str()).unwrap_or_default() {
+                            "js" => "javascript",
+                            "py" => "python",
+                            "toml" => "toml",
+                            "json" => "json",
+                            "md" => "markdown",
+                            "html" => "html",
+                            "css" => "css",
+                            _ => "text",
+                        }
+                    });
 
                 let new_state = cx.new(|cx| {
                     let mut state = InputState::new(window, cx)

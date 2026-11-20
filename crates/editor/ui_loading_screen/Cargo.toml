@@ -9,7 +9,8 @@ gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
 window_manager.workspace = true
-engine_backend.workspace = true
+pulsar_lsp.workspace = true
+pulsar_language.workspace = true
 engine_state.workspace = true
 plugin_manager.workspace = true
 plugin_editor_api = { workspace = true, features = ["editor"] }

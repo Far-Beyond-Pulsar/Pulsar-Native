@@ -312,6 +312,7 @@ the render, scene and editor ones above, the kernel's seams for what used to be 
 | `WorldSettingField` | `ui_level_editor::extend` | a setting the plugin keeps in each level's `world_settings`, edited by kind in World Settings (the input mapping, gravity) |
 | `RecordMigrationRegistration::retired_fields` | `pulsar_class::records` | fields a plugin's classes retired, removed from saved data |
 | `EditorToolRegistration`, `TitleBarItemRegistration`, `AccountMenuItemRegistration`, `ProjectOpenedRegistration` | `ui_common::editor_tools` | an optional editor tool's status-bar button and Tools menu entry, title-bar item, account-menu entry and loading-screen step (the engine's tools use them with `engine_origin!()`) |
+| `Language` | `pulsar_language` | a language, once: its id and display name, file extensions, the marker files of its classes (`class_markers`: what makes a directory a class of this language), an optional `ScriptLanguage` compiler and an optional `LanguageServerSpec`. The host routes through `LanguageRegistry` (files, classes, compilers, servers) and names no language; the one-language-per-class rule is `pulsar_class::language`; the standard server settings group is derived from the registration. A disabled plugin's language, markers and server are absent. Replaces `LinkedScriptLanguage`, `EditorPluginScripting` and a no-editor provider. How to write a language plugin, the `ScriptLanguage` contract and `ModuleBuilder`: `.agents/SCRIPT_LANGUAGES.md`, skill `/add-language` |
 | `AgentProviderRegistration` | `agent_chat_core` | a chat provider |
 | `engine_state::NewProjectContent` | the host | what a new project starts with (the editor binary's default level and its assets) |
 
@@ -751,3 +752,41 @@ writes against the registrar API (`plugin_editor_api::registrar`: `Plugin`,
 `PluginBuilder`, `export_plugin_v2!`), which presents itself to the host through
 the traits above. Roadmap: `PLUGIN_API_REFACTOR_PLAN.md` (phase 4 brings dynamic plugins
 onto the root and the catalog).
+
+### Plugin settings
+
+A plugin (or an engine crate standing in for one) lets people configure it by
+adding a `pulsar_settings::plugin::PluginSettings { origin, id, schema }` from its
+root `build` (`p.add(..)`; `id` is `""` for the plugin's main group, otherwise a
+key such as `"rust-analyzer"`; `schema` is a `fn() -> NamespaceSchema`). While the
+plugin is enabled the host registers each group in the settings database
+(`pulsar-config`) under namespace `plugin`, owner `[plugin id]` (`[plugin id,
+group id]` for a second group); disabling the plugin withdraws it
+(`ConfigManager::unregister`), and `engine_state::set_project_path` re-syncs. A
+plugin reads and observes its values through `PluginSettingsHandle`
+(`pulsar_settings::plugin::handle(origin, id)`: `get_*`, `on_change`); the database
+is the host's, a plugin never creates a second `ConfigManager`.
+
+Each value has two scopes (`engine_state::plugin_settings`): the person's
+(`<editor config dir>/plugin/<owner>.toml`) and the project's
+(`<project>/.pulsar/plugin/<owner>.toml`), sparse files holding only what was
+overridden. The effective value is the user override, else the project
+override, else the default; `read_project_layer` reads the project scope
+headlessly. The Settings window shows one `Plugin: <name>` page per plugin with
+settings, grouped by the schema's `page`, searchable, with a scope selector and
+a reset (setting a value back to its default removes the override).
+`pulsar_language::server_settings_schema` is the standard group every
+language server gets (`enabled`, `path`, `args`, `initialization_options`,
+`trace`, `start`, `idle_stop_minutes`); it is registered under the plugin that
+owns the `Language` (`pulsar.rust/rust-analyzer`). A plugin adds its own
+group beside it with `PluginSettings` (`pulsar.typescript` has `compiler_diagnostics`,
+read through `pulsar_settings::plugin::handle(origin, "")`), and a language's
+server may offer a managed install (`LanguageServerSpec::installer`) that the
+footer runs only when the person chooses it.
+
+A plugin that takes over a group an engine crate (or an earlier plugin) used to
+register adds a `pulsar_settings::plugin::SettingsMove { origin, id, from }` from
+its `build`: `engine_state::plugin_settings::activate` renames the saved user and
+project file from the old owner path to the new one when the old exists and the
+new does not, so no value is lost (`pulsar.rust` does it for
+`engine.pulsar_lsp/rust-analyzer`).

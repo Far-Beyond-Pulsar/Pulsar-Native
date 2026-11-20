@@ -52,11 +52,6 @@ pub trait BuiltinEditorProvider: Send + Sync {
         Vec::new()
     }
 
-    /// Scripting languages this built-in provider contributes.
-    fn script_languages(&self) -> Vec<std::sync::Arc<dyn plugin_editor_api::ScriptLanguage>> {
-        Vec::new()
-    }
-
     /// File-specific capabilities for selecting tools.
     fn capabilities_for_file(&self, _file_path: &Path) -> Vec<String> {
         Vec::new()
@@ -252,16 +247,6 @@ impl BuiltinEditorRegistry {
         self.providers
             .iter()
             .find(|provider| provider.provider_id() == provider_id)
-    }
-
-    /// Every scripting language from all built-in providers.
-    pub fn get_all_script_languages(
-        &self,
-    ) -> Vec<std::sync::Arc<dyn plugin_editor_api::ScriptLanguage>> {
-        self.providers
-            .iter()
-            .flat_map(|p| p.script_languages())
-            .collect()
     }
 
     /// Get all component definitions from all built-in providers.

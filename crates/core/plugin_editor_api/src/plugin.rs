@@ -29,7 +29,6 @@ pub struct PreloadContext<'a> {
 /// | [`EditorPluginStatusbar`](crate::statusbar::EditorPluginStatusbar) | `statusbar_buttons`, `accepted_drop_kinds` |
 /// | [`EditorPluginAi`](crate::ai::EditorPluginAi) | `ai_tools`, `execute_ai_tool`, `capabilities_for_file` |
 /// | [`EditorPluginComponents`](crate::components::EditorPluginComponents) | `component_definitions`, `component_factories` |
-/// | [`EditorPluginScripting`](crate::scripting::EditorPluginScripting) | `script_languages` (opt in with `export_plugin!(T, scripting)`) |
 ///
 /// For DLL-loaded plugins the
 /// [`export_plugin!`](crate::plugin::export_plugin) macro automatically
@@ -88,7 +87,6 @@ pub trait EditorPluginFull:
     + crate::statusbar::EditorPluginStatusbar
     + crate::ai::EditorPluginAi
     + crate::components::EditorPluginComponents
-    + crate::scripting::EditorPluginScripting
 {
 }
 
@@ -160,18 +158,6 @@ pub const MANIFEST_STATUS_PANICKED: u32 = 2;
 #[macro_export]
 macro_rules! export_plugin {
     ($plugin_type:ty) => {
-        $crate::export_plugin!(@export $plugin_type, {});
-    };
-    // The plugin provides scripting languages: delegate
-    // `EditorPluginScripting` to it (it must implement the trait).
-    ($plugin_type:ty, scripting) => {
-        $crate::export_plugin!(@export $plugin_type, {
-            fn script_languages(&self) -> Vec<std::sync::Arc<dyn $crate::scripting::ScriptLanguage>> {
-                $crate::scripting::EditorPluginScripting::script_languages(&self.0)
-            }
-        });
-    };
-    (@export $plugin_type:ty, { $($scripting:tt)* }) => {
         // Static storage for synced Theme data from main app
         static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
 
@@ -260,9 +246,6 @@ macro_rules! export_plugin {
             }
         }
 
-        impl $crate::scripting::EditorPluginScripting for __PluginExport {
-            $($scripting)*
-        }
 
         impl $crate::plugin::EditorPluginFull for __PluginExport {}
 

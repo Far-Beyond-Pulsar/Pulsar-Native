@@ -33,6 +33,7 @@ pub use default_pipelines_plugin;
 pub use editor_table_plugin;
 pub use fog_plugin;
 pub use foliage_plugin;
+pub use gameplay_plugin;
 pub use gi_plugin;
 pub use input_plugin;
 pub use lens_plugin;
@@ -49,6 +50,8 @@ pub use portals_plugin;
 pub use post_plugin;
 #[cfg(feature = "editor")]
 pub use render_bps_plugin;
+#[cfg(feature = "editor")]
+pub use rust_plugin;
 #[cfg(feature = "editor")]
 pub use script_editor_plugin;
 pub use skeletal_animation_plugin;

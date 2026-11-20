@@ -1,7 +1,6 @@
 # UI Core Translations - hi
 
 # Status Bar
-StatusBar.RustAnalyzer: "rust-analyzer"
 StatusBar.Stop: "रोकें"
 StatusBar.Restart: "पुनः प्रारंभ करें"
 StatusBar.Start: "प्रारंभ करें"
@@ -12,9 +11,8 @@ Notification.Title.Dev: "डेव"
 Notification.Title.BuildInfo: "बिल्ड जानकारी"
 Notification.Title.Build: "बिल्ड"
 Notification.Title.Run: "रन"
-Notification.Title.RustAnalyzerReady: "Rust Analyzer तैयार"
-Notification.Title.AnalyzerError: "एनालाइज़र त्रुटि"
-Notification.Title.CodeIntelligenceReady: "कोड इंटेलिजेंस तैयार"
+Notification.Title.LanguageServerReady: "%{name} तैयार"
+Notification.Title.LanguageServerError: "एनालाइज़र त्रुटि"
 Notification.Title.ProjectLoaded: "प्रोजेक्ट लोड हो गया"
 Notification.Message.UseSaveAsDefault: "लेवल एडिटर टूलबार में \"डिफ़ॉल्ट के रूप में सहेजें\" का उपयोग करें।"
 Notification.Message.Opening: "%{path} खोला जा रहा है"
@@ -23,5 +21,4 @@ Notification.Message.EngineInspectorNotImplemented: "इंजन स्टे�
 Notification.Message.BuildingProject: "प्रोजेक्ट बिल्ड हो रहा है..."
 Notification.Message.RunningProject: "प्रोजेक्ट चल रहा है..."
 Notification.Message.CodeIntelligenceAvailable: "कोड इंटेलिजेंस अब उपलब्ध है"
-Notification.Message.RustAnalyzerIndexingComplete: "Rust Analyzer इंडेक्सिंग पूर्ण"
 Notification.Message.WelcomeToProject: "%{project} में आपका स्वागत है"

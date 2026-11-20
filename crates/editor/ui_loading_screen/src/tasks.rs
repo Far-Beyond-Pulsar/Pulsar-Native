@@ -41,7 +41,6 @@ const ENGINE_TASKS: &[(&str, TaskFn)] = &[
     ("Preloading open tabs", task_warm_open_tabs),
     ("Preloading plugin assets", task_preload_plugin_assets),
     ("Loading engine settings", task_load_settings),
-    ("Checking language server", task_check_lsp),
     ("Finalizing workspace", task_finalize),
 ];
 
@@ -58,6 +57,11 @@ pub(crate) struct LoadingTask {
 enum TaskRun {
     Engine(TaskFn),
     Tool(fn(&Path) -> String),
+    /// Probe a language server's executable (never install it here).
+    Server(
+        &'static pulsar_language::Language,
+        &'static pulsar_language::LanguageServerSpec,
+    ),
 }
 
 impl LoadingTask {
@@ -73,6 +77,7 @@ impl LoadingTask {
                     detail: Some(detail),
                 }
             }
+            TaskRun::Server(language, spec) => task_check_language_server(language, spec, project),
         }
     }
 }
@@ -96,6 +101,12 @@ pub(crate) fn tasks() -> Vec<LoadingTask> {
                 run: TaskRun::Tool(step.run),
             }),
     );
+    // One check per language that has a server: whether its executable is
+    // there (the first start installs it when it is not).
+    tasks.extend(pulsar_lsp::active_servers().into_iter().map(|(language, spec)| LoadingTask {
+        label: format!("Checking {}", spec.display_name),
+        run: TaskRun::Server(language, spec),
+    }));
     tasks.push(engine(last));
     tasks
 }
@@ -295,27 +306,22 @@ fn task_load_settings(_project: &Path) -> TaskResult {
     }
 }
 
-fn task_check_lsp(_project: &Path) -> TaskResult {
+fn task_check_language_server(
+    language: &'static pulsar_language::Language,
+    spec: &'static pulsar_language::LanguageServerSpec,
+    project: &Path,
+) -> TaskResult {
     let t = Instant::now();
-    let sep = if cfg!(windows) { ';' } else { ':' };
-    let found = std::env::var("PATH")
-        .unwrap_or_default()
-        .split(sep)
-        .any(|dir| {
-            // A PATH lookup on the real machine, not a project file.
-            let local = engine_fs::LocalFsProvider::new();
-            let base = Path::new(dir);
-            [base.join("rust-analyzer"), base.join("rust-analyzer.exe")]
-                .iter()
-                .any(|candidate| engine_fs::FsProvider::exists(&local, candidate).unwrap_or(false))
-        });
+    let settings = pulsar_language::ServerSettings::read(language.origin, spec.id);
+    let progress = |_: &str| {};
+    let context = pulsar_language::LocateContext::new(project, settings.path, &progress);
+    let detail = match (spec.find)(&context) {
+        Some(command) => format!("found: {}", command.program.display()),
+        None => "not found (installed on first use)".to_string(),
+    };
     TaskResult {
         elapsed: t.elapsed(),
-        detail: Some(if found {
-            "found".to_string()
-        } else {
-            "not in PATH".to_string()
-        }),
+        detail: Some(detail),
     }
 }
 

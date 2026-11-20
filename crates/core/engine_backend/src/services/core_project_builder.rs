@@ -732,8 +732,8 @@ fn write_if_changed(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     {
         return Ok(());
     }
-    // cargo and rust-analyzer read these files while the editor regenerates
-    // them: replace atomically so neither ever sees a truncated manifest.
+    // cargo and the language servers read these files while the editor regenerates
+    // them: replace atomically so none ever sees a truncated manifest.
     match virtual_fs::write_file_atomically(path, content) {
         Ok(()) => Ok(()),
         Err(error) if virtual_fs::is_remote() => {

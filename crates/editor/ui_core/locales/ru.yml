@@ -1,7 +1,6 @@
 # UI Core Translations - ru
 
 # Status Bar
-StatusBar.RustAnalyzer: "rust-analyzer"
 StatusBar.Stop: "Стоп"
 StatusBar.Restart: "Перезапустить"
 StatusBar.Start: "Запуск"
@@ -12,9 +11,8 @@ Notification.Title.Dev: "Dev"
 Notification.Title.BuildInfo: "Информация о сборке"
 Notification.Title.Build: "Сборка"
 Notification.Title.Run: "Запуск"
-Notification.Title.RustAnalyzerReady: "Rust Analyzer готов"
-Notification.Title.AnalyzerError: "Ошибка анализатора"
-Notification.Title.CodeIntelligenceReady: "Интеллект кода готов"
+Notification.Title.LanguageServerReady: "%{name} готов"
+Notification.Title.LanguageServerError: "Ошибка анализатора"
 Notification.Title.ProjectLoaded: "Проект загружен"
 Notification.Message.UseSaveAsDefault: "Используйте «Сохранить как умолчание» в панели редактора уровней."
 Notification.Message.Opening: "Открытие %{path}"
@@ -23,5 +21,4 @@ Notification.Message.EngineInspectorNotImplemented: "Инспектор сост
 Notification.Message.BuildingProject: "Сборка проекта..."
 Notification.Message.RunningProject: "Запуск проекта..."
 Notification.Message.CodeIntelligenceAvailable: "Интеллект кода теперь доступен"
-Notification.Message.RustAnalyzerIndexingComplete: "Индексация Rust Analyzer завершена"
 Notification.Message.WelcomeToProject: "Добро пожаловать в %{project}"

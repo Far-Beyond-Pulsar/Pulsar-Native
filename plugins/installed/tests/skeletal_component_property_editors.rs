@@ -78,3 +78,21 @@ fn asset_ref_properties_round_trip_through_the_runtime_registry() {
         "null clears the reference: {none:?}"
     );
 }
+
+/// The player input component's mapping is picked with the shared asset
+/// picker (by `.inputmap`), not typed into a text box.
+#[test]
+fn the_player_input_mapping_has_an_asset_picker() {
+    let _ = installed_plugins::input_plugin::PlayerInputComponent::default();
+    has_editors("PlayerInputComponent", &["mapping"]);
+    let instance = REGISTRY.create_instance("PlayerInputComponent").unwrap();
+    let mapping = instance
+        .get_properties()
+        .into_iter()
+        .find(|p| p.name == "mapping")
+        .unwrap();
+    assert_eq!(
+        mapping.type_info.type_name, "InputMapPath",
+        "a path type, not a bare String"
+    );
+}

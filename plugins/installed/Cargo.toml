@@ -20,6 +20,7 @@ decals_plugin = { workspace = true }
 default_pipelines_plugin = { workspace = true }
 fog_plugin = { workspace = true }
 foliage_plugin = { workspace = true }
+gameplay_plugin = { workspace = true }
 gi_plugin = { workspace = true }
 input_plugin = { workspace = true }
 lens_plugin = { workspace = true }
@@ -32,6 +33,7 @@ physics_plugin = { workspace = true }
 portals_plugin = { workspace = true }
 post_plugin = { workspace = true }
 render_bps_plugin = { workspace = true, optional = true }
+rust_plugin = { workspace = true, optional = true }
 sky_plugin = { workspace = true }
 splines_plugin = { workspace = true }
 sprites_plugin = { workspace = true }
@@ -60,6 +62,7 @@ editor = [
     "default_pipelines_plugin/editor",
     "fog_plugin/editor",
     "foliage_plugin/editor",
+    "gameplay_plugin/editor",
     "gi_plugin/editor",
     "input_plugin/editor",
     "lens_plugin/editor",
@@ -72,6 +75,7 @@ editor = [
     "portals_plugin/editor",
     "post_plugin/editor",
     "dep:render_bps_plugin",
+    "dep:rust_plugin",
     "sky_plugin/editor",
     "splines_plugin/editor",
     "sprites_plugin/editor",
@@ -144,9 +148,17 @@ lifecycle_fixture_plugin = { path = "tests/fixtures/lifecycle_plugin" }
 pulsar_game = { workspace = true }
 pulsar_events = { workspace = true }
 pulsar_reflection = { workspace = true }
+engine_class_derive = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 pulsar_script_vm = { workspace = true }
 pulsar_std = { workspace = true }
 pulsar_class = { workspace = true }
+# The language tests (tests/languages.rs): the registry the host routes through.
+pulsar_language = { workspace = true }
+# The language-server service the Rust tests drive (tests/languages.rs).
+pulsar_lsp = { workspace = true }
+ui = { workspace = true }
+pulsar-config = { workspace = true }
 ui_common = { workspace = true }
 gpui-ce = { workspace = true, features = ["test-support"] }
 tracing = { workspace = true }

@@ -391,6 +391,10 @@ fn rebuild_component_json(class_name: &str, data: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
+    // A class of these tests has the marker of a language (a kernel crate's
+    // tests never link a plugin).
+    pulsar_language::submit_test_language!("test.graph", ["graph_save.json"]);
+
     use super::*;
 
     /// #921: the repair tool runs the same class migration as loading.

@@ -11,171 +11,82 @@ use ui_problems::ProblemsDrawer;
 // Current limitation: Hard-coded dependencies should be replaced with event-driven
 // plugin system when the plugin architecture is finalized.
 
-use engine_backend::services::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 use plugin_manager;
+use pulsar_lsp::{
+    DiagnosticsEvent, DiagnosticsStore, LanguageServers, LanguageServersEvent, ServerEvent,
+    ServerId,
+};
 use rust_i18n::t;
 
 use super::PulsarApp;
 
-mod analyzer_diagnostics;
+mod diagnostics_feed;
 
-/// Status-bar text for an analyzer status: `(status text, detail message,
-/// progress 0..=1)`. Kept separate from the GPUI handler so it is testable.
-fn status_summary(status: &AnalyzerStatus) -> (&'static str, String, f32) {
-    match status {
-        AnalyzerStatus::Idle => ("Idle", String::new(), 0.0),
-        AnalyzerStatus::Starting => (
-            "Starting...",
-            "Initializing language server".to_string(),
-            0.0,
-        ),
-        AnalyzerStatus::Indexing { progress, message } => ("Indexing", message.clone(), *progress),
-        AnalyzerStatus::Ready => ("Ready", "Code intelligence active".to_string(), 1.0),
-        AnalyzerStatus::Error(e) => ("Error", e.to_string(), 0.0),
-        AnalyzerStatus::Stopped => ("Stopped", String::new(), 0.0),
-    }
+/// What the footer and the toasts call a server: its display name.
+fn server_name(servers: &Entity<LanguageServers>, id: &ServerId, cx: &gpui::App) -> String {
+    servers
+        .read(cx)
+        .server(id, cx)
+        .map(|server| server.read(cx).spec().display_name.to_string())
+        .unwrap_or_else(|| id.server.to_string())
 }
 
-/// Store the analyzer's status text, detail and progress for the footer.
-fn set_analyzer_state(app: &mut PulsarApp, text: &str, detail: String, progress: f32) {
-    app.state.analyzer_status_text = text.to_string();
-    app.state.analyzer_detail_message = detail;
-    app.state.analyzer_progress = progress;
-}
-
-/// Show an error notification titled "Analyzer error".
-fn notify_analyzer_error(message: String, window: &mut Window, cx: &mut Context<PulsarApp>) {
-    window.push_notification(
-        ui::notification::Notification::error(t!("Notification.Title.AnalyzerError").to_string())
-            .message(message),
-        cx,
-    );
-}
-
-/// Dispatch a rust-analyzer event to its handler; each kind has one function.
-pub fn on_analyzer_event(
+/// A language server's event: a toast for the moments a person needs to
+/// know about (ready, failed); the footer reads every server's state itself,
+/// so it is only repainted.
+pub fn on_language_servers_event(
     app: &mut PulsarApp,
-    _manager: &Entity<RustAnalyzerManager>,
-    event: &AnalyzerEvent,
+    servers: &Entity<LanguageServers>,
+    event: &LanguageServersEvent,
     window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    tracing::debug!(
-        "🎯 on_analyzer_event CALLED with event type: {}",
+    if let LanguageServersEvent::Server { id, event } = event {
+        let name = server_name(servers, id, cx);
         match event {
-            AnalyzerEvent::StatusChanged(_) => "StatusChanged",
-            AnalyzerEvent::Ready => "Ready",
-            AnalyzerEvent::Error(_) => "Error",
-            AnalyzerEvent::Diagnostics(_) => "Diagnostics",
-            AnalyzerEvent::FileDiagnostics { .. } => "FileDiagnostics",
-            AnalyzerEvent::IndexingProgress { .. } => "IndexingProgress",
-        }
-    );
-
-    match event {
-        AnalyzerEvent::StatusChanged(status) => on_status_changed(app, status, window, cx),
-        AnalyzerEvent::IndexingProgress { progress, message } => {
-            on_indexing_progress(app, *progress, message, cx)
-        }
-        AnalyzerEvent::Ready => on_ready(app, window, cx),
-        AnalyzerEvent::Error(e) => on_error(app, &e.to_string(), window, cx),
-        // Per-file sets drive the open code editors directly; the problems
-        // drawer keeps working from the aggregate `Diagnostics` event.
-        AnalyzerEvent::FileDiagnostics { .. } => {}
-        AnalyzerEvent::Diagnostics(diagnostics) => {
-            analyzer_diagnostics::on_diagnostics(app, diagnostics, cx)
+            ServerEvent::Ready => {
+                window.push_notification(
+                    ui::notification::Notification::success(
+                        t!("Notification.Title.LanguageServerReady", name = name).to_string(),
+                    )
+                    .message(t!("Notification.Message.CodeIntelligenceAvailable").to_string()),
+                    cx,
+                );
+            }
+            ServerEvent::Error(message) => {
+                window.push_notification(
+                    ui::notification::Notification::error(
+                        t!("Notification.Title.LanguageServerError").to_string(),
+                    )
+                    .message(format!(
+                        "{name}: {message}
+{}",
+                        t!("Notification.Message.LanguageServerSeeFooter")
+                    )),
+                    cx,
+                );
+            }
+            ServerEvent::StatusChanged(_)
+            | ServerEvent::Progress { .. }
+            | ServerEvent::Stopped(_) => {}
         }
     }
+    // Only the footer shows a server's status.
+    app.notify_status_bar(cx);
 }
 
-/// The analyzer moved to a new lifecycle status: update the footer, and
-/// notify when it became ready or failed.
-fn on_status_changed(
+/// The diagnostics store changed: show the source's complete set in the
+/// Problems drawer (a fixed file's entries go with it).
+pub fn on_diagnostics_event(
     app: &mut PulsarApp,
-    status: &AnalyzerStatus,
-    window: &mut Window,
+    store: &Entity<DiagnosticsStore>,
+    event: &DiagnosticsEvent,
+    _window: &mut Window,
     cx: &mut Context<PulsarApp>,
 ) {
-    let (text, detail, progress) = status_summary(status);
-    set_analyzer_state(app, text, detail, progress);
-    match status {
-        AnalyzerStatus::Ready => {
-            window.push_notification(
-                ui::notification::Notification::success(
-                    t!("Notification.Title.RustAnalyzerReady").to_string(),
-                )
-                .message(t!("Notification.Message.CodeIntelligenceAvailable").to_string()),
-                cx,
-            );
-        }
-        AnalyzerStatus::Error(e) => notify_analyzer_error(e.to_string(), window, cx),
-        _ => {}
-    }
-    // Only the footer shows the analyzer status.
+    let DiagnosticsEvent::Changed { source, .. } = event;
+    diagnostics_feed::refresh_source(app, store, &source.label(), cx);
     app.notify_status_bar(cx);
-}
-
-/// Indexing progress changed: update the footer only.
-fn on_indexing_progress(
-    app: &mut PulsarApp,
-    progress: f32,
-    message: &str,
-    cx: &mut Context<PulsarApp>,
-) {
-    set_analyzer_state(app, "Indexing", message.to_string(), progress);
-    // Only the footer shows the analyzer status.
-    app.notify_status_bar(cx);
-}
-
-/// Indexing finished: mark ready and tell the user.
-fn on_ready(app: &mut PulsarApp, window: &mut Window, cx: &mut Context<PulsarApp>) {
-    let (text, detail, progress) = status_summary(&AnalyzerStatus::Ready);
-    set_analyzer_state(app, text, detail, progress);
-    window.push_notification(
-        ui::notification::Notification::success(
-            t!("Notification.Title.CodeIntelligenceReady").to_string(),
-        )
-        .message(t!("Notification.Message.RustAnalyzerIndexingComplete").to_string()),
-        cx,
-    );
-    // Only the footer shows the analyzer status.
-    app.notify_status_bar(cx);
-}
-
-/// The analyzer reported an error: show it in the footer and as a notification.
-fn on_error(app: &mut PulsarApp, message: &str, window: &mut Window, cx: &mut Context<PulsarApp>) {
-    set_analyzer_state(app, "Error", message.to_string(), 0.0);
-    notify_analyzer_error(message.to_string(), window, cx);
-    // Only the footer shows the analyzer status.
-    app.notify_status_bar(cx);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn status_summary_describes_each_lifecycle_state() {
-        assert_eq!(
-            status_summary(&AnalyzerStatus::Idle),
-            ("Idle", String::new(), 0.0)
-        );
-        assert_eq!(
-            status_summary(&AnalyzerStatus::Ready),
-            ("Ready", "Code intelligence active".to_string(), 1.0)
-        );
-        assert_eq!(
-            status_summary(&AnalyzerStatus::Indexing {
-                progress: 0.5,
-                message: "crate x".into()
-            }),
-            ("Indexing", "crate x".to_string(), 0.5)
-        );
-        assert_eq!(
-            status_summary(&AnalyzerStatus::Error("boom".into())),
-            ("Error", "boom".to_string(), 0.0)
-        );
-    }
 }
 
 pub fn on_tab_panel_event(

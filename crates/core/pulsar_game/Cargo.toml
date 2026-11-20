@@ -81,6 +81,8 @@ workspace = true
 # every plugin (render parity, plugin pass lists, memory over ticks) are the
 # installed set's own (`plugins/installed/tests`).
 installed_plugins = { workspace = true }
+# The engine's four roles, as the gameplay plugin registers them in a game.
+pulsar_traits = { workspace = true, features = ["test-roles"] }
 # Drift guard (#652): the reference actor mirrors the exporter's emitted shape and
 # must keep compiling against the pinned crates; tempfile serves the
 # end-to-end generated-project cargo check (tests/generated_project_compiles).

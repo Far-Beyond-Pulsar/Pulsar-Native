@@ -7,16 +7,7 @@
 
 #[cfg(feature = "editor")]
 use gpui::Global;
-use pulsar_script_vm::EventDecl;
-
-/// A component event exposed to visual scripting editors.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ComponentEventMetadata {
-    /// Registered reflected component class name.
-    pub component_class: String,
-    /// Stable event name and unchanged local payload field types.
-    pub event: EventDecl,
-}
+pub use pulsar_language::ComponentEventMetadata;
 
 /// Host-owned catalog of component event declarations visible in the editor.
 #[derive(Clone, Debug, Default)]

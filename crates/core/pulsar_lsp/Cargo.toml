@@ -3,13 +3,15 @@ name = "pulsar_lsp"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "LSP service layer crate for Pulsar — process lifecycle, protocol, and traits"
+description = "Language-server layer for Pulsar: the generic client, the LanguageServers service, the diagnostics store"
 
 [lints]
 workspace = true
 
 [dependencies]
 editor_task_queue = { workspace = true }
+engine_fs = { workspace = true }
+pulsar_language = { workspace = true }
 gpui-ce.workspace = true
 ui.workspace = true
 lsp-types.workspace = true
@@ -19,3 +21,9 @@ anyhow.workspace = true
 tracing.workspace = true
 ropey.workspace = true
 flume = { workspace = true }
+futures = { workspace = true }
+pulsar_plugins = { workspace = true }
+pulsar_settings = { workspace = true }
+
+[dev-dependencies]
+gpui-ce = { workspace = true, features = ["test-support"] }

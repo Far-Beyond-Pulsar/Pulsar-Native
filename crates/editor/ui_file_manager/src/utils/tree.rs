@@ -1,5 +1,15 @@
 use std::path::{Path, PathBuf};
 
+/// Marker files of the asset kinds that are folders but appear as one file in
+/// the tree (a type definition). A language's class markers are added from
+/// the language registry, so a class of any enabled language is one file too.
+const KIND_MARKERS: &[&str] = &["struct.json", "enum.json", "trait.json", "alias.json"];
+
+/// Whether a folder holding the file `name` is shown as a file, not a folder.
+fn is_folder_asset_marker(languages: &pulsar_language::LanguageRegistry, name: &str) -> bool {
+    KIND_MARKERS.contains(&name) || languages.language_of_marker(name).is_some()
+}
+
 #[derive(Clone, Debug)]
 pub struct FolderNode {
     pub path: PathBuf,
@@ -17,15 +27,12 @@ impl FolderNode {
             return None;
         }
         let name = path.file_name()?.to_str()?.to_string();
-        if [
-            "graph_save.json",
-            "struct.json",
-            "enum.json",
-            "trait.json",
-            "alias.json",
-        ]
-        .iter()
-        .any(|m| engine_fs::virtual_fs::exists(&path.join(m)).unwrap_or(false))
+        let languages = pulsar_language::LanguageRegistry::current();
+        if KIND_MARKERS
+            .iter()
+            .copied()
+            .chain(languages.class_markers())
+            .any(|m| engine_fs::virtual_fs::exists(&path.join(m)).unwrap_or(false))
         {
             return None;
         }
@@ -67,17 +74,11 @@ impl FolderNode {
                 ..Default::default()
             })
             .ok()?;
-        if entries.iter().any(|entry| {
-            !entry.is_dir
-                && [
-                    "graph_save.json",
-                    "struct.json",
-                    "enum.json",
-                    "trait.json",
-                    "alias.json",
-                ]
-                .contains(&entry.name.as_str())
-        }) {
+        let languages = pulsar_language::LanguageRegistry::current();
+        if entries
+            .iter()
+            .any(|entry| !entry.is_dir && is_folder_asset_marker(&languages, &entry.name))
+        {
             return None;
         }
         let children = entries

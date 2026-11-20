@@ -1,12 +1,13 @@
 //! What plugins and built-ins contribute to the host, and how it is collected.
 //!
 //! Registration of built-in editors, queries over
-//! statusbar buttons, script languages and component definitions, and the
+//! statusbar buttons, pre-Play script validation (through the language
+//! registry) and component definitions, and the
 //! one-shot `drain_*` calls the engine backend makes at startup.
 
 use crate::{BuiltinEditorRegistry, PluginManager};
 use plugin_editor_api::*;
-use std::sync::Arc;
+
 
 impl PluginManager {
     /// Get a mutable reference to the built-in editor registry.
@@ -51,19 +52,10 @@ impl PluginManager {
     // Component Registration (#269)
     // ========================================================================
 
-    /// Every scripting language from loaded plugins and built-in providers.
-    pub fn script_languages(&self) -> Vec<Arc<dyn plugin_editor_api::ScriptLanguage>> {
-        let mut languages: Vec<Arc<dyn plugin_editor_api::ScriptLanguage>> = self
-            .plugins
-            .values()
-            .flat_map(|loaded| loaded.plugin.script_languages())
-            .collect();
-        languages.extend(self.builtin_registry.get_all_script_languages());
-        languages
-    }
-
-    /// Run every scripting language's pre-Play validation on
-    /// `project_root`. `Err` joins the failures.
+    /// Run every scripting language's pre-Play validation on `project_root`
+    /// (the compilers of the enabled languages, from the language registry),
+    /// after the host's own class checks (a class that is two languages').
+    /// `Err` joins the failures.
     pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
         let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
             .map(|registration| plugin_editor_api::ComponentEventMetadata {
@@ -71,15 +63,21 @@ impl PluginManager {
                 event: (registration.declaration)(),
             })
             .collect();
-        let failures: Vec<String> = self
-            .script_languages()
+        let mut failures: Vec<String> = pulsar_class::class_problems(project_root)
             .iter()
-            .filter_map(|lang| {
-                lang.validate_project_with_component_events(project_root, &component_events)
-                    .err()
-                    .map(|e| format!("{}: {e}", lang.display_name()))
-            })
+            .map(ToString::to_string)
             .collect();
+        failures.extend(
+            pulsar_language::LanguageRegistry::current()
+                .compilers()
+                .iter()
+                .filter_map(|(language, compiler)| {
+                    compiler
+                        .validate_project_with_component_events(project_root, &component_events)
+                        .err()
+                        .map(|e| format!("{}: {e}", language.display_name))
+                }),
+        );
         if failures.is_empty() {
             Ok(())
         } else {

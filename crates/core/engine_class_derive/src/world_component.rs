@@ -83,7 +83,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         }
     };
 
-    let impl_block = parse_macro_input!(item as ItemImpl);
+    let mut impl_block = parse_macro_input!(item as ItemImpl);
 
     if !impl_block.generics.params.is_empty() {
         return syn::Error::new_spanned(
@@ -101,6 +101,37 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         )
         .to_compile_error()
         .into();
+    }
+
+    // `#[bp_event_source] fn name(&self) -> Vec<DynamicEvent>`: the events this
+    // component's own values add for scripts (see `pulsar_world_registry::
+    // ComponentEventSourceRegistration`). The marker is consumed here.
+    let mut event_source_method: Option<syn::Ident> = None;
+    for item in &mut impl_block.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+        let before = method.attrs.len();
+        method
+            .attrs
+            .retain(|attr| !attr.path().is_ident("bp_event_source"));
+        if method.attrs.len() == before {
+            continue;
+        }
+        let takes_shared_self = matches!(
+            method.sig.receiver(),
+            Some(receiver) if receiver.reference.is_some() && receiver.mutability.is_none()
+        ) && method.sig.inputs.len() == 1;
+        if !takes_shared_self || event_source_method.is_some() {
+            return syn::Error::new_spanned(
+                &method.sig,
+                "`#[bp_event_source]` goes on one method taking only `&self` and returning \
+                 `Vec<pulsar_world_registry::DynamicEvent>`",
+            )
+            .to_compile_error()
+            .into();
+        }
+        event_source_method = Some(method.sig.ident.clone());
     }
 
     let self_ty = &impl_block.self_ty;
@@ -171,6 +202,21 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         }
     } else {
         quote! {}
+    };
+
+    let event_source_submission = match &event_source_method {
+        Some(method) => quote! {
+            pulsar_world_registry::inventory::submit! {
+                pulsar_world_registry::ComponentEventSourceRegistration {
+                    class_name: stringify!(#self_ty_ident),
+                    events: |data| match ::pulsar_world_registry::decode_json::<#self_ty>(data) {
+                        Ok(value) => value.#method(),
+                        Err(_) => ::std::vec::Vec::new(),
+                    },
+                }
+            }
+        },
+        None => quote! {},
     };
 
     let output = quote! {
@@ -269,6 +315,8 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         }
 
         #submission
+
+        #event_source_submission
 
         #impl_block
     };

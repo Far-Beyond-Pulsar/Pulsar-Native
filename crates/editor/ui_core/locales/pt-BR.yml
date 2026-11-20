@@ -1,7 +1,6 @@
 # UI Core Translations - pt-BR
 
 # Status Bar
-StatusBar.RustAnalyzer: "rust-analyzer"
 StatusBar.Stop: "Parar"
 StatusBar.Restart: "Reiniciar"
 StatusBar.Start: "Iniciar"

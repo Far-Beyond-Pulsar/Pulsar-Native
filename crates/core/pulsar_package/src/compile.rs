@@ -2,7 +2,7 @@
 //!
 //! 1. Every scripting language linked into this tool compiles the project
 //!    ([`ScriptLanguage::compile_project`](plugin_editor_api::ScriptLanguage::compile_project)):
-//!    Blueprints with the `blueprint` feature.
+//!    each language is a plugin linked with the `scripting` feature.
 //! 2. Every class's compiled module is then loaded into a script runtime
 //!    with the engine's full native registry, event hub and the project's
 //!    capability allowlist, which verifies and links it exactly as the game
@@ -75,6 +75,14 @@ pub fn compile_project(
     // classes: move them in before anything compiles or reads them.
     pulsar_class::modules::migrate_legacy_modules(project, &ClassRegistry::scan(project));
     let registry = ClassRegistry::scan(project);
+    // The one-language rule is the host's: a class that is two languages' (or
+    // whose module another wrote) fails the build, and no language compiles it.
+    output.problems.extend(registry.problems().iter().map(|problem| ScriptProblem {
+        error: true,
+        class: Some(problem.class().to_owned()),
+        file: Some(problem.file()),
+        message: problem.to_string(),
+    }));
     let duplicate_names = duplicate_class_names(&registry);
     if !duplicate_names.is_empty() {
         output.problems.extend(duplicate_names);
@@ -105,6 +113,7 @@ pub fn compile_project(
     );
 
     let store = pulsar_class::ModuleStore::of_project(project);
+    let languages = pulsar_language::LanguageRegistry::current();
     let mut modules: Vec<(ClassEntry, Option<Module>)> = Vec::new();
     for entry in registry.entries() {
         let problem = |message: String, file: Option<PathBuf>| ScriptProblem {
@@ -114,32 +123,41 @@ pub fn compile_project(
             message,
         };
         let json = store.module_path(&entry.id);
-        let graph = entry.dir.join("graph_save.json");
+        // The source file of the class's language: the marker the registry
+        // (the languages linked and enabled) says it has.
+        let language = languages.class_languages(&entry.dir).into_iter().next();
+        let source = language.and_then(|language| {
+            language
+                .class_markers
+                .iter()
+                .map(|marker| entry.dir.join(marker))
+                .find(|path| virtual_fs::is_file(path))
+                .map(|path| (language, path))
+        });
         if !virtual_fs::is_file(&json) {
-            if virtual_fs::is_file(&graph) {
+            if let Some((language, source)) = &source {
                 output.problems.push(problem(
-                    "has a graph but no compiled module; open it in the editor and save, or build this \
-                     tool with the `blueprint` feature to compile it here"
-                        .into(),
-                    Some(graph),
-                ));
-            } else if virtual_fs::is_file(&entry.dir.join("class.ts")) {
-                output.problems.push(problem(
-                    "has TypeScript source but no compiled module; build this tool with the `typescript` feature to compile it here"
-                        .into(),
-                    Some(entry.dir.join("class.ts")),
+                    format!(
+                        "has {} source but no compiled module: open it in the editor and save, or \
+                         link the {} language into this tool to compile it here",
+                        source.file_name().and_then(|n| n.to_str()).unwrap_or("its"),
+                        language.display_name
+                    ),
+                    Some(source.clone()),
                 ));
             }
             modules.push((entry.clone(), None));
             continue;
         }
-        if is_older(&json, &graph) {
-            output.problems.push(ScriptProblem {
-                error: false,
-                class: Some(entry.name.clone()),
-                file: Some(json.clone()),
-                message: "compiled module is older than its graph; it may be stale".into(),
-            });
+        if let Some((_, source)) = &source {
+            if is_older(&json, source) {
+                output.problems.push(ScriptProblem {
+                    error: false,
+                    class: Some(entry.name.clone()),
+                    file: Some(json.clone()),
+                    message: "compiled module is older than its source; it may be stale".into(),
+                });
+            }
         }
         match virtual_fs::read_file(&json)
             .map_err(|e| e.to_string())
@@ -312,7 +330,7 @@ mod tests {
 
 // The languages linked into this tool: `scripting` links the installed set's
 // editor tools (`lib.rs` links the set), and each language registers itself
-// (`plugin_editor_api::LinkedScriptLanguage`), so this names none of them and
+// (one `pulsar_language::Language` carrying its compiler), so this names none of them and
 // finds exactly the ids and compilers the editor uses.
 #[cfg(feature = "scripting")]
 fn run_languages(
@@ -322,10 +340,10 @@ fn run_languages(
     optimization: plugin_editor_api::CookOptimization,
     output: &mut CompileOutput,
 ) {
-    for language in plugin_editor_api::linked_script_languages() {
-        tracing::info!(language = language.display_name(), "Compiling scripts");
+    for (language, compiler) in pulsar_language::LanguageRegistry::current().compilers() {
+        tracing::info!(language = language.display_name, "Compiling scripts");
         for diagnostic in
-            language.compile_project_for_cook(project, natives, component_events, optimization)
+            compiler.compile_project_for_cook(project, natives, component_events, optimization)
         {
             output.problems.push(ScriptProblem {
                 error: diagnostic.is_error(),
@@ -337,7 +355,7 @@ fn run_languages(
                 },
             });
         }
-        output.languages.push(language.id().to_owned());
+        output.languages.push(language.id.to_owned());
     }
 }
 

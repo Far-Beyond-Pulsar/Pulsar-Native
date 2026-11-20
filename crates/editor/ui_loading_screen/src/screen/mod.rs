@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use engine_backend::services::RustAnalyzerManager;
 use gpui::*;
 
 use crate::recent_projects::update_recent_projects;
@@ -29,7 +28,6 @@ pub struct LoadingScreen {
     splash: Option<Arc<RenderImage>>,
     rx: std::sync::mpsc::Receiver<LoadingEvent>,
     running_since: Option<Instant>,
-    _analyzer: Option<Entity<RustAnalyzerManager>>,
     /// Plugins being installed on this thread, one per frame, once their
     /// libraries are prepared. See [`LoadingScreen::step_plugin_install`].
     plugin_install: Option<PluginInstall>,
@@ -39,8 +37,8 @@ impl LoadingScreen {
     pub fn new_with_on_complete(
         project_path: PathBuf,
         on_complete: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) -> Self {
         let project_name = project_path
             .file_name()
@@ -51,8 +49,6 @@ impl LoadingScreen {
         let (tx, rx) = std::sync::mpsc::channel::<LoadingEvent>();
         let tasks = Arc::new(crate::tasks::tasks());
         let n = tasks.len();
-
-        let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
 
         let project_path_for_thread = project_path.clone();
         let tasks_for_thread = Arc::clone(&tasks);
@@ -109,7 +105,6 @@ impl LoadingScreen {
             on_complete,
             splash: splash_handle(),
             rx,
-            _analyzer: Some(analyzer),
             plugin_install: None,
         }
     }

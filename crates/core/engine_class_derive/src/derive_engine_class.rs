@@ -398,6 +398,19 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
         #from_json_shim
     };
 
+    // Properties that opted out of raising asset events (`events = false`).
+    let events_opt_outs: Vec<String> = match &input.data {
+        Data::Struct(data_struct) => match &data_struct.fields {
+            Fields::Named(fields) => fields
+                .named
+                .iter()
+                .filter(|field| parse_property_attr(field).no_events)
+                .filter_map(|field| field.ident.as_ref().map(|ident| ident.to_string()))
+                .collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    };
     let registration = if skip_registration {
         quote! {}
     } else {
@@ -426,6 +439,14 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
         #generated
         #registration
         #(#sub_props_assertions)*
+        #(
+            pulsar_reflection::inventory::submit! {
+                pulsar_reflection::PropertyEventsOptOut {
+                    class_name: stringify!(#name),
+                    property: #events_opt_outs,
+                }
+            }
+        )*
         #gpu_mirror_tokens
     }
     .into()

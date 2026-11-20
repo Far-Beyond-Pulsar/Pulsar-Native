@@ -177,7 +177,7 @@ fn remove_empty_parents(path: &Path, project_root: &Path) -> Result<(), SyncErro
     Ok(())
 }
 
-/// Replace a project file atomically (Cargo and rust-analyzer read these
+/// Replace a project file atomically (Cargo and the language servers read these
 /// files while the editor writes them). Remote and peer-to-peer providers
 /// have no atomic replace; they get a plain write.
 pub(crate) fn write(path: &Path, content: &[u8]) -> Result<(), SyncError> {

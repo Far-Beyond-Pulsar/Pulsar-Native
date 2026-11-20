@@ -92,6 +92,9 @@ pub fn format_modified(time: std::time::SystemTime) -> String {
 
 /// What the Type column shows: the registered file type, else the extension.
 pub fn type_label(item: &FileItem) -> String {
+    if let Some(language) = item.class_language {
+        return format!("{language} Class");
+    }
     if item.file_type_def.is_some() || item.is_folder {
         return item.display_name().to_string();
     }

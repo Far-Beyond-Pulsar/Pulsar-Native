@@ -30,6 +30,7 @@ pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 pub mod component_events;
+pub mod asset_event_sources;
 // A plugin's component classes, registered from its root's build.
 pub mod class_spec;
 pub mod construct_pump;
@@ -38,8 +39,15 @@ pub use class_spec::ClassRows;
 pub use class_spec::{ClassSpec, ComponentsBuilder};
 pub use construct_pump::EditorConstructPump;
 pub mod game_hooks;
+pub use asset_event_sources::{
+    asset_slots, component_events, component_events_with, node_title, AssetEventSource, AssetEvents, AssetPathSlot,
+    AssetSlot, AssetUse,
+    CacheStats,
+    ComponentData, EventCache, SourceCx,
+};
 pub use component_events::{
-    component_asset_events, ComponentEventCatalog, ComponentEventsRegistration,
+    CatalogEvent, ComponentEventCatalog, EventFamily, EventView, FamilyOption, FamilyParam,
+    ParamKind, ParamValues, ResolvedFamily, ResolvedOutput,
 };
 #[cfg(feature = "render")]
 // Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach

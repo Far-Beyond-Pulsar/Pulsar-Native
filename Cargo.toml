@@ -20,6 +20,10 @@ members = [
     # (`pulsar.typescript`): in-tree editor-tool plugins.
     "plugins/vendor/trait_editor",
     "plugins/vendor/typescript",
+    # The TypeScript subset compiler (oxc parser, lowering to script modules): the plugin's own crate.
+    "plugins/vendor/typescript/compiler",
+    # Rust (`pulsar.rust`): rust-analyzer as a language plugin, enabled by default.
+    "plugins/vendor/rust",
     "crates/core/*",
     "crates/editor/*",
     "crates/subsystems/*",
@@ -99,6 +103,7 @@ members = [
     # way; water and foliage also have an api crate (contracts other
     # plugins read: the terrain seam and hitbox rows, the wind rows).
     "plugins/vendor/character",
+    "plugins/vendor/gameplay",
     "plugins/vendor/fog",
     "plugins/vendor/fog/component",
     "plugins/vendor/fog/feature",
@@ -379,6 +384,7 @@ cables_feature                    = { package = "helio-pass-cables", path = "plu
 # The media and placement kinds' plugins, the same way.
 fog_component                      = { path = "plugins/vendor/fog/component" }
 character_plugin                   = { path = "plugins/vendor/character" }
+gameplay_plugin                    = { path = "plugins/vendor/gameplay" }
 fog_plugin                         = { path = "plugins/vendor/fog" }
 fog_editor                         = { path = "plugins/vendor/fog/editor" }
 post_component                     = { path = "plugins/vendor/post/component" }
@@ -432,6 +438,7 @@ pulsar_auth                        = { path = "crates/core/pulsar_auth" }
 pulsar_settings                    = { path = "crates/core/pulsar_settings" }
 engine_backend                     = { path = "crates/core/engine_backend" }
 pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
+pulsar_language                    = { path = "crates/core/pulsar_language" }
 window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
@@ -706,8 +713,9 @@ regex = "1"
 pulsar_script_vm = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_math = { path = "crates/core/pulsar_script_math" }
 pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
-pulsar_script_ts = { path = "crates/core/pulsar_script_ts" }
+pulsar_script_ts = { path = "plugins/vendor/typescript/compiler" }
 plugin_typescript = { path = "plugins/vendor/typescript" }
+rust_plugin = { path = "plugins/vendor/rust" }
 trait_editor_plugin = { path = "plugins/vendor/trait_editor" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }

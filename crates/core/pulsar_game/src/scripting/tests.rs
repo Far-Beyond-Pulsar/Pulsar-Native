@@ -2978,7 +2978,7 @@ mod roles {
             .read()
             .world
             .query::<(&PlayerInputComponent, &ComponentOwner)>()
-            .map(|(_, (component, owner))| (owner.entity(), component.mapping.clone()))
+            .map(|(_, (component, owner))| (owner.entity(), component.mapping.0.clone()))
             .collect()
     }
 

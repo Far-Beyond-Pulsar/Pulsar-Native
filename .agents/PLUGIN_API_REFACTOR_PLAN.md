@@ -131,7 +131,7 @@ Submitting plugins from the textual counts; `lights` etc. are plugin dirs under
 | `RenderHostPartRegistration` | `engine_backend/.../host_parts.rs:74` | meshes | `host_parts.rs:85` | no |
 | `AnimatedContentRegistration` | `engine_backend/.../animated_content.rs:30` | foliage x2, meshes x2, particles, water | `animated_content.rs:64,97` | no |
 | `LevelSingletonRegistration { class_name }` | `engine_backend/src/scene/level_rules.rs:53` | foliage, sky | `level_rules.rs:62` | yes (`class_name`) |
-| `ComponentEventsRegistration` | `engine_backend/src/scene/component_events.rs:38` | skm_editor (animation) | `component_events.rs:53` | no |
+| `AssetEventSource` (replaced `ComponentEventsRegistration`) | `engine_backend/src/scene/asset_event_sources.rs` | skm_editor (animation graph kind), input_plugin (input mapping kind) | `asset_event_sources.rs` (`registered::<AssetEventSource>`, gated by origin) | yes (by kind; see COMPONENT_EVENT_SOURCES_PLAN.md) |
 | `TickPhaseRegistration` | `engine_backend/src/scene/game_hooks.rs:35` | skm_editor | `game_hooks.rs:45` | no |
 | `ContentReportRegistration` | `game_hooks.rs:59` | meshes | `game_hooks.rs:69` | no |
 | `ImporterRegistration` | `asset_import/src/importer.rs:97` | meshes (plus engine-owned in `asset_import`, `ui_file_manager`) | `importer.rs:106` | derive (importer id) |

@@ -35,7 +35,8 @@ pub use db::{Declaration, Implementation, TraitDb};
 pub use index::{resolve_declared, ImplementerEntry, TraitIndex, TRAIT_ASSET_KIND};
 pub use records::{TraitMethodRecord, TraitParamRecord, TraitRecord};
 pub use roles::{
-    BindingStatus, RoleBinding, RoleRegistration, RoleSelection, RoleStart, WorldRoles,
+    class_name_of_asset, BindingStatus, RoleBinding, RoleRegistration, RoleSelection, RoleStart,
+    WorldRoles,
 };
 pub use sources::{Binding, Declared, NativeTraitImpl, Scanned, TraitImplementerSource};
 
@@ -47,3 +48,10 @@ pub use db::scope_key;
 pub use inventory;
 #[doc(hidden)]
 pub use pulsar_plugins;
+
+/// A test language whose class marker the role tests' assets name (a kernel
+/// crate's tests never link a plugin).
+#[cfg(test)]
+mod test_languages {
+    pulsar_language::submit_test_language!("test.graph", ["graph_save.json"]);
+}
