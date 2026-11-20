@@ -27,7 +27,7 @@ are covered by a row.
 | `crates/editor/ui_common/src/generic_window.rs:82` | `drawer_window!`, an alias of `pulsar_drawer_window!` "for backwards compat during migration" | none in `crates/`, `plugins/installed`, `plugins/vendor` | remove |
 | `crates/core/engine_backend/src/subsystems/render/mod.rs:18` | `pub struct WgpuRenderer;` "Stub for compatibility", re-exported at `engine_backend/src/lib.rs:35` | none outside the re-export (also none in `plugins/vendor`) | remove the stub and the re-export |
 | same file, `Framebuffer` (line 22), re-exported as `RenderFramebuffer` | struct of the same stub module | only the re-export | remove with the stub |
-| `.../helio_renderer/renderer.rs:220,678,1267`, `services/gpu_renderer.rs:536-542,548` | `RendererCommand`, `command_sender`/`command_receiver` ("Legacy feature commands", "Compatibility types retained for existing UI wiring"). The renderer drains and ignores the queue | `GpuRenderer::send_renderer_command` has no callers anywhere | remove the enum, the channel, the drain and `send_renderer_command`; fix the `Send` SAFETY comment at `gpu_renderer.rs:548` |
+| `.../helio_renderer/renderer.rs:223,678,1271`, `services/gpu_renderer.rs:536-542,548` | `RendererCommand`, `command_sender`/`command_receiver` ("Legacy feature commands", "Compatibility types retained for existing UI wiring"). The renderer drains and ignores the queue | `GpuRenderer::send_renderer_command` has no callers anywhere | remove the enum, the channel, the drain and `send_renderer_command`; fix the `Send` SAFETY comment at `gpu_renderer.rs:548` |
 | `crates/editor/ui_level_editor/src/workspace/panels/properties.rs:40-42` | `editing_property` / `property_input` fields "DEPRECATED: Old manual property editing (will be removed)" | only constructed, then passed to `ui/properties/mod.rs:33-34` as `_editing_property` / `_property_input` (unused) | remove the fields and the two parameters |
 | `crates/core/engine/src/init/graph.rs:121-123` | commented-out `window_tx` / `window_rx` "legacy channel fields (unused)" | none (comment) | remove the comment |
 | `crates/editor/ui_level_editor/src/ui/properties/object_type_fields/mod.rs:13` | doc says the legacy "Object Type" card "has been removed" | n/a (history) | remove the sentence |
@@ -64,7 +64,7 @@ when the old data can no longer occur; none has a removal date today.
 | `crates/core/level_migrate/src/main.rs:140,213,335` | wording inside the repair tool | the tool itself is the migration | keep |
 | `crates/editor/ui_core/src/app/construction.rs:320` | "(compat path)" when no splash-staged plugin manager exists | `create_plugin_manager` fallback | keep; reword |
 | `crates/editor/ui_level_editor/src/core/scene_edit/default_level/mod.rs:181`, `pulsar_class/src/records.rs:11` | the demo level builder writes `legacy_material_override` into new mesh data; load folds it into the mesh component | live, and used by tests in `plugins/installed` | migrate: write the real material field, then retire the key |
-| `agent_chat_tools/src/lib.rs:965` | `execute_plugin_tool`, a "back-compat wrapper" around `call_plugin_tool`, exposed as an AI tool | only `ui_core/src/app/manual_tool_panel.rs:329` (hides it) | migrate: check nothing prompts for the name, then remove both |
+| `agent_chat_tools/src/plugin_tools.rs:354` | `execute_plugin_tool`, a "back-compat wrapper" around `call_plugin_tool`, exposed as an AI tool | only `ui_core/src/app/manual_tool_panel.rs:329` (hides it) | migrate: check nothing prompts for the name, then remove both |
 | `crates/core/pulsar-relay/src/rendezvous/sync_protocol.rs:93,209`, `pulsar_studio_client/src/lib.rs:223,342` | "Legacy file-based messages" in the sync protocol | `RequestFile` / `FileChunk` are used by `engine_fs/src/providers/p2p.rs`, so the label is wrong or the protocol move is unfinished | migrate (decide), then fix the label |
 
 ## Tests and fixtures that name legacy shapes
@@ -83,7 +83,7 @@ These read as legacy markers but were not followed to their callers:
 `engine_class_derive/src/properties.rs:115` (the single-string `#[category("X")]`
 fallback; no use found in `plugins/vendor`, but `camera_component.rs` shows only the
 multi-argument form, so it may be removable), `engine_class_derive/src/world_component.rs:13`,
-`pulsar_world_registry/src/lib.rs:417` and `component_lifecycle.rs:1043`,
+`pulsar_world_registry/src/registration.rs:58` and `component_lifecycle/tests.rs:78`,
 `ui_level_editor/.../property_renderer.rs:8`, the `installed_plugins::physics_plugin::legacy`
 module used by `ui_level_editor/src/core/scene_edit/tests/components.rs:2,293` and
 `render_acceptance.rs:2723,2846` (it lives in `plugins/vendor/physics_plugin`, outside this

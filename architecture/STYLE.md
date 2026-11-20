@@ -48,6 +48,11 @@ starting with `#![cfg(test)]`; inside other files it is the body of a
 `src/bin/`, `examples/`, binary-only crates (a `main.rs` and no `lib.rs`) and
 `tools/`. They are programs whose output is the interface.
 
+Where printing is the feature of library code (a debug node whose job is to print,
+a standalone runner's report on stdout), put `// style: allow println - <reason>`
+on the line or the line above. The reason is required and is read in review; the
+marker is for deliberate output, not for logging.
+
 Functions are measured on all code, tests included. File length uses raw
 lines.
 

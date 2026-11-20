@@ -111,13 +111,7 @@ pub fn write_pak_set(
     }
     std::fs::create_dir_all(dir)?;
 
-    let mut inputs: BTreeMap<String, &[u8]> = BTreeMap::new();
-    for (path, bytes) in files {
-        let rel = crate::normalize_rel(path).ok_or_else(|| PakError::BadPath(path.clone()))?;
-        if rel.len() > usize::from(u16::MAX) || inputs.insert(rel, bytes).is_some() {
-            return Err(PakError::BadPath(path.clone()));
-        }
-    }
+    let inputs = normalized_inputs(files)?;
     let hashes: BTreeMap<&String, u128> = inputs
         .par_iter()
         .map(|(path, bytes)| (path, content_hash(bytes)))
@@ -130,36 +124,9 @@ pub fn write_pak_set(
     };
     let mut reused: BTreeMap<String, TocEntry> = BTreeMap::new();
     if let Some(previous) = &previous {
-        for (path, bytes) in &inputs {
-            if let Some(entry) = previous.entries.get(path) {
-                if entry.hash == hashes[path] && entry.len == bytes.len() as u64 {
-                    reused.insert(path.clone(), entry.clone());
-                }
-            }
-        }
-        let total: u64 = previous
-            .containers
-            .values()
-            .map(|len| len - CONTAINER_HEADER_LEN)
-            .sum();
-        let live: u64 = reused.values().map(TocEntry::stored_len).sum();
-        let changed_raw: u64 = inputs
-            .iter()
-            .filter(|(path, _)| !reused.contains_key(*path))
-            .map(|(_, bytes)| bytes.len() as u64)
-            .sum();
-        // The changed entries' stored size, estimated at the set's own
-        // compression ratio: the dead share is of stored bytes throughout.
-        let previous_raw: u64 = previous.entries.values().map(|e| e.len).sum();
-        let ratio = total as f64 / previous_raw.max(1) as f64;
-        let after = total as f64 + changed_raw as f64 * ratio;
-        let dead_ratio = (total - live) as f64 / after.max(1.0);
-        if dead_ratio > settings.max_dead_ratio {
-            rewrite = Some(format!(
-                "{:.0}% of the set would be replaced content (rewritten above {:.0}%)",
-                dead_ratio * 100.0,
-                settings.max_dead_ratio * 100.0
-            ));
+        reused = reusable_entries(previous, &inputs, &hashes);
+        if let Some(reason) = dead_space_rewrite(previous, &inputs, &reused, settings.max_dead_ratio) {
+            rewrite = Some(reason);
         }
     }
     if rewrite.is_some() {
@@ -183,7 +150,7 @@ pub fn write_pak_set(
     // New containers are numbered after every container there is, so none
     // overwrites one the current table of contents names.
     let existing = container_files(dir)?;
-    let mut next_index = existing
+    let next_index = existing
         .keys()
         .copied()
         .chain(previous.iter().flat_map(|p| p.containers.keys().copied()))
@@ -202,108 +169,277 @@ pub fn write_pak_set(
         }
     }
 
-    let mut report = PackReport {
+    let report = PackReport {
         entries: inputs.len(),
         reused: toc.entries.len(),
         rewritten: rewrite.is_some(),
         ..PackReport::default()
     };
 
-    // Pack the changed entries in batches: compress a batch in parallel,
-    // then encrypt and write it, so memory holds one batch.
-    const BATCH_BYTES: u64 = 64 * 1024 * 1024;
-    let mut current: Option<ContainerWriter> = None;
-    let mut written_containers: Vec<u32> = Vec::new();
-    let mut done = 0u64;
-    let mut start = 0;
-    let result = (|| -> Result<(), PakError> {
-        while start < changed.len() {
+    let mut packer = Packer {
+        dir,
+        key: &key,
+        settings,
+        hashes: &hashes,
+        changed: &changed,
+        changed_bytes,
+        toc,
+        report,
+        next_index,
+        current: None,
+        written_containers: Vec::new(),
+    };
+    if let Err(error) = packer.pack_all(on_event, cancelled) {
+        packer.discard_new_containers();
+        return Err(error);
+    }
+    let Packer { toc, mut report, .. } = packer;
+
+    publish_set(dir, &key, &toc, &mut report, on_event)?;
+    Ok(report)
+}
+
+/// The input paths normalized, rejecting a path that is not content-relative,
+/// is too long, or appears twice once normalized.
+fn normalized_inputs(files: &BTreeMap<String, Vec<u8>>) -> Result<BTreeMap<String, &[u8]>, PakError> {
+    let mut inputs: BTreeMap<String, &[u8]> = BTreeMap::new();
+    for (path, bytes) in files {
+        let rel = crate::normalize_rel(path).ok_or_else(|| PakError::BadPath(path.clone()))?;
+        if rel.len() > usize::from(u16::MAX) || inputs.insert(rel, bytes).is_some() {
+            return Err(PakError::BadPath(path.clone()));
+        }
+    }
+    Ok(inputs)
+}
+
+/// The previous set's entries that are unchanged in `inputs` and stay where
+/// they are.
+fn reusable_entries(
+    previous: &Toc,
+    inputs: &BTreeMap<String, &[u8]>,
+    hashes: &BTreeMap<&String, u128>,
+) -> BTreeMap<String, TocEntry> {
+    let mut reused = BTreeMap::new();
+    for (path, bytes) in inputs {
+        if let Some(entry) = previous.entries.get(path) {
+            if entry.hash == hashes[path] && entry.len == bytes.len() as u64 {
+                reused.insert(path.clone(), entry.clone());
+            }
+        }
+    }
+    reused
+}
+
+/// The reason to write the whole set again when too much of the previous one
+/// would be dead bytes, if it would be.
+fn dead_space_rewrite(
+    previous: &Toc,
+    inputs: &BTreeMap<String, &[u8]>,
+    reused: &BTreeMap<String, TocEntry>,
+    max_dead_ratio: f64,
+) -> Option<String> {
+    let total: u64 = previous
+        .containers
+        .values()
+        .map(|len| len - CONTAINER_HEADER_LEN)
+        .sum();
+    let live: u64 = reused.values().map(TocEntry::stored_len).sum();
+    let changed_raw: u64 = inputs
+        .iter()
+        .filter(|(path, _)| !reused.contains_key(*path))
+        .map(|(_, bytes)| bytes.len() as u64)
+        .sum();
+    // The changed entries' stored size, estimated at the set's own
+    // compression ratio: the dead share is of stored bytes throughout.
+    let previous_raw: u64 = previous.entries.values().map(|e| e.len).sum();
+    let ratio = total as f64 / previous_raw.max(1) as f64;
+    let after = total as f64 + changed_raw as f64 * ratio;
+    let dead_ratio = (total - live) as f64 / after.max(1.0);
+    (dead_ratio > max_dead_ratio).then(|| {
+        format!(
+            "{:.0}% of the set would be replaced content (rewritten above {:.0}%)",
+            dead_ratio * 100.0,
+            max_dead_ratio * 100.0
+        )
+    })
+}
+
+/// Packs the changed entries into new containers: compresses a batch in
+/// parallel, then encrypts and writes it, so memory holds one batch.
+struct Packer<'a, 'i> {
+    dir: &'a Path,
+    key: &'a ContentKey,
+    settings: PackSettings,
+    hashes: &'a BTreeMap<&'i String, u128>,
+    changed: &'a [(&'i String, &'i [u8])],
+    changed_bytes: u64,
+    toc: Toc,
+    report: PackReport,
+    next_index: u32,
+    /// The container being filled.
+    current: Option<ContainerWriter>,
+    /// The new containers finished so far.
+    written_containers: Vec<u32>,
+}
+
+/// A batch of changed entries is closed once it holds this many bytes.
+const BATCH_BYTES: u64 = 64 * 1024 * 1024;
+
+/// One entry's blocks as compressed: stored bytes, raw length and codec.
+type CompressedBlocks = Vec<(Vec<u8>, u32, Codec)>;
+
+impl Packer<'_, '_> {
+    fn pack_all(
+        &mut self,
+        on_event: &mut dyn FnMut(PackEvent),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<(), PakError> {
+        let mut done = 0u64;
+        let mut start = 0;
+        while start < self.changed.len() {
             if cancelled() {
                 return Err(PakError::Io(std::io::Error::new(
                     std::io::ErrorKind::Interrupted,
                     "packing was cancelled",
                 )));
             }
-            let mut end = start;
-            let mut batch_bytes = 0u64;
-            while end < changed.len() && (end == start || batch_bytes < BATCH_BYTES) {
-                batch_bytes += changed[end].1.len() as u64;
-                end += 1;
-            }
-            let compressed: Vec<Result<Vec<(Vec<u8>, u32, Codec)>, PakError>> = changed[start..end]
-                .par_iter()
-                .map(|(_, bytes)| {
-                    bytes
-                        .par_chunks(settings.block_size as usize)
-                        .map(|raw| compress(raw, settings.compression_level))
-                        .collect()
-                })
-                .collect();
-            for ((path, bytes), blocks) in changed[start..end].iter().zip(compressed) {
-                let blocks = blocks?;
-                let stored: u64 = blocks.iter().map(|(b, _, _)| b.len() as u64).sum();
-                let full = current
-                    .as_ref()
-                    .is_some_and(|c| c.len > CONTAINER_HEADER_LEN && c.len + stored > settings.container_size);
-                if current.is_none() || full {
-                    if let Some(done) = current.take() {
-                        finish_container(done, &mut toc, &mut written_containers, on_event)?;
-                    }
-                    if next_index >= MAX_CONTAINERS {
-                        return Err(PakError::Corrupt("too many containers".into()));
-                    }
-                    current = Some(ContainerWriter::create(dir, next_index)?);
-                    next_index += 1;
-                }
-                let container = current.as_mut().ok_or_else(|| PakError::Corrupt("no container".into()))?;
-                let mut entry_blocks = Vec::with_capacity(blocks.len());
-                for (mut data, raw, codec) in blocks {
-                    let offset = container.len;
-                    cipher::apply(&key.0, cipher::block_stream(container.index, offset), &mut data);
-                    container.write(&data)?;
-                    entry_blocks.push(Block {
-                        offset,
-                        stored: data.len() as u32,
-                        raw,
-                        codec,
-                    });
-                }
-                toc.entries.insert(
-                    (*path).clone(),
-                    TocEntry {
-                        len: bytes.len() as u64,
-                        hash: hashes[path],
-                        container: container.index,
-                        blocks: entry_blocks,
-                    },
-                );
-                report.written += 1;
-                report.written_raw += bytes.len() as u64;
-                report.written_stored += stored;
-            }
+            let (end, batch_bytes) = self.batch_end(start);
+            self.pack_batch(start, end, on_event)?;
             done += batch_bytes;
             on_event(PackEvent::Packed {
                 done,
-                total: changed_bytes,
+                total: self.changed_bytes,
             });
             start = end;
         }
-        if let Some(done) = current.take() {
-            finish_container(done, &mut toc, &mut written_containers, on_event)?;
+        if let Some(done) = self.current.take() {
+            finish_container(done, &mut self.toc, &mut self.written_containers, on_event)?;
         }
         Ok(())
-    })();
-    if let Err(error) = result {
-        // Nothing points at the new containers yet: remove them.
-        if let Some(open) = current.take() {
-            written_containers.push(open.index);
-        }
-        for index in written_containers {
-            let _ = std::fs::remove_file(dir.join(container_file_name(index)));
-        }
-        return Err(error);
     }
 
+    /// Where the batch starting at `start` ends, and its raw byte count.
+    fn batch_end(&self, start: usize) -> (usize, u64) {
+        let mut end = start;
+        let mut batch_bytes = 0u64;
+        while end < self.changed.len() && (end == start || batch_bytes < BATCH_BYTES) {
+            batch_bytes += self.changed[end].1.len() as u64;
+            end += 1;
+        }
+        (end, batch_bytes)
+    }
+
+    /// Compresses the entries `start..end` in parallel, then writes them in order.
+    fn pack_batch(
+        &mut self,
+        start: usize,
+        end: usize,
+        on_event: &mut dyn FnMut(PackEvent),
+    ) -> Result<(), PakError> {
+        let settings = self.settings;
+        let batch = &self.changed[start..end];
+        let compressed: Vec<Result<CompressedBlocks, PakError>> = batch
+            .par_iter()
+            .map(|(_, bytes)| {
+                bytes
+                    .par_chunks(settings.block_size as usize)
+                    .map(|raw| compress(raw, settings.compression_level))
+                    .collect()
+            })
+            .collect();
+        for ((path, bytes), blocks) in batch.iter().zip(compressed) {
+            self.write_entry(path, bytes, blocks?, on_event)?;
+        }
+        Ok(())
+    }
+
+    /// Encrypts and writes one entry's blocks, starting a new container when
+    /// the open one is full, and records the entry in the table of contents.
+    fn write_entry(
+        &mut self,
+        path: &String,
+        bytes: &[u8],
+        blocks: CompressedBlocks,
+        on_event: &mut dyn FnMut(PackEvent),
+    ) -> Result<(), PakError> {
+        let stored: u64 = blocks.iter().map(|(b, _, _)| b.len() as u64).sum();
+        self.ensure_container_with_room(stored, on_event)?;
+        let container = self
+            .current
+            .as_mut()
+            .ok_or_else(|| PakError::Corrupt("no container".into()))?;
+        let mut entry_blocks = Vec::with_capacity(blocks.len());
+        for (mut data, raw, codec) in blocks {
+            let offset = container.len;
+            cipher::apply(&self.key.0, cipher::block_stream(container.index, offset), &mut data);
+            container.write(&data)?;
+            entry_blocks.push(Block {
+                offset,
+                stored: data.len() as u32,
+                raw,
+                codec,
+            });
+        }
+        self.toc.entries.insert(
+            path.clone(),
+            TocEntry {
+                len: bytes.len() as u64,
+                hash: self.hashes[path],
+                container: container.index,
+                blocks: entry_blocks,
+            },
+        );
+        self.report.written += 1;
+        self.report.written_raw += bytes.len() as u64;
+        self.report.written_stored += stored;
+        Ok(())
+    }
+
+    /// Makes `current` a container that can take `stored` more bytes: the open
+    /// one, or a new one after finishing a full one.
+    fn ensure_container_with_room(
+        &mut self,
+        stored: u64,
+        on_event: &mut dyn FnMut(PackEvent),
+    ) -> Result<(), PakError> {
+        let container_size = self.settings.container_size;
+        let full = self
+            .current
+            .as_ref()
+            .is_some_and(|c| c.len > CONTAINER_HEADER_LEN && c.len + stored > container_size);
+        if self.current.is_none() || full {
+            if let Some(done) = self.current.take() {
+                finish_container(done, &mut self.toc, &mut self.written_containers, on_event)?;
+            }
+            if self.next_index >= MAX_CONTAINERS {
+                return Err(PakError::Corrupt("too many containers".into()));
+            }
+            self.current = Some(ContainerWriter::create(self.dir, self.next_index)?);
+            self.next_index += 1;
+        }
+        Ok(())
+    }
+
+    /// After a failure: nothing points at the new containers yet, so remove them.
+    fn discard_new_containers(&mut self) {
+        if let Some(open) = self.current.take() {
+            self.written_containers.push(open.index);
+        }
+        for &index in &self.written_containers {
+            let _ = std::fs::remove_file(self.dir.join(container_file_name(index)));
+        }
+    }
+}
+
+/// Replaces the table of contents in one rename, then removes the containers
+/// and legacy pak nothing points at, and fills in the report's totals.
+fn publish_set(
+    dir: &Path,
+    key: &ContentKey,
+    toc: &Toc,
+    report: &mut PackReport,
+    on_event: &mut dyn FnMut(PackEvent),
+) -> Result<(), PakError> {
     // The new table of contents replaces the old in one rename.
     let toc_bytes = toc.encode(&key.0)?;
     let temp = dir.join(format!("{TOC_FILE_NAME}.tmp"));
@@ -329,7 +465,7 @@ pub fn write_pak_set(
 
     report.containers = toc.containers.keys().map(|i| container_file_name(*i)).collect();
     report.total_stored = toc.containers.values().map(|len| len - CONTAINER_HEADER_LEN).sum();
-    Ok(report)
+    Ok(())
 }
 
 /// The previous set in `dir`, if it can be built on; else why not.

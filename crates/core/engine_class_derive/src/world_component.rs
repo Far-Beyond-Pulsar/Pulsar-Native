@@ -4,7 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{ItemImpl, parse_macro_input};
+use syn::ItemImpl;
 
 /// `#[register_world_component]`'s optional arguments:
 ///
@@ -70,6 +70,51 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
 }
 
 pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> TokenStream {
+    match expand_world_component(attr, item, submit) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
+    }
+}
+
+/// The generated function names a component's registration points at.
+struct ComponentFnNames {
+    default: syn::Ident,
+    decode: syn::Ident,
+    clone: syn::Ident,
+    remove: syn::Ident,
+    get: syn::Ident,
+    get_mut: syn::Ident,
+    property_written: syn::Ident,
+}
+
+impl ComponentFnNames {
+    fn new(class: &syn::Ident) -> Self {
+        Self {
+            default: quote::format_ident!("__pulsar_world_default_{}", class),
+            decode: quote::format_ident!("__pulsar_world_decode_{}", class),
+            clone: quote::format_ident!("__pulsar_world_clone_{}", class),
+            remove: quote::format_ident!("__pulsar_world_remove_{}", class),
+            get: quote::format_ident!("__pulsar_world_get_engine_class_{}", class),
+            get_mut: quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", class),
+            property_written: quote::format_ident!("__pulsar_world_property_written_{}", class),
+        }
+    }
+}
+
+/// The parts of the generated functions that the macro's optional arguments
+/// replace.
+struct ComponentHooks {
+    decode_expr: proc_macro2::TokenStream,
+    remove_fn_def: proc_macro2::TokenStream,
+    remove_fn_ref: proc_macro2::TokenStream,
+    property_written_body: proc_macro2::TokenStream,
+}
+
+fn expand_world_component(
+    attr: TokenStream,
+    item: TokenStream,
+    submit: bool,
+) -> syn::Result<proc_macro2::TokenStream> {
     let args = if attr.is_empty() {
         RegisterWorldComponentArgs {
             decode: None,
@@ -77,117 +122,42 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
             property_written: None,
         }
     } else {
-        match syn::parse::<RegisterWorldComponentArgs>(attr) {
-            Ok(args) => args,
-            Err(error) => return error.to_compile_error().into(),
-        }
+        syn::parse::<RegisterWorldComponentArgs>(attr)?
     };
 
-    let mut impl_block = parse_macro_input!(item as ItemImpl);
+    let mut impl_block = syn::parse::<ItemImpl>(item)?;
 
     if !impl_block.generics.params.is_empty() {
-        return syn::Error::new_spanned(
+        return Err(syn::Error::new_spanned(
             &impl_block.generics,
             "#[register_world_component] does not support generic impl blocks",
-        )
-        .to_compile_error()
-        .into();
+        ));
     }
 
     if impl_block.trait_.is_some() {
-        return syn::Error::new_spanned(
+        return Err(syn::Error::new_spanned(
             &impl_block.self_ty,
             "#[register_world_component] goes on an inherent `impl Type {}` block",
-        )
-        .to_compile_error()
-        .into();
+        ));
     }
 
-    // `#[bp_event_source] fn name(&self) -> Vec<DynamicEvent>`: the events this
-    // component's own values add for scripts (see `pulsar_world_registry::
-    // ComponentEventSourceRegistration`). The marker is consumed here.
-    let mut event_source_method: Option<syn::Ident> = None;
-    for item in &mut impl_block.items {
-        let syn::ImplItem::Fn(method) = item else {
-            continue;
-        };
-        let before = method.attrs.len();
-        method
-            .attrs
-            .retain(|attr| !attr.path().is_ident("bp_event_source"));
-        if method.attrs.len() == before {
-            continue;
-        }
-        let takes_shared_self = matches!(
-            method.sig.receiver(),
-            Some(receiver) if receiver.reference.is_some() && receiver.mutability.is_none()
-        ) && method.sig.inputs.len() == 1;
-        if !takes_shared_self || event_source_method.is_some() {
-            return syn::Error::new_spanned(
-                &method.sig,
-                "`#[bp_event_source]` goes on one method taking only `&self` and returning \
-                 `Vec<pulsar_world_registry::DynamicEvent>`",
-            )
-            .to_compile_error()
-            .into();
-        }
-        event_source_method = Some(method.sig.ident.clone());
-    }
+    let event_source_method = take_event_source_method(&mut impl_block)?;
 
     let self_ty = &impl_block.self_ty;
     let Some(self_ty_ident) = (match &**self_ty {
         syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| &s.ident),
         _ => None,
     }) else {
-        return syn::Error::new_spanned(
+        return Err(syn::Error::new_spanned(
             self_ty,
             "#[register_world_component] requires a simple named type (no generics, no qualified paths)",
-        )
-        .to_compile_error()
-        .into();
+        ));
     };
     let class_name = syn::LitStr::new(&self_ty_ident.to_string(), self_ty_ident.span());
-    let default_fn_name = quote::format_ident!("__pulsar_world_default_{}", self_ty_ident);
-    let decode_fn_name = quote::format_ident!("__pulsar_world_decode_{}", self_ty_ident);
-    let clone_fn_name = quote::format_ident!("__pulsar_world_clone_{}", self_ty_ident);
-    let remove_fn_name = quote::format_ident!("__pulsar_world_remove_{}", self_ty_ident);
-    let get_fn_name = quote::format_ident!("__pulsar_world_get_engine_class_{}", self_ty_ident);
-    let get_mut_fn_name =
-        quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
-    let property_written_fn_name =
-        quote::format_ident!("__pulsar_world_property_written_{}", self_ty_ident);
-
-    let decode_expr = match &args.decode {
-        Some(custom) => quote! { #custom(data)? },
-        None => quote! {
-            ::pulsar_world_registry::decode_json::<#self_ty>(data)?
-        },
-    };
-
-    let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
-        None => (
-            quote! {
-                #[doc(hidden)]
-                #[allow(non_snake_case)]
-                fn #remove_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-                    let _ = world.remove::<#self_ty>(entity);
-                }
-            },
-            quote! { #remove_fn_name },
-        ),
-        Some(custom) => (quote! {}, quote! { #custom }),
-    };
-
-    let property_written_body = match &args.property_written {
-        Some(custom) => quote! {
-            if let Some(value) = value.as_any_mut().downcast_mut::<#self_ty>() {
-                #custom(value, property);
-            }
-        },
-        None => quote! {
-            let _ = (value, property);
-        },
-    };
+    let names = ComponentFnNames::new(self_ty_ident);
+    let hooks = component_hooks(&args, self_ty, &names);
+    let functions = component_functions(self_ty, &names, &hooks);
+    let registration = registration_impls(self_ty, &class_name, &names, &hooks);
 
     let submission = if submit {
         quote! {
@@ -219,7 +189,122 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         None => quote! {},
     };
 
-    let output = quote! {
+    Ok(quote! {
+        #functions
+
+        #registration
+
+        #submission
+
+        #event_source_submission
+
+        #impl_block
+    })
+}
+
+/// `#[bp_event_source] fn name(&self) -> Vec<DynamicEvent>`: the events this
+/// component's own values add for scripts (see `pulsar_world_registry::
+/// ComponentEventSourceRegistration`). The marker is consumed here, and at
+/// most one method may carry it.
+fn take_event_source_method(impl_block: &mut ItemImpl) -> syn::Result<Option<syn::Ident>> {
+    let mut event_source_method: Option<syn::Ident> = None;
+    for item in &mut impl_block.items {
+        let syn::ImplItem::Fn(method) = item else {
+            continue;
+        };
+        let before = method.attrs.len();
+        method
+            .attrs
+            .retain(|attr| !attr.path().is_ident("bp_event_source"));
+        if method.attrs.len() == before {
+            continue;
+        }
+        let takes_shared_self = matches!(
+            method.sig.receiver(),
+            Some(receiver) if receiver.reference.is_some() && receiver.mutability.is_none()
+        ) && method.sig.inputs.len() == 1;
+        if !takes_shared_self || event_source_method.is_some() {
+            return Err(syn::Error::new_spanned(
+                &method.sig,
+                "`#[bp_event_source]` goes on one method taking only `&self` and returning \
+                 `Vec<pulsar_world_registry::DynamicEvent>`",
+            ));
+        }
+        event_source_method = Some(method.sig.ident.clone());
+    }
+    Ok(event_source_method)
+}
+
+/// Resolves the optional `decode`, `remove` and `property_written` arguments
+/// against the generated defaults.
+fn component_hooks(
+    args: &RegisterWorldComponentArgs,
+    self_ty: &syn::Type,
+    names: &ComponentFnNames,
+) -> ComponentHooks {
+    let decode_expr = match &args.decode {
+        Some(custom) => quote! { #custom(data)? },
+        None => quote! {
+            ::pulsar_world_registry::decode_json::<#self_ty>(data)?
+        },
+    };
+
+    let remove_fn_name = &names.remove;
+    let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
+        None => (
+            quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                fn #remove_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+                    let _ = world.remove::<#self_ty>(entity);
+                }
+            },
+            quote! { #remove_fn_name },
+        ),
+        Some(custom) => (quote! {}, quote! { #custom }),
+    };
+
+    let property_written_body = match &args.property_written {
+        Some(custom) => quote! {
+            if let Some(value) = value.as_any_mut().downcast_mut::<#self_ty>() {
+                #custom(value, property);
+            }
+        },
+        None => quote! {
+            let _ = (value, property);
+        },
+    };
+    ComponentHooks {
+        decode_expr,
+        remove_fn_def,
+        remove_fn_ref,
+        property_written_body,
+    }
+}
+
+/// The hidden free functions the registration's function pointers name:
+/// default, decode, clone, property-written, and the live `World` accessors.
+fn component_functions(
+    self_ty: &syn::Type,
+    names: &ComponentFnNames,
+    hooks: &ComponentHooks,
+) -> proc_macro2::TokenStream {
+    let ComponentFnNames {
+        default: default_fn_name,
+        decode: decode_fn_name,
+        clone: clone_fn_name,
+        get: get_fn_name,
+        get_mut: get_mut_fn_name,
+        property_written: property_written_fn_name,
+        ..
+    } = names;
+    let ComponentHooks {
+        decode_expr,
+        remove_fn_def,
+        property_written_body,
+        ..
+    } = hooks;
+    quote! {
         #remove_fn_def
 
         #[doc(hidden)]
@@ -282,7 +367,27 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
             // after the edit, and only if it was written through.
             pulsar_world_registry::EngineClassMut::of::<#self_ty>(world, entity)
         }
+    }
+}
 
+/// The `PULSAR_WORLD_COMPONENT` constant and the `WorldComponentClass` impl.
+fn registration_impls(
+    self_ty: &syn::Type,
+    class_name: &syn::LitStr,
+    names: &ComponentFnNames,
+    hooks: &ComponentHooks,
+) -> proc_macro2::TokenStream {
+    let ComponentFnNames {
+        default: default_fn_name,
+        decode: decode_fn_name,
+        clone: clone_fn_name,
+        get: get_fn_name,
+        get_mut: get_mut_fn_name,
+        property_written: property_written_fn_name,
+        ..
+    } = names;
+    let remove_fn_ref = &hooks.remove_fn_ref;
+    quote! {
         impl #self_ty {
             /// This class's `World` registration (`#[world_component]`):
             /// what the plugin's root adds through its builder
@@ -313,13 +418,5 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
             const REGISTRATION: pulsar_world_registry::WorldComponentRegistration =
                 <#self_ty>::PULSAR_WORLD_COMPONENT;
         }
-
-        #submission
-
-        #event_source_submission
-
-        #impl_block
-    };
-
-    output.into()
+    }
 }

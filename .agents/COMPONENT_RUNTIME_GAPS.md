@@ -215,7 +215,7 @@ than pretending each event is an ordinary callable method.
   terrain methods and edit journal mutation.
 - `crates/renderer/helio/crates/helio-component/src/components/voxel_component_runtime.rs`:
   voxel World registrations and the terrain's component runtime.
-- `crates/core/pulsar_world_registry/src/lib.rs`, `src/values.rs` and `src/dispatch.rs`:
+- `crates/core/pulsar_world_registry/src/classes.rs`, `src/values.rs` and `src/dispatch.rs`:
   typed World values (factory, boundary decode, clone, erased insert/remove)
   and reflected property/method dispatch.
 - `crates/core/pulsar_world_registry/src/component_lifecycle.rs`: live

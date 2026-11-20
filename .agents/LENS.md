@@ -140,7 +140,7 @@ camera to render a wider view or the corners clamp to the edge pixel.
    aspect, so the row is rewritten when the aspect changes.
 2. The host widens the frame camera: `camera.with_overscan(factor)` scales the
    projection's `x`/`y` rows by `1 / factor`. The editor viewport
-   (`engine_backend` `helio_renderer/renderer.rs`), play-in-editor
+   (`engine_backend` `helio_renderer/scene_renderer.rs`), play-in-editor
    (`pulsar_game/src/embed.rs`) and the standalone game
    (`pulsar_game/src/windowed_app.rs`) each call both once per frame, before the
    mirror flush. The voxel chunk pass draws with that widened frame camera.

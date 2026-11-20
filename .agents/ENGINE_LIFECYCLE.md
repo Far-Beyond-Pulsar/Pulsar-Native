@@ -1,6 +1,6 @@
 # Engine lifecycle
 
-The engine starts in `crates/core/engine/src/main.rs`. The startup is driven
+The engine starts in `crates/core/engine/src/main.rs` (the graph and the event loop; the GPUI application setup is in `startup.rs`). The startup is driven
 by an explicit dependency graph (`InitGraph`) rather than a linear sequence.
 
 ## InitGraph

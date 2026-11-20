@@ -522,7 +522,7 @@ Tests that cover it: `pulsar_reflection` `asset_kind_hint_tests`; `engine_backen
 ### Where it lives (uncommitted)
 
 - Main repo: `crates/core/engine_class_derive/src/{derive_engine_class.rs, properties.rs,
-  world_component.rs}`, `crates/core/pulsar_world_registry/src/lib.rs`,
+  world_component.rs}`, `crates/core/pulsar_world_registry/src/{lib.rs, component_events.rs}`,
   `crates/core/engine_backend/src/{lib.rs, scene/{mod.rs, component_events.rs,
   asset_event_sources.rs}}`, `plugins/installed/tests/component_event_sources.rs`, this plan,
   `AGENTS.md`, `PLUGIN_API_REFACTOR_PLAN.md`, submodule pointers.

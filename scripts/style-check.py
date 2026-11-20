@@ -15,7 +15,8 @@ Rules (per file; the limits are the constants below):
   process_comments  comment lines naming `Phase N`, `P<digit>` (// comments)
                     or an issue number (`#1234`, `Pulsar-Native#1234`) that is
                     not the form `TODO(#1234): reason`
-  println           println!/eprintln! in non-test library code
+  println           println!/eprintln! in non-test library code, unless the line (or
+                    the one above) says `// style: allow println - <reason>`
   unwrap            .unwrap() in non-test code
   pub_result_string `Result<_, String>` in `pub fn` signatures (non-test)
 
@@ -174,6 +175,7 @@ CFG_TEST_MOD = re.compile(
 )
 PUB_PREFIX = re.compile(r'\bpub\s+(?:(?:async|const|unsafe|extern(?:\s+"[^"]*")?)\s+)*$')
 PRINTLN = re.compile(r"\b(?:e?println)\s*!")
+PRINT_ALLOW = re.compile(r"//\s*style:\s*allow\s+println\s+-\s+\S")
 UNWRAP = re.compile(r"\.\s*unwrap\s*\(\s*\)")
 
 
@@ -310,6 +312,15 @@ def is_test_path(rel):
     )
 
 
+def print_allowed(src_lines, line):
+    """True when the print on 1-based `line` carries `// style: allow println - <reason>`
+    on the same line or the line above (printing is the feature there)."""
+    for i in (line - 1, line - 2):
+        if 0 <= i < len(src_lines) and PRINT_ALLOW.search(src_lines[i]):
+            return True
+    return False
+
+
 def exempt_println(rel, bin_only_dirs):
     p = rel.split("/")
     return (
@@ -401,7 +412,12 @@ def measure(root):
             result["unwrap"][rel] = n
 
         if not exempt_println(rel, bin_only):
-            n = sum(1 for m in PRINTLN.finditer(code) if non_test(m.start()))
+            src_lines = src.split("\n")
+            n = sum(
+                1
+                for m in PRINTLN.finditer(code)
+                if non_test(m.start()) and not print_allowed(src_lines, line_of(m.start()))
+            )
             if n:
                 result["println"][rel] = n
     return result

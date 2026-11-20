@@ -187,6 +187,7 @@ pub fn run(setup: impl FnOnce(&mut TickLoop) -> Result<(), String>) -> i32 {
         Ok(options) => options,
         Err(message) => {
             // CLI output: bad arguments are reported to the person at the terminal.
+            // style: allow println - standalone runner output is its interface
             eprintln!("{message}");
             return 2;
         }
@@ -194,6 +195,7 @@ pub fn run(setup: impl FnOnce(&mut TickLoop) -> Result<(), String>) -> i32 {
     match run_with(options, setup) {
         Ok(Some(report)) => {
             // The headless report on stdout is the process interface (a parent parses it).
+            // style: allow println - standalone runner output is its interface
             println!("{HEADLESS_REPORT_PREFIX}{}", report.to_json());
             i32::from(!report.ok())
         }
@@ -201,6 +203,7 @@ pub fn run(setup: impl FnOnce(&mut TickLoop) -> Result<(), String>) -> i32 {
         Err(message) => {
             tracing::error!("{message}");
             // CLI output: the person at the terminal reads this; the print is the feature.
+            // style: allow println - standalone runner output is its interface
             eprintln!("{message}");
             1
         }

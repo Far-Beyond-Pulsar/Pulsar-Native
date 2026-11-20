@@ -73,6 +73,7 @@ fn sanitize_string(s: String) -> String {
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_string(message: &str) {
     // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] {}", message);
 }
 
@@ -100,6 +101,7 @@ pub fn print_string(message: &str) {
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_number(value: f64) {
     // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] Number: {}", value);
 }
 
@@ -131,6 +133,7 @@ pub fn print_number(value: f64) {
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_bool(value: bool) {
     // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] Boolean: {}", value);
 }
 
@@ -159,6 +162,7 @@ pub fn print_bool(value: bool) {
 pub fn println(message: String) {
     let message = sanitize_string(message);
     // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("{}", message);
 }
 
@@ -200,6 +204,7 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
         .replace("{1}", &value1)
         .replace("{2}", &value2);
     // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] {}", message);
 }
 
@@ -231,6 +236,7 @@ pub fn conditional_print(condition: bool, message: String) {
     let message = sanitize_string(message);
     if condition {
         // The print is the feature: this node writes to stdout by design.
+        // style: allow println - a debug node whose job is to print
         println!("[CONDITIONAL] {}", message);
     }
 }

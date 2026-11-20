@@ -140,7 +140,7 @@ Submitting plugins from the textual counts; `lights` etc. are plugin dirs under
 | `ProjectSettingsRegistration` | `pulsar_settings/src/project/mod.rs:16` | meshes | `project/mod.rs:28` | no |
 | `SettingsGroupRegistration` | `pulsar_settings/src/project/rendering.rs:26` | foliage, gi, lights, portals, voxel (5) | `rendering.rs:40` | derive (group key) |
 | `RecordMigrationRegistration` | `pulsar_class/src/records.rs:58` | meshes x2, skm_editor | `records.rs:98,122,141,225` | no |
-| `ScenePayloadRegistration` | `pulsar_world_registry/src/scene_payloads.rs:36` | voxel | `scene_payloads.rs:58,69` | no |
+| `ScenePayloadRegistration` | `pulsar_world_registry/src/scene_payloads.rs:16` | voxel | `scene_payloads.rs:58,69` | no |
 | `SceneSubsystemRegistration { name }` | `pulsar_world_registry/src/scene_subsystems.rs:13` | meshes, voxel | `scene_subsystems.rs:32` | yes (`name`) |
 | `AssetLoaderRegistration { kind }` | `helio_component/src/asset_component.rs:46` | materials | `asset_component.rs:93`; installed with a per-load `origin_enabled` check (:60-66) | yes (`kind`) |
 | `AssetReloadRegistration` | `asset_component.rs:112` | helio_component (engine), materials x2, meshes | `asset_component.rs:123` | no |
@@ -155,8 +155,8 @@ Submitting plugins from the textual counts; `lights` etc. are plugin dirs under
 
 | Type | Owner | Submitters | Readers | How gated |
 |---|---|---|---|---|
-| `WorldComponentRegistration { class_name, origin, ... }` | `pulsar_world_registry/src/lib.rs:439` | macro `#[register_world_component]` / `engine_class` in every component crate; engine-owned in `engine_backend`, `pulsar_game`, `pulsar_script_object_model` | `pulsar_world_registry/src/runtime.rs:106-110` (OWN list, `Gated`, `origin_enabled(r.origin)`) | origin filter inside the runtime table. Summary: yes (`class_name`, category from `EngineClassRegistration`) |
-| `ComponentTickRegistration`, `ComponentEventRegistration`, `UnfinishedComponentRegistration` | `pulsar_world_registry/src/lib.rs:103,112`, `unfinished.rs:21` | macros; input_plugin, physics_plugin | `runtime.rs:111-125`, gated by `class_enabled(class_name)` (all registrations of the class must be enabled) | by class name through the world registration's origin. Summary: derive (class name) |
+| `WorldComponentRegistration { class_name, origin, ... }` | `pulsar_world_registry/src/registration.rs:30` | macro `#[register_world_component]` / `engine_class` in every component crate; engine-owned in `engine_backend`, `pulsar_game`, `pulsar_script_object_model` | `pulsar_world_registry/src/runtime.rs` (`OWN`) (OWN list, `Gated`, `origin_enabled(r.origin)`) | origin filter inside the runtime table. Summary: yes (`class_name`, category from `EngineClassRegistration`) |
+| `ComponentTickRegistration`, `ComponentEventRegistration`, `UnfinishedComponentRegistration` | `pulsar_world_registry/src/component_events.rs` (`ComponentTickRegistration` has since been removed), `unfinished.rs:14` | macros; input_plugin, physics_plugin | `runtime.rs` (`OWN`), gated by `class_enabled(class_name)` (all registrations of the class must be enabled) | by class name through the world registration's origin. Summary: derive (class name) |
 
 ### 1.4 Reflection and SceneDB registrations (macro-submitted; no origin; ungated)
 
@@ -167,7 +167,7 @@ copy-attached across DLLs (`runtime.rs` modules, `PLUGIN_SYSTEM.md`).
 | Type | Owner | Submitters (textual) | Readers | Summary? |
 |---|---|---|---|---|
 | `EngineClassRegistration { name, category }` | `pulsar_reflection/src/registry.rs:26` | macro, every `EngineClass` | `registry.rs`, `runtime.rs:105` | yes (name, category) but no origin |
-| `ComponentMethodRegistration { class_name }` | `registry.rs:37` | decals, lens, splines + macro, `pulsar_game`, `pulsar_world_registry`, `pulsar_script_object_model` | `engine_class_derive/src/lib.rs:437` (raw iter inside generated code) | derive |
+| `ComponentMethodRegistration { class_name }` | `registry.rs:37` | decals, lens, splines + macro, `pulsar_game`, `pulsar_world_registry`, `pulsar_script_object_model` | `engine_class_derive/src/derive_engine_class.rs:463` (raw iter inside generated code) | derive |
 | `RuntimeTypeRegistration` | `pulsar_reflection/src/runtime_registry.rs:25` | 14 (reflection x6, `pulsar_script_object_model` x5, `pulsar_world_registry`, `ui_level_editor`, voxel) | `runtime_registry.rs` | derive |
 | `TypeMethodRegistration`, `DynMethodRegistration`, `ConversionRegistration`, `EnumVariantDocs`, `ScenePropsApplierRegistration`, `TypeRendererRegistration` | `pulsar_reflection` (`methods.rs:276`, `dyn_registry.rs:65`, `conversions.rs:28`, `lib.rs:303,353`, `type_renderer.rs:101`) | reflection and derives | `runtime.rs` `Registrations` (attach list) | no |
 | `UiPropertyEditorHint` | `pulsar_reflection/src/lib.rs:291` | `ui_common` x3, `helio_component`, voxel x2 | `helio_component/src/components/reflected_list.rs:25` (raw), `ui_common` | no |
@@ -221,7 +221,7 @@ tests, and the `pulsar_plugins::registered` wrapper itself at lib.rs:204).
 | Site | Type | Class | Action |
 |---|---|---|---|
 | `pulsar_plugins/src/lib.rs:215` | `InstalledPlugin` | engine-owned | keep (becomes the catalog's descriptor source) |
-| `pulsar_world_registry/src/runtime.rs:90-101,107-122` | WorldComponent, Tick, Event, Unfinished | engine-owned **runtime attachment** (collects each copy's list for the DLL runtime table; the gate is applied downstream in `OWN`) | keep; summary through the table, never through raw iter |
+| `pulsar_world_registry/src/runtime.rs` | WorldComponent, Tick, Event, Unfinished | engine-owned **runtime attachment** (collects each copy's list for the DLL runtime table; the gate is applied downstream in `OWN`) | keep; summary through the table, never through raw iter |
 | `pulsar_scene_model/src/runtime.rs:54,118` | `MotionGate` | engine-owned, runtime attachment | keep |
 | `pulsar_scene_model/src/frames.rs:100,127,140` | `SpaceDefiner` | engine-owned | keep ("statically linked plugins only") |
 | `pulsar_reflection/src/runtime.rs:106` (`collected`) | 10 reflection types | runtime attachment | keep |
@@ -235,7 +235,7 @@ tests, and the `pulsar_plugins::registered` wrapper itself at lib.rs:204).
 | `helio_component/src/asset_component.rs:60` | `AssetLoaderRegistration` | plugin registration, gate applied per load (:63) | keep, or move to `registered` at install time and re-check |
 | `ui_common/src/asset_thumbnails.rs:20` | `ThumbnailRendererRegistration` | **plugin registration that must be gated** (meshes) | add `origin`; note: registered once into `engine_fs::thumbnails`, so re-gating on project switch needs the generation counter |
 | `helio_component/src/components/reflected_list.rs:25` | `UiPropertyEditorHint` | engine-owned lookup (reflection) | keep |
-| `engine_class_derive/src/lib.rs:437` | `ComponentMethodRegistration` | macro-generated, class-scoped | keep |
+| `engine_class_derive/src/derive_engine_class.rs:463` | `ComponentMethodRegistration` | macro-generated, class-scoped | keep |
 | `physics_plugin/src/behavior.rs:90`, `physics_events.rs:121` | `PhysicsBehavior`, `EventSpec` | plugin-internal extension point | keep until a second plugin registers; then gate |
 | `scene_inventory/src/linked.rs:61` | Gpu*, VarLen | test-only | keep |
 | `plugins/vendor/foliage/component/src/lib.rs:382`, `lights/component/src/lib.rs:189,194`, `portals/component/src/lib.rs:107`, `sky/component/src/lib.rs:262`, `splines/component/src/lib.rs:181`, `lens/component/src/component.rs:3881`, `voxel/component/tests/voxel_component_schema.rs:104` | Level singleton, ObjectJoin, SpaceProducer, EditorLines, UiPropertyEditorHint | **test-only** (all inside `#[cfg(test)]`; checked at the cited lines: assertions that the plugin registered itself) | keep; these tests also pin the `origin`-less-registration contract and move to catalog assertions in Phase 1/1b |

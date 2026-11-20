@@ -87,15 +87,15 @@ the legacy scene seam (line numbers are from the Phase 14 audit):
   material component and stable material projection.
 - `crates/core/engine_backend/src/scene/helio_bridge.rs:336,354` — rebinds
   the SceneDB transform buffer and replaces pass-owned light inputs.
-- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs:667`
+- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs`
   — advances Helio's foliage wind clock.
-- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs:1104-1213,1250-1271,1337-1380`
+- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs`
   — editor-facing `SceneActorId` selection, picking, and transform write-back.
   This is deliberately outside the migration because it is editor state, not
   scene content; no UI source is touched.
-- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs:1414,1422`
+- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs`
   — global sky and hidden-group setup.
-- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs:1522,1541`
+- `crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs`
   — Helio foliage-handle cleanup and portal-pair actions.
 - `crates/core/pulsar_game/src/windowed_app.rs:168` — advances the same
   foliage wind clock for the standalone runtime.

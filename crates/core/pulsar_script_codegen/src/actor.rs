@@ -97,6 +97,33 @@ pub fn generate_actor(
     module: &Module,
     components: &[ComponentSpec],
 ) -> Result<String, ExportError> {
+    reject_unsupported(class_name, module)?;
+    let ident = snake_case(class_name);
+    let ty = pascal_case(class_name);
+    let class_source = generate_with(
+        module,
+        &Options {
+            vm_crate: VM.to_owned(),
+        },
+    )?;
+    let enabled: Vec<&ComponentSpec> = components.iter().filter(|c| c.enabled).collect();
+
+    let begin_play = begin_play_body(!enabled.is_empty());
+    let component_helpers = component_helpers(&ident, &ty, &enabled);
+    let class_source = indent_class_source(&class_source);
+
+    Ok(actor_source(
+        &ident,
+        &ty,
+        &component_helpers,
+        &begin_play,
+        &class_source,
+    ))
+}
+
+/// Refuses a module that uses event subscriptions or declarations: an
+/// exported actor has no runtime event context to serve them.
+fn reject_unsupported(class_name: &str, module: &Module) -> Result<(), ExportError> {
     if let Some((index, subscription)) = module.subscriptions.iter().enumerate().next() {
         let event = subscription.event.to_string();
         if let SubscriptionScope::Component(variable) = subscription.scope {
@@ -129,36 +156,39 @@ pub fn generate_actor(
             declaration.name
         )));
     }
-    let ident = snake_case(class_name);
-    let ty = pascal_case(class_name);
-    let class_source = generate_with(
-        module,
-        &Options {
-            vm_crate: VM.to_owned(),
-        },
-    )?;
-    let enabled: Vec<&ComponentSpec> = components.iter().filter(|c| c.enabled).collect();
+    Ok(())
+}
 
+/// The statements of the actor's `begin_play`: component setup when the actor
+/// has prefab components, then the script's own `begin_play`.
+fn begin_play_body(has_components: bool) -> String {
     let mut begin_play = String::new();
-    if !enabled.is_empty() {
+    if has_components {
         begin_play.push_str("        Self::__init_components(_entity, _world);\n");
         begin_play.push_str("        Self::__run_component_begin_plays(_entity, _world);\n");
     }
     begin_play.push_str("        self.script.begin_play(program(), _entity, _world);\n");
+    begin_play
+}
 
+/// The `impl` block that attaches the enabled prefab components and runs their
+/// `begin_play`; empty when there are none.
+fn component_helpers(ident: &str, ty: &str, enabled: &[&ComponentSpec]) -> String {
     let mut component_helpers = String::new();
-    if !enabled.is_empty() {
-        let mut init_body = String::new();
-        let mut begin_plays_body = String::new();
-        for component in &enabled {
-            let class = &component.class_name;
-            let json = component
-                .property_defaults_json
-                .replace('\\', "\\\\")
-                .replace('"', "\\\"");
-            let _ = write!(
-                init_body,
-                r#"        if pulsar_world_registry::instances::resolve_instance(world, entity, "{class}", 0).is_none() {{
+    if enabled.is_empty() {
+        return component_helpers;
+    }
+    let mut init_body = String::new();
+    let mut begin_plays_body = String::new();
+    for component in enabled {
+        let class = &component.class_name;
+        let json = component
+            .property_defaults_json
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        let _ = write!(
+            init_body,
+            r#"        if pulsar_world_registry::instances::resolve_instance(world, entity, "{class}", 0).is_none() {{
             // The class default, decoded once for every actor of this class.
             static __DEFAULT: pulsar_world_registry::instances::DefaultCache =
                 pulsar_world_registry::instances::DefaultCache::new();
@@ -169,10 +199,10 @@ pub fn generate_actor(
             }}
         }}
 "#
-            );
-            let _ = write!(
-                begin_plays_body,
-                r#"        if pulsar_reflection::REGISTRY.get_method("{class}", "begin_play").is_some() {{
+        );
+        let _ = write!(
+            begin_plays_body,
+            r#"        if pulsar_reflection::REGISTRY.get_method("{class}", "begin_play").is_some() {{
             if let Err(__e) = pulsar_world_registry::dispatch::invoke_component_method(
                 world,
                 entity,
@@ -185,11 +215,11 @@ pub fn generate_actor(
             }}
         }}
 "#
-            );
-        }
-        let _ = write!(
-            component_helpers,
-            r#"
+        );
+    }
+    let _ = write!(
+        component_helpers,
+        r#"
 impl {ty} {{
     /// Ensure every enabled prefab component is attached to the actor's
     /// scene object in the LIVE world (#651), as a component instance
@@ -209,10 +239,13 @@ impl {ty} {{
 {begin_plays_body}    }}
 }}
 "#
-        );
-    }
+    );
+    component_helpers
+}
 
-    let class_source: String = class_source
+/// The class's generated code indented to sit inside the `class` module.
+fn indent_class_source(class_source: &str) -> String {
+    class_source
         .lines()
         .map(|line| {
             if line.is_empty() {
@@ -221,9 +254,18 @@ impl {ty} {{
                 format!("    {line}\n")
             }
         })
-        .collect();
+        .collect()
+}
 
-    Ok(format!(
+/// The whole `events.rs` file around the class's generated code.
+fn actor_source(
+    ident: &str,
+    ty: &str,
+    component_helpers: &str,
+    begin_play: &str,
+    class_source: &str,
+) -> String {
+    format!(
         r#"//! Blueprint actor: `{ident}`
 //! Generated by pulsar_script_codegen. Do not hand-edit: changes are overwritten.
 //!
@@ -301,7 +343,7 @@ fn program() -> &'static vm::Program {{
 mod class {{
 {class_source}}}
 "#
-    ))
+    )
 }
 
 /// The files of one class's `events/` directory in a project that has none

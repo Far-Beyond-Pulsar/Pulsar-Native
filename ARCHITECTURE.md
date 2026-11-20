@@ -85,7 +85,7 @@ no kernel crate has to name a plugin.
 
 ## Startup
 
-The editor starts in `crates/core/engine/src/main.rs` and runs
+The editor starts in `crates/core/engine/src/main.rs` (GPUI application setup is in `startup.rs`) and runs
 [`.agents/ENGINE_LIFECYCLE.md`](.agents/ENGINE_LIFECYCLE.md) in this order:
 
 1. `main` does process-level setup (TLS provider, dialog helper, thread

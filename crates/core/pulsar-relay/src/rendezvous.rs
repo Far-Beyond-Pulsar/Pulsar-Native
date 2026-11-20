@@ -256,8 +256,9 @@ impl RendezvousCoordinator {
             }
         }
 
+        use ClientMessage::*;
         match msg {
-            ClientMessage::Join {
+            Join {
                 session_id: sid,
                 peer_id: pid,
                 join_token,
@@ -278,26 +279,28 @@ impl RendezvousCoordinator {
                 )
                 .await?;
             }
-            ClientMessage::Leave {
-                session_id: sid,
-                peer_id: pid,
-            } => {
-                self.handle_leave(&sid, &pid).await?;
+            Ping => {
+                tx.send(ServerMessage::Pong).await?;
             }
-            ClientMessage::KickUser {
-                session_id: sid,
-                peer_id: pid,
-                target_peer_id,
-            } => {
-                self.handle_kick(&sid, &pid, target_peer_id).await?;
-            }
-            ClientMessage::ChatMessage {
-                session_id: sid,
-                peer_id: pid,
-                message,
-            } => {
-                self.relay_chat_message(&sid, &pid, message).await?;
-            }
+            msg @ (RequestFileManifest { .. }
+            | RequestFiles { .. }
+            | RequestProjectTree { .. }
+            | RequestFile { .. }) => self.forward_request_to_host(msg).await?,
+            msg @ (Leave { .. }
+            | KickUser { .. }
+            | ChatMessage { .. }
+            | FileManifest { .. }
+            | FilesChunk { .. }
+            | FileChanged { .. }) => self.handle_session_message(msg).await?,
+            msg => self.relay_transport_message(msg).await?,
+        }
+
+        Ok(())
+    }
+
+    /// A guest's request for something the host holds, forwarded to the host.
+    async fn forward_request_to_host(&self, msg: ClientMessage) -> Result<()> {
+        match msg {
             ClientMessage::RequestFileManifest {
                 session_id: sid,
                 peer_id: pid,
@@ -309,14 +312,7 @@ impl RendezvousCoordinator {
                         from_peer_id: pid,
                     },
                 )
-                .await?;
-            }
-            ClientMessage::FileManifest {
-                session_id: sid,
-                peer_id: pid,
-                manifest_json,
-            } => {
-                self.relay_file_manifest(&sid, &pid, manifest_json).await?;
+                .await
             }
             ClientMessage::RequestFiles {
                 session_id: sid,
@@ -331,58 +327,7 @@ impl RendezvousCoordinator {
                         file_paths,
                     },
                 )
-                .await?;
-            }
-            ClientMessage::FilesChunk {
-                session_id: sid,
-                peer_id: pid,
-                files_json,
-                chunk_index,
-                total_chunks,
-            } => {
-                self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks)
-                    .await?;
-            }
-            ClientMessage::FileChanged {
-                session_id: sid,
-                peer_id: pid,
-                path,
-                kind,
-            } => {
-                self.relay_file_changed(&sid, &pid, path, kind).await?;
-            }
-            ClientMessage::P2PConnectionRequest {
-                session_id: sid,
-                peer_id: pid,
-                public_ip,
-                public_port,
-            } => {
-                self.relay_p2p_request(&sid, &pid, public_ip, public_port)
-                    .await?;
-            }
-            ClientMessage::P2PConnectionResponse {
-                session_id: sid,
-                peer_id: pid,
-                public_ip,
-                public_port,
-            } => {
-                self.relay_p2p_response(&sid, &pid, public_ip, public_port)
-                    .await?;
-            }
-            ClientMessage::RequestBinaryProxy {
-                session_id: sid,
-                peer_id: pid,
-            } => {
-                self.relay_binary_proxy_request(&sid, &pid).await?;
-            }
-            ClientMessage::BinaryProxyData {
-                session_id: sid,
-                peer_id: pid,
-                sequence,
-                is_git_protocol,
-            } => {
-                self.relay_binary_proxy_data(&sid, &pid, sequence, is_git_protocol)
-                    .await?;
+                .await
             }
             ClientMessage::RequestProjectTree {
                 session_id: sid,
@@ -395,14 +340,7 @@ impl RendezvousCoordinator {
                         from_peer_id: pid,
                     },
                 )
-                .await?;
-            }
-            ClientMessage::ProjectTreeResponse {
-                session_id: sid,
-                peer_id: pid,
-                tree_json,
-            } => {
-                self.relay_project_tree(&sid, &pid, tree_json).await?;
+                .await
             }
             ClientMessage::RequestFile {
                 session_id: sid,
@@ -417,8 +355,94 @@ impl RendezvousCoordinator {
                         file_path,
                     },
                 )
-                .await?;
+                .await
             }
+            other => anyhow::bail!("{other:?} is not a request for the host"),
+        }
+    }
+
+    /// Leaving, kicking, chat and the file manifest and change messages.
+    async fn handle_session_message(&self, msg: ClientMessage) -> Result<()> {
+        match msg {
+            ClientMessage::Leave {
+                session_id: sid,
+                peer_id: pid,
+            } => self.handle_leave(&sid, &pid).await,
+            ClientMessage::KickUser {
+                session_id: sid,
+                peer_id: pid,
+                target_peer_id,
+            } => self.handle_kick(&sid, &pid, target_peer_id).await,
+            ClientMessage::ChatMessage {
+                session_id: sid,
+                peer_id: pid,
+                message,
+            } => self.relay_chat_message(&sid, &pid, message).await,
+            ClientMessage::FileManifest {
+                session_id: sid,
+                peer_id: pid,
+                manifest_json,
+            } => self.relay_file_manifest(&sid, &pid, manifest_json).await,
+            ClientMessage::FilesChunk {
+                session_id: sid,
+                peer_id: pid,
+                files_json,
+                chunk_index,
+                total_chunks,
+            } => {
+                self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks)
+                    .await
+            }
+            ClientMessage::FileChanged {
+                session_id: sid,
+                peer_id: pid,
+                path,
+                kind,
+            } => self.relay_file_changed(&sid, &pid, path, kind).await,
+            other => anyhow::bail!("{other:?} is not a session message"),
+        }
+    }
+
+    /// The peer-to-peer connection, binary proxy, project tree and file chunk
+    /// messages a peer relays to the others.
+    async fn relay_transport_message(&self, msg: ClientMessage) -> Result<()> {
+        match msg {
+            ClientMessage::P2PConnectionRequest {
+                session_id: sid,
+                peer_id: pid,
+                public_ip,
+                public_port,
+            } => {
+                self.relay_p2p_request(&sid, &pid, public_ip, public_port)
+                    .await
+            }
+            ClientMessage::P2PConnectionResponse {
+                session_id: sid,
+                peer_id: pid,
+                public_ip,
+                public_port,
+            } => {
+                self.relay_p2p_response(&sid, &pid, public_ip, public_port)
+                    .await
+            }
+            ClientMessage::RequestBinaryProxy {
+                session_id: sid,
+                peer_id: pid,
+            } => self.relay_binary_proxy_request(&sid, &pid).await,
+            ClientMessage::BinaryProxyData {
+                session_id: sid,
+                peer_id: pid,
+                sequence,
+                is_git_protocol,
+            } => {
+                self.relay_binary_proxy_data(&sid, &pid, sequence, is_git_protocol)
+                    .await
+            }
+            ClientMessage::ProjectTreeResponse {
+                session_id: sid,
+                peer_id: pid,
+                tree_json,
+            } => self.relay_project_tree(&sid, &pid, tree_json).await,
             ClientMessage::FileChunk {
                 session_id: sid,
                 peer_id: pid,
@@ -428,14 +452,10 @@ impl RendezvousCoordinator {
                 is_last,
             } => {
                 self.relay_file_chunk(&sid, &pid, file_path, offset, data, is_last)
-                    .await?;
+                    .await
             }
-            ClientMessage::Ping => {
-                tx.send(ServerMessage::Pong).await?;
-            }
+            other => anyhow::bail!("{other:?} is not a relayed transport message"),
         }
-
-        Ok(())
     }
 
     async fn handle_join(
