@@ -33,9 +33,8 @@ static BP_FILE_SANDBOX_ROOT: OnceLock<PathBuf> = OnceLock::new();
 /// is printed and the new value is ignored).
 pub fn set_sandbox_root(root: PathBuf) {
     if BP_FILE_SANDBOX_ROOT.set(root).is_err() {
-        eprintln!(
-            "[pulsar_std] warning: BP_FILE_SANDBOX_ROOT already initialised — \
-             refusing to change the sandbox root"
+        tracing::warn!(
+            "BP_FILE_SANDBOX_ROOT already initialised, refusing to change the sandbox root"
         );
     }
 }

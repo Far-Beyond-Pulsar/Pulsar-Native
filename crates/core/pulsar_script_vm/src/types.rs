@@ -655,7 +655,7 @@ pub struct ProvidedComponent {
 /// value (`None` if there is none) and `object` to the object the
 /// component belongs to. [`DIRECT`](Self::DIRECT) treats the referenced
 /// entity as both; a provider whose components live on their own
-/// entities (Pulsar-Native#1035) supplies its own.
+/// entities supplies its own.
 #[derive(Clone, Copy, Debug)]
 pub struct ComponentAddressing {
     pub resolve: fn(&World, Entity, ComponentId) -> Option<Entity>,

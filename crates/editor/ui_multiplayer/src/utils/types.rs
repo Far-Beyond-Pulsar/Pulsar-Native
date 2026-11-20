@@ -69,7 +69,7 @@ impl UserPresence {
     pub fn new(peer_id: String) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
 
         let hash = peer_id

@@ -1,5 +1,5 @@
-//! Attaching registered component classes as component-instance entities
-//! (Pulsar-Native#1035, D1), and their JSON records at boundaries.
+//! Attaching registered component classes as component-instance entities,
+//! and their JSON records at boundaries.
 //!
 //! [`pulsar_scene_model::attachments`] owns the structure (instance
 //! entities, owner links, order, ids). This module adds what needs the class

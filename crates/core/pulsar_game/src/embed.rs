@@ -1,4 +1,4 @@
-//! **Play In Editor** embedding — host-driven, no window of our own (issue #243).
+//! **Play In Editor** embedding — host-driven, no window of our own.
 //!
 //! When the user presses *Play* in the level editor, the editor compiles the
 //! game project as a `cdylib` and loads it. Instead of `main.rs` opening a winit
@@ -44,7 +44,7 @@ thread_local! {
     static GAME: RefCell<Option<EmbeddedGame>> = const { RefCell::new(None) };
 }
 
-/// The simulation half of a Play-in-Editor game (#925): the tick loop on
+/// The simulation half of a Play-in-Editor game: the tick loop on
 /// the editor's shared world, its script driver (which follows the world's
 /// `ClassInstance`s exactly like the standalone game: placed instances,
 /// objects placed during Play and runtime spawns), class reloads from the
@@ -53,7 +53,7 @@ thread_local! {
 /// directly.
 pub struct PieSession {
     pub tick_loop: TickLoop,
-    /// Queues edited classes for reload by the script driver (#921/#922).
+    /// Queues edited classes for reload by the script driver.
     /// Events come from the host via [`pie_asset_updated`], published on
     /// this dylib's own asset bus.
     _class_reloads: Option<pulsar_events::AssetSubscription>,
@@ -65,7 +65,7 @@ impl PieSession {
     /// A session over `tick_loop`, whose project `setup()` already ran.
     /// `level` names the level `LevelLoaded` reports.
     pub fn new(mut tick_loop: TickLoop, level: Option<String>) -> Self {
-        // Scripts follow the shared world (#922): the driver `setup()`
+        // Scripts follow the shared world: the driver `setup()`
         // enabled finds the level the host already hydrated at its first
         // reconcile, and objects placed during Play the same way. Class
         // edits reach it as reload requests applied at its next frame.
@@ -188,8 +188,8 @@ impl PieSession {
         std::mem::take(&mut self.problems)
     }
 
-    /// The session's event hub as a Gamma FFI table for editor plugins
-    /// (#942). The caller owns the reference it holds.
+    /// The session's event hub as a Gamma FFI table for editor plugins.
+    /// The caller owns the reference it holds.
     pub fn export_event_bus(&self) -> pulsar_events::gamma::ffi::RawBus {
         self.tick_loop.events.export_raw()
     }
@@ -229,7 +229,7 @@ pub struct EmbeddedGame {
     /// The offscreen render target the editor samples. Recreated on resize.
     out_texture: wgpu::Texture,
     out_view: wgpu::TextureView,
-    /// The tick loop's shared world (Pulsar-Native#634): the same store
+    /// The tick loop's shared world: the same store
     /// gameplay mutates, rendered through the per-frame rebuild bridge.
     /// ABI v2 requires the host's shared-world token; this store is adopted
     /// from the host and remains SceneDB-resident
@@ -267,7 +267,7 @@ pub(crate) fn session_kind_from_abi(value: u32) -> Option<SessionKind> {
 }
 
 /// Keeps the host's shared-world transfer balanced when [`EmbeddedGame::new`]
-/// fails after it adopted the count (ABI v2, #635).
+/// fails after it adopted the count (ABI v2).
 ///
 /// The host hands over one strong count and reclaims it itself when `init`
 /// returns `INIT_ERR`. Once the guest has turned that count into an `Arc`
@@ -374,7 +374,7 @@ impl EmbeddedGame {
             .map(|n| n.get())
             .unwrap_or(4);
 
-        // ABI v2 (#635): when the host hands us its shared-world token, we
+        // ABI v2: when the host hands us its shared-world token, we
         // ADOPT the host's authoritative world as our own via the documented
         // single-count Arc transfer (host did `Arc::into_raw` on a clone; our
         // `from_raw` here reclaims exactly that count, and it drops with the
@@ -415,7 +415,7 @@ impl EmbeddedGame {
                 ))
             }
         }
-        // Native hot reload (#653): when the host stopped a still-running
+        // Native hot reload: when the host stopped a still-running
         // game to swap in this fresh build, the shared world carries the
         // previous session's entities. Arm rebinding BEFORE project setup so
         // `TickLoop::register_native_actor` re-binds script actors to their existing
@@ -450,7 +450,7 @@ impl EmbeddedGame {
         // ── Offscreen Helio renderer (external device) ───────────────────────
         let (out_texture, out_view) = make_target(&device, color_format, width, height);
 
-        // ── Renderer seam onto the shared world (#637/#634) ──────────────────
+        // ── Renderer seam onto the shared world ──────────────────
         // The world already holds the level (the host hydrated it before Play,
         // and under v2 we adopted that very store). The renderer is the
         // editor viewport's construction on the host's device; its GPU mirror
@@ -535,7 +535,7 @@ impl EmbeddedGame {
     fn tick(&mut self) {
         // 1. Game logic — one ECS/blueprint tick.
         //
-        // Locking note (ABI v2, #635): under PIE this whole call IS the
+        // Locking note (ABI v2): under PIE this whole call IS the
         // guest's tick slice -- it runs on the editor's render thread inside
         // SYM_TICK, and `TickLoop::tick_once` acquires the shared world's
         // write lock once per phase, dropping it between phases. The
@@ -563,7 +563,7 @@ impl EmbeddedGame {
 
         // 3. Camera. The shared world's camera drives the view when present
         //    (the view target's, the best CameraComponent, a Camera-typed
-        //    entity -- #637, no more unconditional freecam); the freecam
+        //    entity, no more unconditional freecam); the freecam
         //    seeded from the editor view remains the fallback, on the
         //    ground's local vertical.
         // The world's read lock is released before the ground is read.
@@ -699,7 +699,7 @@ where
             GAME.with(|g| {
                 let mut slot = g.borrow_mut();
                 *slot = Some(game);
-                ctx_ref.out_texture = slot.as_ref().unwrap().out_texture_ptr();
+                ctx_ref.out_texture = slot.as_ref().expect("slot set above").out_texture_ptr();
             });
             INIT_OK
         }
@@ -751,7 +751,7 @@ pub unsafe fn pie_input(ev: *const InputEvent) {
     });
 }
 
-/// Deliver an asset-update notification from the host (#921): published on
+/// Deliver an asset-update notification from the host: published on
 /// this game's own asset bus, where the running game's subscribers (the
 /// class reloader) pick it up. Strings are UTF-8 pointer/length pairs; an
 /// empty or null id/path means "not given".
@@ -816,7 +816,7 @@ pub unsafe fn pie_take_problems(out: *mut u8, capacity: usize) -> usize {
     })
 }
 
-/// Write a `RawBus` exporting the session's event hub to `out` (#942).
+/// Write a `RawBus` exporting the session's event hub to `out`.
 /// Returns 1 on success, 0 when no game runs or `out_size` is not the size
 /// of a `RawBus`.
 ///

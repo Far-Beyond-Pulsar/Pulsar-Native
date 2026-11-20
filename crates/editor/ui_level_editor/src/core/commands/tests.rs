@@ -172,7 +172,7 @@ mod undo_redo_tests {
 
     // ── SetComponentProperty: end-to-end through the command layer ─────────
     //
-    // Pulsar-Native#561: proves the whole live-edit call graph a real
+    // Proves the whole live-edit call graph a real
     // properties-panel color/intensity edit takes -- widget produces a typed
     // `Box<dyn Any + Send>`, `SceneCommand::SetComponentProperty` carries it
     // unchanged, `execute_command` applies it -- actually reaches the live
@@ -433,7 +433,7 @@ mod undo_redo_tests {
         );
     }
 
-    // Pulsar-Native#837: "Mark selection Static" sets every mesh/light on
+    // "Mark selection Static" sets every mesh/light on
     // every selected object in one undo step, skips objects with neither,
     // and is a no-op when everything already matches.
     #[test]
@@ -496,7 +496,7 @@ mod undo_redo_tests {
         assert_eq!(read(&state), Some(ObjectMovability::Movable));
     }
 
-    // Pulsar-Native#1035, Phase 3: undo restores typed snapshots in place.
+    // Undo restores typed snapshots in place.
     // Surviving instances keep their entity and id (nothing is respawned or
     // decoded), a removed one comes back with its id, and an unresolved
     // payload is kept as it was.
@@ -588,7 +588,7 @@ mod undo_redo_tests {
         assert_ne!(after[1].0, unresolved, "re-attached as a new entity");
     }
 
-    // Pulsar-Native#1035, Phase 3: component commands carry typed values
+    // Component commands carry typed values
     // and report a change only when one happened.
     #[test]
     fn typed_component_commands_are_undoable_and_report_no_ops() {
@@ -896,7 +896,7 @@ mod undo_redo_tests {
     }
 
     /// A gizmo drag moves the object in the renderer, outside any command;
-    /// the editor records it when the mouse is released (#931).
+    /// the editor records it when the mouse is released.
     #[test]
     fn a_gizmo_drag_is_one_undo_step_named_move() {
         use engine_backend::scene::SceneWorldExt;

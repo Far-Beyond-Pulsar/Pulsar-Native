@@ -1,4 +1,4 @@
-//! Native capabilities (#869).
+//! Native capabilities.
 //!
 //! A native can be gated behind a *capability* (its
 //! [`CAPABILITY_ATTR`] attribute, set with

@@ -61,7 +61,7 @@ pub struct EditorDomain {
     pub feature_shadows_enabled: bool,
     pub feature_bloom_enabled: bool,
     pub feature_materials_enabled: bool,
-    /// The viewport's Realtime toggle (#1123, #1109): animation (foliage
+    /// The viewport's Realtime toggle: animation (foliage
     /// wind, particles, shader-graph `time`) runs on wall time while it is
     /// on, and the viewport keeps rendering while such content is live; off,
     /// that animation is frozen. Play-in-Editor runs on the game clock.

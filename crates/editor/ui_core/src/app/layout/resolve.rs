@@ -1,4 +1,4 @@
-//! Phase 1 of a restore: turn a saved tree into a [`Plan`] without touching the
+//! First step of a restore: turn a saved tree into a [`Plan`] without touching the
 //! live UI.
 //!
 //! A [`Plan`] is plain data: splits, tab groups and tiles whose leaves are

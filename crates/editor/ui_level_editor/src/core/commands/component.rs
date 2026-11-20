@@ -170,11 +170,11 @@ fn set_component_property(
 ) -> CommandResult {
     // Typed path first -- `update_live_component_property` writes
     // `value` straight onto the live `World` component via its
-    // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
+    // reflected setter closure, no JSON anywhere.
     //
-    // `component_index` targets the exact instance being edited
-    // (Pulsar-Native#519): every instance is its own entity with
-    // its own typed value (Pulsar-Native#1035). Only an
+    // `component_index` targets the exact instance being edited:
+    // every instance is its own entity with
+    // its own typed value. Only an
     // unresolved payload falls back to the payload write below.
     //
     // A class a level rule covers is checked after the write

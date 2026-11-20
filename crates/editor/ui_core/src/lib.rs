@@ -93,7 +93,7 @@ pub fn init(cx: &mut gpui::App) {
     ]);
 
     // Undo/Redo for whichever editor has focus, each on its own document's
-    // history (Pulsar-Native#931). Text fields keep their own, more
+    // history. Text fields keep their own, more
     // specific bindings.
     plugin_editor_api::bind_undo_keys(cx);
 

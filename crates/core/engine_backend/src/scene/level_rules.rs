@@ -3,9 +3,9 @@
 //!
 //! - **One of each plugin singleton.** What a level holds at most one of
 //!   registers itself ([`LevelSingletonRegistration`]): the sky plugin's
-//!   atmosphere (#1057: the atmosphere pass draws the first enabled row, so
-//!   a second would only fight the first), the foliage plugin's global wind
-//!   (#1123). Adding a second, or a change that makes one
+//!   atmosphere (the atmosphere pass draws the first enabled row, so
+//!   a second would only fight the first), the foliage plugin's global wind.
+//!   Adding a second, or a change that makes one
 //!   (a property edit, enabling an instance, where the registration says
 //!   those count), is refused with the registration's message.
 //! - Directional lights are not level singletons: the renderer supports

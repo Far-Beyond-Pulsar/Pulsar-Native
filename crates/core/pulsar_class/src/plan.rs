@@ -123,7 +123,7 @@ pub fn slot_default(def: &ClassDefinition, slot_id: &str) -> Option<Value> {
 }
 
 /// Rewrite `instance`'s override keys that name a replaced slot id to the
-/// slot's current UUID (`def.slot_aliases`, #933). A key that is neither a
+/// slot's current UUID (`def.slot_aliases`). A key that is neither a
 /// current slot nor a known alias is kept (the slot may come back) and
 /// reported. Returns whether any key was rewritten.
 pub fn migrate_slot_keys(def: &ClassDefinition, instance: &mut ClassInstance) -> bool {

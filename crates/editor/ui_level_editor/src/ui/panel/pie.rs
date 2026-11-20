@@ -1,4 +1,4 @@
-//! Play-In-Editor (issue #243) build orchestration.
+//! Play-In-Editor build orchestration.
 //!
 //! `begin_pie`/`end_pie` are the shared entry points for both the `PlayScene`
 //! action handler and the toolbar's "Start Simulation" button
@@ -16,7 +16,7 @@ use ui::{notification::Notification, ContextModal as _};
 use crate::scene_edit::LevelEditorCameraState;
 use crate::state::{LevelEditorState, PieStartRequest};
 
-// ── Play In Editor build helpers (issue #243) ───────────────────────────────
+// ── Play In Editor build helpers ───────────────────────────────
 
 /// Enter play mode and kick off the Play-In-Editor build. The game's free
 /// camera starts at `view`, the editor camera.
@@ -81,7 +81,7 @@ pub(crate) fn begin_pie(
         return;
     }
 
-    // Native hot reload (#653): pressing Play while a game runs rebuilds
+    // Native hot reload: pressing Play while a game runs rebuilds
     // and swaps the library WITHOUT dropping the world — the viewport stops
     // the old host only once the new build is in hand.
     let (reload, loaded_artifact, generation) = {
@@ -171,7 +171,7 @@ pub(crate) fn begin_pie(
 /// Ask the viewport to tear down the embedded game, then exit play mode.
 ///
 /// With a game running, the editor world is restored only after the game
-/// shut down (#925): the viewport stops it on its next frame (scripts get
+/// shut down: the viewport stops it on its next frame (scripts get
 /// `end_play` while the world still holds their objects, and nothing
 /// ticks after), then restores the pre-Play snapshot, which also removes
 /// what scripts spawned. Without a running game it restores now.
@@ -229,7 +229,7 @@ pub(crate) fn finish_stop(state: &mut LevelEditorState, game_stopped: bool) -> b
 /// Regenerate the project scaffolding and build it as a `cdylib`, returning what
 /// the viewport needs to load the embedded game. Runs on a background thread.
 ///
-/// `reload` marks a native hot reload (#653): an earlier session is still
+/// `reload` marks a native hot reload: an earlier session is still
 /// running and its world state must survive the swap. The flag only rides the
 /// request — a failed rebuild leaves the old game untouched either way.
 ///
@@ -248,7 +248,7 @@ fn build_pie_dylib(
     // `cargo build --release` / `cargo run --release` produce).
     let release = true;
 
-    // Script preflight (#656): every scripting language plugin validates its
+    // Script preflight: every scripting language plugin validates its
     // saved classes. Bad scripts stop Play here instead of surfacing as
     // runtime failures inside the embedded game.
     if let Some(plugins) = plugin_manager::global() {
@@ -271,7 +271,7 @@ fn build_pie_dylib(
         let dylib_path =
             engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
         if artifact_exists(&dylib_path) && !any_source_newer(root, &dylib_path) {
-            // #833: script classes are data (their compiled modules are
+            // Script classes are data (their compiled modules are
             // reloaded in place); only native sources need cargo. With the
             // running game loaded from this very artifact, Play again only
             // reloads the classes.
@@ -449,7 +449,7 @@ fn read_crate_name(root: &Path) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    /// #833: saving and compiling a Blueprint writes only data files
+    /// Saving and compiling a Blueprint writes only data files
     /// (graph, variables, prefab, the compiled module), so Play reuses the
     /// built library without cargo; a native source change does not.
     #[test]

@@ -8,7 +8,7 @@
 //! (clones of their values, with their instance ids), and a restore rebuilds
 //! the scene *in place* in the same world, so the GPU mirror, inspector bridge
 //! and the world's change counter carry straight through. Nothing is encoded
-//! or decoded (Pulsar-Native#1035, Phase 3): a delta restore keeps every
+//! or decoded: a delta restore keeps every
 //! surviving instance's entity and writes its value back as a clone, so undo
 //! never reloads an asset.
 
@@ -31,7 +31,7 @@ pub struct SceneHistorySnapshot {
     /// Placed classes in a scoped capture: each root's class and
     /// overrides, live edits folded in. Their generated children are not
     /// captured; a restore rebuilds them from the class as it is then, so
-    /// undo never brings back an older class definition (#931).
+    /// undo never brings back an older class definition.
     class_instances: HashMap<ObjectId, pulsar_class::ClassInstance>,
 }
 
@@ -98,7 +98,7 @@ pub fn capture_history_snapshot(world: &World) -> SceneHistorySnapshot {
 /// A placed class is captured as its root with its class and overrides
 /// (live edits folded in), never its generated children: an id inside one
 /// stands for its root, and a restore rebuilds the instance from the class
-/// as it is then (#931).
+/// as it is then.
 pub fn capture_history_subset(world: &World, ids: &[ObjectId]) -> SceneHistorySnapshot {
     let mut wanted = std::collections::HashSet::new();
     let mut entities = Vec::new();

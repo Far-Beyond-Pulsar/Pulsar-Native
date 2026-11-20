@@ -48,8 +48,6 @@ pub fn channel_new() -> (Sender<String>, Receiver<String>) {
 ///
 /// # Notes
 /// Use this node to implement inter-thread or inter-process communication patterns.
-/// # Channel Send
-/// Sends a message through a channel.
 #[blueprint(type: NodeTypes::impure, category: "Channel", color: "#3498DB")]
 pub fn channel_send(sender: Sender<String>, message: String) -> Result<(), String> {
     match sender.send(message) {

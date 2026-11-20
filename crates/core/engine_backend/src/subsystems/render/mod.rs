@@ -1,4 +1,5 @@
-// Rendering subsystem for Pulsar Engine Backend
+//! Rendering side of the backend: re-exports of the Helio renderer types and the
+//! `handle_utils` conversions between handles and `usize`.
 
 pub mod handle_utils;
 pub mod helio_renderer;

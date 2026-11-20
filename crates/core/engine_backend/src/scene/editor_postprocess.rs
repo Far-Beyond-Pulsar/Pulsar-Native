@@ -8,7 +8,7 @@
 //! (`bloom_enabled`, `bloom_intensity`) and the toolbar's Bloom toggle, and
 //! the renderer publishes them as the viewport's baseline (a view payload).
 //! Every other setting stays at Helio's default. Authored camera rows and
-//! volumes in the level still override it (Pulsar-Native#1035, Phase 4: the
+//! volumes in the level still override it (the
 //! editor no longer writes a row of its own into the scene world).
 
 use helio_pass_postprocess::PostProcessSettings;

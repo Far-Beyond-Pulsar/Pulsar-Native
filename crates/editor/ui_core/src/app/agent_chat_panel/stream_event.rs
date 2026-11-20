@@ -54,6 +54,14 @@ pub(super) enum StreamEvent {
     Finished(Result<agent_chat_core::ChatResponse, String>),
 }
 
+/// Whether `item` is an assistant bubble with no text yet.
+fn is_empty_assistant_bubble(item: Option<&DisplayItem>) -> bool {
+    item.map(
+        |item| matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty()),
+    )
+    .unwrap_or(false)
+}
+
 impl AgentChatPanel {
     /// Apply one worker event to the panel state. `message_ix` is the index of
     /// the assistant message this request is streaming into.
@@ -64,66 +72,13 @@ impl AgentChatPanel {
         cx: &mut Context<Self>,
     ) {
         match event {
-            StreamEvent::Chunk(chunk) => {
-                // Update provider history message
-                if let Some(message) = self.messages.get_mut(message_ix) {
-                    message.content.push_str(&chunk);
-                }
-                // Update the streaming display bubble.
-                // Do NOT remove the cached height — the canvas measurement from the
-                // previous frame is accurate and close to current. Removing it
-                // would cause the virtual list to use a capped estimate (e.g. 520px)
-                // instead of the actual measured value (e.g. 3000px), making scroll
-                // targets wrong until the canvas fires again.
-                if let Some(dix) = self.streaming_display_item_ix {
-                    if let Some(DisplayItem::AssistantMessage { content, .. }) =
-                        self.display_items.get_mut(dix)
-                    {
-                        content.push_str(&chunk);
-                        // height cache intentionally preserved
-                    }
-                }
-                cx.notify();
-            }
-
+            StreamEvent::Chunk(chunk) => self.apply_chunk(&chunk, message_ix, cx),
             StreamEvent::UserContextExpanded { index, content } => {
                 if let Some(message) = self.messages.get_mut(index) {
                     message.content = content;
                 }
             }
-
-            StreamEvent::ThinkingStarted => {
-                if let Some(dix) = self.streaming_display_item_ix {
-                    let is_empty = self.display_items.get(dix).map(|item|
-                        matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty())
-                    ).unwrap_or(false);
-                    if is_empty && dix + 1 == self.display_items.len() {
-                        self.display_items.pop();
-                        self.display_item_heights.remove(&dix);
-                    } else if let Some(DisplayItem::AssistantMessage { is_streaming, .. }) =
-                        self.display_items.get_mut(dix)
-                    {
-                        *is_streaming = false;
-                    }
-                }
-                self.display_items.push(DisplayItem::ThinkingBlock {
-                    content: String::new(),
-                    is_expanded: true, // open immediately so user sees tokens arriving
-                    is_done: false,
-                    started_at_ms: now_ms(),
-                    finished_at_ms: None,
-                });
-                let new_dix = self.display_items.len();
-                self.display_items.push(DisplayItem::AssistantMessage {
-                    content: String::new(),
-                    message_index: message_ix,
-                    is_streaming: true,
-                });
-                self.streaming_display_item_ix = Some(new_dix);
-                self.scroll_messages_to_bottom();
-                cx.notify();
-            }
-
+            StreamEvent::ThinkingStarted => self.apply_thinking_started(message_ix, cx),
             StreamEvent::ThinkingChunk(chunk) => {
                 for (_ix, item) in self.display_items.iter_mut().enumerate().rev() {
                     if let DisplayItem::ThinkingBlock { content, .. } = item {
@@ -134,275 +89,347 @@ impl AgentChatPanel {
                 }
                 cx.notify();
             }
-
-            StreamEvent::ThinkingDone => {
-                let done_ms = now_ms();
-                for (ix, item) in self.display_items.iter_mut().enumerate().rev() {
-                    if let DisplayItem::ThinkingBlock {
-                        is_done,
-                        is_expanded,
-                        finished_at_ms,
-                        ..
-                    } = item
-                    {
-                        *is_done = true;
-                        *is_expanded = false; // auto-collapse when thinking stops
-                        *finished_at_ms = Some(done_ms);
-                        self.display_item_heights.remove(&ix);
-                        break;
-                    }
-                }
-                cx.notify();
-            }
-
-            StreamEvent::ContextCompacted(summary) => {
-                let t = now_ms();
-                let card = DisplayItem::CompactionSummary {
-                    summary,
-                    is_expanded: false,
-                    started_at_ms: t,
-                    finished_at_ms: Some(t),
-                };
-                if let Some(dix) = self.streaming_display_item_ix {
-                    if dix + 1 == self.display_items.len() {
-                        let bubble = self.display_items.pop().unwrap();
-                        self.display_items.push(card);
-                        self.display_items.push(bubble);
-                        self.streaming_display_item_ix = Some(dix + 1);
-                    }
-                } else {
-                    self.display_items.push(card);
-                }
-                self.scroll_messages_to_bottom();
-                cx.notify();
-            }
-
-            StreamEvent::ToolCallGroup(calls) => {
-                if let Some(dix) = self.streaming_display_item_ix {
-                    let is_empty = self.display_items.get(dix).map(|item|
-                        matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty())
-                    ).unwrap_or(false);
-                    if is_empty && dix + 1 == self.display_items.len() {
-                        self.display_items.pop();
-                        self.display_item_heights.remove(&dix);
-                    } else if let Some(DisplayItem::AssistantMessage { is_streaming, .. }) =
-                        self.display_items.get_mut(dix)
-                    {
-                        *is_streaming = false;
-                    }
-                }
-                let group_start = now_ms();
-                self.display_items.push(DisplayItem::ToolCallGroup {
-                    calls: calls
-                        .iter()
-                        .map(|c| {
-                            let args_raw =
-                                serde_json::to_string(&c.arguments_json).unwrap_or_default();
-                            let args_preview = if args_raw.len() > 120 {
-                                format!("{}…", &args_raw[..120])
-                            } else {
-                                args_raw.clone()
-                            };
-                            ToolCallDisplay {
-                                id: c.id.clone(),
-                                name: c.name.clone(),
-                                args_preview,
-                                args_full: args_raw,
-                                result_preview: None,
-                                result_full: None,
-                                is_error: false,
-                                started_at_ms: group_start,
-                                finished_at_ms: None,
-                            }
-                        })
-                        .collect(),
-                    is_expanded: false,
-                    started_at_ms: group_start,
-                    finished_at_ms: None,
-                });
-                let new_dix = self.display_items.len();
-                self.display_items.push(DisplayItem::AssistantMessage {
-                    content: String::new(),
-                    message_index: message_ix,
-                    is_streaming: true,
-                });
-                self.streaming_display_item_ix = Some(new_dix);
-                self.scroll_messages_to_bottom();
-                cx.notify();
-            }
-
+            StreamEvent::ThinkingDone => self.apply_thinking_done(cx),
+            StreamEvent::ContextCompacted(summary) => self.apply_context_compacted(summary, cx),
+            StreamEvent::ToolCallGroup(calls) => self.apply_tool_call_group(&calls, message_ix, cx),
             StreamEvent::ToolCallResult {
                 id,
                 subagent,
                 result_preview,
                 result_full,
                 is_error,
-            } => {
-                let done_ms = now_ms();
-                for item in self.display_items.iter_mut().rev() {
-                    if let DisplayItem::ToolCallGroup {
-                        calls,
-                        finished_at_ms,
-                        ..
-                    } = item
-                    {
-                        if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
-                            call.result_preview = Some(result_preview);
-                            call.result_full = Some(result_full);
-                            call.is_error = is_error;
-                            call.finished_at_ms = Some(done_ms);
-                        }
-                        // Update group finished_at if all calls done
-                        if calls.iter().all(|c| c.finished_at_ms.is_some()) {
-                            *finished_at_ms = Some(done_ms);
-                        }
-                        break;
-                    }
-                }
-
-                if let Some(subagent) = subagent {
-                    self.update_subagent_invocation_started(
-                        &subagent.id,
-                        &subagent.name,
-                        &subagent.task,
-                        subagent.created_at_ms.unwrap_or(done_ms),
-                        cx,
-                    );
-                }
-
-                cx.notify();
-            }
-
-            StreamEvent::Finished(Ok(response)) => {
-                self.is_request_in_flight = false;
-                self.streaming_message_ix = None;
-                self.cancel_tx = None;
-
-                if self.is_processing_subagent_event {
-                    self.complete_active_subagent_processing(true);
-                    self.is_processing_subagent_event = false;
-                    self.processing_subagent_id = None;
-                }
-
-                if let Some(dix) = self.streaming_display_item_ix.take() {
-                    let is_empty = self
-                        .display_items
-                        .get(dix)
-                        .map(|item| {
-                            matches!(item,
-                                DisplayItem::AssistantMessage { content, .. }
-                                if content.is_empty()
-                            )
-                        })
-                        .unwrap_or(false);
-
-                    if is_empty && dix + 1 == self.display_items.len() {
-                        // Drop the trailing empty bubble — the turn ended with a
-                        // tool call group and no follow-up text from the AI.
-                        self.display_items.pop();
-                        self.display_item_heights.remove(&dix);
-                    } else if let Some(DisplayItem::AssistantMessage {
-                        content,
-                        is_streaming,
-                        ..
-                    }) = self.display_items.get_mut(dix)
-                    {
-                        *is_streaming = false;
-                        if content.is_empty() {
-                            if let Some(text) = response.assistant_message.as_ref() {
-                                *content = text.clone();
-                            }
-                        }
-                    }
-                }
-
-                if let Some(message) = self.messages.get_mut(message_ix) {
-                    if message.content.is_empty() {
-                        if let Some(text) = response.assistant_message {
-                            message.content = text;
-                        }
-                    }
-                }
-                self.save_current_chat(cx);
-                if self.subagent_completion_mode == SubagentCompletionMode::Auto {
-                    self.maybe_start_next_subagent_processing(cx);
-                }
-                self.scroll_messages_to_bottom();
-                cx.notify();
-            }
-
-            StreamEvent::Finished(Err(err)) => {
-                self.is_request_in_flight = false;
-                self.streaming_message_ix = None;
-                self.cancel_tx = None;
-                self.complete_active_subagent_processing(false);
-                self.is_processing_subagent_event = false;
-                self.processing_subagent_id = None;
-                tracing::error!("[agent_chat] error: {err}");
-                let error_text = format!("Request failed: {err}");
-                if let Some(dix) = self.streaming_display_item_ix.take() {
-                    let is_empty = self
-                        .display_items
-                        .get(dix)
-                        .map(|item| {
-                            matches!(item,
-                                DisplayItem::AssistantMessage { content, .. }
-                                if content.is_empty()
-                            )
-                        })
-                        .unwrap_or(false);
-                    if is_empty && dix + 1 == self.display_items.len() {
-                        // Replace the empty bubble with the error message rather
-                        // than leaving a blank card above the error indicator.
-                        if let Some(item) = self.display_items.get_mut(dix) {
-                            if let DisplayItem::AssistantMessage {
-                                content,
-                                is_streaming,
-                                ..
-                            } = item
-                            {
-                                *is_streaming = false;
-                                *content = error_text.clone();
-                            }
-                        }
-                    } else if let Some(DisplayItem::AssistantMessage {
-                        content,
-                        is_streaming,
-                        ..
-                    }) = self.display_items.get_mut(dix)
-                    {
-                        *is_streaming = false;
-                        *content = error_text.clone();
-                        self.display_item_heights.remove(&dix);
-                    }
-                }
-                if let Some(message) = self.messages.get_mut(message_ix) {
-                    message.content = error_text;
-                }
-                self.save_current_chat(cx);
-                if self.subagent_completion_mode == SubagentCompletionMode::Auto {
-                    self.maybe_start_next_subagent_processing(cx);
-                }
-                self.scroll_messages_to_bottom();
-                cx.notify();
-            }
-
+            } => self.apply_tool_call_result(
+                &id,
+                subagent,
+                (result_preview, result_full, is_error),
+                cx,
+            ),
+            StreamEvent::Finished(Ok(response)) => self.apply_finished(response, message_ix, cx),
+            StreamEvent::Finished(Err(err)) => self.apply_failed(&err, message_ix, cx),
             StreamEvent::OpenFile(path, waiter) => {
                 let result = self.open_path_in_default_editor(path, cx);
-                let (lock, cvar) = &*waiter;
-                if let Ok(mut guard) = lock.lock() {
-                    *guard = Some(result);
-                    cvar.notify_all();
-                }
+                Self::answer_waiter(&waiter, result);
             }
             StreamEvent::ActivateOpenEditor(index, waiter) => {
                 let result = self.activate_open_editor_by_global_index(index, cx);
-                let (lock, cvar) = &*waiter;
-                if let Ok(mut guard) = lock.lock() {
-                    *guard = Some(result);
-                    cvar.notify_all();
+                Self::answer_waiter(&waiter, result);
+            }
+        }
+    }
+
+    /// Wake the worker thread blocked on `waiter` with the UI's `result`.
+    fn answer_waiter(waiter: &UiWaiter, result: Result<(), String>) {
+        let (lock, cvar) = &**waiter;
+        if let Ok(mut guard) = lock.lock() {
+            *guard = Some(result);
+            cvar.notify_all();
+        }
+    }
+
+    /// Append a prose chunk to the provider history message and to the
+    /// streaming display bubble.
+    fn apply_chunk(&mut self, chunk: &str, message_ix: usize, cx: &mut Context<Self>) {
+        // Update provider history message
+        if let Some(message) = self.messages.get_mut(message_ix) {
+            message.content.push_str(chunk);
+        }
+        // Update the streaming display bubble.
+        // Do NOT remove the cached height — the canvas measurement from the
+        // previous frame is accurate and close to current. Removing it
+        // would cause the virtual list to use a capped estimate (e.g. 520px)
+        // instead of the actual measured value (e.g. 3000px), making scroll
+        // targets wrong until the canvas fires again.
+        if let Some(dix) = self.streaming_display_item_ix {
+            if let Some(DisplayItem::AssistantMessage { content, .. }) =
+                self.display_items.get_mut(dix)
+            {
+                content.push_str(chunk);
+                // height cache intentionally preserved
+            }
+        }
+        cx.notify();
+    }
+
+    /// End the current streaming bubble before a block is inserted after it:
+    /// drop it when it is empty and last, otherwise stop its streaming state.
+    fn close_streaming_bubble(&mut self) {
+        if let Some(dix) = self.streaming_display_item_ix {
+            let is_empty = is_empty_assistant_bubble(self.display_items.get(dix));
+            if is_empty && dix + 1 == self.display_items.len() {
+                self.display_items.pop();
+                self.display_item_heights.remove(&dix);
+            } else if let Some(DisplayItem::AssistantMessage { is_streaming, .. }) =
+                self.display_items.get_mut(dix)
+            {
+                *is_streaming = false;
+            }
+        }
+    }
+
+    /// Push a fresh streaming assistant bubble and make it the current one.
+    fn push_streaming_bubble(&mut self, message_ix: usize) {
+        let new_dix = self.display_items.len();
+        self.display_items.push(DisplayItem::AssistantMessage {
+            content: String::new(),
+            message_index: message_ix,
+            is_streaming: true,
+        });
+        self.streaming_display_item_ix = Some(new_dix);
+    }
+
+    /// A `<think>` tag opened: insert a thinking block, then a new bubble.
+    fn apply_thinking_started(&mut self, message_ix: usize, cx: &mut Context<Self>) {
+        self.close_streaming_bubble();
+        self.display_items.push(DisplayItem::ThinkingBlock {
+            content: String::new(),
+            is_expanded: true, // open immediately so user sees tokens arriving
+            is_done: false,
+            started_at_ms: now_ms(),
+            finished_at_ms: None,
+        });
+        self.push_streaming_bubble(message_ix);
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    /// `</think>` was reached: mark the latest thinking block done and collapse it.
+    fn apply_thinking_done(&mut self, cx: &mut Context<Self>) {
+        let done_ms = now_ms();
+        for (ix, item) in self.display_items.iter_mut().enumerate().rev() {
+            if let DisplayItem::ThinkingBlock {
+                is_done,
+                is_expanded,
+                finished_at_ms,
+                ..
+            } = item
+            {
+                *is_done = true;
+                *is_expanded = false; // auto-collapse when thinking stops
+                *finished_at_ms = Some(done_ms);
+                self.display_item_heights.remove(&ix);
+                break;
+            }
+        }
+        cx.notify();
+    }
+
+    /// Old messages were dropped to stay within context: show a summary card
+    /// before the streaming bubble.
+    fn apply_context_compacted(&mut self, summary: String, cx: &mut Context<Self>) {
+        let t = now_ms();
+        let card = DisplayItem::CompactionSummary {
+            summary,
+            is_expanded: false,
+            started_at_ms: t,
+            finished_at_ms: Some(t),
+        };
+        if let Some(dix) = self.streaming_display_item_ix {
+            if dix + 1 == self.display_items.len() {
+                let bubble = self
+                    .display_items
+                    .pop()
+                    .expect("the streaming bubble is the last display item");
+                self.display_items.push(card);
+                self.display_items.push(bubble);
+                self.streaming_display_item_ix = Some(dix + 1);
+            }
+        } else {
+            self.display_items.push(card);
+        }
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    /// The model returned tool calls: show a collapsed group, then a new
+    /// bubble for the next iteration.
+    fn apply_tool_call_group(
+        &mut self,
+        calls: &[ToolCall],
+        message_ix: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_streaming_bubble();
+        let group_start = now_ms();
+        self.display_items.push(DisplayItem::ToolCallGroup {
+            calls: calls
+                .iter()
+                .map(|c| {
+                    let args_raw = serde_json::to_string(&c.arguments_json).unwrap_or_default();
+                    let args_preview = if args_raw.len() > 120 {
+                        format!("{}…", &args_raw[..120])
+                    } else {
+                        args_raw.clone()
+                    };
+                    ToolCallDisplay {
+                        id: c.id.clone(),
+                        name: c.name.clone(),
+                        args_preview,
+                        args_full: args_raw,
+                        result_preview: None,
+                        result_full: None,
+                        is_error: false,
+                        started_at_ms: group_start,
+                        finished_at_ms: None,
+                    }
+                })
+                .collect(),
+            is_expanded: false,
+            started_at_ms: group_start,
+            finished_at_ms: None,
+        });
+        self.push_streaming_bubble(message_ix);
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    /// A tool finished: record its result on the matching call, and the
+    /// subagent it started, if any. `result` is `(preview, full, is_error)`.
+    fn apply_tool_call_result(
+        &mut self,
+        id: &str,
+        subagent: Option<StartedSubagent>,
+        result: (String, String, bool),
+        cx: &mut Context<Self>,
+    ) {
+        let (result_preview, result_full, is_error) = result;
+        let done_ms = now_ms();
+        for item in self.display_items.iter_mut().rev() {
+            if let DisplayItem::ToolCallGroup {
+                calls,
+                finished_at_ms,
+                ..
+            } = item
+            {
+                if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
+                    call.result_preview = Some(result_preview);
+                    call.result_full = Some(result_full);
+                    call.is_error = is_error;
+                    call.finished_at_ms = Some(done_ms);
+                }
+                // Update group finished_at if all calls done
+                if calls.iter().all(|c| c.finished_at_ms.is_some()) {
+                    *finished_at_ms = Some(done_ms);
+                }
+                break;
+            }
+        }
+
+        if let Some(subagent) = subagent {
+            self.update_subagent_invocation_started(
+                &subagent.id,
+                &subagent.name,
+                &subagent.task,
+                subagent.created_at_ms.unwrap_or(done_ms),
+                cx,
+            );
+        }
+
+        cx.notify();
+    }
+
+    /// The request ended successfully: close the bubble (filling it from the
+    /// response if no text streamed), save the chat and start the next
+    /// subagent when completion is automatic.
+    fn apply_finished(
+        &mut self,
+        response: agent_chat_core::ChatResponse,
+        message_ix: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.is_request_in_flight = false;
+        self.streaming_message_ix = None;
+        self.cancel_tx = None;
+
+        if self.is_processing_subagent_event {
+            self.complete_active_subagent_processing(true);
+            self.is_processing_subagent_event = false;
+            self.processing_subagent_id = None;
+        }
+
+        if let Some(dix) = self.streaming_display_item_ix.take() {
+            let is_empty = is_empty_assistant_bubble(self.display_items.get(dix));
+
+            if is_empty && dix + 1 == self.display_items.len() {
+                // Drop the trailing empty bubble — the turn ended with a
+                // tool call group and no follow-up text from the AI.
+                self.display_items.pop();
+                self.display_item_heights.remove(&dix);
+            } else if let Some(DisplayItem::AssistantMessage {
+                content,
+                is_streaming,
+                ..
+            }) = self.display_items.get_mut(dix)
+            {
+                *is_streaming = false;
+                if content.is_empty() {
+                    if let Some(text) = response.assistant_message.as_ref() {
+                        *content = text.clone();
+                    }
                 }
             }
         }
+
+        if let Some(message) = self.messages.get_mut(message_ix) {
+            if message.content.is_empty() {
+                if let Some(text) = response.assistant_message {
+                    message.content = text;
+                }
+            }
+        }
+        self.finish_turn(cx);
+    }
+
+    /// The request failed: show the error in the bubble and the message.
+    fn apply_failed(&mut self, err: &str, message_ix: usize, cx: &mut Context<Self>) {
+        self.is_request_in_flight = false;
+        self.streaming_message_ix = None;
+        self.cancel_tx = None;
+        self.complete_active_subagent_processing(false);
+        self.is_processing_subagent_event = false;
+        self.processing_subagent_id = None;
+        tracing::error!("[agent_chat] error: {err}");
+        let error_text = format!("Request failed: {err}");
+        if let Some(dix) = self.streaming_display_item_ix.take() {
+            let is_empty = is_empty_assistant_bubble(self.display_items.get(dix));
+            if is_empty && dix + 1 == self.display_items.len() {
+                // Replace the empty bubble with the error message rather
+                // than leaving a blank card above the error indicator.
+                if let Some(item) = self.display_items.get_mut(dix) {
+                    if let DisplayItem::AssistantMessage {
+                        content,
+                        is_streaming,
+                        ..
+                    } = item
+                    {
+                        *is_streaming = false;
+                        *content = error_text.clone();
+                    }
+                }
+            } else if let Some(DisplayItem::AssistantMessage {
+                content,
+                is_streaming,
+                ..
+            }) = self.display_items.get_mut(dix)
+            {
+                *is_streaming = false;
+                *content = error_text.clone();
+                self.display_item_heights.remove(&dix);
+            }
+        }
+        if let Some(message) = self.messages.get_mut(message_ix) {
+            message.content = error_text;
+        }
+        self.finish_turn(cx);
+    }
+
+    /// After a request ends: save the chat, start the next subagent when
+    /// completion is automatic, and scroll to the end.
+    fn finish_turn(&mut self, cx: &mut Context<Self>) {
+        self.save_current_chat(cx);
+        if self.subagent_completion_mode == SubagentCompletionMode::Auto {
+            self.maybe_start_next_subagent_processing(cx);
+        }
+        self.scroll_messages_to_bottom();
+        cx.notify();
     }
 }

@@ -112,7 +112,11 @@ fn extract_struct(item: &ItemStruct, source_code: &str) -> StructDoc {
             .named
             .iter()
             .map(|f| FieldDoc {
-                name: f.ident.as_ref().unwrap().to_string(),
+                name: f
+                    .ident
+                    .as_ref()
+                    .expect("this arm only visits Fields::Named, whose fields have identifiers")
+                    .to_string(),
                 doc_comment: extract_doc_comments(&f.attrs),
                 type_: extract_source_from_span(&f.ty, source_code),
             })

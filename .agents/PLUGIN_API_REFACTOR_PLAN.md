@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - phases 1-5 built (p19-p22); binary plugin bundling waits on a Helio runtime attach
+
 # Plugin API refactor: audit and plan
 
 > **Historical note.** `ComponentTickRegistration` (named in the audit tables below) no

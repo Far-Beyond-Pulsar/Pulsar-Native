@@ -146,7 +146,9 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
                                 .into();
                             }
                         } else {
-                            let field_ident = field.ident.clone().unwrap();
+                            let field_ident = field.ident.clone().expect(
+                                "this arm only visits Fields::Named, whose fields have identifiers",
+                            );
                             let override_ = match parse_gpu_attr(field) {
                                 Ok(o) => o,
                                 Err(err) => return err.to_compile_error().into(),
@@ -206,7 +208,7 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
 
     // Generate auto-property methods (getters and setters). Their metadata
     // rides the property's own category so blueprint palette grouping keeps
-    // accessors next to the properties they expose (#645).
+    // accessors next to the properties they expose.
     let accessor_categories: Vec<Option<String>> = property_fields
         .iter()
         .map(|field| parse_property_attr(field).category)
@@ -224,7 +226,10 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
     let sub_props_extenders: Vec<_> = sub_props_fields
         .iter()
         .map(|field| {
-            let field_name = field.ident.as_ref().unwrap();
+            let field_name = field
+                .ident
+                .as_ref()
+                .expect("sub_props fields come from Fields::Named, so they have identifiers");
             quote! {
                 for nested_prop in self.#field_name.get_properties() {
                     let pulsar_reflection::PropertyMetadata {
@@ -245,12 +250,12 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
                     };
 
                     let getter = Box::new(move |obj: &dyn pulsar_reflection::EngineClass| -> Box<dyn std::any::Any> {
-                        let concrete = obj.as_any().downcast_ref::<#name>().unwrap();
+                        let concrete = obj.as_any().downcast_ref::<#name>().expect("the registry only calls this accessor with an instance of the class that generated it");
                         nested_getter(&concrete.#field_name as &dyn pulsar_reflection::EngineClass)
                     });
 
                     let setter = Box::new(move |obj: &mut dyn pulsar_reflection::EngineClass, value: Box<dyn std::any::Any>| {
-                        let concrete = obj.as_any_mut().downcast_mut::<#name>().unwrap();
+                        let concrete = obj.as_any_mut().downcast_mut::<#name>().expect("the registry only calls this accessor with an instance of the class that generated it");
                         nested_setter(&mut concrete.#field_name as &mut dyn pulsar_reflection::EngineClass, value);
                     });
 
@@ -289,7 +294,7 @@ pub(crate) fn expand(input: TokenStream) -> TokenStream {
         .iter()
         .any(|a| a.path().is_ident("engine_class_no_register"));
 
-    // Whole-instance JSON round trip (Pulsar-Native#561's properties-panel
+    // Whole-instance JSON round trip (the properties-panel
     // fix): `to_json`/`from_json` only make sense for classes that actually
     // derive `Serialize`/`Deserialize`. Can't detect that with `has_derive`
     // here the way `engine_class`'s attribute-macro pass does on

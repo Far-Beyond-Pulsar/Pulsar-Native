@@ -1,4 +1,4 @@
-//! Runtime parity (Pulsar-Native#1035 acceptance, #1081): one level file,
+//! Runtime parity: one level file,
 //! loaded by the runtime loader, renders its mesh through the standalone
 //! game's renderer, the embedded (Play-in-Editor) game's renderer and the
 //! editor viewport's, all headless; and a disabled mesh is drawn by none.
@@ -306,7 +306,7 @@ fn every_runtime_renders_the_same_level() {
     }
 }
 
-/// The game clock drives the game's animation (#1109, #1123): as the
+/// The game clock drives the game's animation: as the
 /// Play-in-Editor game does (`pulsar_game::embed`), every frame ticks the
 /// game loop and hands the renderer the tick's delta. A running game's
 /// particles move from frame to frame; paused, the clock reports a zero

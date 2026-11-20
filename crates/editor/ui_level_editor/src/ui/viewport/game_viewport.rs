@@ -1,5 +1,4 @@
-//! Game viewport — a dock tab that runs the embedded game for Play-In-Editor
-//! (issue #243).
+//! Game viewport — a dock tab that runs the embedded game for Play-In-Editor.
 //!
 //! Unlike the editor's `HelioViewport` (which renders the *scene* for editing),
 //! this panel hosts the compiled game: it loads the `PieHost` once the background
@@ -11,7 +10,7 @@
 //! The tab is created once at workspace init and self-manages off the shared
 //! `play.pie` state set by `begin_pie`/`end_pie`: build → load → run → stop.
 //!
-//! **Events panel (#924).** The "Events" chip opens an overlay listing the
+//! **Events panel.** The "Events" chip opens an overlay listing the
 //! game's recently flushed events (frame, flush point, name, channel,
 //! payload summary, subscribers on that channel) and the events with
 //! global subscribers, from the game's event hub debug tap
@@ -324,7 +323,7 @@ impl GameViewport {
     /// The GPU device was lost (a driver reset, a removed GPU): everything on
     /// it is gone, the running game's renderer included. Stop the game and
     /// load it again once the window has a new device, the way a native hot
-    /// reload swaps it (#653): the world lives in the editor's store, and
+    /// reload swaps it: the world lives in the editor's store, and
     /// the guest re-binds its actors to the entities already there.
     fn restart_after_device_loss(&mut self) {
         tracing::warn!("PiE: GPU device lost; the game restarts on the new device");
@@ -367,7 +366,7 @@ impl GameViewport {
             state.play.pie.pending_asset_updates.clear();
             state.play.pie.loaded_artifact = None;
             state.play.pie.supports_control = false;
-            // The game is gone: now restore the editor world (#925).
+            // The game is gone: now restore the editor world.
             crate::ui::panel::pie::finish_stop(&mut state, true);
         }
 
@@ -383,7 +382,7 @@ impl GameViewport {
             in_play
         });
 
-        // Play again with only script changes (#833): keep the running game
+        // Play again with only script changes: keep the running game
         // and reload every class in it; no new library.
         let pending = match pending {
             Some(req) if req.scripts_only && self.pie_host.is_some() => {
@@ -404,7 +403,7 @@ impl GameViewport {
         };
 
         if let Some(req) = pending {
-            // Native hot reload (#653): a pending start while a game is
+            // Native hot reload: a pending start while a game is
             // already running means "swap the library". Stop the OLD host
             // first — its actors die with it, but the world survives because
             // it lives HERE, in the editor's shared store — then load the new
@@ -416,7 +415,7 @@ impl GameViewport {
                 old.stop();
             }
 
-            // ABI v2 (#635): hand the guest THE editor's world -- one count is
+            // ABI v2: hand the guest THE editor's world -- one count is
             // transferred for the session; the editor keeps its own. The
             // guest adopts it, so mid-session edits and gameplay mutations
             // meet in one world.
@@ -481,8 +480,8 @@ impl GameViewport {
         }
 
         if let Some(host) = self.pie_host.as_mut() {
-            // Class edits made while playing (#921): the game reloads them
-            // at its next frame, no rebuild (#833).
+            // Class edits made while playing: the game reloads them
+            // at its next frame, no rebuild.
             let (pending, pause, step) = {
                 let mut st = self.shared_state.write();
                 (
@@ -494,7 +493,7 @@ impl GameViewport {
             for event in &pending {
                 host.asset_updated(event);
             }
-            // Pause / step (#925), wired to the game's TickLoop.
+            // Pause / step, wired to the game's TickLoop.
             match pause {
                 Some(true) => {
                     host.pause();
@@ -531,7 +530,7 @@ impl GameViewport {
         }
     }
 
-    /// Forward the game's script problems (#854, #868) to the editor: the
+    /// Forward the game's script problems to the editor: the
     /// problems panel and the Blueprint editor hear them on the host bus.
     /// With the "pause on script error" setting, an error pauses the game
     /// before its next frame.

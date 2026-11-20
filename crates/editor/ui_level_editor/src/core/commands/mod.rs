@@ -1,13 +1,13 @@
-/// Scene command system - single execution path for all scene mutations.
-///
-/// `SceneCommand` is a self-contained description of one editor operation.
-/// `execute_command()` applies it through the `scene_edit` functions, which
-/// write the `SceneDb` world directly; the renderer reads that same world,
-/// so the viewport follows without a separate update.
-///
-/// Both user GPUI action handlers and AI tool implementations call
-/// `execute_command()`, giving a single auditable code path that is ready for
-/// undo / redo to be layered on top.
+//! Scene command system - single execution path for all scene mutations.
+//!
+//! `SceneCommand` is a self-contained description of one editor operation.
+//! `execute_command()` applies it through the `scene_edit` functions, which
+//! write the `SceneDb` world directly; the renderer reads that same world,
+//! so the viewport follows without a separate update.
+//!
+//! Both user GPUI action handlers and AI tool implementations call
+//! `execute_command()`, giving a single auditable code path that is ready for
+//! undo / redo to be layered on top.
 mod class;
 mod component;
 mod executor;
@@ -24,7 +24,7 @@ pub use types::{CommandResult, ComponentData, SceneCommand, TypedComponent};
 /// The editor's Duplicate: one copy of `source_id`, where the source is,
 /// selected. The copy starts on its source; leaving the source selected made
 /// the gizmo and the properties panel act on the source, so the two looked
-/// tied together (Pulsar-Native#1048). Returns the copy's id.
+/// tied together. Returns the copy's id.
 pub fn duplicate_and_select(
     state: &mut crate::state::LevelEditorState,
     source_id: &str,

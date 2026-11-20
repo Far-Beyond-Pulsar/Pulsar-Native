@@ -379,7 +379,7 @@ pub struct PulsarApp {
     /// from it.
     content: pulsar_content::ContentRoot,
     default_scene: Option<PathBuf>,
-    /// The ONE shared, SceneDB-owned world (Pulsar-Native#634): cloned out
+    /// The ONE shared, SceneDB-owned world: cloned out
     /// of the TickLoop, hydrated with the requested level, and read by every
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
@@ -588,7 +588,7 @@ impl PulsarApp {
         self.winit_to_handle.insert(winit_id, handle);
 
         // Load the scene into the SHARED world + wire this window's renderer
-        // to it (Pulsar-Native#637/#634). The store already exists (the tick
+        // to it. The store already exists (the tick
         // loop's), so the level merges INTO it -- setup-time-registered
         // actors survive; no pulsar_scene::SceneLoader's second world.
         if let Some(ref path) = scene_path {
@@ -636,7 +636,7 @@ impl PulsarApp {
 
                     // Scripts need nothing else here: the tick loop's script
                     // driver finds the level's class instances in the shared
-                    // world at its first reconcile (#922).
+                    // world at its first reconcile.
 
                     tracing::info!(
                         window = handle.id(),
@@ -917,7 +917,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
                 // then the SHARED world's (the view target's camera, the best
-                // CameraComponent, a Camera-typed entity -- #637; moving the
+                // CameraComponent, a Camera-typed entity; moving the
                 // camera's object moves the view next frame), then the
                 // freecam. See `camera_selection`.
                 let ecs_camera = camera_for_frame(

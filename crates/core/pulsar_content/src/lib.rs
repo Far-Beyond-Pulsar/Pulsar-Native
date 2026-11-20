@@ -1,4 +1,4 @@
-//! Shipped game content (Pulsar-Native#926).
+//! Shipped game content.
 //!
 //! A packaged game is an executable next to a `Content/` directory:
 //!
@@ -42,15 +42,16 @@ pub mod root;
 pub mod settings;
 
 pub use pak::{
-    install_content_key, installed_content_key, write_pak_set, ContentKey, PackEvent,
-    PackReport, PackSettings, PakEntry, PakError, PakSet, CONTENT_KEY_FILE, PAK_VERSION,
+    install_content_key, installed_content_key, write_pak_set, ContentKey, ContentKeyError,
+    PackEvent, PackReport, PackSettings, PakEntry, PakError, PakSet, CONTENT_KEY_FILE, PAK_VERSION,
     TOC_FILE_NAME,
 };
 pub use packer::{packer, ContentPacker, PackJob};
 pub use provider::ContentFsProvider;
 pub use registry::{AssetKind, AssetRecord, AssetRegistry, ASSET_REGISTRY_FILE};
 pub use root::{
-    current, set_current, ContentRoot, CONTENT_DIR_ENV, CONTENT_DIR_NAME, PROJECT_ROOT_ENV,
+    current, set_current, ContentRoot, RootError, CONTENT_DIR_ENV, CONTENT_DIR_NAME,
+    PROJECT_ROOT_ENV,
 };
 pub use settings::{
     BuildProfile, ProjectSettings, ScriptProfileLimits, ScriptSettings, WindowSettings,

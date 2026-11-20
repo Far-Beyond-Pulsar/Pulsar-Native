@@ -3,10 +3,10 @@
 //! # Usage (runtime)
 //!
 //! Standalone games and PIE hydrate the level file into the shared
-//! `SceneDb` world via `engine_backend::scene::RuntimeLevel`
-//! (Pulsar-Native#637), so renderer and gameplay see ONE copy of scene
+//! `SceneDb` world via `engine_backend::scene::RuntimeLevel`,
+//! so renderer and gameplay see ONE copy of scene
 //! state. The legacy loader that dispatched records straight into a Helio
-//! scene was removed in Pulsar-Native#1035 (Phase 4).
+//! scene was removed.
 //!
 //! ```rust,ignore
 //! use engine_backend::scene::RuntimeLevel;

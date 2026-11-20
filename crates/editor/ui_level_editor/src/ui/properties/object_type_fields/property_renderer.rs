@@ -4,7 +4,7 @@
 //!   1. Looks up cached property metadata (populated lazily, reused across frames).
 //!   2. Serves current values from the section's per-card snapshot cache,
 //!      re-pulling from the live World only when a signal fired for that
-//!      specific card since the last render (Pulsar-Native#575): its own
+//!      specific card since the last render: its own
 //!      World subscription event, a legacy JSON-path write, or a
 //!      structural/epoch invalidation.
 //!   3. Delegates row rendering to [`ui_common::render_property_row_runtime`],
@@ -286,7 +286,7 @@ impl ObjectTypeFieldsSection {
 
     /// One property row.
     ///
-    /// Values come from the per-card snapshot cache (Pulsar-Native#575) and are
+    /// Values come from the per-card snapshot cache and are
     /// re-pulled from `World` only when a signal fired for that card; the
     /// editor behind the row is cached per `(card, property)`, so scrolling a
     /// row out and back keeps its focus and caret state.
@@ -321,7 +321,7 @@ impl ObjectTypeFieldsSection {
         }
         let card_key = (class_name.clone(), idx);
         // Components built from a class slot: each property's class default,
-        // for the override markers and revert (#921).
+        // for the override markers and revert.
         let slot_default_values = self.slot_default_values_for(idx, &properties);
         let object_id = self.object_id.clone();
         let editor_key = format!("{class_name}#{idx}");
@@ -357,7 +357,7 @@ impl ObjectTypeFieldsSection {
         let row = ui_common::render_property_row_runtime(
             &mut self.property_state,
             "level",
-            // Per-INSTANCE editor identity (Pulsar-Native#519): two cards of
+            // Per-INSTANCE editor identity: two cards of
             // one class must never share widget state.
             &editor_key,
             &class_name,
@@ -610,8 +610,8 @@ impl ObjectTypeFieldsSection {
 
         // Every component slot of the class, grouped by slot, including the
         // slots the class places on generated child objects -- whose
-        // overrides were otherwise only visible with that child selected
-        // (#932). Overridden properties get the same marker and revert.
+        // overrides were otherwise only visible with that child selected.
+        // Overridden properties get the same marker and revert.
         if !view.slots.is_empty() {
             rows.push(
                 div()

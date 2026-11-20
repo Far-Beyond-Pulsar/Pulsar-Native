@@ -1,3 +1,5 @@
+//! Chat provider for Google Gemini through its OpenAI-compatible endpoint (streaming).
+
 use agent_chat_core::{
     ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ModelDescriptor,
 };

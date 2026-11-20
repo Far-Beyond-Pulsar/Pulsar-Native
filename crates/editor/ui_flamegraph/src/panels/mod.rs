@@ -1,3 +1,5 @@
+//! The flamegraph panels: flamegraph, callstack, scripts and statistics.
+
 mod callstack_panel;
 mod flamegraph_panel;
 mod scripts_panel;

@@ -1,3 +1,6 @@
+//! The properties panel (`PropertiesPanel`): object header, transform and the component
+//! hierarchy.
+
 pub mod bindings;
 pub mod component_hierarchy;
 pub mod object_header_section;

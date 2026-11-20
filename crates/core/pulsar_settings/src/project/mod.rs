@@ -1,3 +1,6 @@
+//! Project settings: the graphics, rendering and streaming groups. `register_all` adds them
+//! to a `ConfigManager`.
+
 pub mod graphics;
 pub mod rendering;
 pub mod streaming;

@@ -8,7 +8,7 @@
 
 // Persistent texture/material/sectioned-mesh/object resource components.
 
-// Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
+// Play-mode level bootstrap -- hydrates a `.level` file
 // into SceneDb instead of pulsar_scene::SceneLoader's direct
 // Helio Scene writes.
 pub mod runtime_level;
@@ -16,14 +16,14 @@ pub mod runtime_level;
 /// Placed class instances follow class edits in every world (SceneDB#84).
 pub mod classes;
 
-// What a level may hold only one of (one sky, #1057), checked by editors
+// What a level may hold only one of (one sky), checked by editors
 // before an edit and repaired on load.
 pub mod level_rules;
 
-// World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
+// World/Entity-backed scene store -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 
-// Script object model bridge (Pulsar-Native#639) -- `SceneDb` as
+// Script object model bridge -- `SceneDb` as
 // the StableId⇄Entity resolver + duplicate-instance store the script-facing
 // handles route through. Impls only; no new storage.
 pub mod script_ref_bridge;
@@ -50,7 +50,7 @@ pub use component_events::{
     ParamKind, ParamValues, ResolvedFamily, ResolvedOutput,
 };
 #[cfg(feature = "render")]
-// Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
+// Shared SceneDb <-> helio::Renderer seam: GPU mirror attach
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
 pub mod sublevel_display;

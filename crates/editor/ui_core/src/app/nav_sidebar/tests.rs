@@ -544,7 +544,7 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     ed.cx.run_until_parked();
 }
 
-/// The content tree (#1139): files under expanded folders, a click that
+/// The content tree: files under expanded folders, a click that
 /// expands without opening the file drawer, the right-click menu, and the
 /// file operations it offers.
 fn content_tree(ed: &mut Editor, root: &Path, shots: &Screenshots, cx: &mut TestAppContext) {

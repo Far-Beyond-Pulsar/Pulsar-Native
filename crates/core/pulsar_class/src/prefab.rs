@@ -8,7 +8,7 @@
 //! real component (see `crate::world::ClassPlacement`).
 //!
 //! A prefab without slot ids, or with ids that are not UUIDs (the readable
-//! `<Class>_<n>` ids of early #921 builds), gets fresh UUIDs on load.
+//! `<Class>_<n>` ids of early builds), gets fresh UUIDs on load.
 //! [`PrefabAsset::load_from_dir`] migrates in memory and never writes (read
 //! paths); [`PrefabAsset::load_and_repair`] and [`PrefabLoad::repair`] save
 //! the migrated form so the ids stay stable, and report a failed save.
@@ -113,8 +113,8 @@ impl PrefabLoad {
     }
 
     /// Save the migrated form: record replaced slot ids in `class.json`
-    /// first (so a level keyed by the old ids can still find its slots,
-    /// #933), then write `prefab.json`. Both writes go through `engine_fs`;
+    /// first (so a level keyed by the old ids can still find its slots),
+    /// then write `prefab.json`. Both writes go through `engine_fs`;
     /// a failure of either is returned.
     pub fn repair(&self, dir: &Path) -> Result<(), String> {
         if !self.aliases.is_empty() {

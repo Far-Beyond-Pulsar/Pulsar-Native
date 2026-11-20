@@ -1,4 +1,4 @@
-//! Placed class instances in the editor (#921): placement, save/load by
+//! Placed class instances in the editor: placement, save/load by
 //! reference with overrides, migration, duplicate, history, details data.
 
 use std::path::{Path, PathBuf};
@@ -355,7 +355,7 @@ fn details_view_marks_overrides_and_reverts_them() {
     assert!(view.variables.iter().all(|v| !v.overridden));
 }
 
-/// #921: publishing `AssetUpdated` for a class rebuilds every placed
+/// Publishing `AssetUpdated` for a class rebuilds every placed
 /// instance from the new definition, keeping each instance's overrides
 /// (including unsaved edits), and queues the event for a running game.
 #[test]
@@ -420,7 +420,7 @@ fn class_asset_updates_rebuild_placed_instances() {
     assert_eq!(asset_updates::handle_asset_reload(&state, &event), 0);
 }
 
-/// #935: a class edit reaches every placed instance's LIVE components: after
+/// A class edit reaches every placed instance's LIVE components: after
 /// `AssetUpdated`, both instances' lights (root and generated child) have
 /// the new color, and so does the light row each one uploads for the
 /// renderer's scene join (`LightSourceRow`, derived on every write), with
@@ -563,7 +563,7 @@ fn reverts_and_variable_edits_are_undoable_commands() {
     );
 }
 
-/// #931: a class rebuild lands between an edit and its undo. Undo restores
+/// A class rebuild lands between an edit and its undo. Undo restores
 /// the instance's own overrides but builds it from the class as it is now:
 /// nothing of the old definition comes back, and redo works the same way.
 #[test]
@@ -630,7 +630,7 @@ fn undo_past_a_class_rebuild_keeps_the_current_class() {
     }
 }
 
-/// #931: two open levels with instances of one class. Rebuilding the first
+/// Two open levels with instances of one class. Rebuilding the first
 /// must not make the second diff its instances against the new definition
 /// (which would turn the old defaults into overrides and keep them).
 #[test]
@@ -680,7 +680,7 @@ fn placed_classes_are_class_objects_with_owned_children() {
     );
 }
 
-/// #925: Stop restores the editor world exactly as it was before the first
+/// Stop restores the editor world exactly as it was before the first
 /// Play, including removing objects scripts spawned during Play
 /// (`world::spawn` builds class instances with runtime StableIds) and
 /// undoing gameplay edits; a second Play while running keeps the pre-Play
@@ -749,7 +749,7 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
             )
             .unwrap();
         }
-        // A native actor spawns bare entities (#947): one with a light, one
+        // A native actor spawns bare entities: one with a light, one
         // with nothing.
         let bare = world.spawn();
         world.insert(bare, LightComponent::default());
@@ -776,7 +776,7 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
     );
 }
 
-/// Pulsar-Native#1035, Phase 3: instances are built from the class's typed
+/// Instances are built from the class's typed
 /// template. An override diff in the nested (`#[sub_props]`) shape lands on
 /// the reflected property without a decode, every instance shares one
 /// template, and a placed instance carries the override.
@@ -846,7 +846,7 @@ fn instances_are_built_from_the_typed_template() {
     assert_eq!(light(world, &id).intensity.intensity, 9.0);
 }
 
-/// Phase 2 (the world-ownership rule): Play hands the shared world to the
+/// Play hands the shared world to the
 /// game's session, so the editor's construct pump is suspended; Stop
 /// restores the snapshot and resumes it with one rescan (the restore's mass
 /// component add/remove is not a storm of `construct`s). A second Play while

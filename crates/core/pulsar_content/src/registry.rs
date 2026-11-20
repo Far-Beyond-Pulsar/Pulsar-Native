@@ -13,6 +13,16 @@ use serde::{Deserialize, Serialize};
 /// The registry file, content-relative.
 pub const ASSET_REGISTRY_FILE: &str = "Pulsar/asset_registry.json";
 
+/// The asset registry file is not valid registry JSON.
+#[derive(Debug, thiserror::Error)]
+pub struct RegistryError(#[source] serde_json::Error);
+
+impl std::fmt::Display for RegistryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{ASSET_REGISTRY_FILE}: {}", self.0)
+    }
+}
+
 /// What an asset is, from its extension.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -87,8 +97,8 @@ impl AssetRegistry {
         self.assets.get(&crate::normalize_rel(id)?)
     }
 
-    pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
-        serde_json::from_slice(bytes).map_err(|error| format!("{ASSET_REGISTRY_FILE}: {error}"))
+    pub fn from_json(bytes: &[u8]) -> Result<Self, RegistryError> {
+        serde_json::from_slice(bytes).map_err(RegistryError)
     }
 
     pub fn to_json(&self) -> String {

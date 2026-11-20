@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// All three run against ONE authoritative world state:
 /// `scene_store`, an `engine_backend::scene::SharedScene` wrapping SceneDB --
-/// the same store renderers read (Pulsar-Native#634). A mutation made by a
+/// the same store renderers read. A mutation made by a
 /// system or actor is visible to the renderer's next frame rebuild, and a
 /// level hydrated into the store after `setup()` is visible to gameplay on
 /// its next tick; there is no second world copy anywhere.
@@ -69,7 +69,7 @@ pub struct TickLoop {
     /// Contains identities only; component data remains authoritative in
     /// `scene_store` and is borrowed in place for each callback.
     component_runtime: pulsar_world_registry::ComponentRuntimeState,
-    /// Warns when a `Static`/`Stationary` object moves during play (#836).
+    /// Warns when a `Static`/`Stationary` object moves during play.
     /// Opened at the first tick, so level setup before it is not reported.
     static_moves: Option<helio_component::StaticMoveWatch>,
     /// The Blueprints the loaded level assigned to the engine roles (game
@@ -93,13 +93,13 @@ pub struct TickLoop {
     running: Arc<AtomicBool>,
     /// Shared running flag — lets external code stop the loop.
     pub running_flag: Arc<AtomicBool>,
-    // ── Native hot-reload bookkeeping (#653, see scripts.rs) ────────────────
+    // ── Native hot-reload bookkeeping (see scripts.rs) ────────────────
     /// Surviving [`ScriptTag`]s collected by `begin_script_reload`, consumed
     /// one-per-registration until empty.
     pub(crate) pending_rebinds: Vec<crate::scripts::RebindTarget>,
     /// Set once a reload has been armed, even after every tag is claimed.
     pub(crate) reload_armed: bool,
-    // ── Pause / step (Play-in-Editor simulate controls, #925) ───────────────
+    // ── Pause / step (Play-in-Editor simulate controls) ───────────────
     paused: bool,
     pending_steps: u32,
     /// The last tick's time, which a paused tick reports again.
@@ -254,7 +254,7 @@ impl TickLoop {
     }
 
     /// Build a `TickLoop` over an EXISTING shared store -- the ABI v2 PIE
-    /// path (#635): the guest adopts the HOST's authoritative world instead
+    /// path: the guest adopts the HOST's authoritative world instead
     /// of constructing its own, so editor edits and gameplay mutations hit
     /// one world. The handle must be the same `Arc` the host transferred;
     /// see `pulsar_pie_abi`'s module doc for the single-count transfer rule.
@@ -433,7 +433,7 @@ impl TickLoop {
             self.events.flush(pulsar_events::FlushPoint::AfterInput);
         }
 
-        // Phase 0: animation. Every live skeletal mesh component advances its
+        // Animation. Every live skeletal mesh component advances its
         // animation instance and publishes its pose and GPU palettes *before* the
         // schedule, so physics (which runs inside it) reads this frame's pose.
         // Parameters and Montage commands written by scripts later in the frame
@@ -448,7 +448,7 @@ impl TickLoop {
             }
         }
 
-        // Phase 1: ECS systems. Short write scope -- the renderer takes this
+        // ECS systems. Short write scope -- the renderer takes this
         // same lock every frame to step the scene and flush its GPU mirror, so
         // nothing here may hold it across phases.
         {
@@ -457,7 +457,7 @@ impl TickLoop {
             self.schedule.run(&mut store.world, scenedb_time);
         }
 
-        // Phase 1b: macro-registered native component callbacks. The
+        // Macro-registered native component callbacks. The
         // registry resolves each component through a typed SceneDB query and
         // calls it while borrowing the authoritative row in place. This is
         // deliberately separate from renderer synchronization and owns no
@@ -489,10 +489,10 @@ impl TickLoop {
             );
         }
 
-        // Phase 2: native script actors tick in phase 1b, through the component
+        // Native script actors tick through the component
         // lifecycle (`crate::lifecycle`), as every component does. This phase is
         // what remains of the old actor registry's: flush what the actors and
-        // components queued. Separate lock acquisition from phase 1 on purpose.
+        // components queued. Separate lock acquisition from the ECS systems on purpose.
         {
             profiling::profile_scope!("TickLoop::flush_component_events");
             let mut store = self.scene_store.write();
@@ -526,7 +526,7 @@ impl TickLoop {
             self.events.flush(pulsar_events::FlushPoint::AfterSystems);
         }
 
-        // Phase 3: the script phase, AFTER ECS + actor updates: the driver
+        // The script phase, AFTER ECS + actor updates: the driver
         // starts/stops script instances to match the world's class
         // instances, runs `begin_play` for the ones it started, `tick` for
         // all, then applies the spawns/destroys scripts queued. Deferring
@@ -697,7 +697,7 @@ impl TickLoop {
         let content = match pulsar_content::current() {
             Some(content) => content,
             None => {
-                let content = pulsar_content::ContentRoot::discover()?;
+                let content = pulsar_content::ContentRoot::discover().map_err(|e| e.to_string())?;
                 content.install();
                 content
             }
@@ -934,7 +934,7 @@ impl TickLoop {
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open. The renderer shares THIS
         // loop's scene store (cloned handle) -- one world for gameplay and
-        // rendering (Pulsar-Native#634).
+        // rendering.
         let display = event_loop.owned_display_handle();
         let mut app = PulsarApp::new(
             bridge,
@@ -989,7 +989,7 @@ impl SharedTickLoop {
             editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service)
                 .owner("pulsar_game"),
             move || {
-                let mut guard = shared.lock().unwrap();
+                let mut guard = shared.lock().expect("no panic while the tick lock is held");
                 guard.run_blocking();
             },
         )

@@ -1,5 +1,5 @@
 //! What an optional editor tool adds to the editor shell, so the shell names
-//! no tool (Pulsar-Native#1605): a status-bar button and a Tools menu entry
+//! no tool: a status-bar button and a Tools menu entry
 //! that open its window, an item in the title bar, an entry in the account
 //! menu, and work when a project opens. The tool's crate
 //! submits the registrations; the editor binary links the tools it ships

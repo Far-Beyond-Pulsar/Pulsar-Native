@@ -1,3 +1,5 @@
+//! Git settings helpers of the git manager.
+
 mod git_settings;
 
 pub(crate) use git_settings::{

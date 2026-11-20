@@ -36,10 +36,10 @@ pub fn begin_play() {
 /// Retired placeholder for custom event dispatch. It does nothing, and the
 /// Blueprint compiler rejects it (`RETIRED_EVENT_NODES`).
 ///
-/// Not offered in the Blueprint palette (#872): engine events are handled
+/// Not offered in the Blueprint palette: engine events are handled
 /// and sent with the "On <Event>", "Send <Event> to" and "Broadcast
 /// <Event>" nodes, which compile to module subscriptions and the
-/// `event::send` / `event::emit` natives on the engine event hub (#924).
+/// `event::send` / `event::emit` natives on the engine event hub.
 /// The old `on_event` and `remove_event_listener` placeholders are gone:
 /// a subscription ends when its instance despawns.
 ///

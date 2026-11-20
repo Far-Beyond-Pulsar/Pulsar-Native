@@ -1,5 +1,5 @@
 //! Standalone best-effort repair tool for `.level` files whose component
-//! JSON was saved in the wrong shape (Pulsar-Native#561 -- e.g. a
+//! JSON was saved in the wrong shape (e.g. a
 //! `#[sub_props]`-nested component stored flat/leaf-keyed, or an enum
 //! stored as a raw index instead of its string tag).
 //!
@@ -55,8 +55,8 @@ fn main() {
     println!();
 
     let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // `--project <dir>`: where `src/classes` lives, for the class migration
-    // (#921). Without it, each level's project is found by walking up from
+    // `--project <dir>`: where `src/classes` lives, for the class migration.
+    // Without it, each level's project is found by walking up from
     // the file to the first directory with a `src/classes`.
     let project = match args.iter().position(|a| a == "--project") {
         Some(i) if i + 1 < args.len() => {
@@ -183,7 +183,7 @@ fn find_project_root(level: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// #921 class migration: `ScriptComponent` class paths and
+/// class migration: `ScriptComponent` class paths and
 /// `blueprint_bindings` become `ClassInstance` components. Returns whether
 /// the level changed.
 fn migrate_classes(root: &mut Value, project: Option<&Path>) -> bool {
@@ -397,7 +397,7 @@ mod tests {
 
     use super::*;
 
-    /// #921: the repair tool runs the same class migration as loading.
+    /// The repair tool runs the same class migration as loading.
     #[test]
     fn class_references_are_migrated_in_place() {
         let project = tempfile::tempdir().unwrap();

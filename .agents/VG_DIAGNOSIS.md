@@ -1,3 +1,5 @@
+Status: proposed (as of 2026-11-20) - read-only diagnosis; the VG rework (BACKLOG_DISPATCH_PLAN V1) waits on an owner decision
+
 # VG diagnosis: #1599 / #1598 / #1417
 
 Read-only investigation (worker C2, 2026-11-08). No source was changed. All paths are

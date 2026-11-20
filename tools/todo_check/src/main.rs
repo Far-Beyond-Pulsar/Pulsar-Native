@@ -1,3 +1,6 @@
+//! Scans the files `git ls-files` lists for `TODO` comments with no issue reference and
+//! exits with status 1 if it finds any (2 if the scan itself fails).
+
 use std::error::Error;
 use std::path::Path;
 use std::process::Command;

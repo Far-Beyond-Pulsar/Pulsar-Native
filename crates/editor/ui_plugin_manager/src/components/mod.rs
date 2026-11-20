@@ -1,3 +1,5 @@
+//! Render functions of the plugin manager: plugin cards, details and the empty state.
+
 pub mod empty_state;
 pub mod plugin_card;
 pub mod plugin_details;

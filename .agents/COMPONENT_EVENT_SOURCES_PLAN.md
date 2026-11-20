@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - P1-P6 built and committed (970dfa1e5); its own 'uncommitted' note is stale
+
 # Component event sources plan
 
 Status: **implemented, uncommitted** (2026-11-19). Sections 1-11 are the design as written;

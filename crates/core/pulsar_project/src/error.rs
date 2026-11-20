@@ -12,7 +12,7 @@ pub enum SyncError {
     Descriptor(String),
 
     #[error("the engine SDK: {0}")]
-    Sdk(String),
+    Sdk(crate::sdk::SdkError),
 
     #[error("{path}: {message}")]
     Io { path: PathBuf, message: String },

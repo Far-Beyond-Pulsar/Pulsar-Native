@@ -1,4 +1,4 @@
-//! Proves `#[gpu]` on a `#[property]` field (Pulsar-Native#561's
+//! Proves `#[gpu]` on a `#[property]` field (the
 //! auto-derived GPU mirroring, `gpu_mirror_codegen` in `src/lib.rs`) works
 //! end to end, in isolation, on throwaway test types -- `LightComponent`
 //! (`helio_component`) is the real primitive now pointed at this exact
@@ -587,7 +587,7 @@ fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
 }
 
 /// Without `gpu_rows`, the generated companion is a CPU mapping only:
-/// inserting the authored value uploads no row (Pulsar-Native#1035, Phase 4).
+/// inserting the authored value uploads no row.
 #[engine_class(category = "Test", default, clone, debug, no_register)]
 pub struct ThrowawayCpuOnlyComponent {
     #[property]
@@ -667,7 +667,7 @@ impl ThrowawayEquivalenceComponent {
     }
 }
 
-/// Mutation equivalence (Pulsar-Native#1035 acceptance, #1081): a nested
+/// Mutation equivalence: a nested
 /// sub-props edit, a collection edit and a reflected method call leave the
 /// same authoritative value and the same GPU row as a typed insert of it,
 /// with no refresh call.

@@ -1,3 +1,6 @@
+//! Actions, file system metadata, git integration, drag and drop, import scanning and the
+//! file operations of the file manager.
+
 pub mod actions;
 mod drag_drop;
 pub mod fs_metadata;

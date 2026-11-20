@@ -77,7 +77,7 @@ pub struct LevelEditorPanel {
     /// The viewport tab, whose options bar shows the transform tool.
     viewport_panel: Option<WeakEntity<crate::ViewportPanelWrapper>>,
 
-    // Play In Editor (issue #243): the Game tab is opened when the game starts
+    // Play In Editor: the Game tab is opened when the game starts
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::ui::viewport::game_viewport::GameViewport>>,
 
@@ -104,14 +104,14 @@ pub struct LevelEditorPanel {
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,
 
-    /// A gizmo drag on a Static/Stationary object (#837), handed over by the
+    /// A gizmo drag on a Static/Stationary object, handed over by the
     /// poller and shown as a notification on the next render.
     pending_static_drag_warning: Option<engine_backend::subsystems::render::StaticDragWarning>,
     /// Objects already warned about this session: one notice per object,
     /// not one per drag.
     warned_static_drags: std::collections::HashSet<String>,
 
-    /// Rebuilds placed class instances when a class asset is updated (#921).
+    /// Rebuilds placed class instances when a class asset is updated.
     _class_updates: plugin_editor_api::AssetSubscription,
     /// Updated meshes, images and materials reload in place.
     _asset_reloads: plugin_editor_api::AssetSubscription,
@@ -283,7 +283,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_undo))
             .on_action(cx.listener(Self::on_redo))
             // The shared Undo/Redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y;
-            // the Edit menu): this level's history (#931).
+            // the Edit menu): this level's history.
             .on_action(
                 cx.listener(|this, _: &plugin_editor_api::Undo, window, cx| {
                     this.on_undo(&crate::ui::actions::Undo, window, cx)
@@ -433,7 +433,7 @@ impl Render for LevelEditorPanel {
 
 impl LevelEditorPanel {
     /// Keep this level's undo history in the host's `UndoService`: one
-    /// history per level file, shared by every view of it (#931). The
+    /// history per level file, shared by every view of it. The
     /// edits made so far are kept.
     pub fn set_undo_service(&mut self, service: plugin_editor_api::UndoService) {
         self.shared_state.write().scene.set_undo_service(service);

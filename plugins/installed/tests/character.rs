@@ -1,4 +1,4 @@
-//! The component class API's proof (Pulsar-Native#1608 phase 5, #1534):
+//! The component class API's proof:
 //! `pulsar.character`, a facade over classes of three other plugins.
 //!
 //! - Placing a character places its skeletal mesh, animator, character

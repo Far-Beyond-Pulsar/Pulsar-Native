@@ -62,10 +62,10 @@ pub struct FileManagerDrawer {
     /// An item [`Self::reveal`] asked to scroll into view on the next render.
     pub(crate) pending_reveal: Option<PathBuf>,
     pub(crate) fs_event_listener: Option<gpui::Task<()>>,
-    /// Rescans for imports when importable files change (#1101).
+    /// Rescans for imports when importable files change.
     pub(crate) import_watch: Option<crate::utils::import_scan::ImportWatch>,
     /// Import state of the open folder's files, for their context menus and
-    /// out-of-date badges (#1102).
+    /// out-of-date badges.
     pub(crate) import_states: crate::utils::import_state::FolderImportStates,
     pub(crate) clipboard: Option<(Vec<PathBuf>, bool)>,
     pub(crate) grid_scroll_handle: UniformListScrollHandle,

@@ -29,7 +29,7 @@ impl PlaybackControls {
                     .on_click(|_, _, _| send(PlaybackCommand::Play))
                     .into_any_element()
             } else {
-                // Native hot reload (#653): Play while a game runs rebuilds it
+                // Native hot reload: Play while a game runs rebuilds it
                 // and swaps the dylib without stopping the world.
                 Button::new("play_active")
                     .icon(IconName::Play)

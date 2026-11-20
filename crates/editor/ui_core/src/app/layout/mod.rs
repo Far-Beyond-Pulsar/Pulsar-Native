@@ -610,14 +610,14 @@ impl PulsarApp {
             left_open = layout.dock.left_dock.as_ref().map(|d| d.is_open()),
             "layout: restoring"
         );
-        // Phase 1: resolve against a read-only snapshot; nothing live changes.
+        // Resolve against a read-only snapshot; nothing live changes.
         let snapshot = resolve::LiveSnapshot::capture(&dock_area, &anchor, cx);
         let resolved = resolve::resolve_layout(&layout, &snapshot, &root, &dock_area, window, cx);
         // Whatever is still unbuildable is shelved again (and so saved again).
         self.state.layout_dormant = resolved.dormant.clone();
         self.state.layout_ghosts = resolved.ghost_popouts.clone();
 
-        // Phase 2: attach.
+        // Attach.
         let popouts = commit::commit(
             resolved,
             &dock_area,

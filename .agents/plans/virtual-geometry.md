@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - approved; T1 and T2 done per its own text, later tasks and the VG rework (VG_DIAGNOSIS.md) open
+
 # Virtual Geometry (cluster DAG + GCBVH + three-tier raster) — architecture plan
 
 Status: **APPROVED (with the LOD precedence amendment below). D1–D6 resolved to the recommended options.**

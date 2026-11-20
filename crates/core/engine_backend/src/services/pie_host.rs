@@ -1,5 +1,5 @@
 //! Play-In-Editor host — loads a game project's `cdylib` and drives it from the
-//! editor's render loop (issue #243).
+//! editor's render loop.
 //!
 //! The heavy lifting (offscreen Helio renderer, ECS tick) lives inside the game
 //! library behind a stable C ABI ([`pulsar_pie_abi`]). This module is the editor
@@ -35,7 +35,7 @@ use pulsar_pie_abi::{
     SYM_RESIZE, SYM_SHUTDOWN, SYM_TAKE_PROBLEMS, SYM_TICK,
 };
 
-/// The host-side half of the ABI v2 shared-world contract (#635).
+/// The host-side half of the ABI v2 shared-world contract.
 ///
 /// Owns a strong count of the editor's world handle and implements the
 /// phase-boundary lock callbacks handed to the guest. The guard produced by
@@ -52,7 +52,7 @@ pub(crate) struct PieWorldBridge {
     /// The editor's authoritative world. One strong count belongs to this
     /// bridge for the session; a second count is transferred to the guest
     /// via `Arc::into_raw` at load time (the guest reclaims it with
-    /// `Arc::from_raw` -- exactly once, per #635's single-transfer rule).
+    /// `Arc::from_raw` -- exactly once, per the single-transfer rule).
     store: crate::scene::SharedScene,
     /// The open slice, if any. Occupied == locked: the non-reentrancy
     /// witness is "slot already holds a guard", checked before locking.
@@ -148,15 +148,15 @@ pub struct PieHost {
     resize: FnResize,
     input: FnInput,
     shutdown: FnShutdown,
-    /// Optional (#921): games built before it existed lack the symbol.
+    /// Optional: games built before it existed lack the symbol.
     asset_updated: Option<FnAssetUpdated>,
-    /// Optional (#924): the game's event hub debug snapshot.
+    /// Optional: the game's event hub debug snapshot.
     events_snapshot: Option<FnEventsSnapshot>,
-    /// Optional (#925): pause / step.
+    /// Optional: pause / step.
     control: Option<FnControl>,
-    /// Optional (#854): script problems raised by the game.
+    /// Optional: script problems raised by the game.
     take_problems: Option<FnTakeProblems>,
-    /// Optional (#942): the game's event hub for editor plugins.
+    /// Optional: the game's event hub for editor plugins.
     event_bus: Option<FnEventBus>,
     /// The editor's handle onto the game's hub, announced to plugins
     /// (`pulsar_events::session`); dropped before the game shuts down.
@@ -167,7 +167,7 @@ pub struct PieHost {
     /// `*const wgpu::Texture` the game renders into; set by `init`.
     out_texture: *const c_void,
 
-    /// The shared-world lock-callback state (#635). Boxed so its address is
+    /// The shared-world lock-callback state. Boxed so its address is
     /// stable; its pointer is the `userdata` the lock callbacks receive.
     world_bridge: Option<Box<PieWorldBridge>>,
 
@@ -207,13 +207,13 @@ impl PieHost {
     ///
     /// `device`/`queue` are the editor's (GPUI's) handles; the game clones them
     /// so it shares the same GPU device. `shared_world` is the editor's
-    /// authoritative scene store (#635, ABI v2): one count stays with the host
+    /// authoritative scene store (ABI v2): one count stays with the host
     /// for the session and one is transferred to the guest via `Arc::into_raw`
     /// (the single-count transfer rule -- the guest reclaims it exactly once).
     /// `scene_path` is a `.level` file the editor wrote from its current scene;
     /// under v2 it is advisory only (the guest adopts the already-hydrated
     /// shared world instead of loading it), kept for logging/legacy guests.
-    /// `reload` marks a NATIVE HOT RELOAD (#653): an earlier session's world
+    /// `reload` marks a NATIVE HOT RELOAD: an earlier session's world
     /// state is still in `shared_world`, so the guest re-binds actor
     /// registrations to their existing entities instead of spawning duplicates
     /// (the flag rides `EngineContext::session_flags`; see ABI v3).
@@ -330,7 +330,7 @@ impl PieHost {
         let project_root_s = project_root.to_string_lossy().into_owned();
         let scene_path_s = scene_path.map(|p| p.to_string_lossy().into_owned());
 
-        // ── Shared-world bridge (#635, ABI v2) ───────────────────────────────
+        // ── Shared-world bridge (ABI v2) ───────────────────────────────
         // One Arc count stays with the bridge for the session; a SECOND count
         // is transferred to the guest via into_raw (guest reclaims it with
         // exactly one from_raw). The bridge is boxed so its address is stable
@@ -396,7 +396,7 @@ impl PieHost {
 
         let out_texture = ctx.out_texture;
 
-        // #942: the game's hub for editor plugins, for the session.
+        // The game's hub for editor plugins, for the session.
         let session_bus = event_bus.and_then(|export| {
             let mut raw = std::mem::MaybeUninit::<RawBus>::uninit();
             let ok = export(
@@ -464,7 +464,7 @@ impl PieHost {
         }
     }
 
-    /// Forward an asset-update notification to the running game (#921), so
+    /// Forward an asset-update notification to the running game, so
     /// it can reload what it built from the asset (a class's script module).
     /// Call on the thread that ticks the game. A no-op for games built
     /// without the entry point.
@@ -586,7 +586,7 @@ impl PieHost {
         Vec::new()
     }
 
-    /// The editor's handle onto the running game's event hub (#942), if
+    /// The editor's handle onto the running game's event hub, if
     /// the game exports it. Valid until [`stop`](Self::stop).
     pub fn session_bus(&self) -> Option<&ForeignBus> {
         self.session_bus.as_ref()
@@ -622,7 +622,7 @@ impl PieHost {
     #[allow(clippy::disallowed_methods)]
     /// Stop the game: run its teardown and unload the library.
     pub fn stop(&mut self) {
-        // #942: plugins drop their handles onto the game's hub now, while
+        // Plugins drop their handles onto the game's hub now, while
         // its code is still loaded; then the editor's own.
         if let Some(bus) = self.session_bus.take() {
             pulsar_events::announce_session_stopping();
@@ -719,7 +719,7 @@ fn format_to_u32(format: wgpu::TextureFormat) -> Option<u32> {
 mod tests {
     use super::*;
 
-    /// #635 locking protocol, host side: lock hands out an exclusive slice,
+    /// locking protocol, host side: lock hands out an exclusive slice,
     /// a second concurrent lock is refused (the non-reentrancy witness), and
     /// unlock closes the slice so the next one can open. Idempotent unlock.
     #[test]
@@ -759,7 +759,7 @@ mod tests {
         unsafe { pie_unlock_world(userdata) };
     }
 
-    /// #635: writes made through the handed-out pointer are visible through
+    /// Writes made through the handed-out pointer are visible through
     /// the editor's own handle afterwards -- same allocation, not a copy.
     #[test]
     fn slice_mutations_land_in_the_host_store() {

@@ -1,3 +1,6 @@
+//! Panels of the level editor: hierarchy, properties, viewport, toolbar, world settings and
+//! the `LevelEditorPanel` that hosts them.
+
 mod actions;
 mod environment_config_window;
 pub(crate) mod frame_pump;

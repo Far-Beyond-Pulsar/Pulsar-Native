@@ -2,7 +2,7 @@
 //! Project).
 //!
 //! These sit in the level editor's top bar, separate from the app-wide menus in
-//! the title bar (Pulsar-Native#1012). Adding a menu here is one more
+//! the title bar. Adding a menu here is one more
 //! [`EditorMenu`] in [`LevelEditorMenus::render`]; nothing in the app shell
 //! needs to know about it.
 

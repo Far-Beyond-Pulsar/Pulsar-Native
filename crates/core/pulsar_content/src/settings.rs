@@ -29,6 +29,16 @@ use serde::{Deserialize, Serialize};
 /// The settings file, content-relative.
 pub const PROJECT_SETTINGS_FILE: &str = "Pulsar/project.json";
 
+/// The project settings file is not valid settings JSON.
+#[derive(Debug, thiserror::Error)]
+pub struct SettingsError(#[source] serde_json::Error);
+
+impl std::fmt::Display for SettingsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{PROJECT_SETTINGS_FILE}: {}", self.0)
+    }
+}
+
 /// Which script limits and checks apply.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -80,8 +90,8 @@ pub struct ProjectSettings {
 
 impl ProjectSettings {
     /// Parse settings; `Err` carries the parse error.
-    pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
-        serde_json::from_slice(bytes).map_err(|error| format!("{PROJECT_SETTINGS_FILE}: {error}"))
+    pub fn from_json(bytes: &[u8]) -> Result<Self, SettingsError> {
+        serde_json::from_slice(bytes).map_err(SettingsError)
     }
 
     pub fn to_json(&self) -> String {
@@ -128,7 +138,7 @@ impl Default for WindowSettings {
     }
 }
 
-/// Script VM limits of one profile (#857, #858). In the file, a profile
+/// Script VM limits of one profile. In the file, a profile
 /// may set only some fields; the others keep that profile's defaults.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ScriptProfileLimits {
@@ -199,7 +209,7 @@ pub struct ScriptSettings {
         deserialize_with = "shipping_limits"
     )]
     pub shipping: ScriptProfileLimits,
-    /// Native capabilities scripts may import (#869): `null` (the
+    /// Native capabilities scripts may import: `null` (the
     /// default) allows every capability, a list allows only those.
     /// Checked when classes link.
     pub allowed_capabilities: Option<Vec<String>>,

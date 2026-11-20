@@ -43,7 +43,7 @@ plugins/vendor/rust/src/discovery.rs | finds or installs rust-analyzer (PATH, ~/
 plugins/vendor/typescript/src/archive.rs | unpacks the approved managed install into the engine tools directory, outside any project
 plugins/vendor/typescript/src/install.rs | the managed typescript-language-server install in the engine tools directory (staging, verify, move into place), outside any project
 plugins/vendor/typescript/src/locate.rs | finds typescript-language-server and Node on PATH, in the person node_modules and install places, outside any project
-crates/core/pulsar_macros/src/lib.rs | a proc macro: runs inside rustc and reads its own crate's source dir
+crates/core/pulsar_macros/src/icons.rs | a proc macro: runs inside rustc and reads its own crate's source dir
 crates/core/pulsar_package/src/lib.rs | the packaged game's output folder and executable copy, and the engine source checkout lookup
 crates/core/pulsar_package/src/main.rs | the CLI writes its JSON report to the path it is given
 crates/core/pulsar_script_conformance/build.rs | build script reading fixtures, writing OUT_DIR

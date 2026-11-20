@@ -40,8 +40,12 @@ async fn main() -> Result<()> {
     }
 
     let create_data: serde_json::Value = create_resp.json().await?;
-    let session_id = create_data["session_id"].as_str().unwrap();
-    let join_token = create_data["join_token"].as_str().unwrap();
+    let session_id = create_data["session_id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("create response has no session_id"))?;
+    let join_token = create_data["join_token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("create response has no join_token"))?;
 
     tracing::debug!("   ✓ Session created:");
     tracing::debug!("     - ID: {}", session_id);

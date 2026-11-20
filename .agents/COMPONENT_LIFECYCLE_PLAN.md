@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - P1-P6 built; crates/core/pulsar_component_lifecycle exists
+
 # Component lifecycle refactor: audit and plan
 
 **Status (current).** P1-P6 are all built, P5b included (each has an "As built"

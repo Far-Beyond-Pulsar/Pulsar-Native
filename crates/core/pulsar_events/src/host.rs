@@ -1,5 +1,5 @@
 //! The process-wide host bus, shared with plugins across library
-//! boundaries (Pulsar-Native#930).
+//! boundaries.
 //!
 //! Each dynamic library that links this crate gets its own copy of its
 //! statics. So the host (the editor or the game binary) owns the one real
@@ -199,7 +199,7 @@ pub unsafe fn attach_host_bus(raw: RawBus) -> u32 {
 #[macro_export]
 macro_rules! export_host_bus_attach {
     () => {
-        /// Receive the host's event bus (Pulsar-Native#930). Called by the
+        /// Receive the host's event bus. Called by the
         /// host's plugin loader right after loading this library.
         ///
         /// # Safety

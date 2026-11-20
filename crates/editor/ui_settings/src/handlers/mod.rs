@@ -1,3 +1,5 @@
+//! Handlers of the settings window, such as `save_pending_changes`.
+
 use crate::screen::ModernSettingsScreen;
 use engine_state::{GlobalSettings, ProjectSettings};
 use gpui::{Context, Window};

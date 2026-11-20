@@ -222,7 +222,7 @@ fn disabling_and_reenabling_physics_preserves_the_canonical_value() {
     ));
 }
 
-/// Pulsar-Native#1035, Phase 3: an object's `props` are its own render
+/// An object's `props` are its own render
 /// props. Component values are not copied into them, so an object edit
 /// written back (`update_object`) and a save carry no stale copies.
 #[test]
@@ -338,7 +338,7 @@ fn rigidbody_add_edit_undo_and_save_are_typed() {
     );
 }
 
-/// Phase 6 (Pulsar-Native#1035): any number of panels follow the selected
+/// Any number of panels follow the selected
 /// object through their own subscriptions. A light edited through the
 /// panel's write path and a transform moved elsewhere reach each of them
 /// with their new values, and a script's change watch still sees the edit.
@@ -398,7 +398,7 @@ fn every_panel_feed_receives_edits_with_their_values() {
     assert_eq!(script.poll(world), vec!["light"]);
 }
 
-/// Observer fanout (Pulsar-Native#1035 acceptance, #1081): what the
+/// Observer fanout: what the
 /// properties panel relies on across a level load. Loading clears the
 /// `World` in place, so the selected object's feed is told it despawned and
 /// hears nothing more; the selection's id then resolves to the loaded

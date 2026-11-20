@@ -17,6 +17,7 @@
 //!   cached in the mirror's record, keyed by the checkout files it depends
 //!   on ([`EngineSdk::index`]).
 
+mod error;
 pub(crate) mod fs;
 pub mod index;
 pub mod mirror;
@@ -24,6 +25,7 @@ pub mod normalize;
 
 use std::path::{Path, PathBuf};
 
+pub use error::SdkError;
 pub use index::{SdkIndex, SdkPackage, SdkWorkspace, INDEX_FILE};
 pub use mirror::{MirrorRecord, MirrorReport};
 
@@ -48,7 +50,7 @@ pub struct EngineSdk {
 
 impl EngineSdk {
     /// The SDK of the running engine (see the module doc).
-    pub fn locate() -> Result<Self, String> {
+    pub fn locate() -> Result<Self, SdkError> {
         if let Some(dir) = std::env::var_os(SDK_ENV).filter(|d| !d.is_empty()) {
             return Self::at(Path::new(&dir));
         }
@@ -61,14 +63,14 @@ impl EngineSdk {
                 return Self::at(&dir);
             }
         }
-        Err(format!(
+        Err(SdkError::Message(format!(
             "no engine SDK: the engine is neither an install with an sdk/ directory nor \
              running from its source checkout (set {SDK_ENV} to an SDK)"
-        ))
+        )))
     }
 
     /// The SDK at `root`: an exported SDK or an engine checkout.
-    pub fn at(root: &Path) -> Result<Self, String> {
+    pub fn at(root: &Path) -> Result<Self, SdkError> {
         let root = &fs::canonical(root)?;
         if fs::is_file(&root.join(INDEX_FILE)) {
             Ok(Self {
@@ -81,10 +83,10 @@ impl EngineSdk {
                 kind: SdkKind::Checkout,
             })
         } else {
-            Err(format!(
+            Err(SdkError::Message(format!(
                 "{} is neither an exported engine SDK (no {INDEX_FILE}) nor an engine checkout",
                 root.display()
-            ))
+            )))
         }
     }
 
@@ -103,7 +105,7 @@ impl EngineSdk {
     pub fn index(
         &self,
         cached: Option<&MirrorRecord>,
-    ) -> Result<(SdkIndex, Option<String>), String> {
+    ) -> Result<(SdkIndex, Option<String>), SdkError> {
         match self.kind {
             SdkKind::Exported => {
                 let text = fs::read_string(&self.root.join(INDEX_FILE))?;
@@ -128,7 +130,7 @@ impl EngineSdk {
 
     /// Export this SDK to `dest` (an install's `sdk/`): its packages,
     /// normalized, and [`INDEX_FILE`].
-    pub fn export(&self, dest: &Path) -> Result<SdkIndex, String> {
+    pub fn export(&self, dest: &Path) -> Result<SdkIndex, SdkError> {
         let (index, _) = self.index(None)?;
         mirror::mirror(&self.root, &index, None, dest, true)?;
         fs::write(&dest.join(INDEX_FILE), index.to_json().as_bytes())?;
@@ -139,7 +141,7 @@ impl EngineSdk {
     /// manifest and lockfile, the manifest and plugin descriptor of each
     /// package in `index`, and the manifest of each nested workspace. A package newly reachable from a game is only
     /// reachable through a change to one of these.
-    fn checkout_key(&self, index: &SdkIndex) -> Result<String, String> {
+    fn checkout_key(&self, index: &SdkIndex) -> Result<String, SdkError> {
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
         for rel in ["Cargo.toml", "Cargo.lock"] {
             files.push((rel.to_owned(), fs::read(&self.root.join(rel))?));

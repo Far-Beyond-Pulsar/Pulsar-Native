@@ -207,8 +207,8 @@ impl Default for PropertyStateManager {
 ///
 /// `editor_key` identifies the OWNING CARD in the editor cache — it must be
 /// unique per component INSTANCE, not just per class: an object with two
-/// instances of the same component class must get two independent editors
-/// (Pulsar-Native#519), or both cards would share widget state and every
+/// instances of the same component class must get two independent editors,
+/// or both cards would share widget state and every
 /// keystroke would land in whichever card rendered first. Callers typically
 /// pass something like `"{class_name}#{component_index}"`. `class_name`
 /// itself still flows to the editor factory untouched (labels, naming).

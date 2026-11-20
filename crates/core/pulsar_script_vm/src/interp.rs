@@ -93,7 +93,7 @@ impl Continuation {
     }
 
     /// Move this suspended call onto `module`, a new version of the module
-    /// it was running (a class reload, #862), if its code layout is
+    /// it was running (a class reload), if its code layout is
     /// compatible. For every suspended frame, the new module must have a
     /// function with the same name and the same parameter, return and
     /// register types and the same number of instructions; the innermost
@@ -176,8 +176,8 @@ pub struct Vm {
     pub max_depth: usize,
     /// Integer `Add`, `Sub`, `Mul`, `Div`, `Rem` and `Neg` that overflow,
     /// and `FloatToInt` of a value outside `int` (or NaN), raise
-    /// [`ScriptErrorKind::Overflow`] instead of wrapping or saturating
-    /// (#858). Off by default, like a Rust release build; the engine turns
+    /// [`ScriptErrorKind::Overflow`] instead of wrapping or saturating.
+    /// Off by default, like a Rust release build; the engine turns
     /// it on in the editor and Play-in-Editor and off in shipping builds.
     pub checked_arithmetic: bool,
     /// Optional language-neutral debugger attached to this VM. It stops in
@@ -493,7 +493,7 @@ impl Vm {
             let (func, pc, base) = (frame.func, frame.pc, frame.base);
             let function = &module.functions[func as usize];
             // Source locations are only looked up for the debugger; without
-            // one the interpreter pays nothing for them (#853).
+            // one the interpreter pays nothing for them.
             if let Some(reason) = self.debugger.as_mut().and_then(|debugger| {
                 debugger.should_stop(
                     &function.name,

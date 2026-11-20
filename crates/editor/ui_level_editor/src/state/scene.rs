@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// Undo/redo history depth cap (Pulsar-Native#554). Each entry is a full
+/// Undo/redo history depth cap. Each entry is a full
 /// scene snapshot (`scene_edit::history::capture_history_snapshot`'s cost is
 /// O(scene size) -- see that method's doc), so this bounds memory rather
 /// than letting an unbounded session-long history grow forever. Not tuned
@@ -71,7 +71,7 @@ pub struct SceneDomain {
     play_entities: Option<HashSet<Entity>>,
     /// Current editor mode.
     pub editor_mode: EditorMode,
-    /// Bumped when a class update rebuilt placed instances (#935), from
+    /// Bumped when a class update rebuilt placed instances, from
     /// whatever thread published it; the level editor redraws on a change.
     pub class_updates: u64,
     /// Currently open scene file path.
@@ -85,7 +85,7 @@ pub struct SceneDomain {
     /// which may change the selection; the panel poller takes it and points
     /// the gizmo at the restored selection.
     pub pending_selection_sync: bool,
-    /// The level's undo history (Pulsar-Native#554, #931): one entry per
+    /// The level's undo history: one entry per
     /// mutating `SceneCommand` (`execute_command` commits them) or plugin
     /// edit (a sculpt stroke), in the order they were made, bounded at
     /// [`MAX_UNDO_HISTORY`]. Registered with the host's `UndoService` under
@@ -247,7 +247,7 @@ impl SceneDomain {
         }
     }
 
-    // ── Undo/redo (Pulsar-Native#554) ────────────────────────────────────
+    // ── Undo/redo ────────────────────────────────────
     //
     // v1, correctness-first: whole-scene snapshot per step, no per-command
     // diffing. `commands.rs::execute_command` is the sole call site that
@@ -323,7 +323,7 @@ impl SceneDomain {
         history.seal();
     }
 
-    /// Record a finished gizmo drag as one undo step (#931), however many
+    /// Record a finished gizmo drag as one undo step, however many
     /// objects it moved. The renderer moves the objects directly while
     /// dragging; this captures them as they were (by briefly putting the
     /// starting transforms back, so a placed class's overrides are captured

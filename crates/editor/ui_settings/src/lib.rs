@@ -1,3 +1,6 @@
+//! The settings window (`SettingsWindow`, `ModernSettingsScreen`) over the global and
+//! project settings.
+
 pub mod components;
 mod handlers;
 mod screen;

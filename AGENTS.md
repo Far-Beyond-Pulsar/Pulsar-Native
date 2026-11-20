@@ -7,6 +7,7 @@ runtime is the editor. For the full context, see `.agents/`.
 
 | File | What |
 |---|---|
+| `ARCHITECTURE.md` | Human-oriented tour: layers, plugin model, startup, scene data, one traced editor action |
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
 | `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |

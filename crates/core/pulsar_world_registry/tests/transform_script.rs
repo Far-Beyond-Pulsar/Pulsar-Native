@@ -258,7 +258,7 @@ fn getters_are_side_effect_free_but_not_deterministic() {
     }
 }
 
-/// Mutation equivalence (Pulsar-Native#1035 acceptance, #1081): a script's
+/// Mutation equivalence: a script's
 /// write reaches the transform's GPU row exactly as a typed write of the
 /// same value does, with no refresh call.
 #[test]

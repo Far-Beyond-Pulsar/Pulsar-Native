@@ -1,4 +1,4 @@
-//! Declared events, subscriptions and the `event::*` natives (#924).
+//! Declared events, subscriptions and the `event::*` natives.
 
 mod common;
 

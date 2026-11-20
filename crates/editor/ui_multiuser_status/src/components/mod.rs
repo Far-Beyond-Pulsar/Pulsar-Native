@@ -1,3 +1,5 @@
+//! The status bar indicator and avatar chip of the multiuser session.
+
 pub mod avatar_chip;
 pub mod status_indicator;
 

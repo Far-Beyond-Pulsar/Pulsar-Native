@@ -1,4 +1,4 @@
-//! Placed class instances in the editor (Pulsar-Native#921).
+//! Placed class instances in the editor.
 //!
 //! A placed class is a root object with a `ClassInstance` component, the
 //! class's prefab components, and generated child objects for components
@@ -622,7 +622,7 @@ pub fn apply_class_asset_update(
 /// The instance at `root_id`'s `ClassInstance` with its live edits folded
 /// into the overrides, diffed against the definition it was built from (or
 /// the class's current one when that is unknown). What undo stores for a
-/// placed class (#931): its class and overrides, never its built
+/// placed class: its class and overrides, never its built
 /// components, so a restore rebuilds from whatever the class is now.
 pub fn folded_class_instance(
     world: &World,

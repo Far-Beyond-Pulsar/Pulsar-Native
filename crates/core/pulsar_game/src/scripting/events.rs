@@ -1,4 +1,4 @@
-//! Scripts on the engine event hub (#924).
+//! Scripts on the engine event hub.
 //!
 //! The [`ScriptDriver`](super::ScriptDriver) owns one [`ScriptEvents`] when
 //! the tick loop gives it the session's [`EventHub`]:
@@ -525,7 +525,7 @@ impl ScriptEvents {
             .0
     }
 
-    /// Subscribe instance `id` again after its class was reloaded (#925):
+    /// Subscribe instance `id` again after its class was reloaded:
     /// like [`subscribe`](Self::subscribe), but its timers keep running and
     /// handler calls already queued for it go to the new code's handler of
     /// the same event (they are dropped if the class no longer handles it).

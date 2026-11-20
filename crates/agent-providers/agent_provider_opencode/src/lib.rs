@@ -1,3 +1,6 @@
+//! Chat provider for the OpenCode endpoints (`opencode.ai/go` and `opencode.ai/zen`),
+//! OpenAI-style with streaming and tool calls.
+
 use agent_chat_core::{
     ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
     ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,

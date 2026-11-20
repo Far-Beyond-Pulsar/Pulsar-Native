@@ -323,7 +323,7 @@ pub(super) fn create_plugin_manager(
     let mut plugin_manager = staged_manager.unwrap_or_else(PluginManager::new);
     // Every editor -- built-in or a plugin library -- is created with a handle
     // to the engine's language servers and its one set of undo
-    // histories (one per document, Pulsar-Native#931).
+    // histories (one per document).
     plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
         language_servers: Some(language_servers.clone()),
         undo: plugin_editor_api::UndoService::new(),

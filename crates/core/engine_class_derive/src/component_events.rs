@@ -201,7 +201,9 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> TokenStream {
                 Ok(value) => value,
                 Err(error) => return error.to_compile_error().into(),
             };
-            let (_, by_ref) = event_value_type(&input.ty).unwrap();
+            let (_, by_ref) = event_value_type(&input.ty).expect(
+                "register_event_value above already rejected a type event_value_type cannot read",
+            );
             let _ = base_type;
             let owned_value = if by_ref {
                 quote::quote!((*#name).clone())

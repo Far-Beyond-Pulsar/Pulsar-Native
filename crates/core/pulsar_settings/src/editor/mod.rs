@@ -1,3 +1,7 @@
+//! Editor settings, one module per group: advanced, appearance, build notifications, code
+//! editor, debugger, file manager, navigation, radial menu, renderer, source control and
+//! viewport.
+
 pub mod advanced;
 pub mod appearance;
 pub mod build_notifications;

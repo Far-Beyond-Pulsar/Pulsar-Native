@@ -1,3 +1,6 @@
+//! Vertex AI chat provider. It lists a fixed set of models; `chat` and `chat_streaming`
+//! return a "not yet implemented" error because Google OAuth is not wired in.
+
 use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ModelDescriptor};
 
 pub struct VertexAiProvider {

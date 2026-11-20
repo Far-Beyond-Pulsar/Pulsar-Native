@@ -50,7 +50,7 @@ pub fn save_to_file_with_settings<P: AsRef<Path>>(
 
 /// The objects and component lists a save writes.
 ///
-/// Placed classes are saved by reference (#921): a class root keeps its
+/// Placed classes are saved by reference: a class root keeps its
 /// `ClassInstance` with overrides recomputed against the current class
 /// defaults (only the differences), plus any component the user added;
 /// the components built from class slots and the generated child objects
@@ -217,7 +217,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
     }
     let now = chrono::Utc::now().to_rfc3339();
     // Read the existing file once: its editor camera is preserved when no fresh
-    // camera state was supplied, and its #650 blueprint-binding section always
+    // camera state was supplied, and its blueprint-binding section always
     // rides along (the editor cannot author it yet, but a re-save must never
     // destroy it).
     let existing_file = virtual_fs::read_file(path)

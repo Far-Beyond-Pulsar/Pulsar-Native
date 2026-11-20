@@ -8,9 +8,9 @@
 //! links, the owner objects' transforms and visibility) into the object,
 //! material and light rows its passes draw, on the GPU, whenever they
 //! change. This module keeps no frame projection, render-row
-//! subscription, material table or per-frame input assembly
-//! (Pulsar-Native#1035, Phase 2). Every other kind's row join
-//! ([`environment_join`]) does the same for its rows (Phase 4); each kind's
+//! subscription, material table or per-frame input assembly.
+//! Every other kind's row join
+//! ([`environment_join`]) does the same for its rows; each kind's
 //! join is its feature crate's (`scene_rows`). The engine runs them and
 //! knows none: a plugin's kind registers its source rows and its join
 //! ([`SceneRowsRegistration`]), and the spaces it puts in the frame's table

@@ -1,10 +1,10 @@
-//! `pulsar_scenedb::World` as the script object model's host (#639).
+//! `pulsar_scenedb::World` as the script object model's host.
 //!
 //! Implements [`StableIdResolver`] (the StableId⇄Entity mapping script
 //! references re-resolve against after save/load/reload/undo-redo/
 //! reparenting) directly over the world's own `StableId` components.
 //! Component instances need no seam: each is its own entity holding its own
-//! typed value (Pulsar-Native#1035, D1).
+//! typed value.
 
 use pulsar_scene_model::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};

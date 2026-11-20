@@ -4,7 +4,7 @@
 //!
 //! The legacy import adapter that dispatched records through
 //! `ComponentRuntimeBehavior::sync_component` straight into a Helio scene
-//! is gone (Pulsar-Native#1035, Phase 4): every scene is hydrated into
+//! is gone: every scene is hydrated into
 //! SceneDB, and components reach the renderer through their data.
 
 use std::collections::HashMap;

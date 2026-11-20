@@ -1,5 +1,4 @@
-//! Per-subscriber change watching over SceneDB's change journals
-//! (Pulsar-Native#1035, Phase 5).
+//! Per-subscriber change watching over SceneDB's change journals.
 //!
 //! A [`ComponentWatch`] follows a set of `(entity, component)` pairs, each
 //! under a caller-chosen key, through its own [`ChangeCursor`]s -- one per
@@ -199,7 +198,7 @@ mod tests {
         assert_eq!(script.poll(&world), vec!["a"], "removal invalidates too");
     }
 
-    /// Observer fanout (Pulsar-Native#1035 acceptance, #1081): watchers
+    /// Observer fanout: watchers
     /// polling at different rates (every write, every seventh, once at the
     /// end) each learn of every key written since their previous poll, and
     /// an object feed receives every write's value, whatever the others do.

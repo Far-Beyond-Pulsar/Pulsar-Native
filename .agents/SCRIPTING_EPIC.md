@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - agents A-F report STATUS: COMPLETE; world-access details superseded by SCENEDB_MIGRATION.md
+
 # Scripting Epic — Agent Pipeline Context
 
 Master context for the six sequential implementation agents (A→F) building

@@ -35,7 +35,7 @@ impl Render for HierarchyDragPayload {
 
 // ── Scene Object Item ─────────────────────────────────────────────────────────
 
-/// How an object relates to a placed class (#921).
+/// How an object relates to a placed class.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClassRole {
     None,
@@ -57,7 +57,7 @@ struct SceneObjectItem {
     is_selected: bool,
     is_folder: bool,
     class_role: ClassRole,
-    /// The object's authored movability (#837,
+    /// The object's authored movability (from
     /// `helio_component::components::object_movability`); `None` for objects
     /// with no mesh or light.
     movability: Option<helio::Movability>,
@@ -569,7 +569,7 @@ impl HierarchyItem for SceneObjectItem {
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
         let delete_state = self.state_arc.clone();
-        // "Mark selection Static" (#837): the object and everything under
+        // "Mark selection Static": the object and everything under
         // it, one undo step. Objects with no mesh or light are skipped.
         let set_movability = |movability: helio_component::components::ObjectMovability| {
             let id = self.object.id.clone();

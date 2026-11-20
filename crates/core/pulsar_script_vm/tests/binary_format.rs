@@ -1,4 +1,4 @@
-//! Binary module encoding (#852): round trips against JSON and header
+//! Binary module encoding: round trips against JSON and header
 //! checks.
 
 use pulsar_script_vm::{

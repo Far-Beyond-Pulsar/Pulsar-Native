@@ -1,8 +1,8 @@
-//! Rust-script actor data model (#653): the editor-side record that binds a
+//! Rust-script actor data model: the editor-side record that binds a
 //! scene object to a gameplay script crate's actor type.
 //!
 //! Data-model level only: a Rust actor object carries a
-//! `NativeScriptComponent` (`pulsar_class::NativeScriptComponent`, #921):
+//! `NativeScriptComponent` (`pulsar_class::NativeScriptComponent`):
 //!
 //! ```json
 //! { "class_name": "NativeScriptComponent",
@@ -12,15 +12,14 @@
 //!
 //! Blueprint classes are placed as `ClassInstance`s instead; native script
 //! crates are not class assets (no class directory or GUID), so they keep
-//! this small component. Levels from before #921 stored the same binding as
+//! this small component. Levels from before stored the same binding as
 //! the "rust mode" of the retired `ScriptComponent`; the level migration
 //! (`pulsar_class::migrate`) converts it.
 //!
 //! The record rides the existing save path (`component_instances` round-trips;
 //! D5 proved re-saves preserve it). What consumes it today is discovery +
 //! authoring; binding-driven SPAWNING at play time (a level-format section
-//! like #650's `blueprint_bindings`) and inspector UI are F's follow-up — see
-//! the E3 handoff.
+//! like `blueprint_bindings`) and inspector UI are not implemented.
 
 use serde_json::{json, Value};
 

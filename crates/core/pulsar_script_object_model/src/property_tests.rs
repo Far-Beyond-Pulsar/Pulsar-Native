@@ -1,4 +1,4 @@
-//! #641 property tests: churn spawn/despawn/reuse while refs are held and
+//! property tests: churn spawn/despawn/reuse while refs are held and
 //! prove no cross-object writes can occur through any scripting path.
 //!
 //! Deterministic (xorshift64*, fixed seeds) -- a failure reproduces exactly;
@@ -125,7 +125,7 @@ impl Churn {
             Err(other) => panic!("unexpected error writing through a live ref: {other}"),
         }
 
-        // THE #641 invariant: no other object's value moved.
+        // THE invariant: no other object's value moved.
         for (bits, expected) in others_before {
             let entity = Entity::from_bits(bits);
             let actual = self.world.get::<TestGizmo>(entity).map(|g| g.charges);
@@ -170,7 +170,7 @@ impl Churn {
     }
 }
 
-/// The #641 property test: heavy spawn/despawn/reuse churn while scripts
+/// The property test: heavy spawn/despawn/reuse churn while scripts
 /// hold refs. No cross-object write ever occurs; no accessor ever panics.
 #[test]
 fn churn_spawn_despawn_and_slot_reuse_never_crosses_writes() {

@@ -1,6 +1,6 @@
 //! Integration tests for RuntimeTypeInfo integration with blueprint system
 //!
-//! Validates Phase 2 completion: blueprint nodes properly integrate with RuntimeTypeInfo
+//! Validates that blueprint nodes integrate with RuntimeTypeInfo
 
 use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
 use pulsar_std::registry::*;

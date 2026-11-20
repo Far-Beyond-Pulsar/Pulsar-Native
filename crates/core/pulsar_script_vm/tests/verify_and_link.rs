@@ -253,7 +253,7 @@ fn wrong_format_version() {
     assert!(rejected(&asm).contains("format version 999"));
 }
 
-// ---- capabilities (#869) --------------------------------------------------
+// ---- capabilities --------------------------------------------------
 
 #[test]
 fn capability_gated_natives_need_the_policy_to_allow_them() {

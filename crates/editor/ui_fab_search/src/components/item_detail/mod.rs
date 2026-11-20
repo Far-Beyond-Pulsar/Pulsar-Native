@@ -1,3 +1,6 @@
+//! The item detail view of the Fab search window: header, gallery, description, changelog,
+//! tags, and the left column and sidebar.
+
 pub mod changelog;
 pub mod description;
 pub mod format_tags;

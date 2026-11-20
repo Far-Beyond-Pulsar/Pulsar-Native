@@ -1,3 +1,5 @@
+//! Diagnostic types, actions and filtering for the Problems drawer.
+
 pub mod actions;
 pub mod filter;
 pub mod types;

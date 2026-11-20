@@ -6,7 +6,7 @@
 //! back into the resource. Bus delivery happens on the publisher's thread, so
 //! the subscription only queues; an async task drains the queue in the window.
 //!
-//! With several level editors open, one is the playback host (#1009): the
+//! With several level editors open, one is the playback host: the
 //! editor the user last pressed Play in, or else the first one to report. Only
 //! the host reports its status and handles Stop, Pause and Step; Play goes to
 //! the editor in the active window, which becomes the host.

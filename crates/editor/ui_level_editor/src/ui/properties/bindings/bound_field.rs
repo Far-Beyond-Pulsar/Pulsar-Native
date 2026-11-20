@@ -80,8 +80,8 @@ impl NumberBoundField {
                                 if this.binding.validate(&value).is_ok() {
                                     // `binding.set` -- whether this is
                                     // undo-tracked depends entirely on which
-                                    // `FieldBinding` was constructed with
-                                    // (Pulsar-Native#561): every live caller
+                                    // `FieldBinding` was constructed with:
+                                    // every live caller
                                     // now uses a `*_with_db` binding whose
                                     // setter runs `execute_command` (see
                                     // `TransformSection`/

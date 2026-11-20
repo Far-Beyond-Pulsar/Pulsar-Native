@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - the native callback and event path it proposed is implemented (see COMPONENT_LIFECYCLE_PLAN.md); the gap tables are historical
+
 # Component runtime: current gaps and target
 
 This document compares the component runtime in the repository today with the

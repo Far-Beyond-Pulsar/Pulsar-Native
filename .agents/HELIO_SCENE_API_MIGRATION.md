@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - migration finished; historical audit, see SCENEDB_MIGRATION.md
+
 # Helio scene API migration audit
 
 Historical audit: its dependency versions, caller inventory, and completion claims require revalidation. The scene data as built, including editor and runtime producers, is described in [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).

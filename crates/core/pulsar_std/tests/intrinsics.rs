@@ -1,4 +1,4 @@
-//! Stateful flow nodes are compiler intrinsics (#874).
+//! Stateful flow nodes are compiler intrinsics.
 //!
 //! A flow node with state (`do_once`, `gate`, ..) must keep that state per
 //! script instance, and `delay` must never block the game thread. Their old

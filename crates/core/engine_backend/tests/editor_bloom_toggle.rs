@@ -1,7 +1,6 @@
 //! The toolbar's Bloom toggle reaches the renderer: after each rendered frame
 //! the viewport's post-process baseline (`POST_BASELINE`, a renderer
-//! setting) carries the toggle's state; nothing is written into the scene
-//! (Pulsar-Native#1035, Phase 4).
+//! setting) carries the toggle's state; nothing is written into the scene.
 
 use engine_backend::subsystems::render::HelioRenderer;
 

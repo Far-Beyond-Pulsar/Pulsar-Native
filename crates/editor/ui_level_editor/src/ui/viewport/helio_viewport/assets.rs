@@ -410,7 +410,7 @@ impl HelioViewport {
                     .into());
                 }
 
-                // A placed class is a real instance (#921): the root with a
+                // A placed class is a real instance: the root with a
                 // `ClassInstance` referencing the class GUID, every prefab
                 // component, and child objects where one entity can't hold
                 // them. Undoable as one command.

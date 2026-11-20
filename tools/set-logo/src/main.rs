@@ -1,3 +1,7 @@
+//! Generates the application logo files from a PNG: ICO (Windows), ICNS (macOS), PNG copies
+//! and a `.desktop` file template, into `assets/images` by default. `--dry-run` lists what
+//! it would write.
+
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 use image::{ImageFormat, GenericImageView, ImageReader};

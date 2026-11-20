@@ -5,6 +5,7 @@ mod chrome;
 mod command_palette_setup;
 mod construction;
 mod constructors;
+mod footer;
 pub mod event_handlers;
 mod language_server_footer;
 mod layout;

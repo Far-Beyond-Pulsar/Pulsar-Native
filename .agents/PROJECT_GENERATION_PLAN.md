@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - P1 built (crates/core/pulsar_project) but no crate depends on it yet; P2-P4 open
+
 # Game project generation: audit and plan
 
 **Status: Phase 0 — audit and design. No code changes.** Every claim about

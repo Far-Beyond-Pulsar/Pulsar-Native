@@ -57,6 +57,12 @@ clippy:
 arch *args:
     python crates/renderer/helio/scripts/architecture/check_layers.py --root . {{args}}
 
+# Style ratchet (architecture/STYLE.md, architecture/style-baseline.json): function
+# and file length, process comments, println, unwrap, Result<_, String>. Counts
+# may only fall; `--update` lowers the baseline, `--report` prints the totals.
+style *args:
+    python scripts/style-check.py {{args}}
+
 # Pulsar-Native's own crates; submodules format in their own repos (#1375).
 fmt:
     scripts/fmt-check.sh --fix

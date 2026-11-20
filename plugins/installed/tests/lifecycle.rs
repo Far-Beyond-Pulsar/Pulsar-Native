@@ -146,7 +146,7 @@ fn no_lifecycle_name_reaches_the_blueprint_surface() {
     assert!(pulsar_world_registry::world_component(CLASS_NAME).is_some());
 }
 
-// ── Phase 2: construct, the editor pump, the session scope ─────────────────
+// ── construct, the editor pump, the session scope ─────────────────
 
 mod session {
     use super::*;

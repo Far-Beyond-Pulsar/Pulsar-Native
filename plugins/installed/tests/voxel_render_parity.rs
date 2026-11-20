@@ -62,7 +62,7 @@ fn device() -> Option<(Arc<wgpu::Device>, Arc<wgpu::Queue>)> {
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-    // No ray queries on software adapters (#840): lavapipe loses the device on them.
+    // No ray queries on software adapters: lavapipe loses the device on them.
     let features = helio::usable_adapter_features(&adapter);
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: helio::required_wgpu_features(features),

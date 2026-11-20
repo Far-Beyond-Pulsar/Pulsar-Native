@@ -1,4 +1,4 @@
-//! Saving the level without blocking the editor (Pulsar-Native#967).
+//! Saving the level without blocking the editor.
 //!
 //! A save used to run entirely on the UI thread with the scene locked: scan
 //! the project's class directories, serialize every component, read and parse

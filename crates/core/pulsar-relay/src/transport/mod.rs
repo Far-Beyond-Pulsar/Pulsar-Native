@@ -1,3 +1,5 @@
+//! Relay transports: a QUIC server, TCP simultaneous open and UDP hole punching.
+
 pub mod quic;
 pub mod tcp_simultaneous;
 pub mod udp_punch;

@@ -1,3 +1,5 @@
+//! Avatar cache and fetching, and helpers of the multiuser status indicator.
+
 mod cache;
 mod helpers;
 

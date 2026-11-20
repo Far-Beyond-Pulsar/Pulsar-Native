@@ -1,4 +1,4 @@
-//! Play-mode validation for `Movability` (Pulsar-Native#836): warn when an
+//! Play-mode validation for `Movability`: warn when an
 //! object authored `Static` or `Stationary` has its `Transform` written.
 //!
 //! Passes cache what they derive from such an object (shadow pages, ray

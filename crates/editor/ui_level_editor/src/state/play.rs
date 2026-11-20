@@ -25,7 +25,7 @@ impl Default for PlayDomain {
     }
 }
 
-/// Cross-thread control for Play-In-Editor (issue #243).
+/// Cross-thread control for Play-In-Editor.
 ///
 /// The `PieHost` itself lives on the viewport (main-thread, `!Send`); this
 /// struct carries only `Send + Sync` signals through the shared state:
@@ -56,7 +56,7 @@ pub struct PieControl {
     /// Set with [`Self::stop_requested`] while a game runs: the viewport
     /// restores the editor world (`SceneDomain::exit_play_mode`) right
     /// after the game shut down, so no game code runs against the restored
-    /// world (#925). See `end_pie`.
+    /// world. See `end_pie`.
     pub restore_after_stop: bool,
     /// When the pending stop was requested, for the fallback restore when
     /// no viewport processes it.
@@ -79,7 +79,7 @@ pub struct PieControl {
     pub problems: Vec<pulsar_events::ScriptProblem>,
     /// The library the running game was loaded from, and its modification
     /// time then. Pressing Play again reloads only the script classes when
-    /// neither the sources nor this library changed since (#833).
+    /// neither the sources nor this library changed since.
     pub loaded_artifact: Option<(PathBuf, std::time::SystemTime)>,
 }
 
@@ -98,12 +98,12 @@ pub struct PieStartRequest {
     /// The editor camera when Play was pressed: the game's free camera
     /// starts there.
     pub view: Option<crate::scene_edit::LevelEditorCameraState>,
-    /// True when this load replaces a STILL-RUNNING game (#653): the shared
+    /// True when this load replaces a STILL-RUNNING game: the shared
     /// world keeps its entities/components, and the guest re-binds actor
     /// registrations instead of spawning duplicates (native hot reload).
     pub reload: bool,
     /// True when a game is running and nothing native changed since it was
-    /// loaded (#833): the viewport keeps the running game and reloads every
+    /// loaded: the viewport keeps the running game and reloads every
     /// script class in it instead of swapping the library.
     pub scripts_only: bool,
 }

@@ -187,7 +187,7 @@ impl SceneInteraction {
         self.hovered = None;
     }
     /// End the drag in progress, if any: each object it moved with the
-    /// (parent-relative) transform it started from, for one undo step (#931).
+    /// (parent-relative) transform it started from, for one undo step.
     pub fn finish_drag(&mut self) -> Option<Vec<(Entity, Transform)>> {
         self.drag.take()?;
         self.hovered = None;
@@ -492,14 +492,13 @@ impl SceneInteraction {
         };
         let initial = targets.pivot;
         let o = self.view.relative(o.to_array());
-        let Some(start) = self.view.cursor(o, d) else {
+        let pivot = self.view.relative(initial.position);
+        let (Some(start), Some(length)) = (self.view.cursor(o, d), self.view.length(pivot)) else {
             return false;
         };
         let Some(handle) = self.hit(initial, start) else {
             return false;
         };
-        let pivot = self.view.relative(initial.position);
-        let length = self.view.length(pivot).unwrap();
         let basis = rotation_matrix(initial);
         let axis = match handle {
             Handle::Axis(i) | Handle::Plane(i) => basis.col(i),

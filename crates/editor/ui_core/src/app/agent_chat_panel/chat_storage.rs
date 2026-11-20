@@ -22,7 +22,7 @@ struct SaveDrain(bool);
 impl Drop for SaveDrain {
     fn drop(&mut self) {
         if self.0 {
-            CHAT_SAVES.lock().unwrap().clear();
+            CHAT_SAVES.lock().expect("queue not poisoned").clear();
         }
     }
 }
@@ -37,7 +37,7 @@ fn pending_chat(path: &Path) -> Option<Arc<ChatSessionFile>> {
     let provider = vfs::provider();
     CHAT_SAVES
         .lock()
-        .unwrap()
+        .expect("queue not poisoned")
         .iter()
         .rev()
         .find(|save| save.path == path && Arc::ptr_eq(&save.provider, &provider))
@@ -45,7 +45,7 @@ fn pending_chat(path: &Path) -> Option<Arc<ChatSessionFile>> {
 }
 
 fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessionFile) {
-    let mut saves = CHAT_SAVES.lock().unwrap();
+    let mut saves = CHAT_SAVES.lock().expect("queue not poisoned");
     let start_worker = saves.is_empty();
     saves.push_back(PendingSave {
         provider,
@@ -65,7 +65,7 @@ fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessi
             let mut failure = None;
             loop {
                 let (provider, path, chat) = {
-                    let saves = CHAT_SAVES.lock().unwrap();
+                    let saves = CHAT_SAVES.lock().expect("queue not poisoned");
                     let save = saves.front().expect("the drain owns the nonempty queue");
                     (save.provider.clone(), save.path.clone(), save.chat.clone())
                 };
@@ -83,7 +83,7 @@ fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessi
                     tracing::warn!("{error}");
                     failure = Some(error);
                 }
-                let mut saves = CHAT_SAVES.lock().unwrap();
+                let mut saves = CHAT_SAVES.lock().expect("queue not poisoned");
                 saves.pop_front();
                 if saves.is_empty() {
                     drain.0 = false;

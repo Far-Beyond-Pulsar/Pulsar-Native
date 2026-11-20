@@ -193,6 +193,6 @@ pub use serde_json::Value as JsonValue;
 pub use profiling;
 /// The engine's event plumbing (Gamma v2 host bus, engine event hub,
 /// built-in events). `export_plugin!` wires every plugin library to the
-/// host's bus through it (Pulsar-Native#930).
+/// host's bus through it.
 pub use pulsar_events;
 pub use pulsar_world_registry;

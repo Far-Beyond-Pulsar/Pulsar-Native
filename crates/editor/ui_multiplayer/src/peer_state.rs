@@ -742,7 +742,7 @@ impl MultiplayerWindow {
                 match simple_sync::create_manifest(&project_root) {
                     Ok(manifest) => match serde_json::to_string(&manifest) {
                         Ok(manifest_json) => {
-                            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                            crate::utils::block_on_new_runtime(async {
                                 let client_guard = client_clone.read().await;
                                 let _ = client_guard
                                     .send(ClientMessage::FileManifest {
@@ -794,7 +794,7 @@ impl MultiplayerWindow {
                         // Serialize files data
                         match serde_json::to_string(&files_data) {
                             Ok(files_json) => {
-                                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                                crate::utils::block_on_new_runtime(async {
                                     let client_guard = client_clone.read().await;
                                     let _ = client_guard
                                         .send(ClientMessage::FilesChunk {

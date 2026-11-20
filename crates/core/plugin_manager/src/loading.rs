@@ -4,10 +4,10 @@
 //! [`PluginManager::prepare_plugin`] loads a library and checks its SHA-256
 //! against `plugin_integrity.json` (no plugin code runs), then
 //! [`PluginManager::install_prepared_plugin`] runs the plugin and registers
-//! what it provides (on the thread that owns the manager). Entry points for
-//! callers are [`PluginManager::load_plugins_from_dir`] and
-//! [`PluginManager::load_plugin`]; `order_prepared_plugins` puts dependencies
-//! first.
+//! what it provides (on the thread that owns the manager). The editor drives
+//! both phases itself (see the `startup` module); [`PluginManager::load_plugins_from_dir`]
+//! and [`PluginManager::load_plugin`] are one-call conveniences with no callers
+//! in the workspace. `order_prepared_plugins` puts dependencies first.
 
 use crate::attach::{attach_event_bus, attach_profiler, attach_world_runtime, read_manifest};
 use crate::{
@@ -383,7 +383,7 @@ impl PluginManager {
     ) -> Result<(), PluginManagerError> {
         // Attach the plugin's world crates to the editor's world runtimes
         // before it runs any code of its own, so its component classes are
-        // World components of the editor (#1083). A library built from other
+        // World components of the editor. A library built from other
         // world-crate sources or features refuses, and is not loaded.
         match attach_world_runtime(library) {
             Some(true) => tracing::debug!("Plugin at {:?} attached to the world runtimes", path),
@@ -408,7 +408,7 @@ impl PluginManager {
         }
 
         // Give the plugin the host's event bus before it runs any code of
-        // its own, so its asset updates and events reach the editor (#930).
+        // its own, so its asset updates and events reach the editor.
         match attach_event_bus(library) {
             Some(pulsar_events::host::ATTACH_OK) => {
                 tracing::debug!("Plugin at {:?} attached to the host event bus", path)
@@ -560,9 +560,9 @@ impl PluginManager {
             // A plugin class is a World component only when its
             // `#[register_world_component]` registration reached the host's
             // registry: the class has one, and the plugin attached to the
-            // editor's world runtimes (#1083). A plugin built before them
+            // editor's world runtimes. A plugin built before them
             // registered into its own copy's registry, which the host never
-            // reads (#1081).
+            // reads.
             let unregistered: Vec<&str> = component_regs
                 .iter()
                 .map(|(name, _)| name.as_str())

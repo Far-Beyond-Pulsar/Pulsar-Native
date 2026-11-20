@@ -42,9 +42,9 @@ pub(super) fn render(
 fn manifest(model: &ProjectModel, root: &RootManifest) -> Result<String, SyncError> {
     let workspace = |name: &str, features: &[&str]| -> Result<toml::Value, SyncError> {
         if !root.dependencies.contains_key(name) {
-            return Err(SyncError::Sdk(format!(
+            return Err(SyncError::Sdk(crate::sdk::SdkError::Message(format!(
                 "the game crate depends on `{name}`, which the engine SDK does not provide"
-            )));
+            ))));
         }
         let mut spec = toml::Table::new();
         spec.insert("workspace".into(), toml::Value::Boolean(true));

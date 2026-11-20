@@ -32,7 +32,7 @@
 //!
 //! Physics: nothing publishes `Hit` / `BeginOverlap` / `EndOverlap` today;
 //! the physics plugin publishes its own contact events
-//! (`physics::ColliderComponent.collision_enter`, ...). TODO(Pulsar-Native#924):
+//! (`physics::ColliderComponent.collision_enter`, ...). TODO(#924): publish
 //! one set of contact events, on the entity channel of each body involved.
 
 use gamma::{Event, EventDescriptor, pulsar_event};

@@ -1,4 +1,4 @@
-//! Interpreter microbenchmarks (#853): what one instruction, one call, one
+//! Interpreter microbenchmarks: what one instruction, one call, one
 //! native call and one variable access cost, so optimisation is measured
 //! rather than guessed.
 //!

@@ -1,4 +1,4 @@
-//! Script tick macrobenchmark (#853): thousands of script instances each
+//! Script tick macrobenchmark: thousands of script instances each
 //! running a `tick` that reads and writes a component through the world's
 //! `Transform` natives, against the same work written directly in Rust.
 //!

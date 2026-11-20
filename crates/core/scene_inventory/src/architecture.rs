@@ -1,4 +1,4 @@
-//! Architecture checks (Pulsar-Native#1035, Phase 6): the removed paths stay
+//! Architecture checks: the removed paths stay
 //! removed, JSON decodes stay at the record boundary, and renderers neither
 //! scan the CPU scene nor subscribe to it.
 //!
@@ -186,7 +186,7 @@ pub fn check_renderer_subscriptions(sites: &BTreeMap<(String, String), usize>) -
 
 /// `World::query` call sites per renderer file.
 pub fn renderer_queries(root: &Path) -> BTreeMap<String, usize> {
-    let query = Regex::new(r"\.query(_items)?::<").unwrap();
+    let query = Regex::new(r"\.query(_items)?::<").expect("the regex literal is valid");
     let mut out = BTreeMap::new();
     for file in source::production_files(root) {
         if !in_renderer(&file.path) {
@@ -231,7 +231,7 @@ pub fn check_renderer_queries(found: &BTreeMap<String, usize>) -> Vec<String> {
 }
 
 /// Source roots of the world crates whose process-wide state a plugin's
-/// copy must reach through the world runtime (Pulsar-Native#1083).
+/// copy must reach through the world runtime.
 /// `pulsar_reflection` and `pulsar_scenedb` check their own sources.
 pub const WORLD_RUNTIME_ROOTS: &[&str] = &[
     "crates/core/pulsar_scene_model/src/",
@@ -265,11 +265,21 @@ pub const WORLD_STATE_SITES: &[(&str, usize, &str)] = &[
         "per-copy cache of class properties, built from the shared registries",
     ),
     (
-        "crates/core/pulsar_world_registry/src/lib.rs",
-        5,
-        "the tick, event and world component inventory lists, read through the \
-         runtime; an immutable RuntimeTypeInfo; a per-copy set of component \
-         event names the hub refused, already reported to the log",
+        "crates/core/pulsar_world_registry/src/component_events.rs",
+        3,
+        "the event and event-source inventory lists, read through the runtime; \
+         a per-copy set of component event names the hub refused, already \
+         reported to the log",
+    ),
+    (
+        "crates/core/pulsar_world_registry/src/gpu_mirror.rs",
+        1,
+        "an immutable RuntimeTypeInfo",
+    ),
+    (
+        "crates/core/pulsar_world_registry/src/registration.rs",
+        1,
+        "the world component inventory list, read through the runtime",
     ),
     (
         "crates/core/pulsar_world_registry/src/runtime.rs",
@@ -299,7 +309,7 @@ pub fn world_state(root: &Path) -> BTreeMap<String, usize> {
     let state = Regex::new(
         r"^\s*(pub(\([^)]*\))?\s+)?static\s+(mut\s+)?[A-Z_][A-Z0-9_]*\s*:|thread_local!|inventory::collect!|pulsar_plugins::registration!|lazy_static!",
     )
-    .unwrap();
+    .expect("the regex literal is valid");
     let mut out = BTreeMap::new();
     for file in source::production_files(root) {
         if !WORLD_RUNTIME_ROOTS

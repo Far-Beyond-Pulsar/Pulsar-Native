@@ -1,5 +1,5 @@
 //! Play-mode level bootstrap: hydrate a `.level` file into
-//! the scene `World` (Pulsar-Native#637).
+//! the scene `World`.
 //!
 //! This is the runtime counterpart of the editor's own load path
 //! (`scene_edit::level_io::load_from_file`): one authoritative copy of the scene,
@@ -12,7 +12,7 @@
 //! - Objects/transforms/hierarchy/visibility are spawned straight into the
 //!   world with [`SceneWorldExt::spawn_object`].
 //! - Every component record becomes a component-instance entity attached
-//!   to its object (Pulsar-Native#1035, D1) through `pulsar_world_registry::
+//!   to its object through `pulsar_world_registry::
 //!   attach_records`, enabled or not: a `#[register_world_component]` class
 //!   holds its typed value (`StaticMeshComponent`'s decode loads its mesh
 //!   asset here -- it resolves paths via `engine_state::get_project_path()`,
@@ -73,7 +73,7 @@ pub struct EditorCamera {
 /// What a level load reports beyond hydration itself: the editor camera
 /// seed. Which scripts run is not an extra: placed classes are
 /// `ClassInstance` components in the world, which the script driver
-/// (`pulsar_game::scripting::ScriptDriver`) follows (#922).
+/// (`pulsar_game::scripting::ScriptDriver`) follows.
 #[derive(Clone, Debug, Default)]
 pub struct LevelExtras {
     /// The camera saved under `editor.camera`, if any.
@@ -105,7 +105,7 @@ impl RuntimeLevel {
         Self::from_scene_file_with_classes(file, registry)
     }
     /// Load a level file and hydrate it into an EXISTING world -- the
-    /// one-world play-mode path (Pulsar-Native#637/#634): the tick loop's
+    /// one-world play-mode path: the tick loop's
     /// shared store is authoritative, so the level merges INTO it
     /// (additively; setup-time-registered actors survive) instead of the
     /// level constructing its own store. Duplicate stable ids between the
@@ -279,7 +279,7 @@ impl RuntimeLevel {
             hydrate_components(world, entity, &obj.id, &instances)?;
         }
 
-        // Placed classes (#921): rebuild each instance from the current class
+        // Placed classes: rebuild each instance from the current class
         // definition, then apply its overrides. Unresolved classes keep their
         // ClassInstance and are only warned about.
         let roots: Vec<Entity> = file
@@ -379,7 +379,7 @@ fn project_class_registry() -> pulsar_class::ClassRegistry {
     }
 }
 
-/// Run the #921 class migration over an already-parsed file: its objects'
+/// Run the class migration over an already-parsed file: its objects'
 /// component lists, the top-level `components` section and
 /// `blueprint_bindings`.
 fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegistry) {
@@ -555,8 +555,8 @@ fn validate_objects(
     }
     Ok(())
 }
-/// Attach `instances` to `entity` as component-instance entities, in order
-/// (Pulsar-Native#1035, D1): every record becomes its own instance, enabled
+/// Attach `instances` to `entity` as component-instance entities, in order:
+/// every record becomes its own instance, enabled
 /// or not, with its stable id and parent link. A class this build does not
 /// register is kept as an explicit unresolved payload; a registered class
 /// whose data does not decode fails the load, naming the object and class.
@@ -690,7 +690,7 @@ mod tests {
         );
     }
 
-    /// #637: objects land in the shared store with transforms/hierarchy/
+    /// Objects land in the shared store with transforms/hierarchy/
     /// visibility intact -- one copy of state, owned by SceneDB.
     #[test]
     fn load_hydrates_objects_hierarchy_and_visibility_into_the_store() {
@@ -746,7 +746,7 @@ mod tests {
     }
 
     /// Stable ids survive exactly as authored (save/load identity), unlike
-    /// raw Entity bits (#553 decision #2).
+    /// raw Entity bits.
     #[test]
     fn stable_ids_round_trip_as_authored() {
         let level = sample_level();
@@ -760,10 +760,10 @@ mod tests {
         );
     }
 
-    /// Legacy `blueprint_bindings` (#650) are read only through the #921
+    /// Legacy `blueprint_bindings` are read only through the class
     /// migration: a binding becomes the object's `ClassInstance`, with its
-    /// overrides as variable overrides, which the script driver follows
-    /// (#922). Nothing is left for hosts to apply.
+    /// overrides as variable overrides, which the script driver follows.
+    /// Nothing is left for hosts to apply.
     #[test]
     fn legacy_blueprint_bindings_load_as_class_instances() {
         let project = tempfile::tempdir().unwrap();

@@ -1,4 +1,4 @@
-//! Level migration to `ClassInstance` (Pulsar-Native#921).
+//! Level migration to `ClassInstance`.
 //!
 //! Older levels tie objects to classes two ways, both retired:
 //!
@@ -381,7 +381,7 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
         }
     }
 
-    // ── Component records (Pulsar-Native#1035, Phase 3) ──────────────
+    // ── Component records ──────────────
     report.records = crate::records::migrate_component_records(root);
     report
 }

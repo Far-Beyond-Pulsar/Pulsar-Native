@@ -21,7 +21,7 @@ pub const STATUSES: &[&str] = &[
     "verified",
     // Outside the corrective plan; `disposition` says why.
     "out-of-scope",
-    // Not consumed by this engine yet, and reported so (Phase 4): an
+    // Not consumed by this engine yet, and reported so: an
     // authored class declares a reason and its tracking issue, which the
     // properties card shows. `test` names the check or the tracking issue.
     "unfinished",

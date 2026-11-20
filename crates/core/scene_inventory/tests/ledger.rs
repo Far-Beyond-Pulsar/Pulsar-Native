@@ -1,7 +1,7 @@
-//! Phase 0 closure ledger: every exposed class, GPU schema, buffer key, pass
+//! Closure ledger: every exposed class, GPU schema, buffer key, pass
 //! crate and lifecycle call site has a row, every row's facts match the
 //! linked binary and the source tree, and every row is in its owner's
-//! ledger (the engine's, or the plugin's that ships it: Pulsar-Native#1606).
+//! ledger (the engine's, or the plugin's that ships it).
 //!
 //! A failure prints the rows to add or correct, with `TODO` placeholders for
 //! the human-owned columns.

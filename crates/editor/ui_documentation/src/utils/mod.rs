@@ -1,3 +1,6 @@
+//! Documentation sources (engine docs, manual docs, project docs), the row model and
+//! shared types.
+
 pub mod doc_source;
 pub mod engine_docs;
 pub mod manual_docs;

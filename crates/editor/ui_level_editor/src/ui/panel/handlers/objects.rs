@@ -74,7 +74,7 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    /// Undo the last mutating scene command (Pulsar-Native#554). The restore
+    /// Undo the last mutating scene command. The restore
     /// writes through the World like any edit, so the renderer follows it
     /// from the revision; only the gizmo needs re-syncing.
     pub(in crate::ui::panel) fn on_undo(

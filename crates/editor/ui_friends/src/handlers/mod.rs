@@ -1,3 +1,6 @@
+//! Handlers of the friends window: refreshing the list, sending, accepting and declining
+//! friend requests, and inviting a friend to a session.
+
 use crate::components::popover::FriendsPopover;
 use crate::screen::FriendsScreen;
 use crate::utils::avatar::fetch_avatar_image;

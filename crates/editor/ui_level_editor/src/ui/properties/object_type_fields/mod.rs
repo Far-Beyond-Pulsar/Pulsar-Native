@@ -113,7 +113,7 @@ pub struct ObjectTypeFieldsSection {
     /// changes without calling `get_components()` (which clones JSON).
     pub(super) cached_component_count: usize,
 
-    // ── Live-value caches (Pulsar-Native#575, #1035) ─────────────────────
+    // ── Live-value caches ─────────────────────
     //
     // Each mounted card reads its values once and keeps them here. After
     // that the selected object's subscription delivers every change with
@@ -121,7 +121,7 @@ pub struct ObjectTypeFieldsSection {
     // rebuild rebinds and re-reads.
     /// Latest known live values per mounted component card, keyed by
     /// `(class_name, component_index)` -- the index is what keeps N
-    /// instances of the same class distinct (Pulsar-Native#519). Borrowed
+    /// instances of the same class distinct. Borrowed
     /// during row building, never consumed -- rows only read.
     pub(super) world_value_cache: HashMap<(String, usize), Vec<Box<dyn Any>>>,
     /// Cards whose cached values are stale and must be re-pulled on the
@@ -140,7 +140,7 @@ pub struct ObjectTypeFieldsSection {
     /// mismatch rebinds.
     pub(super) subs_epoch: u64,
 
-    // ── Class instances (#921) ──────────────────────────────────────────────
+    // ── Class instances ──────────────────────────────────────────────
     /// The project's classes, scanned once per section (selection).
     pub(super) class_registry: Option<pulsar_class::ClassRegistry>,
     /// Class defaults of this object's components that were built from a

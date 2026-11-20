@@ -20,7 +20,8 @@
 use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::{Budget, Completion, Continuation, EventSink, Host, Type, Value, Wake};
 
-use crate::{RuntimeError, ScriptInstance, ScriptRuntime};
+use crate::class::ScriptInstance;
+use crate::{RuntimeError, ScriptRuntime};
 
 /// Where a call that just suspended goes: the timed queue for a `Wait`, or
 /// the instance's blocked list for what a latent native asked for.

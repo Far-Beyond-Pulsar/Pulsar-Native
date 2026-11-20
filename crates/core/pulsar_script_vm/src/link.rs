@@ -82,7 +82,7 @@ impl Program {
     }
 
     /// [`link_with_events`](Self::link_with_events), also refusing any
-    /// import of a native whose capability `policy` does not allow (#869).
+    /// import of a native whose capability `policy` does not allow.
     pub fn link_with_policy(
         module: Arc<Module>,
         registry: &NativeRegistry,
@@ -300,7 +300,7 @@ fn link_subscriptions(
                 LinkError::HandlerMismatch {
                     event: signature.name.clone(),
                     handler: handler.name.clone(),
-                    message,
+                    message: message.to_string(),
                 }
             })?;
         }
@@ -343,7 +343,7 @@ fn constant_value(constant: &Constant) -> Result<Value, LinkError> {
                 .map_err(|message| LinkError::BadConstant {
                     ty: ty.clone(),
                     json: json.clone(),
-                    message,
+                    message: message.to_string(),
                 })?
         }
     })
@@ -379,7 +379,7 @@ pub fn resolve_imports(
                 Some(poly) => Arc::new(poly.instantiate(&import.sig).map_err(|message| {
                     LinkError::PolyNative {
                         name: import.name.clone(),
-                        message,
+                        message: message.to_string(),
                     }
                 })?),
                 None => match registry.generic(crate::native::poly_base_name(&import.name)) {
@@ -387,7 +387,7 @@ pub fn resolve_imports(
                         Arc::new(generic.instantiate(&import.sig).map_err(|message| {
                             LinkError::PolyNative {
                                 name: import.name.clone(),
-                                message,
+                                message: message.to_string(),
                             }
                         })?)
                     }

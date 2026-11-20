@@ -1,3 +1,5 @@
+//! Module of the `logicv2` nodes: `logicexec`.
+
 // This tells rust to link this file lib.rs to run in nodes. //
 // Any file used/mod Links it. //
 

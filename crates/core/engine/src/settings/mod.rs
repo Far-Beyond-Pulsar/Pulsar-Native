@@ -1,3 +1,6 @@
+//! Engine settings: `EngineSettings`, plus a re-export of the settings system from
+//! `engine_state` (defined there to avoid a circular dependency).
+
 pub mod engine_settings;
 
 pub use engine_settings::EngineSettings;

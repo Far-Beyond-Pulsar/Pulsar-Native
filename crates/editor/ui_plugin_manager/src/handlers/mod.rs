@@ -1,3 +1,5 @@
+//! Handlers of the plugin manager window.
+
 use gpui::*;
 
 use crate::screen::PluginManagerWindow;

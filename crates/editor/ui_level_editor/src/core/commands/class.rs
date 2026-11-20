@@ -1,7 +1,7 @@
 //! Commands that place class instances and edit their overrides.
 //!
-//! A class instance is an object built from a class definition on disk
-//! (#921); its variables and component slots can be overridden per instance
+//! A class instance is an object built from a class definition on disk;
+//! its variables and component slots can be overridden per instance
 //! and reverted back to the class default. Entry points are [`label`],
 //! [`scope`] and [`apply`].
 

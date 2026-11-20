@@ -41,6 +41,24 @@ pub const PROJECT_ROOT_ENV: &str = "PULSAR_PROJECT_ROOT";
 /// that only read files (see [`ContentRoot::asset_root`]).
 pub const ASSET_CACHE_ENV: &str = "PULSAR_ASSET_CACHE";
 
+/// Why no content could be found at startup.
+#[derive(Debug, thiserror::Error)]
+pub enum RootError {
+    /// `PULSAR_CONTENT_DIR` names a directory that is not usable content.
+    #[error("PULSAR_CONTENT_DIR: {0}")]
+    ContentDirEnv(io::Error),
+    #[error("cannot locate the executable: {0}")]
+    NoExecutable(io::Error),
+    #[error("{0}")]
+    Packaged(io::Error),
+    #[error(
+        "no game content found: expected {} next to the executable, or a project around it \
+         (set PULSAR_CONTENT_DIR or PULSAR_PROJECT_ROOT to override)",
+        content.display()
+    )]
+    NotFound { content: PathBuf },
+}
+
 #[derive(Clone, Debug)]
 enum Source {
     /// A project directory (editor, Play-in-Editor, `cargo run`).
@@ -116,26 +134,24 @@ impl ContentRoot {
     }
 
     /// Find this process's content. See the module doc for the order.
-    pub fn discover() -> Result<Self, String> {
+    pub fn discover() -> Result<Self, RootError> {
         if let Some(dir) = std::env::var_os(CONTENT_DIR_ENV).filter(|v| !v.is_empty()) {
-            return Self::packaged(PathBuf::from(dir))
-                .map_err(|e| format!("{CONTENT_DIR_ENV}: {e}"));
+            return Self::packaged(PathBuf::from(dir)).map_err(RootError::ContentDirEnv);
         }
         if let Some(dir) = std::env::var_os(PROJECT_ROOT_ENV).filter(|v| !v.is_empty()) {
             return Ok(Self::project(PathBuf::from(dir)));
         }
-        let exe =
-            std::env::current_exe().map_err(|e| format!("cannot locate the executable: {e}"))?;
+        let exe = std::env::current_exe().map_err(RootError::NoExecutable)?;
         let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
         Self::discover_from(&exe_dir, std::env::current_dir().ok().as_deref())
     }
 
     /// [`discover`](Self::discover) for an executable in `exe_dir`, without
     /// the environment overrides.
-    pub fn discover_from(exe_dir: &Path, cwd: Option<&Path>) -> Result<Self, String> {
+    pub fn discover_from(exe_dir: &Path, cwd: Option<&Path>) -> Result<Self, RootError> {
         let content = exe_dir.join(CONTENT_DIR_NAME);
         if is_cooked(&content) {
-            return Self::packaged(content).map_err(|e| e.to_string());
+            return Self::packaged(content).map_err(RootError::Packaged);
         }
         if let Some(project) = exe_dir.ancestors().find(|dir| is_project_root(dir)) {
             return Ok(Self::project(project));
@@ -143,11 +159,7 @@ impl ContentRoot {
         if let Some(cwd) = cwd.filter(|dir| is_project_root(dir)) {
             return Ok(Self::project(cwd));
         }
-        Err(format!(
-            "no game content found: expected {} next to the executable, or a project around it \
-             (set {CONTENT_DIR_ENV} or {PROJECT_ROOT_ENV} to override)",
-            content.display()
-        ))
+        Err(RootError::NotFound { content })
     }
 
     /// The content directory (packaged) or project root (dev).

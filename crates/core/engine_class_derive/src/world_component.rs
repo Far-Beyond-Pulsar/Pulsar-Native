@@ -258,8 +258,8 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         }
 
         // Direct live access to the real `World`-resident value as `&(mut)
-        // dyn EngineClass` -- the properties panel's read and edit paths
-        // (Pulsar-Native#561). No JSON, no throwaway instance.
+        // dyn EngineClass` -- the properties panel's read and edit paths.
+        // No JSON, no throwaway instance.
         #[doc(hidden)]
         #[allow(non_snake_case)]
         fn #get_fn_name(
@@ -279,7 +279,7 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream, submit: bool) -> Toke
         ) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
             // A guard, not a bare `&mut`: SceneDB's write hooks (GPU mirror,
             // change tracker, journals, object subscriptions) fire when it drops,
-            // after the edit, and only if it was written through (#841).
+            // after the edit, and only if it was written through.
             pulsar_world_registry::EngineClassMut::of::<#self_ty>(world, entity)
         }
 

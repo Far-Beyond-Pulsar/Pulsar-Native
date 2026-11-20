@@ -1,5 +1,5 @@
 //! Fullscreen blit used by Play-In-Editor to draw the embedded game's offscreen
-//! texture into the editor viewport surface (issue #243).
+//! texture into the editor viewport surface.
 //!
 //! The game renders into its own `wgpu::Texture` on the *editor's* device (see
 //! [`super::pie_host`]). Because that texture is not the surface back buffer, the

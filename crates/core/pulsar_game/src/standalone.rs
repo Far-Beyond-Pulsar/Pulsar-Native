@@ -1,5 +1,5 @@
 //! The standalone game entry point: what a generated project's `main.rs`
-//! calls, for `cargo run` and for packaged games alike (#926).
+//! calls, for `cargo run` and for packaged games alike.
 //!
 //! ```rust,ignore
 //! fn main() {
@@ -116,7 +116,7 @@ pub fn install_content(options: &LaunchOptions) -> Result<ContentRoot, String> {
         Some(dir) => {
             ContentRoot::open(dir).map_err(|e| format!("--content {}: {e}", dir.display()))?
         }
-        None => ContentRoot::discover()?,
+        None => ContentRoot::discover().map_err(|e| e.to_string())?,
     };
     content.install();
     Ok(content)
@@ -186,18 +186,21 @@ pub fn run(setup: impl FnOnce(&mut TickLoop) -> Result<(), String>) -> i32 {
     let options = match LaunchOptions::from_env() {
         Ok(options) => options,
         Err(message) => {
+            // CLI output: bad arguments are reported to the person at the terminal.
             eprintln!("{message}");
             return 2;
         }
     };
     match run_with(options, setup) {
         Ok(Some(report)) => {
+            // The headless report on stdout is the process interface (a parent parses it).
             println!("{HEADLESS_REPORT_PREFIX}{}", report.to_json());
             i32::from(!report.ok())
         }
         Ok(None) => 0,
         Err(message) => {
             tracing::error!("{message}");
+            // CLI output: the person at the terminal reads this; the print is the feature.
             eprintln!("{message}");
             1
         }

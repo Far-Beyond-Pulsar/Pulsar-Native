@@ -5,8 +5,8 @@
 # path, and updates the `rev` field to the submodule's current HEAD.
 #
 # Usage:
-#   ./script/sync-revs              # update all git deps
-#   ./script/sync-revs WGPUI        # update only deps matching a pattern
+#   ./scripts/sync-revs              # update all git deps
+#   ./scripts/sync-revs WGPUI        # update only deps matching a pattern
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

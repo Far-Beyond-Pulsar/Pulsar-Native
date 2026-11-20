@@ -7,7 +7,7 @@
 #
 # path | reason
 
-crates/core/editor_task_queue/src/lib.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
+crates/core/editor_task_queue/src/workers.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
 crates/core/editor_task_queue/src/pools.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
 crates/core/editor_task_queue/src/services.rs | the task system itself: it creates the threads, runtimes and pools everything else uses
 crates/core/editor_task_queue/src/threads.rs | the task system itself: it creates the threads, runtimes and pools everything else uses

@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - pack step and pak set built (pulsar_content::pak); quick build and PIE states not verified
+
 # Quick build and Play-In-Editor availability: plan
 
 **Status: Phase 0 — design. No code changes.** Depends on the project

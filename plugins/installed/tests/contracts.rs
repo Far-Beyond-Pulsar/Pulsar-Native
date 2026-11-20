@@ -1,4 +1,4 @@
-//! Plugin contracts (Pulsar-Native#1608, phase 3) over the installed set.
+//! Plugin contracts (phase 3) over the installed set.
 //!
 //! - Every plugin's descriptor requires (optionally or not) a contract of
 //!   exactly the plugins its crates link: the descriptor graph of linked

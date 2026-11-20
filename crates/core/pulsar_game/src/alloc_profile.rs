@@ -172,12 +172,14 @@ fn report() {
     }
     let mut sites: Vec<_> = by_text.into_iter().collect();
     sites.sort_by_key(|(_, (bytes, _))| std::cmp::Reverse(*bytes));
+    // Stderr is the report channel by design (see the module docs).
     eprintln!(
         "[alloc-profile] live sampled: {} entries, ~{} MB",
         entries,
         total >> 20
     );
     for (text, (bytes, count)) in sites.into_iter().take(6) {
+        // Stderr is the report channel by design (see the module docs).
         eprintln!(
             "[alloc-profile]  ~{:>6} MB in {:>5} samples at:\n{text}",
             bytes >> 20,

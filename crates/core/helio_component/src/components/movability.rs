@@ -1,4 +1,4 @@
-//! The authored mobility of a mesh or light (Pulsar-Native#837).
+//! The authored mobility of a mesh or light.
 //!
 //! Editor-facing twin of [`helio::Movability`]: a reflected enum the
 //! properties panel shows as a dropdown, with each variant's doc comment as
@@ -85,7 +85,7 @@ pulsar_plugins::registration!(MovabilityRegistration);
 /// What may change about `object` at runtime: the least mobile of a
 /// `helio::Movability` placed on the object itself and the movability its
 /// component instances author (every [`MovabilityRegistration`]'s: the
-/// meshes', the lights'; Pulsar-Native#837).
+/// meshes', the lights').
 /// `None` when nothing authors one. Read from the authored values; nothing
 /// projects them.
 pub fn object_movability(

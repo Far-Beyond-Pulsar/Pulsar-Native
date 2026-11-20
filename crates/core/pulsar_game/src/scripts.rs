@@ -1,5 +1,5 @@
 //! Gameplay script-crate actors: identity-tagged registration + native
-//! hot reload (#653).
+//! hot reload.
 //!
 //! A user's `scripts/` crate (scaffolded by `core_project_builder`) registers
 //! its actor types through [`TickLoop::register_native_actor`]. The actor runs
@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 
-    /// THE #653 hot-reload contract: same type + surviving tag => SAME owner
+    /// THE hot-reload contract: same type + surviving tag => SAME owner
     /// entity, component state untouched, the new behavior drives future
     /// ticks and the old one is gone.
     #[test]

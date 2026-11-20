@@ -4,7 +4,7 @@
 //! Without these, the registry-level JSON legs
 //! (`serialize_json_for_any`/`deserialize_json_for_type`) refuse every vec-
 //! or option-typed property, so reflected values of those shapes could not
-//! marshal through the #644 conversion layer at all. The shims reuse the
+//! marshal through the conversion layer at all. The shims reuse the
 //! upstream trait impls (`<T as Reflectable>::serialize/deserialize` via
 //! [`pulsar_reflection::JsonSerializer`]/[`pulsar_reflection::JsonDeserializer`])
 //! -- no new serialization logic, just the missing registry entries.
@@ -77,7 +77,7 @@ mod tests {
     use pulsar_reflection::{Reflectable, RUNTIME_TYPE_REGISTRY};
 
     /// The shimmed instantiations are real registry entries now: lookup by
-    /// TypeId succeeds and the JSON round trip preserves values (#644's
+    /// TypeId succeeds and the JSON round trip preserves values (the
     /// "strings, Vec<T>" compound requirement).
     #[test]
     fn shimmed_wrappers_round_trip_through_the_json_leg() {

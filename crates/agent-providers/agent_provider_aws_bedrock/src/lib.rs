@@ -1,3 +1,6 @@
+//! AWS Bedrock chat provider. It lists a fixed set of models; `chat` and `chat_streaming`
+//! return a "not yet implemented" error because request signing is not written.
+
 use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ModelDescriptor};
 
 pub struct AwsBedrockProvider {

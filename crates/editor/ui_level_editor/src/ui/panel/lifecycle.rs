@@ -342,7 +342,7 @@ impl LevelEditorPanel {
                     crate::extend::finish_interactions(&mut s, false);
                 }
                 // A Stop the Game viewport did not process in time still
-                // restores the editor world (#925).
+                // restores the editor world.
                 if poll_state.read().play.pie.restore_after_stop {
                     let mut s = poll_state.write();
                     crate::ui::panel::pie::finish_stop(&mut s, false);
@@ -392,7 +392,7 @@ impl LevelEditorPanel {
                         mailbox.set_render_pipeline(pipeline.clone());
                     }
                 }
-                // Finished gizmo drags become undo steps (#931), whichever
+                // Finished gizmo drags become undo steps, whichever
                 // viewport made them.
                 let drags: Vec<_> = poll_mailbox
                     .iter()
@@ -405,7 +405,7 @@ impl LevelEditorPanel {
                         s.scene.record_gizmo_drag(&drag.moved);
                     }
                 }
-                // A gizmo drag on a Static/Stationary object (#837); the
+                // A gizmo drag on a Static/Stationary object; the
                 // notification needs a window, so render shows it.
                 if let Some(warning) = poll_mailbox
                     .iter()
@@ -433,7 +433,7 @@ impl LevelEditorPanel {
                             s.play.pie.active,
                             s.play.pie.pending_start.is_some(),
                             s.play.pie.last_error.is_some(),
-                            // Class updates rebuilt placed instances (#935).
+                            // Class updates rebuilt placed instances.
                             s.scene.class_updates,
                         ),
                         (s.scene.current_scene.clone(), s.scene.has_unsaved_changes),

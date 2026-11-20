@@ -1,0 +1,269 @@
+//! The OpenAI wire format: request payload, reply parsing and the server-sent stream reader.
+
+use agent_chat_core::{ChatRequest, ChatResponse, ToolCall};
+use anyhow::anyhow;
+use serde_json::{json, Value};
+use std::io::{BufRead, BufReader};
+
+use crate::roles::map_role;
+use crate::transport::stream_error;
+
+/// Streams number their partial tool calls from 0; an index past this is a
+/// malformed stream, not a call list, and must not size a `Vec`.
+const MAX_STREAM_TOOL_CALLS: usize = 256;
+
+pub(crate) fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<Value> {
+    let messages: Vec<Value> = request
+        .messages
+        .iter()
+        .map(|msg| {
+            let mut m = json!({ "role": map_role(msg.role), "content": msg.content });
+            if let Some(tid) = &msg.tool_call_id {
+                m["tool_call_id"] = json!(tid);
+            }
+            if !msg.tool_calls.is_empty() {
+                m["tool_calls"] =
+                    json!(msg.tool_calls.iter().map(|c| json!({
+                "id": c.id, "type": "function",
+                "function": { "name": c.name, "arguments": c.arguments_json.to_string() }
+            })).collect::<Vec<_>>());
+            }
+            m
+        })
+        .collect();
+
+    let tools: Vec<Value> = if request.enable_tool_calls {
+        request.tools.iter().map(|t| json!({
+            "type": "function",
+            "function": { "name": t.name, "description": t.description, "parameters": t.parameters_json_schema }
+        })).collect()
+    } else {
+        vec![]
+    };
+
+    let mut payload = json!({ "model": request.model, "messages": messages, "stream": stream });
+    if let Some(t) = request.temperature {
+        payload["temperature"] = json!(t);
+    }
+    if let Some(p) = request.top_p {
+        payload["top_p"] = json!(p);
+    }
+    if let Some(m) = request.max_tokens {
+        payload["max_tokens"] = json!(m);
+    }
+    if !tools.is_empty() {
+        payload["tools"] = Value::Array(tools);
+    }
+    Ok(payload)
+}
+
+fn parse_assistant_message(raw: &Value) -> Option<String> {
+    raw.get("choices")?
+        .as_array()?
+        .first()?
+        .get("message")?
+        .get("content")?
+        .as_str()
+        .map(|s| s.to_string())
+}
+
+fn parse_tool_calls(raw: &Value) -> Vec<ToolCall> {
+    raw.get("choices")
+        .and_then(|c| c.as_array())
+        .and_then(|c| c.first())
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("tool_calls"))
+        .and_then(|t| t.as_array())
+        .map(|calls| {
+            calls
+                .iter()
+                .filter_map(|call| {
+                    let id = call.get("id")?.as_str()?.to_string();
+                    let func = call.get("function")?;
+                    let name = func.get("name")?.as_str()?.to_string();
+                    let args = match func.get("arguments") {
+                        Some(Value::String(s)) => {
+                            serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone()))
+                        }
+                        Some(v) => v.clone(),
+                        None => json!({}),
+                    };
+                    Some(ToolCall {
+                        id,
+                        name,
+                        arguments_json: args,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn parse_non_stream_response(raw: Value) -> anyhow::Result<ChatResponse> {
+    let msg = parse_assistant_message(&raw);
+    let tcs = parse_tool_calls(&raw);
+    let chunks = msg
+        .as_ref()
+        .map(|t| {
+            t.chars()
+                .collect::<Vec<_>>()
+                .chunks(20)
+                .map(|c| c.iter().collect())
+                .collect()
+        })
+        .unwrap_or_default();
+    let fr = raw
+        .get("choices")
+        .and_then(|c| c.as_array())
+        .and_then(|c| c.first())
+        .and_then(|c| c.get("finish_reason"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Ok(ChatResponse {
+        assistant_message: msg,
+        streamed_text_chunks: chunks,
+        tool_calls: tcs,
+        finish_reason: fr,
+        raw_response: raw,
+    })
+}
+
+fn parse_stream_tool_calls(events: &[Value]) -> Vec<ToolCall> {
+    #[derive(Default)]
+    struct P {
+        id: Option<String>,
+        name: Option<String>,
+        args: String,
+    }
+    let mut ps: Vec<P> = Vec::new();
+    for event in events {
+        if let Some(choice) = event
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first())
+        {
+            if let Some(delta) = choice.get("delta") {
+                if let Some(tc_arr) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                    for tc in tc_arr {
+                        let idx = tc
+                            .get("index")
+                            .and_then(|v| v.as_u64())
+                            .map_or(ps.len(), |index| {
+                                usize::try_from(index).unwrap_or(usize::MAX)
+                            });
+                        if idx >= MAX_STREAM_TOOL_CALLS {
+                            tracing::warn!(
+                                index = idx,
+                                "ignoring a tool call delta whose index is out of range"
+                            );
+                            continue;
+                        }
+                        while ps.len() <= idx {
+                            ps.push(P::default());
+                        }
+                        if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                            ps[idx].id = Some(id.to_string());
+                        }
+                        if let Some(func) = tc.get("function") {
+                            if let Some(n) = func.get("name").and_then(|v| v.as_str()) {
+                                ps[idx].name = Some(n.to_string());
+                            }
+                            if let Some(a) = func.get("arguments").and_then(|v| v.as_str()) {
+                                ps[idx].args.push_str(a);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ps.into_iter()
+        .filter_map(|p| {
+            let id = p.id?;
+            let name = p.name?;
+            let args = if p.args.trim().is_empty() {
+                json!({})
+            } else {
+                serde_json::from_str(&p.args).unwrap_or_else(|_| Value::String(p.args))
+            };
+            Some(ToolCall {
+                id,
+                name,
+                arguments_json: args,
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn read_stream_response(
+    response: reqwest::blocking::Response,
+    on_chunk: &mut dyn FnMut(String),
+) -> anyhow::Result<ChatResponse> {
+    let mut events = Vec::new();
+    let mut chunks = Vec::new();
+    let mut full = String::new();
+    let mut fr = None;
+    for line in BufReader::new(response).lines() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data == "[DONE]" {
+            break;
+        }
+        let ev: Value = serde_json::from_str(data)?;
+        if let Some(message) = stream_error(&ev) {
+            return Err(anyhow!("chat API stream error: {message}"));
+        }
+        if let Some(choice) = ev
+            .get("choices")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first())
+        {
+            if fr.is_none() {
+                fr = choice
+                    .get("finish_reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+            }
+            if let Some(delta) = choice.get("delta") {
+                if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
+                    if !c.is_empty() {
+                        let ch = c.to_string();
+                        full.push_str(&ch);
+                        chunks.push(ch.clone());
+                        on_chunk(ch);
+                    }
+                } else if let Some(parts) = delta.get("content").and_then(|v| v.as_array()) {
+                    for part in parts {
+                        if let Some(t) = part.get("text").and_then(|v| v.as_str()) {
+                            if !t.is_empty() {
+                                let ch = t.to_string();
+                                full.push_str(&ch);
+                                chunks.push(ch.clone());
+                                on_chunk(ch);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        events.push(ev);
+        if fr.is_some() {
+            break;
+        }
+    }
+    let tcs = parse_stream_tool_calls(&events);
+    Ok(ChatResponse {
+        assistant_message: if full.is_empty() { None } else { Some(full) },
+        streamed_text_chunks: chunks,
+        tool_calls: tcs,
+        finish_reason: fr,
+        raw_response: Value::Array(events),
+    })
+}

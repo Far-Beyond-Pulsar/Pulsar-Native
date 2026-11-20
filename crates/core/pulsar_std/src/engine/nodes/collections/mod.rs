@@ -76,8 +76,6 @@ pub fn hashmap_insert(
 ///
 /// # Notes
 /// Returns a cloned value to avoid borrowing issues. Use this node for safe, read-only access to HashMap entries.
-/// # HashMap Get
-/// Retrieves a value from a HashMap by key.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_get(map: HashMap<String, String>, key: String) -> Option<String> {
     map.get(&key).cloned()
@@ -98,8 +96,6 @@ pub fn hashmap_get(map: HashMap<String, String>, key: String) -> Option<String> 
 ///
 /// # Notes
 /// The original HashMap is consumed and a new one is returned with the entry removed if present.
-/// # HashMap Remove
-/// Removes a key-value pair from a HashMap.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_remove(
     map: HashMap<String, String>,
@@ -125,8 +121,6 @@ pub fn hashmap_remove(
 ///
 /// # Notes
 /// Useful for checking existence before attempting to get or remove a value.
-/// # HashMap Contains Key
-/// Checks if a HashMap contains a specific key.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_contains_key(map: HashMap<String, String>, key: String) -> bool {
     map.contains_key(&key)
@@ -301,8 +295,6 @@ pub fn hashmap_filter(map: HashMap<String, String>, pattern: String) -> HashMap<
 /// # Notes
 /// This implementation escapes double quotes in keys and values. The output is a flat JSON object with string keys and values.
 /// For more complex or nested data, consider using a dedicated JSON serialization library.
-/// # HashMap To JSON
-/// Converts a HashMap to a JSON string representation.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_to_json(map: HashMap<String, String>) -> String {
     let mut json = String::from("{");
@@ -402,8 +394,6 @@ pub fn hashset_contains(set: HashSet<String>, value: String) -> bool {
 ///
 /// # Notes
 /// The original input sets are not modified. The result is a new HashSet containing the union.
-/// # HashSet Union
-/// Computes the union of two HashSets.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_union(set1: HashSet<String>, set2: HashSet<String>) -> HashSet<String> {
     set1.union(&set2).cloned().collect()
@@ -423,8 +413,6 @@ pub fn hashset_union(set1: HashSet<String>, set2: HashSet<String>) -> HashSet<St
 ///
 /// # Notes
 /// The original input sets are not modified. The result is a new HashSet containing the intersection.
-/// # HashSet Intersection
-/// Computes the intersection of two HashSets.
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashset_intersection(set1: HashSet<String>, set2: HashSet<String>) -> HashSet<String> {
     set1.intersection(&set2).cloned().collect()

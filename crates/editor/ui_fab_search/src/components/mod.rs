@@ -1,3 +1,6 @@
+//! Render functions of the Fab search window: auth section, detail view, download manager,
+//! filter bar, item detail and results grid.
+
 pub(crate) mod auth_section;
 pub(crate) mod detail_view;
 pub(crate) mod download_manager;

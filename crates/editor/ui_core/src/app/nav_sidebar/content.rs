@@ -1,5 +1,5 @@
 //! The sidebar's content tree: the project's folders, and the files in each
-//! expanded folder (#1139).
+//! expanded folder.
 //!
 //! Clicking a folder expands it; double-clicking a file opens it. Nothing here
 //! opens the bottom file drawer unless asked to from a row's right-click menu

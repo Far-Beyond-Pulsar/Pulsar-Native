@@ -1,4 +1,4 @@
-//! Asset-update notifications in the level editor (#921).
+//! Asset-update notifications in the level editor.
 //!
 //! Plugins publish `plugin_editor_api::AssetUpdated` when they rewrite an
 //! asset. The level editor subscribes to class assets (the Blueprint kind):
@@ -44,7 +44,7 @@ pub fn handle_asset_update(
         let mut world = state.scene.world_mut();
         // Rebuilt instances are ordinary component writes: their GPU rows
         // follow through SceneDB's own write path, and the renderer's scene
-        // join picks them up with nothing armed or marked here (#935).
+        // join picks them up with nothing armed or marked here.
         classes::apply_class_asset_update(&mut world, event)
     };
     let mut state = state.write();

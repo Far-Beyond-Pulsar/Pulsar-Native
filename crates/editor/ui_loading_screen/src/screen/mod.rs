@@ -1,3 +1,6 @@
+//! The loading screen (`LoadingScreen`): shows the progress of the startup tasks
+//! (`LoadingTask`).
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
