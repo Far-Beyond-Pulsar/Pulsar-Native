@@ -7022,6 +7022,7 @@ dependencies = [
  "helio-pass-portal-instances",
  "helio-pass-post-volumes",
  "helio-pass-postprocess",
+ "helio-pass-reference",
  "helio-pass-sky",
  "helio-pass-sprite-batch",
  "helio-pass-tsr",
