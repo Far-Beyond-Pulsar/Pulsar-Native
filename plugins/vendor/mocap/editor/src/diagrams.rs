@@ -41,12 +41,10 @@ impl Diagram {
     }
 }
 
-/// The PNG as a BGRA image the UI can draw.
+/// The PNG as an image the UI can draw: its own loader (`img` on bytes) hands the decoded RGBA
+/// frame to `RenderImage` as is, and so does this.
 fn decode(bytes: &[u8]) -> Option<Arc<RenderImage>> {
-    let mut rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
-    for px in rgba.chunks_exact_mut(4) {
-        px.swap(0, 2);
-    }
+    let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
     Some(Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(rgba)])))
 }
 

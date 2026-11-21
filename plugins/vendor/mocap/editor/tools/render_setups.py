@@ -2,12 +2,13 @@
 
     blender -b -P render_setups.py -- <out dir> [samples] [name ...]
 
-Names: ring arc line body space. A staged living room with a poseable mannequin, the cameras on
+Names: ring arc line body space. Set MOCAP_BLEND_DIR to also save each scene as a .blend there, and MOCAP_NO_RENDER=1 to skip rendering. A staged living room with a poseable mannequin, the cameras on
 tripods with their fields of view, and the measurements that matter. World: metres, Z up, the
 subject at the origin facing -Y (the open side of the room, where the viewer stands).
 """
 
 import math
+import os
 import random
 import sys
 
@@ -530,6 +531,12 @@ def render(name):
     build(name)
     loc, tgt = VIEWS[name]
     render_camera(loc, tgt)
+    blend_dir = os.environ.get("MOCAP_BLEND_DIR")
+    if blend_dir:
+        os.makedirs(blend_dir, exist_ok=True)
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(blend_dir, f"mocap_setup_{name}.blend"), copy=True)
+    if os.environ.get("MOCAP_NO_RENDER"):
+        return
     s.render.filepath = f"{OUT}/{name}.png"
     bpy.ops.render.render(write_still=True)
 
