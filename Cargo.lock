@@ -6524,6 +6524,7 @@ name = "helio-pass-sky"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "half",
  "helio-components",
  "helio-core",
