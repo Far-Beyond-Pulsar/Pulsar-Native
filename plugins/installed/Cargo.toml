@@ -28,6 +28,7 @@ lights_plugin = { workspace = true }
 materials_plugin = { workspace = true }
 plugin_matter = { workspace = true, optional = true }
 meshes_plugin = { workspace = true }
+mocap_plugin = { workspace = true, optional = true }
 particles_plugin = { workspace = true }
 physics_plugin = { workspace = true }
 portals_plugin = { workspace = true }
@@ -70,6 +71,7 @@ editor = [
     "materials_plugin/editor",
     "dep:plugin_matter",
     "meshes_plugin/editor",
+    "dep:mocap_plugin",
     "particles_plugin/editor",
     "physics_plugin/editor",
     "portals_plugin/editor",

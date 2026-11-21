@@ -40,6 +40,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/INSPECTOR.md` | Properties panels: one virtualized list, search/collapse, `VirtualRows` for huge values (arrays, lists, layer stacks) |
 | `.agents/EDITOR_TASKS.md` | Editor tasks and threads: every async/background job is a task, every thread is registered (services with heartbeats, rayon/tokio pools engine-owned), each with span-scoped logs and stall diagnosis; the Tasks window has Tasks/Threads/Services views; a raw-thread ratchet. Every async/background editor job is a task with its own span-scoped log, stall diagnosis and a Tasks-window audit view; tab creation and Helio init are enforced. Read before adding any spawn, background job or editor/renderer init |
 | `.agents/KEYBINDINGS.md` | Keyboard Shortcuts window, `.pulsar/keybindings.json` overrides, how unbinding reaches the keymap |
+| `.agents/MOCAP.md` | Motion capture plugin (`pulsar.mocap`): the `.mocap` take format, capture sources (camera, VMC, synthetic), recorder, the editor workspace and camera viewport, phases |
 | `.agents/ANIMATION.md` | Animation assets (`.animseq` v5, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
 
 ## Skills (`.claude/commands/`)

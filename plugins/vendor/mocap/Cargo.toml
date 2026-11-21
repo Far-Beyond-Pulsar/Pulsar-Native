@@ -1,0 +1,24 @@
+[package]
+name = "mocap_plugin"
+license = "MPL-2.0"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Motion capture (pulsar.mocap): the plugin's root crate, the one place it registers what it contributes"
+autoexamples = false
+
+[features]
+default = ["camera"]
+# Webcam capture (the OS's own camera API through nokhwa).
+camera = ["mocap_editor/camera"]
+
+[dependencies]
+# The plugin gate and the editor provider's registration.
+pulsar_plugins = { workspace = true }
+plugin_manager = { workspace = true }
+mocap_editor = { path = "editor" }
+mocap_capture = { path = "capture" }
+mocap_format = { path = "format" }
+
+[lints]
+workspace = true

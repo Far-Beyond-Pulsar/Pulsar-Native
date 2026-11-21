@@ -1,0 +1,23 @@
+[package]
+name = "mocap_capture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+description = "Mocap capture (pulsar.mocap): sources (VMC/OSC, synthetic, cameras), the frame bus, filtering, calibration and the recorder. GPUI-free."
+
+[features]
+# Webcam capture through the OS's own API (Media Foundation, AVFoundation, V4L2).
+camera = ["dep:nokhwa"]
+
+[dependencies]
+mocap_format = { path = "../format" }
+nokhwa = { version = "0.10", default-features = false, features = ["input-native"], optional = true }
+# Every capture thread is a registered service (the Tasks window lists it).
+editor_task_queue = { workspace = true }
+parking_lot = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

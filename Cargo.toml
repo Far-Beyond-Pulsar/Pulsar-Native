@@ -30,6 +30,11 @@ members = [
     "crates/agent-providers/*",
     "crates/ui/wgpui-base",
     "plugins/vendor/asset_viewer",
+    # Motion capture (`pulsar.mocap`): in-tree plugin, its crates named one by one.
+    "plugins/vendor/mocap",
+    "plugins/vendor/mocap/format",
+    "plugins/vendor/mocap/capture",
+    "plugins/vendor/mocap/editor",
     # Skeletal animation editor; built-in plugin of the editor.
     "plugins/vendor/skm_editor",
     # The skeletal asset formats, shared by that plugin and the asset importer.
@@ -714,6 +719,7 @@ pulsar_script_ts = { path = "plugins/vendor/typescript/compiler" }
 plugin_typescript = { path = "plugins/vendor/typescript" }
 rust_plugin = { path = "plugins/vendor/rust" }
 trait_editor_plugin = { path = "plugins/vendor/trait_editor" }
+mocap_plugin = { path = "plugins/vendor/mocap" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"

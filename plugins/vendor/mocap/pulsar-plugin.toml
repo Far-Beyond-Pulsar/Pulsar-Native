@@ -1,0 +1,15 @@
+# The `pulsar.mocap` plugin's descriptor. A project enables or disables it in
+# its Pulsar.toml (`[plugins]`); disabled, its editor and file type are
+# absent (see crates/core/pulsar_plugins). Its root crate carries this file
+# (`pulsar_plugins::installed!`).
+id = "pulsar.mocap"
+name = "Motion Capture"
+description = "Camera and device motion capture and the .mocap take format, with a live capture session editor"
+enabled_by_default = true
+requires = []
+
+# The plugin's root crate (the package in this directory): the one place it
+# registers everything it contributes. An editor tool for now: a game never
+# links it (the playback component is a later phase, `.agents/MOCAP.md`).
+root = "mocap_plugin"
+editor_only = true
