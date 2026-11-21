@@ -401,7 +401,7 @@ The Scene shows a skinned humanoid instead of a stick figure.
   same orthographic orbit as the panel's overlay lines, so cameras, sensors and the floor line up. A test renders
   the posed character to a texture on the machine's GPU.
 - `editor/src/panels/scene_mesh.rs`: the surface under the overlay; `Character...` in the panel loads another glTF;
-  `Show skeleton` goes back to lines. A flat figure (one camera's keypoints) is not meshed: it has no depth.
+  `Show skeleton` goes back to lines. A flat figure (one camera's keypoints) is posed in its plane, facing the camera.
 - The bundled character is a stand-in (a smooth mannequin built by `editor/tools/make_character.py` in Blender, ours):
   replace it with a professional humanoid (for example a Quaternius Universal Base Character, CC0) through
   `Character...`, or by replacing `editor/assets/character.glb`.
