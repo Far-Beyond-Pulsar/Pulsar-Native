@@ -22,6 +22,8 @@ editor_task_queue = { workspace = true }
 mocap_format = { path = "../format" }
 mocap_capture = { path = "../capture" }
 wgpu = { workspace = true }
+image = { workspace = true }
+smallvec = { workspace = true }
 bytemuck = { workspace = true }
 parking_lot = { workspace = true }
 serde_json = { workspace = true }

@@ -10,7 +10,7 @@
 use editor_task_queue::{TaskDescription, TaskDuration};
 use engine_fs::virtual_fs;
 use mocap_capture::{
-    CameraInput, CameraRig, apply_calibration, calibrate_neutral, coco17_rig, CaptureSource, EstimatorFactory, EstimatorSource, PoseEstimator, FilterSettings, MixInput, Mixer, OscSensorSource, PoseBus,
+    CameraInput, CameraRig, apply_calibration, calibrate_neutral, coco17_rig, CaptureSource, EstimatorFactory, EstimatorSource, FilterSettings, MixInput, Mixer, OscSensorSource, PoseBus,
     PoseFrame, Processor, RecordStats, Recorder, SessionClock, Skeleton, SourceDescriptor, SourceSink, SourceState,
     SyntheticSource, VideoMailbox, VmcSource,
 };
@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod flow;
-pub use flow::{CalibrationFlow, Phase as CalibrationPhase};
+pub use flow::{CalibrationFlow, Method as CalibrationMethod, Phase as CalibrationPhase};
 
 /// Frame rate new takes are recorded at.
 pub const RECORD_FPS: u32 = 60;
@@ -816,7 +816,7 @@ fn pose_factory(path: Arc<Mutex<PathBuf>>) -> EstimatorFactory {
                 ))
             })
         };
-        estimator.map(|e| Box::new(e) as Box<dyn PoseEstimator>)
+        estimator.map(|e| Box::new(e) as Box<dyn mocap_capture::PoseEstimator>)
     })
 }
 

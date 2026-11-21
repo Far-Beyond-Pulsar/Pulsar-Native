@@ -5,7 +5,7 @@
 
 use super::{SessionModel, SourceEntry};
 use editor_task_queue::{TaskDescription, TaskDuration};
-use mocap_capture::{CalibrationError, Calibrator, CameraRig, CameraSpec, Check, EstimatorSource, Features, Guide, HoldAverager, PoseFrame, Step, SAMPLES_TARGET};
+use mocap_capture::{arrange, rig_from_placements, Arrangement, CalibrationError, Calibrator, CameraRig, CameraSpec, Check, EstimatorSource, Features, Guide, HoldAverager, PoseFrame, Step, SAMPLES_TARGET};
 use mocap_format::{ChannelDesc, ChannelKind, Quantisation, RigProfile};
 use parking_lot::Mutex;
 use std::ops::Range;
@@ -17,6 +17,15 @@ const SYNC_WINDOW_S: f64 = 0.08;
 const MAX_POINT_ERROR_PX: f32 = 15.0;
 /// The body scale the priors assume (a 1.75 m adult).
 const DEFAULT_BODY_SCALE: f64 = 1.0;
+
+/// How the cameras are calibrated.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Method {
+    /// The user says where the cameras stand: exact, instant, no movement.
+    Layout(Arrangement),
+    /// Worked out from the subject performing guided movements.
+    Body,
+}
 
 /// Where the calibration is.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,6 +49,12 @@ pub struct CalibrationFlow {
     pub rms_px: Option<f64>,
     /// The subject's height over 1.75 m, which sets the metric scale.
     pub body_scale: f64,
+    pub method: Method,
+    /// Layout method: metres from the subject, and lens height above the floor.
+    pub distance: f64,
+    pub height: f64,
+    /// Layout method: the cameras' horizontal field of view, degrees.
+    pub hfov_deg: f64,
     calibrator: Option<Calibrator>,
     /// Averages a held pose over several frames into one clean sample.
     averager: HoldAverager,
@@ -58,6 +73,10 @@ impl Default for CalibrationFlow {
             checks: Vec::new(),
             rms_px: None,
             body_scale: DEFAULT_BODY_SCALE,
+            method: Method::Layout(Arrangement::Ring),
+            distance: 3.0,
+            height: 1.5,
+            hfov_deg: 70.0,
             calibrator: None,
             averager: HoldAverager::new(),
             trackers: Vec::new(),
@@ -127,6 +146,58 @@ impl SessionModel {
         self.sources.iter().filter(|s| s.descriptor.id.starts_with("pose:") && s.running()).collect()
     }
 
+    /// The cameras that are tracking the body, with their frame sizes; `None` (and a status) when a
+    /// camera has not delivered a frame yet.
+    fn tracked_cameras(&mut self) -> Option<Vec<(String, u32, u32)>> {
+        let mut out = Vec::new();
+        for tracker in self.running_trackers() {
+            let camera_id = EstimatorSource::camera_of(&tracker.descriptor.id).unwrap_or_default().to_owned();
+            let size = self.sources.iter().find(|s| s.descriptor.id == camera_id).and_then(|s| s.video.latest()).map(|f| (f.width, f.height));
+            let Some((width, height)) = size else {
+                self.status = format!("Camera {camera_id} has not delivered a frame yet");
+                return None;
+            };
+            out.push((camera_id, width, height));
+        }
+        Some(out)
+    }
+
+    /// Chooses how to calibrate (ignored while a calibration runs).
+    pub fn set_calibration_method(&mut self, method: Method) {
+        if !matches!(self.calib.phase, Phase::Guiding | Phase::Solving) {
+            self.calib.method = method;
+        }
+    }
+
+    /// Adjusts the layout numbers: distance and height in metres, field of view in degrees.
+    pub fn adjust_layout(&mut self, distance: f64, height: f64, hfov_deg: f64) {
+        self.calib.distance = (self.calib.distance + distance).clamp(0.5, 12.0);
+        self.calib.height = (self.calib.height + height).clamp(0.2, 4.0);
+        self.calib.hfov_deg = (self.calib.hfov_deg + hfov_deg).clamp(30.0, 120.0);
+    }
+
+    /// Calibrates from the chosen layout: the cameras are placed as described, in order of their
+    /// sources, so no movement is needed.
+    pub fn apply_camera_layout(&mut self) {
+        let Method::Layout(arrangement) = self.calib.method else { return };
+        if self.recording.is_some() {
+            self.status = "Stop recording before changing the cameras".to_owned();
+            return;
+        }
+        let Some(cameras) = self.tracked_cameras() else { return };
+        let placements = arrange(arrangement, &cameras, self.calib.distance, self.calib.height, 1.0, self.calib.hfov_deg);
+        let Some(rig) = rig_from_placements(&placements) else {
+            self.status = "Placing cameras needs at least two cameras with Track body running".to_owned();
+            return;
+        };
+        self.status = format!("{} cameras placed in a {}", rig.cameras.len(), arrangement.name().to_lowercase());
+        self.calib.checks.clear();
+        self.calib.rms_px = Some(0.0);
+        self.camera_rig = Some(rig);
+        self.rig_epoch += 1;
+        self.calib.phase = Phase::Done;
+    }
+
     /// Starts the guided calibration of the cameras that are tracking the body.
     pub fn start_camera_calibration(&mut self) {
         let trackers = self.running_trackers();
@@ -162,6 +233,16 @@ impl SessionModel {
         flow.rms_px = None;
         flow.phase = Phase::Guiding;
         self.status = "Calibrating: follow the instructions, all cameras should see you".to_owned();
+    }
+
+    /// Back to the setup choices (the solved cameras stay until a new setup replaces them).
+    pub fn forget_to_setup(&mut self) {
+        if !matches!(self.calib.phase, Phase::Guiding | Phase::Solving) {
+            self.calib.phase = Phase::Idle;
+            self.calib.checks.clear();
+            self.camera_rig = None;
+            self.rig_epoch += 1;
+        }
     }
 
     /// Gives up on the current step and moves to the next.
@@ -303,6 +384,16 @@ impl SessionModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn layout_numbers_stay_in_range_and_a_layout_needs_cameras() {
+        let mut model = SessionModel::new(std::path::PathBuf::from("layout-test"));
+        model.adjust_layout(100.0, -100.0, 100.0);
+        assert_eq!((model.calib.distance, model.calib.height, model.calib.hfov_deg), (12.0, 0.2, 120.0));
+        model.apply_camera_layout();
+        assert!(model.camera_rig.is_none(), "no cameras, nothing placed");
+        assert!(model.status.contains("at least two"), "{}", model.status);
+    }
     use crate::model::SessionModel;
     use mocap_capture::{coco17_rig, CameraModel, CaptureError, CaptureSource, SourceDescriptor, SourceKind, SourceShared, SourceSink, SourceState, SourceStatus};
     use mocap_format::CameraCalibration;

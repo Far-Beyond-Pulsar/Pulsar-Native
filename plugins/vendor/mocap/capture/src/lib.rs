@@ -11,6 +11,7 @@ mod error;
 mod guide;
 mod estimator;
 mod keypoints;
+mod layout;
 #[cfg(feature = "pose")]
 mod onnx;
 pub mod osc;
@@ -28,6 +29,7 @@ mod vmc;
 pub use bus::{BusStats, PoseBus, VideoMailbox};
 pub use calibration::{CalibrationError, Calibrator, CameraModel, CameraRig, CameraSpec, Check, HoldAverager, PairReport, MAX_RMS_PX, MIN_SAMPLES, SAMPLES_TARGET};
 pub use guide::{Features, Guide, GuideState, Step};
+pub use layout::{arrange, model_for, rig_from_placements, Arrangement, Placement};
 #[cfg(feature = "camera")]
 pub use camera::{enumerate_cameras, CameraInfo, CameraMode, CameraSource};
 pub use error::CaptureError;

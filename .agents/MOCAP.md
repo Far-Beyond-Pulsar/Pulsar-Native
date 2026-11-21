@@ -271,3 +271,27 @@ parts of the body (a camera listed first that sees only part of the body is refu
 it, rather than used as the reference; two complementary partial cameras beside full ones are
 refused with the culprit named). A global bundle adjustment would be the next step. Focal
 length starts from a guess and is refined; lens distortion is not modelled.
+
+## Camera setup methods (as built, first slice of the suite)
+
+Body self-calibration (above) is inherently weak: a near-planar body, a guessed scale and an unknown
+focal length. No pose model takes N cameras (MoveNet is single-image, single-person; multi-view models
+such as VoxelPose need calibrated cameras), so calibration is a choice of **method**, picked in the
+calibration card (`CalibrationFlow.method`, `Method`):
+
+| Method | Needs | Accuracy |
+|---|---|---|
+| Layout: Ring, Arc, Line (`mocap_capture::layout`) | the distance, lens height and field of view of the cameras, entered | exact as far as the measuring; instant, no movement |
+| Body (guided movements) | cameras that see overlapping parts of the subject | the least exact; see the section above |
+
+`arrange` places cameras on the arrangement, aimed at the subject's middle (Y up, subject at the origin);
+`rig_from_placements` makes the `CameraRig` (zero reprojection error, a note that the positions were entered).
+`SessionModel::apply_camera_layout` assigns the cameras in the order of their tracker sources.
+
+Each method shows a setup diagram: rendered PNG illustrations in `editor/assets/` (a room with a mannequin, the cameras on tripods with their fields of view, and the distances and clear space that matter), made by `editor/tools/render_setups.py` (Blender, headless: `blender -b -P render_setups.py -- <out dir> [samples] [name...]`),
+embedded with `include_bytes!` and decoded once (`diagrams.rs`). The R/B channel order of the
+rasterised frame follows `RenderImage`'s BGRA doc and has not been checked on screen.
+
+**Not built yet** (the rest of the suite): board-based calibration (ChArUco or checkerboard: intrinsics,
+extrinsics and metric scale, the standard of Pose2Sim and OpenCap), saving a calibration for reuse, per-camera
+position entry for a custom layout, and diagrams for the board method.

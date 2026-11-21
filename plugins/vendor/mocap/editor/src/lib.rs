@@ -7,6 +7,7 @@
 
 mod blit;
 mod curves;
+mod diagrams;
 mod editor;
 mod model;
 mod paint;
