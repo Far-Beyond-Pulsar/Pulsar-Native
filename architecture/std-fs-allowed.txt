@@ -21,6 +21,7 @@ crates/core/engine/src/steps/settings.rs | reads the engine's own per-user confi
 crates/core/engine_backend/build.rs | build script: reads the engine source tree
 crates/core/engine_backend/src/services/core_project_builder.rs | resolves the engine's own source checkout, not a project path
 crates/core/engine_backend/src/services/pie_host.rs | loads and removes a temp copy of the built game dylib (libloading needs a real path)
+crates/core/engine_backend/src/services/pie_host/loader.rs | copies the built game dylib to a temp file (libloading needs a real path)
 crates/core/engine_fs/src/providers/local.rs | the local provider: the one place a project's files meet the disk
 crates/core/helio_component/src/subsystems.rs | the working directory and the engine's built-in assets: machine paths outside any project
 crates/core/one_owner/src/lib.rs | the one-owner checker reads the engine's own source tree, not a project

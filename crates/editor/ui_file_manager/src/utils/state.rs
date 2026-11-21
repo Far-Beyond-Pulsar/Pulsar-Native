@@ -134,192 +134,211 @@ impl FileManagerDrawer {
     }
 
     pub(crate) fn read_items_for_folder(&self, f: &Path) -> Vec<FileItem> {
-        let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f);
-        if remote {
-            let fs = f.to_string_lossy().replace('\\', "/");
-            let fs = fs.trim_end_matches('/');
-            match engine_fs::virtual_fs::list_dir(f) {
-                Ok(entries) => entries
-                    .into_iter()
-                    .filter_map(|e| {
-                        let name = e.name.trim_start_matches('/');
-                        if name.is_empty() {
-                            return None;
-                        }
-                        let path = std::path::PathBuf::from(format!("{}/{}", fs, name));
-                        let ft = if e.is_dir {
-                            self.registered_file_types
-                                .iter()
-                                .find(|d| {
-                                    matches!(d.structure, FileStructure::FolderBased { .. })
-                                        && (name.ends_with(&format!(".{}", d.extension))
-                                            || path.extension().and_then(|x| x.to_str())
-                                                == Some(d.extension.as_str()))
-                                })
-                                .cloned()
-                        } else {
-                            self.registered_file_types
-                                .iter()
-                                .find(|d| {
-                                    matches!(d.structure, FileStructure::Standalone)
-                                        && (name.ends_with(&format!(".{}", d.extension))
-                                            || path.extension().and_then(|x| x.to_str())
-                                                == Some(d.extension.as_str()))
-                                })
-                                .cloned()
-                        };
-                        Some(FileItem {
-                            read_only_mount: engine_fs::virtual_fs::mount_of(&path),
-                            path,
-                            name: name.to_string(),
-                            file_type_def: ft.clone(),
-                            is_folder: e.is_dir && ft.is_none(),
-                            class_language: None,
-                            size: e.size,
-                            modified: e
-                                .modified
-                                .map(|s| std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)),
-                            is_ghost: false,
-                            restore_commit: None,
-                        })
-                    })
-                    .collect(),
-                Err(e) => {
-                    tracing::error!("Failed to list remote dir: {}", e);
-                    Vec::new()
-                }
-            }
-        } else {
-            if let Some(project_root) = &self.project_path {
-                if let Ok(Some(index)) = engine_fs::open_project_file_index(project_root) {
-                    let relative_folder = f
-                        .strip_prefix(project_root)
-                        .unwrap_or_else(|_| Path::new(""))
-                        .to_string_lossy()
-                        .replace('\\', "/");
-                    let entries = index.query(&engine_fs::FileIndexQuery {
-                        direct_children_of: Some(relative_folder),
-                        include_directories: true,
-                        ..Default::default()
-                    });
-                    if let Ok(entries) = entries {
-                        let marker_paths: HashSet<String> = self
-                            .registered_file_types
-                            .iter()
-                            .filter_map(|definition| match &definition.structure {
-                                FileStructure::FolderBased { marker_file, .. } => {
-                                    Some(marker_file.as_str())
-                                }
-                                FileStructure::Standalone => None,
-                            })
-                            .flat_map(|marker| {
-                                index
-                                    .query(&engine_fs::FileIndexQuery {
-                                        name_equals: Some(marker.to_owned()),
-                                        ..Default::default()
-                                    })
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .map(|entry| entry.path)
-                                    .collect::<Vec<_>>()
-                            })
-                            .collect();
-                        // Folders that hold a language's class marker: one item each.
-                        let class_dirs: HashSet<String> = pulsar_language::LanguageRegistry::current()
-                            .class_markers()
-                            .flat_map(|marker| {
-                                index
-                                    .query(&engine_fs::FileIndexQuery {
-                                        name_equals: Some(marker.to_owned()),
-                                        ..Default::default()
-                                    })
-                                    .unwrap_or_default()
-                                    .into_iter()
-                                    .filter_map(|entry| {
-                                        entry.path.rsplit_once('/').map(|(dir, _)| dir.to_string())
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                            .collect();
-                        return entries
-                            .into_iter()
-                            .map(|entry| {
-                                let path = project_root.join(&entry.path);
-                                let file_type_def = if entry.is_dir {
-                                    self.registered_file_types
-                                        .iter()
-                                        .find(|definition| {
-                                            if let FileStructure::FolderBased {
-                                                marker_file, ..
-                                            } = &definition.structure
-                                            {
-                                                marker_paths.contains(&format!(
-                                                    "{}/{}",
-                                                    entry.path, marker_file
-                                                )) || entry.name.ends_with(&format!(
-                                                    ".{}",
-                                                    definition.extension
-                                                )) || Path::new(&entry.name)
-                                                    .extension()
-                                                    .and_then(|extension| extension.to_str())
-                                                    == Some(definition.extension.as_str())
-                                            } else {
-                                                false
-                                            }
-                                        })
-                                        .cloned()
-                                } else {
-                                    self.registered_file_types
-                                        .iter()
-                                        .find(|definition| {
-                                            matches!(
-                                                definition.structure,
-                                                FileStructure::Standalone
-                                            ) && (entry
-                                                .name
-                                                .ends_with(&format!(".{}", definition.extension))
-                                                || entry.extension.as_deref()
-                                                    == Some(definition.extension.as_str()))
-                                        })
-                                        .cloned()
-                                };
-                                let class_language = (entry.is_dir
-                                    && file_type_def.is_none()
-                                    && class_dirs.contains(&entry.path))
-                                .then(|| FileItem::class_language_of(&path))
-                                .flatten();
-                                FileItem {
-                                    read_only_mount: engine_fs::virtual_fs::mount_of(&path),
-                                    path,
-                                    name: entry.name,
-                                    file_type_def: file_type_def.clone(),
-                                    is_folder: entry.is_dir
-                                        && file_type_def.is_none()
-                                        && class_language.is_none(),
-                                    class_language,
-                                    size: entry.size,
-                                    modified: entry.modified.map(|seconds| {
-                                        std::time::UNIX_EPOCH
-                                            + std::time::Duration::from_secs(
-                                                u64::try_from(seconds).unwrap_or_default(),
-                                            )
-                                    }),
-                                    is_ghost: false,
-                                    restore_commit: None,
-                                }
-                            })
-                            .collect();
-                    }
-                }
-            }
+        if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f) {
+            return self.read_remote_items(f);
+        }
+        if let Some(items) = self.read_indexed_items(f) {
+            return items;
+        }
+        self.read_listed_items(f)
+    }
 
-            let Ok(read) = engine_fs::virtual_fs::list_dir(f) else {
-                return Vec::new();
-            };
-            read.into_iter()
-                .map(|e| f.join(&e.name))
-                .filter_map(|p| FileItem::from_path(&p, &self.registered_file_types))
-                .collect()
+    /// The folder's entries from the virtual file system's listing, for a
+    /// remote or cloud project.
+    fn read_remote_items(&self, f: &Path) -> Vec<FileItem> {
+        let fs = f.to_string_lossy().replace('\\', "/");
+        let fs = fs.trim_end_matches('/');
+        match engine_fs::virtual_fs::list_dir(f) {
+            Ok(entries) => entries
+                .into_iter()
+                .filter_map(|e| {
+                    let name = e.name.trim_start_matches('/');
+                    if name.is_empty() {
+                        return None;
+                    }
+                    let path = std::path::PathBuf::from(format!("{}/{}", fs, name));
+                    let ft = if e.is_dir {
+                        self.registered_file_types
+                            .iter()
+                            .find(|d| {
+                                matches!(d.structure, FileStructure::FolderBased { .. })
+                                    && (name.ends_with(&format!(".{}", d.extension))
+                                        || path.extension().and_then(|x| x.to_str())
+                                            == Some(d.extension.as_str()))
+                            })
+                            .cloned()
+                    } else {
+                        self.registered_file_types
+                            .iter()
+                            .find(|d| {
+                                matches!(d.structure, FileStructure::Standalone)
+                                    && (name.ends_with(&format!(".{}", d.extension))
+                                        || path.extension().and_then(|x| x.to_str())
+                                            == Some(d.extension.as_str()))
+                            })
+                            .cloned()
+                    };
+                    Some(FileItem {
+                        read_only_mount: engine_fs::virtual_fs::mount_of(&path),
+                        path,
+                        name: name.to_string(),
+                        file_type_def: ft.clone(),
+                        is_folder: e.is_dir && ft.is_none(),
+                        class_language: None,
+                        size: e.size,
+                        modified: e
+                            .modified
+                            .map(|s| std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)),
+                        is_ghost: false,
+                        restore_commit: None,
+                    })
+                })
+                .collect(),
+            Err(e) => {
+                tracing::error!("Failed to list remote dir: {}", e);
+                Vec::new()
+            }
         }
     }
+
+    /// The folder's entries from the project's file index. `None` when the
+    /// project has no index or it cannot answer.
+    fn read_indexed_items(&self, f: &Path) -> Option<Vec<FileItem>> {
+        let project_root = self.project_path.as_ref()?;
+        let Ok(Some(index)) = engine_fs::open_project_file_index(project_root) else {
+            return None;
+        };
+        let relative_folder = f
+            .strip_prefix(project_root)
+            .unwrap_or_else(|_| Path::new(""))
+            .to_string_lossy()
+            .replace('\\', "/");
+        let entries = index
+            .query(&engine_fs::FileIndexQuery {
+                direct_children_of: Some(relative_folder),
+                include_directories: true,
+                ..Default::default()
+            })
+            .ok()?;
+        let marker_paths = self.folder_marker_paths(&index);
+        let class_dirs = class_marker_dirs(&index);
+        Some(
+            entries
+                .into_iter()
+                .map(|entry| {
+                    self.item_from_index_entry(project_root, entry, &marker_paths, &class_dirs)
+                })
+                .collect(),
+        )
+    }
+
+    /// The indexed paths of the marker files of the folder-based file types.
+    fn folder_marker_paths(&self, index: &engine_fs::ProjectFileIndex) -> HashSet<String> {
+        self.registered_file_types
+            .iter()
+            .filter_map(|definition| match &definition.structure {
+                FileStructure::FolderBased { marker_file, .. } => Some(marker_file.as_str()),
+                FileStructure::Standalone => None,
+            })
+            .flat_map(|marker| {
+                index
+                    .query(&engine_fs::FileIndexQuery {
+                        name_equals: Some(marker.to_owned()),
+                        ..Default::default()
+                    })
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|entry| entry.path)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// One file item for an index entry of a folder under `project_root`.
+    /// `marker_paths` and `class_dirs` are what [`Self::folder_marker_paths`]
+    /// and [`class_marker_dirs`] return.
+    fn item_from_index_entry(
+        &self,
+        project_root: &Path,
+        entry: engine_fs::IndexedFile,
+        marker_paths: &HashSet<String>,
+        class_dirs: &HashSet<String>,
+    ) -> FileItem {
+        let path = project_root.join(&entry.path);
+        let file_type_def = if entry.is_dir {
+            self.registered_file_types
+                .iter()
+                .find(|definition| {
+                    if let FileStructure::FolderBased { marker_file, .. } = &definition.structure {
+                        marker_paths.contains(&format!("{}/{}", entry.path, marker_file))
+                            || entry.name.ends_with(&format!(".{}", definition.extension))
+                            || Path::new(&entry.name)
+                                .extension()
+                                .and_then(|extension| extension.to_str())
+                                == Some(definition.extension.as_str())
+                    } else {
+                        false
+                    }
+                })
+                .cloned()
+        } else {
+            self.registered_file_types
+                .iter()
+                .find(|definition| {
+                    matches!(definition.structure, FileStructure::Standalone)
+                        && (entry.name.ends_with(&format!(".{}", definition.extension))
+                            || entry.extension.as_deref() == Some(definition.extension.as_str()))
+                })
+                .cloned()
+        };
+        let class_language =
+            (entry.is_dir && file_type_def.is_none() && class_dirs.contains(&entry.path))
+                .then(|| FileItem::class_language_of(&path))
+                .flatten();
+        FileItem {
+            read_only_mount: engine_fs::virtual_fs::mount_of(&path),
+            path,
+            name: entry.name,
+            file_type_def: file_type_def.clone(),
+            is_folder: entry.is_dir && file_type_def.is_none() && class_language.is_none(),
+            class_language,
+            size: entry.size,
+            modified: entry.modified.map(|seconds| {
+                std::time::UNIX_EPOCH
+                    + std::time::Duration::from_secs(u64::try_from(seconds).unwrap_or_default())
+            }),
+            is_ghost: false,
+            restore_commit: None,
+        }
+    }
+
+    /// The folder's entries read straight from the virtual file system, when
+    /// there is no file index to ask.
+    fn read_listed_items(&self, f: &Path) -> Vec<FileItem> {
+        let Ok(read) = engine_fs::virtual_fs::list_dir(f) else {
+            return Vec::new();
+        };
+        read.into_iter()
+            .map(|e| f.join(&e.name))
+            .filter_map(|p| FileItem::from_path(&p, &self.registered_file_types))
+            .collect()
+    }
+}
+
+/// The indexed folders that hold a language's class marker: one item each.
+fn class_marker_dirs(index: &engine_fs::ProjectFileIndex) -> HashSet<String> {
+    pulsar_language::LanguageRegistry::current()
+        .class_markers()
+        .flat_map(|marker| {
+            index
+                .query(&engine_fs::FileIndexQuery {
+                    name_equals: Some(marker.to_owned()),
+                    ..Default::default()
+                })
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|entry| entry.path.rsplit_once('/').map(|(dir, _)| dir.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }

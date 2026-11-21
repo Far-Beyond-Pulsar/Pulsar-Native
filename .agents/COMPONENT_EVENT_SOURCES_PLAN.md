@@ -43,7 +43,7 @@ Components raise events scripts can hear, but three things are wrong today.
 | `skm_editor` registers one for `AnimationComponent` | `skm_editor/src/runtime.rs:38` |
 | Typed asset reference: `AssetRef<K: AssetKind>`, a UUID string on disk; `AssetKind` has `KIND: &str` and `EXTENSIONS` | `pulsar-reflection/.../asset_refs.rs` |
 | `AnimationComponent.animation_graph: Option<AssetRef<AnimationGraphAssetKind>>` | `skm_editor/component/src/component.rs:231` |
-| Asset id to path by kind: `ProjectFileIndex::path_for_asset_id_kind(kind, id)`; reverse `asset_ids_for_path`; dependency edges `replace_asset_deps`, `asset_used_by` | `engine_fs/src/file_index.rs` |
+| Asset id to path by kind: `ProjectFileIndex::path_for_asset_id_kind(kind, id)`; reverse `asset_ids_for_path`; dependency edges `replace_asset_deps`, `asset_used_by` | `engine_fs/src/file_index.rs` (`file_index/asset_ids.rs`, `file_index/asset_deps.rs`) |
 | File change feed: `engine_fs::events::subscribe()` (`Created`/`Modified`/`Deleted`) | `engine_fs/src/events.rs` |
 | Registries iterate `pulsar_plugins::registered::<T>()`, skipping disabled plugins; `Contribution` gives category, origin, id | `pulsar_plugins/src/lib.rs` |
 | Palette entry shape: `EventNode { node_type, inputs, outputs, properties }`, pins named after signature fields; an "On" node has one exec output `Body` and a `scope` property (`self`/`global`/`class`) | `blueprint_editor/compiler/src/palette.rs`, `compiler/src/lib.rs:166-190, 639-660` |

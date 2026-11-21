@@ -264,3 +264,77 @@ files and UI render code), `pulsar_auth` has no `tracing` dependency, step 7
 `lib.rs` paths. Test failures seen and not caused by these changes as far as
 the diffs show (not compared against a clean HEAD): `scene_inventory` ledger
 tests, `pulsar_package` smoke (Windows file-in-use), `pulsar_game` roles tests.
+
+## Progress, batch 2 (2026-11-20, automated run)
+
+Uncommitted in the working tree except where noted. Python for the gate:
+`C:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe`.
+
+Gate totals: start (after refreshing a stale baseline) fn_length 288,
+file_length 107, println 13, pub_result_string 146; now fn_length 267,
+file_length 96, println 2, unwrap 1, process_comments 3, pub_result_string 140.
+The baseline had not recorded the 10 files created by batch 1's splits, so
+`just style` failed at the start; `--update --allow-increase` recorded them
+as moves. The Progress figures above (283, 106, 138) did not match the tree.
+
+1. **Functions split (16, non-rendering):** the four `engine_class_derive`
+   `expand`s, `pulsar_macros` `blueprint_node::expand`, `write_pak_set`,
+   `migrate_level_value`, `Vm::run`, `generate_actor`, Anthropic
+   `read_stream_response`, `PieHost::load`, `run_tick`, `generate_markdown`,
+   `handle_client_message`, `run_configuration`, `read_items_for_folder`.
+   New modules: `interp/steps.rs`, `agent_provider_anthropic/stream.rs`,
+   `pie_host/loader.rs`, `tick/phases.rs`, `project_parser/markdown.rs`,
+   `rendezvous/message_routing.rs`. `Vm::run` keeps its dispatch `match` and
+   is exactly 100 lines; not benchmarked.
+2. **Rendering-touching (4):** `draw_gizmo`, `update_drag`, game viewport
+   `drive` and `render`; helio-architecture loaded, report section given by the
+   subagent. Compile-checked and `engine_backend` tests only; the renderer and
+   editor were not run.
+3. **Files split:** `file_index` 1834 to 378, `layout/resolve` 1655 to 331,
+   `virtual_fs/mounts` 1448 to 356, `module_builder` 1408 to 527, `types`
+   1286 to 217, `pulsar_lsp/server` 1381 to 539, `interaction` 1786 to 427,
+   `render_runtimes` 1474 to 73. Public paths unchanged. List edits:
+   `std-fs-allowed.txt` (+`pie_host/loader.rs`), `raw-threads-allowed.txt`
+   (-1), `kind-names.txt` (+3, moves), scene_inventory ledger (interaction
+   entry, meshes path).
+4. **Print exemption:** `// style: allow println - <reason>` (same or previous
+   line) in `scripts/style-check.py` and `architecture/STYLE.md`; 11 prints
+   marked. Two `pulsar_auth` `eprintln!` left: the crate has no `tracing`
+   dependency and says so.
+5. **Docs:** about a dozen `.agents/*.md`, `ARCHITECTURE.md`, two READMEs
+   re-pointed. Unresolved: `ComponentTickRegistration` no longer exists
+   (noted as removed); the `HELIO_SCENE_API_MIGRATION.md` renderer symbols
+   (wind clock, selection, sky, foliage cleanup, portal actions) are no longer
+   in `renderer.rs` and need a human to re-point; one `LEGACY_MARKERS.md` row
+   (line 86) is a guess.
+6. **Old-commit comparison** (parent of the readability commit, copied
+   submodule sources at identical pins, separate target dir): identical
+   failures on old and new: `pulsar_game` roles 21 of 22, `pulsar_package`
+   smoke 2 of 2, `scene_inventory` ledger 5 of 9. `scene_inventory`
+   architecture failed 3 on the old commit and fails 2 now (the renderer
+   world-queries entry was repaired). So none of the three groups is caused by
+   the readability work.
+
+Behavior risks: `Vm::run` helpers and `run_tick` phases (hot paths, unbenched);
+`PieHost::load` hot-reload copy cleanup order (no test); relay helpers end in
+an unreachable `bail!`; `blueprint_node` keeps a dead `"Pure"`/`"Event"` match
+arm (preserved, not fixed). `migrate.rs` and `actor.rs` changed from CRLF to LF.
+
+Needs a person:
+- `pulsar_game/src/tick/phases.rs` `pump_assets()` now matches the ledger
+  pattern for the `asset-pump` row (add a row or rename).
+- `check_layers.py` reports `ui_build -> ui_log_viewer` (kernel to tool),
+  introduced by an earlier build-dashboard commit.
+- A commit (`dd05aefbf`) appeared mid-run that I did not make; it contains part
+  of this batch's changes, the rest is uncommitted.
+- Temporary `C:\pulsar-clean-target`, `C:\pulsar-clean-logs`,
+  `C:\pulsar-new-logs` remain; delete them (the removal was blocked).
+
+Unverified: renderer and editor behavior at runtime; clippy; `just arch`
+as a whole (`check_layers.py` run via another Python); `ui_core` full test
+suite; flaky `gpu::tests::readbacks_and_uploads_reuse_their_buffers` failed
+once and passed on rerun. Still open: Step 7 (crate reorganization), 267 long
+functions and 96 long files (mostly test files and UI render code).
+
+Final `cargo check --tests` over the 19 edited crates passes (one unused
+import warning, `Handler`, not located).

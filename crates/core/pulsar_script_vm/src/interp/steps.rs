@@ -28,7 +28,11 @@ pub(super) struct CallSite<'a> {
 #[inline]
 pub(super) fn wait_seconds(value: &Value) -> f64 {
     let seconds = value.as_float().unwrap_or(0.0);
-    if seconds > 0.0 { seconds } else { 0.0 }
+    if seconds > 0.0 {
+        seconds
+    } else {
+        0.0
+    }
 }
 
 /// A latent native (`wait::frames`, ..) asked for the call to suspend: park it
@@ -131,7 +135,12 @@ impl Vm {
     /// `Unary`: writes `op` of the register `src` to the register `dst` (both
     /// absolute stack indices).
     #[inline]
-    pub(super) fn unary_instr(&mut self, op: UnOp, dst: usize, src: usize) -> Result<(), ScriptErrorKind> {
+    pub(super) fn unary_instr(
+        &mut self,
+        op: UnOp,
+        dst: usize,
+        src: usize,
+    ) -> Result<(), ScriptErrorKind> {
         self.regs[dst] = unary(op, &self.regs[src], self.checked_arithmetic)?;
         Ok(())
     }

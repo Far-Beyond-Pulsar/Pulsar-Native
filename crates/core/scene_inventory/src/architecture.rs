@@ -109,9 +109,9 @@ pub const PLUGIN_RENDERER_DIRS: &[&str] = &["feature", "host"];
 /// reads the GPU mirror; incremental CPU work reads change cursors.
 pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
     (
-        "crates/core/engine_backend/src/subsystems/render/helio_renderer/interaction.rs",
-        2,
-        "picking and the nearest hit under a ray: run on a pointer event, not per frame",
+        "crates/core/engine_backend/src/subsystems/render/helio_renderer/interaction/picking.rs",
+        3,
+        "box select, picking and the placement point under a ray: run on a pointer event, not per frame",
     ),
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/camera_ground.rs",
@@ -119,7 +119,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "the camera's ground: the instances of components with a `ground_altitude` method (by method, no kind named), found again only when the world revision changes",
     ),
     (
-        "plugins/vendor/meshes/host/src/lib.rs",
+        "plugins/vendor/bake/host/src/lib.rs",
         3,
         "bake_scene_from_world: a standalone host's explicit one-shot bake input, not the frame path",
     ),

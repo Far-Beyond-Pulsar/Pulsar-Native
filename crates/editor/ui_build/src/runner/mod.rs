@@ -29,8 +29,7 @@ use engine_state::build_config::{BuildConfiguration, TargetPlatform, build_cance
 use engine_state::playback::playback;
 use gpui::{
     Animation, AnimationExt as _, AnyWindowHandle, App, AppContext as _, AsyncApp, IntoElement,
-    ParentElement as _,
-    Styled as _, Window, radians,
+    ParentElement as _, Styled as _, Window, radians,
 };
 use parking_lot::Mutex;
 use rust_i18n::t;
@@ -157,7 +156,14 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     session::begin(Arc::clone(&session));
 
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), StepError>>(1);
-    let task_id = submit_build_task(&plan, &project_root, &name, &progress, &step_title, result_tx);
+    let task_id = submit_build_task(
+        &plan,
+        &project_root,
+        &name,
+        &progress,
+        &step_title,
+        result_tx,
+    );
     session.set_task(task_id);
     crate::dashboard::open(cx);
     show_starting_notification(&name, window, cx);
