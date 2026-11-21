@@ -1,28 +1,28 @@
-//! A         Ok(Self { model, name: name.to_owned(),ingle-person keypoint model run with `tract` (pure Rust ONNX, no native
-//! runtime to ship), behind the `pose` feature.
+//! A single-person keypoint model run with ONNX Runtime, behind the `pose`
+//! feature.
 //!
-//! The input layout (NHWC or NCHW), size and element type are read from the
-//! model, so MoveNet-style exports and compatible models load without
-//! configuration. The output is the first tensor: 17 keypoints of
-//! `(y, x, score)` in model-input fractions. Input values are 0..255 by
-//! default; models trained on other ranges set `PULSAR_MOCAP_POSE_SCALE` to
-//! `unit` (0..1) or `signed` (-1..1).
+//! The input layout (NHWC or NCHW), size and element type (`f32`, `i32` or
+//! `u8`) are read from the model, so MoveNet-style exports and compatible
+//! models load without configuration. The output is the first tensor: 17
+//! keypoints of `(y, x, score)` in model-input fractions. Float inputs are
+//! 0..255 by default; models trained on other ranges set
+//! `PULSAR_MOCAP_POSE_SCALE` to `unit` (0..1) or `signed` (-1..1).
 
 use crate::estimator::PoseEstimator;
 use crate::frame::VideoFrame;
 use crate::keypoints::{coco17_rig, decode_single_person, letterbox_rgb, Letterbox};
 use mocap_format::RigProfile;
-use std::path::Path;
-use tract_onnx::prelude::*;
-use tract_onnx::tract_hir::internal::Factoid as _;
-
-/// The model embedded by `build.rs` (empty when it could not be fetched).
-const BUNDLED_MODEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pose_model.onnx"));
+use ort::environment::Environment;
+use ort::session::Session;
+use ort::value::{Tensor, TensorElementType};
+use std::sync::OnceLock;
 
 /// Keypoints under this confidence are recorded as gaps.
 const MIN_SCORE: f32 = 0.25;
 /// Spatial size assumed when a model leaves its input size open.
 const FALLBACK_SIZE: usize = 192;
+/// The model embedded by `build.rs` (empty when it could not be fetched).
+const BUNDLED_MODEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pose_model.onnx"));
 
 #[derive(Clone, Copy)]
 enum Scale {
@@ -52,26 +52,28 @@ impl Scale {
 
 /// A loaded keypoint model.
 pub struct OnnxPoseEstimator {
-    model: TypedRunnableModel<TypedModel>,
+    session: Session,
     name: String,
+    input_name: String,
     input: (u32, u32),
     nchw: bool,
-    integer: bool,
+    element: TensorElementType,
     scale: Scale,
 }
 
-fn fail<E: std::fmt::Display>(what: &str) -> impl FnOnce(E) -> String + '_ {
+/// The process's one ONNX Runtime environment (telemetry off), built on first use.
+fn environment() -> Result<&'static Environment, String> {
+    static ENV: OnceLock<Result<Environment, String>> = OnceLock::new();
+    ENV.get_or_init(|| ort::init().with_name("pulsar-mocap").with_telemetry(false).build().map_err(|e| format!("ONNX Runtime did not start: {e}")))
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn fail<E: std::fmt::Display>(what: &'static str) -> impl FnOnce(E) -> String {
     move |e| format!("{what}: {e}")
 }
 
 impl OnnxPoseEstimator {
-    /// Loads the model at `path`.
-    pub fn load(path: &Path) -> Result<Self, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("pose model");
-        Self::from_bytes(&bytes, name)
-    }
-
     /// The model built into this binary (MoveNet Lightning), `None` when the
     /// build could not fetch it (see `build.rs`).
     pub fn bundled() -> Option<Result<Self, String>> {
@@ -80,48 +82,62 @@ impl OnnxPoseEstimator {
 
     /// Loads a model from ONNX bytes.
     pub fn from_bytes(bytes: &[u8], name: &str) -> Result<Self, String> {
-        let mut graph = tract_onnx::onnx().model_for_read(&mut std::io::Cursor::new(bytes)).map_err(fail("could not read the model"))?;
-        let fact = graph.input_fact(0).map_err(fail("the model has no input"))?.clone();
-        let dims: Vec<usize> = fact
-            .shape
-            .concretize()
-            .map(|d| d.iter().map(|d| d.to_i64().map_or(0, |v| v.max(0) as usize)).collect())
-            .unwrap_or_default();
+        let session = Session::builder(environment()?)
+            .map_err(fail("ONNX Runtime did not start"))?
+            .commit_from_memory(bytes)
+            .map_err(fail("the model could not be loaded"))?;
+        let input = session.inputs().first().ok_or("the model has no input")?;
+        let element = input.dtype().tensor_type().ok_or("the model's input is not a tensor")?;
+        if !matches!(element, TensorElementType::Float32 | TensorElementType::Int32 | TensorElementType::Uint8) {
+            return Err(format!("the model's input type {element:?} is not supported (f32, i32 or u8)"));
+        }
+        let dims: Vec<i64> = input.dtype().tensor_shape().map(|s| s.to_vec()).unwrap_or_default();
+        let open = |d: i64| if d > 0 { d as usize } else { FALLBACK_SIZE };
         let (nchw, height, width) = match dims.as_slice() {
-            [_, h, w, 3] => (false, *h, *w),
-            [_, 3, h, w] => (true, *h, *w),
+            [_, h, w, 3] => (false, open(*h), open(*w)),
+            [_, 3, h, w] => (true, open(*h), open(*w)),
             _ => (false, FALLBACK_SIZE, FALLBACK_SIZE),
         };
-        let (height, width) = (if height == 0 { FALLBACK_SIZE } else { height }, if width == 0 { FALLBACK_SIZE } else { width });
-        let integer = fact.datum_type.concretize() == Some(i32::datum_type());
-        let shape = if nchw { tvec![1, 3, height, width] } else { tvec![1, height, width, 3] };
-        let datum = if integer { i32::datum_type() } else { f32::datum_type() };
-        graph = graph
-            .with_input_fact(0, InferenceFact::dt_shape(datum, shape))
-            .map_err(fail("the input size was refused"))?;
-        let model = graph
-            .into_optimized()
-            .map_err(fail("the model could not be optimised"))?
-            .into_runnable()
-            .map_err(fail("the model could not be prepared"))?;
-        Ok(Self { model, name: name.to_owned(), input: (width as u32, height as u32), nchw, integer, scale: Scale::from_env() })
+        let input_name = input.name().to_owned();
+        Ok(Self {
+            session,
+            name: name.to_owned(),
+            input_name,
+            input: (width as u32, height as u32),
+            nchw,
+            element,
+            scale: Scale::from_env(),
+        })
     }
 
-    fn tensor(&self, rgb: &[u8]) -> Result<Tensor, String> {
+    fn tensor_value(&self, rgb: &[u8]) -> Result<ort::session::SessionInputValue<'static>, String> {
         let (w, h) = (self.input.0 as usize, self.input.1 as usize);
-        let at = |x: usize, y: usize, c: usize| rgb[(y * w + x) * 3 + c];
-        let scale = self.scale;
-        macro_rules! build {
-            ($t:ty, $f:expr) => {{
-                let value = $f;
-                if self.nchw {
-                    tract_ndarray::Array4::<$t>::from_shape_fn((1, 3, h, w), |(_, c, y, x)| value(at(x, y, c))).into_tensor()
-                } else {
-                    tract_ndarray::Array4::<$t>::from_shape_fn((1, h, w, 3), |(_, y, x, c)| value(at(x, y, c))).into_tensor()
-                }
-            }};
-        }
-        Ok(if self.integer { build!(i32, |b: u8| i32::from(b)) } else { build!(f32, move |b: u8| scale.apply(b)) })
+        // The model wants NHWC or NCHW; `rgb` is HWC.
+        let index = |i: usize| {
+            if self.nchw {
+                let (c, rest) = (i / (h * w), i % (h * w));
+                rest * 3 + c
+            } else {
+                i
+            }
+        };
+        let shape = if self.nchw { [1, 3, h, w] } else { [1, h, w, 3] };
+        let count = w * h * 3;
+        let make = |e: ort::Error| format!("the input tensor could not be built: {e}");
+        Ok(match self.element {
+            TensorElementType::Float32 => {
+                let data: Vec<f32> = (0..count).map(|i| self.scale.apply(rgb[index(i)])).collect();
+                Tensor::from_array((shape, data)).map_err(make)?.into()
+            }
+            TensorElementType::Int32 => {
+                let data: Vec<i32> = (0..count).map(|i| i32::from(rgb[index(i)])).collect();
+                Tensor::from_array((shape, data)).map_err(make)?.into()
+            }
+            _ => {
+                let data: Vec<u8> = (0..count).map(|i| rgb[index(i)]).collect();
+                Tensor::from_array((shape, data)).map_err(make)?.into()
+            }
+        })
     }
 }
 
@@ -136,10 +152,9 @@ impl PoseEstimator for OnnxPoseEstimator {
 
     fn estimate(&mut self, frame: &VideoFrame) -> Option<Vec<f32>> {
         let lb = Letterbox::new((frame.width, frame.height), self.input);
-        let tensor = self.tensor(&letterbox_rgb(frame, &lb)).ok()?;
-        let outputs = self.model.run(tvec!(tensor.into())).ok()?;
-        let view = outputs.first()?.to_array_view::<f32>().ok()?;
-        let flat: Vec<f32> = view.iter().copied().collect();
-        decode_single_person(&flat, &lb, MIN_SCORE)
+        let value = self.tensor_value(&letterbox_rgb(frame, &lb)).ok()?;
+        let outputs = self.session.run(vec![(self.input_name.clone(), value)]).ok()?;
+        let (_, data) = outputs[0].try_extract_tensor::<f32>().ok()?;
+        decode_single_person(data, &lb, MIN_SCORE)
     }
 }

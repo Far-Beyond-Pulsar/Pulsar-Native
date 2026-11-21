@@ -87,8 +87,12 @@ impl CaptureSource for EstimatorSource {
         self.shared.set_state(SourceState::Starting);
         let (camera, shared) = (Arc::clone(&self.camera), Arc::clone(&self.shared));
         self.handle = Some(spawn_capture_loop("Body tracker", &self.label, move |ctx| {
-            ctx.set_phase("Loading the pose model");
-            let mut estimator = match factory() {
+            // Loading is one long call that cannot beat: say so, so it is not reported as a stall.
+            ctx.set_phase("Loading the pose model (optimising it can take a while in a debug build)");
+            ctx.set_idle(true);
+            let loaded = factory();
+            ctx.set_idle(false);
+            let mut estimator = match loaded {
                 Ok(estimator) => estimator,
                 Err(reason) => {
                     tracing::warn!("pose model did not load: {reason}");

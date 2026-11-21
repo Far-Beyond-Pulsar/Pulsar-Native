@@ -719,7 +719,12 @@ fn pose_factory(path: Arc<Mutex<PathBuf>>) -> EstimatorFactory {
         let path = path.lock().clone();
         // A model on disk (chosen, or in the project) wins over the built-in one.
         let estimator = if virtual_fs::is_file(&path) {
-            mocap_capture::OnnxPoseEstimator::load(&path)
+            virtual_fs::read_file(&path)
+                .map_err(|e| format!("could not read {}: {e}", path.display()))
+                .and_then(|bytes| {
+                    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("pose model");
+                    mocap_capture::OnnxPoseEstimator::from_bytes(&bytes, name)
+                })
         } else {
             mocap_capture::OnnxPoseEstimator::bundled().unwrap_or_else(|| {
                 Err(format!(

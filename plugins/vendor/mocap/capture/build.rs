@@ -10,6 +10,9 @@
 //!
 //! Offline builds: set `PULSAR_MOCAP_POSE_MODEL_FILE` to a copy of the model.
 
+// A build script reads and writes the real disk by design (see architecture/std-fs-allowed.txt).
+#![allow(clippy::disallowed_methods)]
+
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
