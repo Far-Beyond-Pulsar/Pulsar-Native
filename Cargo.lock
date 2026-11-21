@@ -5758,6 +5758,7 @@ name = "helio-frame-api"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "helio-feature-api",
  "wgpu",
@@ -6037,6 +6038,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-denoise"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-settings",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-flare"
 version = "0.1.0"
 dependencies = [
@@ -6168,6 +6182,18 @@ dependencies = [
  "log",
  "pollster 0.4.0",
  "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-history"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
  "wgpu",
 ]
 
@@ -6633,7 +6659,6 @@ name = "helio-pass-tsr"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "glam 0.33.5",
  "helio-core",
  "helio-frame-api",
  "wgpu",
@@ -6881,6 +6906,7 @@ dependencies = [
  "helio-graph-asset",
  "helio-pass-buffer-view",
  "helio-pass-debug-overlay",
+ "helio-pass-denoise",
  "helio-pass-fxaa",
  "helio-pass-hiz",
  "helio-pass-perf-overlay",
@@ -6955,6 +6981,7 @@ dependencies = [
  "helio-core",
  "helio-feature-api",
  "helio-frame-api",
+ "helio-pass-history",
  "helio-pass-hiz",
  "helio-pass-postprocess",
  "helio-pass-tsr",
