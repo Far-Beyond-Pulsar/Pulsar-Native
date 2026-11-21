@@ -13,7 +13,7 @@
 //! The metric scale rests on the priors, so it is only as good as the subject is
 //! close to them: set `body_scale` (height / 1.75 m) when it is known.
 
-use crate::epipolar::{essential_ransac, recover_pose, rotation_from_vector, triangulate, Rng};
+use crate::epipolar::{essential_8pt, essential_ransac, recover_pose, rotation_from_vector, sampson, triangulate, Rng};
 use mocap_format::CameraCalibration;
 use nalgebra::{DMatrix, DVector, Matrix3, Vector3};
 
@@ -25,23 +25,33 @@ pub const MIN_SCORE: f32 = 0.4;
 pub const MIN_SAMPLES: usize = 40;
 /// Samples kept (more adds time, not accuracy).
 pub const MAX_SAMPLES: usize = 160;
+/// Samples to collect before solving on its own: more than the minimum, because a capture with
+/// little variety is the commonest cause of a calibration that will not fit.
+pub const SAMPLES_TARGET: usize = 100;
 /// Correspondences a camera pair needs to be related.
 const MIN_CORRESPONDENCES: usize = 50;
-/// Keypoints two cameras must see in the same sample for the sample to link them.
-const MIN_SHARED: usize = 5;
+/// A sample links two cameras when they share at least two labelled keypoints whose
+/// reliabilities add up to this: a shoulder and anything, an elbow and a wrist, a knee and
+/// an ankle, but not two wrists or two eyes. Pooled over a capture, a couple of the
+/// right keypoints per frame is plenty.
+const LINK_QUALITY: f64 = 1.1;
+/// The fewest keypoints a camera must contribute to a sample.
+const MIN_SHARED: usize = 2;
 /// How much a keypoint's position is trusted (a webcam detector is steadier on the torso
 /// than on the hands and feet), COCO order.
 const RELIABILITY: [f64; KEYPOINTS] = [0.8, 0.5, 0.5, 0.5, 0.5, 1.0, 1.0, 0.7, 0.7, 0.5, 0.5, 1.0, 1.0, 0.7, 0.7, 0.5, 0.5];
 /// Pixel error beyond which an observation counts for less and less (robust loss).
 const ROBUST_PX: f64 = 4.0;
 /// Epipolar (Sampson) error, in pixels, under which a correspondence is an inlier.
-const RANSAC_PX: f64 = 5.0;
+const RANSAC_PX: f64 = 10.0;
 /// The least parallax a calibration may have, degrees.
 const MIN_PARALLAX_DEG: f64 = 5.0;
 /// Mean image motion (frame fractions) between accepted samples.
 const MIN_MOTION: f32 = 0.02;
 /// Worst reprojection error (pixels, RMS) a calibration may have.
 pub const MAX_RMS_PX: f64 = 8.0;
+/// The worst reprojection error any single camera may have, pixels.
+pub const MAX_CAMERA_RMS_PX: f64 = 9.0;
 /// Horizontal field of view the focal length starts from.
 const GUESS_HFOV_DEG: f64 = 70.0;
 
@@ -66,14 +76,16 @@ pub enum CalibrationError {
     TooFewCameras,
     #[error("only {have} usable samples of {need}: keep moving where all cameras can see you")]
     TooFewSamples { have: usize, need: usize },
-    #[error("cameras {0:?} share too little of the subject with the others: move into their view too")]
-    Unplaced(Vec<String>),
+    #[error("cameras {cameras:?} could not be tied to the others. {detail}")]
+    Unplaced { cameras: Vec<String>, detail: String },
     #[error("the poses are degenerate (too little motion or depth): turn, step and raise your arms")]
     Degenerate,
+    #[error("{a} and {b} share no connected pair of keypoints (a bone such as shoulder and elbow, or hip and knee), so the subject's size, and with it the scale, cannot be measured: make sure some bone is seen by both")]
+    NoSharedBone { a: String, b: String },
     #[error("the cameras are too close together to measure depth (median parallax {degrees:.1} degrees): spread them further around the subject")]
     NarrowBaseline { degrees: f64 },
-    #[error("the calibration does not fit the data (reprojection error {rms:.1} px, limit {MAX_RMS_PX} px)")]
-    PoorFit { rms: f64 },
+    #[error("the calibration does not fit the data (reprojection error {rms:.1} px, limit {MAX_RMS_PX} px){worst}")]
+    PoorFit { rms: f64, worst: String },
 }
 
 /// A camera whose pose is being found.
@@ -167,6 +179,9 @@ pub struct CameraRig {
     /// Median angle between two cameras' rays to the same keypoint: small means the
     /// cameras are too close together to measure depth well.
     pub parallax_deg: f64,
+    /// Assumptions the alignment had to make because the cameras did not see enough of the
+    /// body (empty when nothing was assumed).
+    pub notes: Vec<&'static str>,
 }
 
 type Keypoints = Vec<[f32; 3]>;
@@ -206,7 +221,7 @@ fn triangulate_point(cams: &[CameraModel], views: &[(usize, [f32; 3])], keypoint
 impl CameraRig {
     /// A rig of already-known cameras (for example from a take's stored calibration).
     pub fn from_cameras(cameras: Vec<CameraModel>) -> Self {
-        Self { per_camera_rms: vec![0.0; cameras.len()], cameras, rms_px: 0.0, samples: 0, parallax_deg: 90.0 }
+        Self { per_camera_rms: vec![0.0; cameras.len()], cameras, rms_px: 0.0, samples: 0, parallax_deg: 90.0, notes: Vec::new() }
     }
 
     /// Triangulates the 17 keypoints of one frame: `views[i]` is camera `i`'s
@@ -297,11 +312,14 @@ impl Calibrator {
         true
     }
 
-    /// True when two of the views share at least [`MIN_SHARED`] well-seen keypoints.
+    /// True when two of the views share enough of the right keypoints (see [`LINK_QUALITY`]).
     fn links(views: &[Option<Keypoints>]) -> bool {
         views.iter().enumerate().any(|(i, a)| {
             views.iter().skip(i + 1).any(|b| match (a, b) {
-                (Some(a), Some(b)) => a.iter().zip(b).filter(|(p, q)| good(p) && good(q)).count() >= MIN_SHARED,
+                (Some(a), Some(b)) => {
+                    let shared: Vec<usize> = (0..a.len().min(b.len())).filter(|&k| good(&a[k]) && good(&b[k])).collect();
+                    shared.len() >= 2 && shared.iter().map(|&k| RELIABILITY[k.min(KEYPOINTS - 1)]).sum::<f64>() >= LINK_QUALITY
+                }
                 _ => false,
             })
         })
@@ -341,8 +359,63 @@ impl Calibrator {
         (a, b, at)
     }
 
-    /// Solves for every camera's pose. `body_scale` is the subject's height over 1.75 m.
+    /// Solves for every camera's pose. `body_scale` is the subject's height over 1.75 m. When it
+    /// fails with three or more cameras, the error says which one to blame: the camera whose removal
+    /// lets the others calibrate.
     pub fn solve(&self, body_scale: f64) -> Result<CameraRig, CalibrationError> {
+        match self.solve_core(body_scale) {
+            Err(CalibrationError::PoorFit { rms, worst }) => {
+                let worst = self.blame(body_scale).map_or(worst, |b| format!(". {b}"));
+                Err(CalibrationError::PoorFit { rms, worst })
+            }
+            Err(CalibrationError::Unplaced { cameras, detail }) => {
+                let detail = self.blame(body_scale).map_or(detail.clone(), |b| format!("{detail} {b}"));
+                Err(CalibrationError::Unplaced { cameras, detail })
+            }
+            other => other,
+        }
+    }
+
+    /// The same capture without camera `c`.
+    fn without(&self, c: usize) -> Calibrator {
+        let mut cameras = self.cameras.clone();
+        cameras.remove(c);
+        let mut samples = Vec::new();
+        let mut tags = Vec::new();
+        for (sample, tag) in self.samples.iter().zip(&self.tags) {
+            let mut views = sample.clone();
+            views.remove(c);
+            if Self::links(&views) {
+                samples.push(views);
+                tags.push(*tag);
+            }
+        }
+        let last = vec![None; cameras.len()];
+        Calibrator { cameras, samples, tags, last }
+    }
+
+    /// Which camera does not agree with the others: the one whose removal lets the rest
+    /// calibrate (the best fit if several do). `None` with fewer than three cameras or when
+    /// no single camera is to blame.
+    fn blame(&self, body_scale: f64) -> Option<String> {
+        if self.cameras.len() < 3 {
+            return None;
+        }
+        let mut best: Option<(usize, f64)> = None;
+        for c in 0..self.cameras.len() {
+            if let Ok(rig) = self.without(c).solve_core(body_scale) {
+                if best.is_none_or(|(_, r)| rig.rms_px < r) {
+                    best = Some((c, rig.rms_px));
+                }
+            }
+        }
+        best.map(|(c, rms)| {
+            let id = &self.cameras[c].id;
+            format!("{id} is the one that does not agree: without it the other cameras calibrate ({rms:.1} px). It may see too little of you, see you too differently, or be badly placed or lit: remove it from the calibration, or move it so it sees your torso and arms")
+        })
+    }
+
+    fn solve_core(&self, body_scale: f64) -> Result<CameraRig, CalibrationError> {
         if self.cameras.len() < 2 {
             return Err(CalibrationError::TooFewCameras);
         }
@@ -355,29 +428,46 @@ impl Calibrator {
         // Place cameras one by one from the best-linked pair; a pair that cannot be solved is
         // skipped and the next best tried, so one weak link does not sink the calibration.
         let mut blocked: Vec<(usize, usize)> = Vec::new();
+        let mut last: Option<CalibrationError> = None;
         while let Some((i, j)) = self.next_pair(&cams, &placed, &blocked) {
             match self.place(&mut cams, i, j, body_scale) {
                 Ok(()) => placed[j] = true,
-                Err(_) => blocked.push((i, j)),
+                Err(e) => {
+                    blocked.push((i, j));
+                    last = Some(e);
+                }
             }
         }
         let missing: Vec<String> = cams.iter().zip(&placed).filter(|(_, p)| !**p).map(|(c, _)| c.id.clone()).collect();
         if !missing.is_empty() {
-            return Err(CalibrationError::Unplaced(missing));
+            // The most useful reason: no bone shared, if that is what stopped a pair.
+            return Err(match last {
+                Some(e @ CalibrationError::NoSharedBone { .. }) => e,
+                _ => CalibrationError::Unplaced { detail: self.explain_unplaced(&missing, last), cameras: missing },
+            });
         }
         self.refine(&mut cams, body_scale);
         let points = self.triangulate_all(&cams);
-        align_world(&mut cams, &points, body_scale)?;
+        let notes = align_world(&mut cams, &points, body_scale)?;
         let rms = self.rms(&cams);
         if !rms.is_finite() || rms > MAX_RMS_PX {
-            return Err(CalibrationError::PoorFit { rms });
+            let per: Vec<f64> = (0..cams.len()).map(|c| self.camera_rms(&cams, c)).collect();
+            let worst = per.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).filter(|(_, r)| per.len() > 1 && **r > rms * 0.9).map_or(String::new(), |(c, r)| {
+                format!(". {} fits worst ({r:.1} px): it may see too little of you, or too differently from the others; try again with it removed or moved", cams[c].id)
+            });
+            return Err(CalibrationError::PoorFit { rms, worst });
+        }
+        // A camera that does not agree with the rest can hide inside a good global average.
+        let per: Vec<f64> = (0..cams.len()).map(|c| self.camera_rms(&cams, c)).collect();
+        if let Some((c, r)) = per.iter().copied().enumerate().find(|&(_, r)| r > MAX_CAMERA_RMS_PX) {
+            return Err(CalibrationError::PoorFit { rms, worst: format!(". {} fits poorly on its own ({r:.1} px)", cams[c].id) });
         }
         let parallax = self.parallax(&cams, &self.triangulate_all(&cams));
         if parallax < MIN_PARALLAX_DEG {
             return Err(CalibrationError::NarrowBaseline { degrees: parallax });
         }
         let per_camera_rms = (0..cams.len()).map(|c| self.camera_rms(&cams, c)).collect();
-        Ok(CameraRig { cameras: cams, rms_px: rms, samples: self.samples.len(), per_camera_rms, parallax_deg: parallax })
+        Ok(CameraRig { cameras: cams, rms_px: rms, samples: self.samples.len(), per_camera_rms, parallax_deg: parallax, notes })
     }
 
     /// The (placed, unplaced) pair with the most shared keypoints.
@@ -394,13 +484,49 @@ impl Calibrator {
         best.map(|(i, j, _)| (i, j))
     }
 
+    /// The relative pose of two cameras: two RANSAC proposals (from the reliable keypoints only, and
+    /// from every labelled correspondence), each polished on its own inliers and required to put
+    /// the points in front of both cameras; the one that explains the most correspondences wins.
+    fn verified_geometry(
+        &self,
+        a: &[[f64; 2]],
+        b: &[[f64; 2]],
+        strong: &[usize],
+        threshold: f64,
+        rng: &mut Rng,
+    ) -> Option<(crate::epipolar::RelativePose, Vec<bool>, usize)> {
+        let fits = |e: &nalgebra::Matrix3<f64>| (0..a.len()).map(|n| sampson(e, a[n], b[n]) < threshold).collect::<Vec<bool>>();
+        let mut proposals: Vec<nalgebra::Matrix3<f64>> = Vec::new();
+        let subset: Option<(Vec<[f64; 2]>, Vec<[f64; 2]>)> = (strong.len() >= MIN_CORRESPONDENCES).then(|| strong.iter().map(|&n| (a[n], b[n])).unzip());
+        if let Some((sa, sb)) = &subset {
+            proposals.extend(essential_ransac(sa, sb, threshold, 800, rng).map(|(e, _)| e));
+        }
+        proposals.extend(essential_ransac(a, b, threshold, 800, rng).map(|(e, _)| e));
+        let mut best: Option<(usize, crate::epipolar::RelativePose, Vec<bool>, usize)> = None;
+        for e0 in proposals {
+            let first = fits(&e0);
+            let (ia, ib): (Vec<[f64; 2]>, Vec<[f64; 2]>) = (0..a.len()).filter(|&n| first[n]).map(|n| (a[n], b[n])).unzip();
+            let e = essential_8pt(&ia, &ib).unwrap_or(e0);
+            let inliers = fits(&e);
+            let Some((pose, front)) = recover_pose(&e, a, b, &inliers) else { continue };
+            let total = inliers.iter().filter(|x| **x).count();
+            if total < MIN_CORRESPONDENCES / 2 || front * 10 < total * 8 {
+                continue;
+            }
+            if best.as_ref().is_none_or(|(n, ..)| total > *n) {
+                best = Some((total, pose, inliers, front));
+            }
+        }
+        best.map(|(_, pose, inliers, front)| (pose, inliers, front))
+    }
+
     /// Finds camera `j`'s pose from placed camera `i`.
     fn place(&self, cams: &mut [CameraModel], i: usize, j: usize, body_scale: f64) -> Result<(), CalibrationError> {
         let (a, b, at) = self.pair(cams, i, j);
         let threshold = RANSAC_PX / cams[i].focal_px.min(cams[j].focal_px);
         let mut rng = Rng::new(0x5EED + (i * 31 + j) as u64);
-        let (e, inliers) = essential_ransac(&a, &b, threshold, 800, &mut rng).ok_or(CalibrationError::Degenerate)?;
-        let (pose, front) = recover_pose(&e, &a, &b, &inliers).ok_or(CalibrationError::Degenerate)?;
+        let strong: Vec<usize> = (0..at.len()).filter(|&n| RELIABILITY[at[n].1.min(KEYPOINTS - 1)] >= 0.7).collect();
+        let (pose, inliers, front) = self.verified_geometry(&a, &b, &strong, threshold, &mut rng).ok_or(CalibrationError::Degenerate)?;
         let count = inliers.iter().filter(|x| **x).count();
         if count < MIN_CORRESPONDENCES / 2 || front * 10 < count * 7 {
             return Err(CalibrationError::Degenerate);
@@ -411,7 +537,16 @@ impl Calibrator {
         for (n, &(s, k)) in at.iter().enumerate().filter(|(n, _)| inliers[*n]) {
             per_sample[s][k] = triangulate(&[(&id.0, &id.1, a[n], 1.0), (&pose.r, &pose.t, b[n], 1.0)]);
         }
-        let scale = prior_scale(&per_sample, body_scale).ok_or(CalibrationError::Degenerate)?;
+        let scale = prior_scale(&per_sample, body_scale).ok_or_else(|| {
+            // Only when the two cameras share no connected pair of keypoints at all is the missing
+            // bone the reason; if they share bones but the geometry was too weak, it is degenerate.
+            let shared: Vec<usize> = at.iter().map(|&(_, k)| k).collect();
+            if BONES.iter().any(|&(p, q, _)| shared.contains(&p) && shared.contains(&q)) {
+                CalibrationError::Degenerate
+            } else {
+                CalibrationError::NoSharedBone { a: cams[i].id.clone(), b: cams[j].id.clone() }
+            }
+        })?;
         let (ri, ti) = (cams[i].rotation, cams[i].translation);
         cams[j].rotation = pose.r * ri;
         cams[j].translation = pose.r * ti + pose.t * scale;
@@ -432,7 +567,7 @@ impl Calibrator {
 
     /// Alternates triangulation, metric rescaling and per-camera refinement.
     fn refine(&self, cams: &mut [CameraModel], body_scale: f64) {
-        for _ in 0..6 {
+        for _ in 0..20 {
             let mut points = self.triangulate_all(cams);
             if let Some(k) = prior_scale(&points, body_scale) {
                 for cam in cams.iter_mut() {
@@ -526,6 +661,86 @@ impl Calibrator {
         cams[c] = model;
     }
 
+    /// Why cameras were not tied in: what each unplaced camera shares with the others, labelled,
+    /// and why the geometry step could not use it.
+    fn explain_unplaced(&self, missing: &[String], last: Option<CalibrationError>) -> String {
+        let report = self.shared_report();
+        let mut lines: Vec<String> = Vec::new();
+        for id in missing {
+            let pairs: Vec<String> = report
+                .iter()
+                .filter(|r| &r.a == id || &r.b == id)
+                .map(|r| {
+                    let other = if &r.a == id { &r.b } else { &r.a };
+                    if r.labels.is_empty() {
+                        format!("{id} and {other} never saw the same keypoint")
+                    } else {
+                        let top: Vec<String> = r.labels.iter().take(6).map(|(n, c)| format!("{n} x{c}")).collect();
+                        let moved = if r.motion_px < 40.0 {
+                            format!(" They barely moved (about {:.0} px): that is too still to fix the geometry, so walk around, step side to side, lean, turn, and raise your arms where both cameras can see them.", r.motion_px)
+                        } else {
+                            String::new()
+                        };
+                        let torso_only = r.labels.iter().all(|(n, _)| matches!(*n, "nose" | "left_eye" | "right_eye" | "left_ear" | "right_ear" | "left_shoulder" | "right_shoulder" | "left_hip" | "right_hip"));
+                        let reach = if torso_only { " Only your head and torso were shared: bring your arms and legs into both cameras' view too." } else { "" };
+                        format!("{id} and {other} shared {} correspondences ({}).{moved}{reach}", r.correspondences, top.join(", "))
+                    }
+                })
+                .collect();
+            lines.push(pairs.join("; "));
+        }
+        let reason = match last {
+            Some(CalibrationError::Degenerate) => " The shared keypoints did not give a consistent geometry.",
+            _ => " Move so both cameras see the same parts of your body, ideally your torso and arms.",
+        };
+        format!("{}{reason}", lines.join(" "))
+    }
+
+    /// How much the keypoints cameras `i` and `j` both saw moved in `i`'s image over the capture
+    /// (median standard deviation per keypoint, pixels).
+    fn shared_motion(&self, i: usize, j: usize) -> f64 {
+        let mut spreads = Vec::new();
+        for k in 0..KEYPOINTS {
+            let seen: Vec<[f64; 2]> = self
+                .samples
+                .iter()
+                .filter_map(|s| {
+                    let (a, b) = (s[i].as_ref()?.get(k)?, s[j].as_ref()?.get(k)?);
+                    (good(a) && good(b)).then(|| [f64::from(a[0]) * f64::from(self.cameras[i].width), f64::from(a[1]) * f64::from(self.cameras[i].height)])
+                })
+                .collect();
+            if seen.len() < 5 {
+                continue;
+            }
+            let n = seen.len() as f64;
+            let (mx, my) = (seen.iter().map(|p| p[0]).sum::<f64>() / n, seen.iter().map(|p| p[1]).sum::<f64>() / n);
+            spreads.push((seen.iter().map(|p| (p[0] - mx).powi(2) + (p[1] - my).powi(2)).sum::<f64>() / n).sqrt());
+        }
+        median(spreads).unwrap_or(0.0)
+    }
+
+    /// For every pair of cameras, which labelled keypoints both saw and how often: what the
+    /// calibration has to work with, and what is missing when it cannot link two cameras.
+    pub fn shared_report(&self) -> Vec<PairReport> {
+        let mut out = Vec::new();
+        for i in 0..self.cameras.len() {
+            for j in i + 1..self.cameras.len() {
+                let mut counts = [0usize; KEYPOINTS];
+                for sample in &self.samples {
+                    let (Some(a), Some(b)) = (&sample[i], &sample[j]) else { continue };
+                    for k in 0..KEYPOINTS.min(a.len()).min(b.len()) {
+                        counts[k] += usize::from(good(&a[k]) && good(&b[k]));
+                    }
+                }
+                let mut labels: Vec<(&'static str, usize)> = crate::keypoints::COCO17.iter().copied().zip(counts).filter(|(_, n)| *n > 0).collect();
+                labels.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+                let motion_px = self.shared_motion(i, j);
+                out.push(PairReport { a: self.cameras[i].id.clone(), b: self.cameras[j].id.clone(), correspondences: counts.iter().sum(), labels, motion_px });
+            }
+        }
+        out
+    }
+
     /// Trimmed RMS reprojection error of camera `c` alone.
     fn camera_rms(&self, cams: &[CameraModel], c: usize) -> f64 {
         trimmed_rms(self.reprojection_errors(cams, Some(c)))
@@ -586,6 +801,21 @@ fn trimmed_rms(mut squared: Vec<f64>) -> f64 {
 
 fn distance(a: &Vector3<f64>, b: &Vector3<f64>) -> f64 {
     (a - b).norm()
+}
+
+/// What two cameras have in common: how often each labelled keypoint was well seen by both.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PairReport {
+    pub a: String,
+    pub b: String,
+    /// `(keypoint label, samples that both cameras saw it in)`, most shared first.
+    pub labels: Vec<(&'static str, usize)>,
+    /// Total correspondences (the counts added up).
+    pub correspondences: usize,
+    /// How far the shared keypoints moved in the image over the capture, in pixels (the median of
+    /// their spread in the first camera of the pair): a subject who barely moves leaves the
+    /// geometry undetermined.
+    pub motion_px: f64,
 }
 
 /// One check of a solved rig against what the subject was asked to do.
@@ -653,7 +883,7 @@ fn prior_scale(points: &[[Option<Vector3<f64>>; KEYPOINTS]], body_scale: f64) ->
 
 /// Bones whose far end is above the near end when the subject stands, with how
 /// much each says about "up".
-const UP_CUES: [(usize, usize, f64); 8] = [(11, 5, 3.0), (12, 6, 3.0), (13, 11, 1.5), (14, 12, 1.5), (15, 13, 1.0), (16, 14, 1.0), (5, 0, 1.0), (6, 0, 1.0)];
+const UP_CUES: [(usize, usize, f64); 12] = [(9, 7, 0.2), (10, 8, 0.2), (7, 5, 0.2), (8, 6, 0.2), (11, 5, 3.0), (12, 6, 3.0), (13, 11, 1.5), (14, 12, 1.5), (15, 13, 1.0), (16, 14, 1.0), (5, 0, 1.0), (6, 0, 1.0)];
 /// Left and right counterparts, with how much each says about "left".
 const LEFT_CUES: [(usize, usize, f64); 6] = [(5, 6, 3.0), (11, 12, 2.0), (3, 4, 1.0), (13, 14, 1.0), (15, 16, 1.0), (1, 2, 0.5)];
 /// A keypoint and its height above the floor for a 1.75 m adult, best cue first.
@@ -664,7 +894,8 @@ const FLOOR_CUES: [(&[usize], f64); 5] = [(&[15, 16], 0.08), (&[13, 14], 0.50), 
 /// averaged from whatever bones the cameras saw, so no camera needs the whole
 /// body: up from any bones that point up, left from any left-right pairs, the
 /// floor from the lowest body part seen.
-fn align_world(cams: &mut [CameraModel], points: &[[Option<Vector3<f64>>; KEYPOINTS]], body_scale: f64) -> Result<(), CalibrationError> {
+fn align_world(cams: &mut [CameraModel], points: &[[Option<Vector3<f64>>; KEYPOINTS]], body_scale: f64) -> Result<Vec<&'static str>, CalibrationError> {
+    let mut notes: Vec<&'static str> = Vec::new();
     let (mut up, mut left) = (Vector3::zeros(), Vector3::zeros());
     let (mut up_cues, mut left_cues) = (0usize, 0usize);
     for p in points {
@@ -680,6 +911,11 @@ fn align_world(cams: &mut [CameraModel], points: &[[Option<Vector3<f64>>; KEYPOI
     if up_cues < 5 || up.norm() < 1e-9 {
         return Err(CalibrationError::Degenerate);
     }
+    // Only the weak arm cues (all of weight 0.2): up is a best guess.
+    let torso_or_legs = points.iter().any(|p| UP_CUES.iter().skip(4).any(|&(l, u, _)| p[l].is_some() && p[u].is_some()));
+    if !torso_or_legs {
+        notes.push("up is a guess from the arms only: no torso, leg or head was seen by two cameras");
+    }
     let y = up.normalize();
     for p in points {
         for &(l, r, weight) in &LEFT_CUES {
@@ -693,10 +929,15 @@ fn align_world(cams: &mut [CameraModel], points: &[[Option<Vector3<f64>>; KEYPOI
             }
         }
     }
-    if left_cues < 5 {
-        return Err(CalibrationError::Degenerate);
-    }
-    let x = (left - y * left.dot(&y)).try_normalize(1e-9).ok_or(CalibrationError::Degenerate)?;
+    // With no left-right pair triangulated, the heading is not known: take camera 0's right
+    // direction (the world's up and floor are still the subject's).
+    let heading = if left_cues >= 5 {
+        left
+    } else {
+        notes.push("heading is arbitrary: no left and right keypoint pair was seen by two cameras");
+        cams[0].rotation.row(0).transpose()
+    };
+    let x = (heading - y * heading.dot(&y)).try_normalize(1e-9).ok_or(CalibrationError::Degenerate)?;
     let z = x.cross(&y);
     let rw = Matrix3::from_rows(&[x.transpose(), y.transpose(), z.transpose()]);
     // The floor: per sample, the lowest cue available, taken as its usual height above the floor.
@@ -717,15 +958,94 @@ fn align_world(cams: &mut [CameraModel], points: &[[Option<Vector3<f64>>; KEYPOI
             }
         }
     }
-    if seen == 0 || floors.is_empty() {
+    if seen == 0 {
         return Err(CalibrationError::Degenerate);
     }
     let centre = centre / seen as f64;
-    let floor = median(floors).unwrap_or(0.0);
+    let floor = match median(floors) {
+        Some(floor) => floor,
+        None => {
+            // Nothing that touches or stands near the floor was seen: assume what was seen is about waist height.
+            notes.push("the floor is a guess: no foot, knee, hip, shoulder or head was seen by two cameras");
+            y.dot(&centre) - 1.0 * body_scale
+        }
+    };
     let origin = centre - y * y.dot(&centre) + y * floor;
     for cam in cams.iter_mut() {
         cam.translation += cam.rotation * origin;
         cam.rotation *= rw.transpose();
     }
-    Ok(())
+    Ok(notes)
+}
+
+/// Frames of a held pose averaged into one clean sample.
+const HOLD_FRAMES: usize = 10;
+/// A keypoint that moves more than this (frame fraction) over a hold is not still, and is dropped.
+const HOLD_SPREAD: f32 = 0.012;
+
+/// Averages a held pose over several frames into one clean sample.
+///
+/// A detector's per-frame noise and its occasional gross misses shrink with the
+/// median of a window, and a subject who holds still has no timing error between
+/// cameras. Keypoints that did move during the window are left out.
+#[derive(Default, Clone)]
+pub struct HoldAverager {
+    frames: Vec<Vec<Option<Keypoints>>>,
+}
+
+impl HoldAverager {
+    /// An empty averager.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Forgets the window (the subject stopped holding the pose).
+    pub fn clear(&mut self) {
+        self.frames.clear();
+    }
+
+    /// Adds one synchronized frame of every camera's keypoints. Once a window of
+    /// stable frames is in, returns the per-camera medians and starts over.
+    pub fn push(&mut self, views: &[Option<&[[f32; 3]]>]) -> Option<Vec<Option<Vec<[f32; 3]>>>> {
+        self.frames.push(views.iter().map(|v| v.map(<[_]>::to_vec)).collect());
+        if self.frames.len() < HOLD_FRAMES {
+            return None;
+        }
+        let out = self.median(views.len());
+        let steady = Calibrator::links(&out);
+        if steady {
+            self.frames.clear();
+        } else {
+            self.frames.remove(0);
+        }
+        steady.then_some(out)
+    }
+
+    fn median(&self, cameras: usize) -> Vec<Option<Keypoints>> {
+        (0..cameras)
+            .map(|c| {
+                let mut out: Keypoints = vec![[f32::NAN, f32::NAN, 0.0]; KEYPOINTS];
+                for (k, slot) in out.iter_mut().enumerate() {
+                    let seen: Vec<[f32; 3]> = self.frames.iter().filter_map(|f| f[c].as_ref()?.get(k).copied()).filter(good).collect();
+                    if seen.len() * 10 < self.frames.len() * 6 {
+                        continue;
+                    }
+                    let (mx, my) = (median_f32(seen.iter().map(|p| p[0])), median_f32(seen.iter().map(|p| p[1])));
+                    let spread = seen.iter().map(|p| ((p[0] - mx).powi(2) + (p[1] - my).powi(2)).sqrt()).fold(0.0f32, f32::max);
+                    // Outliers are rejected by the median; a keypoint still wandering is skipped.
+                    let steady = seen.iter().filter(|p| ((p[0] - mx).powi(2) + (p[1] - my).powi(2)).sqrt() <= HOLD_SPREAD).count();
+                    if steady * 10 >= seen.len() * 7 || spread <= HOLD_SPREAD {
+                        *slot = [mx, my, seen.iter().map(|p| p[2]).sum::<f32>() / seen.len() as f32];
+                    }
+                }
+                (out.iter().filter(|p| good(p)).count() >= MIN_SHARED).then_some(out)
+            })
+            .collect()
+    }
+}
+
+fn median_f32(values: impl Iterator<Item = f32>) -> f32 {
+    let mut v: Vec<f32> = values.collect();
+    v.sort_by(f32::total_cmp);
+    v[v.len() / 2]
 }

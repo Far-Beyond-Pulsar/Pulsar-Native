@@ -26,7 +26,7 @@ mod synthetic;
 mod vmc;
 
 pub use bus::{BusStats, PoseBus, VideoMailbox};
-pub use calibration::{CalibrationError, Calibrator, CameraModel, CameraRig, CameraSpec, Check, MAX_RMS_PX, MIN_SAMPLES};
+pub use calibration::{CalibrationError, Calibrator, CameraModel, CameraRig, CameraSpec, Check, HoldAverager, PairReport, MAX_RMS_PX, MIN_SAMPLES, SAMPLES_TARGET};
 pub use guide::{Features, Guide, GuideState, Step};
 #[cfg(feature = "camera")]
 pub use camera::{enumerate_cameras, CameraInfo, CameraMode, CameraSource};

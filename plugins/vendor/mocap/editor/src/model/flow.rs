@@ -5,7 +5,7 @@
 
 use super::{SessionModel, SourceEntry};
 use editor_task_queue::{TaskDescription, TaskDuration};
-use mocap_capture::{CalibrationError, Calibrator, CameraRig, CameraSpec, Check, EstimatorSource, Features, Guide, GuideState, PoseFrame};
+use mocap_capture::{CalibrationError, Calibrator, CameraRig, CameraSpec, Check, EstimatorSource, Features, Guide, HoldAverager, PoseFrame, Step, SAMPLES_TARGET};
 use mocap_format::{ChannelDesc, ChannelKind, Quantisation, RigProfile};
 use parking_lot::Mutex;
 use std::ops::Range;
@@ -41,6 +41,8 @@ pub struct CalibrationFlow {
     /// The subject's height over 1.75 m, which sets the metric scale.
     pub body_scale: f64,
     calibrator: Option<Calibrator>,
+    /// Averages a held pose over several frames into one clean sample.
+    averager: HoldAverager,
     /// `(tracker source id, camera frame aspect)`, in calibrator camera order.
     trackers: Vec<(String, f32)>,
     last_seq: Vec<u64>,
@@ -57,6 +59,7 @@ impl Default for CalibrationFlow {
             rms_px: None,
             body_scale: DEFAULT_BODY_SCALE,
             calibrator: None,
+            averager: HoldAverager::new(),
             trackers: Vec::new(),
             last_seq: Vec::new(),
             slot: Arc::default(),
@@ -119,10 +122,6 @@ fn keypoints_of(frame: &PoseFrame) -> Vec<[f32; 3]> {
     frame.values.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect()
 }
 
-fn total_score(points: &[[f32; 3]]) -> f32 {
-    points.iter().filter(|p| p[0].is_finite()).map(|p| p[2]).sum()
-}
-
 impl SessionModel {
     fn running_trackers(&self) -> Vec<&SourceEntry> {
         self.sources.iter().filter(|s| s.descriptor.id.starts_with("pose:") && s.running()).collect()
@@ -154,6 +153,7 @@ impl SessionModel {
         }
         let flow = &mut self.calib;
         flow.calibrator = Some(Calibrator::new(specs));
+        flow.averager.clear();
         flow.last_seq = vec![0; info.len()];
         flow.trackers = info;
         flow.guide = Guide::new();
@@ -254,19 +254,34 @@ impl SessionModel {
         }
         calib.last_seq = all.iter().map(|f| f.sequence).collect();
         let views: Vec<Vec<[f32; 3]>> = all.iter().map(|f| keypoints_of(f)).collect();
-        // The camera that sees the subject best judges what the subject is doing.
-        let best = (0..views.len()).max_by(|a, b| total_score(&views[*a]).total_cmp(&total_score(&views[*b]))).unwrap_or(0);
-        let features = Features::measure(&views[best], calib.trackers[best].1);
+        // Every camera contributes what it sees: one may see only the arms, another the legs.
+        let seen: Vec<(&[[f32; 3]], f32)> = views.iter().zip(&calib.trackers).map(|(v, (_, aspect))| (v.as_slice(), *aspect)).collect();
+        let features = Features::measure_all(&seen);
         let step = calib.guide.current();
         calib.guide.update(hi, features.as_ref());
         let mut solve = false;
-        if let (Some(step), Some(calibrator)) = (step, calib.calibrator.as_mut()) {
-            if calib.guide.collecting() {
-                let refs: Vec<Option<&[[f32; 3]]>> = views.iter().map(|v| Some(v.as_slice())).collect();
+        let finished = calib.guide.current().is_none();
+        let refs: Vec<Option<&[[f32; 3]]>> = views.iter().map(|v| Some(v.as_slice())).collect();
+        if let (true, Some(calibrator)) = (finished, calib.calibrator.as_mut()) {
+            // The steps are done: keep taking whatever movement there is until there is enough variety
+            // to solve from. A capture with too little of it is the commonest cause of a bad fit.
+            calibrator.offer_tagged(&refs, u32::MAX);
+            calib.collected = calibrator.samples();
+            solve = calibrator.samples() >= SAMPLES_TARGET || calibrator.full();
+        } else if let (Some(step), Some(calibrator)) = (step, calib.calibrator.as_mut()) {
+            if !calib.guide.collecting() {
+                calib.averager.clear();
+            } else if matches!(step, Step::Neutral | Step::RaiseLeftHand | Step::RaiseRightHand | Step::ArmsOut) {
+                // A held pose: the median of a window of frames, with no timing error between cameras.
+                if let Some(average) = calib.averager.push(&refs) {
+                    let averaged: Vec<Option<&[[f32; 3]]>> = average.iter().map(|v| v.as_deref()).collect();
+                    calibrator.offer_tagged(&averaged, step.tag());
+                }
+            } else {
                 calibrator.offer_tagged(&refs, step.tag());
             }
             calib.collected = calibrator.samples();
-            solve = calib.guide.state() == GuideState::Finished || calibrator.full();
+            solve = calibrator.full();
         }
         if solve {
             self.solve_camera_calibration();
@@ -366,7 +381,7 @@ mod tests {
     fn model_with_trackers() -> (SessionModel, CameraRig, [[f64; 3]; 17]) {
         let mut model = SessionModel::new(std::path::PathBuf::from("does-not-exist.mocap"));
         let cameras = [camera("camera:0", 0.4), camera("camera:1", 2.0)];
-        let rig = CameraRig { cameras: cameras.iter().map(CameraModel::from_calibration).collect(), rms_px: 0.4, samples: 80 };
+        let rig = CameraRig { rms_px: 0.4, samples: 80, ..CameraRig::from_cameras(cameras.iter().map(CameraModel::from_calibration).collect()) };
         for c in &cameras {
             let id = format!("pose:{}", c.id);
             model.push_source(Box::new(FakeTracker { id, shared: SourceShared::new() }));

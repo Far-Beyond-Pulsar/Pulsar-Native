@@ -103,3 +103,27 @@ pub fn camera_error(found: &CameraModel, real: &CameraModel) -> (f64, f64) {
     let (p, q) = (Vector3::from_row_slice(&found.position()), Vector3::from_row_slice(&real.position()));
     ((p - q).norm(), angle_deg(found.forward(), real.forward()))
 }
+
+pub fn forearm_and_head_side(k: usize) -> bool {
+    matches!(k, 0..=4 | 7 | 9)
+}
+
+pub fn forearm_and_legs(k: usize) -> bool {
+    matches!(k, 7 | 9 | 11..=16)
+}
+
+pub fn head_and_left_shoulder_and_right_hip(k: usize) -> bool {
+    matches!(k, 0..=5 | 12)
+}
+
+pub fn left_shoulder_right_hip_and_legs(k: usize) -> bool {
+    matches!(k, 5 | 12 | 13..=16)
+}
+
+pub fn both_wrists_and_head(k: usize) -> bool {
+    matches!(k, 0..=4 | 9 | 10)
+}
+
+pub fn both_wrists_and_legs(k: usize) -> bool {
+    matches!(k, 9..=16)
+}

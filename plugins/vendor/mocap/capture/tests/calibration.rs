@@ -65,7 +65,13 @@ fn two_cameras_are_enough_and_a_third_that_sees_little_is_reported_not_guessed()
     let mut cameras = truth_cameras(2);
     cameras.push(look_at("camera:blind", Vector3::new(0.0, 1.5, 3.0), Vector3::new(0.0, 1.5, 9.0), 1280, 720, 900.0));
     let (result, _) = calibrate(&cameras, 0.7, 300);
-    assert_eq!(result.unwrap_err(), CalibrationError::Unplaced(vec!["camera:blind".to_owned()]));
+    match result.unwrap_err() {
+        CalibrationError::Unplaced { cameras, detail } => {
+            assert_eq!(cameras, vec!["camera:blind".to_owned()]);
+            assert!(detail.contains("camera:blind"), "{detail}");
+        }
+        other => panic!("{other:?}"),
+    }
 }
 
 #[test]

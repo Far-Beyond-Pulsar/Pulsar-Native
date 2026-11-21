@@ -5,7 +5,7 @@
 use crate::model::{CalibrationPhase, SessionModel};
 use gpui::prelude::*;
 use gpui::*;
-use mocap_capture::{GuideState, Step, MIN_SAMPLES};
+use mocap_capture::{GuideState, Step, MIN_SAMPLES, SAMPLES_TARGET};
 use ui::button::{Button, ButtonVariants as _};
 use ui::panel_canvas::{DragHandle, PanelCanvasState, PanelRef, RndPanel};
 use ui::{h_flex, v_flex, ActiveTheme, Sizable as _};
@@ -50,7 +50,7 @@ fn guiding(model: &Entity<SessionModel>, cx: &App) -> AnyElement {
     let m = model.read(cx);
     let (text, progress, detected) = match m.calib.guide.state() {
         GuideState::Step { step, progress, detected } => (step.instruction(), progress, detected),
-        GuideState::Finished => ("All steps done", 1.0, false),
+        GuideState::Finished => ("Steps done. Keep moving: walk around, turn, reach with both arms", (m.calib.collected as f32 / SAMPLES_TARGET as f32).min(1.0), true),
     };
     let ready = m.calib.collected >= MIN_SAMPLES;
     v_flex()
@@ -64,13 +64,13 @@ fn guiding(model: &Entity<SessionModel>, cx: &App) -> AnyElement {
                 .bg(theme.border)
                 .child(div().h_full().w(relative(progress)).bg(if detected { theme.success } else { theme.accent })),
         )
-        .child(div().text_xs().text_color(theme.muted_foreground).child(if detected {
-            "Got it: keep going".to_owned()
-        } else {
-            "Waiting for the movement. Every camera should see you.".to_owned()
+        .child(div().text_xs().text_color(if detected { theme.success } else { theme.muted_foreground }).child(match m.calib.guide.hint() {
+            "" if detected => "Got it: keep going".to_owned(),
+            "" => "Waiting for the movement. Every camera should see you.".to_owned(),
+            hint => hint.to_owned(),
         }))
         .child(checklist(m, cx))
-        .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{} of {MIN_SAMPLES}+ samples", m.calib.collected)))
+        .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{} samples (it solves at {SAMPLES_TARGET}, or press Solve now from {MIN_SAMPLES})", m.calib.collected)))
         .child(
             h_flex()
                 .gap_1()
@@ -96,6 +96,15 @@ fn result(model: &Entity<SessionModel>, cx: &App) -> AnyElement {
         .gap_2()
         .p_2()
         .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(theme.success).child(m.calibration_summary().unwrap_or_default()))
+        .when_some(m.camera_rig.as_ref(), |col, rig| {
+            let per_camera: Vec<String> = rig.cameras.iter().zip(&rig.per_camera_rms).map(|(c, r)| format!("{} {:.1}px", c.id, r)).collect();
+            col.child(div().text_xs().text_color(theme.muted_foreground).child(format!(
+                "{} samples, spread {:.0} deg between cameras. {}",
+                rig.samples,
+                rig.parallax_deg,
+                per_camera.join(", ")
+            )))
+        })
         .children(checks)
         .child(
             h_flex()

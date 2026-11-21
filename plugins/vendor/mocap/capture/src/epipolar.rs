@@ -8,6 +8,9 @@
 
 use nalgebra::{DMatrix, Matrix3, Rotation3, Vector3, SVD};
 
+/// The most samples RANSAC will draw.
+pub const MAX_ITERATIONS: usize = 6000;
+
 /// A deterministic generator (xorshift), so a calibration is reproducible.
 pub struct Rng(u64);
 
@@ -72,20 +75,30 @@ pub fn sampson(e: &Matrix3<f64>, a: [f64; 2], b: [f64; 2]) -> f64 {
 }
 
 /// RANSAC over the 8-point estimate: the matrix and which correspondences fit it
-/// within `threshold` (normalised units).
+/// within `threshold` (normalised units). `iterations` is a floor: it keeps drawing, up to
+/// [`MAX_ITERATIONS`], until it is 99.5 percent sure a sample of eight clean correspondences
+/// was drawn (so data with few inliers gets many more tries than clean data).
 pub fn essential_ransac(a: &[[f64; 2]], b: &[[f64; 2]], threshold: f64, iterations: usize, rng: &mut Rng) -> Option<(Matrix3<f64>, Vec<bool>)> {
     let n = a.len().min(b.len());
     if n < 12 {
         return None;
     }
     let mut best: Option<(Matrix3<f64>, usize)> = None;
-    for _ in 0..iterations {
+    let mut needed = iterations;
+    let mut tried = 0usize;
+    while tried < needed.min(MAX_ITERATIONS) {
+        tried += 1;
         let picks: Vec<usize> = (0..8).map(|_| rng.below(n)).collect();
         let (sa, sb): (Vec<_>, Vec<_>) = picks.iter().map(|&i| (a[i], b[i])).unzip();
         let Some(e) = essential_8pt(&sa, &sb) else { continue };
         let count = (0..n).filter(|&i| sampson(&e, a[i], b[i]) < threshold).count();
         if best.as_ref().is_none_or(|(_, c)| count > *c) {
             best = Some((e, count));
+            // Tries needed so that, with the inlier ratio seen so far, a clean sample of eight
+            // is drawn with 99.5 percent probability.
+            let ratio = count as f64 / n as f64;
+            let clean = ratio.powi(8).clamp(1e-12, 1.0 - 1e-12);
+            needed = needed.max(((1.0f64 - 0.995).ln() / (1.0 - clean).ln()).ceil() as usize);
         }
     }
     let (e, _) = best?;
@@ -158,3 +171,4 @@ pub fn recover_pose(e: &Matrix3<f64>, a: &[[f64; 2]], b: &[[f64; 2]], inliers: &
 pub fn rotation_from_vector(v: Vector3<f64>) -> Matrix3<f64> {
     *Rotation3::from_scaled_axis(v).matrix()
 }
+
