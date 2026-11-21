@@ -123,6 +123,8 @@ pub struct SessionModel {
     pub cameras: Vec<CameraChoice>,
     pub cameras_loading: bool,
     pose_model: Option<PathBuf>,
+    /// The model path trackers read each time they start, so choosing a model reaches trackers already listed.
+    pose_path: Arc<Mutex<PathBuf>>,
     take_skeleton: Option<Skeleton>,
     mix: Option<MixState>,
     filtered: Option<Arc<PoseFrame>>,
@@ -163,6 +165,7 @@ impl SessionModel {
             cameras: Vec::new(),
             cameras_loading: false,
             pose_model: None,
+            pose_path: Arc::new(Mutex::new(PathBuf::new())),
             take_skeleton: None,
             mix: None,
             filtered: None,
@@ -273,9 +276,16 @@ impl SessionModel {
         root.join(".pulsar").join("models").join("pose.onnx")
     }
 
+    /// The cell trackers read their model path from, kept current with `pose_model_path`.
+    fn shared_pose_path(&self) -> Arc<Mutex<PathBuf>> {
+        *self.pose_path.lock() = self.pose_model_path();
+        Arc::clone(&self.pose_path)
+    }
+
     /// Uses the ONNX keypoint model at `path` for body tracking.
     pub fn set_pose_model(&mut self, path: PathBuf) {
         self.status = format!("Pose model: {}", path.display());
+        *self.pose_path.lock() = path.clone();
         self.pose_model = Some(path);
     }
 
@@ -295,7 +305,7 @@ impl SessionModel {
             &camera.descriptor.label,
             Arc::clone(&camera.video),
             coco17_rig(),
-            pose_factory(self.pose_model_path()),
+            pose_factory(self.shared_pose_path()),
         );
         self.push_source(Box::new(source));
         let added = self.sources.len() - 1;
@@ -704,20 +714,26 @@ pub fn sample_take(take: &Take, frame: f64) -> Vec<f32> {
 /// How a tracker loads its model: on its own thread, so a slow load never
 /// blocks the UI, and with a message that says what to do when it cannot.
 #[cfg(feature = "pose")]
-fn pose_factory(path: PathBuf) -> EstimatorFactory {
+fn pose_factory(path: Arc<Mutex<PathBuf>>) -> EstimatorFactory {
     Arc::new(move || {
-        if !virtual_fs::is_file(&path) {
-            return Err(format!(
-                "No pose model at {}. Use Pose model to choose a single-person keypoint ONNX (MoveNet-style, 17 keypoints).",
-                path.display()
-            ));
-        }
-        mocap_capture::OnnxPoseEstimator::load(&path).map(|e| Box::new(e) as Box<dyn PoseEstimator>)
+        let path = path.lock().clone();
+        // A model on disk (chosen, or in the project) wins over the built-in one.
+        let estimator = if virtual_fs::is_file(&path) {
+            mocap_capture::OnnxPoseEstimator::load(&path)
+        } else {
+            mocap_capture::OnnxPoseEstimator::bundled().unwrap_or_else(|| {
+                Err(format!(
+                    "No pose model: none is built in and none is at {}. Use Pose model to choose a single-person keypoint ONNX (MoveNet-style, 17 keypoints).",
+                    path.display()
+                ))
+            })
+        };
+        estimator.map(|e| Box::new(e) as Box<dyn PoseEstimator>)
     })
 }
 
 /// Without the `pose` feature a tracker only reports that.
 #[cfg(not(feature = "pose"))]
-fn pose_factory(_path: PathBuf) -> EstimatorFactory {
+fn pose_factory(_path: Arc<Mutex<PathBuf>>) -> EstimatorFactory {
     Arc::new(|| Err("This build has no body tracking (the `pose` feature).".to_owned()))
 }

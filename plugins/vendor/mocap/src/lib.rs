@@ -34,7 +34,6 @@ mod tests {
 
     #[test]
     fn the_editor_provider_offers_the_mocap_file_type() {
-        use plugin_manager::BuiltinEditorProvider as _;
         let provider = mocap_editor::MocapBuiltinProvider::create();
         let types = provider.file_types();
         assert_eq!(types.len(), 1);

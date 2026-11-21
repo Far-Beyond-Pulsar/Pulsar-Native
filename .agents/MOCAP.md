@@ -145,3 +145,21 @@ own `PoseBus` and `VideoMailbox`.
 
 The reader always scans chunk headers to find blocks; `INDX` is for external
 tools and is not required to open a crashed take.
+
+## Body tracking from cameras (as built)
+
+`Track body` on a camera adds an `EstimatorSource` (`pose:<camera id>`) that runs
+a pose model on that camera's newest frame, stamped with the frame's capture
+time, and delivers poses like any source (they mix, record and plot with the
+rest). Output is the COCO-17 image-space rig (`coco17_rig`): per keypoint
+`(x, y)` as fractions of the frame and `z` as confidence; a keypoint under 0.25 is a
+gap. The overlay draws them on that camera's tile.
+
+- Backend: `OnnxPoseEstimator` (`pose` feature, `tract`, pure Rust). Input
+  layout, size and element type are read from the model; output is the first
+  tensor, 17 x `(y, x, score)` (MoveNet-style). `PULSAR_MOCAP_POSE_SCALE`
+  (`unit`, `signed`) sets the input range when it is not 0..255.
+- No model ships. The model is looked up at the path chosen with `Pose model`,
+  else `PULSAR_MOCAP_POSE_MODEL`, else `<project>/.pulsar/models/pose.onnx`.
+- Not built: converting keypoints to joint rotations (retargeting), multi-person,
+  and triangulating calibrated cameras into 3D.

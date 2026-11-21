@@ -9577,6 +9577,7 @@ dependencies = [
  "mocap_format",
  "nokhwa",
  "parking_lot",
+ "sha2 0.11.0",
  "thiserror 2.0.20",
  "tracing",
  "tract-onnx",

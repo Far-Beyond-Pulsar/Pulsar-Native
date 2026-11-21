@@ -1,4 +1,4 @@
-//! A single-person keypoint model run with `tract` (pure Rust ONNX, no native
+//! A         Ok(Self { model, name: name.to_owned(),ingle-person keypoint model run with `tract` (pure Rust ONNX, no native
 //! runtime to ship), behind the `pose` feature.
 //!
 //! The input layout (NHWC or NCHW), size and element type are read from the
@@ -15,6 +15,9 @@ use mocap_format::RigProfile;
 use std::path::Path;
 use tract_onnx::prelude::*;
 use tract_onnx::tract_hir::internal::Factoid as _;
+
+/// The model embedded by `build.rs` (empty when it could not be fetched).
+const BUNDLED_MODEL: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/pose_model.onnx"));
 
 /// Keypoints under this confidence are recorded as gaps.
 const MIN_SCORE: f32 = 0.25;
@@ -64,8 +67,20 @@ fn fail<E: std::fmt::Display>(what: &str) -> impl FnOnce(E) -> String + '_ {
 impl OnnxPoseEstimator {
     /// Loads the model at `path`.
     pub fn load(path: &Path) -> Result<Self, String> {
-        let shown = path.display().to_string();
-        let mut graph = tract_onnx::onnx().model_for_path(path).map_err(fail(&format!("could not read {shown}")))?;
+        let bytes = std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("pose model");
+        Self::from_bytes(&bytes, name)
+    }
+
+    /// The model built into this binary (MoveNet Lightning), `None` when the
+    /// build could not fetch it (see `build.rs`).
+    pub fn bundled() -> Option<Result<Self, String>> {
+        (!BUNDLED_MODEL.is_empty()).then(|| Self::from_bytes(BUNDLED_MODEL, "MoveNet Lightning (bundled)"))
+    }
+
+    /// Loads a model from ONNX bytes.
+    pub fn from_bytes(bytes: &[u8], name: &str) -> Result<Self, String> {
+        let mut graph = tract_onnx::onnx().model_for_read(&mut std::io::Cursor::new(bytes)).map_err(fail("could not read the model"))?;
         let fact = graph.input_fact(0).map_err(fail("the model has no input"))?.clone();
         let dims: Vec<usize> = fact
             .shape
@@ -89,8 +104,7 @@ impl OnnxPoseEstimator {
             .map_err(fail("the model could not be optimised"))?
             .into_runnable()
             .map_err(fail("the model could not be prepared"))?;
-        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("pose model").to_owned();
-        Ok(Self { model, name, input: (width as u32, height as u32), nchw, integer, scale: Scale::from_env() })
+        Ok(Self { model, name: name.to_owned(), input: (width as u32, height as u32), nchw, integer, scale: Scale::from_env() })
     }
 
     fn tensor(&self, rgb: &[u8]) -> Result<Tensor, String> {

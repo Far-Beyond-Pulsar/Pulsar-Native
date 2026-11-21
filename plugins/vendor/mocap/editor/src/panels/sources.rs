@@ -187,7 +187,7 @@ impl Render for SourcesPanel {
             .size_full()
             .bg(theme.background)
             .child(self.add_bar(cx))
-            .child(div().px_2().text_xs().text_color(theme.muted_foreground).truncate().child(format!("Pose model: {}", self.model.read(cx).pose_model_path().display())))
+            .child(div().px_2().text_xs().text_color(theme.muted_foreground).truncate().child(format!("Pose model: built-in MoveNet Lightning, unless a file exists at {}", self.model.read(cx).pose_model_path().display())))
             .child(self.camera_choices(cx))
             .child(
                 v_flex()

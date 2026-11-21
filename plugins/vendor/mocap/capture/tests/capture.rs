@@ -502,3 +502,19 @@ fn a_tracker_whose_model_does_not_load_reports_why_and_can_start_again() {
     tracker.stop();
     assert!(tracker.start(sink).is_ok(), "stopping lets it start again");
 }
+
+#[cfg(feature = "pose")]
+#[test]
+fn the_bundled_model_loads_and_finds_keypoints_in_a_frame() {
+    let Some(loaded) = OnnxPoseEstimator::bundled() else {
+        eprintln!("no bundled pose model (offline build): skipped");
+        return;
+    };
+    let mut estimator = loaded.expect("the bundled MoveNet loads");
+    assert_eq!(estimator.rig().columns(), 51);
+    // A gray frame has no person; the model still runs end to end and every
+    // value is either a gap or an in-range score.
+    let values = estimator.estimate(&solid_frame(640, 480, [120, 120, 120, 255], 0, 0.0)).expect("an output");
+    assert_eq!(values.len(), 51);
+    assert!(values.chunks_exact(3).all(|k| k[0].is_nan() || (0.0..=1.0).contains(&k[2])));
+}
