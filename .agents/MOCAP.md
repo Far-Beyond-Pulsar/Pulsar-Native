@@ -300,3 +300,37 @@ embedded with `include_bytes!` and decoded once (`diagrams.rs`). The frame is ha
 **Not built yet** (the rest of the suite): board-based calibration (ChArUco or checkerboard: intrinsics,
 extrinsics and metric scale, the standard of Pose2Sim and OpenCap), saving a calibration for reuse, per-camera
 position entry for a custom layout, and diagrams for the board method.
+
+## Multi-source fusion: one clock, one body (as built)
+
+Studios treat several sources as one estimation problem: every source on one clock, one coordinate frame,
+and one body model fitted to all of it. Two of the three are built; the third is the open work.
+
+**One clock** (`capture/src/sync.rs`, `mix.rs`). The mixer no longer emits a frame per arrival holding the
+others' latest. Every source keeps a 12 s `History`; the merged stream is a fixed grid (60 Hz, 0.1 s behind
+the newest data) and each source is sampled at each grid instant by interpolation between its own frames
+(`ColumnPlan`: quaternions by nlerp, everything else linear; a dropout is a gap, never an invented value; a
+source silent for `MAX_HOLD_S` around the instant is a gap). Each source has a clock offset (how late its
+stamps are). `Mixer::align(reference, window)` estimates them from how the sources moved: a motion signal
+per source (summed change of its columns, 100 Hz), cross-correlated against the reference's within +/-0.6 s,
+parabolic peak refinement. An estimate is applied only when it beats every other lag by a margin (0.05) and
+correlates (0.3), so a source that did not move, or matches several lags (periodic movement), keeps its offset.
+The model keeps offsets across mixer rebuilds (`clock_offsets`); the Setup panel's Clocks section aligns and resets.
+
+**One body** (`capture/src/solver.rs`). `BodySolver` replaces per-keypoint triangulation: per frame it finds
+the 17 joints minimising the robust (Cauchy) reprojection error of every camera's detections (weighted by
+score and per-keypoint reliability), the difference of each bone from its length, and a weak pull toward the
+joint's last place. Bone lengths are learned from well-fitting frames (median of 30 samples, left equals
+right) and held; the face, which COCO does not join to the body, has loose links to the shoulders with
+priors scaled by the learned shoulder width. A joint one camera sees is placed where its ray meets the sphere
+around a placed neighbour at the bone's length. A joint nobody sees is carried for 6 frames, then dropped; a
+joint whose detections cannot be made to agree (25 px) is dropped. On the synthetic suite (three cameras,
+webcam-grade noise) the RMS joint error is 2.3 cm against 4.3 cm for independent triangulation, the forearm
+length's standard deviation 3 mm against 34 mm; with 15 percent gross misses 4.1 cm against 9.0 cm; with
+cameras that each see part of the body it answers 16.4 of 17 joints per frame against 10.4.
+
+**Not built.** Registering a VMC or sensor source into the camera frame (their rotations are used as they
+come; a heading offset to the body is not estimated), using sensor rotations as solver constraints, hardware
+sync (genlock/timecode: the estimate above is the software substitute), board or wand calibration with a
+bundle adjustment over intrinsics and lens distortion (the cameras' accuracy still limits everything above),
+and several subjects.
