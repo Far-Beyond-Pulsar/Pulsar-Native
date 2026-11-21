@@ -91,11 +91,17 @@ or a live session:
 
 | Panel | Pattern |
 |---|---|
-| Viewport | `wgpu_surface` fed by `FrameBlit` (the camera feed as a texture, first camera in the engine UI), with `PanelCanvas` overlay cards (record, status, drops, latency: drag/resize, slots) |
+| Viewport | `wgpu_surface` fed by `FrameBlit` (the camera feed as a texture, first camera in the engine UI), the skeleton and keypoints drawn over the video, and a thin header of view toggles. No floating cards |
 | Skeleton | the live or scrubbed pose, orbit, drawn on a GPUI canvas in phase 1; a Helio preview in phase 2 (load `helio-architecture` first) |
 | Sources | virtualized list of sources with status, add VMC, start/stop |
 | Timeline | virtualized tracks (`v_virtual_list`) beside a canvas of curves; scrub, zoom, markers; resizable tracks |
-| Inspector | take, rig, calibration, filter stack |
+| Setup | the camera setup and calibration as a scrolling column of numbered steps: cameras ready, method (with its illustration), distances, the action, the guided movements, the result, the neutral pose |
+| Inspector | the take, the selected channel, the live filter: dense rows, scrolls |
+
+Around the dock: a toolbar (record, marker, calibration state) above and a status bar (status line,
+recording stats, sources live) below. The right dock holds Setup and Inspector as tabs, the left Sources,
+the centre the camera and the scene, the bottom the timeline. Overlays (`PanelCanvas`) are not used:
+anything that needs room is a panel, anything small is the toolbar or status bar.
 
 Every async job (enumeration, opening a camera, recording, bake) is an editor
 task (`.agents/EDITOR_TASKS.md`). The camera runs on its own capture thread
