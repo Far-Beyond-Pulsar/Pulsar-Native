@@ -341,7 +341,7 @@ The body-based calibration is limited by the body (keypoints are blurry, the bod
 guessed), so there is a better method that needs no printed target: wave a point of light (a phone's flashlight,
 an LED, a lit ball) through the space the cameras share. This is the multi-camera self-calibration of Svoboda et al.
 
-- `capture/src/blob.rs` `find_light`: the one bright compact patch in a frame, sub-pixel (weighted centroid), `None`
+- `capture/src/blob.rs` `LightTracker` (used by the flow): per camera, learns what each part of the picture normally looks like and finds a patch that is suddenly brighter, bright and small, so monitors, windows and lamps that stay put do not matter; it says why it sees nothing ("learning", "no new bright point", "more than one is moving", "too much changed"), shown in the Setup panel. `find_light` is the plain version: the one bright compact patch in a frame, sub-pixel (weighted centroid), `None`
   when there is none, two of similar strength, or it is too faint, too large or the frame is washed out.
 - `capture/src/wand.rs` `WandCalibrator`: collects the moments (a camera's pixel for each camera that saw the light,
   at least two, moved 14 px since the last kept), then solves: the essential matrix of the pair that saw it most
