@@ -382,3 +382,29 @@ On the synthetic suite with joints hidden from every camera: hips 3 cm, knees 11
 swinging ankles and wrists 23 to 26 cm (a hanging limb cannot know how it swings); every one of the 17 joints
 has an answer in every frame, where the raw solver has none for a joint nobody sees. The test subject now also
 exists with human knees (`common::human`): the original one bent its knees forward.
+
+## The character in the Scene panel (as built)
+
+The Scene shows a skinned humanoid instead of a stick figure.
+
+- `capture/src/character.rs` `Character::from_glb`: a glTF/GLB with one skin (the `gltf` crate, no textures): mesh,
+  joint hierarchy, rest pose, inverse bind matrices. Bones are found by name (VRM, Mixamo, Unreal-style, Blender
+  `.L`/`_l`, Quaternius), fingers and twist bones ignored, the spine is whatever lies between hips and neck. The
+  file must face +Z with +Y up (the glTF convention).
+- Posing (`Character::pose`, from `BodyPoints`, built from the COCO17 joints or from VRM-named joints): the pelvis
+  and the base of the neck fix the place and the uniform scale; the torso, spine, neck and head get full frames
+  (hips line, shoulder line, nose and ears for the head), limbs are aimed bone by bone along the subject's (swing
+  only; twist cannot be known from positions), hands and feet keep their rest rotation to the forearm and shin. The
+  result is one skinning matrix per joint. Tested against the subject's joints: the elbows and knees land within 6
+  cm and the wrists and ankles within 10 cm of the subject's, scaled to its torso.
+- `editor/src/character_view.rs`: the wgpu pass (GPU skinning, 4x MSAA, depth, key, fill and rim light) through the
+  same orthographic orbit as the panel's overlay lines, so cameras, sensors and the floor line up. A test renders
+  the posed character to a texture on the machine's GPU.
+- `editor/src/panels/scene_mesh.rs`: the surface under the overlay; `Character...` in the panel loads another glTF;
+  `Show skeleton` goes back to lines. A flat figure (one camera's keypoints) is not meshed: it has no depth.
+- The bundled character is a stand-in (a smooth mannequin built by `editor/tools/make_character.py` in Blender, ours):
+  replace it with a professional humanoid (for example a Quaternius Universal Base Character, CC0) through
+  `Character...`, or by replacing `editor/assets/character.glb`.
+
+Not built: textures and materials (one base colour), facial and finger animation, twist from the forearm, a
+second character for a second subject.
