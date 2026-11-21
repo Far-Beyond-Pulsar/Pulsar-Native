@@ -170,3 +170,20 @@ gap. The overlay draws them on that camera's tile.
   `PULSAR_MOCAP_POSE_MODEL`, else `<project>/.pulsar/models/pose.onnx`.
 - Not built: converting keypoints to joint rotations (retargeting), multi-person,
   and triangulating calibrated cameras into 3D.
+
+## The Scene panel (as built)
+
+The Skeleton panel is replaced by **Scene**: one orbitable 3D picture of
+everything captured, built by `mocap_capture::build_scene` from the merged rig and
+the live (or taken) pose. In one metric space (+Y up, figures facing +Z, left at
++X):
+
+- **Bodies** (VMC, suit, synthetic): full skeletons, spread along X.
+- **Camera keypoints** (`Track body`): lifted to a flat figure (`lift_keypoints`:
+  sized by torso length, hips at hip height). They stay 2D and are flagged as
+  such in the legend; depth needs calibrated multi-camera triangulation.
+- **Sensors**: each orientation channel is an RGB axis triad in a row in front.
+- **Cameras**: each running camera is a small frustum in front, looking at the stage.
+
+The legend lists every item. The camera view's overlay (Skeleton toggle) still
+draws bodies and keypoints on each video tile.

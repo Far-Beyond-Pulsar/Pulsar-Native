@@ -667,6 +667,34 @@ impl SessionModel {
         self.processor.set_settings(&self.rig, filter);
     }
 
+    /// The whole scene now: every body, camera keypoint figure, sensor and
+    /// camera, from the live merged pose while any pose source runs, else from
+    /// the take at the playhead (the cameras are the running ones).
+    pub fn current_scene(&self) -> mocap_capture::Scene {
+        let cameras: Vec<(String, String)> = self
+            .sources
+            .iter()
+            .filter(|s| s.descriptor.has_video && s.running())
+            .map(|s| (s.descriptor.id.clone(), s.descriptor.label.clone()))
+            .collect();
+        let aspect = self
+            .video_feeds()
+            .iter()
+            .find_map(|(_, mailbox)| mailbox.latest())
+            .map_or(0.0, |frame| frame.width as f32 / frame.height.max(1) as f32);
+        let (rig, values) = if self.live_poses() {
+            match &self.live {
+                Some(live) => (&self.rig, live.values.clone()),
+                None => return mocap_capture::build_scene(&RigProfile::default(), &[], aspect, &cameras),
+            }
+        } else if let Some(take) = &self.take {
+            (&take.rig, sample_take(take, self.playhead))
+        } else {
+            return mocap_capture::build_scene(&RigProfile::default(), &[], aspect, &cameras);
+        };
+        mocap_capture::build_scene(rig, &values, aspect, &cameras)
+    }
+
     /// The figure(s) to draw now: the live merged pose while any pose source
     /// runs, else the take at the playhead.
     pub fn current_figure(&self) -> Option<FigureView> {

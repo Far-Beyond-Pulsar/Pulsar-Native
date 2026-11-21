@@ -2,7 +2,7 @@
 //! `.mocap` takes in one dock workspace. Design: `.agents/MOCAP.md`.
 //!
 //! Panels: camera viewport (the video on a WGPU surface with HUD cards on a
-//! panel canvas), skeleton, sources, timeline (virtualized lanes) and inspector,
+//! panel canvas), the fused scene, sources, timeline (virtualized lanes) and inspector,
 //! all over one [`SessionModel`].
 
 mod blit;

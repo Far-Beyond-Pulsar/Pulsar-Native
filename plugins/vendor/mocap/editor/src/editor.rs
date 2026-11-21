@@ -1,7 +1,7 @@
 //! The mocap editor: one dock workspace over one session model.
 
 use crate::model::SessionModel;
-use crate::panels::{InspectorPanel, SkeletonPanel, SourcesPanel, TimelinePanel, ViewportPanel};
+use crate::panels::{InspectorPanel, ScenePanel, SourcesPanel, TimelinePanel, ViewportPanel};
 use gpui::*;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -35,7 +35,7 @@ impl MocapEditor {
         workspace.update(cx, |workspace, cx| {
             let dock = workspace.dock_area().downgrade();
             let viewport: Arc<dyn PanelView> = Arc::new(cx.new(|cx| ViewportPanel::new(model.clone(), cx)));
-            let skeleton: Arc<dyn PanelView> = Arc::new(cx.new(|cx| SkeletonPanel::new(model.clone(), cx)));
+            let scene: Arc<dyn PanelView> = Arc::new(cx.new(|cx| ScenePanel::new(model.clone(), cx)));
             let sources: Arc<dyn PanelView> = Arc::new(cx.new(|cx| SourcesPanel::new(model.clone(), cx)));
             let inspector: Arc<dyn PanelView> = Arc::new(cx.new(|cx| InspectorPanel::new(model.clone(), cx)));
             let timeline: Arc<dyn PanelView> = Arc::new(cx.new(|cx| TimelinePanel::new(model.clone(), cx)));
@@ -43,7 +43,7 @@ impl MocapEditor {
                 Axis::Horizontal,
                 vec![
                     DockItem::tabs(vec![viewport], Some(0), &dock, window, cx),
-                    DockItem::tabs(vec![skeleton], Some(0), &dock, window, cx),
+                    DockItem::tabs(vec![scene], Some(0), &dock, window, cx),
                 ],
                 &dock,
                 window,

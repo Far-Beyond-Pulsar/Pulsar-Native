@@ -16,6 +16,7 @@ mod processor;
 mod recorder;
 mod rigs;
 mod sensor;
+mod scene;
 mod skeleton;
 mod source;
 mod synthetic;
@@ -35,6 +36,7 @@ pub use processor::{apply_calibration, calibrate_neutral, FilterSettings, Proces
 pub use recorder::{RecordStats, Recorder, MAX_HOLD_S};
 pub use rigs::{vrm_humanoid, RigIndex, VRM_BLENDSHAPES};
 pub use sensor::{sensor_rig, OscSensorSource, SensorChannel, SensorDecoder};
+pub use scene::{build_scene, lift_keypoints, FigureSource, Scene, SceneAxes, SceneCamera, SceneFigure};
 pub use skeleton::{rest_offset, Skeleton};
 pub use source::{
     spawn_capture_loop, CaptureSource, SessionClock, SourceDescriptor, SourceKind, SourceShared,

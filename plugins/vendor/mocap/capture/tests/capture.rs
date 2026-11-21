@@ -518,3 +518,68 @@ fn the_bundled_model_loads_and_finds_keypoints_in_a_frame() {
     assert_eq!(values.len(), 51);
     assert!(values.chunks_exact(3).all(|k| k[0].is_nan() || (0.0..=1.0).contains(&k[2])));
 }
+
+fn mixed_rig_and_frame() -> (mocap_format::RigProfile, Vec<f32>) {
+    let vrm = vrm_humanoid();
+    let imu = sensor_rig(&[SensorChannel::new("imu.rotation", "/imu/quat", mocap_format::ChannelKind::Rotation4)]);
+    let kp = coco17_rig();
+    let (rig, ranges) = merge_rigs(&[("vmc:1".to_owned(), &vrm), ("pose:camera:0".to_owned(), &kp), ("sensor:9".to_owned(), &imu)]);
+    let mut values = vec![f32::NAN; rig.columns()];
+    values[ranges[0].clone()].copy_from_slice(&synthetic_pose(&RigIndex::new(&vrm), 0, 60.0));
+    // A person seen by the camera: shoulders, hips and a head in the image.
+    let mut keypoints = vec![f32::NAN; 51];
+    let mut put = |i: usize, x: f32, y: f32| keypoints[i * 3..i * 3 + 3].copy_from_slice(&[x, y, 0.9]);
+    put(0, 0.5, 0.2);
+    put(5, 0.45, 0.35);
+    put(6, 0.55, 0.35);
+    put(11, 0.46, 0.65);
+    put(12, 0.54, 0.65);
+    values[ranges[1].clone()].copy_from_slice(&keypoints);
+    // The IMU turned 90 degrees about Y.
+    values[ranges[2].clone()].copy_from_slice(&axis_angle([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2));
+    (rig, values)
+}
+
+#[test]
+fn the_scene_fuses_bodies_keypoints_sensors_and_cameras() {
+    let (rig, values) = mixed_rig_and_frame();
+    let cameras = vec![("camera:0".to_owned(), "Cam A".to_owned()), ("camera:1".to_owned(), "Cam B".to_owned())];
+    let scene = build_scene(&rig, &values, 16.0 / 9.0, &cameras);
+    assert_eq!(scene.figures.len(), 2, "a body and a keypoint figure");
+    assert_eq!(scene.figures[0].source, FigureSource::Skeleton);
+    assert_eq!(scene.figures[1].source, FigureSource::Keypoints);
+    assert_eq!(scene.axes.len(), 1);
+    assert_eq!(scene.cameras.len(), 2);
+    assert!(scene.axes[0].label.contains("sensor:9"));
+    // The bodies stand apart.
+    let hips = |f: &SceneFigure, n: &str| f.joints[f.names.iter().position(|x| x == n).expect(n)];
+    let a = hips(&scene.figures[0], "Hips");
+    let b = scene.figures[1].joints[11];
+    assert!((a[0] - b[0]).abs() > 1.0, "figures are {} m apart", (a[0] - b[0]).abs());
+    // The sensor's x axis, turned 90 degrees about Y, points along -Z.
+    assert!(scene.axes[0].axes[0][2].abs() > 0.2 && scene.axes[0].axes[0][0].abs() < 0.05);
+    assert!(scene.cameras[0].position[0] < scene.cameras[1].position[0]);
+}
+
+#[test]
+fn lifted_keypoints_stand_upright_with_a_human_sized_torso() {
+    let (rig, values) = mixed_rig_and_frame();
+    let scene = build_scene(&rig, &values, 16.0 / 9.0, &[]);
+    let figure = &scene.figures[1];
+    let (nose, hip) = (figure.joints[0], figure.joints[11]);
+    assert!(nose[1] > hip[1], "the head is above the hips");
+    assert!((hip[1] - 0.95).abs() < 0.05, "hips at hip height: {}", hip[1]);
+    let (ls, rs) = (figure.joints[5], figure.joints[6]);
+    let torso = ((ls[1] + rs[1]) * 0.5 - (figure.joints[11][1] + figure.joints[12][1]) * 0.5).abs();
+    assert!((torso - 0.5).abs() < 0.02, "torso {torso} m");
+    assert!(figure.joints[1][0].is_nan(), "an unseen keypoint stays a gap");
+}
+
+#[test]
+fn an_unmerged_rig_is_one_figure_and_an_empty_one_is_an_empty_scene() {
+    let vrm = vrm_humanoid();
+    let scene = build_scene(&vrm, &synthetic_pose(&RigIndex::new(&vrm), 0, 60.0), 0.0, &[]);
+    assert_eq!(scene.figures.len(), 1);
+    assert_eq!(scene.figures[0].bones.len(), vrm.joints.len() - 1);
+    assert!(build_scene(&mocap_format::RigProfile::default(), &[], 1.0, &[]).is_empty());
+}
