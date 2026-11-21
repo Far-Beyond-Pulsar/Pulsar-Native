@@ -178,12 +178,59 @@ everything captured, built by `mocap_capture::build_scene` from the merged rig a
 the live (or taken) pose. In one metric space (+Y up, figures facing +Z, left at
 +X):
 
-- **Bodies** (VMC, suit, synthetic): full skeletons, spread along X.
-- **Camera keypoints** (`Track body`): lifted to a flat figure (`lift_keypoints`:
-  sized by torso length, hips at hip height). They stay 2D and are flagged as
-  such in the legend; depth needs calibrated multi-camera triangulation.
-- **Sensors**: each orientation channel is an RGB axis triad in a row in front.
+One subject is assumed for now (marking and labelling subjects comes later): every
+body-shaped source is fused into a single character, "Subject 1".
+
+- **Body sources** (VMC, suit, synthetic): joint rotations and root positions are
+  averaged by joint name across sources, then posed on the richest skeleton.
+- **Camera keypoints** (`Track body`): the best camera's (highest total confidence
+  this frame; no geometry is invented between uncalibrated views) are lifted
+  (`lift_keypoints`: torso-sized, hips at hip height) and fill the limb joints no
+  body source observes (highlighted). With no body source they are the character,
+  flat and flagged 2D; depth needs calibrated multi-camera triangulation.
+- **Sensors**: each orientation channel is an RGB axis triad attached beside the
+  character, listed as unassigned.
 - **Cameras**: each running camera is a small frustum in front, looking at the stage.
 
 The legend lists every item. The camera view's overlay (Skeleton toggle) still
 draws bodies and keypoints on each video tile.
+
+## Multi-camera calibration and triangulation (as built)
+
+Cameras are not assumed to be anywhere. With two or more cameras running `Track body`,
+**Calibrate cameras** walks the subject through guided movements (stand still, left
+hand up, right hand up, arms out, swing arms, walk in place, jog in place, turn
+around). `Guide` detects each from the subject's own keypoints (measured in torso
+lengths, from the camera that sees them best); samples are collected only while the
+movement is being done, tagged with the step. When the steps are done (or **Solve
+now**), `Calibrator::solve` runs as an editor task:
+
+1. Pairs of cameras: essential matrix from keypoint correspondences (8-point,
+   RANSAC), decomposed by cheirality; poses chained from camera 0.
+2. Metric scale from human bone-length priors (median over all bones and samples),
+   times `body_scale` (the subject's height over 1.75 m).
+3. Refinement: alternating triangulation, rescaling and per-camera Levenberg-Marquardt
+   on rotation, translation and focal length, minimising reprojection error.
+4. World alignment to the subject: +Y along the torso, floor at the ankles, origin
+   under the mean hips, +Z the way the subject faces, left at +X.
+
+It refuses, with a reason, when there are too few cameras or samples, a camera shares
+too little of the subject, the poses are degenerate or the fit is worse than 8 px.
+`Calibrator::validate` then checks the result against the steps (a raised hand reads
+up in 3D, the arm span matches the body).
+
+Intrinsics: pinhole, principal point at the image centre, focal from a 70 degree
+field of view and refined. Metric scale is as good as the subject is close to the
+priors: set the body scale when the height is known.
+
+Once calibrated, every merged frame gets 17 triangulated world keypoints
+(`subject3d/kp3d.*`, weighted DLT, a view that disagrees by over 12 px dropped, a
+point over 15 px dropped): they are recorded in the take, the take stores the camera
+calibration, and the Scene draws the cameras where they are and uses the 3D keypoints
+as (or to complete) the subject. Tested against synthetic ground truth: four cameras
+around a moving, turning subject are located within 15 cm and 3 degrees, and
+triangulated joints are within 3 cm after rigid alignment.
+
+Not built: camera lens distortion, time offsets between cameras (frames within 80 ms
+count as simultaneous), tracking more than one subject across views, and saving a
+calibration to reuse for a later session.

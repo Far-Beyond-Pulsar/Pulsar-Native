@@ -52,7 +52,10 @@ struct Drawn {
 
 struct Palette {
     floor: Hsla,
-    bodies: [Hsla; 4],
+    centre: Hsla,
+    left: Hsla,
+    right: Hsla,
+    filled: Hsla,
     axes: [Hsla; 3],
     camera: Hsla,
 }
@@ -81,17 +84,32 @@ fn paint_scene(bounds: Bounds<Pixels>, drawn: &Drawn, palette: &Palette, window:
         line(window, [t, 0.0, -3.5], [t, 0.0, 3.5], 1.0, palette.floor);
         line(window, [-3.0, 0.0, t * 7.0 / 6.0], [3.0, 0.0, t * 7.0 / 6.0], 1.0, palette.floor);
     }
-    for (index, figure) in drawn.scene.figures.iter().enumerate() {
-        let color = palette.bodies[index % palette.bodies.len()];
-        let opacity = if figure.source == FigureSource::Keypoints { 0.8 } else { 1.0 };
+    if let Some(subject) = &drawn.scene.subject {
+        let figure = &subject.figure;
+        let flat = figure.source == FigureSource::Keypoints;
+        let opacity = if flat { 0.8 } else { 1.0 };
+        let tint = |joint: usize| {
+            let name = figure.names.get(joint).map_or("", String::as_str);
+            let bone = name.rsplit('/').next().unwrap_or(name);
+            if figure.from_keypoints.contains(&joint) {
+                palette.filled
+            } else if bone.starts_with("Left") || bone.starts_with("left_") {
+                palette.left
+            } else if bone.starts_with("Right") || bone.starts_with("right_") {
+                palette.right
+            } else {
+                palette.centre
+            }
+        };
         for &(a, b) in &figure.bones {
             if let (Some(pa), Some(pb)) = (figure.joints.get(a), figure.joints.get(b)) {
-                line(window, *pa, *pb, 2.5, color.opacity(opacity));
+                line(window, *pa, *pb, 2.5, tint(b).opacity(opacity));
             }
         }
-        for joint in figure.joints.iter().filter(|j| finite(j)) {
+        for (index, joint) in figure.joints.iter().enumerate().filter(|(_, j)| finite(j)) {
             let at = project(*joint);
-            window.paint_quad(fill(Bounds::new(point(at.x - px(2.5), at.y - px(2.5)), size(px(5.), px(5.))), color.opacity(opacity)));
+            let half = if figure.from_keypoints.contains(&index) { 4.0 } else { 2.5 };
+            window.paint_quad(fill(Bounds::new(point(at.x - px(half), at.y - px(half)), size(px(half * 2.0), px(half * 2.0))), tint(index).opacity(opacity)));
         }
     }
     for gizmo in &drawn.scene.axes {
@@ -102,11 +120,19 @@ fn paint_scene(bounds: Bounds<Pixels>, drawn: &Drawn, palette: &Palette, window:
     }
     for camera in &drawn.scene.cameras {
         let (p, f) = (camera.position, camera.forward);
-        let centre = [p[0] + f[0] * 0.5, p[1] + f[1] * 0.5, p[2] + f[2] * 0.5];
-        let corners = [[-0.3f32, 0.18f32], [0.3, 0.18], [0.3, -0.18], [-0.3, -0.18]].map(|[x, y]| [centre[0] + x, centre[1] + y, centre[2]]);
+        let len = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt().max(1e-6);
+        let f = [f[0] / len, f[1] / len, f[2] / len];
+        // Right and up from the forward direction and the world up.
+        let right = [f[2], 0.0, -f[0]];
+        let rl = (right[0] * right[0] + right[2] * right[2]).sqrt().max(1e-6);
+        let right = [right[0] / rl, 0.0, right[2] / rl];
+        let up = [right[1] * f[2] - right[2] * f[1], right[2] * f[0] - right[0] * f[2], right[0] * f[1] - right[1] * f[0]];
+        let at = |r: f32, u: f32| [p[0] + f[0] * 0.5 + right[0] * r + up[0] * u, p[1] + f[1] * 0.5 + right[1] * r + up[1] * u, p[2] + f[2] * 0.5 + right[2] * r + up[2] * u];
+        let corners = [at(-0.3, 0.18), at(0.3, 0.18), at(0.3, -0.18), at(-0.3, -0.18)];
+        let color = if camera.calibrated { palette.filled } else { palette.camera };
         for (i, corner) in corners.iter().enumerate() {
-            line(window, p, *corner, 1.5, palette.camera);
-            line(window, *corner, corners[(i + 1) % 4], 1.5, palette.camera);
+            line(window, p, *corner, 1.5, color);
+            line(window, *corner, corners[(i + 1) % 4], 1.5, color);
         }
     }
 }
@@ -149,15 +175,23 @@ impl ScenePanel {
                 .into_any_element()
         };
         let mut rows = Vec::new();
-        for (i, figure) in scene.figures.iter().enumerate() {
-            let kind = match figure.source {
-                FigureSource::Skeleton => "body",
-                FigureSource::Keypoints => "camera keypoints (2D, flat)",
+        if let Some(subject) = &scene.subject {
+            let kind = match subject.figure.source {
+                FigureSource::Skeleton => "fused character",
+                FigureSource::Keypoints => "camera keypoints only (2D, flat)",
+                FigureSource::Triangulated => "triangulated from the calibrated cameras (3D)",
             };
-            rows.push(row(palette.bodies[i % palette.bodies.len()], format!("{}: {kind}", figure.label)));
+            rows.push(row(palette.centre, format!("{}: {kind}", subject.label)));
+            rows.extend(subject.contributions.iter().map(|c| row(palette.left, format!("  {} <- {}", c.what, c.source))));
+            if !subject.figure.from_keypoints.is_empty() {
+                rows.push(row(palette.filled, format!("  {} joint(s) filled from the camera", subject.figure.from_keypoints.len())));
+            }
         }
-        rows.extend(scene.axes.iter().map(|a| row(palette.axes[0], format!("{}: sensor", a.label))));
-        rows.extend(scene.cameras.iter().map(|c| row(palette.camera, format!("{}: camera", c.label))));
+        rows.extend(scene.axes.iter().map(|a| row(palette.axes[0], format!("{}: sensor (unassigned)", a.label))));
+        rows.extend(scene.cameras.iter().map(|c| {
+            let (color, note) = if c.calibrated { (palette.filled, "camera, calibrated position") } else { (palette.camera, "camera (position unknown: not calibrated)") };
+            row(color, format!("{}: {note}", c.label))
+        }));
         rows
     }
 }
@@ -168,7 +202,10 @@ impl Render for ScenePanel {
         let scene = self.model.read(cx).current_scene();
         let palette = Palette {
             floor: theme.border.opacity(0.6),
-            bodies: [theme.info, theme.warning, theme.success, theme.accent],
+            centre: theme.foreground.opacity(0.9),
+            left: theme.info,
+            right: theme.warning,
+            filled: theme.success,
             axes: [theme.danger, theme.success, theme.info],
             camera: theme.muted_foreground,
         };

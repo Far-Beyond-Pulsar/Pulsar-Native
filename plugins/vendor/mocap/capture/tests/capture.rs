@@ -473,9 +473,13 @@ fn a_tracker_runs_an_estimator_on_a_cameras_frames_with_their_capture_times() {
     assert_eq!(tracker.descriptor().kind, SourceKind::Estimator);
     tracker.start(sink).expect("start");
     let mut frames = Vec::new();
-    for sequence in 0..6u64 {
+    // Keep a camera frame coming until the tracker has delivered (it starts on its own thread).
+    let begun = std::time::Instant::now();
+    let mut sequence = 0u64;
+    while frames.is_empty() && begun.elapsed() < Duration::from_secs(10) {
         camera.put(solid_frame(4, 4, [0, 0, 0, 255], sequence, 10.0 + sequence as f64));
-        std::thread::sleep(Duration::from_millis(30));
+        sequence += 2;
+        std::thread::sleep(Duration::from_millis(20));
         bus.drain(&mut frames);
     }
     tracker.stop();
@@ -519,67 +523,167 @@ fn the_bundled_model_loads_and_finds_keypoints_in_a_frame() {
     assert!(values.chunks_exact(3).all(|k| k[0].is_nan() || (0.0..=1.0).contains(&k[2])));
 }
 
+fn keypoint_frame(points: &[(usize, f32, f32, f32)]) -> Vec<f32> {
+    let mut values = vec![f32::NAN; 51];
+    for &(i, x, y, score) in points {
+        values[i * 3..i * 3 + 3].copy_from_slice(&[x, y, score]);
+    }
+    values
+}
+
+const PERSON: [(usize, f32, f32, f32); 6] =
+    [(0, 0.5, 0.2, 0.9), (5, 0.45, 0.35, 0.9), (6, 0.55, 0.35, 0.9), (11, 0.46, 0.65, 0.9), (12, 0.54, 0.65, 0.9), (9, 0.40, 0.50, 0.9)];
+
 fn mixed_rig_and_frame() -> (mocap_format::RigProfile, Vec<f32>) {
     let vrm = vrm_humanoid();
     let imu = sensor_rig(&[SensorChannel::new("imu.rotation", "/imu/quat", mocap_format::ChannelKind::Rotation4)]);
     let kp = coco17_rig();
     let (rig, ranges) = merge_rigs(&[("vmc:1".to_owned(), &vrm), ("pose:camera:0".to_owned(), &kp), ("sensor:9".to_owned(), &imu)]);
     let mut values = vec![f32::NAN; rig.columns()];
-    values[ranges[0].clone()].copy_from_slice(&synthetic_pose(&RigIndex::new(&vrm), 0, 60.0));
-    // A person seen by the camera: shoulders, hips and a head in the image.
-    let mut keypoints = vec![f32::NAN; 51];
-    let mut put = |i: usize, x: f32, y: f32| keypoints[i * 3..i * 3 + 3].copy_from_slice(&[x, y, 0.9]);
-    put(0, 0.5, 0.2);
-    put(5, 0.45, 0.35);
-    put(6, 0.55, 0.35);
-    put(11, 0.46, 0.65);
-    put(12, 0.54, 0.65);
-    values[ranges[1].clone()].copy_from_slice(&keypoints);
-    // The IMU turned 90 degrees about Y.
+    let mut body = synthetic_pose(&RigIndex::new(&vrm), 0, 60.0);
+    // The performer's left hand is not tracked: the camera fills it.
+    let hand = RigIndex::new(&vrm).column("LeftHand.rotation").expect("hand");
+    body[hand..hand + 4].fill(f32::NAN);
+    values[ranges[0].clone()].copy_from_slice(&body);
+    values[ranges[1].clone()].copy_from_slice(&keypoint_frame(&PERSON));
     values[ranges[2].clone()].copy_from_slice(&axis_angle([0.0, 1.0, 0.0], std::f32::consts::FRAC_PI_2));
     (rig, values)
 }
 
+fn joint(figure: &SceneFigure, name: &str) -> [f32; 3] {
+    figure.joints[figure.names.iter().position(|n| n == name).expect(name)]
+}
+
 #[test]
-fn the_scene_fuses_bodies_keypoints_sensors_and_cameras() {
+fn all_data_becomes_one_subject_with_sensors_attached_and_cameras_in_the_scene() {
     let (rig, values) = mixed_rig_and_frame();
-    let cameras = vec![("camera:0".to_owned(), "Cam A".to_owned()), ("camera:1".to_owned(), "Cam B".to_owned())];
+    let cameras = vec![CameraInput { label: "Cam A".to_owned(), pose: None }, CameraInput { label: "Cam B".to_owned(), pose: None }];
     let scene = build_scene(&rig, &values, 16.0 / 9.0, &cameras);
-    assert_eq!(scene.figures.len(), 2, "a body and a keypoint figure");
-    assert_eq!(scene.figures[0].source, FigureSource::Skeleton);
-    assert_eq!(scene.figures[1].source, FigureSource::Keypoints);
+    let subject = scene.subject.as_ref().expect("a subject");
+    assert_eq!(subject.label, "Subject 1");
+    assert_eq!(subject.figure.source, FigureSource::Skeleton);
+    let what: Vec<(&str, &str)> = subject.contributions.iter().map(|c| (c.source.as_str(), c.what)).collect();
+    assert_eq!(what, vec![("vmc:1", "body"), ("pose:camera:0", "keypoints"), ("sensor:9", "sensor")]);
     assert_eq!(scene.axes.len(), 1);
     assert_eq!(scene.cameras.len(), 2);
-    assert!(scene.axes[0].label.contains("sensor:9"));
-    // The bodies stand apart.
-    let hips = |f: &SceneFigure, n: &str| f.joints[f.names.iter().position(|x| x == n).expect(n)];
-    let a = hips(&scene.figures[0], "Hips");
-    let b = scene.figures[1].joints[11];
-    assert!((a[0] - b[0]).abs() > 1.0, "figures are {} m apart", (a[0] - b[0]).abs());
-    // The sensor's x axis, turned 90 degrees about Y, points along -Z.
-    assert!(scene.axes[0].axes[0][2].abs() > 0.2 && scene.axes[0].axes[0][0].abs() < 0.05);
     assert!(scene.cameras[0].position[0] < scene.cameras[1].position[0]);
+    // The sensor's x axis, turned 90 degrees about Y, points along Z; the triad is beside the subject.
+    assert!(scene.axes[0].axes[0][2].abs() > 0.2 && scene.axes[0].axes[0][0].abs() < 0.05);
+    assert!(scene.axes[0].origin[0] > joint(&subject.figure, "Hips")[0], "attached beside the character");
 }
 
 #[test]
-fn lifted_keypoints_stand_upright_with_a_human_sized_torso() {
+fn camera_keypoints_fill_the_joints_the_body_does_not_observe() {
     let (rig, values) = mixed_rig_and_frame();
     let scene = build_scene(&rig, &values, 16.0 / 9.0, &[]);
-    let figure = &scene.figures[1];
-    let (nose, hip) = (figure.joints[0], figure.joints[11]);
-    assert!(nose[1] > hip[1], "the head is above the hips");
-    assert!((hip[1] - 0.95).abs() < 0.05, "hips at hip height: {}", hip[1]);
-    let (ls, rs) = (figure.joints[5], figure.joints[6]);
-    let torso = ((ls[1] + rs[1]) * 0.5 - (figure.joints[11][1] + figure.joints[12][1]) * 0.5).abs();
-    assert!((torso - 0.5).abs() < 0.02, "torso {torso} m");
-    assert!(figure.joints[1][0].is_nan(), "an unseen keypoint stays a gap");
+    let figure = &scene.subject.expect("subject").figure;
+    let hand = figure.names.iter().position(|n| n == "LeftHand").expect("hand");
+    assert_eq!(figure.from_keypoints, vec![hand], "only the unobserved hand comes from the camera");
+    let (h, upper) = (joint(figure, "LeftHand"), joint(figure, "LeftUpperArm"));
+    assert!(h.iter().all(|v| v.is_finite()));
+    // The camera put the wrist left of the left hip in the image: a few tenths of a metre from the hips, not a T-pose arm.
+    assert!(h[1] < upper[1] + 0.5 && (h[0] - joint(figure, "Hips")[0]).abs() < 0.6, "hand at {h:?}");
 }
 
 #[test]
-fn an_unmerged_rig_is_one_figure_and_an_empty_one_is_an_empty_scene() {
+fn several_body_sources_are_averaged_into_one_character() {
     let vrm = vrm_humanoid();
-    let scene = build_scene(&vrm, &synthetic_pose(&RigIndex::new(&vrm), 0, 60.0), 0.0, &[]);
-    assert_eq!(scene.figures.len(), 1);
-    assert_eq!(scene.figures[0].bones.len(), vrm.joints.len() - 1);
+    let index = RigIndex::new(&vrm);
+    let (rig, ranges) = merge_rigs(&[("a".to_owned(), &vrm), ("b".to_owned(), &vrm)]);
+    let head = index.column("Head.rotation").expect("head");
+    let mut values = vec![0.0; rig.columns()];
+    for (range, angle) in ranges.iter().zip([0.4f32, -0.4]) {
+        let mut body = synthetic_pose(&index, 0, 60.0);
+        body[head..head + 4].copy_from_slice(&axis_angle([1.0, 0.0, 0.0], angle));
+        values[range.clone()].copy_from_slice(&body);
+    }
+    let fused = build_scene(&rig, &values, 0.0, &[]).subject.expect("subject");
+    let straight = build_scene(&vrm, &synthetic_pose(&index, 0, 60.0), 0.0, &[]).subject.expect("subject");
+    assert_eq!(fused.contributions.len(), 2);
+    let (f, s) = (joint(&fused.figure, "Head"), joint(&straight.figure, "Head"));
+    assert!((0..3).all(|k| (f[k] - s[k]).abs() < 1e-3), "opposite head tilts average out: {f:?} vs {s:?}");
+    assert_eq!(fused.figure.joints.len(), vrm.joints.len(), "one character, not two");
+}
+
+#[test]
+fn with_no_body_the_best_cameras_keypoints_are_the_character() {
+    let kp = coco17_rig();
+    let (rig, ranges) = merge_rigs(&[("pose:camera:0".to_owned(), &kp), ("pose:camera:1".to_owned(), &kp)]);
+    let mut values = vec![f32::NAN; rig.columns()];
+    let weak: Vec<(usize, f32, f32, f32)> = PERSON.iter().map(|&(i, x, y, _)| (i, x, y, 0.3)).collect();
+    values[ranges[0].clone()].copy_from_slice(&keypoint_frame(&weak));
+    values[ranges[1].clone()].copy_from_slice(&keypoint_frame(&PERSON));
+    let subject = build_scene(&rig, &values, 16.0 / 9.0, &[]).subject.expect("subject");
+    assert_eq!(subject.figure.source, FigureSource::Keypoints);
+    assert_eq!(subject.contributions, vec![Contribution { source: "pose:camera:1".to_owned(), what: "keypoints" }]);
+    let (nose, hip) = (subject.figure.joints[0], subject.figure.joints[11]);
+    assert!(nose[1] > hip[1] && (hip[1] - 0.95).abs() < 0.05, "upright, hips at hip height");
+    assert!(subject.figure.joints[1][0].is_nan(), "an unseen keypoint stays a gap");
+}
+
+#[test]
+fn sensors_alone_make_no_subject_and_an_empty_rig_an_empty_scene() {
+    let imu = sensor_rig(&[SensorChannel::new("imu.rotation", "/imu/quat", mocap_format::ChannelKind::Rotation4)]);
+    let scene = build_scene(&imu, &[0.0, 0.0, 0.0, 1.0], 0.0, &[]);
+    assert!(scene.subject.is_none());
+    assert_eq!(scene.axes.len(), 1);
     assert!(build_scene(&mocap_format::RigProfile::default(), &[], 1.0, &[]).is_empty());
+}
+
+/// The rig of the triangulated 3D keypoints.
+fn world_rig() -> mocap_format::RigProfile {
+    mocap_format::RigProfile {
+        name: "world".to_owned(),
+        joints: Vec::new(),
+        channels: COCO17
+            .iter()
+            .map(|n| mocap_format::ChannelDesc {
+                name: format!("kp3d.{n}"),
+                kind: mocap_format::ChannelKind::Position3,
+                joint: None,
+                quantisation: mocap_format::Quantisation::Lossless,
+            })
+            .collect(),
+    }
+}
+
+/// One camera's keypoints and the triangulated set, merged.
+fn rig_with_triangulation() -> (mocap_format::RigProfile, Vec<std::ops::Range<usize>>) {
+    merge_rigs(&[("pose:camera:0".to_owned(), &coco17_rig()), ("subject3d".to_owned(), &world_rig())])
+}
+
+#[test]
+fn triangulated_keypoints_are_the_character_in_real_3d_and_beat_a_flat_camera_figure() {
+    let (rig, ranges) = rig_with_triangulation();
+    let mut values = vec![f32::NAN; rig.columns()];
+    values[ranges[0].clone()].copy_from_slice(&keypoint_frame(&PERSON));
+    // The solved cameras saw the nose 2 m up and a metre toward the cameras.
+    let mut world = vec![f32::NAN; 51];
+    world[..3].copy_from_slice(&[0.1, 1.7, 1.0]);
+    world[33..36].copy_from_slice(&[0.0, 0.9, 0.2]);
+    values[ranges[1].clone()].copy_from_slice(&world);
+    let cameras = [CameraInput { label: "A".to_owned(), pose: Some(([2.0, 1.5, -2.0], [-0.6, -0.1, 0.8])) }, CameraInput { label: "B".to_owned(), pose: None }];
+    let scene = build_scene(&rig, &values, 16.0 / 9.0, &cameras);
+    let subject = scene.subject.expect("subject");
+    assert_eq!(subject.figure.source, FigureSource::Triangulated);
+    assert_eq!(subject.figure.joints[0], [0.1, 1.7, 1.0], "a true depth, not the flat image plane");
+    assert_eq!(subject.contributions, vec![Contribution { source: "subject3d".to_owned(), what: "keypoints (3D)" }]);
+    assert!(scene.cameras[0].calibrated && scene.cameras[0].position == [2.0, 1.5, -2.0], "stands where it was calibrated");
+    assert!(!scene.cameras[1].calibrated);
+}
+
+#[test]
+fn triangulated_keypoints_fill_a_bodys_unobserved_joints_without_being_moved() {
+    let vrm = vrm_humanoid();
+    let (rig, ranges) = merge_rigs(&[("vmc:1".to_owned(), &vrm), ("subject3d".to_owned(), &world_rig())]);
+    let mut values = vec![f32::NAN; rig.columns()];
+    let mut body = synthetic_pose(&RigIndex::new(&vrm), 0, 60.0);
+    let hand = RigIndex::new(&vrm).column("LeftHand.rotation").expect("hand");
+    body[hand..hand + 4].fill(f32::NAN);
+    values[ranges[0].clone()].copy_from_slice(&body);
+    let mut world = vec![f32::NAN; 51];
+    world[27..30].copy_from_slice(&[0.31, 1.05, 0.12]); // left wrist
+    values[ranges[1].clone()].copy_from_slice(&world);
+    let figure = build_scene(&rig, &values, 16.0 / 9.0, &[]).subject.expect("subject").figure;
+    assert_eq!(joint(&figure, "LeftHand"), [0.31, 1.05, 0.12], "taken as measured, in the world's own coordinates");
 }

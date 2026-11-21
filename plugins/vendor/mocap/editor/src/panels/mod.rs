@@ -1,5 +1,6 @@
 //! The dockable panels of the mocap editor; each reads the shared session model.
 
+mod calibration;
 mod inspector;
 mod open;
 mod scene;

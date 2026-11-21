@@ -113,6 +113,10 @@ pub fn calibrate_neutral(rig: &RigProfile, frame: &PoseFrame, reference_hips_hei
 /// neutral pose, positions scaled.
 pub fn apply_calibration(rig: &RigProfile, calibration: &Calibration, frame: &mut PoseFrame) {
     for (channel, at) in rig.channels.iter().zip(rig.column_offsets()) {
+        // Triangulated keypoints are already metres in the subject's world: never rescaled.
+        if channel.name.contains("kp3d.") {
+            continue;
+        }
         let v = &mut frame.values[at..at + channel.kind.width()];
         match channel.kind {
             ChannelKind::Rotation4 => {

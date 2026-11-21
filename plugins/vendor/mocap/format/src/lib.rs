@@ -17,7 +17,7 @@ mod writer;
 pub use error::FormatError;
 pub use reader::{read_take, BlockRef, ReadReport, TakeFile};
 pub use rig::{ChannelDesc, ChannelKind, Joint, Quantisation, RigProfile};
-pub use take::{Calibration, Marker, SourceInfo, Take, TakeMeta};
+pub use take::{Calibration, CameraCalibration, Marker, SourceInfo, Take, TakeMeta};
 pub use writer::{write_take, TakeWriter, DEFAULT_BLOCK_FRAMES, MAGIC, VERSION};
 
 /// The file extension, without the dot.

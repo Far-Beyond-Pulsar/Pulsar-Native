@@ -10,7 +10,7 @@
 use editor_task_queue::{TaskDescription, TaskDuration};
 use engine_fs::virtual_fs;
 use mocap_capture::{
-    apply_calibration, calibrate_neutral, coco17_rig, CaptureSource, EstimatorFactory, EstimatorSource, PoseEstimator, FilterSettings, MixInput, Mixer, OscSensorSource, PoseBus,
+    CameraInput, CameraRig, apply_calibration, calibrate_neutral, coco17_rig, CaptureSource, EstimatorFactory, EstimatorSource, PoseEstimator, FilterSettings, MixInput, Mixer, OscSensorSource, PoseBus,
     PoseFrame, Processor, RecordStats, Recorder, SessionClock, Skeleton, SourceDescriptor, SourceSink, SourceState,
     SyntheticSource, VideoMailbox, VmcSource,
 };
@@ -20,6 +20,9 @@ use parking_lot::Mutex;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
+
+mod flow;
+pub use flow::{CalibrationFlow, Phase as CalibrationPhase};
 
 /// Frame rate new takes are recorded at.
 pub const RECORD_FPS: u32 = 60;
@@ -86,6 +89,8 @@ struct ActiveRecording {
 struct MixState {
     mixer: Mixer,
     ids: Vec<String>,
+    /// The camera calibration the mix was built for (a new one rebuilds the mix).
+    epoch: u64,
 }
 
 /// What the "add source" menu can make.
@@ -127,6 +132,12 @@ pub struct SessionModel {
     pose_path: Arc<Mutex<PathBuf>>,
     take_skeleton: Option<Skeleton>,
     mix: Option<MixState>,
+    /// The solved cameras, once calibrated.
+    pub camera_rig: Option<CameraRig>,
+    /// Where the triangulated keypoints come from in a merged frame, while it applies.
+    derived: Option<flow::Derived>,
+    rig_epoch: u64,
+    pub calib: CalibrationFlow,
     filtered: Option<Arc<PoseFrame>>,
     video_seen: u64,
     synthetic_count: u32,
@@ -168,6 +179,10 @@ impl SessionModel {
             pose_path: Arc::new(Mutex::new(PathBuf::new())),
             take_skeleton: None,
             mix: None,
+            camera_rig: None,
+            derived: None,
+            rig_epoch: 0,
+            calib: CalibrationFlow::default(),
             filtered: None,
             video_seen: 0,
             synthetic_count: 0,
@@ -189,6 +204,7 @@ impl SessionModel {
             || self.cameras_loading
             || self.playing
             || self.recording.is_some()
+            || matches!(self.calib.phase, CalibrationPhase::Guiding | CalibrationPhase::Solving)
             || self.sources.iter().any(SourceEntry::running)
     }
 
@@ -367,7 +383,8 @@ impl SessionModel {
         }
         let running: Vec<&SourceEntry> = self.sources.iter().filter(|s| s.has_poses() && s.running()).collect();
         let ids: Vec<String> = running.iter().map(|s| s.descriptor.id.clone()).collect();
-        if self.mix.as_ref().map(|m| &m.ids) == Some(&ids) || (self.mix.is_none() && ids.is_empty()) {
+        let current = self.mix.as_ref().is_some_and(|m| m.ids == ids && m.epoch == self.rig_epoch);
+        if current || (self.mix.is_none() && ids.is_empty()) {
             return false;
         }
         let inputs: Vec<MixInput> = running
@@ -378,10 +395,16 @@ impl SessionModel {
             .collect();
         if inputs.is_empty() {
             self.mix = None;
+            self.derived = None;
             self.rig = RigProfile::default();
         } else {
-            let (mixer, rig) = Mixer::new(inputs);
-            self.mix = Some(MixState { mixer, ids });
+            let (mixer, mut rig) = Mixer::new(inputs);
+            // With calibrated cameras, their keypoints are triangulated into 3D and recorded too.
+            self.derived = self.camera_rig.as_ref().and_then(|cams| flow::Derived::for_rig(&rig, &ids, cams));
+            if self.derived.is_some() {
+                flow::Derived::extend_rig(&mut rig);
+            }
+            self.mix = Some(MixState { mixer, ids, epoch: self.rig_epoch });
             self.rig = rig;
         }
         self.skeleton = Skeleton::new(&self.rig);
@@ -459,6 +482,7 @@ impl SessionModel {
         let dt = now.duration_since(self.last_tick).as_secs_f64();
         self.last_tick = now;
         let mut changed = self.take_task_results();
+        changed |= self.calibration_tick();
         changed |= self.sync_mix();
         changed |= self.drain_mix();
         changed |= self.advance_playback(dt);
@@ -505,7 +529,8 @@ impl SessionModel {
         if let Some(mix) = &mut self.mix {
             mix.mixer.pump(&mut frames);
         }
-        for raw in &frames {
+        for mixed in &frames {
+            let raw = &self.with_triangulation(mixed);
             self.record(raw);
             let mut view = raw.clone();
             self.processor.process(&mut view);
@@ -519,6 +544,14 @@ impl SessionModel {
             self.record_stats = recording.recorder.stats();
         }
         !frames.is_empty()
+    }
+
+    /// `mixed` with the triangulated keypoints appended, when cameras are calibrated and tracking.
+    fn with_triangulation(&self, mixed: &PoseFrame) -> PoseFrame {
+        let (Some(derived), Some(rig)) = (&self.derived, &self.camera_rig) else { return mixed.clone() };
+        let mut values = mixed.values.clone();
+        values.extend(derived.triangulate(rig, &mixed.values));
+        PoseFrame { values, ..mixed.clone() }
     }
 
     fn record(&mut self, raw: &PoseFrame) {
@@ -582,6 +615,10 @@ impl SessionModel {
                 return;
             }
         };
+        if let Some(cameras) = &self.camera_rig {
+            let calibration = self.calibration.get_or_insert_with(|| Calibration { scale: 1.0, ..Calibration::default() });
+            calibration.cameras = cameras.cameras.iter().map(|c| c.to_calibration()).collect();
+        }
         let meta = self.new_take_meta(&path);
         match Recorder::new(writer, &meta, &self.rig, mocap_format::DEFAULT_BLOCK_FRAMES) {
             Ok(mut recorder) => {
@@ -667,16 +704,34 @@ impl SessionModel {
         self.processor.set_settings(&self.rig, filter);
     }
 
+    /// The cameras to show: the running ones (while any pose source runs or nothing is
+    /// loaded), else the take's own calibrated cameras. A calibrated one stands where
+    /// the calibration put it.
+    fn scene_cameras(&self) -> Vec<CameraInput> {
+        let placed = |id: &str, rig: &[mocap_format::CameraCalibration]| {
+            rig.iter().find(|c| c.id == id).map(mocap_capture::CameraModel::from_calibration).map(|m| {
+                let (p, f) = (m.position(), m.forward());
+                ([p[0] as f32, p[1] as f32, p[2] as f32], [f[0] as f32, f[1] as f32, f[2] as f32])
+            })
+        };
+        if !self.live_poses() {
+            if let Some(cameras) = self.take.as_ref().and_then(|t| t.calibration.as_ref()).map(|c| &c.cameras).filter(|c| !c.is_empty()) {
+                return cameras.iter().map(|c| CameraInput { label: c.id.clone(), pose: placed(&c.id, cameras) }).collect();
+            }
+        }
+        let solved: Vec<mocap_format::CameraCalibration> = self.camera_rig.as_ref().map(|r| r.cameras.iter().map(|c| c.to_calibration()).collect()).unwrap_or_default();
+        self.sources
+            .iter()
+            .filter(|s| s.descriptor.has_video && s.running())
+            .map(|s| CameraInput { label: s.descriptor.label.clone(), pose: placed(&s.descriptor.id, &solved) })
+            .collect()
+    }
+
     /// The whole scene now: every body, camera keypoint figure, sensor and
     /// camera, from the live merged pose while any pose source runs, else from
     /// the take at the playhead (the cameras are the running ones).
     pub fn current_scene(&self) -> mocap_capture::Scene {
-        let cameras: Vec<(String, String)> = self
-            .sources
-            .iter()
-            .filter(|s| s.descriptor.has_video && s.running())
-            .map(|s| (s.descriptor.id.clone(), s.descriptor.label.clone()))
-            .collect();
+        let cameras = self.scene_cameras();
         let aspect = self
             .video_feeds()
             .iter()

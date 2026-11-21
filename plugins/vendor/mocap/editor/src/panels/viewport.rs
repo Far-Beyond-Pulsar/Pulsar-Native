@@ -31,6 +31,7 @@ impl ViewportPanel {
             PanelCanvasState::new().with_slots([
                 Slot::new("toolbar", SlotAnchor::TopLeft, size(px(580.), px(44.))).inset(px(8.), px(8.)),
                 Slot::new("stats", SlotAnchor::TopRight, size(px(360.), px(130.))).inset(px(8.), px(8.)),
+                Slot::new("calibration", SlotAnchor::TopLeft, size(px(360.), px(300.))).inset(px(8.), px(60.)),
             ])
         });
         cx.observe(&model, |_, _, cx| cx.notify()).detach();
@@ -95,6 +96,9 @@ impl ViewportPanel {
                     lines.push(format!("{key}: {w}x{h}"));
                 }
             }
+        }
+        if let Some(line) = model.calibration_summary() {
+            lines.push(line);
         }
         if model.is_recording() {
             let stats = model.record_stats;
@@ -282,7 +286,8 @@ impl Render for ViewportPanel {
             }).size_full()))
             .child(hint)
             .panel(self.toolbar(cx))
-            .panel(self.stats_card(cx));
+            .panel(self.stats_card(cx))
+            .panel(super::calibration::card(&self.model, &self.overlay, cx));
         div().size_full().bg(theme.background).child(canvas)
     }
 }

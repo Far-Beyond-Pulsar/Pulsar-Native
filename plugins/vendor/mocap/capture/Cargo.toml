@@ -21,7 +21,11 @@ ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, fea
 editor_task_queue = { workspace = true }
 parking_lot = { workspace = true }
 thiserror = { workspace = true }
+nalgebra = { version = "0.32", default-features = false, features = ["std"] }
 tracing = { workspace = true }
+
+[dev-dependencies]
+nalgebra = { version = "0.32", default-features = false, features = ["std"] }
 
 [build-dependencies]
 sha2 = { workspace = true }

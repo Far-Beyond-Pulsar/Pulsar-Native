@@ -55,6 +55,18 @@ pub struct Marker {
     pub label: String,
 }
 
+/// One calibrated camera: `x_cam = rotation * X_world + translation` (row-major
+/// rotation), a pinhole with its principal point at the image centre.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CameraCalibration {
+    pub id: String,
+    pub width: u32,
+    pub height: u32,
+    pub focal_px: f64,
+    pub rotation: [f64; 9],
+    pub translation: [f64; 3],
+}
+
 /// What the performer's neutral pose and scale measured: applied on read,
 /// never baked into the raw samples.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -63,6 +75,10 @@ pub struct Calibration {
     pub scale: f32,
     /// Per-channel rotation offsets (x, y, z, w) taken from the T-pose.
     pub offsets: BTreeMap<String, [f32; 4]>,
+    /// The cameras the take's keypoints were seen by, in the subject's world
+    /// (+Y up, floor at 0). Empty when the take had no camera calibration.
+    #[serde(default)]
+    pub cameras: Vec<CameraCalibration>,
 }
 
 /// A whole take in memory: one `Vec<f32>` per column, one sample per frame.
