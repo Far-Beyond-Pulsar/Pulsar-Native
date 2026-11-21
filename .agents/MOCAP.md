@@ -155,11 +155,18 @@ rest). Output is the COCO-17 image-space rig (`coco17_rig`): per keypoint
 `(x, y)` as fractions of the frame and `z` as confidence; a keypoint under 0.25 is a
 gap. The overlay draws them on that camera's tile.
 
-- Backend: `OnnxPoseEstimator` (`pose` feature, `tract`, pure Rust). Input
-  layout, size and element type are read from the model; output is the first
-  tensor, 17 x `(y, x, score)` (MoveNet-style). `PULSAR_MOCAP_POSE_SCALE`
+- Backend: `OnnxPoseEstimator` (`pose` feature, ONNX Runtime through `ort`; the
+  runtime is fetched by `ort`'s build and linked in). Input layout, size and
+  element type (`f32`, `i32`, `u8`) are read from the model; output is the first
+  tensor, 17 x `(y, x, score)` (MoveNet-style). It loads the bundled model in
+  about 0.15 s. `tract` was tried first and rejected: 0.21.10 runs out of memory
+  (8 GB and growing) typing this MoveNet file. `PULSAR_MOCAP_POSE_SCALE`
   (`unit`, `signed`) sets the input range when it is not 0..255.
-- No model ships. The model is looked up at the path chosen with `Pose model`,
-  else `PULSAR_MOCAP_POSE_MODEL`, else `<project>/.pulsar/models/pose.onnx`.
+- The model is built in: `capture/build.rs` fetches MoveNet SinglePose Lightning
+  (Apache-2.0, Xenova's ONNX conversion, pinned revision and SHA-256, cached in
+  `~/.cargo/pulsar-mocap-models`) and embeds it; offline builds set
+  `PULSAR_MOCAP_POSE_MODEL_FILE`, and a build without it asks for a model. A model
+  file wins over the built-in one: the path chosen with `Pose model`, else
+  `PULSAR_MOCAP_POSE_MODEL`, else `<project>/.pulsar/models/pose.onnx`.
 - Not built: converting keypoints to joint rotations (retargeting), multi-person,
   and triangulating calibrated cameras into 3D.
