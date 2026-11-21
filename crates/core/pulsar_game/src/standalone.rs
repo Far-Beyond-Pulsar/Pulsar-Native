@@ -496,6 +496,26 @@ pub fn select_level_pipeline(content_root: &std::path::Path, level: Option<&std:
 /// itself (the windowed game does, once the window exists) must call this
 /// too, or the session runs with the defaults.
 pub fn adopt_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
+    set_level_name(game, content, path);
+    game.load_world_roles(path, content.root());
+}
+
+/// [`adopt_level`] with the roles already resolved (by a loader thread, so the
+/// level file is not read again here).
+pub fn adopt_prepared_level(
+    game: &mut TickLoop,
+    content: &ContentRoot,
+    path: &std::path::Path,
+    roles: pulsar_traits::WorldRoles,
+) {
+    set_level_name(game, content, path);
+    for message in roles.diagnostics() {
+        tracing::warn!("{message}");
+    }
+    game.set_world_roles(roles);
+}
+
+fn set_level_name(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
     let name = content
         .relative(path)
         .unwrap_or_else(|| path.display().to_string());
@@ -505,7 +525,6 @@ pub fn adopt_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path:
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .set_level_name(name);
     }
-    game.load_world_roles(path, content.root());
 }
 
 #[cfg(test)]

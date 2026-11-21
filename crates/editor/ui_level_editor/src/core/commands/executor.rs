@@ -95,9 +95,14 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     if result.changed {
         let mut world = state.scene.world_mut();
         if engine_backend::scene::sublevel_display::needs_level_instance_sync(&world) {
-            engine_backend::scene::sublevel_display::sync_level_instances(&mut world);
+            // Never reads a file here (this is the UI thread): a level that is
+            // not read yet comes from a worker, applied by the viewport's frame.
+            let changed =
+                engine_backend::scene::sublevel_display::sync_level_instances_deferred(&mut world);
             drop(world);
-            state.scene.bump_revision(false);
+            if changed {
+                state.scene.bump_revision(false);
+            }
         }
     }
 

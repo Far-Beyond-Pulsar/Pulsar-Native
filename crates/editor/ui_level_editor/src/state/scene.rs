@@ -461,7 +461,9 @@ impl SceneDomain {
         match restored {
             Ok(()) => {
                 // Displays that came back (or went) show (or drop) their levels.
-                engine_backend::scene::sublevel_display::sync_level_instances(
+                // On the UI thread: the level files come from a worker, and
+                // the viewport's next frame applies them.
+                engine_backend::scene::sublevel_display::sync_level_instances_deferred(
                     &mut self.world_mut(),
                 );
                 true

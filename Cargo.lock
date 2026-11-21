@@ -6044,6 +6044,7 @@ dependencies = [
  "bytemuck",
  "helio-components",
  "helio-core",
+ "helio-frame-api",
  "image",
  "log",
  "naga",
@@ -6618,6 +6619,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-reference"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-settings",
+ "log",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-selection-outline"
 version = "0.1.0"
 dependencies = [
@@ -7049,6 +7064,7 @@ dependencies = [
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
  "helio-pass-postprocess",
+ "helio-pass-reference",
  "helio-pass-selection-outline",
  "helio-pass-ssr",
  "helio-pass-tsr",
@@ -13464,7 +13480,6 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=f6769f61518e1e68475bb9b6191fa26a29cc09f6#f6769f61518e1e68475bb9b6191fa26a29cc09f6"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -13480,7 +13495,6 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=f6769f61518e1e68475bb9b6191fa26a29cc09f6#f6769f61518e1e68475bb9b6191fa26a29cc09f6"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",

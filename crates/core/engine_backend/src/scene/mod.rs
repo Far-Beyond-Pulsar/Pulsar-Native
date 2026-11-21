@@ -87,7 +87,10 @@ pub use pulsar_scene_model::{
     Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId,
     Transform, Visibility,
 };
-pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
+pub use runtime_level::{
+    EditorCamera, HydrationProgress, LevelExtras, LevelHydration, PreparedLevelFile, RuntimeLevel,
+    RuntimeLevelError,
+};
 
 /// The scene is a `pulsar_scenedb::SceneDb` shared between the editor UI, the
 /// renderer and the play-mode runtime. This alias only names the sharing.
@@ -105,6 +108,7 @@ pub fn new_scene() -> pulsar_scenedb::SceneDb {
     scene
         .world
         .attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+    scene.world.set_asset_priority(Some(asset_priority));
     scene
 }
 
@@ -126,18 +130,63 @@ pub fn resolve_level_assets(world: &mut pulsar_scenedb::World) {
     }
 }
 
-/// Advance asset loading in the shared scene: start loads for newly
-/// referenced assets and bind the finished ones. Takes the scene's write
-/// lock only when there is work. Called once per frame before the GPU
+/// Advance asset loading in the shared scene within a frame's budget: start
+/// the nearest loads, apply and bind the finished ones, and leave the rest for
+/// the next frame (`pending` in the report says how much). Takes the scene's
+/// write lock only when there is work. Called once per frame before the GPU
 /// upload by every render loop (the editor viewport's, and the game's
 /// windowed and embedded ones), and at the end of every game tick, which
-/// also covers headless runs.
+/// also covers headless runs. See [`frame_asset_budget`].
 pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     if !scene.read().world.asset_work_pending() {
         return pulsar_scenedb::AssetPumpReport::default();
     }
     profiling::profile_scope!("scene::pump_assets");
-    scene.write().world.pump_assets()
+    let budget = frame_asset_budget();
+    scene.write().world.pump_assets_within(budget)
+}
+
+/// Tell the scene where the viewer is, so loads start nearest first
+/// (`new_scene` installs the ranking). Free when no asset work is pending.
+pub fn set_asset_focus(scene: &SharedScene, eye: [f64; 3]) {
+    if scene.read().world.asset_work_pending() {
+        scene.write().world.set_asset_focus(eye);
+    }
+}
+
+/// What one frame may spend in [`pump_assets`]: project settings
+/// `streaming.asset_bind_budget_ms` (default 2) and
+/// `streaming.asset_bind_max_per_frame` (default 8); 0 lifts that limit.
+pub fn frame_asset_budget() -> pulsar_scenedb::AssetBudget {
+    let setting = |key: &str, default: i64| {
+        match engine_state::settings::global_config().get(
+            engine_state::settings::NS_PROJECT,
+            "streaming",
+            key,
+        ) {
+            Ok(engine_state::settings::ConfigValue::Int(value)) => value.max(0),
+            _ => default,
+        }
+    };
+    let (ms, max) = (
+        setting("asset_bind_budget_ms", 2),
+        setting("asset_bind_max_per_frame", 8),
+    );
+    pulsar_scenedb::AssetBudget {
+        max_assets: if max == 0 { usize::MAX } else { max as usize },
+        time: (ms > 0).then(|| std::time::Duration::from_millis(ms as u64)),
+    }
+}
+
+/// How soon an entity's assets are wanted: its distance from the viewer
+/// ([`pulsar_scenedb::World::asset_focus`]). Parent-relative transforms rank
+/// by their local position, which is the nearest guess before a world
+/// transform exists.
+fn asset_priority(world: &pulsar_scenedb::World, entity: pulsar_scenedb::Entity) -> Option<f32> {
+    let position = world.get::<pulsar_scene_model::Transform>(entity)?.position;
+    let focus = world.asset_focus();
+    let delta = [0, 1, 2].map(|axis| position[axis] - focus[axis]);
+    Some((delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt() as f32)
 }
 
 /// Apply one asset update to `world` (SceneDB#84): a changed file reloads

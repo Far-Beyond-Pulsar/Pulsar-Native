@@ -80,6 +80,244 @@ pub struct LevelExtras {
     pub editor_camera: Option<EditorCamera>,
 }
 
+/// A level file read, parsed and migrated, ready to hydrate
+/// ([`RuntimeLevel::prepare`]). It holds no world: it is plain data, so it can
+/// be built on any thread and handed to the one that applies it.
+#[derive(Clone)]
+pub struct PreparedLevelFile {
+    file: SceneFile,
+    registry: pulsar_class::ClassRegistry,
+}
+
+impl PreparedLevelFile {
+    /// The camera saved under `editor.camera`, if any.
+    pub fn editor_camera(&self) -> Option<EditorCamera> {
+        editor_camera(&self.file.editor)
+    }
+
+    /// Start hydrating this level a little at a time ([`LevelHydration`]), for
+    /// a frame thread that can spend only a few milliseconds per frame.
+    pub fn begin_hydration(self) -> Result<LevelHydration, RuntimeLevelError> {
+        LevelHydration::new(self.file, self.registry)
+    }
+}
+
+/// Where a [`LevelHydration`] stands after a step.
+pub enum HydrationProgress {
+    /// Call `step` again (next frame).
+    More,
+    /// The level is in the world.
+    Done(LevelExtras),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HydrationStage {
+    Validate,
+    Objects,
+    Frames,
+    Components,
+    Classes,
+    Finish,
+    Done,
+}
+
+/// How many class roots one expansion handles at once.
+const CLASS_ROOTS_PER_UNIT: usize = 16;
+
+/// A level hydrated in bounded steps. Each [`step`](Self::step) does whole
+/// units of work (one object spawned, one object's components attached, a
+/// handful of class roots expanded) until its time budget is spent, then
+/// returns, so a frame thread holds the world's write lock for a few
+/// milliseconds at a time however large the level is. The world is partial
+/// between steps: renderers show what has arrived, and gameplay must not tick
+/// until [`HydrationProgress::Done`].
+///
+/// Hydrating all at once is this run with an unlimited budget
+/// (`RuntimeLevel::hydrate_migrated`), so there is one implementation.
+pub struct LevelHydration {
+    file: SceneFile,
+    registry: pulsar_class::ClassRegistry,
+    version: String,
+    stage: HydrationStage,
+    cursor: usize,
+    spawned: Vec<Entity>,
+    persisted: HashMap<String, Vec<ComponentRecord>>,
+    roots: Vec<Entity>,
+    extras: LevelExtras,
+}
+
+impl LevelHydration {
+    fn new(
+        file: SceneFile,
+        registry: pulsar_class::ClassRegistry,
+    ) -> Result<Self, RuntimeLevelError> {
+        let version = version_string(&file.version);
+        // Same accepted set as the editor's own loader: 1.x and 2.x.
+        if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
+            return Err(RuntimeLevelError::UnsupportedVersion(version));
+        }
+        let extras = LevelExtras {
+            editor_camera: editor_camera(&file.editor),
+        };
+        Ok(Self {
+            persisted: persisted_components(&file.components),
+            file,
+            registry,
+            version,
+            stage: HydrationStage::Validate,
+            cursor: 0,
+            spawned: Vec::new(),
+            roots: Vec::new(),
+            extras,
+        })
+    }
+
+    /// How far along it is, 0 to 1 (by units of work, not time).
+    pub fn fraction(&self) -> f32 {
+        let objects = self.file.objects.len().max(1) as f32;
+        match self.stage {
+            HydrationStage::Validate => 0.0,
+            HydrationStage::Objects => 0.3 * self.cursor as f32 / objects,
+            HydrationStage::Frames => 0.3,
+            HydrationStage::Components => 0.3 + 0.5 * self.cursor as f32 / objects,
+            HydrationStage::Classes => 0.8 + 0.15 * self.cursor as f32 / objects,
+            HydrationStage::Finish => 0.95,
+            HydrationStage::Done => 1.0,
+        }
+    }
+
+    /// Do units of work until `budget` is spent (always at least one, so a
+    /// zero budget still makes progress). Validates before it changes the
+    /// world, so a malformed level leaves nothing behind.
+    pub fn step(
+        &mut self,
+        world: &mut World,
+        budget: std::time::Duration,
+    ) -> Result<HydrationProgress, RuntimeLevelError> {
+        profiling::profile_scope!("level_hydration::step");
+        let started = std::time::Instant::now();
+        loop {
+            match self.stage {
+                HydrationStage::Validate => {
+                    // Parent-before-child order is the format's own DFS
+                    // guarantee (see `SceneFile::objects` doc), which is what
+                    // spawning requires.
+                    validate_objects(world, &self.file.objects)?;
+                    self.spawned.reserve(self.file.objects.len());
+                    self.advance(HydrationStage::Objects);
+                }
+                HydrationStage::Objects => {
+                    let Some(obj) = self.file.objects.get(self.cursor) else {
+                        self.advance(HydrationStage::Frames);
+                        continue;
+                    };
+                    self.spawned.push(spawn_file_object(world, obj)?);
+                    self.cursor += 1;
+                }
+                HydrationStage::Frames => {
+                    // A level saved before parent-relative transforms holds
+                    // world-space values for parented objects: make them local,
+                    // in place.
+                    if hierarchy_transform::file_has_world_space_transforms(&self.version) {
+                        hierarchy_transform::convert_legacy_world_transforms(world, &self.spawned);
+                    }
+                    // Rigid frames (an object prop) become frame components.
+                    crate::scene::frames::sync_frames_from_props(world, &self.spawned);
+                    for &entity in &self.spawned {
+                        crate::scene::partitions::apply_space_prop(world, entity);
+                    }
+                    self.advance(HydrationStage::Components);
+                }
+                HydrationStage::Components => {
+                    let Some(obj) = self.file.objects.get(self.cursor) else {
+                        self.roots = self
+                            .file
+                            .objects
+                            .iter()
+                            .filter_map(|obj| world.entity_for(&obj.id))
+                            .collect();
+                        self.advance(HydrationStage::Classes);
+                        continue;
+                    };
+                    self.cursor += 1;
+                    let Some(entity) = world.entity_for(&obj.id) else {
+                        continue;
+                    };
+                    let instances = match self.persisted.get(&obj.id) {
+                        // A persisted entry is authoritative, including an
+                        // explicit empty array: the object has no components.
+                        Some(records) => records.clone(),
+                        None => component_instances_from_props(
+                            &obj.props,
+                            obj.component_instances.as_ref(),
+                        )
+                        .into_iter()
+                        .map(|(index, class_name, data)| ComponentRecord {
+                            index,
+                            class_name,
+                            data,
+                            enabled: true,
+                        })
+                        .collect::<Vec<_>>(),
+                    };
+                    // Legacy shapes were migrated with the file
+                    // (`pulsar_class::records`).
+                    hydrate_components(world, entity, &obj.id, &instances)?;
+                }
+                HydrationStage::Classes => {
+                    // Placed classes: rebuild each instance from the current
+                    // class definition, then apply its overrides. Unresolved
+                    // classes keep their ClassInstance and are only warned about.
+                    if self.cursor >= self.roots.len() {
+                        self.advance(HydrationStage::Finish);
+                        continue;
+                    }
+                    let end = (self.cursor + CLASS_ROOTS_PER_UNIT).min(self.roots.len());
+                    let report = pulsar_class::world::expand_roots(
+                        world,
+                        &self.registry,
+                        &self.roots[self.cursor..end],
+                    );
+                    for id in &report.unresolved {
+                        tracing::warn!(object = %id, "Placed class instance has no class in this project");
+                    }
+                    self.cursor = end;
+                }
+                HydrationStage::Finish => {
+                    // Plugin singleton rules are repaired on load; directional
+                    // lights are unrestricted.
+                    crate::scene::level_rules::enforce_on_load(world);
+                    // Components are hydrated now: everything that defines a
+                    // space (a sublevel placement is a component) gets its slot.
+                    crate::scene::frames::sync_spaces(world);
+                    // What the migration could not turn into a ClassInstance (a
+                    // second class bound to one object) has no script instance
+                    // any more.
+                    for (stable_id, bindings) in &self.file.blueprint_bindings {
+                        for binding in bindings {
+                            tracing::warn!(
+                                object = %stable_id,
+                                class = %binding.class_name,
+                                "Legacy script binding not migrated (one class per object); it does not run"
+                            );
+                        }
+                    }
+                    self.advance(HydrationStage::Done);
+                }
+                HydrationStage::Done => return Ok(HydrationProgress::Done(self.extras.clone())),
+            }
+            if started.elapsed() >= budget && self.stage != HydrationStage::Done {
+                return Ok(HydrationProgress::More);
+            }
+        }
+    }
+
+    fn advance(&mut self, stage: HydrationStage) {
+        self.stage = stage;
+        self.cursor = 0;
+    }
+}
+
 /// A scene loaded for runtime use: one shared SceneDB scene plus
 /// the level-file extras gameplay cares about (editor camera seed).
 pub struct RuntimeLevel {
@@ -121,16 +359,74 @@ impl RuntimeLevel {
 
     /// [`load_into`](Self::load_into) with an explicit class registry
     /// (tools, tests).
+    ///
+    /// **Blocking**: it reads the file, waits for the level's assets (up to
+    /// [`crate::scene::LEVEL_ASSET_WAIT`]) and loads sublevels inline. It is for
+    /// headless runs, tools and tests. A host with a window or a UI uses
+    /// [`prepare`](Self::prepare) on a worker and [`apply_prepared`](Self::apply_prepared)
+    /// instead.
     pub fn load_into_with_classes(
         path: &Path,
         world: &mut World,
         registry: &pulsar_class::ClassRegistry,
     ) -> Result<LevelExtras, RuntimeLevelError> {
-        let file = load_scene_file(path, registry)?;
-        let editor_camera = editor_camera(&file.editor);
-        Self::hydrate_scene_file(file, world, registry)?;
+        let prepared = Self::prepare(path, registry)?;
+        let editor_camera = prepared.editor_camera();
+        Self::hydrate_migrated(prepared.file, world, registry)?;
         crate::scene::sublevel_display::sync_level_instances(world);
         crate::scene::resolve_level_assets(world);
+        Ok(LevelExtras { editor_camera })
+    }
+
+    /// Read, parse and migrate a level file, and nothing else: no world, no
+    /// lock, no asset work. This is the slow, I/O-bound half of a load, so
+    /// it runs on a worker; [`apply_prepared`](Self::apply_prepared) is the
+    /// half that touches the world.
+    pub fn prepare(
+        path: &Path,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> Result<PreparedLevelFile, RuntimeLevelError> {
+        profiling::profile_scope!("runtime_level::prepare");
+        let mut file = load_scene_file(path, registry)?;
+        migrate_scene_file(&mut file, registry);
+        Ok(PreparedLevelFile {
+            file,
+            registry: registry.clone(),
+        })
+    }
+
+    /// A prepared level from an already-parsed file (tests).
+    #[cfg(test)]
+    fn prepare_from_file_for_test(
+        mut file: SceneFile,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> PreparedLevelFile {
+        migrate_scene_file(&mut file, registry);
+        PreparedLevelFile {
+            file,
+            registry: registry.clone(),
+        }
+    }
+
+    /// [`prepare`](Self::prepare) against the current project's classes. The
+    /// class scan reads the disk, so this too belongs on a worker.
+    pub fn prepare_for_project(path: &Path) -> Result<PreparedLevelFile, RuntimeLevelError> {
+        Self::prepare(path, &project_class_registry())
+    }
+
+    /// Hydrate a prepared level into `world`. Pure in-memory work: no file is
+    /// read and no asset is waited for (the renderer's per-frame pump binds
+    /// them as they finish), so it is safe under a world write lock on a
+    /// frame thread. Sublevels are requested in the background
+    /// ([`crate::scene::sublevel_display::sync_level_instances_deferred`]).
+    pub fn apply_prepared(
+        prepared: PreparedLevelFile,
+        world: &mut World,
+    ) -> Result<LevelExtras, RuntimeLevelError> {
+        profiling::profile_scope!("runtime_level::apply_prepared");
+        let editor_camera = prepared.editor_camera();
+        Self::hydrate_migrated(prepared.file, world, &prepared.registry)?;
+        crate::scene::sublevel_display::sync_level_instances_deferred(world);
         Ok(LevelExtras { editor_camera })
     }
     /// Instantiate a level file's objects **under** `parent`: the file's origin
@@ -149,8 +445,21 @@ impl RuntimeLevel {
         parent: Entity,
         id_prefix: &str,
     ) -> Result<Vec<Entity>, RuntimeLevelError> {
-        let registry = project_class_registry();
-        let mut file = load_scene_file(path, &registry)?;
+        let prepared = Self::prepare_for_project(path)?;
+        Self::apply_prepared_under(&prepared, world, parent, id_prefix)
+    }
+
+    /// [`load_under`](Self::load_under) from a level prepared on a worker
+    /// ([`prepare`](Self::prepare)); the same prepared level can be placed any
+    /// number of times.
+    pub fn apply_prepared_under(
+        prepared: &PreparedLevelFile,
+        world: &mut World,
+        parent: Entity,
+        id_prefix: &str,
+    ) -> Result<Vec<Entity>, RuntimeLevelError> {
+        let registry = &prepared.registry;
+        let mut file = prepared.file.clone();
         let prefixed = |id: &str| format!("{id_prefix}{id}");
         let top_level: Vec<String> = file
             .objects
@@ -178,7 +487,7 @@ impl RuntimeLevel {
                 .into_iter()
                 .collect();
         before.insert(parent);
-        Self::hydrate_scene_file(file, world, &registry)?;
+        Self::hydrate_migrated(file, world, registry)?;
         for id in top_level {
             if let Some(entity) = world.entity_for(&id) {
                 // The file's transform is already relative to its origin.
@@ -226,88 +535,18 @@ impl RuntimeLevel {
         registry: &pulsar_class::ClassRegistry,
     ) -> Result<(), RuntimeLevelError> {
         migrate_scene_file(&mut file, registry);
-        let version = version_string(&file.version);
-        // Same accepted set as the editor's own loader: 1.x and 2.x.
-        if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
-            return Err(RuntimeLevelError::UnsupportedVersion(version));
-        }
+        Self::hydrate_migrated(file, world, registry)
+    }
 
-        // Parent-before-child order is the format's own DFS guarantee (see
-        // `SceneFile::objects` doc), which is what spawning requires.
-        // Validate before mutating World so malformed hierarchy/identity data
-        // cannot leave a partially hydrated SceneDB.
-        validate_objects(world, &file.objects)?;
-        let mut spawned = Vec::with_capacity(file.objects.len());
-        for obj in &file.objects {
-            spawned.push(spawn_file_object(world, obj)?);
-        }
-        // A level saved before parent-relative transforms holds world-space
-        // values for parented objects: make them local, in place.
-        if hierarchy_transform::file_has_world_space_transforms(&version) {
-            hierarchy_transform::convert_legacy_world_transforms(world, &spawned);
-        }
-        // Rigid frames (an object prop) become frame components.
-        crate::scene::frames::sync_frames_from_props(world, &spawned);
-        for &entity in &spawned {
-            crate::scene::partitions::apply_space_prop(world, entity);
-        }
-
-        let persisted = persisted_components(&file.components);
-        for obj in &file.objects {
-            let Some(entity) = world.entity_for(&obj.id) else {
-                continue;
-            };
-            let instances = match persisted.get(&obj.id) {
-                // A persisted entry is authoritative, including an explicit empty
-                // array, which means the object has no components.
-                Some(records) => records.clone(),
-                None => {
-                    component_instances_from_props(&obj.props, obj.component_instances.as_ref())
-                        .into_iter()
-                        .map(|(index, class_name, data)| ComponentRecord {
-                            index,
-                            class_name,
-                            data,
-                            enabled: true,
-                        })
-                        .collect::<Vec<_>>()
-                }
-            };
-            // Legacy shapes were migrated with the file
-            // (`pulsar_class::records`: flat data nested, and the plugins'
-            // migrations, such as the meshes').
-            hydrate_components(world, entity, &obj.id, &instances)?;
-        }
-
-        // Placed classes: rebuild each instance from the current class
-        // definition, then apply its overrides. Unresolved classes keep their
-        // ClassInstance and are only warned about.
-        let roots: Vec<Entity> = file
-            .objects
-            .iter()
-            .filter_map(|obj| world.entity_for(&obj.id))
-            .collect();
-        let report = pulsar_class::world::expand_roots(world, registry, &roots);
-        for id in &report.unresolved {
-            tracing::warn!(object = %id, "Placed class instance has no class in this project");
-        }
-        // Plugin singleton rules are repaired on load; directional lights
-        // are unrestricted.
-        crate::scene::level_rules::enforce_on_load(world);
-        // Components are hydrated now: everything that defines a space (a sublevel
-        // placement is a component) gets its slot.
-        crate::scene::frames::sync_spaces(world);
-        // What the migration could not turn into a ClassInstance (a second
-        // class bound to one object) has no script instance any more.
-        for (stable_id, bindings) in &file.blueprint_bindings {
-            for binding in bindings {
-                tracing::warn!(
-                    object = %stable_id,
-                    class = %binding.class_name,
-                    "Legacy script binding not migrated (one class per object); it does not run"
-                );
-            }
-        }
+    /// Hydrate a file that already went through [`migrate_scene_file`] (a
+    /// prepared level), all at once: [`LevelHydration`] run to the end.
+    fn hydrate_migrated(
+        file: SceneFile,
+        world: &mut World,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> Result<(), RuntimeLevelError> {
+        let mut hydration = LevelHydration::new(file, registry.clone())?;
+        while let HydrationProgress::More = hydration.step(world, std::time::Duration::MAX)? {}
         Ok(())
     }
 
@@ -717,6 +956,53 @@ mod tests {
         let group = world.entity_for("group").unwrap();
         assert_eq!(world.parent_of(cube), Some(group));
         assert_eq!(world.children_of(Some(group)), vec![cube]);
+    }
+
+    /// A zero budget still advances one unit per step, the world is partial in
+    /// between (what a frame thread shows while the level arrives), and the
+    /// result is the level a single-shot load builds.
+    #[test]
+    fn stepped_hydration_makes_progress_and_matches_a_single_shot() {
+        let file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
+        let registry = pulsar_class::ClassRegistry::default();
+        let mut world = crate::scene::new_scene().world;
+        let mut hydration = RuntimeLevel::prepare_from_file_for_test(file, &registry)
+            .begin_hydration()
+            .expect("begins");
+
+        let mut steps = 0;
+        let mut seen_partial = false;
+        let extras = loop {
+            steps += 1;
+            assert!(steps < 100, "hydration never finished");
+            match hydration
+                .step(&mut world, std::time::Duration::ZERO)
+                .expect("steps")
+            {
+                HydrationProgress::More => {
+                    seen_partial |= world.entity_for("sun").is_some()
+                        && world.entity_for("cube").is_none();
+                }
+                HydrationProgress::Done(extras) => break extras,
+            }
+        };
+        assert!(steps > 3, "work was split into units, got {steps} steps");
+        assert!(seen_partial, "objects arrive before the whole level does");
+        assert!(extras.editor_camera.is_some());
+
+        let whole = sample_level();
+        let whole = whole.scene();
+        let whole = whole.read();
+        for id in ["sun", "group", "cube"] {
+            let stepped = world.entity_for(id).expect("stepped has it");
+            let single = whole.world.entity_for(id).unwrap();
+            assert_eq!(
+                world.get::<Transform>(stepped).unwrap().position,
+                whole.world.get::<Transform>(single).unwrap().position
+            );
+        }
+        let cube = world.entity_for("cube").unwrap();
+        assert_eq!(world.parent_of(cube), world.entity_for("group"));
     }
 
     #[test]

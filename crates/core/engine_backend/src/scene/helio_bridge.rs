@@ -590,6 +590,8 @@ impl SpaceSync {
         // Levels that displays show, and the slots of everything that defines a
         // space. Both checks are cheap reads; the write lock is taken only when
         // something changed (a display was added or retargeted, a frame made).
+        // A display's level file is read by a worker (never here, on the frame
+        // thread): this applies it once it has arrived.
         let needs_sync = {
             let world = &scene.read().world;
             crate::scene::sublevel_display::needs_level_instance_sync(world)
@@ -597,7 +599,7 @@ impl SpaceSync {
         };
         if needs_sync {
             let mut scene = scene.write();
-            crate::scene::sublevel_display::sync_level_instances(&mut scene.world);
+            crate::scene::sublevel_display::sync_level_instances_deferred(&mut scene.world);
             pulsar_scene_model::frames::sync_spaces(&mut scene.world);
         }
         let mut table = SpaceTable::new(pulsar_scene_model::frames::frame_table(

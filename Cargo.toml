@@ -833,5 +833,6 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # patch point at a different rev of the same repository), so SceneDB's types
 # are one set of types for all of them.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
+# LOCAL until the SceneDB budgeted-asset-pump PR merges; then re-pin all three manifests (/bump-deps).
+pulsar_scenedb = { path = "D:/GitHub/SceneDB/crates/pulsar_scenedb" }
+pulsar_scenedb_derive = { path = "D:/GitHub/SceneDB/crates/pulsar_scenedb_derive" }

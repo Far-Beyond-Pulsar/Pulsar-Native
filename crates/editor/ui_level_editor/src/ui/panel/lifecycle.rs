@@ -328,10 +328,18 @@ impl LevelEditorPanel {
                 (Option<std::path::PathBuf>, bool),
                 (Option<String>, TransformTool),
             )> = None;
+            let mut shown_levels = engine_backend::scene::sublevel_display::applied_generation();
             loop {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
+                // A sublevel's file is read by a worker and lands in some
+                // frame's sync: the hierarchy shows it from the next revision.
+                let applied = engine_backend::scene::sublevel_display::applied_generation();
+                if applied != shown_levels {
+                    shown_levels = applied;
+                    poll_state.write().scene.bump_revision(false);
+                }
                 // Report Play-In-Editor status to the engine-global playback state.
                 super::playback_host::publish_playback_status(playback_host_id, &poll_state.read());
                 // A plugin's interaction that ended (a released sculpt
