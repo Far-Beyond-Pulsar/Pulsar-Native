@@ -334,3 +334,31 @@ come; a heading offset to the body is not estimated), using sensor rotations as 
 sync (genlock/timecode: the estimate above is the software substitute), board or wand calibration with a
 bundle adjustment over intrinsics and lens distortion (the cameras' accuracy still limits everything above),
 and several subjects.
+
+## Camera calibration from a moving light (as built)
+
+The body-based calibration is limited by the body (keypoints are blurry, the body is nearly flat, lenses are
+guessed), so there is a better method that needs no printed target: wave a point of light (a phone's flashlight,
+an LED, a lit ball) through the space the cameras share. This is the multi-camera self-calibration of Svoboda et al.
+
+- `capture/src/blob.rs` `find_light`: the one bright compact patch in a frame, sub-pixel (weighted centroid), `None`
+  when there is none, two of similar strength, or it is too faint, too large or the frame is washed out.
+- `capture/src/wand.rs` `WandCalibrator`: collects the moments (a camera's pixel for each camera that saw the light,
+  at least two, moved 14 px since the last kept), then solves: the essential matrix of the pair that saw it most
+  (RANSAC), the other cameras by resection (DLT in RANSAC) with a pose-only adjustment after each, then the full
+  bundle adjustment (focal lengths, then radial distortion k1 and k2) with a robust loss, outliers dropped and a
+  second pass. The size is set by one measurement (the distance between two cameras). The world is aligned: up
+  from the cameras standing level (their right vectors span a horizontal plane), the floor at the lowest the
+  light went, +Z along the first camera's view.
+- `capture/src/bundle.rs`: Levenberg-Marquardt over every camera (rotation, translation, log focal, k1, k2) and
+  point, Cauchy loss, the points eliminated by the Schur complement (the system left is nine numbers per camera).
+- `CameraModel` now has `k1`, `k2` (stored in the take's `CALB`, default zero): `project` is the ideal pinhole,
+  `project_raw` has the distortion, and detections are undistorted on the way in (`normalise`, `pixel`), so the
+  solver and the triangulation see a pinhole.
+- The Setup panel's Light method: the cameras running (no Track body needed), the size measurement, the live count
+  and image coverage per camera, a ring on the light in each camera view.
+
+On synthetic data (four cameras with different focal lengths and distortion, 0.6 px noise, 5 percent dropouts, 1
+percent gross misses) the focal lengths are found within 0.3 percent (from a 785-per-width guess), the cameras'
+spacing within 3 cm and the reprojection error 0.7 px. Not built: a printed board (the light covers the same need),
+saving a calibration for reuse, tangential distortion.
