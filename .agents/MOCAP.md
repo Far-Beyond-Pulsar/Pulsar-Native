@@ -234,3 +234,40 @@ triangulated joints are within 3 cm after rigid alignment.
 Not built: camera lens distortion, time offsets between cameras (frames within 80 ms
 count as simultaneous), tracking more than one subject across views, and saving a
 calibration to reuse for a later session.
+
+### Calibration robustness and diagnostics (as built)
+
+What the calibration needs, and what it does when that is missing:
+
+- **A handful of shared keypoints.** Keypoints are labelled (index 5 is always the left
+  shoulder), so every shared label is a direct correspondence, pooled over the capture. A
+  sample links two cameras when they share at least two keypoints whose reliabilities add
+  up to 1.1 (a shoulder and anything, an elbow and a wrist, a knee and an ankle; two wrists
+  or two eyes do not). No camera has to see the whole body. Two cameras sharing only a left
+  elbow and wrist calibrate to within about 4 percent of the true baseline in the tests.
+- **Scale needs one shared bone** (two connected keypoints); with none, the error says so.
+- **World alignment from whatever was seen:** up from any bone that points up (torso, legs,
+  head, weakly the arms), left from any left-right pair, the floor from the lowest part seen.
+  When a cue is missing the rig lists the assumption in `CameraRig::notes` (arbitrary
+  heading, guessed floor, up from the arms only) rather than failing.
+- **Robust to a real detector:** keypoints weigh by confidence and reliability; the fit uses a
+  soft-clipped (robust) residual; the acceptance metric is a trimmed RMS (the worst tenth,
+  the detector's gross misses, is ignored) and each camera must fit on its own (9 px).
+  RANSAC is adaptive (up to 6000 draws, 99.5 percent confidence) and polished on its inliers.
+- **Held poses are averaged** (`HoldAverager`: the median of 10 frames, steady keypoints only),
+  which removes noise, gross misses and timing error between cameras for those samples.
+- **Guided steps tolerate a real detector:** a hold rides out gaps of 0.4 s, a wrist scored
+  0.25 counts, a hand at ear level counts, and the card shows a hint (cannot see your wrist /
+  raise higher / that is the other hand). After the steps, free movement keeps being collected
+  until 100 samples.
+- **Failures say why:** `Calibrator::shared_report` lists, per pair, the labelled keypoints
+  both saw, how often and how much they moved; the error names what each unplaced camera
+  shared, warns when the shared keypoints barely moved or were only head and torso, and with
+  three or more cameras says which one to remove (the camera whose removal lets the rest
+  calibrate).
+
+Known limits: the pairwise-then-chain solve is sensitive when cameras see very different
+parts of the body (a camera listed first that sees only part of the body is refused, naming
+it, rather than used as the reference; two complementary partial cameras beside full ones are
+refused with the culprit named). A global bundle adjustment would be the next step. Focal
+length starts from a guess and is refined; lens distortion is not modelled.

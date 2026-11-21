@@ -1,3 +1,6 @@
+//! Shared helpers for the calibration tests; each test binary uses a different subset.
+#![allow(dead_code)]
+
 use mocap_capture::{CalibrationError, Calibrator, CameraModel, CameraSpec};
 use nalgebra::{Matrix3, Vector3};
 
