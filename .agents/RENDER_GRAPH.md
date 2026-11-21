@@ -165,6 +165,8 @@ Splines draw through the debug lines (no pass of their own). Tests:
 | portals | `helio.pass.portal_editor_overlay` | Overlay: Portal Openings (Editor) | `Overlay` drawer 20 |
 | voxel | `helio.pass.voxel_chunks` | Voxel: Chunk Terrain | `GBuffer` drawer 40 |
 | kernel (spine) | `gbuffer_clear`, `background`, `hiz`, `unlit`, `tsr`, `post_process` | Scene: Clear G-Buffer, Scene: Clear Background, Culling: Depth Pyramid (Hi-Z), Lighting: Unlit, Anti-Aliasing: TSR, Post: Tone Map + Grade | as the preset places them |
+| kernel (spine) | no node: `HistoryReprojection`, `HistoryPixels` (`helio-pass-history`) | the frame's pixel history (`helio_frame_api::history`) | added by the first reader of a graph where it asks (`history::request`: TSR the reprojection, the denoiser where a pixel was); a graph without a reader schedules neither |
+| kernel | no node: `Denoise` (`helio-pass-denoise`, feature `helio.denoise`) | the frame's denoiser (`helio_frame_api::denoise`) | added after a producer's passes by `denoise::filter`; without a producer nothing is scheduled |
 | kernel | `ssr`, `ssr_composite`, `planar_reflection`, `fxaa`, `buffer_view`, `perf_overlay`, `debug_draw_scene`, `debug_draw` | feature crates / `helio-presets` `RendererNodes` | see their features |
 | kernel | `helio.pass.debug_overlay` | Output: Debug Overlay | none: no shipped pipeline draws it; place it after the display slot's nodes |
 | kernel | `helio.pass.selection_mask_clear`, `helio.pass.selection_outline` | Selection: Clear Mask, Output: Selection Outline | opens phase SelectionMask; slot Display, 5 (editor only) |
