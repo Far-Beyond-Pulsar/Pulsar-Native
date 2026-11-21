@@ -362,3 +362,23 @@ On synthetic data (four cameras with different focal lengths and distortion, 0.6
 percent gross misses) the focal lengths are found within 0.3 percent (from a 785-per-width guess), the cameras'
 spacing within 3 cm and the reprojection error 0.7 px. Not built: a printed board (the light covers the same need),
 saving a calibration for reuse, tangential distortion.
+
+## Joints nobody sees: anatomy (as built)
+
+`capture/src/anatomy.rs` (`Anatomy`, applied by `BodySolver` unless `use_anatomy` is off; `Solved.estimated` says
+which joints it filled in). Estimates come from the seen joints, the learned bone lengths and how a skeleton bends:
+
+- The torso is completed first: missing hips go below the shoulders along the torso direction (measured while both
+  ends were seen, relaxing toward up when not, so a guess never feeds on its own guesses), and the other way round;
+  one of a pair from its partner and the pair's width.
+- A limb whose middle joint is seen continues at the bend it last had (or a rest flexion); with only its end seen,
+  two-bone IK puts the middle on the circle the two lengths allow, elbows back and knees forward; with neither
+  seen the limb hangs, the forearm a little forward.
+- Elbows and knees are hinges: flexion within -4 and 150 degrees, bending toward the front (elbows) or the back
+  (knees). A limb that would hyperextend is bent back, whether it was seen or estimated.
+- Estimates are smoothed against their last value (half) and flagged, so a viewer can show them as less certain.
+
+On the synthetic suite with joints hidden from every camera: hips 3 cm, knees 11 cm, elbows 11 cm, and the
+swinging ankles and wrists 23 to 26 cm (a hanging limb cannot know how it swings); every one of the 17 joints
+has an answer in every frame, where the raw solver has none for a joint nobody sees. The test subject now also
+exists with human knees (`common::human`): the original one bent its knees forward.
