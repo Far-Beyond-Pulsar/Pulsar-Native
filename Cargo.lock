@@ -9447,6 +9447,7 @@ name = "mocap_capture"
 version = "0.1.0"
 dependencies = [
  "editor_task_queue",
+ "image",
  "mocap_format",
  "nokhwa",
  "parking_lot",

@@ -89,10 +89,11 @@ fn run(info: CameraInfo, mode: CameraMode, sink: SourceSink, shared: Arc<SourceS
     };
     shared.set_state(SourceState::Live);
     let mut sequence = 0u64;
+    let mut failing = false;
     while !ctx.is_cancelled() {
         ctx.heartbeat();
-        let image = camera.frame().and_then(|buffer| buffer.decode_image::<RgbAFormat>());
-        match image {
+        let decoded = camera.frame().map_err(|e| e.to_string()).and_then(|buffer| decode(&buffer));
+        match decoded {
             Ok(image) => {
                 let (width, height) = image.dimensions();
                 sink.video.put(VideoFrame {
@@ -104,10 +105,14 @@ fn run(info: CameraInfo, mode: CameraMode, sink: SourceSink, shared: Arc<SourceS
                     time_s: sink.clock.now_s(),
                 });
                 sequence += 1;
+                failing = false;
                 shared.frame_delivered();
             }
             Err(e) => {
-                tracing::warn!("camera {} dropped a frame: {e}", info.name);
+                if !failing {
+                    tracing::warn!("camera {} is not delivering frames: {e}", info.name);
+                }
+                failing = true;
                 std::thread::sleep(std::time::Duration::from_millis(20));
             }
         }
@@ -157,4 +162,16 @@ impl Drop for CameraSource {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+/// Decodes a camera buffer to RGBA. MJPEG (what most webcams send at their
+/// higher modes) goes through the `image` crate, so the build needs no native
+/// JPEG library; every other format is converted by `nokhwa`.
+fn decode(buffer: &nokhwa::Buffer) -> Result<image::RgbaImage, String> {
+    if buffer.source_frame_format() == FrameFormat::MJPEG {
+        return image::load_from_memory_with_format(buffer.buffer(), image::ImageFormat::Jpeg)
+            .map(|decoded| decoded.to_rgba8())
+            .map_err(|e| format!("MJPEG frame did not decode: {e}"));
+    }
+    buffer.decode_image::<RgbAFormat>().map_err(|e| e.to_string())
 }
