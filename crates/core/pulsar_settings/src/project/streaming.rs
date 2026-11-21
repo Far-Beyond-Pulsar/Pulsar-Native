@@ -65,6 +65,21 @@ pub fn register(cfg: &'static ConfigManager) {
             .validator(Validator::int_range(0, 1024)),
         )
         .setting(
+            "coarse_texture_size",
+            SchemaEntry::new(
+                "Largest side, in texels, of the first version of a texture that streams in low resolution first; the full version follows, nearest first (0 = load textures in one step)",
+                128_i64,
+            )
+            .label("Coarse Texture Size")
+            .page("Streaming")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(4096.0),
+                step: Some(64.0),
+            })
+            .validator(Validator::int_range(0, 4096)),
+        )
+        .setting(
             "max_texture_size",
             SchemaEntry::new(
                 "Largest side, in texels, a texture is kept at; larger images are scaled down as they load (0 = no cap)",

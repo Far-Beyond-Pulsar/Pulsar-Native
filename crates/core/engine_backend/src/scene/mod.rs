@@ -332,3 +332,37 @@ mod change_window_tests {
         assert!(tracker.drain_component_removals().is_empty());
     }
 }
+
+#[cfg(test)]
+mod asset_pump_tests {
+    use super::*;
+
+    #[test]
+    fn a_frame_pumps_a_bounded_share_of_the_assets() {
+        let budget = frame_asset_budget();
+        assert_eq!(budget.max_assets, 8);
+        assert_eq!(budget.time, Some(std::time::Duration::from_millis(2)));
+    }
+
+    #[test]
+    fn assets_rank_by_distance_from_the_viewer() {
+        let mut scene = new_scene();
+        let world = &mut scene.world;
+        let near = world.spawn();
+        let far = world.spawn();
+        let at = |x: f64| pulsar_scene_model::Transform {
+            position: [x, 0.0, 0.0],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+        };
+        world.insert(near, at(3.0));
+        world.insert(far, at(300.0));
+        world.set_asset_focus([0.0; 3]);
+        assert_eq!(asset_priority(world, near), Some(3.0));
+        assert_eq!(asset_priority(world, far), Some(300.0));
+        world.set_asset_focus([300.0, 0.0, 0.0]);
+        assert_eq!(asset_priority(world, far), Some(0.0));
+        let bare = world.spawn();
+        assert_eq!(asset_priority(world, bare), None, "no transform, no rank");
+    }
+}

@@ -194,7 +194,10 @@ impl LevelEditorPanel {
                     loop {
                         let pending = {
                             let mut scene = scene_db.write();
-                            scene.world.pump_assets();
+                            // A bounded share per tick, so the lock is held briefly and
+                            // the UI keeps answering while a big level binds.
+                            let budget = engine_backend::scene::frame_asset_budget();
+                            scene.world.pump_assets_within(budget);
                             scene.world.asset_work_pending()
                         };
                         if !pending {

@@ -378,6 +378,24 @@ impl Render for LevelEditorPanel {
                     _ => {}
                 }
             }))
+            // Ctrl/Cmd+A selects everything in the scene (the handler above
+            // ignores modified keys).
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                let modifiers = &event.keystroke.modifiers;
+                if event.keystroke.key != "a"
+                    || !(modifiers.control || modifiers.platform)
+                    || modifiers.alt
+                    || modifiers.shift
+                    || event.is_held
+                    || !this.focus_handle.contains_focused(window, cx)
+                {
+                    return;
+                }
+                crate::ui::hierarchy::select_all_objects(&mut this.shared_state.write());
+                this.sync_gizmo_to_helio();
+                cx.stop_propagation();
+                cx.notify();
+            }))
             // Additional keyboard shortcuts for Alt+Up/Down (object reordering)
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 // Only respond if Alt key is pressed and this panel or any child has focus

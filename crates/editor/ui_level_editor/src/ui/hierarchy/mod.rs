@@ -131,6 +131,31 @@ fn apply_row_selection(state: &mut LevelEditorState, id: &str, modifiers: &Modif
     state.scene.select_object(Some(id.to_string()));
 }
 
+/// Select every object in the level (Ctrl/Cmd+A), the last in tree order the
+/// primary. Class-generated children and instance members are left out: they
+/// are rebuilt from their source and cannot be edited on their own. Returns
+/// how many objects are selected.
+pub(crate) fn select_all_objects(state: &mut LevelEditorState) -> usize {
+    let (objects, _) = {
+        let world = state.scene.world();
+        crate::scene_edit::objects::get_hierarchy_projection(&world)
+    };
+    let ids: Vec<String> = {
+        let world = state.scene.world();
+        objects
+            .iter()
+            .map(|object| &object.id)
+            .filter(|id| {
+                !crate::scene_edit::classes::is_generated_child(&world, id)
+                    && !crate::scene_edit::objects::is_instance_member(&world, id)
+            })
+            .cloned()
+            .collect()
+    };
+    state.scene.select_objects(&ids);
+    ids.len()
+}
+
 /// Ancestors of an object, nearest first.
 fn ancestors(state: &LevelEditorState, id: &str) -> Vec<String> {
     use engine_backend::scene::SceneWorldExt;

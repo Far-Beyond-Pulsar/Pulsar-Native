@@ -55,31 +55,17 @@ pub(crate) fn begin_pie(
 
     tracing::info!(project = %root.display(), "PiE: starting build for Play");
 
-    // Reflect unsaved edits: write the live SceneDb to a temp level file.
+    // Reflect unsaved edits: the build task writes the live SceneDb to a temp
+    // level file first (off the UI thread: the class scan, serialization and
+    // write all take time).
     let scene_path = root.join("target").join("pie").join("play.level");
-    let save_result = {
+    let (play_scene, play_settings) = {
         let state = shared_state.read();
-        let world = state.scene.world();
-        crate::scene_edit::level_io::save_to_file_with_settings(
-            &world,
-            &scene_path,
-            view.clone(),
+        (
+            state.scene.shared_scene(),
             state.scene.world_settings.clone(),
         )
     };
-    if let Err(e) = save_result {
-        window.push_notification(
-            Notification::error(t!("Notification.Title.PlayInEditor").to_string()).message(
-                t!(
-                    "Notification.Message.FailedToWriteScene",
-                    error => e.to_string()
-                )
-                .to_string(),
-            ),
-            cx,
-        );
-        return;
-    }
 
     // Native hot reload: pressing Play while a game runs rebuilds
     // and swaps the library WITHOUT dropping the world — the viewport stops
@@ -124,14 +110,31 @@ pub(crate) fn begin_pie(
         ),
         move |task| {
             task.report_progress(0.02, "Preparing project build");
-            let result = build_pie_dylib(
-                &root,
-                &scene_path,
-                view.clone(),
-                reload,
-                loaded_artifact.as_ref(),
-                &task,
-            );
+            task.set_phase("Writing the scene for Play");
+            let registry = crate::scene_edit::classes::project_registry();
+            let snapshot = {
+                let scene = play_scene.read();
+                crate::scene_edit::level_io::snapshot_level(
+                    &scene.world,
+                    &registry,
+                    view.clone(),
+                    play_settings,
+                )
+            };
+            let result = crate::scene_edit::level_io::write_level(snapshot, &scene_path)
+                .map_err(|e| {
+                    t!("Notification.Message.FailedToWriteScene", error => e).to_string()
+                })
+                .and_then(|()| {
+                    build_pie_dylib(
+                        &root,
+                        &scene_path,
+                        view.clone(),
+                        reload,
+                        loaded_artifact.as_ref(),
+                        &task,
+                    )
+                });
             let mut st = shared.write();
             // A Stop (or a later Play) while cargo ran retired this build:
             // the state now describes that newer session, not this one.
