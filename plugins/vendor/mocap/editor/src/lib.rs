@@ -13,7 +13,7 @@ mod paint;
 mod panels;
 mod provider;
 
-pub use blit::{fit_rect, FrameBlit};
+pub use blit::{fit_rect, grid, tile_rect, FrameBlit};
 pub use curves::{curve_polylines, tick_step, value_range, CurveSpec};
 pub use editor::MocapEditor;
 pub use model::{sample_take, CameraChoice, NewSource, SessionModel};

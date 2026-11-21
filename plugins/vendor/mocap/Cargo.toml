@@ -8,9 +8,10 @@ description = "Motion capture (pulsar.mocap): the plugin's root crate, the one p
 autoexamples = false
 
 [features]
-default = ["camera"]
+default = ["camera", "pose"]
 # Webcam capture (the OS's own camera API through nokhwa).
 camera = ["mocap_editor/camera"]
+pose = ["mocap_editor/pose"]
 
 [dependencies]
 # The plugin gate and the editor provider's registration.

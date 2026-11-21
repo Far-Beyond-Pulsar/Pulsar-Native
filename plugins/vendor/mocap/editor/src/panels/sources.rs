@@ -1,6 +1,6 @@
 //! The sources panel: every capture source, its state, and what can be added.
 
-use crate::model::{NewSource, SessionModel, DEFAULT_VMC_PORT};
+use crate::model::{NewSource, SessionModel};
 use gpui::prelude::*;
 use gpui::*;
 use mocap_capture::SourceState;
@@ -34,6 +34,7 @@ impl SourcesPanel {
         };
         let icon = if entry.descriptor.has_video { IconName::VideoCamera } else { IconName::Activity };
         let label = entry.descriptor.label.clone();
+        let has_video = entry.descriptor.has_video;
         h_flex()
             .w_full()
             .min_h(px(34.))
@@ -62,6 +63,22 @@ impl SourcesPanel {
                     .child(h_flex().gap_1().items_center().text_sm().child(ui::Icon::new(icon)).child(div().truncate().child(label)))
                     .child(div().text_xs().text_color(state_color).truncate().child(state_text)),
             )
+            .when(has_video, |row| {
+                row.child(
+                    Button::new(SharedString::from(format!("source-track-{index}")))
+                        .icon(IconName::User)
+                        .label("Track body")
+                        .ghost()
+                        .small()
+                        .tooltip("Run the pose model on this camera: keypoints appear on the feed and are recorded")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.model.update(cx, |m, cx| {
+                                m.add_body_tracking(index);
+                                cx.notify();
+                            });
+                        })),
+                )
+            })
             .child(
                 Button::new(SharedString::from(format!("source-remove-{index}")))
                     .icon(IconName::Trash)
@@ -89,14 +106,22 @@ impl SourcesPanel {
                     cx.notify();
                 });
             })))
-            .child(add("add-vmc", IconName::Wifi, "VMC").ghost().tooltip("Listen for VMC/OSC on UDP 39539").on_click(cx.listener(
+            .child(add("add-vmc", IconName::Wifi, "VMC").ghost().tooltip("Listen for VMC/OSC (the next free UDP port from 39539); add one per performer").on_click(cx.listener(
                 |this, _, _, cx| {
                     this.model.update(cx, |m, cx| {
-                        m.add_source(NewSource::Vmc(DEFAULT_VMC_PORT));
+                        m.add_source(NewSource::Vmc);
                         cx.notify();
                     });
                 },
             )))
+            .child(add("open-take", IconName::FolderOpen, "Open take").ghost().tooltip("Open a recorded .mocap take").on_click(cx.listener(|this, _, _, cx| super::pick_take(&this.model, cx))))
+            .child(add("add-sensor", IconName::Usb, "Sensor").ghost().tooltip("An OSC sensor (IMU: /imu/quat, /imu/accel, /imu/gyro) on the next free port from 9100").on_click(cx.listener(|this, _, _, cx| {
+                this.model.update(cx, |m, cx| {
+                    m.add_source(NewSource::Sensor);
+                    cx.notify();
+                });
+            })))
+            .child(add("pose-model", IconName::Cpu, "Pose model").ghost().tooltip("Choose the ONNX keypoint model used by Track body").on_click(cx.listener(|this, _, _, cx| super::pick_pose_model(&this.model, cx))))
             .child(add("list-cameras", IconName::Camera, "Find cameras").ghost().on_click(cx.listener(|this, _, _, cx| {
                 this.model.update(cx, |m, cx| {
                     m.refresh_cameras();
@@ -162,6 +187,7 @@ impl Render for SourcesPanel {
             .size_full()
             .bg(theme.background)
             .child(self.add_bar(cx))
+            .child(div().px_2().text_xs().text_color(theme.muted_foreground).truncate().child(format!("Pose model: {}", self.model.read(cx).pose_model_path().display())))
             .child(self.camera_choices(cx))
             .child(
                 v_flex()

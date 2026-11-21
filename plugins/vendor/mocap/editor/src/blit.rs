@@ -1,12 +1,12 @@
-//! Camera frames onto a WGPU surface: the first live camera feed in the
-//! engine's UI.
+//! Camera frames onto a WGPU surface: live feeds in the engine's UI.
 //!
-//! A frame is uploaded into a texture on the surface's own device and drawn
-//! letterboxed into the surface's back buffer; the surface is then published
-//! to the compositor. The viewport calls [`FrameBlit::upload`] only for a frame
-//! newer than the last it saw, and [`FrameBlit::draw`] whenever it repaints.
+//! Each camera's newest frame is uploaded into its own texture on the surface's
+//! device and the feeds are drawn tiled in a grid, each letterboxed in its
+//! cell, into the surface's back buffer; the surface is then published to the
+//! compositor. The viewport uploads only frames newer than the last it saw.
 
 use mocap_capture::{PixelFormat, VideoFrame};
+use std::collections::HashMap;
 
 const SHADER: &str = r#"
 struct Params {
@@ -48,34 +48,47 @@ const BACKGROUND: wgpu::Color = wgpu::Color { r: 0.04, g: 0.045, b: 0.05, a: 1.0
 /// `image` pixels inside a target of `target` pixels, centred, keeping its
 /// aspect ratio.
 pub fn fit_rect(image: (u32, u32), target: (u32, u32)) -> [f32; 4] {
-    if image.0 == 0 || image.1 == 0 || target.0 == 0 || target.1 == 0 {
+    tile_rect(image, target, 0, 1)
+}
+
+/// The grid `(columns, rows)` that tiles `count` feeds.
+pub fn grid(count: usize) -> (usize, usize) {
+    let cols = (count as f32).sqrt().ceil().max(1.0) as usize;
+    (cols, count.div_ceil(cols).max(1))
+}
+
+/// The NDC rectangle `(left, top, right, bottom)` that fits an image inside
+/// cell `index` of a `count`-feed grid over a target, keeping its aspect.
+pub fn tile_rect(image: (u32, u32), target: (u32, u32), index: usize, count: usize) -> [f32; 4] {
+    if image.0 == 0 || image.1 == 0 || target.0 == 0 || target.1 == 0 || count == 0 {
         return [0.0; 4];
     }
-    let image_aspect = image.0 as f32 / image.1 as f32;
-    let target_aspect = target.0 as f32 / target.1 as f32;
-    let (half_w, half_h) = if image_aspect > target_aspect {
-        (1.0, target_aspect / image_aspect)
-    } else {
-        (image_aspect / target_aspect, 1.0)
-    };
-    [-half_w, half_h, half_w, -half_h]
+    let (cols, rows) = grid(count);
+    let (w, h) = (target.0 as f32, target.1 as f32);
+    let (cell_w, cell_h) = (w / cols as f32, h / rows as f32);
+    let scale = (cell_w / image.0 as f32).min(cell_h / image.1 as f32);
+    let (dw, dh) = (image.0 as f32 * scale, image.1 as f32 * scale);
+    let x0 = (index % cols) as f32 * cell_w + (cell_w - dw) * 0.5;
+    let y0 = (index / cols) as f32 * cell_h + (cell_h - dh) * 0.5;
+    [x0 / w * 2.0 - 1.0, 1.0 - y0 / h * 2.0, (x0 + dw) / w * 2.0 - 1.0, 1.0 - (y0 + dh) / h * 2.0]
 }
 
 struct VideoTexture {
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
+    /// This feed's own uniforms: tiles in one pass cannot share one buffer.
+    params: wgpu::Buffer,
     width: u32,
     height: u32,
     format: wgpu::TextureFormat,
 }
 
-/// Draws the newest camera frame into a surface.
+/// Draws the newest frame of any number of cameras into a surface, tiled.
 pub struct FrameBlit {
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    params: wgpu::Buffer,
-    video: Option<VideoTexture>,
+    feeds: HashMap<String, VideoTexture>,
 }
 
 impl FrameBlit {
@@ -145,22 +158,16 @@ impl FrameBlit {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let params = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("mocap video params"),
-            size: 32,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        Self { pipeline, layout, sampler, params, video: None }
+        Self { pipeline, layout, sampler, feeds: HashMap::new() }
     }
 
-    /// Size of the uploaded frame, `None` before the first.
-    pub fn video_size(&self) -> Option<(u32, u32)> {
-        self.video.as_ref().map(|v| (v.width, v.height))
+    /// Size of feed `key`'s uploaded frame, `None` before its first.
+    pub fn video_size(&self, key: &str) -> Option<(u32, u32)> {
+        self.feeds.get(key).map(|v| (v.width, v.height))
     }
 
-    /// Uploads `frame`, recreating the texture when its size or layout changed.
-    pub fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &VideoFrame) {
+    /// Uploads `frame` as feed `key`, recreating its texture when the size or layout changed.
+    pub fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, key: &str, frame: &VideoFrame) {
         if !frame.is_well_formed() || frame.width == 0 || frame.height == 0 {
             return;
         }
@@ -169,13 +176,14 @@ impl FrameBlit {
             PixelFormat::Bgra8 => wgpu::TextureFormat::Bgra8Unorm,
         };
         let stale = self
-            .video
-            .as_ref()
+            .feeds
+            .get(key)
             .is_none_or(|v| v.width != frame.width || v.height != frame.height || v.format != format);
         if stale {
-            self.video = Some(self.create_texture(device, frame.width, frame.height, format));
+            let texture = self.create_texture(device, frame.width, frame.height, format);
+            self.feeds.insert(key.to_owned(), texture);
         }
-        let Some(video) = &self.video else { return };
+        let Some(video) = self.feeds.get(key) else { return };
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &video.texture,
@@ -191,6 +199,11 @@ impl FrameBlit {
             },
             wgpu::Extent3d { width: frame.width, height: frame.height, depth_or_array_layers: 1 },
         );
+    }
+
+    /// Forgets feeds that are no longer shown.
+    pub fn retain(&mut self, keys: &[String]) {
+        self.feeds.retain(|k, _| keys.contains(k));
     }
 
     fn create_texture(
@@ -210,6 +223,12 @@ impl FrameBlit {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
+        let params = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mocap video params"),
+            size: 32,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mocap video bind group"),
@@ -217,23 +236,31 @@ impl FrameBlit {
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                wgpu::BindGroupEntry { binding: 2, resource: self.params.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: params.as_entire_binding() },
             ],
         });
-        VideoTexture { texture, bind_group, width, height, format }
+        VideoTexture { texture, bind_group, params, width, height, format }
     }
 
-    /// Draws the video, letterboxed (and mirrored when asked), into `target`
-    /// of `size` pixels; with no video yet, only the background. Returns the
-    /// submission to publish the surface with.
+    /// Draws the feeds named in `order`, tiled in a grid and letterboxed (and
+    /// mirrored when asked), into `target` of `size` pixels. A feed with no
+    /// frame yet leaves its cell empty. Returns the submission to publish the
+    /// surface with.
     pub fn draw(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
         size: (u32, u32),
+        order: &[String],
         mirror: bool,
     ) -> wgpu::SubmissionIndex {
+        for (index, key) in order.iter().enumerate() {
+            let Some(video) = self.feeds.get(key) else { continue };
+            let rect = tile_rect((video.width, video.height), size, index, order.len());
+            let params: [f32; 8] = [rect[0], rect[1], rect[2], rect[3], f32::from(u8::from(mirror)), 0.0, 0.0, 0.0];
+            queue.write_buffer(&video.params, 0, bytemuck::cast_slice(&params));
+        }
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("mocap video blit"),
         });
@@ -251,14 +278,12 @@ impl FrameBlit {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if let Some(video) = &self.video {
-                let rect = fit_rect((video.width, video.height), size);
-                let flags = [f32::from(u8::from(mirror)), 0.0, 0.0, 0.0];
-                let params: [f32; 8] = [rect[0], rect[1], rect[2], rect[3], flags[0], flags[1], flags[2], flags[3]];
-                queue.write_buffer(&self.params, 0, bytemuck::cast_slice(&params));
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &video.bind_group, &[]);
-                pass.draw(0..6, 0..1);
+            pass.set_pipeline(&self.pipeline);
+            for key in order {
+                if let Some(video) = self.feeds.get(key) {
+                    pass.set_bind_group(0, &video.bind_group, &[]);
+                    pass.draw(0..6, 0..1);
+                }
             }
         }
         queue.submit(Some(encoder.finish()))
@@ -280,7 +305,7 @@ fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::fit_rect;
+    use super::{fit_rect, grid, tile_rect};
 
     #[test]
     fn a_wide_image_in_a_square_target_letterboxes_top_and_bottom() {
@@ -300,5 +325,26 @@ mod tests {
     fn an_empty_size_draws_nothing() {
         assert_eq!(fit_rect((0, 0), (10, 10)), [0.0; 4]);
         assert_eq!(fit_rect((10, 10), (0, 5)), [0.0; 4]);
+        assert_eq!(tile_rect((10, 10), (10, 10), 0, 0), [0.0; 4]);
+    }
+
+    #[test]
+    fn feeds_tile_in_a_near_square_grid() {
+        assert_eq!(grid(1), (1, 1));
+        assert_eq!(grid(2), (2, 1));
+        assert_eq!(grid(4), (2, 2));
+        assert_eq!(grid(5), (3, 2));
+        assert_eq!(grid(9), (3, 3));
+    }
+
+    #[test]
+    fn tiles_do_not_overlap_and_stay_in_the_target() {
+        let target = (1600, 900);
+        let rects: Vec<[f32; 4]> = (0..4).map(|i| tile_rect((1280, 720), target, i, 4)).collect();
+        for r in &rects {
+            assert!(r[0] >= -1.0 && r[2] <= 1.0 && r[3] >= -1.0 && r[1] <= 1.0);
+        }
+        assert!(rects[0][2] <= rects[1][0] + 1e-5, "columns do not overlap");
+        assert!(rects[0][3] >= rects[2][1] - 1e-5, "rows do not overlap");
     }
 }

@@ -50,23 +50,29 @@ pub fn synthetic_pose(index: &RigIndex, frame: u64, fps: f32) -> Vec<f32> {
 /// A source of [`synthetic_pose`] at a fixed rate.
 pub struct SyntheticSource {
     fps: f32,
+    index: u32,
     shared: Arc<SourceShared>,
     handle: Option<ServiceHandle<()>>,
 }
 
 impl SyntheticSource {
+    /// Figure number `index` (1-based): several can run side by side.
+    pub fn numbered(fps: f32, index: u32) -> Self {
+        Self { fps: fps.clamp(1.0, 1000.0), index, shared: SourceShared::new(), handle: None }
+    }
+
     /// A synthetic figure streaming at `fps`.
     pub fn new(fps: f32) -> Self {
-        Self { fps: fps.clamp(1.0, 1000.0), shared: SourceShared::new(), handle: None }
+        Self::numbered(fps, 1)
     }
 }
 
 impl CaptureSource for SyntheticSource {
     fn descriptor(&self) -> SourceDescriptor {
         SourceDescriptor {
-            id: "synthetic".to_owned(),
+            id: if self.index <= 1 { "synthetic".to_owned() } else { format!("synthetic:{}", self.index) },
             kind: SourceKind::Synthetic,
-            label: format!("Synthetic figure ({} Hz)", self.fps),
+            label: format!("Synthetic figure {} ({} Hz)", self.index, self.fps),
             rig: Some(vrm_humanoid()),
             has_video: false,
         }

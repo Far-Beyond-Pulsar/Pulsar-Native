@@ -9,6 +9,8 @@ use mocap_format::{ChannelKind, RigProfile};
 
 /// A joint's offset from its parent in the T-pose.
 pub fn rest_offset(name: &str) -> [f32; 3] {
+    // A merged rig namespaces joints as `<source>/<bone>`.
+    let name = name.rsplit('/').next().unwrap_or(name);
     let (side, base) = match name.strip_prefix("Left") {
         Some(rest) => (-1.0, rest),
         None => match name.strip_prefix("Right") {
@@ -76,7 +78,12 @@ pub struct Skeleton {
     rest: Vec<[f32; 3]>,
     rotation_column: Vec<Option<usize>>,
     position_column: Vec<Option<usize>>,
+    /// Sideways shift of each root joint so several figures stand apart.
+    root_shift: Vec<f32>,
 }
+
+/// Metres between figures when a rig holds several.
+const FIGURE_SPACING: f32 = 1.2;
 
 impl Skeleton {
     /// Prepares `rig`.
@@ -87,6 +94,7 @@ impl Skeleton {
             rest: rig.joints.iter().map(|j| rest_offset(&j.name)).collect(),
             rotation_column: vec![None; n],
             position_column: vec![None; n],
+            root_shift: Self::figure_spacing(rig),
         };
         for (channel, at) in rig.channels.iter().zip(rig.column_offsets()) {
             let Some(joint) = channel.joint.map(usize::from).filter(|j| *j < n) else { continue };
@@ -97,6 +105,21 @@ impl Skeleton {
             }
         }
         skeleton
+    }
+
+    fn figure_spacing(rig: &RigProfile) -> Vec<f32> {
+        let roots = rig.joints.iter().filter(|j| j.parent.is_none()).count();
+        let mut seen = 0usize;
+        rig.joints
+            .iter()
+            .map(|j| {
+                if j.parent.is_some() || roots < 2 {
+                    return 0.0;
+                }
+                seen += 1;
+                (seen as f32 - 1.0 - (roots as f32 - 1.0) * 0.5) * FIGURE_SPACING
+            })
+            .collect()
     }
 
     /// Number of joints.
@@ -136,7 +159,7 @@ impl Skeleton {
                     rotations[j] = mul(rotations[p], local_q);
                 }
                 None => {
-                    positions[j] = offset;
+                    positions[j] = [offset[0] + self.root_shift[j], offset[1], offset[2]];
                     rotations[j] = local_q;
                 }
             }

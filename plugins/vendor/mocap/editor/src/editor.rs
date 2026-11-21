@@ -24,6 +24,8 @@ impl MocapEditor {
     /// An editor on `path`: a non-empty file opens as a take, an empty or new one starts a session.
     pub fn new(path: PathBuf, cx: &mut Context<Self>) -> Self {
         let model = cx.new(|_| SessionModel::new(path.clone()));
+        // Re-render (and so pump) when a task or the panels change the model.
+        cx.observe(&model, |_, _, cx| cx.notify()).detach();
         Self { path, model, workspace: None, focus_handle: cx.focus_handle() }
     }
 

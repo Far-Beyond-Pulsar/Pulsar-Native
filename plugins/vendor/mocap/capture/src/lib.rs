@@ -7,10 +7,15 @@ mod bus;
 mod camera;
 mod error;
 mod estimator;
+mod keypoints;
+#[cfg(feature = "pose")]
+mod onnx;
 pub mod osc;
+mod mix;
 mod processor;
 mod recorder;
 mod rigs;
+mod sensor;
 mod skeleton;
 mod source;
 mod synthetic;
@@ -20,11 +25,16 @@ pub use bus::{BusStats, PoseBus, VideoMailbox};
 #[cfg(feature = "camera")]
 pub use camera::{enumerate_cameras, CameraInfo, CameraMode, CameraSource};
 pub use error::CaptureError;
-pub use estimator::PoseEstimator;
+pub use estimator::{EstimatorFactory, EstimatorSource, PoseEstimator};
+#[cfg(feature = "pose")]
+pub use onnx::OnnxPoseEstimator;
+pub use keypoints::{coco17_rig, decode_single_person, letterbox_rgb, Letterbox, COCO17, COCO17_EDGES};
 pub use frame::{PixelFormat, PoseFrame, VideoFrame};
+pub use mix::{merge_rigs, MixInput, Mixer};
 pub use processor::{apply_calibration, calibrate_neutral, FilterSettings, Processor};
 pub use recorder::{RecordStats, Recorder, MAX_HOLD_S};
 pub use rigs::{vrm_humanoid, RigIndex, VRM_BLENDSHAPES};
+pub use sensor::{sensor_rig, OscSensorSource, SensorChannel, SensorDecoder};
 pub use skeleton::{rest_offset, Skeleton};
 pub use source::{
     spawn_capture_loop, CaptureSource, SessionClock, SourceDescriptor, SourceKind, SourceShared,

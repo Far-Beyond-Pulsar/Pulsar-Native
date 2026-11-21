@@ -9,6 +9,8 @@ description = "The mocap editor (pulsar.mocap): live capture session, camera vie
 [features]
 # Webcam capture in the sources panel.
 camera = ["mocap_capture/camera"]
+# Body tracking from camera video (a user-supplied ONNX keypoint model).
+pose = ["mocap_capture/pose"]
 
 [dependencies]
 gpui-ce = { workspace = true }

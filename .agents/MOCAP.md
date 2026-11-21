@@ -124,3 +124,24 @@ registered as a service; the viewport only reads the mailbox.
 
 - The camera backend and the blit path have not run against real hardware.
 - VMC is implemented from the published spec, not tested against a live app.
+
+## Multiple and mixed sources (as built)
+
+Any number and mix of sources run at once: cameras, VMC performers, OSC sensors
+(`OscSensorSource`, declared address-to-channel maps; the IMU preset is
+`/imu/quat`, `/imu/accel`, `/imu/gyro`), synthetic figures. Each source has its
+own `PoseBus` and `VideoMailbox`.
+
+- **Poses and sensors** are merged by `Mixer` into one stream and one rig
+  (`merge_rigs`): one source keeps its names; several are namespaced
+  `<source id>/<name>`. A merged frame is emitted per source frame, holding the
+  others' latest values; a source silent for more than `MAX_HOLD_S` is a gap.
+  The set of recorded sources is fixed while recording.
+- **Cameras** are tiled in the viewport (`tile_rect`, one texture and uniform
+  buffer per feed). A camera alone has no joints until a pose estimator exists,
+  so Record needs a pose or sensor source (the HUD says so).
+- **Target skeleton:** recording needs none; a take keeps its sources' rigs.
+  Choosing a skeleton happens when a take is baked or retargeted (phase 2).
+
+The reader always scans chunk headers to find blocks; `INDX` is for external
+tools and is not required to open a crashed take.

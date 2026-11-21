@@ -361,15 +361,17 @@ impl Render for TimelinePanel {
         let item_sizes = Rc::new(vec![size(px(0.0), px(ROW_HEIGHT)); channel_count]);
         let view = cx.entity();
         let body = if channel_count == 0 {
-            let status = self.model.read(cx).status.clone();
-            div()
+            let loading = self.model.read(cx).loading;
+            v_flex()
                 .flex_1()
-                .flex()
                 .items_center()
                 .justify_center()
+                .gap_2()
                 .text_xs()
                 .text_color(theme.muted_foreground)
-                .child(if status.is_empty() { "Record a take or open a .mocap file to see its channels".to_owned() } else { status })
+                .child(if loading { "Loading the take..." } else { "No take open." })
+                .child("Start a pose source (Synthetic or VMC) and press Record, or open a recorded take.")
+                .child(Button::new("timeline-open-take").icon(IconName::FolderOpen).label("Open take").small().on_click(cx.listener(|this, _, _, cx| super::pick_take(&this.model, cx))))
                 .into_any_element()
         } else {
             div()

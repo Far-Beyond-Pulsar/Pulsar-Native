@@ -14,6 +14,8 @@ pub enum SourceKind {
     Camera,
     Vmc,
     Synthetic,
+    Sensor,
+    Estimator,
 }
 
 impl SourceKind {
@@ -23,6 +25,8 @@ impl SourceKind {
             Self::Camera => "camera",
             Self::Vmc => "vmc",
             Self::Synthetic => "synthetic",
+            Self::Sensor => "sensor",
+            Self::Estimator => "estimator",
         }
     }
 }

@@ -9,11 +9,14 @@ description = "Mocap capture (pulsar.mocap): sources (VMC/OSC, synthetic, camera
 [features]
 # Webcam capture through the OS's own API (Media Foundation, AVFoundation, V4L2).
 camera = ["dep:nokhwa", "dep:image"]
+# Body keypoints from camera video with a user-supplied ONNX model (tract, pure Rust).
+pose = ["dep:tract-onnx"]
 
 [dependencies]
 mocap_format = { path = "../format" }
 nokhwa = { version = "0.10", default-features = false, features = ["input-native"], optional = true }
 image = { workspace = true, optional = true }
+tract-onnx = { version = "0.21", optional = true }
 # Every capture thread is a registered service (the Tasks window lists it).
 editor_task_queue = { workspace = true }
 parking_lot = { workspace = true }

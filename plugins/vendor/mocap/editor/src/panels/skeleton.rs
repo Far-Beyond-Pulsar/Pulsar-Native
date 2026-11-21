@@ -113,23 +113,23 @@ impl Render for SkeletonPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme().clone();
         let model = self.model.read(cx);
-        let scene = model.current_pose().map(|pose| Scene {
-            joints: model.skeleton.joints(&pose),
-            bones: model.skeleton.bones(),
-            sides: model
-                .rig
-                .joints
+        let scene = model.current_figure().map(|figure| Scene {
+            sides: figure
+                .names
                 .iter()
-                .map(|j| {
-                    if j.name.starts_with("Left") {
+                .map(|name| {
+                    let bone = name.rsplit('/').next().unwrap_or(name);
+                    if bone.starts_with("Left") {
                         Side::Left
-                    } else if j.name.starts_with("Right") {
+                    } else if bone.starts_with("Right") {
                         Side::Right
                     } else {
                         Side::Centre
                     }
                 })
                 .collect(),
+            joints: figure.joints,
+            bones: figure.bones,
             yaw: self.yaw,
             pitch: self.pitch,
             zoom: self.zoom,
