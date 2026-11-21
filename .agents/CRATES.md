@@ -290,6 +290,7 @@ cargo cannot load the workspace without them.
 | `physics_plugin` | [Plugin_Physics](https://github.com/Far-Beyond-Pulsar/Plugin_Physics) | `pulsar.physics`: physics components and the Rapier simulation, the first model's components (`legacy`), the `.physasset` schema (`api`, `physics_api`) |
 | `skm_editor` | [Plugin_SKM](https://github.com/Far-Beyond-Pulsar/Plugin_SKM) | Animation: skeletal assets, the animator (`animation_component`) and its editors (`.agents/ANIMATION.md`) |
 | `input_plugin` | [Plugin_Input](https://github.com/Far-Beyond-Pulsar/Plugin_Input) | Input actions and mappings, their editors and runtime |
+| `mocap` | [Plugin_Mocap](https://github.com/Far-Beyond-Pulsar/Plugin_Mocap) | `pulsar.mocap`: motion capture: camera and sensor sources, body tracking, multi-camera calibration, the fused scene and the `.mocap` take editor (`.agents/MOCAP.md`) |
 | `ui_editor` | [Plugin_UI](https://github.com/Far-Beyond-Pulsar/Plugin_UI) | Widget assets and the WYSIWYG widget editor |
 | `blueprint_editor` | [Plugin_Blueprints](https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints) | Blueprint visual scripting, plus its `compiler/` crate |
 | `code_editor` | [Plugin_CodeEditor](https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor) | Script/code editor, a host for Mockaco (`WgpuiEditorView`); `text_editor/lsp.rs` answers Mockaco's requests through the language server of the open file (`LanguageServers::server_for`) |

@@ -129,3 +129,6 @@
 [submodule "plugins/vendor/gameplay"]
 	path = plugins/vendor/gameplay
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Gameplay
+[submodule "plugins/vendor/mocap"]
+	path = plugins/vendor/mocap
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Mocap
