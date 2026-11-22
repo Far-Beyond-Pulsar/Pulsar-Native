@@ -6,7 +6,7 @@
 //! shortcuts and toolbar already use, so a menu entry is never a second
 //! implementation.
 
-use gpui::{Context, InteractiveElement, Window, px};
+use gpui::{px, Context, InteractiveElement, Window};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt as _;
 use std::path::PathBuf;

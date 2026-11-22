@@ -18,6 +18,7 @@
 //! This crate is GPUI-free so the class registry (`pulsar_class`), the
 //! packager and command-line tools use it without the editor.
 
+pub mod download;
 pub mod registry;
 pub mod script;
 pub mod settings;
@@ -28,7 +29,7 @@ use std::sync::Arc;
 
 pub use registry::LanguageRegistry;
 pub use script::{
-    CheckContext, ComponentEventMetadata, CompileDiagnostic, CookOptimization, DiagnosticSeverity,
+    CheckContext, CompileDiagnostic, ComponentEventMetadata, CookOptimization, DiagnosticSeverity,
     NativeRegistry, ScriptLanguage,
 };
 pub use settings::{server_settings_schema, ServerSettings, StartSetting, TraceLevel};

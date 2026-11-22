@@ -12247,6 +12247,7 @@ dependencies = [
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_script_vm",
+ "pulsar_settings",
  "pulsar_world_registry",
  "schemars",
  "semver",
@@ -12289,6 +12290,7 @@ dependencies = [
  "pulsar_language",
  "pulsar_lsp",
  "pulsar_plugins",
+ "pulsar_settings",
  "pulsar_world_registry",
  "serde_json",
  "sha2 0.11.0",
@@ -13339,6 +13341,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "ureq 3.4.0",
 ]
 
 [[package]]
@@ -14761,6 +14764,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tracing",
+ "zip 9.5.0",
 ]
 
 [[package]]

@@ -1533,7 +1533,10 @@ fn the_full_classic_geometry_leaves_the_gpu_and_comes_back() {
     assert!(fallback_bytes > 0 && fallback_bytes < full_bytes);
 
     // What the Memory Explorer shows for the asset.
-    let runtime = installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(&renderer)
+    let runtime =
+        installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(
+            &renderer,
+        )
         .expect("the viewport renderer is built")
         .clone();
     let memory = runtime.asset_memory();
@@ -1795,8 +1798,9 @@ impl Harness {
                     let first = seen.is_none();
                     *seen = modified;
                     if !first {
-                        let event = pulsar_events::AssetUpdated::new(pulsar_events::AssetKind::Mesh)
-                            .with_path(std::path::Path::new(path.as_str()));
+                        let event =
+                            pulsar_events::AssetUpdated::new(pulsar_events::AssetKind::Mesh)
+                                .with_path(std::path::Path::new(path.as_str()));
                         let mut world = state.scene.world_mut();
                         engine_backend::scene::reload_updated_asset(&mut world, &event);
                     }
@@ -1827,7 +1831,12 @@ impl Harness {
                 let world = state.scene.world();
                 let wanted: Vec<bool> = meshes
                     .iter()
-                    .map(|m| world.get::<StaticMeshComponent>(*m).unwrap().virtual_geometry)
+                    .map(|m| {
+                        world
+                            .get::<StaticMeshComponent>(*m)
+                            .unwrap()
+                            .virtual_geometry
+                    })
                     .collect();
                 let swapped = meshes.iter().zip(&wanted).all(|(m, on)| {
                     world
@@ -1927,7 +1936,9 @@ fn toggle_three_with(
     fillers: usize,
     rt: bool,
 ) {
-    let Some(harness) = setup_with(rt) else { return };
+    let Some(harness) = setup_with(rt) else {
+        return;
+    };
     let (classic_state, _, _) = three_spheres([false; 3], files, fillers);
     let mut classic_renderer = harness.renderer(&classic_state);
     // Asset meshes load and bind their materials over the first frames.
@@ -1977,19 +1988,51 @@ fn toggle_three_with(
             "{label}: an object is not where the classic render draws it: {d:?}"
         );
     };
-    let one = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    let one = harness.until_settled(
+        &mut renderer,
+        &state,
+        &meshes,
+        &ids,
+        &mut others,
+        &mut watched,
+        fallbacks,
+    );
     check(&one, "three_vg_b");
 
     set_virtual_geometry(&mut state, &ids[0], true);
-    let two = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    let two = harness.until_settled(
+        &mut renderer,
+        &state,
+        &meshes,
+        &ids,
+        &mut others,
+        &mut watched,
+        fallbacks,
+    );
     check(&two, "three_vg_ab");
 
     set_virtual_geometry(&mut state, &ids[2], true);
-    let three = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    let three = harness.until_settled(
+        &mut renderer,
+        &state,
+        &meshes,
+        &ids,
+        &mut others,
+        &mut watched,
+        fallbacks,
+    );
     check(&three, "three_vg_abc");
 
     set_virtual_geometry(&mut state, &ids[0], false);
-    let back = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    let back = harness.until_settled(
+        &mut renderer,
+        &state,
+        &meshes,
+        &ids,
+        &mut others,
+        &mut watched,
+        fallbacks,
+    );
     check(&back, "three_vg_bc");
 }
 

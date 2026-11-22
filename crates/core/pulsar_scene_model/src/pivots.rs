@@ -164,6 +164,9 @@ mod tests {
         assert!(!set_pivot_offset(&mut world, object, [1.0, 2.0, 3.0]));
         assert!(set_pivot_offset(&mut world, object, [0.0; 3]));
         let props = world.get::<RenderProps>(object).unwrap();
-        assert!(!props.props.contains_key(PIVOT_OFFSET_PROP), "cleared for good");
+        assert!(
+            !props.props.contains_key(PIVOT_OFFSET_PROP),
+            "cleared for good"
+        );
     }
 }

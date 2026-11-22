@@ -92,12 +92,19 @@ impl PakSet {
 
     /// The container files this set reads, by index.
     pub fn container_files(&self) -> Vec<String> {
-        self.toc.containers.keys().map(|i| container_file_name(*i)).collect()
+        self.toc
+            .containers
+            .keys()
+            .map(|i| container_file_name(*i))
+            .collect()
     }
 
     /// The entry for content-relative `path`.
     pub fn entry(&self, path: &str) -> Option<PakEntry> {
-        self.toc.entries.get(&crate::normalize_rel(path)?).map(public)
+        self.toc
+            .entries
+            .get(&crate::normalize_rel(path)?)
+            .map(public)
     }
 
     pub fn contains(&self, path: &str) -> bool {
@@ -168,7 +175,11 @@ impl PakSet {
                 stored.resize(block.stored as usize, 0);
                 file.seek(SeekFrom::Start(block.offset))?;
                 file.read_exact(&mut stored)?;
-                cipher::apply(&self.key, cipher::block_stream(entry.container, block.offset), &mut stored);
+                cipher::apply(
+                    &self.key,
+                    cipher::block_stream(entry.container, block.offset),
+                    &mut stored,
+                );
                 match block.codec {
                     Codec::Raw => out.extend_from_slice(&stored),
                     Codec::Zstd => {
@@ -191,7 +202,8 @@ impl PakSet {
         let len = file.seek(SeekFrom::End(0))?;
         file.seek(SeekFrom::Start(0))?;
         let mut header = [0u8; CONTAINER_HEADER_LEN as usize];
-        file.read_exact(&mut header).map_err(|_| PakError::NotAPak)?;
+        file.read_exact(&mut header)
+            .map_err(|_| PakError::NotAPak)?;
         let version = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
         let own_index = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
         if header[..8] != CONTAINER_MAGIC

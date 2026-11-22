@@ -18,9 +18,9 @@
 use crate::utils::gpu_alloc_report::{self, GpuReport};
 use crate::utils::large_allocs::{self, LargeSnapshot};
 use crate::utils::memory_report;
-use engine_backend::services::memory_owners::{self, MemoryTable};
 use crate::utils::process_memory::{self, ProcessMemory, RegionKind};
 use crate::utils::tracking_allocator::{disable_tracking, enable_tracking, is_tracking_active};
+use engine_backend::services::memory_owners::{self, MemoryTable};
 use gpui::*;
 use parking_lot::RwLock;
 use std::collections::HashSet;
@@ -627,9 +627,11 @@ impl MemoryExplorerPanel {
                             .flex_wrap()
                             .child(self.stat("Owner", table.owner.to_string(), cx))
                             .child(self.stat("Items", table.rows.len().to_string(), cx))
-                            .children(table.columns.iter().zip(&totals).map(
-                                |(column, total)| self.stat(column, fmt_bytes(*total), cx),
-                            )),
+                            .children(
+                                table.columns.iter().zip(&totals).map(|(column, total)| {
+                                    self.stat(column, fmt_bytes(*total), cx)
+                                }),
+                            ),
                     )
                     .child(header_row(&theme, &labels))
                     .children(table.rows.iter().map(|row| {

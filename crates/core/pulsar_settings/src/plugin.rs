@@ -18,7 +18,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use pulsar_config::{ChangeEvent, ConfigError, ConfigManager, ConfigValue, ListenerId, NamespaceSchema, OwnerHandle};
+use pulsar_config::{
+    ChangeEvent, ConfigError, ConfigManager, ConfigValue, ListenerId, NamespaceSchema, OwnerHandle,
+};
 use pulsar_plugins::Owner;
 
 /// The settings database namespace of every plugin setting.
@@ -195,7 +197,11 @@ pub fn sync_with<'a>(
     contributions: impl IntoIterator<Item = &'a PluginSettings>,
     enabled: impl Fn(&str) -> bool,
 ) -> SyncReport {
-    sync_groups(cfg, contributions.into_iter().map(SettingsGroup::from), enabled)
+    sync_groups(
+        cfg,
+        contributions.into_iter().map(SettingsGroup::from),
+        enabled,
+    )
 }
 
 /// [`sync`] over explicit groups and a gate.
@@ -209,7 +215,9 @@ pub fn sync_groups(
     for group in groups {
         let owner = owner_of(group.origin, group.id);
         if !seen.insert(owner.clone()) {
-            tracing::error!("plugin settings `{owner}` are contributed twice; the second is ignored");
+            tracing::error!(
+                "plugin settings `{owner}` are contributed twice; the second is ignored"
+            );
             continue;
         }
         let registered = cfg.owner_handle(NS, &owner).is_some();
@@ -263,6 +271,113 @@ static MANAGER: OnceLock<&'static ConfigManager> = OnceLock::new();
 /// [`handle`] resolve against it.
 pub(crate) fn bind(cfg: &'static ConfigManager) {
     let _ = MANAGER.set(cfg);
+}
+
+/// The entry point a plugin library exports for [`attach_exported`]
+/// (`export_settings_attach!`, which `plugin_editor_api::export_plugin!`
+/// invokes).
+pub const ATTACH_SYMBOL: &str = "_plugin_attach_settings";
+
+/// Bumped on any change to [`HostSettings`] or to how a copy reads it.
+const ATTACH_VERSION: u64 = 1;
+
+/// The layout this copy of the crate was built with: a library built from
+/// other `pulsar-config` sources refuses the host's database.
+const fn layout() -> u64 {
+    let parts = [
+        ATTACH_VERSION as usize,
+        size_of::<HostSettings>(),
+        size_of::<ConfigManager>(),
+        size_of::<OwnerHandle>(),
+        size_of::<ConfigValue>(),
+    ];
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut index = 0;
+    while index < parts.len() {
+        hash ^= parts[index] as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        index += 1;
+    }
+    hash
+}
+
+/// What the host hands a plugin library: its settings database, with the
+/// layout it was built with.
+#[repr(C)]
+pub struct HostSettings {
+    layout: u64,
+    manager: *const ConfigManager,
+}
+
+// SAFETY: `manager` points to the process's `ConfigManager` (`MANAGER` holds
+// it as a `&'static`, so it is Sync), and is never written through.
+unsafe impl Send for HostSettings {}
+// SAFETY: as above.
+unsafe impl Sync for HostSettings {}
+
+/// The host's settings database for a plugin library, or null before
+/// [`register_all_settings`](crate::register_all_settings) ran. It lives for
+/// the process (plugins are never unloaded).
+pub fn export_host_settings() -> *const std::ffi::c_void {
+    static EXPORTED: OnceLock<HostSettings> = OnceLock::new();
+    let Some(cfg) = MANAGER.get() else {
+        return std::ptr::null();
+    };
+    let exported = EXPORTED.get_or_init(|| HostSettings {
+        layout: layout(),
+        manager: *cfg,
+    });
+    (exported as *const HostSettings).cast()
+}
+
+/// Bind this copy of the crate (a plugin library's) to the host's settings
+/// database, so [`handle`] answers inside the library (#1932). `false` when
+/// `host` is null or was built with another layout.
+///
+/// # Safety
+///
+/// `host` is null or a pointer from the host's [`export_host_settings`],
+/// alive for the process.
+#[doc(hidden)]
+pub unsafe fn attach_exported(host: *const std::ffi::c_void) -> bool {
+    // SAFETY: the caller's contract.
+    let Some(host) = (unsafe { host.cast::<HostSettings>().as_ref() }) else {
+        return false;
+    };
+    if host.layout != layout() || host.manager.is_null() {
+        tracing::error!("refused the host's settings: built with another layout");
+        return false;
+    }
+    // SAFETY: the host's database lives for the process, and the layout
+    // matches this copy's.
+    bind(unsafe { &*host.manager });
+    true
+}
+
+/// Export [`ATTACH_SYMBOL`] from a plugin library, so the editor's plugin
+/// manager binds the library's settings handles to the editor's database
+/// before the plugin runs any code. `plugin_editor_api::export_plugin!`
+/// invokes it.
+#[macro_export]
+macro_rules! export_settings_attach {
+    () => {
+        /// Bind this library's plugin settings to the host's database.
+        /// Called by the plugin manager before `_plugin_create`.
+        ///
+        /// # Safety
+        ///
+        /// `host` is the host's exported settings, alive for the process.
+        #[no_mangle]
+        pub unsafe extern "C" fn _plugin_attach_settings(host: *const ::std::ffi::c_void) -> bool {
+            // A panic must not unwind across the FFI boundary: the host reads
+            // it as a refusal.
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: the caller's contract.
+                unsafe { $crate::plugin::attach_exported(host) }
+            }))
+            .unwrap_or(false)
+        }
+    };
 }
 
 /// A plugin's read access to its own settings, plus change notification.
@@ -367,8 +482,14 @@ mod tests {
         let report = sync_with(&cfg, [&MAIN, &SECOND], |_| true);
         assert_eq!(report.registered, ["engine.demo", "engine.demo/second"]);
         assert!(cfg.owner_handle(NS, "engine.demo").is_some());
-        assert_eq!(cfg.get(NS, "engine.demo/second", "n").unwrap(), ConfigValue::Int(3));
-        assert!(sync_with(&cfg, [&MAIN, &SECOND], |_| true).is_empty(), "idempotent");
+        assert_eq!(
+            cfg.get(NS, "engine.demo/second", "n").unwrap(),
+            ConfigValue::Int(3)
+        );
+        assert!(
+            sync_with(&cfg, [&MAIN, &SECOND], |_| true).is_empty(),
+            "idempotent"
+        );
     }
 
     #[test]
@@ -378,7 +499,10 @@ mod tests {
         let report = sync_with(&cfg, [&MAIN, &GONE], |origin| origin != "engine:gone");
         assert_eq!(report.withdrawn, ["engine.gone"]);
         assert!(cfg.owner_handle(NS, "engine.gone").is_none());
-        assert!(cfg.owner_handle(NS, "engine.demo").is_some(), "the other plugin is untouched");
+        assert!(
+            cfg.owner_handle(NS, "engine.demo").is_some(),
+            "the other plugin is untouched"
+        );
         let report = sync_with(&cfg, [&MAIN, &GONE], |_| true);
         assert_eq!(report.registered, ["engine.gone"]);
     }
@@ -446,5 +570,30 @@ mod derived_tests {
         let report = sync_groups(&cfg, [derived("engine:lang", "server")], |_| false);
         assert_eq!(report.withdrawn, ["engine.lang/server"]);
         assert!(cfg.owner_handle(NS, "engine.lang/server").is_none());
+    }
+}
+
+#[cfg(test)]
+mod attach_tests {
+    use super::*;
+
+    // Only the refusals: a successful attach binds this process's MANAGER,
+    // which the other tests must not see.
+    #[test]
+    fn a_null_host_is_refused() {
+        // SAFETY: null is allowed by the contract.
+        assert!(!unsafe { attach_exported(std::ptr::null()) });
+    }
+
+    #[test]
+    fn a_host_of_another_layout_is_refused() {
+        let cfg: &'static ConfigManager = Box::leak(Box::new(ConfigManager::new()));
+        let host = HostSettings {
+            layout: layout() ^ 1,
+            manager: cfg,
+        };
+        // SAFETY: `host` and the database it names outlive the call.
+        assert!(!unsafe { attach_exported((&host as *const HostSettings).cast()) });
+        assert!(MANAGER.get().is_none_or(|bound| !std::ptr::eq(*bound, cfg)));
     }
 }

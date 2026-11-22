@@ -16,7 +16,9 @@
 mod common;
 
 use common::Harness;
-use pulsar_script_vm::module_builder::{BuildError, FunctionBuilder, FunctionHandle, ModuleBuilder};
+use pulsar_script_vm::module_builder::{
+    BuildError, FunctionBuilder, FunctionHandle, ModuleBuilder,
+};
 use pulsar_script_vm::{BinOp, Constant, Module, NativeRegistry, Reg, SourceLoc, Type, Value};
 
 // ---- the front end: syntax ---------------------------------------------------------
@@ -153,8 +155,7 @@ impl<'a> Lower<'a> {
                         f.push_scope();
                         f.bind_local(var.clone(), i, Type::Int, false);
                         let (top, end, next) = (f.label_here(), f.new_label(), f.new_label());
-                        let more = built(f.binary(BinOp::Lt, i, n))?
-                            .ok_or("cannot compare")?;
+                        let more = built(f.binary(BinOp::Lt, i, n))?.ok_or("cannot compare")?;
                         let step = f.new_label();
                         f.branch(more, step, end);
                         f.bind(step);
@@ -162,13 +163,11 @@ impl<'a> Lower<'a> {
                         let (value, _) = self.expr(f, body)?;
                         f.exit_loop();
                         f.bind(next);
-                        let added = built(f.binary(BinOp::Add, total, value))?
-                            .ok_or("cannot add")?;
+                        let added =
+                            built(f.binary(BinOp::Add, total, value))?.ok_or("cannot add")?;
                         f.mov(total, added);
-                        let (one, _) =
-                            built(self.module.load_constant(f, Constant::Int(1)))?;
-                        let bumped = built(f.binary(BinOp::Add, i, one))?
-                            .ok_or("cannot add")?;
+                        let (one, _) = built(self.module.load_constant(f, Constant::Int(1)))?;
+                        let bumped = built(f.binary(BinOp::Add, i, one))?.ok_or("cannot add")?;
                         f.mov(i, bumped);
                         f.jump(top);
                         f.bind(end);
@@ -224,11 +223,11 @@ fn compile(source: &str, natives: &NativeRegistry) -> Result<Module, String> {
             })
             .collect::<Result<_, _>>()?;
         let handle = built(lower.module.declare_function(
-                name.clone(),
-                vec![Type::Int; names.len()],
-                Type::Int,
-                true,
-            ))?;
+            name.clone(),
+            vec![Type::Int; names.len()],
+            Type::Int,
+            true,
+        ))?;
         defs.push((handle, names, body));
     }
 

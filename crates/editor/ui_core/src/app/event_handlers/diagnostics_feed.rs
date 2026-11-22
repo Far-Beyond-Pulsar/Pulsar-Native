@@ -46,8 +46,7 @@ pub(super) fn refresh_source(
         .filter(|(_, source, _)| source.label() == label)
         .map(|(_, source, diagnostic)| (source, diagnostic))
         .collect();
-    let diagnostics: Vec<ui_common::Diagnostic> =
-        entries.iter().map(|(_, d)| d.clone()).collect();
+    let diagnostics: Vec<ui_common::Diagnostic> = entries.iter().map(|(_, d)| d.clone()).collect();
 
     let (errors_warnings, hints) = split_hints(&diagnostics);
     // The server of each error or warning, in the order of `errors_warnings`.
@@ -533,9 +532,16 @@ mod tests {
         let compiler = diagnostic("a.ts", 3, Error);
         let all = vec![served, compiler];
         let (errors_warnings, _) = split_hints(&all);
-        let server = ServerId { server: "rust-analyzer", root: PathBuf::from("/p") };
+        let server = ServerId {
+            server: "rust-analyzer",
+            root: PathBuf::from("/p"),
+        };
         let requests = code_action_requests(&errors_warnings, &[Some(server.clone()), None]);
-        assert_eq!(requests.len(), 1, "a compiler diagnostic has no server to ask");
+        assert_eq!(
+            requests.len(),
+            1,
+            "a compiler diagnostic has no server to ask"
+        );
         assert_eq!(requests[0].index, 0);
         assert_eq!(requests[0].server, server);
         assert!(!requests[0].has_embedded_actions);

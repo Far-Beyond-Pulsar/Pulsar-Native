@@ -47,7 +47,10 @@ pub fn register_all(cfg: &'static ConfigManager) {
 }
 
 fn owners(cfg: &ConfigManager) -> std::collections::BTreeSet<String> {
-    cfg.list_owners(NS).into_iter().map(|owner| owner.join("/")).collect()
+    cfg.list_owners(NS)
+        .into_iter()
+        .map(|owner| owner.join("/"))
+        .collect()
 }
 
 /// The namespace of every project setting.

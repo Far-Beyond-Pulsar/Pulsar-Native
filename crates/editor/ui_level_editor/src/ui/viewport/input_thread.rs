@@ -57,7 +57,9 @@ fn held_camera_keys(device_state: Option<&DeviceState>) -> Vec<Keycode> {
                 return keys;
             }
         }
-        device_state.map(DeviceState::get_keys).unwrap_or_default()
+        device_state
+            .map(<DeviceState as device_query::DeviceQuery>::get_keys)
+            .unwrap_or_default()
     }
 }
 

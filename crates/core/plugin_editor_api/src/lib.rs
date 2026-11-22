@@ -195,4 +195,6 @@ pub use profiling;
 /// built-in events). `export_plugin!` wires every plugin library to the
 /// host's bus through it.
 pub use pulsar_events;
+/// Plugin settings: `export_plugin!` binds a library's handles to the host.
+pub use pulsar_settings;
 pub use pulsar_world_registry;

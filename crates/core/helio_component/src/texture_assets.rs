@@ -414,7 +414,6 @@ fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
     })
 }
 
-
 /// Load the image file at `path`: read its size, and cook it now, on this
 /// loader thread, in the format the engine prefers. A file that cannot be
 /// decoded fails the load here, and the derived-data cache is warm before any
@@ -820,7 +819,6 @@ mod residency_tests {
         path
     }
 
-
     #[test]
     fn a_large_image_loads_coarse_first_and_a_small_one_in_one_step() {
         let dir = tempfile::tempdir().unwrap();
@@ -834,7 +832,11 @@ mod residency_tests {
         assert!(!first.last, "a finer tier follows");
         let first = first.payload.downcast::<LoadedTexture>().unwrap();
         assert_eq!(first.width.max(first.height), coarse);
-        assert_eq!((first.width, first.height), (coarse, coarse / 2), "aspect kept");
+        assert_eq!(
+            (first.width, first.height),
+            (coarse, coarse / 2),
+            "aspect kept"
+        );
         // The coarse tier is cooked with its full mip chain, at its own size.
         assert_eq!(first.cooked(CookFormat::Rgba8).unwrap().width, coarse);
 

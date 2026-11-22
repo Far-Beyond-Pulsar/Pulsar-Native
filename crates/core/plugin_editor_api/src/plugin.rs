@@ -246,7 +246,6 @@ macro_rules! export_plugin {
             }
         }
 
-
         impl $crate::plugin::EditorPluginFull for __PluginExport {}
 
         /// Create the plugin instance.
@@ -368,6 +367,11 @@ macro_rules! export_plugin {
         // the plugin manager before `_plugin_create`, makes this library's
         // `profiling` scopes land in the editor's flamegraph.
         $crate::profiling::export_profiler_attach!();
+
+        // Bind the plugin's settings handles to the editor's database:
+        // `_plugin_attach_settings`, called by the plugin manager before
+        // `_plugin_create`, so `pulsar_settings::plugin::handle` answers here.
+        $crate::pulsar_settings::export_settings_attach!();
 
         /// Get the plugin's version information. It builds a constant and
         /// cannot panic, so unlike the other entry points it needs no

@@ -37,7 +37,12 @@ pub fn write(id: &SettingId, value: ConfigValue) -> Result<(), String> {
     }
     global_config()
         .owner_handle(&id.namespace, &id.owner)
-        .ok_or_else(|| format!("settings `{}/{}` are not registered", id.namespace, id.owner))?
+        .ok_or_else(|| {
+            format!(
+                "settings `{}/{}` are not registered",
+                id.namespace, id.owner
+            )
+        })?
         .set(&id.key, value)
         .map_err(|error| error.to_string())
 }
@@ -50,7 +55,12 @@ pub fn reset(id: &SettingId) -> Result<(), String> {
     }
     global_config()
         .owner_handle(&id.namespace, &id.owner)
-        .ok_or_else(|| format!("settings `{}/{}` are not registered", id.namespace, id.owner))?
+        .ok_or_else(|| {
+            format!(
+                "settings `{}/{}` are not registered",
+                id.namespace, id.owner
+            )
+        })?
         .reset_to_default(&id.key)
         .map_err(|error| error.to_string())
 }
@@ -88,7 +98,10 @@ mod tests {
 
     #[test]
     fn integers_stay_integers_and_floats_floats() {
-        assert_eq!(number_value(12.0, &ConfigValue::Int(1)), Ok(ConfigValue::Int(12)));
+        assert_eq!(
+            number_value(12.0, &ConfigValue::Int(1)),
+            Ok(ConfigValue::Int(12))
+        );
         assert_eq!(
             number_value(12.5, &ConfigValue::Float(1.0)),
             Ok(ConfigValue::Float(12.5))

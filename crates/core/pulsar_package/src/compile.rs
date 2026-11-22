@@ -77,12 +77,14 @@ pub fn compile_project(
     let registry = ClassRegistry::scan(project);
     // The one-language rule is the host's: a class that is two languages' (or
     // whose module another wrote) fails the build, and no language compiles it.
-    output.problems.extend(registry.problems().iter().map(|problem| ScriptProblem {
-        error: true,
-        class: Some(problem.class().to_owned()),
-        file: Some(problem.file()),
-        message: problem.to_string(),
-    }));
+    output
+        .problems
+        .extend(registry.problems().iter().map(|problem| ScriptProblem {
+            error: true,
+            class: Some(problem.class().to_owned()),
+            file: Some(problem.file()),
+            message: problem.to_string(),
+        }));
     let duplicate_names = duplicate_class_names(&registry);
     if !duplicate_names.is_empty() {
         output.problems.extend(duplicate_names);
@@ -144,6 +146,21 @@ pub fn compile_project(
                         language.display_name
                     ),
                     Some(source.clone()),
+                ));
+            } else if let Some(file) = unclaimed_source(&entry.dir) {
+                // No linked or enabled language claims the class, so its
+                // source is a file no language here reads (#1946). A class
+                // of only class.json / prefab.json is data, and fine.
+                output.problems.push(problem(
+                    format!(
+                        "has {} but no compiled module, and no linked or enabled language \
+                         claims it: enable its language's plugin, or link that language into \
+                         this tool",
+                        file.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("a source file"),
+                    ),
+                    Some(file),
                 ));
             }
             modules.push((entry.clone(), None));
@@ -282,6 +299,21 @@ fn duplicate_class_names(registry: &ClassRegistry) -> Vec<ScriptProblem> {
         .collect()
 }
 
+/// A file in a class directory that is not one of the class's own data files
+/// (`class.json`, `prefab.json`) nor hidden: the source of a language that is
+/// not linked or not enabled here. The first by name, for a stable message.
+fn unclaimed_source(dir: &Path) -> Option<PathBuf> {
+    let mut names: Vec<String> = virtual_fs::list_dir(dir)
+        .ok()?
+        .into_iter()
+        .filter(|entry| !entry.is_dir && !entry.name.starts_with('.'))
+        .map(|entry| entry.name)
+        .filter(|name| name != pulsar_class::CLASS_META_FILE && name != pulsar_class::PREFAB_FILE)
+        .collect();
+    names.sort();
+    names.into_iter().next().map(|name| dir.join(name))
+}
+
 fn is_older(a: &Path, b: &Path) -> bool {
     let modified = |p: &Path| {
         virtual_fs::metadata(p)
@@ -314,17 +346,36 @@ mod tests {
         assert_eq!(problems.len(), 1);
         assert!(problems[0].error);
         assert_eq!(problems[0].class.as_deref(), Some("NewBlueprintClass"));
-        assert!(
-            problems[0]
-                .message
-                .contains("classes/NewBlueprintClass.class")
-        );
-        assert!(
-            problems[0]
-                .message
-                .contains("src/classes/NewBlueprintClass.class")
-        );
+        assert!(problems[0]
+            .message
+            .contains("classes/NewBlueprintClass.class"));
+        assert!(problems[0]
+            .message
+            .contains("src/classes/NewBlueprintClass.class"));
         assert!(duplicate_class_names(&ClassRegistry::default()).is_empty());
+    }
+
+    #[test]
+    fn a_class_with_only_its_data_files_has_no_unclaimed_source() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("class.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("prefab.json"), "{}").unwrap();
+        std::fs::write(dir.path().join(".hidden"), "").unwrap();
+        std::fs::create_dir(dir.path().join("events")).unwrap();
+        assert_eq!(unclaimed_source(dir.path()), None);
+    }
+
+    #[test]
+    fn the_source_of_an_unlinked_language_is_named() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("class.json"), "{}").unwrap();
+        std::fs::write(dir.path().join("class.ts"), "").unwrap();
+        std::fs::write(dir.path().join("vars.json"), "").unwrap();
+        // The first by name, so the message is stable.
+        assert_eq!(
+            unclaimed_source(dir.path()),
+            Some(dir.path().join("class.ts"))
+        );
     }
 }
 

@@ -462,9 +462,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("d.level");
         // Pretend a write is in flight on this path.
-        WRITERS
-            .lock()
-            .insert(path.clone(), PathWriter::default());
+        WRITERS.lock().insert(path.clone(), PathWriter::default());
         let mut numbers = Vec::new();
         let mut waiting = Vec::new();
         for name in ["First", "Second", "Third"] {
@@ -488,7 +486,13 @@ mod tests {
         assert!(!path.exists(), "nothing is written while one is in flight");
 
         // The in-flight write ends and hands over, as write_coalesced does.
-        let next = WRITERS.lock().get_mut(&path).unwrap().pending.take().unwrap();
+        let next = WRITERS
+            .lock()
+            .get_mut(&path)
+            .unwrap()
+            .pending
+            .take()
+            .unwrap();
         let result = write_one(&path, next.snapshot, next.number);
         assert!(matches!(result, Ok(SaveOutcome::Saved)));
         for waiter in next.waiters {

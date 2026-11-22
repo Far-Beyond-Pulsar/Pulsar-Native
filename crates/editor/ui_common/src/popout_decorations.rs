@@ -16,8 +16,7 @@ use gpui::{
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{set_popout_decorations, PopoutContext, PopoutDecorations},
-    h_flex, v_flex, window_border, ActiveTheme as _, IconName, Sizable as _, ThemeMode,
-    TitleBar,
+    h_flex, v_flex, window_border, ActiveTheme as _, IconName, Sizable as _, ThemeMode, TitleBar,
 };
 
 /// Use the engine's title bar for every pop-out window, open or future.
@@ -66,7 +65,9 @@ impl PopoutDecorations for EnginePopoutDecorations {
                             .small()
                             .ghost()
                             .tooltip("Toggle light / dark mode")
-                            .on_click(move |_, _, cx| crate::appearance::set_theme_mode(to_mode, cx)),
+                            .on_click(move |_, _, cx| {
+                                crate::appearance::set_theme_mode(to_mode, cx)
+                            }),
                     ),
             );
 

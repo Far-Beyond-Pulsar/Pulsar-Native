@@ -261,9 +261,9 @@ pub fn write(project_root: &Path, unix_time: u64, markdown: &str) -> std::io::Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_backend::services::memory_owners::MemoryRow;
     use crate::utils::gpu_alloc_report::{GpuDeviceReport, GpuNameGroup};
     use crate::utils::large_allocs::LargeGroup;
+    use engine_backend::services::memory_owners::MemoryRow;
 
     const MB: u64 = 1024 * 1024;
 

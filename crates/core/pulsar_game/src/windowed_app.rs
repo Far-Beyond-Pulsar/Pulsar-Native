@@ -745,7 +745,13 @@ impl PulsarApp {
         &mut self,
         window: WindowHandle,
         path: PathBuf,
-        result: Result<(engine_backend::scene::LevelExtras, pulsar_traits::WorldRoles), String>,
+        result: Result<
+            (
+                engine_backend::scene::LevelExtras,
+                pulsar_traits::WorldRoles,
+            ),
+            String,
+        >,
     ) {
         match result {
             Ok((extras, roles)) => {
@@ -759,7 +765,10 @@ impl PulsarApp {
                         cam.yaw,
                         cam.pitch,
                     );
-                    tracing::info!(window = window.id(), "FreeCam seeded from scene editor camera");
+                    tracing::info!(
+                        window = window.id(),
+                        "FreeCam seeded from scene editor camera"
+                    );
                 }
                 // The level's roles and world settings (gravity,
                 // `physics_enabled`, ...) are the session's: the loop is still

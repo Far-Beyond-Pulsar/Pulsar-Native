@@ -46,7 +46,10 @@ fn layer_file(root: &Path, owner: &str) -> PathBuf {
     for segment in &segments[..segments.len().saturating_sub(1)] {
         path.push(segment);
     }
-    path.push(format!("{}.toml", segments.last().copied().unwrap_or("_root")));
+    path.push(format!(
+        "{}.toml",
+        segments.last().copied().unwrap_or("_root")
+    ));
     path
 }
 
@@ -62,8 +65,8 @@ fn read_table(root: &Path, owner: &str) -> anyhow::Result<toml::Table> {
     let bytes = provider
         .read_file(&path)
         .with_context(|| format!("failed to read {}", path.display()))?;
-    let text = String::from_utf8(bytes)
-        .with_context(|| format!("{} is not UTF-8", path.display()))?;
+    let text =
+        String::from_utf8(bytes).with_context(|| format!("{} is not UTF-8", path.display()))?;
     toml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
 }
 
@@ -154,7 +157,7 @@ fn report_retired_user_layer(owners: &[String]) {
         let user_root = GlobalSettings::new().config_dir().to_path_buf();
         for owner in owners {
             let file = layer_file(&user_root, owner);
-            if file.exists() {
+            if engine_fs::virtual_fs::exists(&file).unwrap_or(false) {
                 tracing::warn!(
                     "plugin settings are project settings now: {} is no longer read; set its values in Project Settings",
                     file.display()
@@ -241,7 +244,10 @@ pub fn activate(project: Option<&Path>) {
     pulsar_settings::plugin::sync(global_config());
     let project_dir = project.map(project_root_of);
     if let Some(root) = &project_dir {
-        apply_moves(root, pulsar_plugins::registered::<pulsar_settings::plugin::SettingsMove>());
+        apply_moves(
+            root,
+            pulsar_plugins::registered::<pulsar_settings::plugin::SettingsMove>(),
+        );
     }
     let owners = owners();
     report_retired_user_layer(&owners);
@@ -336,7 +342,11 @@ pub fn reset(owner: &str, key: &str) {
     commit(changes);
 }
 
-fn write_layer(root: &Path, owner: &str, layer: Option<&BTreeMap<String, ConfigValue>>) -> anyhow::Result<()> {
+fn write_layer(
+    root: &Path,
+    owner: &str,
+    layer: Option<&BTreeMap<String, ConfigValue>>,
+) -> anyhow::Result<()> {
     if layer.is_some_and(|layer| !layer.is_empty()) {
         engine_fs::virtual_fs::create_dir_all(root)
             .with_context(|| format!("cannot create {}", root.display()))?;
@@ -404,7 +414,11 @@ mod tests {
                 "level",
                 SchemaEntry::new("Level", 1_i64)
                     .page("General")
-                    .field_type(FieldType::NumberInput { min: None, max: None, step: None })
+                    .field_type(FieldType::NumberInput {
+                        min: None,
+                        max: None,
+                        step: None,
+                    })
                     .validator(Validator::int_range(0, 10)),
             )
             .setting("name", SchemaEntry::new("Name", "base"))
@@ -437,7 +451,10 @@ mod tests {
             let mut state = STATE.lock();
             *state = State::default();
         }
-        assert!(set(owner, "level", ConfigValue::Int(4)).is_err(), "no project is open");
+        assert!(
+            set(owner, "level", ConfigValue::Int(4)).is_err(),
+            "no project is open"
+        );
         STATE.lock().project_root = Some(project_dir.join(".pulsar"));
         let level = || {
             global_config()
@@ -504,7 +521,10 @@ mod tests {
         };
         let root = temp("moved");
         let old = layer_file(&root, moved.from);
-        let new = layer_file(&root, &pulsar_settings::plugin::owner_of(moved.origin, moved.id));
+        let new = layer_file(
+            &root,
+            &pulsar_settings::plugin::owner_of(moved.origin, moved.id),
+        );
         std::fs::create_dir_all(old.parent().unwrap()).unwrap();
         std::fs::write(&old, "path = \"C:/tools/server.exe\"\n").unwrap();
 
@@ -520,8 +540,14 @@ mod tests {
         std::fs::create_dir_all(old.parent().unwrap()).unwrap();
         std::fs::write(&old, "path = \"other\"\n").unwrap();
         apply_moves(&root, [&moved]);
-        assert!(old.exists(), "an existing new file is not overwritten, the old stays");
-        assert_eq!(std::fs::read_to_string(&new).unwrap(), "path = \"C:/tools/server.exe\"\n");
+        assert!(
+            old.exists(),
+            "an existing new file is not overwritten, the old stays"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&new).unwrap(),
+            "path = \"C:/tools/server.exe\"\n"
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -8,12 +8,11 @@ use std::sync::Arc;
 use gpui::*;
 use rust_i18n::t;
 use ui::{
-    ActiveTheme, Disableable, IconName, Selectable, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex,
+    h_flex, ActiveTheme, Disableable, IconName, Selectable, Sizable,
 };
 
-use super::floating_toolbar::{HandleSide, create_drag_handle, toolbar_with_drag_handle};
+use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle, HandleSide};
 use crate::extend::viewport::CameraToolbarInteger;
 use crate::state::{CameraMode, LevelEditorState};
 use crate::ui::toolbar::view_mode_dropdown::{ViewModeDropdown, ViewModePickerState};
@@ -145,7 +144,7 @@ fn camera_toolbar_integer(
     cx: &App,
 ) -> Option<impl IntoElement> {
     use engine_backend::subsystems::render::helio_renderer::project_settings;
-    use engine_state::settings::{NS_PROJECT, global_config};
+    use engine_state::settings::{global_config, NS_PROJECT};
     use helio::helio_settings::Kind;
 
     let setting = control.group.setting(control.key)?;

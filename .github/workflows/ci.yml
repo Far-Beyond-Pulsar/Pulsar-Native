@@ -533,7 +533,9 @@ jobs:
             --project crates/core/pulsar_package/tests/fixtures/smoke_project \
             --out "${RUNNER_TEMP}/smoke-package" --profile shipping --skip-build \
             --report "${RUNNER_TEMP}/smoke-package/report.json"
-          test -f "${RUNNER_TEMP}/smoke-package/Content/game.pak"
+          # A pak set: the table of contents and its numbered containers.
+          test -f "${RUNNER_TEMP}/smoke-package/Content/game.toc"
+          test -f "${RUNNER_TEMP}/smoke-package/Content/game_0000.pak"
 
       # Headless Blueprint compile (#879) through the plugin's
       # ScriptLanguage::compile_project.

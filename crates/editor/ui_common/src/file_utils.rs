@@ -16,7 +16,7 @@ pub enum FileType {
     /// A folder holding a language's class marker file: the language's name
     /// (`Language::display_name`).
     Class(&'static str),
-    File,  // Any other file - plugin system will determine if openable
+    File, // Any other file - plugin system will determine if openable
 }
 
 impl FileType {

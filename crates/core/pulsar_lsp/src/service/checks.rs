@@ -111,17 +111,21 @@ impl LanguageServers {
         let key = path_key(path);
         let enabled = compiler.live_check_enabled();
         let debounce = self.checks.debounce();
-        let file = self.checks.files.entry(key.clone()).or_insert_with(|| FileCheck {
-            path: path.to_path_buf(),
-            language,
-            text: Arc::from(""),
-            version: 0,
-            due: false,
-            running: false,
-            done: 0,
-            suspended: false,
-            _timer: None,
-        });
+        let file = self
+            .checks
+            .files
+            .entry(key.clone())
+            .or_insert_with(|| FileCheck {
+                path: path.to_path_buf(),
+                language,
+                text: Arc::from(""),
+                version: 0,
+                due: false,
+                running: false,
+                done: 0,
+                suspended: false,
+                _timer: None,
+            });
         // The latest text is kept even while the check is off, so turning it on
         // checks what is there now.
         file.text = Arc::from(text);
@@ -198,15 +202,21 @@ impl LanguageServers {
         };
         let file = self.checks.files.get_mut(key).expect("looked up above");
         file.running = true;
-        let (version, text, path, language) =
-            (file.version, file.text.clone(), file.path.clone(), file.language);
+        let (version, text, path, language) = (
+            file.version,
+            file.text.clone(),
+            file.path.clone(),
+            file.language,
+        );
         let key = key.to_string();
 
         let (tx, rx) = flume::bounded::<Vec<CompileDiagnostic>>(1);
         let title = format!(
             "Check {}: {}",
             language.display_name,
-            path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+            path.file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_default()
         );
         let job_path = path.clone();
         let job_text = text.clone();
@@ -315,8 +325,14 @@ impl LanguageServers {
 
     /// A language is gone (its plugin was disabled): its entries and every
     /// file it was checking go.
-    pub(super) fn drop_language_checks(&mut self, language: &'static Language, cx: &mut Context<Self>) {
-        self.checks.files.retain(|_, file| file.language.id != language.id);
+    pub(super) fn drop_language_checks(
+        &mut self,
+        language: &'static Language,
+        cx: &mut Context<Self>,
+    ) {
+        self.checks
+            .files
+            .retain(|_, file| file.language.id != language.id);
         self.checks.compilers.remove(language.id);
         let source = DiagnosticSource::Compiler(language.id);
         self.diagnostics
@@ -328,7 +344,10 @@ impl LanguageServers {
     pub(super) fn drop_all_checks(&mut self, cx: &mut Context<Self>) {
         let mut languages: Vec<&'static Language> = Vec::new();
         for file in self.checks.files.values() {
-            if !languages.iter().any(|language| language.id == file.language.id) {
+            if !languages
+                .iter()
+                .any(|language| language.id == file.language.id)
+            {
                 languages.push(file.language);
             }
         }
@@ -352,7 +371,11 @@ impl LanguageServers {
 /// the drawer lists: one-based line and column from `location`, the range
 /// reaching to the end of the word at the position (the compiler reports a
 /// point), the source named `Pulsar`.
-pub fn compiler_diagnostics(path: &Path, text: &str, found: &[CompileDiagnostic]) -> Vec<Diagnostic> {
+pub fn compiler_diagnostics(
+    path: &Path,
+    text: &str,
+    found: &[CompileDiagnostic],
+) -> Vec<Diagnostic> {
     let file_path = path.to_string_lossy().into_owned();
     found
         .iter()
@@ -422,11 +445,15 @@ mod tests {
     fn a_compiler_problem_becomes_a_pulsar_diagnostic_with_a_range() {
         let text = "export default class Door {\n    f(): int { return missing_call(1); }\n}\n";
         let found = [problem(Some("2:23"), "unknown function")];
-        let diagnostics = compiler_diagnostics(Path::new("/p/src/classes/Door/class.ts"), text, &found);
+        let diagnostics =
+            compiler_diagnostics(Path::new("/p/src/classes/Door/class.ts"), text, &found);
         assert_eq!(diagnostics.len(), 1);
         let d = &diagnostics[0];
         assert_eq!((d.line, d.column), (2, 23));
-        assert_eq!((d.end_line, d.end_column), (Some(2), Some(23 + "missing_call".len())));
+        assert_eq!(
+            (d.end_line, d.end_column),
+            (Some(2), Some(23 + "missing_call".len()))
+        );
         assert_eq!(d.source.as_deref(), Some("Pulsar"));
         assert_eq!(d.severity, DiagnosticSeverity::Error);
         assert!(d.raw_lsp_diagnostic.is_none());
@@ -439,7 +466,11 @@ mod tests {
         let d = &compiler_diagnostics(Path::new("a.ts"), "a + ;", &[problem(Some("1:3"), "x")])[0];
         assert_eq!(d.end_column, Some(4), "an operator is one character");
         let d = &compiler_diagnostics(Path::new("a.ts"), "", &[problem(Some("9:9"), "x")])[0];
-        assert_eq!(d.end_column, Some(10), "a position past the text is still one wide");
+        assert_eq!(
+            d.end_column,
+            Some(10),
+            "a position past the text is still one wide"
+        );
     }
 
     #[test]
@@ -469,7 +500,12 @@ mod service_tests {
             ENABLED.load(Ordering::SeqCst)
         }
 
-        fn check_source(&self, ctx: &CheckContext, path: &Path, text: &str) -> Vec<CompileDiagnostic> {
+        fn check_source(
+            &self,
+            ctx: &CheckContext,
+            path: &Path,
+            text: &str,
+        ) -> Vec<CompileDiagnostic> {
             CALLS.fetch_add(1, Ordering::SeqCst);
             *LAST_TEXT.lock().unwrap() = text.to_string();
             assert!(ctx.project_root.is_absolute() || ctx.project_root.starts_with("/"));
@@ -499,7 +535,13 @@ mod service_tests {
     pulsar_plugins::inventory::submit! { LANGUAGE }
 
     /// The service only checks files while a project is open.
-    fn service(cx: &mut TestAppContext) -> (gpui::Entity<LanguageServers>, gpui::Entity<crate::DiagnosticsStore>, PathBuf) {
+    fn service(
+        cx: &mut TestAppContext,
+    ) -> (
+        gpui::Entity<LanguageServers>,
+        gpui::Entity<crate::DiagnosticsStore>,
+        PathBuf,
+    ) {
         let project = std::env::temp_dir().join(format!("pulsar_lsp_check_{}", std::process::id()));
         std::fs::create_dir_all(&project).unwrap();
         let service = cx.new(LanguageServers::new);
@@ -511,7 +553,11 @@ mod service_tests {
         (service, store, project.join("a.chk"))
     }
 
-    fn wait_for(cx: &mut TestAppContext, what: &str, mut done: impl FnMut(&mut TestAppContext) -> bool) {
+    fn wait_for(
+        cx: &mut TestAppContext,
+        what: &str,
+        mut done: impl FnMut(&mut TestAppContext) -> bool,
+    ) {
         cx.executor().allow_parking();
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         loop {
@@ -519,7 +565,10 @@ mod service_tests {
             if done(cx) {
                 return;
             }
-            assert!(std::time::Instant::now() < deadline, "timed out waiting for {what}");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
     }
@@ -543,9 +592,15 @@ mod service_tests {
         cx.run_until_parked();
         assert_eq!(CALLS.load(Ordering::SeqCst), 0);
         cx.executor().advance_clock(Duration::from_secs(1));
-        wait_for(cx, "the check", |cx| !store.read_with(cx, |s, _| s.for_file(&file)).is_empty());
+        wait_for(cx, "the check", |cx| {
+            !store.read_with(cx, |s, _| s.for_file(&file)).is_empty()
+        });
 
-        assert_eq!(CALLS.load(Ordering::SeqCst), 1, "one check for the whole burst");
+        assert_eq!(
+            CALLS.load(Ordering::SeqCst),
+            1,
+            "one check for the whole burst"
+        );
         assert_eq!(&*LAST_TEXT.lock().unwrap(), "four", "the latest text wins");
         let entries = store.read_with(cx, |s, _| s.for_file(&file));
         assert_eq!(entries.len(), 1);
@@ -574,7 +629,10 @@ mod service_tests {
                 .first()
                 .is_some_and(|(_, d)| d.message == "saw: second")
         });
-        assert!(service.read_with(cx, |s, _| s.checked_files().iter().all(|(_, _, running)| !running)));
+        assert!(service.read_with(cx, |s, _| s
+            .checked_files()
+            .iter()
+            .all(|(_, _, running)| !running)));
     }
 
     #[gpui::test]
@@ -586,7 +644,9 @@ mod service_tests {
         let (service, store, file) = service(cx);
         service.update(cx, |s, cx| s.check_source(&file, "text", cx));
         cx.executor().advance_clock(Duration::from_secs(1));
-        wait_for(cx, "the check", |cx| !store.read_with(cx, |s, _| s.for_file(&file)).is_empty());
+        wait_for(cx, "the check", |cx| {
+            !store.read_with(cx, |s, _| s.for_file(&file)).is_empty()
+        });
 
         // The language's setting turns off: the next tick clears the source.
         ENABLED.store(false, Ordering::SeqCst);
@@ -604,8 +664,13 @@ mod service_tests {
         // Back on: the open file is checked again without another edit.
         ENABLED.store(true, Ordering::SeqCst);
         cx.executor().advance_clock(Duration::from_secs(5));
-        wait_for(cx, "the resumed check", |cx| !store.read_with(cx, |s, _| s.for_file(&file)).is_empty());
+        wait_for(cx, "the resumed check", |cx| {
+            !store.read_with(cx, |s, _| s.for_file(&file)).is_empty()
+        });
         let entries = store.read_with(cx, |s, _| s.for_file(&file));
-        assert_eq!(entries[0].1.message, "saw: more", "the latest text is the one checked");
+        assert_eq!(
+            entries[0].1.message, "saw: more",
+            "the latest text is the one checked"
+        );
     }
 }

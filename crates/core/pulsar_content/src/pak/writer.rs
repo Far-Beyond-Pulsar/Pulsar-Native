@@ -15,8 +15,12 @@ use std::path::Path;
 use rayon::prelude::*;
 
 use super::cipher::{self, MAX_CONTAINERS};
-use super::format::{container_header, Block, Codec, Toc, TocEntry, CONTAINER_HEADER_LEN, MAX_BLOCK_LEN};
-use super::{container_file_name, container_index, content_hash, ContentKey, PakError, TOC_FILE_NAME};
+use super::format::{
+    container_header, Block, Codec, Toc, TocEntry, CONTAINER_HEADER_LEN, MAX_BLOCK_LEN,
+};
+use super::{
+    container_file_name, container_index, content_hash, ContentKey, PakError, TOC_FILE_NAME,
+};
 
 /// The single-file pak of format 1, replaced by a pak set.
 const LEGACY_PAK_FILE: &str = "game.pak";
@@ -72,9 +76,17 @@ pub enum PackEvent {
         rewrite: Option<String>,
     },
     /// Bytes of changed entries packed so far, of `total`.
-    Packed { done: u64, total: u64 },
-    ContainerWritten { file: String, bytes: u64 },
-    Removed { file: String },
+    Packed {
+        done: u64,
+        total: u64,
+    },
+    ContainerWritten {
+        file: String,
+        bytes: u64,
+    },
+    Removed {
+        file: String,
+    },
 }
 
 /// What [`write_pak_set`] did.
@@ -107,7 +119,10 @@ pub fn write_pak_set(
     cancelled: &dyn Fn() -> bool,
 ) -> Result<PackReport, PakError> {
     if settings.block_size == 0 || settings.block_size > MAX_BLOCK_LEN {
-        return Err(PakError::Corrupt(format!("block size {}", settings.block_size)));
+        return Err(PakError::Corrupt(format!(
+            "block size {}",
+            settings.block_size
+        )));
     }
     std::fs::create_dir_all(dir)?;
 
@@ -125,7 +140,9 @@ pub fn write_pak_set(
     let mut reused: BTreeMap<String, TocEntry> = BTreeMap::new();
     if let Some(previous) = &previous {
         reused = reusable_entries(previous, &inputs, &hashes);
-        if let Some(reason) = dead_space_rewrite(previous, &inputs, &reused, settings.max_dead_ratio) {
+        if let Some(reason) =
+            dead_space_rewrite(previous, &inputs, &reused, settings.max_dead_ratio)
+        {
             rewrite = Some(reason);
         }
     }
@@ -193,7 +210,9 @@ pub fn write_pak_set(
         packer.discard_new_containers();
         return Err(error);
     }
-    let Packer { toc, mut report, .. } = packer;
+    let Packer {
+        toc, mut report, ..
+    } = packer;
 
     publish_set(dir, &key, &toc, &mut report, on_event)?;
     Ok(report)
@@ -201,7 +220,9 @@ pub fn write_pak_set(
 
 /// The input paths normalized, rejecting a path that is not content-relative,
 /// is too long, or appears twice once normalized.
-fn normalized_inputs(files: &BTreeMap<String, Vec<u8>>) -> Result<BTreeMap<String, &[u8]>, PakError> {
+fn normalized_inputs(
+    files: &BTreeMap<String, Vec<u8>>,
+) -> Result<BTreeMap<String, &[u8]>, PakError> {
     let mut inputs: BTreeMap<String, &[u8]> = BTreeMap::new();
     for (path, bytes) in files {
         let rel = crate::normalize_rel(path).ok_or_else(|| PakError::BadPath(path.clone()))?;
@@ -371,7 +392,11 @@ impl Packer<'_, '_> {
         let mut entry_blocks = Vec::with_capacity(blocks.len());
         for (mut data, raw, codec) in blocks {
             let offset = container.len;
-            cipher::apply(&self.key.0, cipher::block_stream(container.index, offset), &mut data);
+            cipher::apply(
+                &self.key.0,
+                cipher::block_stream(container.index, offset),
+                &mut data,
+            );
             container.write(&data)?;
             entry_blocks.push(Block {
                 offset,
@@ -463,8 +488,16 @@ fn publish_set(
         report.removed.push(LEGACY_PAK_FILE.into());
     }
 
-    report.containers = toc.containers.keys().map(|i| container_file_name(*i)).collect();
-    report.total_stored = toc.containers.values().map(|len| len - CONTAINER_HEADER_LEN).sum();
+    report.containers = toc
+        .containers
+        .keys()
+        .map(|i| container_file_name(*i))
+        .collect();
+    report.total_stored = toc
+        .containers
+        .values()
+        .map(|len| len - CONTAINER_HEADER_LEN)
+        .sum();
     Ok(())
 }
 
@@ -472,10 +505,17 @@ fn publish_set(
 fn previous_set(dir: &Path, key: &ContentKey, block_size: u32) -> Result<Toc, String> {
     let bytes = match std::fs::read(dir.join(TOC_FILE_NAME)) {
         Ok(bytes) => bytes,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err("no previous pak set".into()),
-        Err(e) => return Err(format!("the previous table of contents is unreadable ({e})")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err("no previous pak set".into())
+        }
+        Err(e) => {
+            return Err(format!(
+                "the previous table of contents is unreadable ({e})"
+            ))
+        }
     };
-    let toc = Toc::decode(&bytes, &key.0).map_err(|e| format!("the previous pak set is not reusable ({e})"))?;
+    let toc = Toc::decode(&bytes, &key.0)
+        .map_err(|e| format!("the previous pak set is not reusable ({e})"))?;
     if toc.block_size != block_size {
         return Err("the block size changed".into());
     }
@@ -483,7 +523,12 @@ fn previous_set(dir: &Path, key: &ContentKey, block_size: u32) -> Result<Toc, St
         let path = dir.join(container_file_name(*index));
         match std::fs::metadata(&path) {
             Ok(meta) if meta.len() == *len => {}
-            _ => return Err(format!("{} is missing or changed", container_file_name(*index))),
+            _ => {
+                return Err(format!(
+                    "{} is missing or changed",
+                    container_file_name(*index)
+                ))
+            }
         }
     }
     Ok(toc)

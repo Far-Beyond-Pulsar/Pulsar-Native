@@ -433,7 +433,10 @@ mod tests {
     #[test]
     fn overlay_merges_objects_and_replaces_scalars() {
         let mut base = json!({ "check": { "command": "clippy", "extra": 1 }, "a": 1 });
-        merge_json(&mut base, &json!({ "check": { "command": "check" }, "b": 2 }));
+        merge_json(
+            &mut base,
+            &json!({ "check": { "command": "check" }, "b": 2 }),
+        );
         assert_eq!(
             base,
             json!({ "check": { "command": "check", "extra": 1 }, "a": 1, "b": 2 })

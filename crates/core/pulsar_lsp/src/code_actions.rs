@@ -48,7 +48,12 @@ pub fn edits_in_workspace_edit(edit: &Value) -> Vec<TextEdit> {
                 continue;
             };
             let file = path_string(uri);
-            for text_edit in change.get("edits").and_then(Value::as_array).into_iter().flatten() {
+            for text_edit in change
+                .get("edits")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
                 edits.extend(parse_text_edit(text_edit, &file));
             }
         }
@@ -129,7 +134,10 @@ mod tests {
             { "title": "c", "data": 2, "edit": { "changes": {} } }
         ]);
         assert_eq!(get_unresolved_actions(&result).len(), 1);
-        assert!(parse_code_actions(&result).is_empty(), "no edits in any of them");
+        assert!(
+            parse_code_actions(&result).is_empty(),
+            "no edits in any of them"
+        );
     }
 }
 

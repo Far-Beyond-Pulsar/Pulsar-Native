@@ -82,8 +82,8 @@ impl Toc {
         }
         put_u32(&mut body, self.entries.len() as u32);
         for (path, entry) in &self.entries {
-            let path_len = u16::try_from(path.len())
-                .map_err(|_| PakError::BadPath(path.clone()))?;
+            let path_len =
+                u16::try_from(path.len()).map_err(|_| PakError::BadPath(path.clone()))?;
             body.extend_from_slice(&path_len.to_le_bytes());
             body.extend_from_slice(path.as_bytes());
             put_u64(&mut body, entry.len);
@@ -190,7 +190,9 @@ impl Toc {
                     || block.raw > MAX_BLOCK_LEN
                     || block.stored > MAX_BLOCK_LEN
                 {
-                    return Err(PakError::Corrupt(format!("`{path}` points outside its container")));
+                    return Err(PakError::Corrupt(format!(
+                        "`{path}` points outside its container"
+                    )));
                 }
                 decoded += u64::from(block.raw);
                 blocks.push(block);
@@ -209,7 +211,9 @@ impl Toc {
             );
         }
         if !at.is_empty() {
-            return Err(PakError::Corrupt("trailing bytes in table of contents".into()));
+            return Err(PakError::Corrupt(
+                "trailing bytes in table of contents".into(),
+            ));
         }
         Ok(toc)
     }

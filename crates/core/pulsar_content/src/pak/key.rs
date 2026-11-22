@@ -135,7 +135,10 @@ mod tests {
         let key = ContentKey::generate().unwrap();
         assert_eq!(ContentKey::from_hex(&key.to_hex()).unwrap(), key);
         assert!(ContentKey::from_hex("abc").is_err());
-        assert!(!format!("{key:?}").contains(&key.to_hex()), "Debug hides it");
+        assert!(
+            !format!("{key:?}").contains(&key.to_hex()),
+            "Debug hides it"
+        );
 
         let project = tempfile::tempdir().unwrap();
         let made = ContentKey::load_or_create(project.path()).unwrap();

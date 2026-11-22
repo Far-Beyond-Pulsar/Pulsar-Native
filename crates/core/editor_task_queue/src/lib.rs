@@ -23,6 +23,7 @@
 //! starve short editor interactions. Starring a queued job raises its
 //! scheduling priority within its pool.
 
+mod blocking;
 pub mod helio;
 mod log;
 mod micro;
@@ -30,9 +31,9 @@ pub mod pools;
 mod services;
 pub mod threads;
 mod track;
-mod blocking;
 mod ui_watch;
 
+pub use blocking::{allow_blocking, blocking_call, blocking_snapshots, BlockingSnapshot};
 pub use log::{LogRead, TaskLog, TaskLogLayer, MAX_LOG_LINES};
 pub use micro::{micro, micro_snapshots, MicroSnapshot};
 pub use services::{spawn_service, PersistentTask, ServiceDescription, ServiceHandle};
@@ -42,7 +43,6 @@ pub use threads::{
     ThreadSpec, ThreadState,
 };
 pub use track::{scope, tracked, TaskOutcome, Tracked};
-pub use blocking::{allow_blocking, blocking_call, blocking_snapshots, BlockingSnapshot};
 pub use ui_watch::{
     record_slow_ui_work, set_ui_activity_source, ui_beat, BEAT_EVERY as UI_BEAT_EVERY,
     UNRESPONSIVE_AFTER as UI_UNRESPONSIVE_AFTER,

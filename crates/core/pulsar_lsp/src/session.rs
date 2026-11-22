@@ -24,7 +24,10 @@ pub enum ServerStatus {
     /// Locating, spawning, handshaking.
     Starting,
     /// Working: `progress` 0.0 to 1.0, `message` what it is doing.
-    Indexing { progress: f32, message: String },
+    Indexing {
+        progress: f32,
+        message: String,
+    },
     Ready,
     Error(String),
     /// The server, or the runtime it needs, is not installed: the message says
@@ -37,10 +40,7 @@ pub enum ServerStatus {
 impl ServerStatus {
     /// Whether a process is alive (starting, working or ready).
     pub fn is_running(&self) -> bool {
-        matches!(
-            self,
-            Self::Starting | Self::Indexing { .. } | Self::Ready
-        )
+        matches!(self, Self::Starting | Self::Indexing { .. } | Self::Ready)
     }
 
     /// Whether the server has answered `initialize` (so it can take documents
@@ -71,7 +71,10 @@ pub enum ServerEvent {
     StatusChanged(ServerStatus),
     /// Work in progress (coalesced: at most one per 100 ms unless progress
     /// crossed a 5% step).
-    Progress { progress: f32, message: String },
+    Progress {
+        progress: f32,
+        message: String,
+    },
     /// First time the server is ready after a (re)start.
     Ready,
     Error(String),
@@ -163,7 +166,12 @@ impl Session {
         // Progress that began before the reply decides the display.
         let working = ServerStatus::Indexing {
             progress: 0.0,
-            message: if self.tokens.is_empty() { "Initializing..." } else { "Working..." }.to_string(),
+            message: if self.tokens.is_empty() {
+                "Initializing..."
+            } else {
+                "Working..."
+            }
+            .to_string(),
         };
         self.set_status(working.clone(), &mut out);
         if let ServerStatus::Indexing { progress, message } = working {
@@ -293,7 +301,9 @@ impl Session {
         self.initialized_at = None;
         self.tokens.clear();
         self.status = ServerStatus::Error(error.clone());
-        out.push(ServerEvent::StatusChanged(ServerStatus::Error(error.clone())));
+        out.push(ServerEvent::StatusChanged(ServerStatus::Error(
+            error.clone(),
+        )));
         out.push(ServerEvent::Error(error));
         out
     }
@@ -307,7 +317,9 @@ impl Session {
         self.initialized_at = None;
         self.tokens.clear();
         self.status = ServerStatus::Missing(message.clone());
-        out.push(ServerEvent::StatusChanged(ServerStatus::Missing(message.clone())));
+        out.push(ServerEvent::StatusChanged(ServerStatus::Missing(
+            message.clone(),
+        )));
         out.push(ServerEvent::Error(message));
         out
     }
@@ -336,9 +348,9 @@ impl Session {
         force: bool,
         out: &mut Vec<ServerEvent>,
     ) {
-        let interval_elapsed = self
-            .last_emit
-            .map_or(true, |last| now.duration_since(last) >= PROGRESS_EMIT_MIN_INTERVAL);
+        let interval_elapsed = self.last_emit.map_or(true, |last| {
+            now.duration_since(last) >= PROGRESS_EMIT_MIN_INTERVAL
+        });
         let milestone = |p: f32| (p.clamp(0.0, 1.0) / PROGRESS_EMIT_MILESTONE_STEP) as u32;
         let crossed = self
             .last_emitted
@@ -366,7 +378,9 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pulsar_language::spec::{LocateContext, LocateError, RootStrategy, ServerCommand, ServerHooks};
+    use pulsar_language::spec::{
+        LocateContext, LocateError, RootStrategy, ServerCommand, ServerHooks,
+    };
     use serde_json::Value;
 
     fn spec_with(rule: ReadinessRule, cap: Duration) -> &'static LanguageServerSpec {
@@ -392,7 +406,14 @@ mod tests {
     }
 
     fn began(s: &mut Session, token: &str, now: Instant) -> Vec<ServerEvent> {
-        s.progress(token, ProgressKind::Begin, Some("Indexing"), None, Some(0), now)
+        s.progress(
+            token,
+            ProgressKind::Begin,
+            Some("Indexing"),
+            None,
+            Some(0),
+            now,
+        )
     }
 
     fn ended(s: &mut Session, token: &str, now: Instant) -> Vec<ServerEvent> {
@@ -504,7 +525,10 @@ mod tests {
             .iter()
             .position(|e| matches!(e, ServerEvent::Progress { .. }))
             .expect("the held-back progress is flushed");
-        let ready = events.iter().position(|e| *e == ServerEvent::Ready).unwrap();
+        let ready = events
+            .iter()
+            .position(|e| *e == ServerEvent::Ready)
+            .unwrap();
         assert!(first_progress < ready);
     }
 

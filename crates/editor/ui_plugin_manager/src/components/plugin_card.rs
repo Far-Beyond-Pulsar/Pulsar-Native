@@ -154,7 +154,11 @@ pub fn render_plugin_icon(
         .justify_center();
     match pulsar_plugins::icon_of(&entry.id) {
         Some(icon) => frame
-            .child(img(icon_image(icon)).size_full().object_fit(ObjectFit::Contain))
+            .child(
+                img(icon_image(icon))
+                    .size_full()
+                    .object_fit(ObjectFit::Contain),
+            )
             .into_any_element(),
         None => frame
             .border_1()

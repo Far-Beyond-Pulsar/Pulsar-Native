@@ -95,8 +95,12 @@ fn both_plugins_register_one_language_each() {
     let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
     pulsar_plugins::deactivate();
     let registry = LanguageRegistry::current();
-    let blueprint = registry.by_id("blueprint").expect("the Blueprint plugin's language");
-    let typescript = registry.by_id("typescript").expect("the TypeScript plugin's language");
+    let blueprint = registry
+        .by_id("blueprint")
+        .expect("the Blueprint plugin's language");
+    let typescript = registry
+        .by_id("typescript")
+        .expect("the TypeScript plugin's language");
     assert_eq!(blueprint.class_markers, ["graph_save.json"]);
     assert_eq!(typescript.class_markers, ["class.ts"]);
     assert!(blueprint.compiler.is_some() && typescript.compiler.is_some());
@@ -122,7 +126,9 @@ fn a_class_with_two_markers_is_one_multiple_languages_problem() {
     let problems = registry.problems();
     assert_eq!(problems.len(), 1, "{problems:?}");
     match &problems[0] {
-        ClassProblem::MultipleLanguages { class, languages, .. } => {
+        ClassProblem::MultipleLanguages {
+            class, languages, ..
+        } => {
             assert_eq!(class, "Both");
             assert_eq!(languages, &["blueprint", "typescript"]);
         }
@@ -138,7 +144,11 @@ fn neither_plugin_compiles_a_class_that_is_two_languages() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(root.path().join("Pulsar")).unwrap();
     let both = class(root.path(), "Both", &["graph_save.json", "class.ts"]);
-    std::fs::write(both.join("class.ts"), "export default class Both extends ScriptClass {}").unwrap();
+    std::fs::write(
+        both.join("class.ts"),
+        "export default class Both extends ScriptClass {}",
+    )
+    .unwrap();
     let natives = pulsar_script_vm::NativeRegistry::with_engine_natives();
     for (language, compiler) in LanguageRegistry::current().compilers() {
         let problems = compiler.compile_project(root.path(), &natives);
@@ -148,7 +158,10 @@ fn neither_plugin_compiles_a_class_that_is_two_languages() {
             language.id
         );
     }
-    let entry = ClassRegistry::scan(root.path()).by_name("Both").cloned().unwrap();
+    let entry = ClassRegistry::scan(root.path())
+        .by_name("Both")
+        .cloned()
+        .unwrap();
     assert!(
         !pulsar_class::ModuleStore::of_project(root.path()).has_module(&entry.id),
         "nothing was compiled"
@@ -203,11 +216,17 @@ fn disabling_a_plugin_removes_its_markers_language_and_server() {
     assert!(pulsar_class::registry::is_class_dir(&text));
     assert!(pulsar_class::registry::is_class_dir(&graph));
     let served = Path::new("/p/a.srv");
-    assert!(LanguageRegistry::current().server_for_path(served).is_some());
+    assert!(LanguageRegistry::current()
+        .server_for_path(served)
+        .is_some());
     let before = pulsar_plugins::generation();
 
     enabled_but(&[TYPESCRIPT]);
-    assert_ne!(pulsar_plugins::generation(), before, "the registry follows the generation");
+    assert_ne!(
+        pulsar_plugins::generation(),
+        before,
+        "the registry follows the generation"
+    );
     let registry = LanguageRegistry::current();
     assert!(registry.by_id("typescript").is_none());
     assert!(registry.for_path(Path::new("src/a.ts")).is_none());
@@ -215,7 +234,10 @@ fn disabling_a_plugin_removes_its_markers_language_and_server() {
         !pulsar_class::registry::is_class_dir(&text),
         "its marker no longer makes a class"
     );
-    assert!(pulsar_class::registry::is_class_dir(&graph), "the other language's does");
+    assert!(
+        pulsar_class::registry::is_class_dir(&graph),
+        "the other language's does"
+    );
     assert!(
         registry.server_for_path(served).is_none(),
         "its server is no longer routed to"
@@ -235,7 +257,9 @@ fn disabling_a_plugin_removes_its_markers_language_and_server() {
     pulsar_plugins::deactivate();
     assert!(pulsar_class::registry::is_class_dir(&text));
     assert!(pulsar_class::registry::is_class_dir(&graph));
-    assert!(LanguageRegistry::current().server_for_path(served).is_some());
+    assert!(LanguageRegistry::current()
+        .server_for_path(served)
+        .is_some());
 }
 
 #[test]
@@ -250,35 +274,60 @@ fn a_disabled_plugins_server_settings_group_is_withdrawn() {
             .flat_map(|source| (source.groups)())
             .collect::<Vec<_>>()
     };
-    let report = pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
+    let report =
+        pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
     assert!(
-        report.registered.iter().any(|owner| owner.ends_with("/dummy-server")),
+        report
+            .registered
+            .iter()
+            .any(|owner| owner.ends_with("/dummy-server")),
         "{report:?}"
     );
     assert!(
-        report.registered.iter().any(|owner| owner.ends_with("/rust-analyzer")),
+        report
+            .registered
+            .iter()
+            .any(|owner| owner.ends_with("/rust-analyzer")),
         "{report:?}"
     );
 
     enabled_but(&[TYPESCRIPT]);
-    let report = pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
+    let report =
+        pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
     assert!(
-        report.withdrawn.iter().any(|owner| owner.ends_with("/dummy-server")),
+        report
+            .withdrawn
+            .iter()
+            .any(|owner| owner.ends_with("/dummy-server")),
         "{report:?}"
     );
     assert!(
-        !report.withdrawn.iter().any(|owner| owner.ends_with("/rust-analyzer")),
+        !report
+            .withdrawn
+            .iter()
+            .any(|owner| owner.ends_with("/rust-analyzer")),
         "another plugin's group stays: {report:?}"
     );
 
     // Disabling the Rust plugin withdraws its group, which lives under the
     // plugin's own page.
     enabled_but(&[RUST]);
-    let report = pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
-    assert_eq!(report.withdrawn, ["pulsar.rust/rust-analyzer"], "{report:?}");
+    let report =
+        pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
+    assert_eq!(
+        report.withdrawn,
+        ["pulsar.rust/rust-analyzer"],
+        "{report:?}"
+    );
     pulsar_plugins::deactivate();
-    let report = pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
-    assert!(report.registered.contains(&"pulsar.rust/rust-analyzer".to_string()), "{report:?}");
+    let report =
+        pulsar_settings::plugin::sync_groups(&cfg, groups(), pulsar_plugins::origin_enabled);
+    assert!(
+        report
+            .registered
+            .contains(&"pulsar.rust/rust-analyzer".to_string()),
+        "{report:?}"
+    );
 }
 
 #[test]
@@ -296,7 +345,10 @@ fn rust_is_a_default_plugin_that_registers_the_rust_language() {
     ));
     let registry = LanguageRegistry::current();
     let rust = registry.by_id("rust").expect("the Rust plugin's language");
-    assert_eq!(registry.for_path(Path::new("src/main.rs")).map(|l| l.id), Some("rust"));
+    assert_eq!(
+        registry.for_path(Path::new("src/main.rs")).map(|l| l.id),
+        Some("rust")
+    );
     assert_eq!(rust.file_extensions, ["rs"]);
     assert_eq!(rust.config_files, ["Cargo.toml", "rust-project.json"]);
     assert!(rust.compiler.is_none() && rust.class_markers.is_empty());
@@ -304,12 +356,17 @@ fn rust_is_a_default_plugin_that_registers_the_rust_language() {
         pulsar_plugins::owner_of(rust.origin),
         pulsar_plugins::Owner::Plugin(plugin)
     );
-    let (_, spec) = registry.server_for_path(Path::new("/p/src/main.rs")).expect("a server for .rs");
+    let (_, spec) = registry
+        .server_for_path(Path::new("/p/src/main.rs"))
+        .expect("a server for .rs");
     assert_eq!(spec.id, "rust-analyzer");
     assert!(spec.eager && spec.readiness == ReadinessRule::Signal);
-    assert!(pulsar_lsp::active_servers().iter().any(|(_, spec)| spec.id == "rust-analyzer"));
+    assert!(pulsar_lsp::active_servers()
+        .iter()
+        .any(|(_, spec)| spec.id == "rust-analyzer"));
     // The old Rust settings keys follow the group to the plugin's page.
-    let moves: Vec<_> = pulsar_plugins::registered::<pulsar_settings::plugin::SettingsMove>().collect();
+    let moves: Vec<_> =
+        pulsar_plugins::registered::<pulsar_settings::plugin::SettingsMove>().collect();
     assert_eq!(moves.len(), 1);
     assert_eq!(moves[0].from, "engine.pulsar_lsp/rust-analyzer");
     assert_eq!(
@@ -327,8 +384,12 @@ fn with_rust_disabled_a_rs_file_has_no_server_and_no_settings_group() {
     let registry = LanguageRegistry::current();
     assert!(registry.by_id("rust").is_none());
     assert!(registry.for_path(Path::new("src/main.rs")).is_none());
-    assert!(registry.server_for_path(Path::new("/p/src/main.rs")).is_none());
-    assert!(!pulsar_lsp::active_servers().iter().any(|(_, spec)| spec.id == "rust-analyzer"));
+    assert!(registry
+        .server_for_path(Path::new("/p/src/main.rs"))
+        .is_none());
+    assert!(!pulsar_lsp::active_servers()
+        .iter()
+        .any(|(_, spec)| spec.id == "rust-analyzer"));
     assert_eq!(
         pulsar_plugins::registered::<pulsar_settings::plugin::SettingsMove>().count(),
         0,
@@ -364,15 +425,27 @@ fn disabling_rust_stops_its_server_and_clears_its_diagnostics(cx: &mut gpui::Tes
 
     let project = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(project.path().join("src")).unwrap();
-    std::fs::write(project.path().join("Cargo.toml"), "[package]\nname = \"p\"\n").unwrap();
+    std::fs::write(
+        project.path().join("Cargo.toml"),
+        "[package]\nname = \"p\"\n",
+    )
+    .unwrap();
     let file = project.path().join("src").join("lib.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
 
     let service = cx.new(LanguageServers::new);
-    service.update(cx, |service, cx| service.set_project(project.path().to_path_buf(), cx));
+    service.update(cx, |service, cx| {
+        service.set_project(project.path().to_path_buf(), cx)
+    });
     let server = service.read_with(cx, |service, cx| {
-        assert_eq!(service.servers().len(), 1, "the eager Rust server exists for a Cargo project");
-        service.existing_server_for(&file, cx).expect("it handles .rs files")
+        assert_eq!(
+            service.servers().len(),
+            1,
+            "the eager Rust server exists for a Cargo project"
+        );
+        service
+            .existing_server_for(&file, cx)
+            .expect("it handles .rs files")
     });
     let id = server.read_with(cx, |server, _| server.id().clone());
     assert_eq!(id.server, "rust-analyzer");
@@ -392,18 +465,35 @@ fn disabling_rust_stops_its_server_and_clears_its_diagnostics(cx: &mut gpui::Tes
         raw_lsp_diagnostic: None,
     };
     store.update(cx, |store, cx| {
-        store.set(DiagnosticSource::Server(id.clone()), &file, vec![diagnostic("from the server")], cx);
-        store.set(DiagnosticSource::Compiler("other"), &file, vec![diagnostic("from a compiler")], cx);
+        store.set(
+            DiagnosticSource::Server(id.clone()),
+            &file,
+            vec![diagnostic("from the server")],
+            cx,
+        );
+        store.set(
+            DiagnosticSource::Compiler("other"),
+            &file,
+            vec![diagnostic("from a compiler")],
+            cx,
+        );
     });
-    assert_eq!(store.read_with(cx, |store, _| store.for_file(&file).len()), 2);
+    assert_eq!(
+        store.read_with(cx, |store, _| store.for_file(&file).len()),
+        2
+    );
 
     let diagnostics_events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let service_events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
     let (seen_diagnostics, seen_service) = (diagnostics_events.clone(), service_events.clone());
     let _subscriptions = cx.update(|cx| {
         (
-            cx.subscribe(&store, move |_, event: &DiagnosticsEvent, _| seen_diagnostics.borrow_mut().push(event.clone())),
-            cx.subscribe(&service, move |_, event: &LanguageServersEvent, _| seen_service.borrow_mut().push(event.clone())),
+            cx.subscribe(&store, move |_, event: &DiagnosticsEvent, _| {
+                seen_diagnostics.borrow_mut().push(event.clone())
+            }),
+            cx.subscribe(&service, move |_, event: &LanguageServersEvent, _| {
+                seen_service.borrow_mut().push(event.clone())
+            }),
         )
     });
 
@@ -416,21 +506,39 @@ fn disabling_rust_stops_its_server_and_clears_its_diagnostics(cx: &mut gpui::Tes
             .is_none(),
         "the settings group is withdrawn"
     );
-    cx.executor().advance_clock(std::time::Duration::from_secs(5));
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(5));
     cx.run_until_parked();
 
-    assert!(service.read_with(cx, |service, _| service.servers().is_empty()), "no status entry is left");
     assert!(
-        service_events.borrow().iter().any(|event| *event == LanguageServersEvent::Removed(id.clone())),
+        service.read_with(cx, |service, _| service.servers().is_empty()),
+        "no status entry is left"
+    );
+    assert!(
+        service_events
+            .borrow()
+            .iter()
+            .any(|event| *event == LanguageServersEvent::Removed(id.clone())),
         "{:?}",
         service_events.borrow()
     );
     let left = store.read_with(cx, |store, _| store.for_file(&file));
-    assert_eq!(left.len(), 1, "only the other source's entry remains: {}", left.len());
+    assert_eq!(
+        left.len(),
+        1,
+        "only the other source's entry remains: {}",
+        left.len()
+    );
     assert!(matches!(left[0].0, DiagnosticSource::Compiler("other")));
-    assert!(!diagnostics_events.borrow().is_empty(), "the file is announced so views clear");
+    assert!(
+        !diagnostics_events.borrow().is_empty(),
+        "the file is announced so views clear"
+    );
     service.update(cx, |service, cx| {
-        assert!(service.server_for(&file, cx).is_none(), "no server claims a .rs file now");
+        assert!(
+            service.server_for(&file, cx).is_none(),
+            "no server claims a .rs file now"
+        );
         assert!(service.servers().is_empty());
     });
 

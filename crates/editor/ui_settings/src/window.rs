@@ -77,7 +77,13 @@ impl ProjectSettingsWindow {
         engine_state::register_default_settings();
         let project_path = Self::resolve_project_path(&params);
         let screen = cx.new(|cx| {
-            SettingsScreen::new(WindowKind::Project, project_path, params.page.clone(), window, cx)
+            SettingsScreen::new(
+                WindowKind::Project,
+                project_path,
+                params.page.clone(),
+                window,
+                cx,
+            )
         });
         cx.set_global(OpenProjectScreen(Some(screen.downgrade())));
         Self { screen }
@@ -95,7 +101,13 @@ impl ProjectSettingsWindow {
     /// Open the window for `project_path` (focusing it when it is open).
     pub fn open_scoped(project_path: Option<PathBuf>, cx: &mut App) {
         use ui_shell::PulsarWindowExt;
-        Self::open(SettingsParams { project_path, page: None }, cx);
+        Self::open(
+            SettingsParams {
+                project_path,
+                page: None,
+            },
+            cx,
+        );
     }
 
     /// Open the window on the page titled `page` (a plugin's name). An open
@@ -109,7 +121,13 @@ impl ProjectSettingsWindow {
         if let Some(screen) = open {
             screen.update(cx, |screen, cx| screen.show_page(&page, cx));
         }
-        Self::open(SettingsParams { project_path, page: Some(page) }, cx);
+        Self::open(
+            SettingsParams {
+                project_path,
+                page: Some(page),
+            },
+            cx,
+        );
     }
 }
 

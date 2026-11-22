@@ -134,7 +134,10 @@ impl PluginManagerWindow {
                     cx.processor(|this, ix: usize, _window, cx| {
                         let (Some(row), Some(entry)) = (
                             this.detail_rows.get(ix).copied(),
-                            this.selected.as_deref().and_then(|id| this.model.entry(id)).cloned(),
+                            this.selected
+                                .as_deref()
+                                .and_then(|id| this.model.entry(id))
+                                .cloned(),
                         ) else {
                             return div().into_any_element();
                         };
@@ -150,7 +153,10 @@ impl PluginManagerWindow {
                     .right_0()
                     .bottom_0()
                     .w(px(12.))
-                    .child(ui::scroll::Scrollbar::vertical(&self.details_scrollbar, &self.details)),
+                    .child(ui::scroll::Scrollbar::vertical(
+                        &self.details_scrollbar,
+                        &self.details,
+                    )),
             )
             .into_any_element()
     }

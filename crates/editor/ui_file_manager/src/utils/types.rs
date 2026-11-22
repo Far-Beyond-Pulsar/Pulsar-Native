@@ -264,7 +264,6 @@ mod tests {
     // A language with a class marker and no editor of its own, like a script
     // language whose class is a source file.
 
-
     #[test]
     fn a_class_folder_of_a_language_is_one_item_not_a_folder() {
         let project = tempfile::tempdir().unwrap();
@@ -275,7 +274,10 @@ mod tests {
         std::fs::create_dir_all(&plain).unwrap();
 
         let item = FileItem::from_path(&class, &[]).unwrap();
-        assert!(!item.is_folder, "it is listed as one item and opens as a class");
+        assert!(
+            !item.is_folder,
+            "it is listed as one item and opens as a class"
+        );
         assert_eq!(item.class_language, Some("fm-script"));
         assert_eq!(super::super::helpers::type_label(&item), "fm-script Class");
 

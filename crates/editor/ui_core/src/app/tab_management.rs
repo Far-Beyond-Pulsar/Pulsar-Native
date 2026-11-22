@@ -308,15 +308,25 @@ mod class_source_tests {
             class_source_file(&class, &languages, claimed),
             Some(class.join("class.tabscript"))
         );
-        assert_eq!(class_source_file(&plain, &languages, claimed), None, "a plain folder");
+        assert_eq!(
+            class_source_file(&plain, &languages, claimed),
+            None,
+            "a plain folder"
+        );
         assert_eq!(
             class_source_file(&class.join("class.tabscript"), &languages, claimed),
             None,
             "a file is opened as it is"
         );
         // A class folder an editor claims as a folder (a Blueprint class) is left to it.
-        assert_eq!(class_source_file(&class, &languages, |p: &std::path::Path| p == class), None);
+        assert_eq!(
+            class_source_file(&class, &languages, |p: &std::path::Path| p == class),
+            None
+        );
         // No editor claims the source: nothing to open instead.
-        assert_eq!(class_source_file(&class, &languages, |_: &std::path::Path| false), None);
+        assert_eq!(
+            class_source_file(&class, &languages, |_: &std::path::Path| false),
+            None
+        );
     }
 }

@@ -146,8 +146,9 @@ impl GameViewport {
                 st.play.pie.last_error = None;
                 st.play.pie.supports_control = host.has_simulation_control();
                 st.play.pie.paused = false;
-                st.play.pie.loaded_artifact = crate::ui::panel::pie::artifact_mtime(&req.dylib_path)
-                    .map(|mtime| (req.dylib_path.clone(), mtime));
+                st.play.pie.loaded_artifact =
+                    crate::ui::panel::pie::artifact_mtime(&req.dylib_path)
+                        .map(|mtime| (req.dylib_path.clone(), mtime));
                 drop(st);
                 self.pie_host = Some(host);
                 self.loaded = Some(req.clone());

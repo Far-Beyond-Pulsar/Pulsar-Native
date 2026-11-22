@@ -154,7 +154,7 @@ impl Episode {
         );
         let title = format!("UI thread unresponsive for {:.1}s", blocked.as_secs_f64());
         let mut seen: Vec<_> = self.seen.into_iter().collect();
-        seen.sort_by(|a, b| b.1.cmp(&a.1));
+        seen.sort_by_key(|a| std::cmp::Reverse(a.1));
         let summary = seen
             .first()
             .map(|(what, _)| what.clone())

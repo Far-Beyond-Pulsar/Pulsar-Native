@@ -198,7 +198,10 @@ mod tests {
     fn two_editors_one_didopen_and_one_didclose() {
         let mut docs = Documents::default();
         let path = Path::new("/p/a.rs");
-        assert_eq!(methods(&docs.open(path, "x", "lang", true)), ["textDocument/didOpen"]);
+        assert_eq!(
+            methods(&docs.open(path, "x", "lang", true)),
+            ["textDocument/didOpen"]
+        );
         assert!(docs.open(path, "x", "lang", true).0.is_empty());
         assert!(docs.close(path).0.is_empty(), "one editor still has it");
         assert_eq!(methods(&docs.close(path)), ["textDocument/didClose"]);
@@ -217,7 +220,9 @@ mod tests {
         assert_eq!(flushed.0[0].1["textDocument"]["text"], "newer");
         assert_eq!(flushed.0[0].1["textDocument"]["languageId"], "typescript");
         assert!(docs.flush().0.is_empty(), "announced once");
-        assert!(docs.change_incremental(path, 4, vec![json!({ "text": "x" })]).is_some());
+        assert!(docs
+            .change_incremental(path, 4, vec![json!({ "text": "x" })])
+            .is_some());
     }
 
     #[test]

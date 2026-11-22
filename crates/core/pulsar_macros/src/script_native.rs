@@ -14,6 +14,7 @@ use crate::script_types::{generic_args, is_ident_in, is_script_native_type, nati
 /// maps and `Option` of those, `Result<_, String>` as a result; `&str`,
 /// `&[T]` and other borrows as parameters). Control-flow and event nodes
 /// are compiler intrinsics, not natives.
+#[allow(clippy::too_many_arguments)] // one per attribute argument of the node macro
 pub(crate) fn script_native_registration(
     input: &ItemFn,
     name: &str,

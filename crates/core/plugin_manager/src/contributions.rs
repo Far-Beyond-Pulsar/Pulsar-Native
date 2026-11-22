@@ -8,7 +8,6 @@
 use crate::{BuiltinEditorRegistry, PluginManager};
 use plugin_editor_api::*;
 
-
 impl PluginManager {
     /// Get a mutable reference to the built-in editor registry.
     ///

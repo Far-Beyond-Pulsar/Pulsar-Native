@@ -980,8 +980,8 @@ mod tests {
                 .expect("steps")
             {
                 HydrationProgress::More => {
-                    seen_partial |= world.entity_for("sun").is_some()
-                        && world.entity_for("cube").is_none();
+                    seen_partial |=
+                        world.entity_for("sun").is_some() && world.entity_for("cube").is_none();
                 }
                 HydrationProgress::Done(extras) => break extras,
             }

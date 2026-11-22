@@ -149,7 +149,10 @@ fn probe_texture_heavy_level() {
             .ok()
             .and_then(|v| v.parse::<f32>().ok())
         {
-            assert!(*worst <= limit, "worst frame {worst:.2} ms over the {limit} ms budget");
+            assert!(
+                *worst <= limit,
+                "worst frame {worst:.2} ms over the {limit} ms budget"
+            );
         }
     }
 }

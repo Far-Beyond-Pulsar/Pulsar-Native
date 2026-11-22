@@ -12,7 +12,9 @@
 //! (`ContentGeometryRegistration`: tight triangle bounds, the same data
 //! picking uses), so any kind with content works and nothing here names one.
 
-use engine_backend::scene::hierarchy_transform::{descendants_of, world_matrix_of, world_transform_of};
+use engine_backend::scene::hierarchy_transform::{
+    descendants_of, world_matrix_of, world_transform_of,
+};
 use engine_backend::scene::pivots::offset_for_point;
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::helio_renderer::content_triangles;
@@ -156,7 +158,11 @@ fn offset_at(world: &World, entity: Entity, point: DVec3) -> Option<[f32; 3]> {
 }
 
 /// The pivot offsets that put each of `ids`' origins at its own `anchor`.
-pub fn object_origins(world: &World, ids: &[String], anchor: ObjectOrigin) -> Vec<(String, [f32; 3])> {
+pub fn object_origins(
+    world: &World,
+    ids: &[String],
+    anchor: ObjectOrigin,
+) -> Vec<(String, [f32; 3])> {
     let objects = resolve(world, ids);
     let entities: Vec<Entity> = objects.iter().map(|(_, e)| *e).collect();
     let bounds = if matches!(anchor, ObjectOrigin::Transform | ObjectOrigin::World) {
@@ -197,7 +203,10 @@ pub fn group_origins(
             .and_then(|e| world_transform_of(world, e))
             .map(|t| DVec3::from_array(t.position)),
         _ => {
-            let bounds: Vec<Bounds> = world_bounds(world, &entities).into_iter().flatten().collect();
+            let bounds: Vec<Bounds> = world_bounds(world, &entities)
+                .into_iter()
+                .flatten()
+                .collect();
             let whole = bounds.iter().copied().reduce(Bounds::union);
             match (anchor, whole) {
                 (GroupOrigin::MedianCenter, _) if !bounds.is_empty() => {

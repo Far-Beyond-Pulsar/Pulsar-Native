@@ -38,8 +38,9 @@ pub struct IndexedFile {
     pub modified: Option<i64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum FileIndexSort {
+    #[default]
     Path,
     Name,
     Extension,
@@ -70,10 +71,4 @@ pub struct FileIndexQuery {
     pub sort: FileIndexSort,
     pub descending: bool,
     pub limit: Option<usize>,
-}
-
-impl Default for FileIndexSort {
-    fn default() -> Self {
-        Self::Path
-    }
 }

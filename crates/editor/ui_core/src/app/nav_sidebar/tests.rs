@@ -124,8 +124,7 @@ fn open(cx: &mut TestAppContext, root: &Path) -> Editor {
         };
         cx.open_window(options, |window, cx| {
             let view = cx.new(|cx| {
-                let mut app =
-                    PulsarApp::new_internal(Some(root), false, window, cx);
+                let mut app = PulsarApp::new_internal(Some(root), false, window, cx);
                 // No "project loaded" toast: it would outlive the test.
                 app.state.shown_welcome_notification = true;
                 app

@@ -15,6 +15,6 @@ pub use local::LocalFsProvider;
 #[cfg(feature = "p2p")]
 pub use p2p::P2pFsProvider;
 pub use provider_trait::{is_unindexed_dir, UNINDEXED_DIRS};
-pub use provider_trait::{FsEntry,FsMetadata, FsProvider, FsWriter, ManifestEntry, ReadSeek};
+pub use provider_trait::{FsEntry, FsMetadata, FsProvider, FsWriter, ManifestEntry, ReadSeek};
 #[cfg(feature = "remote")]
 pub use remote::{RemoteConfig, RemoteFsProvider};

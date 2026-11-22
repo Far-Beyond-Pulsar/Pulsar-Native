@@ -29,8 +29,8 @@ pub mod level_rules;
 pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
-pub mod component_events;
 pub mod asset_event_sources;
+pub mod component_events;
 // A plugin's component classes, registered from its root's build.
 pub mod class_spec;
 pub mod construct_pump;
@@ -40,10 +40,9 @@ pub use class_spec::{ClassSpec, ComponentsBuilder};
 pub use construct_pump::EditorConstructPump;
 pub mod game_hooks;
 pub use asset_event_sources::{
-    asset_slots, component_events, component_events_with, node_title, AssetEventSource, AssetEvents, AssetPathSlot,
-    AssetSlot, AssetUse,
-    CacheStats,
-    ComponentData, EventCache, SourceCx,
+    asset_slots, component_events, component_events_with, node_title, AssetEventSource,
+    AssetEvents, AssetPathSlot, AssetSlot, AssetUse, CacheStats, ComponentData, EventCache,
+    SourceCx,
 };
 pub use component_events::{
     CatalogEvent, ComponentEventCatalog, EventFamily, EventView, FamilyOption, FamilyParam,
@@ -83,9 +82,9 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
 }
 pub use pulsar_scene_model::{
     attachments, components, frames, hierarchy_transform, instance, level_instances, partitions,
-    pivots, world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name, ObjectId, ObjectType,
-    Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId,
-    Transform, Visibility,
+    pivots, world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name, ObjectId,
+    ObjectType, Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex,
+    SpawnObject, StableId, Transform, Visibility,
 };
 pub use runtime_level::{
     EditorCamera, HydrationProgress, LevelExtras, LevelHydration, PreparedLevelFile, RuntimeLevel,
@@ -158,15 +157,13 @@ pub fn set_asset_focus(scene: &SharedScene, eye: [f64; 3]) {
 /// `streaming.asset_bind_budget_ms` (default 2) and
 /// `streaming.asset_bind_max_per_frame` (default 8); 0 lifts that limit.
 pub fn frame_asset_budget() -> pulsar_scenedb::AssetBudget {
-    let setting = |key: &str, default: i64| {
-        match engine_state::settings::global_config().get(
-            engine_state::settings::NS_PROJECT,
-            "streaming",
-            key,
-        ) {
-            Ok(engine_state::settings::ConfigValue::Int(value)) => value.max(0),
-            _ => default,
-        }
+    let setting = |key: &str, default: i64| match engine_state::settings::global_config().get(
+        engine_state::settings::NS_PROJECT,
+        "streaming",
+        key,
+    ) {
+        Ok(engine_state::settings::ConfigValue::Int(value)) => value.max(0),
+        _ => default,
     };
     let (ms, max) = (
         setting("asset_bind_budget_ms", 2),

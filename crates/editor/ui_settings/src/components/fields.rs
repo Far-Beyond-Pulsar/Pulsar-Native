@@ -7,8 +7,8 @@
 //! another.
 
 use gpui::{
-    px, AnyElement, AppContext as _, Context, Corner, Entity,
-    Hsla, IntoElement, SharedString, Styled, Subscription, Window,
+    px, AnyElement, AppContext as _, Context, Corner, Entity, Hsla, IntoElement, SharedString,
+    Styled, Subscription, Window,
 };
 use ui::{
     button::Button,
@@ -164,17 +164,30 @@ impl SettingsScreen {
                     .into_any_element()
             }
             Some(FieldType::NumberInput { min, max, step }) => {
-                let (min, max, step) =
-                    (min.unwrap_or(f64::MIN), max.unwrap_or(f64::MAX), step.unwrap_or(1.0));
+                let (min, max, step) = (
+                    min.unwrap_or(f64::MIN),
+                    max.unwrap_or(f64::MAX),
+                    step.unwrap_or(1.0),
+                );
                 let input = self.number_state(&id, &current, min, max, step, restart, window, cx);
-                NumberInput::new(&input).small().w(px(160.0)).into_any_element()
+                NumberInput::new(&input)
+                    .small()
+                    .w(px(160.0))
+                    .into_any_element()
             }
             Some(FieldType::Slider { min, max, step }) => {
                 let input = self.number_state(&id, &current, min, max, step, restart, window, cx);
-                NumberInput::new(&input).small().w(px(160.0)).into_any_element()
+                NumberInput::new(&input)
+                    .small()
+                    .w(px(160.0))
+                    .into_any_element()
             }
-            Some(FieldType::TextInput { placeholder, multiline }) => {
-                let input = self.text_state(&id, &current, placeholder, multiline, restart, window, cx);
+            Some(FieldType::TextInput {
+                placeholder,
+                multiline,
+            }) => {
+                let input =
+                    self.text_state(&id, &current, placeholder, multiline, restart, window, cx);
                 TextInput::new(&input)
                     .small()
                     .w(px(if multiline { 360.0 } else { 260.0 }))
@@ -182,7 +195,10 @@ impl SettingsScreen {
             }
             Some(FieldType::PathSelector { .. }) => {
                 let input = self.text_state(&id, &current, None, false, restart, window, cx);
-                TextInput::new(&input).small().w(px(260.0)).into_any_element()
+                TextInput::new(&input)
+                    .small()
+                    .w(px(260.0))
+                    .into_any_element()
             }
             Some(FieldType::ColorPicker) => {
                 let state = self.color_state(&id, &current, restart, window, cx);
@@ -209,48 +225,58 @@ impl SettingsScreen {
         }
         let text = value_text(current);
         let input = cx.new(|cx| InputState::new(window, cx).default_value(text));
-        let step_sub = cx.subscribe_in(&input, window, move |_, input, event: &NumberInputEvent, window, cx| {
-            let NumberInputEvent::Step { action, fine } = event;
-            input.update(cx, |input, cx| {
-                let Ok(value) = input.value().parse::<f64>() else {
-                    return;
-                };
-                let step = if *fine { step * 0.1 } else { step };
-                let next = match action {
-                    StepAction::Increment => value + step,
-                    StepAction::Decrement => value - step,
-                };
-                input.set_value(next.clamp(min, max).to_string(), window, cx);
-            });
-        });
+        let step_sub = cx.subscribe_in(
+            &input,
+            window,
+            move |_, input, event: &NumberInputEvent, window, cx| {
+                let NumberInputEvent::Step { action, fine } = event;
+                input.update(cx, |input, cx| {
+                    let Ok(value) = input.value().parse::<f64>() else {
+                        return;
+                    };
+                    let step = if *fine { step * 0.1 } else { step };
+                    let next = match action {
+                        StepAction::Increment => value + step,
+                        StepAction::Decrement => value - step,
+                    };
+                    input.set_value(next.clamp(min, max).to_string(), window, cx);
+                });
+            },
+        );
         let like = current.clone();
         let setting = id.clone();
-        let change_sub = cx.subscribe_in(&input, window, move |this, input, event: &InputEvent, window, cx| {
-            if !matches!(event, InputEvent::Change) {
-                return;
-            }
-            let raw = input.read(cx).value().to_string();
-            let Ok(typed) = raw.trim().parse::<f64>() else {
-                return; // mid-edit ("-", "1.", ""): wait for a number
-            };
-            let shown = store::read(&setting).map(|v| value_text(&v));
-            if shown.as_deref() == Some(raw.trim()) {
-                return;
-            }
-            let clamped = typed.clamp(min, max);
-            let written = store::number_value(clamped, &like)
-                .map_err(str::to_owned)
-                .is_ok_and(|value| commit(this, &setting, value, restart, cx));
-            // Show what the setting holds now when the entry was clamped or refused.
-            if let Some(actual) = store::read(&setting) {
-                let actual_text = value_text(&actual);
-                if !written || clamped != typed {
-                    input.update(cx, |input, cx| input.set_value(actual_text, window, cx));
+        let change_sub = cx.subscribe_in(
+            &input,
+            window,
+            move |this, input, event: &InputEvent, window, cx| {
+                if !matches!(event, InputEvent::Change) {
+                    return;
                 }
-            }
-        });
-        self.fields
-            .insert(id.clone(), FieldState::Number(input.clone(), vec![step_sub, change_sub]));
+                let raw = input.read(cx).value().to_string();
+                let Ok(typed) = raw.trim().parse::<f64>() else {
+                    return; // mid-edit ("-", "1.", ""): wait for a number
+                };
+                let shown = store::read(&setting).map(|v| value_text(&v));
+                if shown.as_deref() == Some(raw.trim()) {
+                    return;
+                }
+                let clamped = typed.clamp(min, max);
+                let written = store::number_value(clamped, &like)
+                    .map_err(str::to_owned)
+                    .is_ok_and(|value| commit(this, &setting, value, restart, cx));
+                // Show what the setting holds now when the entry was clamped or refused.
+                if let Some(actual) = store::read(&setting) {
+                    let actual_text = value_text(&actual);
+                    if !written || clamped != typed {
+                        input.update(cx, |input, cx| input.set_value(actual_text, window, cx));
+                    }
+                }
+            },
+        );
+        self.fields.insert(
+            id.clone(),
+            FieldState::Number(input.clone(), vec![step_sub, change_sub]),
+        );
         input
     }
 
@@ -294,7 +320,8 @@ impl SettingsScreen {
                 commit(this, &setting, value, restart, cx);
             }
         });
-        self.fields.insert(id.clone(), FieldState::Text(input.clone(), vec![sub]));
+        self.fields
+            .insert(id.clone(), FieldState::Text(input.clone(), vec![sub]));
         input
     }
 
@@ -319,9 +346,16 @@ impl SettingsScreen {
             let ColorPickerEvent::Change(Some(hsla)) = event else {
                 return;
             };
-            commit(this, &setting, ConfigValue::Color(to_color(*hsla)), restart, cx);
+            commit(
+                this,
+                &setting,
+                ConfigValue::Color(to_color(*hsla)),
+                restart,
+                cx,
+            );
         });
-        self.fields.insert(id.clone(), FieldState::Color(state.clone(), vec![sub]));
+        self.fields
+            .insert(id.clone(), FieldState::Color(state.clone(), vec![sub]));
         state
     }
 }
@@ -332,7 +366,10 @@ mod tests {
 
     #[test]
     fn a_dropdown_over_integers_stores_integers() {
-        assert_eq!(parse_like("8", &ConfigValue::Int(6)), Some(ConfigValue::Int(8)));
+        assert_eq!(
+            parse_like("8", &ConfigValue::Int(6)),
+            Some(ConfigValue::Int(8))
+        );
         assert_eq!(value_text(&ConfigValue::Int(6)), "6");
         assert_eq!(parse_like("x", &ConfigValue::Int(6)), None);
     }
@@ -345,7 +382,12 @@ mod tests {
 
     #[test]
     fn colors_round_trip_through_the_picker() {
-        let color = Color { r: 10, g: 200, b: 30, a: 255 };
+        let color = Color {
+            r: 10,
+            g: 200,
+            b: 30,
+            a: 255,
+        };
         assert_eq!(to_color(to_hsla(&color)), color);
     }
 }

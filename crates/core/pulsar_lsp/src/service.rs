@@ -120,24 +120,38 @@ impl LanguageServers {
 
     /// The language and server spec that handle `path`: what the language
     /// registry says owns its extension, when that language has a server.
-    pub fn server_spec_for(&self, path: &Path) -> Option<(&'static Language, &'static LanguageServerSpec)> {
+    pub fn server_spec_for(
+        &self,
+        path: &Path,
+    ) -> Option<(&'static Language, &'static LanguageServerSpec)> {
         LanguageRegistry::current().server_for_path(path)
     }
 
     /// The server that handles `path` if it exists already; never creates or
     /// starts one.
-    pub fn existing_server_for(&self, path: &Path, cx: &gpui::App) -> Option<Entity<LanguageServer>> {
+    pub fn existing_server_for(
+        &self,
+        path: &Path,
+        cx: &gpui::App,
+    ) -> Option<Entity<LanguageServer>> {
         let project_root = self.project_root.as_ref()?;
         let (_, spec) = self.server_spec_for(path)?;
         let root = spec.roots.root_for(path, project_root)?;
-        let id = ServerId { server: spec.id, root };
+        let id = ServerId {
+            server: spec.id,
+            root,
+        };
         self.server(&id, cx)
     }
 
     /// The server that handles `path`, created (and started, the first time)
     /// on demand. `None`: no server claims the file, it is switched off, or
     /// no project is open.
-    pub fn server_for(&mut self, path: &Path, cx: &mut Context<Self>) -> Option<Entity<LanguageServer>> {
+    pub fn server_for(
+        &mut self,
+        path: &Path,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<LanguageServer>> {
         let project_root = self.project_root.clone()?;
         let (language, spec) = self.server_spec_for(path)?;
         let settings = ServerSettings::read(language.origin, spec.id);
@@ -163,16 +177,24 @@ impl LanguageServers {
         settings: ServerSettings,
         cx: &mut Context<Self>,
     ) -> Entity<LanguageServer> {
-        let id = ServerId { server: spec.id, root: root.clone() };
+        let id = ServerId {
+            server: spec.id,
+            root: root.clone(),
+        };
         if let Some(existing) = self.server(&id, cx) {
             return existing;
         }
         let project_root = self.project_root.clone().unwrap_or_else(|| root.clone());
         let diagnostics = self.diagnostics.clone();
-        let server = cx.new(|_| LanguageServer::new(language, spec, root, project_root, settings, diagnostics));
+        let server = cx.new(|_| {
+            LanguageServer::new(language, spec, root, project_root, settings, diagnostics)
+        });
         let tag = id.clone();
         let subscription = cx.subscribe(&server, move |_this, _server, event: &ServerEvent, cx| {
-            cx.emit(LanguageServersEvent::Server { id: tag.clone(), event: event.clone() });
+            cx.emit(LanguageServersEvent::Server {
+                id: tag.clone(),
+                event: event.clone(),
+            });
         });
         self._subscriptions.insert(id.clone(), subscription);
         self.servers.push(server.clone());
@@ -328,7 +350,10 @@ impl LanguageServers {
     }
 
     fn apply_settings_of(&mut self, spec_id: &'static str, cx: &mut Context<Self>) {
-        let Some((language, spec)) = known_servers().into_iter().find(|(_, spec)| spec.id == spec_id) else {
+        let Some((language, spec)) = known_servers()
+            .into_iter()
+            .find(|(_, spec)| spec.id == spec_id)
+        else {
             return;
         };
         let settings = ServerSettings::read(language.origin, spec.id);
@@ -445,7 +470,9 @@ mod tests {
     fn files_of_a_language_with_a_server_have_a_spec_and_others_do_not() {
         let spec = LanguageRegistry::current().server_for_path(Path::new("/p/src/main.tl"));
         assert_eq!(spec.map(|(_, spec)| spec.id), Some("test-server"));
-        assert!(LanguageRegistry::current().server_for_path(Path::new("/p/readme.md")).is_none());
+        assert!(LanguageRegistry::current()
+            .server_for_path(Path::new("/p/readme.md"))
+            .is_none());
     }
 
     #[test]
@@ -459,7 +486,8 @@ mod tests {
     }
 
     fn temp_project(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("pulsar_lsp_svc_{label}_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("pulsar_lsp_svc_{label}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
@@ -514,7 +542,9 @@ mod tests {
                 .unwrap();
             assert_ne!(one.entity_id(), two.entity_id());
             assert_eq!(one.read(cx).root(), project.join("one"));
-            assert!(service.existing_server_for(&project.join("one").join("notes.md"), cx).is_none());
+            assert!(service
+                .existing_server_for(&project.join("one").join("notes.md"), cx)
+                .is_none());
         });
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -528,7 +558,13 @@ mod tests {
         let file = project.join("src").join("lib.tl");
         let (server, store) = service.update(cx, |service, cx| {
             service.project_root = Some(project.clone());
-            let server = service.ensure_server(&LANGUAGE, &SPEC, project.clone(), ServerSettings::default(), cx);
+            let server = service.ensure_server(
+                &LANGUAGE,
+                &SPEC,
+                project.clone(),
+                ServerSettings::default(),
+                cx,
+            );
             (server, service.diagnostics())
         });
         let id = server.read_with(cx, |server, _| server.id().clone());
@@ -540,19 +576,42 @@ mod tests {
             })
         });
         store.update(cx, |store, cx| {
-            store.set(crate::DiagnosticSource::Server(id.clone()), &file, vec![diagnostic(&file)], cx);
-            store.set(crate::DiagnosticSource::Compiler("typescript"), &file, vec![diagnostic(&file)], cx);
+            store.set(
+                crate::DiagnosticSource::Server(id.clone()),
+                &file,
+                vec![diagnostic(&file)],
+                cx,
+            );
+            store.set(
+                crate::DiagnosticSource::Compiler("typescript"),
+                &file,
+                vec![diagnostic(&file)],
+                cx,
+            );
         });
-        assert_eq!(store.read_with(cx, |store, _| store.for_file(&file).len()), 2);
+        assert_eq!(
+            store.read_with(cx, |store, _| store.for_file(&file).len()),
+            2
+        );
         events.borrow_mut().clear();
 
         server.update(cx, |server, cx| server.stop(StopReason::Requested, cx));
 
         let left = store.read_with(cx, |store, _| store.for_file(&file));
         assert_eq!(left.len(), 1, "only the compiler's entry remains");
-        assert!(matches!(left[0].0, crate::DiagnosticSource::Compiler("typescript")));
-        assert_eq!(events.borrow().len(), 1, "the file is announced so views clear");
-        assert_eq!(server.read_with(cx, |server, _| server.status().clone()), ServerStatus::Stopped);
+        assert!(matches!(
+            left[0].0,
+            crate::DiagnosticSource::Compiler("typescript")
+        ));
+        assert_eq!(
+            events.borrow().len(),
+            1,
+            "the file is announced so views clear"
+        );
+        assert_eq!(
+            server.read_with(cx, |server, _| server.status().clone()),
+            ServerStatus::Stopped
+        );
         let _ = std::fs::remove_dir_all(&project);
     }
 
@@ -564,7 +623,13 @@ mod tests {
         let service = cx.new(LanguageServers::new);
         let server = service.update(cx, |service, cx| {
             service.project_root = Some(project.clone());
-            service.ensure_server(&LANGUAGE, &SPEC, project.clone(), ServerSettings::default(), cx)
+            service.ensure_server(
+                &LANGUAGE,
+                &SPEC,
+                project.clone(),
+                ServerSettings::default(),
+                cx,
+            )
         });
         let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let seen = events.clone();
@@ -576,7 +641,10 @@ mod tests {
         server.update(cx, |server, cx| server.stop(StopReason::Disabled, cx));
         assert!(events.borrow().iter().any(|event| matches!(
             event,
-            LanguageServersEvent::Server { event: ServerEvent::Stopped(StopReason::Disabled), .. }
+            LanguageServersEvent::Server {
+                event: ServerEvent::Stopped(StopReason::Disabled),
+                ..
+            }
         )));
         let _ = std::fs::remove_dir_all(&project);
     }
@@ -607,7 +675,9 @@ mod tests {
         display_name: "Installable server",
         find: |_: &LocateContext| None,
         locate: |_: &LocateContext| -> Result<ServerCommand, LocateError> {
-            Err(LocateError::missing("The installable server is not installed."))
+            Err(LocateError::missing(
+                "The installable server is not installed.",
+            ))
         },
         roots: RootStrategy::ProjectRoot,
         initialization_options: |_: &ServerContext| serde_json::Value::Null,
@@ -637,7 +707,11 @@ mod tests {
 
     pulsar_plugins::inventory::submit! { INSTALLABLE_LANGUAGE }
 
-    fn wait_until(cx: &mut gpui::TestAppContext, what: &str, mut done: impl FnMut(&mut gpui::TestAppContext) -> bool) {
+    fn wait_until(
+        cx: &mut gpui::TestAppContext,
+        what: &str,
+        mut done: impl FnMut(&mut gpui::TestAppContext) -> bool,
+    ) {
         cx.executor().allow_parking();
         let deadline = std::time::Instant::now() + Duration::from_secs(20);
         loop {
@@ -645,7 +719,10 @@ mod tests {
             if done(cx) {
                 return;
             }
-            assert!(std::time::Instant::now() < deadline, "timed out waiting for {what}");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
     }
@@ -655,7 +732,9 @@ mod tests {
     /// the install: only the person's explicit action does, as a task, and a
     /// failed install is reported and offered again.
     #[gpui::test]
-    fn a_missing_server_offers_its_install_and_runs_it_only_when_asked(cx: &mut gpui::TestAppContext) {
+    fn a_missing_server_offers_its_install_and_runs_it_only_when_asked(
+        cx: &mut gpui::TestAppContext,
+    ) {
         let project = temp_project("install");
         let service = cx.new(LanguageServers::new);
         let server = service.update(cx, |service, cx| {
@@ -671,14 +750,20 @@ mod tests {
         let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let seen = events.clone();
         let _subscription = cx.update(|cx| {
-            cx.subscribe(&server, move |_, event: &ServerEvent, _| seen.borrow_mut().push(event.clone()))
+            cx.subscribe(&server, move |_, event: &ServerEvent, _| {
+                seen.borrow_mut().push(event.clone())
+            })
         });
-        let status = |cx: &mut gpui::TestAppContext| server.read_with(cx, |server, _| server.status().clone());
+        let status = |cx: &mut gpui::TestAppContext| {
+            server.read_with(cx, |server, _| server.status().clone())
+        };
 
         INSTALLS.store(0, Ordering::SeqCst);
         INSTALL_FAILS.store(true, Ordering::SeqCst);
         server.update(cx, |server, cx| server.start(cx));
-        wait_until(cx, "the missing status", |cx| matches!(status(cx), ServerStatus::Missing(_)));
+        wait_until(cx, "the missing status", |cx| {
+            matches!(status(cx), ServerStatus::Missing(_))
+        });
         assert_eq!(
             status(cx),
             ServerStatus::Missing("The installable server is not installed.".into())
@@ -687,26 +772,42 @@ mod tests {
             .borrow()
             .iter()
             .any(|event| matches!(event, ServerEvent::Error(m) if m.contains("not installed"))));
-        assert_eq!(INSTALLS.load(Ordering::SeqCst), 0, "starting never installs");
+        assert_eq!(
+            INSTALLS.load(Ordering::SeqCst),
+            0,
+            "starting never installs"
+        );
         assert!(server.read_with(cx, |server, _| server.installer().is_some()));
 
         // The person chooses Install; it fails: reported, and offered again.
-        service.update(cx, |service, cx| service.install(&server.read(cx).id().clone(), cx));
-        wait_until(cx, "the failed install", |cx| {
-            matches!(status(cx), ServerStatus::Missing(m) if m.contains("The install of Installable server failed"))
+        service.update(cx, |service, cx| {
+            service.install(&server.read(cx).id().clone(), cx)
         });
-        let ServerStatus::Missing(message) = status(cx) else { unreachable!() };
+        wait_until(
+            cx,
+            "the failed install",
+            |cx| matches!(status(cx), ServerStatus::Missing(m) if m.contains("The install of Installable server failed")),
+        );
+        let ServerStatus::Missing(message) = status(cx) else {
+            unreachable!()
+        };
         assert!(message.contains("the network is offline"), "{message}");
         assert_eq!(INSTALLS.load(Ordering::SeqCst), 1);
 
         // It works the second time: the server is started afterwards (here it
         // is still not located, so it is missing again, but the install ran).
         INSTALL_FAILS.store(false, Ordering::SeqCst);
-        service.update(cx, |service, cx| service.install(&server.read(cx).id().clone(), cx));
-        wait_until(cx, "the second install", |_| INSTALLS.load(Ordering::SeqCst) == 2);
-        wait_until(cx, "the start after the install", |cx| {
-            matches!(status(cx), ServerStatus::Missing(m) if m == "The installable server is not installed.")
+        service.update(cx, |service, cx| {
+            service.install(&server.read(cx).id().clone(), cx)
         });
+        wait_until(cx, "the second install", |_| {
+            INSTALLS.load(Ordering::SeqCst) == 2
+        });
+        wait_until(
+            cx,
+            "the start after the install",
+            |cx| matches!(status(cx), ServerStatus::Missing(m) if m == "The installable server is not installed."),
+        );
         assert_eq!(INSTALLS.load(Ordering::SeqCst), 2);
         let _ = std::fs::remove_dir_all(&project);
     }

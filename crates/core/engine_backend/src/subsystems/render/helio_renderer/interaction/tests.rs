@@ -246,7 +246,10 @@ fn rotation_turns_an_object_about_its_pivot_and_holds_the_pivot_still() {
     for (axis, expected) in [1.0, 0.0, -10.0].into_iter().enumerate() {
         assert!((at[axis] - expected).abs() < 1e-4, "pivot moved: {at:?}");
     }
-    assert!((t.position[1] + 1.0).abs() < 1e-4, "the object swung round it");
+    assert!(
+        (t.position[1] + 1.0).abs() < 1e-4,
+        "the object swung round it"
+    );
 }
 
 #[test]

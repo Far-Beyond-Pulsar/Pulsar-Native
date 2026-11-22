@@ -238,7 +238,11 @@ fn pass(world: &mut World, mode: Mode, taken: &mut HashMap<PathBuf, Fetched>) ->
             continue;
         };
         let refusal = refused(world, owner, level);
-        let path = if refusal.is_none() { resolve(level) } else { None };
+        let path = if refusal.is_none() {
+            resolve(level)
+        } else {
+            None
+        };
         // The level file, from a worker in deferred mode. While it is not
         // there, the display keeps what it shows and is visited again.
         let fetched = match &path {

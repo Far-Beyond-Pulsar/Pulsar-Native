@@ -110,7 +110,7 @@ pub fn blocking_snapshots() -> Vec<BlockingSnapshot> {
             count: site.count.load(Ordering::Relaxed),
         })
         .collect();
-    all.sort_by(|a, b| b.count.cmp(&a.count));
+    all.sort_by_key(|a| std::cmp::Reverse(a.count));
     all
 }
 

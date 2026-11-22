@@ -686,7 +686,13 @@ fn a_deforming_static_mesh_is_refit_when_its_vertices_change_in_place() {
             &mut world,
             "ground",
             [0.0, -0.5, 0.0],
-            mesh_box(0xd5_0001, Vec3::ZERO, Vec3::new(8.0, 0.5, 8.0), "", [0.8; 3]),
+            mesh_box(
+                0xd5_0001,
+                Vec3::ZERO,
+                Vec3::new(8.0, 0.5, 8.0),
+                "",
+                [0.8; 3],
+            ),
         );
         let mut cloth = mesh_box(0, Vec3::ZERO, Vec3::splat(0.5), "", [0.6, 0.3, 0.2]);
         cloth.geometry_key = MeshGeometryKey::NONE;

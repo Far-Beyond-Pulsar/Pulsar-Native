@@ -3848,10 +3848,16 @@ fn editor_camera_follows_a_link_across_rigid_frames_when_enabled() {
     let parent = state.scene.world().entity_for(&room).unwrap();
     engine_backend::scene::frames::set_rigid_frame(&mut state.scene.world_mut(), parent, true)
         .unwrap();
-    assert!(execute_command(
-        &mut state,
-        SceneCommand::ReparentObject { id: far, new_parent_id: Some(room) },
-    ).changed);
+    assert!(
+        execute_command(
+            &mut state,
+            SceneCommand::ReparentObject {
+                id: far,
+                new_parent_id: Some(room)
+            },
+        )
+        .changed
+    );
 
     let mut renderer = harness.renderer(&state);
     // The eye starts above the opening. Level flight misses while flight
@@ -3863,7 +3869,9 @@ fn editor_camera_follows_a_link_across_rigid_frames_when_enabled() {
     };
     for follow in [false, true] {
         renderer.set_editor_camera_state(start);
-        renderer.editor_mailbox().set_follow_space_transitions(follow);
+        renderer
+            .editor_mailbox()
+            .set_follow_space_transitions(follow);
         harness.frames(&mut renderer, || {});
         {
             let mut input = renderer.camera_input.lock().unwrap();
@@ -4726,7 +4734,10 @@ fn portal_content_is_lit_by_the_lights_of_its_own_world() {
                     new_parent_id: Some(frame.clone()),
                 },
             );
-            assert!(result.changed, "the object was not placed in the destination");
+            assert!(
+                result.changed,
+                "the object was not placed in the destination"
+            );
         };
         let entity = state.scene.world().entity_for(&frame).expect("destination");
         set_rigid_frame(&mut state.scene.world_mut(), entity, true).expect("a free frame slot");
@@ -4814,9 +4825,18 @@ fn portal_aperture_clips_direct_billboards_and_shows_destination_billboards() {
     let foreground = render(&[[0.0, 0.0, radius]]).difference(&empty);
     let behind = render(&[[0.0, 0.0, -radius]]).difference(&empty);
     let destination = render(&[[far_x, 0.0, radius], [far_x, 0.0, -radius]]).difference(&empty);
-    assert!(foreground.color_pixels > 0, "foreground icon missing: {foreground:?}");
-    assert_eq!(behind.color_pixels, 0, "icon leaked past the plane: {behind:?}");
-    assert!(destination.color_pixels > 0, "destination icon missing: {destination:?}");
+    assert!(
+        foreground.color_pixels > 0,
+        "foreground icon missing: {foreground:?}"
+    );
+    assert_eq!(
+        behind.color_pixels, 0,
+        "icon leaked past the plane: {behind:?}"
+    );
+    assert!(
+        destination.color_pixels > 0,
+        "destination icon missing: {destination:?}"
+    );
 }
 
 /// The sky, wind and sprite plugins' create entries, through the shell's

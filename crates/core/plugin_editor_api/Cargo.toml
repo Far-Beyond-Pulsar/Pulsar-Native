@@ -32,6 +32,8 @@ pulsar_events = { workspace = true }
 # components of the editor once the library is attached (#1083).
 pulsar_world_registry = { workspace = true }
 profiling = { workspace = true }
+# A plugin library's settings handles bind to the host database (#1932).
+pulsar_settings = { workspace = true }
 # Languages: the `Language` registration, its compiler trait and its server
 # spec (defined there, re-exported here for plugin authors).
 pulsar_language = { workspace = true }

@@ -110,11 +110,15 @@ pub fn init(cx: &mut gpui::App) {
 
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");
-        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("ProjectSettingsWindow", cx));
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("ProjectSettingsWindow", cx)
+        });
     });
     cx.on_action(|_: &Preferences, cx| {
         tracing::debug!("[MENU] Preferences");
-        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("EditorSettingsWindow", cx));
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("EditorSettingsWindow", cx)
+        });
     });
     cx.on_action(|_: &AboutApp, cx| {
         window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));

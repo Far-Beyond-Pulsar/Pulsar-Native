@@ -175,8 +175,14 @@ fn build_selection_menu(
                 // With several objects selected, "Each Object" and "Group" are
                 // separate lists; with one, the object's own list is the menu.
                 let own: [(&str, ObjectOrigin); 5] = [
-                    ("LevelEditor.Origin.BoundsCenter", ObjectOrigin::BoundsCenter),
-                    ("LevelEditor.Origin.BoundsBottom", ObjectOrigin::BoundsBottom),
+                    (
+                        "LevelEditor.Origin.BoundsCenter",
+                        ObjectOrigin::BoundsCenter,
+                    ),
+                    (
+                        "LevelEditor.Origin.BoundsBottom",
+                        ObjectOrigin::BoundsBottom,
+                    ),
                     ("LevelEditor.Origin.BoundsTop", ObjectOrigin::BoundsTop),
                     ("LevelEditor.Origin.World", ObjectOrigin::World),
                     ("LevelEditor.Origin.Transform", ObjectOrigin::Transform),
@@ -187,26 +193,34 @@ fn build_selection_menu(
                     }
                     return submenu;
                 }
-                let own_menu = move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
-                    for (key, origin) in own {
-                        menu = menu.menu_handler(t!(key), each(origin));
-                    }
-                    menu
-                };
-                let group_menu = move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
-                    let entries: [(&str, GroupOrigin); 6] = [
-                        ("LevelEditor.Origin.MedianCenter", GroupOrigin::MedianCenter),
-                        ("LevelEditor.Origin.GroupBoundsCenter", GroupOrigin::BoundsCenter),
-                        ("LevelEditor.Origin.GroupBoundsBottom", GroupOrigin::BoundsBottom),
-                        ("LevelEditor.Origin.GroupBoundsTop", GroupOrigin::BoundsTop),
-                        ("LevelEditor.Origin.Primary", GroupOrigin::Primary),
-                        ("LevelEditor.Origin.World", GroupOrigin::World),
-                    ];
-                    for (key, origin) in entries {
-                        menu = menu.menu_handler(t!(key), group(origin));
-                    }
-                    menu
-                };
+                let own_menu =
+                    move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
+                        for (key, origin) in own {
+                            menu = menu.menu_handler(t!(key), each(origin));
+                        }
+                        menu
+                    };
+                let group_menu =
+                    move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
+                        let entries: [(&str, GroupOrigin); 6] = [
+                            ("LevelEditor.Origin.MedianCenter", GroupOrigin::MedianCenter),
+                            (
+                                "LevelEditor.Origin.GroupBoundsCenter",
+                                GroupOrigin::BoundsCenter,
+                            ),
+                            (
+                                "LevelEditor.Origin.GroupBoundsBottom",
+                                GroupOrigin::BoundsBottom,
+                            ),
+                            ("LevelEditor.Origin.GroupBoundsTop", GroupOrigin::BoundsTop),
+                            ("LevelEditor.Origin.Primary", GroupOrigin::Primary),
+                            ("LevelEditor.Origin.World", GroupOrigin::World),
+                        ];
+                        for (key, origin) in entries {
+                            menu = menu.menu_handler(t!(key), group(origin));
+                        }
+                        menu
+                    };
                 submenu = submenu.submenu(t!("LevelEditor.Origin.PerObject"), window, cx, own_menu);
                 submenu.submenu(t!("LevelEditor.Origin.Group"), window, cx, group_menu)
             }

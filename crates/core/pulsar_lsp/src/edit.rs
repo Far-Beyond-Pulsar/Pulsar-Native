@@ -170,7 +170,11 @@ fn parse_edits(value: Option<&Value>) -> Result<Vec<LspTextEdit>, String> {
 /// Byte offset of `(line, utf16 column)` in `text`, or an error when the
 /// position is outside it. A column past the end of its line clamps to the
 /// line's end, as the protocol asks of servers' stale positions.
-fn offset_of(text: &str, line_starts: &[usize], (line, column): (u32, u32)) -> Result<usize, String> {
+fn offset_of(
+    text: &str,
+    line_starts: &[usize],
+    (line, column): (u32, u32),
+) -> Result<usize, String> {
     let line = line as usize;
     let Some(&start) = line_starts.get(line) else {
         // The position just past the last line terminator is a (virtual)
@@ -228,7 +232,10 @@ pub fn apply_text_edits(text: &str, edits: &[LspTextEdit]) -> Result<String, Str
         let start = offset_of(text, &starts, edit.start)?;
         let end = offset_of(text, &starts, edit.end)?;
         if end < start {
-            return Err(format!("an edit ends before it starts ({:?} to {:?})", edit.start, edit.end));
+            return Err(format!(
+                "an edit ends before it starts ({:?} to {:?})",
+                edit.start, edit.end
+            ));
         }
         resolved.push((start, end, edit.new_text.as_str()));
     }
@@ -266,11 +273,25 @@ pub struct Applied {
 }
 
 enum Step {
-    Buffer { path: PathBuf, edits: Vec<LspTextEdit> },
-    Write { path: PathBuf, text: String },
-    Create { path: PathBuf },
-    Rename { from: PathBuf, to: PathBuf, overwrite: bool },
-    Delete { path: PathBuf },
+    Buffer {
+        path: PathBuf,
+        edits: Vec<LspTextEdit>,
+    },
+    Write {
+        path: PathBuf,
+        text: String,
+    },
+    Create {
+        path: PathBuf,
+    },
+    Rename {
+        from: PathBuf,
+        to: PathBuf,
+        overwrite: bool,
+    },
+    Delete {
+        path: PathBuf,
+    },
 }
 
 /// Apply `edit`. Every step is planned (and so validated) before the first
@@ -295,7 +316,10 @@ pub fn apply_workspace_edit<C>(
                         .ok_or_else(|| format!("{} is deleted by this edit", path.display()))?;
                     let updated = apply_text_edits(text, edits)?;
                     staged.insert(key, Some(updated.clone()));
-                    steps.push(Step::Write { path: path.clone(), text: updated });
+                    steps.push(Step::Write {
+                        path: path.clone(),
+                        text: updated,
+                    });
                     continue;
                 }
                 let open = buffers.and_then(|host| host.text(path, cx));
@@ -303,20 +327,31 @@ pub fn apply_workspace_edit<C>(
                     Some(text) => {
                         // Validate against the buffer now; the buffer applies
                         // the edits itself.
-                        apply_text_edits(&text, edits).map_err(|e| format!("{}: {e}", path.display()))?;
-                        steps.push(Step::Buffer { path: path.clone(), edits: edits.clone() });
+                        apply_text_edits(&text, edits)
+                            .map_err(|e| format!("{}: {e}", path.display()))?;
+                        steps.push(Step::Buffer {
+                            path: path.clone(),
+                            edits: edits.clone(),
+                        });
                     }
                     None => {
                         let text = engine_fs::virtual_fs::read_to_string(path)
                             .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-                        let updated =
-                            apply_text_edits(&text, edits).map_err(|e| format!("{}: {e}", path.display()))?;
+                        let updated = apply_text_edits(&text, edits)
+                            .map_err(|e| format!("{}: {e}", path.display()))?;
                         staged.insert(key, Some(updated.clone()));
-                        steps.push(Step::Write { path: path.clone(), text: updated });
+                        steps.push(Step::Write {
+                            path: path.clone(),
+                            text: updated,
+                        });
                     }
                 }
             }
-            FileChange::Create { path, overwrite, ignore_if_exists } => {
+            FileChange::Create {
+                path,
+                overwrite,
+                ignore_if_exists,
+            } => {
                 let exists = staged
                     .get(&path_key(path))
                     .map(|entry| entry.is_some())
@@ -330,7 +365,12 @@ pub fn apply_workspace_edit<C>(
                 staged.insert(path_key(path), Some(String::new()));
                 steps.push(Step::Create { path: path.clone() });
             }
-            FileChange::Rename { from, to, overwrite, ignore_if_exists } => {
+            FileChange::Rename {
+                from,
+                to,
+                overwrite,
+                ignore_if_exists,
+            } => {
                 let target_exists = staged
                     .get(&path_key(to))
                     .map(|entry| entry.is_some())
@@ -354,9 +394,16 @@ pub fn apply_workspace_edit<C>(
                     }
                 };
                 staged.insert(path_key(to), moved);
-                steps.push(Step::Rename { from: from.clone(), to: to.clone(), overwrite: *overwrite });
+                steps.push(Step::Rename {
+                    from: from.clone(),
+                    to: to.clone(),
+                    overwrite: *overwrite,
+                });
             }
-            FileChange::Delete { path, ignore_if_not_exists } => {
+            FileChange::Delete {
+                path,
+                ignore_if_not_exists,
+            } => {
                 let exists = staged
                     .get(&path_key(path))
                     .map(|entry| entry.is_some())
@@ -398,7 +445,11 @@ pub fn apply_workspace_edit<C>(
                     .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
                 applied.resource_operations += 1;
             }
-            Step::Rename { from, to, overwrite } => {
+            Step::Rename {
+                from,
+                to,
+                overwrite,
+            } => {
                 if overwrite && engine_fs::virtual_fs::exists(&to).unwrap_or(false) {
                     engine_fs::virtual_fs::delete_path(&to)
                         .map_err(|e| format!("cannot replace {}: {e}", to.display()))?;
@@ -441,7 +492,11 @@ mod tests {
     use std::cell::RefCell;
 
     fn edit(start: (u32, u32), end: (u32, u32), text: &str) -> LspTextEdit {
-        LspTextEdit { start, end, new_text: text.to_string() }
+        LspTextEdit {
+            start,
+            end,
+            new_text: text.to_string(),
+        }
     }
 
     #[test]
@@ -471,15 +526,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result, "a12b");
-        assert!(apply_text_edits("abcd", &[edit((0, 0), (0, 3), ""), edit((0, 2), (0, 4), "")]).is_err());
+        assert!(apply_text_edits(
+            "abcd",
+            &[edit((0, 0), (0, 3), ""), edit((0, 2), (0, 4), "")]
+        )
+        .is_err());
         assert!(apply_text_edits("abc", &[edit((5, 0), (5, 1), "")]).is_err());
     }
 
     #[test]
     fn crlf_files_and_the_position_after_the_last_line() {
         let text = "a\r\nb\r\n";
-        assert_eq!(apply_text_edits(text, &[edit((1, 0), (1, 1), "B")]).unwrap(), "a\r\nB\r\n");
-        assert_eq!(apply_text_edits(text, &[edit((2, 0), (2, 0), "c")]).unwrap(), "a\r\nb\r\nc");
+        assert_eq!(
+            apply_text_edits(text, &[edit((1, 0), (1, 1), "B")]).unwrap(),
+            "a\r\nB\r\n"
+        );
+        assert_eq!(
+            apply_text_edits(text, &[edit((2, 0), (2, 0), "c")]).unwrap(),
+            "a\r\nb\r\nc"
+        );
     }
 
     #[test]
@@ -498,9 +563,18 @@ mod tests {
         ]}))
         .unwrap();
         assert_eq!(rich.changes.len(), 4);
-        assert!(matches!(rich.changes[0], FileChange::Create { ignore_if_exists: true, .. }));
+        assert!(matches!(
+            rich.changes[0],
+            FileChange::Create {
+                ignore_if_exists: true,
+                ..
+            }
+        ));
         assert_eq!(rich.files().len(), 3);
-        assert!(WorkspaceEdit::from_value(&json!({ "documentChanges": [{ "kind": "explode", "uri": "x" }] })).is_err());
+        assert!(WorkspaceEdit::from_value(
+            &json!({ "documentChanges": [{ "kind": "explode", "uri": "x" }] })
+        )
+        .is_err());
     }
 
     struct FakeBuffers {
@@ -518,13 +592,16 @@ mod tests {
             let text = self.open.borrow().get(&key).cloned().ok_or("not open")?;
             let updated = apply_text_edits(&text, edits)?;
             self.open.borrow_mut().insert(key, updated);
-            self.applied.borrow_mut().push((path.to_path_buf(), edits.len()));
+            self.applied
+                .borrow_mut()
+                .push((path.to_path_buf(), edits.len()));
             Ok(())
         }
     }
 
     fn temp(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("pulsar_lsp_edit_{label}_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pulsar_lsp_edit_{label}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -541,19 +618,34 @@ mod tests {
         std::fs::write(&on_disk, "let x = 1;\n").unwrap();
         std::fs::write(&in_buffer, "stale on disk\n").unwrap();
         let buffers = FakeBuffers {
-            open: RefCell::new(HashMap::from([(path_key(&in_buffer), "let y = 2;\n".to_string())])),
+            open: RefCell::new(HashMap::from([(
+                path_key(&in_buffer),
+                "let y = 2;\n".to_string(),
+            )])),
             applied: RefCell::new(Vec::new()),
         };
         let renamed = dir.join("renamed.rs");
         let workspace = WorkspaceEdit {
             changes: vec![
-                FileChange::Edit { path: on_disk.clone(), edits: vec![edit((0, 4), (0, 5), "xx")] },
+                FileChange::Edit {
+                    path: on_disk.clone(),
+                    edits: vec![edit((0, 4), (0, 5), "xx")],
+                },
                 FileChange::Edit {
                     path: in_buffer.clone(),
                     edits: vec![edit((0, 4), (0, 5), "yy"), edit((0, 8), (0, 9), "3")],
                 },
-                FileChange::Create { path: dir.join("new.rs"), overwrite: false, ignore_if_exists: false },
-                FileChange::Rename { from: on_disk.clone(), to: renamed.clone(), overwrite: false, ignore_if_exists: false },
+                FileChange::Create {
+                    path: dir.join("new.rs"),
+                    overwrite: false,
+                    ignore_if_exists: false,
+                },
+                FileChange::Rename {
+                    from: on_disk.clone(),
+                    to: renamed.clone(),
+                    overwrite: false,
+                    ignore_if_exists: false,
+                },
             ],
         };
         let applied = apply_workspace_edit(&workspace, Some(&buffers), &mut ()).unwrap();
@@ -563,8 +655,15 @@ mod tests {
             [(in_buffer.clone(), 2)],
             "both edits of the file are one buffer call (one undo group)"
         );
-        assert_eq!(buffers.open.borrow()[&path_key(&in_buffer)], "let yy = 3;\n");
-        assert_eq!(std::fs::read_to_string(&in_buffer).unwrap(), "stale on disk\n", "the buffer was not written behind the editor's back");
+        assert_eq!(
+            buffers.open.borrow()[&path_key(&in_buffer)],
+            "let yy = 3;\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&in_buffer).unwrap(),
+            "stale on disk\n",
+            "the buffer was not written behind the editor's back"
+        );
         assert!(dir.join("new.rs").exists());
         assert!(!on_disk.exists());
         assert_eq!(std::fs::read_to_string(&renamed).unwrap(), "let xx = 1;\n");
@@ -580,8 +679,14 @@ mod tests {
         std::fs::write(&bad, "abc\n").unwrap();
         let workspace = WorkspaceEdit {
             changes: vec![
-                FileChange::Edit { path: good.clone(), edits: vec![edit((0, 0), (0, 1), "Z")] },
-                FileChange::Edit { path: bad, edits: vec![edit((9, 0), (9, 1), "Z")] },
+                FileChange::Edit {
+                    path: good.clone(),
+                    edits: vec![edit((0, 0), (0, 1), "Z")],
+                },
+                FileChange::Edit {
+                    path: bad,
+                    edits: vec![edit((9, 0), (9, 1), "Z")],
+                },
             ],
         };
         assert!(apply_workspace_edit::<()>(&workspace, None, &mut ()).is_err());
@@ -596,8 +701,14 @@ mod tests {
         std::fs::write(&file, "abc").unwrap();
         let workspace = WorkspaceEdit {
             changes: vec![
-                FileChange::Edit { path: file.clone(), edits: vec![edit((0, 0), (0, 1), "A")] },
-                FileChange::Edit { path: file.clone(), edits: vec![edit((0, 3), (0, 3), "!")] },
+                FileChange::Edit {
+                    path: file.clone(),
+                    edits: vec![edit((0, 0), (0, 1), "A")],
+                },
+                FileChange::Edit {
+                    path: file.clone(),
+                    edits: vec![edit((0, 3), (0, 3), "!")],
+                },
             ],
         };
         apply_workspace_edit::<()>(&workspace, None, &mut ()).unwrap();

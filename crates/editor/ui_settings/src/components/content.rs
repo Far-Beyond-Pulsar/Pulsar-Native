@@ -23,7 +23,11 @@ use crate::utils::store;
 const MAX_WIDTH: f32 = 880.0;
 
 impl SettingsScreen {
-    pub(crate) fn render_content(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_content(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if self.rows.is_empty() {
             return empty_note(
                 if self.query.is_empty() {
@@ -64,7 +68,9 @@ impl SettingsScreen {
         let body = match row {
             ContentRow::PageHeader => self.render_page_header(cx),
             ContentRow::SectionHeader(section) => self.render_section_header(section, cx),
-            ContentRow::Setting(section, setting) => self.render_setting(section, setting, window, cx),
+            ContentRow::Setting(section, setting) => {
+                self.render_setting(section, setting, window, cx)
+            }
         };
         // Center the column, capped at MAX_WIDTH.
         h_flex()
@@ -83,7 +89,12 @@ impl SettingsScreen {
             .pt_6()
             .pb_2()
             .gap_1()
-            .child(div().text_xl().font_weight(gpui::FontWeight::SEMIBOLD).child(page.title.clone()))
+            .child(
+                div()
+                    .text_xl()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(page.title.clone()),
+            )
             .when_some(page.description.clone(), |this, description| {
                 this.child(
                     div()
@@ -132,7 +143,11 @@ impl SettingsScreen {
         let theme = cx.theme().clone();
         let id = SettingId::of(&info);
         let restart = info.requires_restart();
-        let label: SharedString = info.label.clone().unwrap_or_else(|| info.key.clone()).into();
+        let label: SharedString = info
+            .label
+            .clone()
+            .unwrap_or_else(|| info.key.clone())
+            .into();
         let changed = store::is_changed(&id);
         let field = self.render_field(&info, window, cx);
 
@@ -181,22 +196,20 @@ impl SettingsScreen {
                     .gap_1()
                     .items_center()
                     .child(field)
-                    .child(
-                        div().w(px(24.0)).when(changed, |this| {
-                            let id = id.clone();
-                            this.child(
-                                Button::new(SharedString::from(format!("reset-{}", id.key_string())))
-                                    .icon(IconName::Undo2)
-                                    .ghost()
-                                    .xsmall()
-                                    .tooltip("Reset to default")
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        crate::handlers::reset_setting(this, &id, restart, cx);
-                                        cx.notify();
-                                    })),
-                            )
-                        }),
-                    ),
+                    .child(div().w(px(24.0)).when(changed, |this| {
+                        let id = id.clone();
+                        this.child(
+                            Button::new(SharedString::from(format!("reset-{}", id.key_string())))
+                                .icon(IconName::Undo2)
+                                .ghost()
+                                .xsmall()
+                                .tooltip("Reset to default")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    crate::handlers::reset_setting(this, &id, restart, cx);
+                                    cx.notify();
+                                })),
+                        )
+                    })),
             )
             .into_any_element()
     }

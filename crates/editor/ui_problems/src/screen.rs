@@ -321,7 +321,11 @@ mod tests {
     struct Host;
 
     impl gpui::Render for Host {
-        fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
             gpui::div()
         }
     }
@@ -355,7 +359,11 @@ mod tests {
             ));
 
             // a.rs was fixed: the server's next complete set no longer has it.
-            assert!(drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/b.rs", "in b")], cx));
+            assert!(drawer.set_source_diagnostics(
+                "rust-analyzer",
+                vec![problem("/p/b.rs", "in b")],
+                cx
+            ));
             assert_eq!(drawer.total_count(), 1);
             assert_eq!(drawer.get_grouped_diagnostics().len(), 1);
 
@@ -376,8 +384,15 @@ mod tests {
         });
         drawer.update(cx, |drawer, cx| {
             drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/a.rs", "ra")], cx);
-            drawer.set_source_diagnostics("typescript compiler", vec![problem("/p/c.ts", "ts")], cx);
-            assert_eq!(drawer.source_names(), ["rust-analyzer", "typescript compiler"]);
+            drawer.set_source_diagnostics(
+                "typescript compiler",
+                vec![problem("/p/c.ts", "ts")],
+                cx,
+            );
+            assert_eq!(
+                drawer.source_names(),
+                ["rust-analyzer", "typescript compiler"]
+            );
             assert_eq!(drawer.total_count(), 2);
 
             // One source's republish does not touch the other's.

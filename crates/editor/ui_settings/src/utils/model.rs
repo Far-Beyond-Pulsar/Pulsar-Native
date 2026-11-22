@@ -148,7 +148,11 @@ fn owner_pages(ns: &str, keep: impl Fn(&str) -> bool, id_prefix: &str) -> Vec<Pa
 fn owner_title(ns: &str, owner: &str) -> (String, Option<String>) {
     match global_config().owner_info(ns, owner) {
         Some((title, description)) => {
-            let title = if title.is_empty() { humanize(owner) } else { title };
+            let title = if title.is_empty() {
+                humanize(owner)
+            } else {
+                title
+            };
             (title, (!description.is_empty()).then_some(description))
         }
         None => (humanize(owner), None),
@@ -157,7 +161,11 @@ fn owner_title(ns: &str, owner: &str) -> (String, Option<String>) {
 
 /// `virtual_geometry` → `Virtual geometry`.
 fn humanize(owner: &str) -> String {
-    let last = owner.rsplit('/').next().unwrap_or(owner).replace(['_', '-', '.'], " ");
+    let last = owner
+        .rsplit('/')
+        .next()
+        .unwrap_or(owner)
+        .replace(['_', '-', '.'], " ");
     let mut chars = last.chars();
     match chars.next() {
         Some(first) => first.to_uppercase().chain(chars).collect(),
@@ -178,7 +186,10 @@ fn sections_of(owners: &[(&str, &str)], name_owners: bool) -> Vec<Section> {
         };
         settings.sort_by_key(|info| info.order);
         let (owner_name, _) = owner_title(ns, owner);
-        for info in settings.into_iter().filter(|info| info.field_type.is_some()) {
+        for info in settings
+            .into_iter()
+            .filter(|info| info.field_type.is_some())
+        {
             let page = info.page.clone().unwrap_or_else(|| owner_name.clone());
             let page = page.rsplit(" / ").next().unwrap_or(&page).to_string();
             let key = format!("{ns}/{owner}#{page}");
@@ -218,7 +229,10 @@ fn plugin_pages() -> Vec<Page> {
     }
     for owner in cfg.list_owners(NS_PLUGIN) {
         if let Some(page) = owner.first().cloned() {
-            by_plugin.entry(page).or_default().push((NS_PLUGIN, owner.join("/")));
+            by_plugin
+                .entry(page)
+                .or_default()
+                .push((NS_PLUGIN, owner.join("/")));
         }
     }
 
@@ -424,16 +438,26 @@ mod tests {
 
     fn pages() -> Vec<Page> {
         vec![
-            page("engine", false, &[("Budgets", &["pool"]), ("Loading", &["bind"])]),
-            page("alpha", true, &[("Probes", &["spacing"]), ("Rays", &["count"])]),
+            page(
+                "engine",
+                false,
+                &[("Budgets", &["pool"]), ("Loading", &["bind"])],
+            ),
+            page(
+                "alpha",
+                true,
+                &[("Probes", &["spacing"]), ("Rays", &["count"])],
+            ),
             page("beta", true, &[("Beta", &["reflection"])]),
         ]
     }
 
     #[test]
     fn plugins_fold_under_one_folder_three_levels_deep() {
-        let all: BTreeSet<String> =
-            ["engine", "alpha", PLUGINS_FOLDER].iter().map(|s| s.to_string()).collect();
+        let all: BTreeSet<String> = ["engine", "alpha", PLUGINS_FOLDER]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let rows = tree_rows(&pages(), &all, false);
         let shape: Vec<(usize, &str)> = rows.iter().map(|r| (r.depth, r.label.as_str())).collect();
         assert_eq!(
@@ -450,7 +474,10 @@ mod tests {
             ]
         );
         assert_eq!(rows[5].target, Target::Section(1, 0));
-        assert!(!rows[7].expandable, "a page with one section lists none under it");
+        assert!(
+            !rows[7].expandable,
+            "a page with one section lists none under it"
+        );
     }
 
     #[test]

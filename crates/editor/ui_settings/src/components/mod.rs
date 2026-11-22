@@ -12,10 +12,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use gpui::{
-    div, prelude::FluentBuilder as _, px, AppContext as _, Context, Entity, FocusHandle,
-    InteractiveElement as _,
-    Focusable, IntoElement, ListAlignment, ListState, ParentElement as _, Render, Styled,
-    Subscription, UniformListScrollHandle, Window,
+    div, prelude::FluentBuilder as _, px, AppContext as _, Context, Entity, FocusHandle, Focusable,
+    InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement as _, Render,
+    Styled, Subscription, UniformListScrollHandle, Window,
 };
 use ui::{
     h_flex,
@@ -24,9 +23,7 @@ use ui::{
     v_flex, ActiveTheme as _,
 };
 
-use crate::utils::model::{
-    self, ContentRow, Page, SettingId, TreeRow, WindowKind, PLUGINS_FOLDER,
-};
+use crate::utils::model::{self, ContentRow, Page, SettingId, TreeRow, WindowKind, PLUGINS_FOLDER};
 
 pub use fields::FieldState;
 pub use save_bar::render_save_bar;
@@ -158,7 +155,10 @@ impl SettingsScreen {
     /// The selected page among the shown pages.
     pub(crate) fn current_page(&self) -> Option<(usize, &Page)> {
         let id = self.selected_page.as_deref()?;
-        self.pages.iter().enumerate().find(|(_, page)| page.id == id)
+        self.pages
+            .iter()
+            .enumerate()
+            .find(|(_, page)| page.id == id)
     }
 }
 

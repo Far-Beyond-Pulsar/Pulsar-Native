@@ -73,8 +73,12 @@ pub fn render_detail_row(
                 .iter()
                 .map(|problem| line(problem.clone(), color, cx).into_any_element())
                 .collect();
-            section("Problems", v_flex().gap_1().children(lines).into_any_element(), cx)
-                .into_any_element()
+            section(
+                "Problems",
+                v_flex().gap_1().children(lines).into_any_element(),
+                cx,
+            )
+            .into_any_element()
         }
         DetailRow::Requires => {
             let body = render_requirements(entry, cx);
@@ -87,8 +91,12 @@ pub fn render_detail_row(
                 .iter()
                 .map(|contract| line(contract.clone(), color, cx).into_any_element())
                 .collect();
-            section("Provides", v_flex().gap_1().children(lines).into_any_element(), cx)
-                .into_any_element()
+            section(
+                "Provides",
+                v_flex().gap_1().children(lines).into_any_element(),
+                cx,
+            )
+            .into_any_element()
         }
         DetailRow::RequiredBy => {
             let color = cx.theme().foreground;
@@ -103,8 +111,12 @@ pub fn render_detail_row(
                     line(text, color, cx).into_any_element()
                 })
                 .collect();
-            section("Required by", v_flex().gap_1().children(lines).into_any_element(), cx)
-                .into_any_element()
+            section(
+                "Required by",
+                v_flex().gap_1().children(lines).into_any_element(),
+                cx,
+            )
+            .into_any_element()
         }
         DetailRow::Group(ix) => match entry.groups.get(ix) {
             Some(group) => contribution_group(group, cx),
@@ -319,5 +331,12 @@ fn line(text: String, color: Hsla, cx: &mut Context<PluginManagerWindow>) -> imp
                 .flex_shrink_0()
                 .text_color(cx.theme().muted_foreground),
         )
-        .child(div().flex_1().min_w_0().text_xs().text_color(color).child(text))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .text_color(color)
+                .child(text),
+        )
 }

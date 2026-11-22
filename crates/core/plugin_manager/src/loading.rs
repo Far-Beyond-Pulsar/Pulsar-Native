@@ -9,7 +9,9 @@
 //! and [`PluginManager::load_plugin`] are one-call conveniences with no callers
 //! in the workspace. `order_prepared_plugins` puts dependencies first.
 
-use crate::attach::{attach_event_bus, attach_profiler, attach_world_runtime, read_manifest};
+use crate::attach::{
+    attach_event_bus, attach_profiler, attach_settings, attach_world_runtime, read_manifest,
+};
 use crate::{
     dependencies, panel_restorers, LoadedPlugin, PermanentLibrary, PluginManager,
     PluginManagerError, PreparedPlugin,
@@ -421,6 +423,17 @@ impl PluginManager {
                 "Plugin at {:?} predates the shared event bus; its events stay local",
                 path
             ),
+        }
+
+        // Bind the plugin's settings handles to the editor's database, so
+        // its own settings answer inside the library.
+        match attach_settings(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host settings", path),
+            Some(false) => tracing::warn!(
+                "Plugin at {:?} refused the host settings (or there are none yet); its settings handles stay empty",
+                path
+            ),
+            None => {}
         }
 
         Ok(())

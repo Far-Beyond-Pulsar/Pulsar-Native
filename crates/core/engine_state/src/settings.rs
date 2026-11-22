@@ -334,7 +334,10 @@ fn has_io_kind(error: &anyhow::Error, kind: ErrorKind) -> bool {
 
 /// The config value a TOML value stands for, typed by the setting's default
 /// (`None`: it does not fit that type).
-pub(crate) fn toml_to_config_value(value: &toml::Value, expected: &ConfigValue) -> Option<ConfigValue> {
+pub(crate) fn toml_to_config_value(
+    value: &toml::Value,
+    expected: &ConfigValue,
+) -> Option<ConfigValue> {
     Some(match expected {
         ConfigValue::Bool(_) => ConfigValue::Bool(value.as_bool()?),
         ConfigValue::Int(_) => ConfigValue::Int(value.as_integer()?),
@@ -346,7 +349,8 @@ pub(crate) fn toml_to_config_value(value: &toml::Value, expected: &ConfigValue) 
         ConfigValue::String(_) => ConfigValue::String(value.as_str()?.to_owned()),
         ConfigValue::Color(_) => {
             let table = value.as_table()?;
-            let channel = |name: &str| -> Option<u8> { u8::try_from(table.get(name)?.as_integer()?).ok() };
+            let channel =
+                |name: &str| -> Option<u8> { u8::try_from(table.get(name)?.as_integer()?).ok() };
             ConfigValue::Color(Color {
                 r: channel("r")?,
                 g: channel("g")?,

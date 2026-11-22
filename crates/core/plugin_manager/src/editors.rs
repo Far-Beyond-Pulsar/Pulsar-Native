@@ -128,10 +128,9 @@ impl PluginManager {
         // Check if this is a built-in editor
         if plugin_id.as_str() == "builtin" {
             // Create editor context with project root
-            let editor_context =
-                EditorContext::new(project_root)
-                    .with_services(self.editor_services())
-                    .with_settings(self.editor_settings.clone());
+            let editor_context = EditorContext::new(project_root)
+                .with_services(self.editor_services())
+                .with_settings(self.editor_settings.clone());
 
             // Create the editor directly using the provider
             return self

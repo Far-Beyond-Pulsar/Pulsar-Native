@@ -195,7 +195,11 @@ pub fn save_pending_changes(
                 errors.push(format!("Editor settings: {error}"));
             }
         }
-        WindowKind::Project => match screen.project_path.as_deref().and_then(ProjectSettings::new) {
+        WindowKind::Project => match screen
+            .project_path
+            .as_deref()
+            .and_then(ProjectSettings::new)
+        {
             Some(project) => {
                 if let Err(error) = project.save_all() {
                     tracing::error!("Error saving project settings: {error:?}");

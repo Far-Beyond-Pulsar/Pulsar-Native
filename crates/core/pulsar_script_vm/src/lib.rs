@@ -67,7 +67,9 @@ pub use module::{
     SourceLoc, Subscription, SubscriptionScope, UnOp, Variable, BINARY_MAGIC, FORMAT_VERSION,
     MIN_FORMAT_VERSION,
 };
-pub use module_builder::{BuildError, FunctionBuilder, FunctionHandle, Label, Local, ModuleBuilder};
+pub use module_builder::{
+    BuildError, FunctionBuilder, FunctionHandle, Label, Local, ModuleBuilder,
+};
 pub use native::{
     Access, GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider,
     NativeRegistration, NativeRegistry, Origin, PolyNative,

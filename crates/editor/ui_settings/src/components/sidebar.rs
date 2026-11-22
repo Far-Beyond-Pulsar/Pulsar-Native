@@ -7,10 +7,14 @@
 //! squeezed to its icon.
 
 use gpui::{
-    div, prelude::FluentBuilder as _, px, uniform_list, AnyElement, Context, InteractiveElement as _,
-    IntoElement, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled,
+    div, prelude::FluentBuilder as _, px, uniform_list, AnyElement, Context,
+    InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    StatefulInteractiveElement as _, Styled,
 };
-use ui::{h_flex, input::TextInput, scroll::Scrollbar, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
+use ui::{
+    h_flex, input::TextInput, scroll::Scrollbar, v_flex, ActiveTheme as _, Icon, IconName,
+    Sizable as _,
+};
 
 use super::{empty_note, SettingsScreen};
 use crate::utils::model::{Target, TreeRow};
@@ -122,7 +126,9 @@ impl SettingsScreen {
                 foreground
             })
             .when_some(background, |this, bg| this.bg(bg))
-            .when(!selected, |this| this.hover(|this| this.bg(theme.sidebar_accent.opacity(0.5))))
+            .when(!selected, |this| {
+                this.hover(|this| this.bg(theme.sidebar_accent.opacity(0.5)))
+            })
             .cursor_pointer()
             .child(
                 div()
@@ -167,7 +173,9 @@ impl SettingsScreen {
             Target::Folder => false,
             Target::Page(ix) => {
                 ix == page_ix
-                    && (self.selected_section.is_none() || !row.expanded || self.pages[ix].sections.len() < 2)
+                    && (self.selected_section.is_none()
+                        || !row.expanded
+                        || self.pages[ix].sections.len() < 2)
             }
             Target::Section(ix, section) => ix == page_ix && self.selected_section == Some(section),
         }

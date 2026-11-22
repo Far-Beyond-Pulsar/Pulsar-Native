@@ -103,10 +103,14 @@ pub(crate) fn tasks() -> Vec<LoadingTask> {
     );
     // One check per language that has a server: whether its executable is
     // there (the first start installs it when it is not).
-    tasks.extend(pulsar_lsp::active_servers().into_iter().map(|(language, spec)| LoadingTask {
-        label: format!("Checking {}", spec.display_name),
-        run: TaskRun::Server(language, spec),
-    }));
+    tasks.extend(
+        pulsar_lsp::active_servers()
+            .into_iter()
+            .map(|(language, spec)| LoadingTask {
+                label: format!("Checking {}", spec.display_name),
+                run: TaskRun::Server(language, spec),
+            }),
+    );
     tasks.push(engine(last));
     tasks
 }

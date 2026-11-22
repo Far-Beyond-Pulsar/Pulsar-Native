@@ -739,7 +739,11 @@ pub fn render_file_preview(
                     .map(|language| language.highlight_id)
                     .filter(|id| !id.is_empty())
                     .unwrap_or_else(|| {
-                        match path.extension().and_then(|e| e.to_str()).unwrap_or_default() {
+                        match path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or_default()
+                        {
                             "js" => "javascript",
                             "py" => "python",
                             "toml" => "toml",
