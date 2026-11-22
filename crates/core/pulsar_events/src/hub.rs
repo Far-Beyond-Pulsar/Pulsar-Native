@@ -635,6 +635,7 @@ mod tests {
         let _s = hub
             .bus()
             .subscribe(move |e: &KeyDown| g.lock().unwrap().push(e.key));
+        // SAFETY: the table was just exported by `hub`, which outlives `plugin`.
         let plugin = unsafe { gamma::ffi::ForeignBus::from_raw(hub.export_raw()) }.unwrap();
         let second = plugin.clone();
         let descriptor = hub.descriptor_by_name("KeyDown").unwrap();

@@ -145,7 +145,11 @@ jobs:
           third_party=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.manifest_path | contains("/crates/third-party/")) | "--exclude=" + .name')
           # shellcheck disable=SC2086 # one --exclude per word
-          cargo clippy --workspace --exclude pulsar_docs $third_party --all-targets -- -D warnings
+          cargo clippy --workspace --exclude pulsar_docs $third_party --lib --bins --examples --benches -- -D warnings
+          # Tests may touch the real disk (clippy.toml): the std::fs ban is for
+          # the libraries and binaries, linted above (#1931).
+          # shellcheck disable=SC2086
+          cargo clippy --workspace --exclude pulsar_docs $third_party --tests -- -D warnings -A clippy::disallowed-methods
 
       # Check for stray TODO comments without issue reference
       - name: todo comment check
@@ -298,13 +302,6 @@ jobs:
           if ($notInstalled.Count -ne 0) {
             throw "the installed set lost built-in plugins: $($notInstalled -join ', ')"
           }
-
-      # Core and editor know no kind, subsystem or tool (Pulsar-Native#1605):
-      # no kernel crate depends on a plugin or a tool, and kernel code names no
-      # kind beyond architecture/kind-names.txt (shrink-only). Helio's checker,
-      # run over this repository's architecture/layers.toml.
-      - name: Layer gate
-        run: python3 crates/renderer/helio/scripts/architecture/check_layers.py --root .
 
       - name: Graphy stays headless
         shell: pwsh
@@ -548,6 +545,25 @@ jobs:
       - name: Generated project compiles
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: cargo test -p pulsar_game --test generated_project_compiles -- --ignored
+
+  # Core and editor know no kind, subsystem or tool (Pulsar-Native#1605):
+  # no kernel crate depends on a plugin or a tool, and kernel code names no
+  # kind beyond architecture/kind-names.txt (shrink-only). Helio's checker,
+  # run over this repository's architecture/layers.toml. Its own job, so a
+  # clippy or test failure in the linux lane cannot skip it (#1928).
+  layers:
+    name: layer gate
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Layer gate
+        run: python3 crates/renderer/helio/scripts/architecture/check_layers.py --root .
 
   # No manifest may take Pulsar-Native as a git source (#1662): cargo would
   # fetch the whole engine with its submodules, some private, so a generated
