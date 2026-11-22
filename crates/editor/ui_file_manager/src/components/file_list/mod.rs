@@ -62,6 +62,10 @@ pub struct FileManagerDrawer {
     /// An item [`Self::reveal`] asked to scroll into view on the next render.
     pub(crate) pending_reveal: Option<PathBuf>,
     pub(crate) fs_event_listener: Option<gpui::Task<()>>,
+    /// The running folder-tree rebuild ([`Self::refresh_folder_tree`]).
+    pub(crate) folder_tree_refresh: Option<gpui::Task<()>>,
+    /// Another rebuild was asked for while one ran.
+    pub(crate) folder_tree_stale: bool,
     /// Rescans for imports when importable files change.
     pub(crate) import_watch: Option<crate::utils::import_scan::ImportWatch>,
     /// Import state of the open folder's files, for their context menus and
@@ -226,6 +230,8 @@ impl FileManagerDrawer {
             content_revision: 0,
             pending_reveal: None,
             fs_event_listener: None,
+            folder_tree_refresh: None,
+            folder_tree_stale: false,
             import_watch: None,
             import_states: Default::default(),
             show_hidden_files,
@@ -254,24 +260,67 @@ impl FileManagerDrawer {
                 .unwrap_or_default(),
         };
 
+        // File events arrive in bursts (a generated project, a checkout):
+        // take every queued one, then update once. The folder tree is rebuilt
+        // by a task, never here on the UI thread.
         this.fs_event_listener = Some(cx.spawn(async move |drawer, cx| {
+            use tokio::sync::broadcast::error::{RecvError, TryRecvError};
             let mut rx = engine_fs::subscribe();
-            while let Ok(event) = rx.recv().await {
-                let _ = cx.update(|cx| {
-                    drawer.update(cx, |drawer, cx| {
-                        let Some(project_root) = drawer.project_path.clone() else {
-                            return;
-                        };
-                        if !event.path.starts_with(&project_root) {
-                            return;
+            loop {
+                let mut events = Vec::new();
+                // `None` stands for events that were dropped because this
+                // listener fell behind: treat them as a structural change.
+                match rx.recv().await {
+                    Ok(event) => events.push(Some(event)),
+                    Err(RecvError::Lagged(_)) => events.push(None),
+                    Err(RecvError::Closed) => break,
+                }
+                loop {
+                    match rx.try_recv() {
+                        Ok(event) => events.push(Some(event)),
+                        Err(TryRecvError::Lagged(_)) => events.push(None),
+                        Err(TryRecvError::Empty | TryRecvError::Closed) => break,
+                    }
+                }
+                let alive = drawer.update(cx, |drawer, cx| {
+                    let Some(project_root) = drawer.project_path.clone() else {
+                        return;
+                    };
+                    let mut touched = false;
+                    let mut structural = false;
+                    for event in &events {
+                        match event {
+                            Some(event) => {
+                                if !event.path.starts_with(&project_root)
+                                    || engine_fs::file_index::is_unindexed_path(
+                                        &project_root,
+                                        &event.path,
+                                    )
+                                {
+                                    continue;
+                                }
+                                touched = true;
+                                structural |=
+                                    !matches!(event.kind, engine_fs::FsChangeKind::Modified);
+                            }
+                            None => {
+                                touched = true;
+                                structural = true;
+                            }
                         }
-                        drawer.mark_directory_cache_dirty();
-                        if !matches!(event.kind, engine_fs::FsChangeKind::Modified) {
-                            drawer.set_folder_tree(FolderNode::from_path(&project_root));
-                        }
-                        cx.notify();
-                    })
+                    }
+                    if !touched {
+                        return;
+                    }
+                    drawer.mark_directory_cache_dirty();
+                    if structural {
+                        drawer.refresh_folder_tree(cx);
+                    }
+                    cx.notify();
                 });
+                if alive.is_err() {
+                    break;
+                }
             }
         }));
 
@@ -314,9 +363,7 @@ impl Render for FileManagerDrawer {
             // the event here so it cannot continue into the viewport behind.
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .on_action(cx.listener(|this, _: &RefreshFileManager, _w, cx| {
-                if let Some(ref p) = this.project_path {
-                    this.set_folder_tree(FolderNode::from_path(p));
-                }
+                this.refresh_folder_tree(cx);
                 this.mark_directory_cache_dirty();
                 cx.notify();
             }))

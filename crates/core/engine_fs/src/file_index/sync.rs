@@ -11,7 +11,9 @@ impl ProjectFileIndex {
     /// Reconcile the index against a fresh VFS manifest. Paths whose metadata
     /// is unchanged are not rewritten; entries absent from the manifest are
     /// removed in the same transaction.
+    #[track_caller]
     pub fn reconcile(&self, manifest: &[ManifestEntry]) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::reconcile");
         let mut connection = self.connection.lock();
         let tx = connection.transaction()?;
         tx.execute_batch(
@@ -88,7 +90,9 @@ impl ProjectFileIndex {
     }
 
     /// Refresh one local file or directory from the active VFS metadata.
+    #[track_caller]
     pub fn refresh_path(&self, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::refresh_path");
         let Some(relative) = self.relative_path(path) else {
             return Ok(());
         };

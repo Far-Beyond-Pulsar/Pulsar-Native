@@ -36,7 +36,8 @@ pub use file_index::{
 #[cfg(feature = "p2p")]
 pub use providers::P2pFsProvider;
 pub use providers::{
-    FsEntry, FsMetadata, FsProvider, FsWriter, LocalFsProvider, ManifestEntry, ReadSeek,
+    is_unindexed_dir, FsEntry, FsMetadata, FsProvider, FsWriter, LocalFsProvider, ManifestEntry,
+    ReadSeek, UNINDEXED_DIRS,
 };
 #[cfg(feature = "remote")]
 pub use providers::{RemoteConfig, RemoteFsProvider};

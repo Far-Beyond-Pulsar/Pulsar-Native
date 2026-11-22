@@ -240,9 +240,7 @@ pub fn handle_create_asset(
         if creation_directory.is_some() {
             d.selected_folder = Some(folder.clone());
         }
-        if let Some(ref p) = d.project_path {
-            d.set_folder_tree(FolderNode::from_path(p));
-        }
+        d.refresh_folder_tree(cx);
         d.mark_directory_cache_dirty();
         cx.notify();
     }
@@ -352,9 +350,7 @@ pub fn handle_duplicate_item(d: &mut FileManagerDrawer, cx: &mut Context<FileMan
             }
         }
     }
-    if let Some(ref p) = d.project_path {
-        d.set_folder_tree(FolderNode::from_path(p));
-    }
+    d.refresh_folder_tree(cx);
     d.mark_directory_cache_dirty();
     cx.notify();
 }
@@ -623,7 +619,7 @@ pub fn handle_restore_file(
                     // Remove from deleted list
                     d.deleted_files.retain(|e| e.path != restore_path);
                     d.mark_directory_cache_dirty();
-                    d.set_folder_tree(FolderNode::from_path(&proj));
+                    d.refresh_folder_tree(cx);
                     cx.notify();
                 }
                 Err(e) => {
@@ -646,7 +642,7 @@ impl FileManagerDrawer {
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
         self.mount_problems = engine_fs::virtual_fs::mount_problems(&path);
-        self.set_folder_tree(FolderNode::from_path(&path));
+        self.refresh_folder_tree(cx);
         self.selected_folder = Some(path.clone());
         self.fs_metadata.load_from_project_root(&path);
         self.mark_directory_cache_dirty();

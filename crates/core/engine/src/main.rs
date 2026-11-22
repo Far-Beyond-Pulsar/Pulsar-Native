@@ -224,6 +224,17 @@ fn main() {
 
         cx.activate(true);
 
+        // The UI thread only builds and updates views. The framework names
+        // each piece of work it runs here (event, view render, listener,
+        // foreground future); any that runs past the budget is recorded as a
+        // failed "Slow UI work" task, and the responsiveness watcher names the
+        // piece it caught when the UI stops (.agents/EDITOR_TASKS.md).
+        gpui::ui_work::install(
+            std::time::Duration::from_millis(50),
+            editor_task_queue::record_slow_ui_work,
+        );
+        editor_task_queue::set_ui_activity_source(gpui::ui_work::current);
+
         startup::init_ui_stack(cx);
 
         let uri_path = engine_context
@@ -237,6 +248,17 @@ fn main() {
         );
 
         startup::open_startup_project(uri_path, project_path, &hardware_profile, cx);
+
+        // The UI thread's beat: a timer on its own executor, so it only fires
+        // when the thread is free. When it stops, the task queue records a
+        // failed "UI thread unresponsive" task naming what held the thread.
+        cx.spawn(async move |cx| loop {
+            editor_task_queue::ui_beat();
+            cx.background_executor()
+                .timer(editor_task_queue::UI_BEAT_EVERY)
+                .await;
+        })
+        .detach();
     });
 }
 

@@ -7,6 +7,25 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+/// Directories that hold build output, VCS metadata or tool caches, never
+/// assets: a project manifest skips them and the file index never holds
+/// anything inside one. A cargo build writes tens of thousands of files under
+/// `target/`; following them is what froze the editor during a build.
+pub const UNINDEXED_DIRS: &[&str] = &[
+    "target",
+    ".git",
+    ".svn",
+    ".hg",
+    "node_modules",
+    ".cache",
+    ".gradle",
+];
+
+/// Whether a directory named `name` is one of [`UNINDEXED_DIRS`].
+pub fn is_unindexed_dir(name: &str) -> bool {
+    UNINDEXED_DIRS.contains(&name)
+}
+
 // ── Data types ─────────────────────────────────────────────────────────────────
 
 /// A single entry returned by [`FsProvider::list_dir`].
@@ -301,12 +320,7 @@ pub trait FsProvider: Send + Sync + 'static {
         for entry in self.list_dir(dir)? {
             // Skip build artifacts, VCS metadata, and other non-asset directories.
             // These can contain tens of thousands of files and have no assets.
-            if entry.is_dir
-                && matches!(
-                    entry.name.as_str(),
-                    "target" | ".git" | ".svn" | ".hg" | "node_modules" | ".cache" | ".gradle"
-                )
-            {
+            if entry.is_dir && is_unindexed_dir(&entry.name) {
                 continue;
             }
             let child_path = dir.join(&entry.name);

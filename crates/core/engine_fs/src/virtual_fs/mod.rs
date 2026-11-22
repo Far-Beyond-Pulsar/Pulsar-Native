@@ -102,17 +102,23 @@ pub fn current_label() -> String {
 // soon as a writer (`set_provider`) is queued, because the lock is fair.
 
 /// Read the full contents of a file.
+#[track_caller]
 pub fn read_file(path: &Path) -> Result<Vec<u8>> {
+    editor_task_queue::blocking_call("virtual_fs::read_file");
     layer().read_file(path)
 }
 
 /// Read up to `len` bytes from the start of a file.
+#[track_caller]
 pub fn read_file_prefix(path: &Path, len: usize) -> Result<Vec<u8>> {
+    editor_task_queue::blocking_call("virtual_fs::read_file_prefix");
     layer().read_file_prefix(path, len)
 }
 
 /// Overwrite (or create) a file with `content`.
+#[track_caller]
 pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::write_file");
     let result = layer().write_file(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Modified);
@@ -124,7 +130,9 @@ pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
 ///
 /// Providers that cannot guarantee atomic replacement return an error rather
 /// than silently falling back to a partial write.
+#[track_caller]
 pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::write_file_atomically");
     let result = layer().write_file_atomically(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Modified);
@@ -133,7 +141,9 @@ pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
 }
 
 /// Create a new file with `content`, failing if it already exists.
+#[track_caller]
 pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::create_file");
     let result = layer().create_file(path, content);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Created);
@@ -142,7 +152,9 @@ pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
 }
 
 /// Delete a file or recursively remove a directory.
+#[track_caller]
 pub fn delete_path(path: &Path) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::delete_path");
     let result = layer().delete_path(path);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Deleted);
@@ -151,11 +163,14 @@ pub fn delete_path(path: &Path) -> Result<()> {
 }
 
 /// Rename / move a path.
+#[track_caller]
 pub fn rename(from: &Path, to: &Path) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::rename");
     layer().rename(from, to)
 }
 
 /// Read a file as UTF-8 text.
+#[track_caller]
 pub fn read_to_string(path: &Path) -> Result<String> {
     let bytes = read_file(path)?;
     String::from_utf8(bytes)
@@ -163,12 +178,16 @@ pub fn read_to_string(path: &Path) -> Result<String> {
 }
 
 /// Add `content` to the end of a file, creating it if needed.
+#[track_caller]
 pub fn append_file(path: &Path, content: &[u8]) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::append_file");
     layer().append_file(path, content)
 }
 
 /// Copy the file `from` to `to`, replacing `to`.
+#[track_caller]
 pub fn copy(from: &Path, to: &Path) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::copy");
     let result = layer().copy(from, to);
     if result.is_ok() {
         events::emit(to.to_path_buf(), FsChangeKind::Modified);
@@ -177,13 +196,17 @@ pub fn copy(from: &Path, to: &Path) -> Result<()> {
 }
 
 /// Open a file for streamed reading.
+#[track_caller]
 pub fn open_read(path: &Path) -> Result<Box<dyn ReadSeek>> {
+    editor_task_queue::blocking_call("virtual_fs::open_read");
     layer().open_read(path)
 }
 
 /// Open a file for streamed writing (created or truncated). The file holds
 /// what was written once [`FsWriter::finish`] returns `Ok`.
+#[track_caller]
 pub fn open_write(path: &Path) -> Result<FsWriter> {
+    editor_task_queue::blocking_call("virtual_fs::open_write");
     let layer = layer();
     if let Some(stream) = layer.open_write_stream(path)? {
         return Ok(FsWriter::direct(stream));
@@ -195,32 +218,42 @@ pub fn open_write(path: &Path) -> Result<FsWriter> {
 }
 
 /// Whether `path` is a directory (`false` when it does not exist).
+#[track_caller]
 pub fn is_dir(path: &Path) -> bool {
     metadata(path).map(|meta| meta.is_dir).unwrap_or(false)
 }
 
 /// Whether `path` is a file (`false` when it does not exist).
+#[track_caller]
 pub fn is_file(path: &Path) -> bool {
     metadata(path).map(|meta| !meta.is_dir).unwrap_or(false)
 }
 
 /// Resolve `path` to its canonical absolute form.
+#[track_caller]
 pub fn canonicalize(path: &Path) -> Result<PathBuf> {
+    editor_task_queue::blocking_call("virtual_fs::canonicalize");
     layer().canonicalize(path)
 }
 
 /// Whether `path` is a symbolic link or another filesystem redirection.
+#[track_caller]
 pub fn is_symlink(path: &Path) -> Result<bool> {
+    editor_task_queue::blocking_call("virtual_fs::is_symlink");
     layer().is_symlink(path)
 }
 
 /// List the immediate children of a directory.
+#[track_caller]
 pub fn list_dir(path: &Path) -> Result<Vec<FsEntry>> {
+    editor_task_queue::blocking_call("virtual_fs::list_dir");
     layer().list_dir(path)
 }
 
 /// Recursively create a directory and all missing parents.
+#[track_caller]
 pub fn create_dir_all(path: &Path) -> Result<()> {
+    editor_task_queue::blocking_call("virtual_fs::create_dir_all");
     let result = layer().create_dir_all(path);
     if result.is_ok() {
         events::emit(path.to_path_buf(), FsChangeKind::Created);
@@ -229,23 +262,31 @@ pub fn create_dir_all(path: &Path) -> Result<()> {
 }
 
 /// Return `true` if `path` exists.
+#[track_caller]
 pub fn exists(path: &Path) -> Result<bool> {
+    editor_task_queue::blocking_call("virtual_fs::exists");
     layer().exists(path)
 }
 
 /// Return basic metadata for `path`.
+#[track_caller]
 pub fn metadata(path: &Path) -> Result<FsMetadata> {
+    editor_task_queue::blocking_call("virtual_fs::metadata");
     layer().metadata(path)
 }
 
 /// Return a flat manifest of every entry under `path`.
+#[track_caller]
 pub fn manifest(path: &Path) -> Result<Vec<ManifestEntry>> {
+    editor_task_queue::blocking_call("virtual_fs::manifest");
     layer().manifest(path)
 }
 
 /// Return paths of all files under `root` whose extension matches `ext`
 /// (case-insensitive, without leading dot). Paths are relative to `root`.
+#[track_caller]
 pub fn find_by_extension(root: &Path, ext: &str) -> Vec<PathBuf> {
+    editor_task_queue::blocking_call("virtual_fs::find_by_extension");
     let ext_lower = ext.trim_start_matches('.').to_ascii_lowercase();
     match layer().manifest(root) {
         Ok(entries) => entries

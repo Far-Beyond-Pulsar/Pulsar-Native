@@ -38,6 +38,8 @@ chrono = { workspace = true, features = ["serde"] }
 image.workspace = true
 smallvec.workspace = true
 smol = { workspace = true }
+editor_task_queue = { workspace = true }
+tokio = { workspace = true }
 notify = { workspace = true }
 rust-i18n.workspace = true
 
