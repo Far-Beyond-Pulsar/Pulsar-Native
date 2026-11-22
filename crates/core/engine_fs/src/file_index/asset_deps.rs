@@ -13,6 +13,7 @@ impl ProjectFileIndex {
     /// saved, imported or refreshed; this table is derived data and is never
     /// written into an asset. Each dep's `source_*` fields must match the
     /// arguments.
+    #[track_caller]
     pub fn replace_asset_deps(
         &self,
         path: &Path,
@@ -20,6 +21,7 @@ impl ProjectFileIndex {
         source_id: &str,
         deps: &[AssetDep],
     ) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::replace_asset_deps");
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset dependency path is outside the indexed project root");
         };
@@ -61,7 +63,9 @@ impl ProjectFileIndex {
     }
 
     /// Forget the dependency edges of the asset at `path`.
+    #[track_caller]
     pub fn clear_asset_deps(&self, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::clear_asset_deps");
         let Some(relative) = self.relative_path(path) else {
             return Ok(());
         };
@@ -71,7 +75,9 @@ impl ProjectFileIndex {
     }
 
     /// What an asset depends on, ordered for stable output.
+    #[track_caller]
     pub fn asset_deps_of(&self, source_kind: &str, source_id: &str) -> Result<Vec<AssetDep>> {
+        editor_task_queue::blocking_call("file_index::asset_deps_of");
         let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT source_kind, source_id, target_kind, target_id, role, via, expect
@@ -96,7 +102,9 @@ impl ProjectFileIndex {
     /// The reverse query behind "Used By": every recorded edge that points at
     /// the asset `target_id` of `target_kind`, with the project path of the
     /// asset holding the reference. Computed, never stored on the target.
+    #[track_caller]
     pub fn asset_used_by(&self, target_kind: &str, target_id: &str) -> Result<Vec<AssetDependent>> {
+        editor_task_queue::blocking_call("file_index::asset_used_by");
         let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT source_path, source_kind, source_id, target_kind, target_id, role, via, expect

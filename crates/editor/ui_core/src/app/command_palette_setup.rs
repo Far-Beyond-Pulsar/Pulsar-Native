@@ -125,8 +125,8 @@ fn add_fixed_commands(palette: &mut Palette, cx: &mut Context<Palette>) {
     );
 
     palette.add_item(
-        "Open Settings",
-        "Open application settings",
+        "Open Editor Settings",
+        "Open the editor's own settings (for every project)",
         IconName::Settings,
         "Application",
         |window, cx| {

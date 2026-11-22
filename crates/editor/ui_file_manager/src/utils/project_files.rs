@@ -236,11 +236,61 @@ impl FileManagerDrawer {
 
     /// Re-read the tree and listings after this drawer changed files.
     pub(crate) fn files_changed(&mut self, cx: &mut Context<Self>) {
-        if let Some(root) = &self.project_path {
-            self.set_folder_tree(FolderNode::from_path(root));
-        }
+        self.refresh_folder_tree(cx);
         self.mark_directory_cache_dirty();
         cx.notify();
+    }
+
+    /// Rebuild the project's folder tree off the UI thread, as a task.
+    ///
+    /// Walking the project is never done on the UI thread: it reads the file
+    /// index, which a busy watcher (a build, a checkout) can hold for a long
+    /// time. Requests while a rebuild runs collapse into one more rebuild
+    /// after it, so a burst of file events costs at most two walks, and the
+    /// tree shown is never older than the last request.
+    pub(crate) fn refresh_folder_tree(&mut self, cx: &mut Context<Self>) {
+        if self.folder_tree_refresh.is_some() {
+            self.folder_tree_stale = true;
+            return;
+        }
+        let Some(root) = self.project_path.clone() else {
+            return;
+        };
+        self.folder_tree_stale = false;
+        let (tx, rx) = smol::channel::bounded(1);
+        let walk_root = root.clone();
+        editor_task_queue::global().submit(
+            editor_task_queue::TaskDescription::new(
+                format!("Read folder tree: {}", root.display()),
+                "fs",
+                editor_task_queue::TaskDuration::Short,
+            ),
+            move |ctx| {
+                ctx.set_phase("Walking the project's folders");
+                let _ = tx.send_blocking(FolderNode::from_path(&walk_root));
+                Ok(())
+            },
+        );
+        self.folder_tree_refresh = Some(cx.spawn(async move |drawer, cx| {
+            let tree = rx.recv().await.ok();
+            let _ = drawer.update(cx, |drawer, cx| {
+                drawer.folder_tree_refresh = None;
+                // A tree read for a project this drawer no longer shows is
+                // dropped; the rebuild below reads the current one.
+                match tree {
+                    Some(tree) if drawer.project_path.as_ref() == Some(&root) => {
+                        drawer.set_folder_tree(tree);
+                        cx.notify();
+                    }
+                    Some(_) => drawer.folder_tree_stale = true,
+                    // The task failed; its log in the Tasks window says why.
+                    None => {}
+                }
+                if std::mem::take(&mut drawer.folder_tree_stale) {
+                    drawer.refresh_folder_tree(cx);
+                }
+            });
+        }));
     }
 
     /// The index of the item a [`Self::reveal`] asked to scroll to, among

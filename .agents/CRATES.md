@@ -180,7 +180,7 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_multiuser_status` | Presence indicators |
 | `ui_plugin_manager` | Plugin browser |
 | `ui_problems` | Errors / warnings panel |
-| `ui_settings` | Settings editor |
+| `ui_settings` | The Project Settings and Editor Settings windows (`SETTINGS.md`) |
 | `ui_type_debugger` | Runtime type inspector |
 | `ui_types_common` | Data-only types shared between editor and runtime (asset kinds, window requests, drag payloads); it does not depend on GPUI |
 

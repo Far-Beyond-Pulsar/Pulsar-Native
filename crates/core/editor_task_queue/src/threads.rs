@@ -281,6 +281,17 @@ pub fn register_current_thread(spec: ThreadSpec) -> ThreadGuard {
     ThreadGuard { shared }
 }
 
+/// Whether the calling thread is the UI thread (registered with
+/// [`ThreadRole::Main`]). One thread-local read.
+pub fn on_ui_thread() -> bool {
+    CURRENT.with(|current| {
+        current
+            .borrow()
+            .as_ref()
+            .is_some_and(|shared| shared.role == ThreadRole::Main)
+    })
+}
+
 /// A handle to the calling thread's registry entry.
 #[derive(Clone)]
 pub struct ThreadHandle {

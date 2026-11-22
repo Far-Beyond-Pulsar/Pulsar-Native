@@ -21,6 +21,9 @@ pub struct EditorContext {
     pub project_root: Option<PathBuf>,
     /// Engine services (the shared language server) for the editor.
     pub services: EditorServices,
+    /// The editor's settings for the editor being created (the `editor`
+    /// namespace's `code_editor` group, as the host snapshot it).
+    pub settings: EditorSettingsSnapshot,
 }
 
 impl EditorContext {
@@ -28,11 +31,17 @@ impl EditorContext {
         Self {
             project_root,
             services: EditorServices::default(),
+            settings: EditorSettingsSnapshot::default(),
         }
     }
 
     pub fn with_services(mut self, services: EditorServices) -> Self {
         self.services = services;
+        self
+    }
+
+    pub fn with_settings(mut self, settings: EditorSettingsSnapshot) -> Self {
+        self.settings = settings;
         self
     }
 }

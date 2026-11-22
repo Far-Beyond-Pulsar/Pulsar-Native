@@ -287,6 +287,8 @@ mod builder;
 pub mod library;
 pub use builder::{add_foreign, builds, built, import_library, PluginBuilder};
 
+mod icon;
+pub use icon::{icon_of, IconFormat, PluginIcon};
 mod contracts;
 pub use contracts::{AbsentOptional, ContractKind, Problem, ProvidedContract, RequiredContract};
 

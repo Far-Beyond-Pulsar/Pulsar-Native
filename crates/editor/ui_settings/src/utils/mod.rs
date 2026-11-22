@@ -1,5 +1,4 @@
-//! Actions, configuration access and plugin settings for the settings window.
+//! The settings windows' data: the page model and value access.
 
-pub mod actions;
-pub mod config;
-pub mod plugins;
+pub mod model;
+pub mod store;

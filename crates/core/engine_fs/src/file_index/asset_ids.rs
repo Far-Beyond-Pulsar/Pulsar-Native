@@ -24,7 +24,9 @@ struct DurableAssetIdManifest {
 impl ProjectFileIndex {
     /// Associate a plugin-defined stable id with an indexed project file.
     /// Recording another id for the same path replaces the previous value.
+    #[track_caller]
     pub fn record_asset_id(&self, id: &str, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::record_asset_id");
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
@@ -43,7 +45,9 @@ impl ProjectFileIndex {
     /// Associate a stable ID and asset kind with an indexed project file.
     /// Recording another ID of the same kind for the path replaces its prior
     /// typed association while preserving IDs recorded for other kinds.
+    #[track_caller]
     pub fn record_typed_asset_id(&self, kind: &str, id: &str, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::record_typed_asset_id");
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
@@ -70,7 +74,9 @@ impl ProjectFileIndex {
     /// metadata in their payload (such as PNG images). IDs are saved in the
     /// project-owned `.pulsar/asset_ids.json` manifest and mirrored into the
     /// disposable file index for fast picker lookup.
+    #[track_caller]
     pub fn ensure_typed_asset_id(&self, kind: &str, path: &Path) -> Result<String> {
+        editor_task_queue::blocking_call("file_index::ensure_typed_asset_id");
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
@@ -193,7 +199,9 @@ impl ProjectFileIndex {
 
     /// Remove all stable-ID associations for a project file. Call this when a
     /// parsed asset no longer has a valid ID (or can no longer be read).
+    #[track_caller]
     pub fn clear_asset_ids(&self, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::clear_asset_ids");
         let Some(relative) = self.relative_path(path) else {
             return Ok(());
         };
@@ -202,13 +210,17 @@ impl ProjectFileIndex {
         Ok(())
     }
 
+    #[track_caller]
     pub fn clear_asset_id(&self, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::clear_asset_id");
         self.clear_asset_ids(path)
     }
 
     /// Return every path claiming `id`. More than one result indicates a
     /// copied asset whose stable id must be repaired by its owning plugin.
+    #[track_caller]
     pub fn paths_for_asset_id(&self, id: &str) -> Result<Vec<PathBuf>> {
+        editor_task_queue::blocking_call("file_index::paths_for_asset_id");
         let connection = self.connection.lock();
         let mut statement =
             connection.prepare("SELECT path FROM asset_ids WHERE asset_id = ?1 ORDER BY path")?;
@@ -224,7 +236,9 @@ impl ProjectFileIndex {
     }
 
     /// Return the first project path carrying `id` for `kind`, if indexed.
+    #[track_caller]
     pub fn path_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Option<PathBuf>> {
+        editor_task_queue::blocking_call("file_index::path_for_asset_id_kind");
         let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path LIMIT 2",
@@ -243,7 +257,9 @@ impl ProjectFileIndex {
     }
 
     /// Return every project path carrying `id` for `kind`.
+    #[track_caller]
     pub fn paths_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Vec<PathBuf>> {
+        editor_task_queue::blocking_call("file_index::paths_for_asset_id_kind");
         let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path",
@@ -261,7 +277,9 @@ impl ProjectFileIndex {
 
     /// Every indexed `(asset id, path)` of `kind`: the candidate list an asset
     /// picker filters. Ambiguous ids appear once per claiming path.
+    #[track_caller]
     pub fn assets_of_kind(&self, kind: &str) -> Result<Vec<(String, PathBuf)>> {
+        editor_task_queue::blocking_call("file_index::assets_of_kind");
         let connection = self.connection.lock();
         let mut statement = connection.prepare(
             "SELECT asset_id, path FROM asset_ids WHERE kind = ?1 ORDER BY path, asset_id",
@@ -283,7 +301,9 @@ impl ProjectFileIndex {
     }
 
     /// Return stable asset IDs associated with one indexed project file.
+    #[track_caller]
     pub fn asset_ids_for_path(&self, path: &Path) -> Result<Vec<String>> {
+        editor_task_queue::blocking_call("file_index::asset_ids_for_path");
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };
@@ -296,7 +316,9 @@ impl ProjectFileIndex {
     }
 
     /// Return stable asset IDs of `kind` associated with one indexed file.
+    #[track_caller]
     pub fn asset_ids_for_path_kind(&self, path: &Path, kind: &str) -> Result<Vec<String>> {
+        editor_task_queue::blocking_call("file_index::asset_ids_for_path_kind");
         let Some(relative) = self.relative_path(path) else {
             anyhow::bail!("asset id path is outside the indexed project root");
         };

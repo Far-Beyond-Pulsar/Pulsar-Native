@@ -140,34 +140,10 @@ pub(crate) fn init_ui_stack(cx: &mut gpui::App) {
     );
 }
 
-/// Apply the editor's appearance settings (font size, corner radius, scrollbar
-/// visibility) to the global theme.
+/// Apply the editor's appearance settings (theme and color-blind mode, font
+/// size, corner radius, scrollbars) to the global theme.
 fn apply_appearance_settings(cx: &mut gpui::App) {
-    let config = engine_state::settings::global_config();
-    if let Ok(engine_state::settings::ConfigValue::Int(font_size)) =
-        config.get(engine_state::settings::NS_EDITOR, "appearance", "font_size")
-    {
-        ui::Theme::global_mut(cx).font_size = gpui::px(font_size.clamp(10, 24) as f32);
-    }
-    if let Ok(engine_state::settings::ConfigValue::Int(radius)) =
-        config.get(engine_state::settings::NS_EDITOR, "appearance", "radius")
-    {
-        ui::Theme::global_mut(cx).radius = gpui::px(match radius {
-            0 | 4 | 8 => radius as f32,
-            _ => 6.0,
-        });
-    }
-    if let Ok(engine_state::settings::ConfigValue::String(scrollbar)) = config.get(
-        engine_state::settings::NS_EDITOR,
-        "appearance",
-        "scrollbar_show",
-    ) {
-        ui::Theme::global_mut(cx).scrollbar_show = match scrollbar.as_str() {
-            "hover" => ui::scroll::ScrollbarShow::Hover,
-            "always" => ui::scroll::ScrollbarShow::Always,
-            _ => ui::scroll::ScrollbarShow::Scrolling,
-        };
-    }
+    ui_common::appearance::apply(cx);
 }
 
 /// Open the project the process was launched for: the one from a `pulsar://`

@@ -4,7 +4,7 @@
 //! trace, the plugin's settings, and for a missing server its install). It is
 //! a function of what `LanguageServers` knows: nothing here names a server.
 
-use engine_state::plugin_settings::{self, SettingScope};
+use engine_state::plugin_settings;
 use engine_state::{global_config, ConfigValue};
 use gpui::UpdateGlobal as _;
 use gpui::{
@@ -327,12 +327,12 @@ fn status_style(health: Health, cx: &App) -> (Hsla, IconName) {
     }
 }
 
-/// Persist `trace` for a server as the person's own setting; the service
+/// Persist `trace` for a server as the project's setting; the service
 /// applies it to the running server when the setting changes.
 fn set_trace(origin: &'static str, group: &str, trace: TraceLevel) {
     let owner = pulsar_settings::plugin::owner_of(origin, group);
     let value = ConfigValue::String(trace.as_str().to_string());
-    match plugin_settings::set(&owner, "trace", SettingScope::User, value) {
+    match plugin_settings::set(&owner, "trace", value) {
         Ok(()) => {
             if let Err(error) = plugin_settings::save() {
                 tracing::warn!("could not save the trace level: {error:#}");
@@ -342,11 +342,11 @@ fn set_trace(origin: &'static str, group: &str, trace: TraceLevel) {
     }
 }
 
-/// Persist the executable the person picked as their own `path` setting.
+/// Persist the executable the person picked as the project's `path` setting.
 fn set_path(origin: &'static str, group: &str, path: &std::path::Path) {
     let owner = pulsar_settings::plugin::owner_of(origin, group);
     let value = ConfigValue::String(path.to_string_lossy().into_owned());
-    match plugin_settings::set(&owner, "path", SettingScope::User, value) {
+    match plugin_settings::set(&owner, "path", value) {
         Ok(()) => {
             if let Err(error) = plugin_settings::save() {
                 tracing::warn!("could not save the executable path: {error:#}");
@@ -400,7 +400,7 @@ fn perform(
         Action::OpenSettings => {
             let owner = pulsar_settings::plugin::page_key(entry.origin);
             let title = pulsar_settings::plugin::page_title(global_config(), &owner);
-            ui_settings::SettingsWindow::open_page(project, format!("Plugin: {title}"), cx);
+            ui_settings::ProjectSettingsWindow::open_page(project, title, cx);
         }
     }
 }

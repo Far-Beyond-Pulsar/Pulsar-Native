@@ -2,17 +2,17 @@
 //!
 //! # Architecture
 //!
-//! All engine settings are stored in a single global [`ConfigManager`].
-//! The top-level namespaces map directly to the old `SettingScope`:
+//! All engine settings are stored in a single global [`ConfigManager`]
+//! ([`global_config()`]), in three namespaces:
 //!
-//! | Old scope              | PulsarConfig namespace |
-//! |------------------------|------------------------|
-//! | `SettingScope::Global` | `"editor"`             |
-//! | `SettingScope::Project`| `"project"`            |
+//! | Namespace | What | Registered by | Edited in |
+//! |---|---|---|---|
+//! | `"editor"` | the editor's own settings, for every project | core only (`pulsar_settings::editor`) | Editor Settings |
+//! | `"project"` | the open project's settings | core (`pulsar_settings::project`) and plugins (`ProjectSettingsRegistration`, `SettingsGroupRegistration`) | Project Settings |
+//! | `"plugin"` | a plugin's own groups, layered per project | plugins (`pulsar_settings::plugin::PluginSettings`) | Project Settings |
 //!
-//! Within each namespace, every subsystem or page registers its settings
-//! via [`ConfigManager::register`].  The old flat `registry()` global is
-//! replaced by [`global_config()`].
+//! Plugins are project relative: they register project and plugin settings
+//! only, never editor settings.
 
 use std::{
     io::ErrorKind,

@@ -6,7 +6,9 @@ use rusqlite::{params_from_iter, types::Value};
 use super::*;
 
 impl ProjectFileIndex {
+    #[track_caller]
     pub fn query(&self, query: &FileIndexQuery) -> Result<Vec<IndexedFile>> {
+        editor_task_queue::blocking_call("file_index::query");
         let mut sql = String::from(
             "SELECT path, name, extension, file_type_id, is_dir, size, created, modified FROM files WHERE 1=1",
         );

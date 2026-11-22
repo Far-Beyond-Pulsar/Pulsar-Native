@@ -54,7 +54,9 @@ impl std::fmt::Debug for ProjectFileIndex {
 
 impl ProjectFileIndex {
     /// Open or create `.pulsar/cache/files.db` for a local project.
+    #[track_caller]
     pub fn open(project_root: impl Into<PathBuf>) -> Result<Self> {
+        editor_task_queue::blocking_call("file_index::open");
         let project_root = normalize_absolute_path(project_root.into());
         let cache_dir = project_root.join(".pulsar").join("cache");
         crate::virtual_fs::create_dir_all(&cache_dir)
@@ -86,7 +88,9 @@ impl ProjectFileIndex {
 
     /// Apply a filesystem notification for a local path. The watcher should
     /// call this on create/modify; deletions remove a path and its descendants.
+    #[track_caller]
     pub fn remove_path(&self, path: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::remove_path");
         let Some(relative) = self.relative_path(path) else {
             return Ok(());
         };
@@ -105,7 +109,9 @@ impl ProjectFileIndex {
 
     /// Move a file or directory subtree while retaining its stable asset IDs.
     /// The rows and ID associations are rewritten in one SQLite transaction.
+    #[track_caller]
     pub fn move_path(&self, from: &Path, to: &Path) -> Result<()> {
+        editor_task_queue::blocking_call("file_index::move_path");
         let (Some(from), Some(to)) = (self.relative_path(from), self.relative_path(to)) else {
             anyhow::bail!("file-index move paths must be inside the project root");
         };
@@ -346,6 +352,20 @@ fn normalize_absolute_path(path: PathBuf) -> PathBuf {
 
 fn is_cache_entry(path: &str) -> bool {
     path == ".pulsar/cache" || path.starts_with(".pulsar/cache/") || path == ASSET_ID_MANIFEST
+}
+
+/// Whether `path`, below `project_root`, is inside an
+/// [`UNINDEXED_DIRS`](crate::providers::UNINDEXED_DIRS) directory (`target/`,
+/// `.git/`, ...), which the full manifest skips. The project watcher and the
+/// file manager ignore changes there: a build writes tens of thousands of
+/// files under `target/`. (A file there can still be indexed on request, when
+/// a picker gives it a durable id.)
+pub fn is_unindexed_path(project_root: &Path, path: &Path) -> bool {
+    path.strip_prefix(project_root).is_ok_and(|relative| {
+        relative
+            .components()
+            .any(|part| crate::providers::is_unindexed_dir(&part.as_os_str().to_string_lossy()))
+    })
 }
 
 /// Names a path's registered file type for the index's `file_type` column.

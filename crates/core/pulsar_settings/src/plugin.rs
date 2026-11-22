@@ -8,12 +8,12 @@
 //! The host registers each contribution with the settings database under the
 //! namespace [`NS`] (`plugin`), owner `[plugin id]` (`[plugin id, group id]`
 //! for a plugin's second and later groups), while its plugin is enabled, and
-//! withdraws it when the plugin is disabled ([`sync`]); the Settings window's
-//! Plugins section lists what is registered. A plugin reads and observes its
+//! withdraws it when the plugin is disabled ([`sync`]); the Project Settings
+//! window lists what is registered under the plugin. A plugin reads and observes its
 //! values through a [`PluginSettingsHandle`]; the database stays the host's
 //! (a plugin never creates a second `ConfigManager`).
 //!
-//! Scopes (user, project) and persistence belong to `engine_state`, which
+//! Persistence (the project's overrides) belongs to `engine_state`, which
 //! owns the files; this module is the registration and the read side.
 
 use std::sync::{Arc, OnceLock};
@@ -63,7 +63,7 @@ pulsar_plugins::registration!(PluginSettings);
 /// A group whose saved values live under another owner path: the plugin took
 /// over a group an engine crate used to register (the Rust plugin's server
 /// group was `engine.pulsar_lsp/rust-analyzer`). `engine_state` moves the
-/// saved user and project files from `from` to the group's own owner path the
+/// saved project files from `from` to the group's own owner path the
 /// first time it finds the old file and no new one, so no value is lost.
 pub struct SettingsMove {
     /// The plugin that now owns the group (`pulsar_plugins::origin!()`).

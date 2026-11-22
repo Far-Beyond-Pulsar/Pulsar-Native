@@ -3554,6 +3554,53 @@ fn the_viewport_shows_the_depth_and_normal_buffers() {
     );
 }
 
+/// A mirrored mesh (a negative-determinant scale) shows its outside: the
+/// cube is symmetric about its pivot, so mirroring it in X must leave the
+/// frame's depth and the viewport's normals view as they were. A pass that
+/// keeps culling back faces by the unmirrored winding shows the cube's
+/// inside instead (farther depth, normals facing away).
+#[test]
+fn a_mirrored_mesh_shows_its_outside() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let mut state = LevelEditorState::new();
+    let id = drop_mesh(&mut state);
+    // Turned so three faces show, each with its own normal.
+    transform(&mut state, &id, Some([20.0, 35.0, 0.0]), None);
+    let mut renderer = harness.renderer(&state);
+    let mailbox = renderer.editor_mailbox();
+    mailbox.set_viewport_debug_mode(helio_pass_buffer_view::NORMALS_VIEW);
+    let plain = harness.frames(&mut renderer, || {});
+    plain.dump("mirror_plain_normals");
+
+    for (what, scale) in [
+        ("mirrored in X", [-1.0, 1.0, 1.0]),
+        ("mirrored in Y and Z (a rotation)", [1.0, -1.0, -1.0]),
+        ("mirrored in X, Y and Z", [-1.0, -1.0, -1.0]),
+    ] {
+        transform(&mut state, &id, None, Some(scale));
+        let mirrored = harness.frames(&mut renderer, || {});
+        mirrored.dump(&format!("mirror_{}_normals", what.replace(' ', "_")));
+        mirrored.dump_depth_change(&plain, &format!("mirror_{}_depth", what.replace(' ', "_")));
+        let change = mirrored.difference(&plain);
+        println!("{what}: {change:?}");
+        assert!(
+            change.depth_texels < (SIZE * SIZE / 200) as usize
+                && change.color_pixels < (SIZE * SIZE / 200) as usize,
+            "{what}: the cube does not show its outside: {change:?}"
+        );
+    }
+}
+
 /// A mesh put in a folder moves with the folder, in the rendered frame.
 #[test]
 fn a_folders_meshes_move_with_it_in_the_frame() {

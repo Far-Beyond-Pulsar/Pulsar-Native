@@ -5805,10 +5805,10 @@ dependencies = [
  "image",
  "log",
  "pulsar_scenedb",
- "solid-fbx 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-fbx 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
  "solid-gltf",
  "solid-obj",
- "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
  "solid-unreal",
  "solid-usd",
  "thiserror 2.0.20",
@@ -9076,12 +9076,14 @@ dependencies = [
  "bytemuck",
  "engine_fs",
  "engine_state",
+ "graphy",
  "helio",
  "helio-feature-api",
  "helio-mats",
  "helio-pass-materials",
  "helio_component",
  "image",
+ "linkme",
  "pollster 0.4.0",
  "psgc",
  "pulsar_reflection",
@@ -9089,6 +9091,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "wgpu",
+ "wgsl_std",
 ]
 
 [[package]]
@@ -9120,6 +9123,7 @@ dependencies = [
  "graphy-blueprint",
  "graphy-gpui",
  "graphy-render",
+ "helio-mats",
  "image",
  "log",
  "materials_component",
@@ -9146,6 +9150,7 @@ dependencies = [
 name = "materials_plugin"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "engine_backend",
  "engine_fs",
  "engine_state",
@@ -9165,6 +9170,7 @@ dependencies = [
  "psgc",
  "pulsar_plugins",
  "pulsar_scenedb",
+ "pulsar_settings",
  "pulsar_world_registry",
  "serde_json",
  "tempfile",
@@ -9265,7 +9271,6 @@ dependencies = [
  "env_logger",
  "flate2",
  "glam 0.33.5",
- "half",
  "helio",
  "helio-asset-compat",
  "helio-bake",
@@ -9449,9 +9454,9 @@ dependencies = [
 
 [[package]]
 name = "meshopt"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e01e77ead21976b3a9f01ec1724f766923da74f0726364e2b0f425658935d71a"
+checksum = "a403c16e3ca5752600e1d4c5ba3ba2a6496f407ded66e767f05279514363f461"
 dependencies = [
  "bitflags 2.13.1",
  "cc",
@@ -15111,6 +15116,7 @@ dependencies = [
  "mockaco-diff 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
  "mockaco-gpui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
  "mockaco-language 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
+ "mockaco-renderer 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=e3bb37436ed36b0316cda1b059e4238a676afd70)",
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
@@ -15967,11 +15973,11 @@ dependencies = [
 [[package]]
 name = "solid-fbx"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed#61b6638ab5495705117f41401ae2b9c53c3297ed"
+source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12#a87fdf07061c159963f7c73bbe22b68fec60bc12"
 dependencies = [
  "flate2",
  "glam 0.27.0",
- "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
  "thiserror 2.0.20",
 ]
 
@@ -15989,29 +15995,29 @@ dependencies = [
 [[package]]
 name = "solid-gltf"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed#61b6638ab5495705117f41401ae2b9c53c3297ed"
+source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12#a87fdf07061c159963f7c73bbe22b68fec60bc12"
 dependencies = [
  "base64 0.22.1",
  "glam 0.27.0",
  "log",
  "serde",
  "serde_json",
- "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
 ]
 
 [[package]]
 name = "solid-obj"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed#61b6638ab5495705117f41401ae2b9c53c3297ed"
+source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12#a87fdf07061c159963f7c73bbe22b68fec60bc12"
 dependencies = [
  "glam 0.27.0",
- "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
 ]
 
 [[package]]
 name = "solid-rs"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed#61b6638ab5495705117f41401ae2b9c53c3297ed"
+source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12#a87fdf07061c159963f7c73bbe22b68fec60bc12"
 dependencies = [
  "glam 0.27.0",
  "serde",
@@ -16030,13 +16036,13 @@ dependencies = [
 [[package]]
 name = "solid-unreal"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed#61b6638ab5495705117f41401ae2b9c53c3297ed"
+source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12#a87fdf07061c159963f7c73bbe22b68fec60bc12"
 dependencies = [
  "bitflags 2.13.1",
  "flate2",
  "glam 0.27.0",
  "lz4_flex",
- "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
  "thiserror 2.0.20",
  "uasset",
 ]
@@ -16044,13 +16050,13 @@ dependencies = [
 [[package]]
 name = "solid-usd"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed#61b6638ab5495705117f41401ae2b9c53c3297ed"
+source = "git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12#a87fdf07061c159963f7c73bbe22b68fec60bc12"
 dependencies = [
  "glam 0.27.0",
  "lz4_flex",
- "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=61b6638ab5495705117f41401ae2b9c53c3297ed)",
+ "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=a87fdf07061c159963f7c73bbe22b68fec60bc12)",
  "thiserror 2.0.20",
- "zip 2.4.2",
+ "zip 9.5.0",
 ]
 
 [[package]]
@@ -16928,7 +16934,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand 2.5.0",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -18308,6 +18314,7 @@ dependencies = [
  "pulsar_language",
  "pulsar_plugins",
  "pulsar_reflection",
+ "pulsar_settings",
  "reqwest 0.13.4",
  "rust-i18n",
  "rust-i18n-macro",
@@ -18446,6 +18453,7 @@ dependencies = [
  "anyhow",
  "asset_import",
  "chrono",
+ "editor_task_queue",
  "engine_fs",
  "engine_state",
  "gpui-ce",
@@ -18463,6 +18471,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tempfile",
+ "tokio",
  "tracing",
  "ui",
  "ui_common",
@@ -18797,9 +18806,11 @@ version = "0.1.0"
 dependencies = [
  "engine_state",
  "gpui-ce",
+ "pulsar_plugins",
  "pulsar_settings",
  "tracing",
  "ui",
+ "ui_common",
  "ui_shell",
  "window_manager",
 ]
