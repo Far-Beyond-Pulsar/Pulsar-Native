@@ -105,6 +105,7 @@ just test         cargo test --workspace
 just clippy       cargo clippy --workspace -- -D warnings
 just arch         the layer gate: core and editor depend on no plugin or tool, name no kind
 just submodule-init   git submodule update --init --recursive
+cargo run -p plugin_builder   build every plugin except render_bps as its own DLL and install it (tools/plugin_builder)
 just check-submodule-pins   every submodule pinned to a commit on its upstream main
 ```
 

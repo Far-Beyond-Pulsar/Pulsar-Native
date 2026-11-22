@@ -9,19 +9,28 @@ name = "pulsar"
 path = "src/main.rs"
 
 [features]
-# Link the installed script languages so `pulsar package` / `pulsar
-# build-scripts` compile every class headlessly
-# (ScriptLanguage::compile_project, #879): each language is an editor-tool
-# plugin (Blueprints, TypeScript), linked by the installed set's `editor`
-# feature, and registers itself (`pulsar_language::Language`).
-# Without it, classes must already have compiled modules (the editor writes
-# them on save); they are still verified and linked.
-default = ["scripting"]
-scripting = ["installed_plugins/editor"]
+# Compile every class headlessly in `pulsar package` / `pulsar build-scripts`
+# (ScriptLanguage::compile_project, #879): each language is a plugin (Blueprints,
+# TypeScript) that registers itself (`pulsar_language::Language`). Without it,
+# classes must already have compiled modules (the editor writes them on save);
+# they are still verified and linked.
+#
+# `link-plugins` links every installed plugin into this crate's executable, which
+# loads no libraries: the `pulsar` CLI needs it for the languages and each
+# plugin's record migrations. The editor builds this crate without it, because it
+# loads the plugins it needs from their libraries (tools/plugin_builder).
+default = ["scripting", "link-plugins"]
+scripting = []
+link-plugins = ["dep:installed_plugins", "installed_plugins/editor"]
 
 [dependencies]
 pulsar_content = { workspace = true }
 engine_fs = { workspace = true }
+# Every installed plugin's root crate (feature `link-plugins`): the cook runs their record
+# migrations (`pulsar_class::records`), as the editor's load does. A level cooked without
+# them keeps what a plugin's migration drops. This crate is a host (architecture/layers.toml):
+# it reaches plugins only through the installed set.
+installed_plugins = { workspace = true, optional = true }
 pulsar_class = { workspace = true }
 # The languages linked into this tool: compilers, class markers (messages).
 pulsar_language = { workspace = true }
@@ -45,12 +54,6 @@ thiserror = { workspace = true }
 plugin_editor_api = { workspace = true }
 pulsar_world_registry.workspace = true
 engine_backend = { workspace = true }
-# Every installed plugin's root crate: the cook runs their record
-# migrations (`pulsar_class::records`), as the editor's load does. A level
-# cooked without them keeps what a plugin's migration drops. This crate is a
-# host (architecture/layers.toml): it reaches plugins only through the
-# installed set.
-installed_plugins = { workspace = true }
 plugin_manager = { workspace = true }
 
 [dev-dependencies]

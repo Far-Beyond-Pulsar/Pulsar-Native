@@ -106,6 +106,8 @@ pub mod manifest;
 pub mod menus;
 pub mod metadata;
 #[cfg(feature = "editor")]
+mod library_plugin;
+#[cfg(feature = "editor")]
 pub mod panel_restore;
 #[cfg(feature = "editor")]
 pub mod plugin;
@@ -191,10 +193,17 @@ pub use ui::dock::{Panel, PanelView};
 pub use serde_json::Value as JsonValue;
 
 pub use profiling;
+/// `export_plugin!` logs through it, so a plugin crate needs no `tracing` of its own.
+pub use tracing;
+/// `export_plugin!` registers the plugin's theme accessor through it.
+#[cfg(feature = "editor")]
+pub use ui;
 /// The engine's event plumbing (Gamma v2 host bus, engine event hub,
 /// built-in events). `export_plugin!` wires every plugin library to the
 /// host's bus through it.
 pub use pulsar_events;
 /// Plugin settings: `export_plugin!` binds a library's handles to the host.
 pub use pulsar_settings;
+/// `export_library_plugin!` exports the root's build through it.
+pub use pulsar_plugins;
 pub use pulsar_world_registry;

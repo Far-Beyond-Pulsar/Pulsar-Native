@@ -99,7 +99,9 @@ pub mod tool_bridge;
 /// Re-exported so a linked provider can `inventory::submit!` without its own
 /// dependency (see [`PluginEditorProvider`]).
 pub use ::inventory;
-pub use attach::{attach_event_bus, attach_profiler, attach_world_runtime, read_manifest};
+pub use attach::{
+    attach_event_bus, attach_helio, attach_profiler, attach_world_runtime, read_manifest,
+};
 pub use builtin::{
     BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, PluginEditorProvider,
 };

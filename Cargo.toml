@@ -215,6 +215,11 @@ members = [
     # descriptors. The editor links it; a project enables its plugins
     # (`pulsar_plugins`); a game links only its project's.
     "plugins/installed",
+    # The plugins the editor links (render_bps only), and one generated crate per other
+    # plugin that builds it as a library of its own (tools/plugin_builder).
+    "plugins/linked",
+    "plugins/dll/*",
+    "tools/plugin_builder",
     # The plugin catalog's fixture plugin (plugins/installed/tests/catalog.rs).
     "plugins/installed/tests/fixtures/catalog_plugin",
     "plugins/installed/tests/fixtures/catalog_plugin/component",
@@ -439,6 +444,8 @@ ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
 # Every installed plugin's modules (runtime; `editor` adds the editor
 # plugins). Hosts link the set, never a plugin by name.
 installed_plugins                  = { path = "plugins/installed", default-features = false }
+# What the editor links (render_bps); every other plugin is a library built by tools/plugin_builder.
+linked_plugins = { path = "plugins/linked" }
 engine_state                       = { path = "crates/core/engine_state" }
 pulsar_auth                        = { path = "crates/core/pulsar_auth" }
 pulsar_settings                    = { path = "crates/core/pulsar_settings" }
@@ -464,7 +471,7 @@ pulsar_component_lifecycle         = { path = "crates/core/pulsar_component_life
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_class                       = { path = "crates/core/pulsar_class" }
 pulsar_content                     = { path = "crates/core/pulsar_content" }
-pulsar_package                     = { path = "crates/core/pulsar_package" }
+pulsar_package                     = { path = "crates/core/pulsar_package", default-features = false }
 pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 

@@ -4,9 +4,10 @@ Pulsar has two kinds of plugin, which meet at one identity and one catalog:
 
 - **Project plugins**: every plugin under `plugins/vendor/<dir>` with a
   `pulsar-plugin.toml` (every object kind, animation, physics, input, the editor tools).
-  They link statically into the editor (`plugins/installed`) and, except editor tools, into
-  games; a project enables some of them in its `Pulsar.toml`. This is how every
-  first-party plugin ships today.
+  Games link them statically (`plugins/installed`, except editor tools). The editor loads each
+  one except `render_bps` from a library of its own (`tools/plugin_builder`, "Plugin libraries"
+  below), and links `render_bps` (`plugins/linked`); a project enables some of them in its
+  `Pulsar.toml`.
 - **Dynamic editor plugins**: native `cdylib`s loaded at startup and never unloaded (the
   permanent library pattern below). A library that exports its plugins' builds
   (`pulsar_plugins::export_library!`) joins the installed set and the catalog like a linked
@@ -414,11 +415,35 @@ refused by name. Proof: `plugin_manager/tests/world_component_plugins.rs`
 Known limits: libraries are never unloaded; host and library must come from the same
 compiler (the rustc hash check); the fingerprint sees size, alignment and name, so a change
 keeping all three (fields of one size reordered) must bump the type's `VERSION`; a library
-links its own copy of every crate, and only the world crates share their process-wide state
-(their runtimes): a renderer feature in a library would use its own copy of Helio's state,
-so the first-party render plugins stay linked (bundling them into libraries waits on a Helio
-runtime attach, `PLUGIN_API_REFACTOR_PLAN.md` section 14).
+links its own copy of every crate, and only the world crates and Helio share their process-wide
+state with the host (their runtimes, `helio_core::runtime`: see below).
 
+### One library per plugin: `tools/plugin_builder`
+
+The editor loads every first-party plugin but `render_bps` from its own library, so a plugin's
+memory (and its leaks) is its library's. `cargo run -p plugin_builder` (flags: `--release`,
+`--only <id>,..`, `--out <dir>`, `--no-host`, `--check`, `--generate`):
+
+1. writes one generated crate per plugin, `plugins/dll/<root>_dll` (a `cdylib` that links the
+   root, `plugin_editor_api::export_library_plugin!(id, name)` and
+   `helio_core::export_runtime_attach!()`); the workspace lists `plugins/dll/*`;
+2. builds the editor and every library in one cargo invocation (one feature resolution, which
+   the loader's layout checks require);
+3. copies each library to `<install>/plugins/editor/<root>.<ext>` and registers it in
+   `plugin_integrity.json` and `plugins.lock.json` (`pulsar_install_layout`, records
+   `local:<plugin id>`).
+
+`plugins/linked` is what the editor links (`render_bps`); `plugins/installed` still links every
+plugin for games and tests.
+
+**Helio in a library.** A library links its own copy of Helio, so its process-wide state must be
+the host's. `helio_core::runtime::Shared` holds it (shader hot-reload registry and watcher,
+driver pipeline caches, compile and upload counters); the host exports a handle, the loader
+calls the library's `_plugin_attach_helio` before it runs any code, and the library's copy
+points at the host's `Shared` and installs the host's task host (so the library's threads and
+jobs are tasks, not raw threads). A library of another layout is refused
+(`HelioRuntimeRefused`). `helio-core/tests/runtime_statics.rs` fails on a Helio `static` not in
+`runtime_statics_allowed.txt` (name interners and constants, each with its reason).
 ## Dynamic editor plugins
 
 Plugins built as native Rust `cdylib` DLLs are loaded at startup and **never unloaded**.

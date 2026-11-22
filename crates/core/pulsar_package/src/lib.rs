@@ -33,7 +33,9 @@ pub mod compile;
 mod content;
 pub mod cook;
 
-// Links every installed plugin's registrations (record migrations among them).
+// Links every installed plugin's registrations (record migrations among them) into the
+// `pulsar` CLI, which loads no plugin libraries. The editor loads them instead.
+#[cfg(feature = "link-plugins")]
 use installed_plugins as _;
 
 use content::cook_content;

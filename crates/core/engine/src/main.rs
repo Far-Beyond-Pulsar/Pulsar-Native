@@ -34,10 +34,11 @@ static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
 #[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
-// The installed plugins (every plugin's root crate with its editor registrations,
-// generated from their pulsar-plugin.toml); the project the editor opens
-// enables some of them (`pulsar_plugins`).
-use installed_plugins as _;
+// The plugins the editor links: render_bps only. Every other installed plugin is a
+// library of its own (tools/plugin_builder) that the plugin loader loads from
+// plugins/editor at startup; the project the editor opens enables some of them
+// (`pulsar_plugins`).
+use linked_plugins as _;
 // The content packer the build's pack step uses (`pulsar_content::ContentPacker`).
 use pulsar_package as _;
 

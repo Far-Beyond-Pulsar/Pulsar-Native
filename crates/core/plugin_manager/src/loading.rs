@@ -10,7 +10,8 @@
 //! in the workspace. `order_prepared_plugins` puts dependencies first.
 
 use crate::attach::{
-    attach_event_bus, attach_profiler, attach_settings, attach_world_runtime, read_manifest,
+    attach_event_bus, attach_helio, attach_profiler, attach_settings, attach_world_runtime,
+    read_manifest,
 };
 use crate::{
     dependencies, panel_restorers, LoadedPlugin, PermanentLibrary, PluginManager,
@@ -398,6 +399,21 @@ impl PluginManager {
                 "Plugin at {:?} predates the shared world runtimes; its component classes stay local",
                 path
             ),
+        }
+
+        // Attach the library's Helio to the host's shared state (shader registry,
+        // pipeline caches, counters) and task host before it runs any code of
+        // its own: a second copy would split them, and its threads would be
+        // raw threads no task list shows. A library that links no Helio
+        // exports nothing.
+        match attach_helio(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the Helio runtime", path),
+            Some(false) => {
+                return Err(PluginManagerError::HelioRuntimeRefused {
+                    path: path.to_path_buf(),
+                })
+            }
+            None => {}
         }
 
         // Share the editor's profiler so the plugin's scopes reach the

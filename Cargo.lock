@@ -624,6 +624,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "asset_viewer_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "asset_viewer_plugin",
+ "helio-core",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -996,6 +1005,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bake_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "bake_plugin",
+ "helio-core",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1307,6 +1325,15 @@ dependencies = [
  "uuid",
  "wgpu",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "blueprint_editor_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "blueprint_editor_plugin",
+ "helio-core",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -1632,6 +1659,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cables_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "cables_plugin",
+ "helio-core",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "calloop"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1788,6 +1824,15 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui_level_editor",
+]
+
+[[package]]
+name = "character_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "character_plugin",
+ "helio-core",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -2953,6 +2998,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "decals_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "decals_plugin",
+ "helio-core",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "default_pipelines_plugin"
 version = "0.1.0"
 dependencies = [
@@ -2970,6 +3024,15 @@ dependencies = [
  "tempfile",
  "tracing",
  "wgpu",
+]
+
+[[package]]
+name = "default_pipelines_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "default_pipelines_plugin",
+ "helio-core",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -3524,6 +3587,15 @@ dependencies = [
  "ui_common",
  "ui_types_common",
  "uuid",
+]
+
+[[package]]
+name = "editor_table_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "editor_table_plugin",
+ "helio-core",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -4371,6 +4443,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fog_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "fog_plugin",
+ "helio-core",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4477,6 +4558,15 @@ dependencies = [
  "pulsar_world_registry",
  "ui_level_editor",
  "wgpu",
+]
+
+[[package]]
+name = "foliage_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "foliage_plugin",
+ "helio-core",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -4838,6 +4928,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameplay_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "gameplay_plugin",
+ "helio-core",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "gamma"
 version = "0.2.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b#c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b"
@@ -5009,6 +5108,15 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_settings",
  "wgpu",
+]
+
+[[package]]
+name = "gi_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "gi_plugin",
+ "helio-core",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -7900,6 +8008,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "input_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "input_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "instability"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8522,6 +8639,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lens_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "lens_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "level_migrate"
 version = "0.1.0"
 dependencies = [
@@ -8749,10 +8875,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "lights_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "lights_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "linebender_resource_handle"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
+
+[[package]]
+name = "linked_plugins"
+version = "0.1.0"
+dependencies = [
+ "render_bps_plugin",
+]
 
 [[package]]
 name = "linkme"
@@ -9180,6 +9322,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "materials_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "materials_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "mathjax-svg-rs"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9454,6 +9605,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "meshes_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "meshes_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "meshopt"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9609,6 +9769,15 @@ dependencies = [
  "mocap_format",
  "plugin_manager",
  "pulsar_plugins",
+]
+
+[[package]]
+name = "mocap_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "mocap_plugin",
+ "plugin_editor_api",
 ]
 
 [[package]]
@@ -11747,6 +11916,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "particles_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "particles_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12124,6 +12302,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "physics_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "physics_plugin",
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "pico-args"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12234,6 +12421,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin_builder"
+version = "0.1.0"
+dependencies = [
+ "engine_fs",
+ "pulsar_install_layout",
+ "serde_json",
+ "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
 name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
@@ -12279,6 +12476,7 @@ dependencies = [
  "fixture_dep_orphan",
  "fixture_dep_top",
  "gpui-ce",
+ "helio-core",
  "inventory",
  "libloading 0.9.0",
  "once_cell",
@@ -12330,6 +12528,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin_matter_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "plugin_matter",
+]
+
+[[package]]
 name = "plugin_typescript"
 version = "0.1.0"
 dependencies = [
@@ -12353,6 +12560,15 @@ dependencies = [
  "tempfile",
  "tracing",
  "ui",
+]
+
+[[package]]
+name = "plugin_typescript_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "plugin_typescript",
 ]
 
 [[package]]
@@ -12530,6 +12746,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "portals_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "portals_plugin",
+]
+
+[[package]]
 name = "post-examples"
 version = "0.1.0"
 dependencies = [
@@ -12616,6 +12841,15 @@ dependencies = [
  "pulsar_world_registry",
  "ui_level_editor",
  "wgpu",
+]
+
+[[package]]
+name = "post_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "post_plugin",
 ]
 
 [[package]]
@@ -13195,7 +13429,7 @@ dependencies = [
  "engine_state",
  "futures",
  "gpui-ce",
- "installed_plugins",
+ "linked_plugins",
  "plugin_manager",
  "profiling 0.1.0",
  "profiling 1.0.18",
@@ -14778,6 +15012,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "rust_plugin",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15154,6 +15397,15 @@ dependencies = [
  "ui_types_common",
  "uuid",
  "wgpui-base",
+]
+
+[[package]]
+name = "script_editor_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "script_editor_plugin",
 ]
 
 [[package]]
@@ -15720,6 +15972,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "skeletal_animation_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "skeletal_animation_plugin",
+]
+
+[[package]]
 name = "skeletal_assets"
 version = "0.1.0"
 dependencies = [
@@ -15851,6 +16112,15 @@ dependencies = [
  "ui_level_editor",
  "wgpu",
  "zip 9.5.0",
+]
+
+[[package]]
+name = "sky_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "sky_plugin",
 ]
 
 [[package]]
@@ -16177,6 +16447,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "splines_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "splines_plugin",
+]
+
+[[package]]
 name = "sprites-examples"
 version = "0.1.0"
 dependencies = [
@@ -16263,6 +16542,15 @@ dependencies = [
  "tempfile",
  "ui_level_editor",
  "wgpu",
+]
+
+[[package]]
+name = "sprites_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "sprites_plugin",
 ]
 
 [[package]]
@@ -17708,6 +17996,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "trait_editor_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "trait_editor_plugin",
+]
+
+[[package]]
 name = "trait_fixture_plugin"
 version = "0.1.0"
 dependencies = [
@@ -18437,6 +18734,15 @@ dependencies = [
  "ui",
  "ui_common",
  "uuid",
+]
+
+[[package]]
+name = "ui_editor_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "ui_editor_plugin",
 ]
 
 [[package]]
@@ -19364,6 +19670,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "voxel_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "voxel_plugin",
+]
+
+[[package]]
 name = "wait-timeout"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -19608,6 +19923,15 @@ dependencies = [
  "water_component",
  "water_editor",
  "wgpu",
+]
+
+[[package]]
+name = "water_plugin_dll"
+version = "0.1.0"
+dependencies = [
+ "helio-core",
+ "plugin_editor_api",
+ "water_plugin",
 ]
 
 [[package]]

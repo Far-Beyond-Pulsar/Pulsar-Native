@@ -270,18 +270,18 @@ macro_rules! export_plugin {
             let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 // Validate theme pointer
                 if theme_ptr.is_null() {
-                    tracing::error!("[Plugin] Received null theme pointer from host");
+                    $crate::tracing::error!("[Plugin] Received null theme pointer from host");
                     return None;
                 }
 
                 // Store theme pointer (fail if already set)
                 if SYNCED_THEME.set(theme_ptr as usize).is_err() {
-                    tracing::error!("[Plugin] Theme pointer already initialized");
+                    $crate::tracing::error!("[Plugin] Theme pointer already initialized");
                     return None;
                 }
 
                 // Register our theme accessor with the ui crate
-                ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
+                $crate::ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
 
                 // Create the plugin instance wrapped for full trait access
                 let plugin = <$plugin_type>::default();
@@ -294,7 +294,7 @@ macro_rules! export_plugin {
             match created {
                 Ok(plugin) => plugin,
                 Err(_) => {
-                    tracing::error!("[Plugin] The plugin panicked while it was being created");
+                    $crate::tracing::error!("[Plugin] The plugin panicked while it was being created");
                     None
                 }
             }
@@ -339,7 +339,7 @@ macro_rules! export_plugin {
         ///
         /// SAFETY: Returns None if theme pointer is null or not initialized.
         /// The caller (ui crate) must handle None gracefully.
-        unsafe fn plugin_theme_unsafe() -> Option<&'static ui::theme::Theme> {
+        unsafe fn plugin_theme_unsafe() -> Option<&'static $crate::ui::theme::Theme> {
             let ptr = SYNCED_THEME.get().copied()? as *const std::ffi::c_void;
 
             if ptr.is_null() {
@@ -347,7 +347,7 @@ macro_rules! export_plugin {
             }
 
             // SAFETY: The engine contract guarantees this pointer remains valid.
-            Some(&*(ptr as *const ui::theme::Theme))
+            Some(&*(ptr as *const $crate::ui::theme::Theme))
         }
 
         // Receive the host's event bus when loaded:
@@ -389,7 +389,7 @@ macro_rules! export_plugin {
             // theme it had.
             let initialized = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if theme_ptr.is_null() {
-                    tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
+                    $crate::tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
                     return;
                 }
 
@@ -398,7 +398,7 @@ macro_rules! export_plugin {
                 }
             }));
             if initialized.is_err() {
-                tracing::error!("[Plugin] The plugin panicked while initializing its globals");
+                $crate::tracing::error!("[Plugin] The plugin panicked while initializing its globals");
             }
         }
     };
