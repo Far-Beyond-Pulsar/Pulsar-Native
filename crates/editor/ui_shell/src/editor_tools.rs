@@ -63,6 +63,43 @@ pub fn editor_tools() -> Vec<&'static EditorToolRegistration> {
     tools
 }
 
+/// A view of one editor task's log, for a window that shows a task's output
+/// (the build dashboard) without naming the tool that draws it. Mission
+/// Control (`ui_log_viewer`) submits one; without it there is no log view.
+pub struct TaskLogViewRegistration {
+    /// The submitting package.
+    pub origin: &'static str,
+    /// Stable id (`tool.mission_control.task_log`).
+    pub id: &'static str,
+    /// A live view of `log` (it follows the task's new lines).
+    pub view: fn(std::sync::Arc<editor_task_queue::TaskLog>, &mut App) -> AnyView,
+}
+
+impl pulsar_plugins::Contribution for TaskLogViewRegistration {
+    const CATEGORY: &'static str = "editor.task_log_view";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.id.to_string()
+    }
+}
+
+pulsar_plugins::registration!(TaskLogViewRegistration);
+
+/// A live view of `log` from the first enabled task log view (by id), or
+/// `None` when no tool provides one.
+pub fn task_log_view(
+    log: std::sync::Arc<editor_task_queue::TaskLog>,
+    cx: &mut App,
+) -> Option<AnyView> {
+    let registration = pulsar_plugins::registered::<TaskLogViewRegistration>()
+        .min_by_key(|registration| registration.id)?;
+    Some((registration.view)(log, cx))
+}
+
 /// Initialize every enabled tool (once, when the editor starts).
 pub fn init_editor_tools(cx: &mut App) {
     for tool in editor_tools() {

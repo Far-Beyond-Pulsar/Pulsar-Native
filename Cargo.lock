@@ -18296,7 +18296,6 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_log_viewer",
  "window_manager",
 ]
 

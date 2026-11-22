@@ -1,10 +1,10 @@
 //! The build dashboard: a window that opens when a build starts and shows
 //! it while it runs and after it ends.
 //!
-//! - **Output**: cargo's output, the build task's own log, in Mission
-//!   Control's log view (`ui_log_viewer::LogDrawer::for_task`: the same
-//!   table, level filters and search as the engine log and the Tasks
-//!   window).
+//! - **Output**: cargo's output, the build task's own log, in the task log
+//!   view a tool registers (`ui_common::editor_tools::task_log_view`;
+//!   Mission Control's: the same table, level filters and search as the
+//!   engine log and the Tasks window). Without one, the output pane says so.
 //! - **Processes**: the running cargo command and everything it started
 //!   (rustc per crate, build scripts, linkers), busiest first.
 //! - **Resources**: the build's CPU and memory, and the machine's, over time.
@@ -30,7 +30,6 @@ use ui::progress::Progress;
 use ui::resizable::{ResizableState, h_resizable, resizable_panel};
 use ui::scroll::ScrollbarAxis;
 use ui::{ActiveTheme as _, IconName, StyledExt as _, TitleBar, h_flex, v_flex};
-use ui_log_viewer::LogDrawer;
 
 use crate::runner::session::{self, BuildSession, Outcome};
 use sampler::{ProcessKind, ProcessRow, Sample, Sampler};
@@ -85,7 +84,7 @@ impl History {
 pub struct BuildDashboard {
     focus_handle: FocusHandle,
     /// The build shown, and its output.
-    shown: Option<(Arc<BuildSession>, Entity<LogDrawer>)>,
+    shown: Option<(Arc<BuildSession>, Option<AnyView>)>,
     sample: Sample,
     history: History,
     split: Entity<ResizableState>,
@@ -148,9 +147,8 @@ impl BuildDashboard {
         else {
             return;
         };
-        let drawer = cx.new(|cx| LogDrawer::for_task(log, cx));
-        drawer.update(cx, |drawer, cx| drawer.start_monitoring(cx));
-        self.shown = Some((latest, drawer));
+        let output = ui_common::editor_tools::task_log_view(log, cx);
+        self.shown = Some((latest, output));
         self.history = History::default();
         self.sample = Sample::default();
     }
@@ -178,14 +176,17 @@ impl Render for BuildDashboard {
         };
         let body = match &self.shown {
             None => empty_state(cx).into_any_element(),
-            Some((build, drawer)) => v_flex()
+            Some((build, output)) => v_flex()
                 .size_full()
                 .child(header(build, cx))
                 .child(
                     div().flex_1().min_h_0().w_full().child(
                         h_resizable("build-dashboard-split")
                             .state(self.split.clone())
-                            .child(resizable_panel().child(drawer.clone()))
+                            .child(resizable_panel().child(match output {
+                                Some(view) => view.clone().into_any_element(),
+                                None => no_log_view(cx).into_any_element(),
+                            }))
                             .child(
                                 resizable_panel()
                                     .size(px(SIDEBAR_WIDTH))
@@ -509,6 +510,21 @@ fn empty_state(cx: &App) -> impl IntoElement {
             div()
                 .text_sm()
                 .child(t!("Build.Dashboard.NoBuild").to_string()),
+        )
+}
+
+/// The output pane when no tool registers a task log view.
+fn no_log_view(cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    v_flex()
+        .size_full()
+        .items_center()
+        .justify_center()
+        .text_color(theme.muted_foreground)
+        .child(
+            div()
+                .text_sm()
+                .child(t!("Build.Dashboard.NoLogView").to_string()),
         )
 }
 

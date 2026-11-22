@@ -53,3 +53,19 @@ inventory::submit! {
         init: None,
     }
 }
+
+// The live view of one task's log that other windows embed (the build
+// dashboard's output) through `ui_common::editor_tools::task_log_view`,
+// without naming this crate.
+inventory::submit! {
+    ui_common::editor_tools::TaskLogViewRegistration {
+        origin: pulsar_plugins::engine_origin!(),
+        id: "tool.mission_control.task_log",
+        view: |log, cx| {
+            use gpui::AppContext as _;
+            let drawer = cx.new(|cx| LogDrawer::for_task(log, cx));
+            drawer.update(cx, |drawer, cx| drawer.start_monitoring(cx));
+            drawer.into()
+        },
+    }
+}
