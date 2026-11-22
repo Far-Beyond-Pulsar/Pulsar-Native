@@ -205,6 +205,7 @@ mod tests {
     fn a_foreign_view_shares_the_host_bus() {
         // In-process stand-in for a plugin: the same FFI table a plugin gets.
         let host = HostBus::local();
+        // SAFETY: the table was just exported by `host`, which outlives `plugin`.
         let plugin = unsafe { HostBus::foreign(host.export_raw().unwrap()) }.unwrap();
         let seen = Arc::new(AtomicUsize::new(0));
         let s = Arc::clone(&seen);

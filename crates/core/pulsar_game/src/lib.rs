@@ -169,6 +169,12 @@ mod tests;
 #[cfg(test)]
 mod test_probe;
 
+// The unit tests' classes carry a language's class marker, and no plugin is
+// activated in them: an engine-origin test language claims the marker, so a
+// class asset path resolves to its class name (#2021).
+#[cfg(test)]
+pulsar_language::submit_test_language!("test.graph", ["graph_save.json"]);
+
 /// Convenience prelude — glob-import this to get the whole public API.
 pub mod prelude {
     pub use crate::lifecycle::Actor;

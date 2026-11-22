@@ -13275,6 +13275,7 @@ dependencies = [
  "pulsar_content",
  "pulsar_core",
  "pulsar_events",
+ "pulsar_language",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",

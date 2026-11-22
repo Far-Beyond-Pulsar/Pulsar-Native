@@ -18,11 +18,11 @@ test-group = "gpu-device"
 # Vulkan). The `ci` profile leaves out, by name, the test binaries that render
 # real frames or need a real adapter, rather than letting them count as passed:
 #
-# - meshes_component's GPU mirror and content-dedup suites need an adapter and
+# - the meshes plugin's GPU mirror and content-dedup suites need an adapter and
 #   panic without one (Pulsar-Native#1036);
 # - the voxel planet's chunk, cloud, volume, foliage and pass-graph suites, GI's
-#   probe tracers, the level editor's render acceptance and dense VG suites and
-#   the game's render-parity tests render full frames: on lavapipe they take
+#   probe and cost suites, and the installed set's render acceptance, dense VG
+#   and render-parity suites render full frames: on lavapipe they take
 #   1-7 minutes each and most die with SIGSEGV inside the driver (the p16 run
 #   lost ~90 tests that way and hit the step's 60-minute limit); the chunk
 #   bit-identity tests also bind 147 MB terrain tables, past lavapipe's 128 MB
@@ -34,7 +34,7 @@ test-group = "gpu-device"
 [profile.ci]
 default-filter = """
 not (
-    (package(meshes_component) & (
+    (package(meshes_plugin) & (
         binary(static_mesh_component_gpu_mirror)
         | binary(content_dedup)
         | binary(content_dedup_benchmarks)
@@ -46,13 +46,11 @@ not (
         | binary(foliage_on_voxels)
         | binary(voxel_pass_graph)
     ))
-    | (package(helio-pass-gi) & (binary(gi_tests) | binary(mesh_tests)))
-    | (package(ui_level_editor) & (
+    | (package(helio-pass-gi) & (binary(probes) | binary(cost)))
+    | (package(installed_plugins) & (
         binary(render_acceptance)
         | binary(virtual_geometry_dense_acceptance)
-    ))
-    | (package(pulsar_game) & (
-        binary(voxel_render_parity)
+        | binary(voxel_render_parity)
         | (binary(runtime_render_parity) & test(=every_runtime_renders_the_same_level))
     ))
     | (package(installed_plugins) & binary(level_editor)
