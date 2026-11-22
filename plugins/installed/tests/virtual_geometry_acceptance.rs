@@ -96,12 +96,17 @@ fn dense_sphere(
     for ring in 0..=rings {
         let theta = std::f32::consts::PI * ring as f32 / rings as f32;
         for segment in 0..=segments {
-            let phi = std::f32::consts::TAU * segment as f32 / segments as f32;
-            let normal = glam::Vec3::new(
-                theta.sin() * phi.cos(),
-                theta.cos(),
-                theta.sin() * phi.sin(),
-            );
+            // A closed sphere, as an exporter writes one: the seam column
+            // repeats the first bit for bit and each pole is one point
+            // (sin(TAU) and sin(PI) are not 0 in f32, which left a hairline
+            // crack and a pinhole whose borders the builder must keep).
+            let phi = std::f32::consts::TAU * (segment % segments) as f32 / segments as f32;
+            let s = if ring == 0 || ring == rings {
+                0.0
+            } else {
+                theta.sin()
+            };
+            let normal = glam::Vec3::new(s * phi.cos(), theta.cos(), s * phi.sin());
             let tangent = glam::Vec3::new(-phi.sin(), 0.0, phi.cos());
             vertices.push(helio_mesh_api::PackedVertex::from_components(
                 (normal * radius).into(),

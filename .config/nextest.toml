@@ -47,7 +47,7 @@ not (
         | binary(voxel_pass_graph)
     ))
     | (package(helio-pass-gi) & (binary(gi_tests) | binary(mesh_tests)))
-    | (package(ui_level_editor) & (
+    | (package(installed_plugins) & (
         binary(render_acceptance)
         | binary(virtual_geometry_dense_acceptance)
     ))
