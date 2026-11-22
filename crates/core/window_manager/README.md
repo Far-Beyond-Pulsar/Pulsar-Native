@@ -67,7 +67,7 @@ use window_manager::WindowRegistry;
 
 // Open any registered window by name — the only pattern
 WindowRegistry::update_global(cx, |reg, cx| reg.open("MyWindow", cx));
-WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));
 WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
 ```
 

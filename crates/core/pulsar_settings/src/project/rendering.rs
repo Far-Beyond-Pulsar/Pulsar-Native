@@ -107,10 +107,10 @@ fn linear_to_srgb(c: f32) -> f32 {
     }
 }
 
-fn entry(group: &helio_settings::Group, setting: &Setting) -> SchemaEntry {
+fn entry(setting: &Setting) -> SchemaEntry {
     let entry = SchemaEntry::new(setting.description, config_value(&setting.default))
         .label(setting.label)
-        .page(format!("{} / {}", group.title, setting.page));
+        .page(setting.page);
     match setting.kind {
         Kind::Toggle => entry.field_type(FieldType::Checkbox),
         Kind::Number { min, max, step } => entry
@@ -132,12 +132,19 @@ fn entry(group: &helio_settings::Group, setting: &Setting) -> SchemaEntry {
 }
 
 pub fn register(cfg: &'static ConfigManager) {
-    for group in groups() {
+    let plugin_groups = pulsar_plugins::registered::<SettingsGroupRegistration>()
+        .map(|registration| (registration.group, Some(registration.origin)));
+    let engine_groups = helio_settings::GROUPS.iter().map(|group| (*group, None));
+    for (group, origin) in engine_groups.chain(plugin_groups) {
         let schema = group.settings.iter().fold(
             NamespaceSchema::new(group.title, group.description),
-            |schema, setting| schema.setting(setting.key, entry(group, setting)),
+            |schema, setting| schema.setting(setting.key, entry(setting)),
         );
-        let _ = cfg.register(NS, group.key, schema);
+        if cfg.register(NS, group.key, schema).is_ok() {
+            if let Some(origin) = origin {
+                super::record_origin(group.key, origin);
+            }
+        }
     }
 }
 

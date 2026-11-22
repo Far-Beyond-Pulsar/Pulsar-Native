@@ -151,9 +151,9 @@ impl PulsarApp {
                     this.on_go_forward(&ui_common::menu::GoForward {}, window, cx);
                 }),
             );
-        let el = open_window_on::<ui::OpenSettings>(el, "SettingsWindow", cx);
-        let el = open_window_on::<ui_common::menu::Settings>(el, "SettingsWindow", cx);
-        let el = open_window_on::<ui_common::menu::Preferences>(el, "SettingsWindow", cx);
+        let el = open_window_on::<ui::OpenSettings>(el, "EditorSettingsWindow", cx);
+        let el = open_window_on::<ui_common::menu::Settings>(el, "ProjectSettingsWindow", cx);
+        let el = open_window_on::<ui_common::menu::Preferences>(el, "EditorSettingsWindow", cx);
         let el = open_window_on::<ui_common::menu::AboutApp>(el, "AboutWindow", cx);
         open_window_on::<ui_common::menu::ShowDocumentation>(el, "DocumentationWindow", cx)
     }

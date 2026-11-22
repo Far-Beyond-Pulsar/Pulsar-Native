@@ -21,6 +21,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/LEVEL_LOADING.md` | Level loading audit: the prepare (worker) / apply (frame thread) split, which paths block, what remains. Read before adding any level, sublevel or asset load |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
+| `.agents/SETTINGS.md` | Settings: the editor, project and plugin namespaces and who may register each, the Project Settings and Editor Settings windows (three-level tree, measured pages, search), appearance applied live, reading a setting |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
 | `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |

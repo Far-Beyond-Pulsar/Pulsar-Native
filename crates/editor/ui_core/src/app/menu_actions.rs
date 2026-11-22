@@ -74,7 +74,7 @@ impl PulsarApp {
             .on_action(cx.listener(|_, _: &menu::ProjectSettings, _, cx| {
                 use gpui::UpdateGlobal as _;
                 window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                    reg.open("SettingsWindow", cx)
+                    reg.open("ProjectSettingsWindow", cx)
                 });
             }))
             .on_action(cx.listener(|this, _: &menu::OpenCargoToml, window, cx| {

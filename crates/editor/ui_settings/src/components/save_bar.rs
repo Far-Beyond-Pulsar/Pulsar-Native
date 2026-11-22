@@ -4,13 +4,13 @@ use ui::{
     h_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 
-use crate::screen::ModernSettingsScreen;
+use super::SettingsScreen;
 
 /// The bar shown while changes are unsaved; `restart_required` when one of
 /// them applies only after the editor restarts.
 pub fn render_save_bar(
     restart_required: bool,
-    cx: &mut Context<ModernSettingsScreen>,
+    cx: &mut Context<SettingsScreen>,
 ) -> impl IntoElement {
     let theme = cx.theme();
 
@@ -30,7 +30,7 @@ pub fn render_save_bar(
                     .text_sm()
                     .text_color(theme.muted_foreground)
                     .child(Icon::new(IconName::Info))
-                    .child("Restart the editor to apply device settings"),
+                    .child("Restart the editor to apply some of these changes"),
             )
         })
         .child(

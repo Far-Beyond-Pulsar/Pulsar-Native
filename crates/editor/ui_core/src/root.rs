@@ -125,13 +125,13 @@ impl Render for PulsarRoot {
         div()
             .size_full()
             .on_action(cx.listener(|_, _: &Settings, _, cx| {
-                WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("ProjectSettingsWindow", cx));
             }))
             .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
-                WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("EditorSettingsWindow", cx));
             }))
             .on_action(cx.listener(|_, _: &Preferences, _, cx| {
-                WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("EditorSettingsWindow", cx));
             }))
             .on_action(cx.listener(|_, _: &AboutApp, _, cx| {
                 WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));

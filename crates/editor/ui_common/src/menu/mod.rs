@@ -584,7 +584,7 @@ impl AppTitleBar {
             false => ThemeMode::Dark,
         };
 
-        Theme::change(mode, None, cx);
+        crate::appearance::set_theme_mode(mode, cx);
     }
 }
 

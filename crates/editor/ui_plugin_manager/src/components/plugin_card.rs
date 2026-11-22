@@ -30,7 +30,7 @@ pub fn render_plugin_item(
     h_flex()
         .id(SharedString::from(format!("plugin-{}", entry.id)))
         .w_full()
-        .h(px(62.))
+        .h(px(68.))
         .px_2()
         .gap_2()
         .items_center()
@@ -53,27 +53,7 @@ pub fn render_plugin_item(
         .on_click(cx.listener(move |this, _, _, cx| {
             this.select(Some(open_id.clone()), cx);
         }))
-        .child(
-            div()
-                .size(px(30.))
-                .flex_shrink_0()
-                .rounded_md()
-                .border_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().background)
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    Icon::new(match entry.kind {
-                        EntryKind::Engine => IconName::Cpu,
-                        EntryKind::Library => IconName::Box,
-                        _ => IconName::Puzzle,
-                    })
-                    .size_4()
-                    .text_color(cx.theme().muted_foreground),
-                ),
-        )
+        .child(render_plugin_icon(entry, 44.0, cx))
         .child(
             v_flex()
                 .flex_1()
@@ -133,4 +113,62 @@ pub fn render_plugin_item(
                 })
                 .child(badge),
         )
+}
+
+/// The images plugins registered, decoded once each (keyed by the bytes'
+/// address: a `PluginIcon`'s bytes are `'static`).
+fn icon_image(icon: &'static pulsar_plugins::PluginIcon) -> std::sync::Arc<Image> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static IMAGES: OnceLock<Mutex<HashMap<usize, Arc<Image>>>> = OnceLock::new();
+    let format = match icon.format {
+        pulsar_plugins::IconFormat::Png => ImageFormat::Png,
+        pulsar_plugins::IconFormat::Jpeg => ImageFormat::Jpeg,
+        pulsar_plugins::IconFormat::Webp => ImageFormat::Webp,
+        pulsar_plugins::IconFormat::Svg => ImageFormat::Svg,
+    };
+    let mut images = IMAGES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    images
+        .entry(icon.bytes.as_ptr() as usize)
+        .or_insert_with(|| Arc::new(Image::from_bytes(format, icon.bytes.to_vec())))
+        .clone()
+}
+
+/// An entry's icon in a `size` px square: the image its plugin registered
+/// (`pulsar_plugins::PluginIcon`), else a glyph for its kind.
+pub fn render_plugin_icon(
+    entry: &Entry,
+    size: f32,
+    cx: &mut Context<crate::screen::PluginManagerWindow>,
+) -> impl IntoElement {
+    let frame = div()
+        .size(px(size))
+        .flex_shrink_0()
+        .rounded_lg()
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .justify_center();
+    match pulsar_plugins::icon_of(&entry.id) {
+        Some(icon) => frame
+            .child(img(icon_image(icon)).size_full().object_fit(ObjectFit::Contain))
+            .into_any_element(),
+        None => frame
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().secondary.opacity(0.5))
+            .child(
+                Icon::new(match entry.kind {
+                    EntryKind::Engine => IconName::Cpu,
+                    EntryKind::Library => IconName::Box,
+                    _ => IconName::Puzzle,
+                })
+                .size(px(size * 0.5))
+                .text_color(cx.theme().muted_foreground),
+            )
+            .into_any_element(),
+    }
 }

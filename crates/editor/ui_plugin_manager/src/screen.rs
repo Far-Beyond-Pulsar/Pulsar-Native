@@ -8,7 +8,9 @@ use ui::{
     v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, StyledExt, TitleBar,
 };
 
-use crate::components::{render_empty_state, render_plugin_details, render_plugin_item};
+use crate::components::{
+    detail_rows, render_detail_row, render_empty_state, render_plugin_item, DetailRow,
+};
 use crate::handlers;
 use crate::model::{Entry, Extensions, Filter, Sort};
 
@@ -19,6 +21,10 @@ use crate::model::{Entry, Extensions, Filter, Sort};
 pub struct PluginManagerWindow {
     pub(crate) model: Extensions,
     pub(crate) selected: Option<String>,
+    /// The selected entry's sections, and the measured list that shows them.
+    detail_rows: Vec<DetailRow>,
+    details: ListState,
+    details_scrollbar: ui::scroll::ScrollbarState,
     visible: Vec<usize>,
     search_input: Entity<InputState>,
     search_query: String,
@@ -65,6 +71,9 @@ impl PluginManagerWindow {
         let mut this = Self {
             model: Extensions::default(),
             selected: None,
+            detail_rows: Vec::new(),
+            details: ListState::new(0, ListAlignment::Top, px(600.)),
+            details_scrollbar: ui::scroll::ScrollbarState::default(),
             visible: Vec::new(),
             search_input,
             search_query: String::new(),
@@ -93,11 +102,57 @@ impl PluginManagerWindow {
                 .first()
                 .map(|index| self.model.entries[*index].id.clone());
         }
+        self.refresh_details();
     }
 
     pub(crate) fn select(&mut self, entry: Option<String>, cx: &mut Context<Self>) {
-        self.selected = entry;
+        if self.selected != entry {
+            self.selected = entry;
+            self.refresh_details();
+        }
         cx.notify();
+    }
+
+    /// The selected entry's sections, shown from the top.
+    fn refresh_details(&mut self) {
+        self.detail_rows = self
+            .selected
+            .as_deref()
+            .and_then(|id| self.model.entry(id))
+            .map(detail_rows)
+            .unwrap_or_default();
+        self.details.reset(self.detail_rows.len());
+    }
+
+    fn render_details(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .relative()
+            .size_full()
+            .child(
+                list(
+                    self.details.clone(),
+                    cx.processor(|this, ix: usize, _window, cx| {
+                        let (Some(row), Some(entry)) = (
+                            this.detail_rows.get(ix).copied(),
+                            this.selected.as_deref().and_then(|id| this.model.entry(id)).cloned(),
+                        ) else {
+                            return div().into_any_element();
+                        };
+                        render_detail_row(&entry, &this.model, row, cx)
+                    }),
+                )
+                .size_full(),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .w(px(12.))
+                    .child(ui::scroll::Scrollbar::vertical(&self.details_scrollbar, &self.details)),
+            )
+            .into_any_element()
     }
 
     fn set_filter(&mut self, filter: Filter, cx: &mut Context<Self>) {
@@ -342,7 +397,7 @@ fn render_extension_workspace(
 ) -> impl IntoElement {
     let total_count = this.model.entries.len();
     let visible_count = this.visible.len();
-    let model = this.model.clone();
+    let details = this.render_details(cx);
 
     h_flex()
         .flex_1()
@@ -415,7 +470,7 @@ fn render_extension_workspace(
                                                 this.selected.as_ref() == Some(&entry.id);
                                             div()
                                                 .w_full()
-                                                .h(px(68.))
+                                                .h(px(76.))
                                                 .px_2()
                                                 .child(render_plugin_item(entry, is_selected, cx))
                                                 .into_any_element()
@@ -434,9 +489,7 @@ fn render_extension_workspace(
                 .min_w_0()
                 .h_full()
                 .overflow_hidden()
-                .when_some(selected, |this, selected| {
-                    this.child(render_plugin_details(selected, &model, cx))
-                })
+                .when(selected.is_some(), |this| this.child(details))
                 .when(selected.is_none(), |this| {
                     this.child(render_empty_state(cx))
                 }),
