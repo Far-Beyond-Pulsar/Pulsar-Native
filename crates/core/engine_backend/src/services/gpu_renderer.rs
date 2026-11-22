@@ -59,6 +59,8 @@ impl GpuRendererBuilder {
             stats_feed: RendererStatsFeed::default(),
             details_published: None,
             gpu_memory: None,
+            findings: super::renderer_findings::RendererFindings::default(),
+            frame_budget_ms: None,
         }
     }
 }
@@ -156,6 +158,10 @@ pub struct GpuRenderer {
     stats_feed: RendererStatsFeed,
     details_published: Option<Instant>,
     gpu_memory: Option<(Instant, Option<u64>)>,
+    /// What this renderer reports to the Problems panel.
+    findings: super::renderer_findings::RendererFindings,
+    /// How long a frame may take (its output's refresh interval), in ms.
+    frame_budget_ms: Option<f32>,
 }
 
 /// Length of the rolling window used to compute [`GpuRenderer::get_fps`].
@@ -287,7 +293,7 @@ impl GpuRenderer {
                 bytes
             }
         };
-        self.stats_feed.publish_details(RendererDetails {
+        let details = RendererDetails {
             profiler: self.get_gpu_profiler_data(),
             gpu_memory_bytes,
             frame_stats: self.helio_renderer.as_ref().and_then(|r| r.frame_stats()),
@@ -295,18 +301,33 @@ impl GpuRenderer {
                 .helio_renderer
                 .as_ref()
                 .map_or_else(Vec::new, |renderer| {
+                    // A pass reports one text; each of its lines that starts
+                    // with `WARNING:` is a warning (a pass may report
+                    // statistics and warnings together).
                     renderer
                         .diagnostics()
-                        .into_iter()
+                        .iter()
+                        .flat_map(|text| text.lines())
+                        .map(str::trim)
                         .filter(|line| line.starts_with("WARNING:"))
+                        .map(str::to_owned)
                         .collect()
                 }),
-        });
+        };
+        let health = self.helio_renderer.as_ref().and_then(|renderer| renderer.health());
+        self.findings.update(
+            details.profiler.as_ref(),
+            &details.warnings,
+            self.frame_budget_ms,
+            health.as_ref(),
+        );
+        self.stats_feed.publish_details(details);
     }
 
     /// How long a frame should take: its output's refresh interval (`None`:
     /// unpaced). See `HelioRenderer::set_frame_budget`.
     pub fn set_frame_budget(&mut self, budget: Option<std::time::Duration>) {
+        self.frame_budget_ms = budget.map(|budget| budget.as_secs_f32() * 1000.0);
         if let Some(renderer) = self.helio_renderer.as_mut() {
             renderer.set_frame_budget(budget);
         }

@@ -312,8 +312,8 @@ fn run_finding_action(
             });
         }
         Action::OpenWindow { name } => {
-            let name = name.clone();
-            window_manager::WindowRegistry::update_global(cx, move |reg, cx| reg.open(&name, cx));
+            let name = *name;
+            window_manager::WindowRegistry::update_global(cx, move |reg, cx| reg.open(name, cx));
         }
         Action::OpenFile { .. } => {}
     }

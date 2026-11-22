@@ -370,6 +370,15 @@ impl SceneRenderer {
         self.renderer.diagnostics()
     }
 
+    /// Whether the pipeline built, and why the last shader edit was
+    /// rejected (if it was): what the Problems panel reports.
+    pub fn health(&self) -> (helio::PipelineStatus, Option<String>) {
+        (
+            self.renderer.pipeline_status().clone(),
+            self.renderer.shader_reload_status().last_error,
+        )
+    }
+
     /// Advance `scene` (this renderer's) a frame: SceneDB steps the
     /// subsystems plugins added to every scene, and flushes its GPU mirror.
     pub fn step_scene(&mut self, scene: &mut pulsar_scenedb::SceneDb) {

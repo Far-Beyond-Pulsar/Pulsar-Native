@@ -22,6 +22,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
 | `.agents/SETTINGS.md` | Settings: the editor, project and plugin namespaces and who may register each, the Project Settings and Editor Settings windows (three-level tree, measured pages, search), appearance applied live, reading a setting |
+| `.agents/PROBLEMS.md` | The Problems panel (tabs, grouped one-line rows, dismiss) and findings: the `pulsar_findings` model and store, who publishes what, how a plugin or render pass reports a finding |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
 | `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |
@@ -64,6 +65,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer, and for a rigged model the other files it made (`asset_import`) |
 | `.pulsar/cache/posedb/` | Derived Pose Search indexes, keyed by settings and source-content hash (never written beside the source); gitignored |
 | `.pulsar/keybindings.json` | The project's keybinding overrides over the defaults (`ui_keybindings`, see `.agents/KEYBINDINGS.md`) |
+| `.pulsar/dismissed_findings.txt` | Findings the project dismissed in the Problems panel, one item id per line (`ui_problems::utils::dismissed`, see `.agents/PROBLEMS.md`) |
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Legacy import options; linked entries migrate into `.pulsar/import_db.json`, while convert-in-place entries remain a fallback |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |

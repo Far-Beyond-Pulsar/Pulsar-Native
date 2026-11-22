@@ -67,6 +67,8 @@ impl PulsarApp {
         super::script_problems::watch(drawers.problems_drawer.clone(), cx);
         // Classes that are two languages' (the host's one-language rule).
         super::class_problems::watch(drawers.problems_drawer.clone(), project_path.clone(), cx);
+        // Performance, project and editor findings, and the plugins' checks.
+        super::findings::watch(cx);
 
         subscribe_drawer_events(
             &drawers.file_manager_drawer,

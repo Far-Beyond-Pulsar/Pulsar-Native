@@ -1080,6 +1080,12 @@ impl HelioRenderer {
             .map_or_else(Vec::new, |inner| inner.scene.diagnostics())
     }
 
+    /// The pipeline's state and the last rejected shader edit (see
+    /// `SceneRenderer::health`); `None` before the renderer is built.
+    pub fn health(&self) -> Option<(helio::PipelineStatus, Option<String>)> {
+        self.inner.as_ref().map(|inner| inner.scene.health())
+    }
+
     /// The camera's view direction in world space.
     pub fn camera_forward(&self) -> Vec3 {
         self.camera_basis().0

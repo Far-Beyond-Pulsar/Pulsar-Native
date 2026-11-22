@@ -15,6 +15,8 @@ pub mod native_scripts;
 pub mod pie_blit;
 #[cfg(feature = "pie")]
 pub mod pie_host;
+// What a renderer reports to the Problems panel (`pulsar_findings`).
+pub mod renderer_findings;
 #[cfg(feature = "render")]
 pub mod render_runtimes;
 

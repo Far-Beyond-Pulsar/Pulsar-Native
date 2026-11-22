@@ -11,6 +11,7 @@ mod language_server_footer;
 mod layout;
 pub(crate) use layout::saved_window_bounds;
 mod class_problems;
+mod findings;
 mod manual_tool_panel;
 mod menu_actions;
 mod nav_sidebar;

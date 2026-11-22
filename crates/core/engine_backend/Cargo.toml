@@ -25,6 +25,8 @@ workspace = true
 [dependencies]
 # The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
 pulsar_plugins = { workspace = true }
+# What renderers report to the editor's Problems panel.
+pulsar_findings = { workspace = true }
 helio-scene-join = { workspace = true, optional = true }
 inventory = { workspace = true }
 helio-core = { workspace = true, optional = true }

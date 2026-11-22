@@ -23,6 +23,9 @@ ui_multiplayer.workspace = true
 ui_problems.workspace = true
 # The actions of findings in the Problems panel.
 pulsar_findings.workspace = true
+# Collectors read the texture detail bias and the asset cache.
+helio_component.workspace = true
+pulsar_scenedb.workspace = true
 ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
