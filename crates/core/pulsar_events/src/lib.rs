@@ -15,8 +15,7 @@
 //!   dynamic library receives the host's bus as a Gamma
 //!   [`RawBus`](gamma::ffi::RawBus) when it is loaded
 //!   ([`host::attach_host_bus`]) and uses it through `ForeignBus`, so there
-//!   is one bus per process instead of one per copy of this crate
-//!   (Pulsar-Native#930).
+//!   is one bus per process instead of one per copy of this crate.
 //! - [`assets`]: asset-update notifications ([`AssetUpdated`]) on the host
 //!   bus. Anything that rewrites an asset publishes one; the level editor,
 //!   the game runtime and plugins subscribe by [`AssetKind`].

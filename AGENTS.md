@@ -7,6 +7,7 @@ runtime is the editor. For the full context, see `.agents/`.
 
 | File | What |
 |---|---|
+| `ARCHITECTURE.md` | Human-oriented tour: layers, plugin model, startup, scene data, one traced editor action |
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
 | `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
@@ -17,6 +18,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/COMPONENT_LIFECYCLE_PLAN.md` | The component lifecycle plan: audit of SceneDB `Actor`/`ActorRegistry`, `ComponentTickRegistration` and the script driver, the target (capability registry, `construct`, session scope, physics, Blueprint class instances), decisions, phases P1-P6, risks |
 | `.agents/LANGUAGE_PLUGINS_PLAN.md` | The language plugins plan: one `Language` registration (metadata, script compiler, language server), `LanguageServers` + `DiagnosticsStore`, rust-analyzer and typescript-language-server as plugins; audit of `pulsar_lsp`, its consumers and the `class.ts`/`graph_save.json` hardcoding, decisions, phases P1-P6, risks, issues log |
 | `.agents/COMPONENT_EVENT_SOURCES_PLAN.md` | The component event sources plan: asset kinds (and reflected properties) declare the Blueprint events a component offers, generic for any plugin; parametric event families, the `On Input Action` node, cache/invalidation and performance budgets, migration of animation and input, phases P0-P6, unverified list |
+| `.agents/LEVEL_LOADING.md` | Level loading audit: the prepare (worker) / apply (frame thread) split, which paths block, what remains. Read before adding any level, sublevel or asset load |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
@@ -39,6 +41,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/INSPECTOR.md` | Properties panels: one virtualized list, search/collapse, `VirtualRows` for huge values (arrays, lists, layer stacks) |
 | `.agents/EDITOR_TASKS.md` | Editor tasks and threads: every async/background job is a task, every thread is registered (services with heartbeats, rayon/tokio pools engine-owned), each with span-scoped logs and stall diagnosis; the Tasks window has Tasks/Threads/Services views; a raw-thread ratchet. Every async/background editor job is a task with its own span-scoped log, stall diagnosis and a Tasks-window audit view; tab creation and Helio init are enforced. Read before adding any spawn, background job or editor/renderer init |
 | `.agents/KEYBINDINGS.md` | Keyboard Shortcuts window, `.pulsar/keybindings.json` overrides, how unbinding reaches the keymap |
+| `.agents/MOCAP.md` | Motion capture plugin (`pulsar.mocap`): the `.mocap` take format, capture sources (camera, VMC, synthetic), recorder, the editor workspace and camera viewport, phases |
 | `.agents/ANIMATION.md` | Animation assets (`.animseq` v5, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
 
 ## Skills (`.claude/commands/`)

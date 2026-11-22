@@ -1,5 +1,5 @@
 //! Deferred world changes requested by scripts: `world::spawn`,
-//! `world::spawn_child` and `world::destroy` (#922).
+//! `world::spawn_child` and `world::destroy`.
 //!
 //! A native runs while the script phase holds the world, so these natives
 //! never build or tear down objects themselves. They append a

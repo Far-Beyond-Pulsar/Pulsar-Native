@@ -1,3 +1,5 @@
+//! Render functions of the Problems drawer: header, severity badges, empty state and content.
+
 pub use crate::screen::ProblemsDrawer;
 
 pub use content::{

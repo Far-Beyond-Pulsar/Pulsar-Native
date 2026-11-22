@@ -15,7 +15,7 @@
 //! them the component's GPU row) and the class's `property_written`
 //! normalization runs, as it does for the panel. A reference names a
 //! component instance, or an object whose first instance of the class it
-//! means (Pulsar-Native#1035).
+//! means.
 
 use std::any::Any;
 use std::sync::Arc;
@@ -50,7 +50,7 @@ fn world_components() -> Vec<ProvidedComponent> {
             name: r.class_name,
             id: r.component_type,
             // A reference names a component instance, or an object whose
-            // first instance of the class it means (Pulsar-Native#1035).
+            // first instance of the class it means.
             addressing: ComponentAddressing {
                 resolve: pulsar_scene_model::attachments::holder_of,
                 object: pulsar_scene_model::attachments::object_of,

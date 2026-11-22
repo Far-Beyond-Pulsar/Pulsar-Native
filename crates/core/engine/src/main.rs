@@ -1,38 +1,27 @@
-//#![windows_subsystem = "windows"]
-//! # Pulsar Engine Main Entry Point
+//! Pulsar Engine binary: process setup, the startup task graph, and the GPUI
+//! event loop.
 //!
-//! ## Initialization Architecture
+//! Startup runs as an `InitGraph` of tasks that declare their dependencies
+//! (see `run_init_graph`). The graph is checked for cycles and missing
+//! dependencies, then executed in topological order; each task is profiled as
+//! `Engine::Init::{TaskName}`.
 //!
-//! The engine uses a **dependency graph-based initialization system** (`InitGraph`) that:
-//! - Explicitly declares dependencies between initialization tasks
-//! - Validates the dependency graph (detects cycles, missing dependencies)
-//! - Executes tasks in topological order
-//! - Provides comprehensive profiling instrumentation
+//! Tasks and what each waits for:
 //!
-//! ## Key Systems
+//! - Logging (nothing), then App Data, then Settings.
+//! - Async Runtime (Logging), then Engine Backend.
+//! - Engine Context (nothing), then Dev/Source Detection, Set Global Context
+//!   and Discord Rich Presence, in that chain.
+//! - URI Scheme Registration (Runtime).
 //!
-//! - **Typed Context System** (`EngineContext`) - Type-safe state management
-//! - **Dependency Graph Init** (`InitGraph`) - Declarative startup ordering
-//! - **Window System** (now internal to GPUI) - windows are managed by GPUI; the engine
-//!   no longer provides its own multi-window handler
-//! - **Profiling** - Per-task timing and performance analysis
-//!
-//! ## Initialization Tasks
-//!
-//! 1. **Logging** - Tracy/tracing setup
-//! 2. **App Data** - Config directory initialization
-//! 3. **Settings** - Load engine configuration
-//! 4. **Runtime** - Tokio async runtime
-//! 5. **Backend** - Engine backend subsystems (physics, etc.)
-//! 6. **Channels** - (deprecated; windows opened directly via GPUI)
-//! 7. **Engine Context** - Global typed state
-//! 8. **Set Global** - Register context globally
-//! 9. **Discord** - Rich presence initialization
-//! 10. **URI Registration** - Custom URI scheme (pulsar://)
-//!
-//! Each task is profiled with `Engine::Init::{TaskName}` scope.
+//! Windows are managed by GPUI. After the graph has run, `startup` builds the
+//! GPUI application and opens the first window.
 
 #![warn(clippy::undocumented_unsafe_blocks)]
+
+// `#![windows_subsystem = "windows"]` is deliberately not set: the binary keeps
+// the console subsystem, so the stdout log layer (`logging`) is visible when
+// the editor is launched from a terminal.
 
 // --- Global Allocator Setup ---
 // Only one #[global_allocator] can be registered, so the dhat heap profiler
@@ -102,6 +91,7 @@ pub mod macos_permissions;
 mod prompts; // Startup prompts, shown by the pulsar-dialog helper (only DXC install prompts them)
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
+mod startup;
 mod steps;
 pub mod uri; // URI scheme handling
 
@@ -180,6 +170,79 @@ fn main() {
     #[cfg(feature = "dhat-heap")]
     let _dhat_profiler = dhat::Profiler::new_heap();
 
+    prepare_process();
+
+    // Name the main thread FIRST
+    profiling::set_thread_name("Main Thread");
+    // The UI thread is listed in the Tasks window's Threads view, with the
+    // task it is running (tab creation, renderer setup) when there is one.
+    let _main_thread = editor_task_queue::register_current_thread(
+        editor_task_queue::ThreadSpec::new("Main Thread", editor_task_queue::ThreadRole::Main)
+            .owner("engine"),
+    );
+
+    install_flamegraph_scope_hook();
+
+    // Profiling is intentionally NOT enabled here. Instrumentation
+    // (profile_scope!) submits events into an unbounded channel the moment
+    // profiling is enabled, and nothing drains that channel unless the
+    // Flamegraph panel is actively recording — leaving it on for the whole
+    // process lifetime leaks memory at a steady rate for as long as the
+    // editor window is open. The Flamegraph panel's InstrumentationCollector
+    // enables/disables profiling itself, scoped to its recording session.
+
+    // Parse arguments first (needed for init context)
+    let _ = dotenv::dotenv();
+    configure_pipeline_cache_path();
+    let parsed = args::parse_args();
+    let project_path = parsed.project_path.clone();
+
+    // Create initialization context
+    let mut init_ctx = InitContext::new(parsed.clone());
+    run_init_graph(&mut init_ctx);
+
+    // GPU policy check — runs after logging is initialized so warnings/errors are visible.
+    gpu_policy::enforce_discrete_gpu_policy_or_exit();
+
+    // Extract initialized components
+    let engine_context = init_ctx.engine_context.unwrap_or_else(|| {
+        tracing::error!("Failed to initialize engine context");
+        std::process::exit(1);
+    });
+
+    // Run the main event loop via GPUI's `App::run` API.
+    profiling::profile_scope!("Engine::EventLoop");
+
+    // create and run GPUI application
+    let (gpui_app, renderer_backends) = startup::build_gpui_application();
+    let hardware_profile = startup::gather_hardware_profile(renderer_backends);
+
+    gpui_app.run(move |cx: &mut gpui::App| {
+        profiling_v1::scope!("pulsar: gpui app run");
+        let t_gpui = std::time::Instant::now();
+        tracing::info!("[GPUI startup] begin");
+
+        cx.activate(true);
+
+        startup::init_ui_stack(cx);
+
+        let uri_path = engine_context
+            .store
+            .get_or_init::<engine_state::LaunchContext>()
+            .update(|l| l.uri_project_path.take());
+
+        tracing::info!(
+            "[GPUI startup] pre-window total {}ms",
+            t_gpui.elapsed().as_millis()
+        );
+
+        startup::open_startup_project(uri_path, project_path, &hardware_profile, cx);
+    });
+}
+
+/// Process-wide setup that must happen before anything else in `main`: TLS
+/// provider, the dialog helper, the DXC requirement and the startup hint.
+fn prepare_process() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     // The dialog helper rides inside this executable; put it beside us if it is
@@ -199,58 +262,37 @@ fn main() {
     println!(
         "If Pulsar Engine exits immediately, launch it from Pulsar Hub (https://github.com/Far-Beyond-Pulsar/Pulsar-Hub) or pass a project path manually with `--project-path <PROJECT_PATH>`."
     );
+}
 
-    // Name the main thread FIRST
-    profiling::set_thread_name("Main Thread");
-    // The UI thread is listed in the Tasks window's Threads view, with the
-    // task it is running (tab creation, renderer setup) when there is one.
-    let _main_thread = editor_task_queue::register_current_thread(
-        editor_task_queue::ThreadSpec::new("Main Thread", editor_task_queue::ThreadRole::Main)
-            .owner("engine"),
-    );
-
-    // Route wgpui's frame-stage scopes (draw/layout/prepaint/paint/present,
-    // swapchain acquire, surface-registry and submit-lock waits, ...) into the
-    // flamegraph's profiler. wgpui links the crates.io `profiling` crate, a
-    // different instance with its own global state, so without this bridge the
-    // entire UI thread is invisible to the flamegraph.
+/// Route wgpui's frame-stage scopes (draw/layout/prepaint/paint/present,
+/// swapchain acquire, surface-registry and submit-lock waits, ...) into the
+/// flamegraph's profiler. wgpui links the crates.io `profiling` crate, a
+/// different instance with its own global state, so without this bridge the
+/// entire UI thread is invisible to the flamegraph.
+fn install_flamegraph_scope_hook() {
     gpui::render_stats::set_scope_hook(gpui::render_stats::ScopeHook {
         enabled: profiling::is_profiling_enabled,
         begin: |name| Box::new(profiling::ProfileScope::new_static(name)),
         begin_owned: |name| Box::new(profiling::ProfileScope::new(name)),
         record_elapsed: |name, elapsed| profiling::record_elapsed(name, elapsed),
     });
+}
 
-    // Profiling is intentionally NOT enabled here. Instrumentation
-    // (profile_scope!) submits events into an unbounded channel the moment
-    // profiling is enabled, and nothing drains that channel unless the
-    // Flamegraph panel is actively recording — leaving it on for the whole
-    // process lifetime leaks memory at a steady rate for as long as the
-    // editor window is open. The Flamegraph panel's InstrumentationCollector
-    // enables/disables profiling itself, scoped to its recording session.
-
-    // Parse arguments first (needed for init context)
-    let _ = dotenv::dotenv();
-    configure_pipeline_cache_path();
-    let parsed = args::parse_args();
-    let project_path = parsed.project_path.clone();
-
-    // Create initialization context
-    let mut init_ctx = InitContext::new(parsed.clone());
-
-    // Build initialization dependency graph
+/// Declare the startup tasks and their dependencies, then run them in order.
+/// A failed task ends the process.
+fn run_init_graph(init_ctx: &mut InitContext) {
     let mut graph = InitGraph::new();
 
-    // Task 1: Logging (no dependencies)
+    // Logging (no dependencies)
     init_task!(graph, LOGGING, "Logging", [], steps::logging::run);
 
-    // Task 2: App data (depends on logging)
+    // App data (depends on logging)
     init_task!(graph, APPDATA, "App Data", [LOGGING], steps::appdata::run);
 
-    // Task 3: Settings (depends on app data)
+    // Settings (depends on app data)
     init_task!(graph, SETTINGS, "Settings", [APPDATA], steps::settings::run);
 
-    // Task 4: Runtime (depends on logging)
+    // Runtime (depends on logging)
     init_task!(
         graph,
         RUNTIME,
@@ -259,7 +301,7 @@ fn main() {
         steps::runtime::run
     );
 
-    // Task 5: Backend (depends on runtime)
+    // Backend (depends on runtime)
     init_task!(
         graph,
         BACKEND,
@@ -268,9 +310,7 @@ fn main() {
         steps::backend::run
     );
 
-    // Task 6: Channels (deprecated — windows opened directly via GPUI)
-
-    // Task 7: Engine Context (depends on channels)
+    // Engine Context (no dependencies)
     init_task!(
         graph,
         ENGINE_CONTEXT,
@@ -279,7 +319,7 @@ fn main() {
         steps::engine_context::run
     );
 
-    // Task 7b: Dev Detection (depends on engine context, before set_global)
+    // Dev Detection (depends on engine context, before set_global)
     init_task!(
         graph,
         DEV_DETECT,
@@ -288,7 +328,7 @@ fn main() {
         steps::dev_detect::run
     );
 
-    // Task 8: Set Global (depends on dev detection)
+    // Set Global (depends on dev detection)
     init_task!(
         graph,
         SET_GLOBAL,
@@ -297,7 +337,7 @@ fn main() {
         steps::set_global::run
     );
 
-    // Task 9: Discord (depends on set_global)
+    // Discord (depends on set_global)
     init_task!(
         graph,
         DISCORD,
@@ -306,7 +346,7 @@ fn main() {
         steps::discord::run
     );
 
-    // Task 10: URI Registration (depends on runtime)
+    // URI Registration (depends on runtime)
     init_task!(
         graph,
         URI_REGISTRATION,
@@ -318,231 +358,9 @@ fn main() {
     // Execute the initialization graph
     {
         profiling_v1::scope!("pulsar: init graph execute");
-        if let Err(e) = graph.execute(&mut init_ctx) {
+        if let Err(e) = graph.execute(init_ctx) {
             tracing::error!("Engine initialization failed: {}", e);
             std::process::exit(1);
         }
     }
-
-    // GPU policy check — runs after logging is initialized so warnings/errors are visible.
-    gpu_policy::enforce_discrete_gpu_policy_or_exit();
-
-    // Extract initialized components
-    let engine_context = init_ctx.engine_context.unwrap_or_else(|| {
-        tracing::error!("Failed to initialize engine context");
-        std::process::exit(1);
-    });
-
-    // Run the main event loop via GPUI's `App::run` API.
-    profiling::profile_scope!("Engine::EventLoop");
-
-    // create and run GPUI application
-    let renderer_settings = engine_state::settings::global_config();
-    let renderer_string = |key: &str, default: &str| {
-        renderer_settings
-            .get(engine_state::settings::NS_EDITOR, "renderer", key)
-            .ok()
-            .and_then(|value| value.as_str().ok().map(str::to_owned))
-            .unwrap_or_else(|| default.to_owned())
-    };
-    let renderer_backends = engine_state::settings::renderer_backends();
-    let power_preference = match renderer_string("gpu_preference", "high_performance").as_str() {
-        "low_power" => wgpu::PowerPreference::LowPower,
-        "auto" => wgpu::PowerPreference::None,
-        _ => wgpu::PowerPreference::HighPerformance,
-    };
-    let max_frame_latency = renderer_settings
-        .get(
-            engine_state::settings::NS_EDITOR,
-            "renderer",
-            "max_frame_latency",
-        )
-        .ok()
-        .and_then(|value| value.as_int().ok())
-        .unwrap_or(2)
-        .clamp(1, 4) as u32;
-
-    let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
-        additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
-        // TEXTURE_COMPRESSION_BC: cooked textures are stored as BC7 where the device can sample it
-        optional_features: wgpu::Features::TEXTURE_COMPRESSION_BC,
-        desired_maximum_frame_latency: max_frame_latency,
-        backends: renderer_backends,
-        power_preference,
-        // Ray queries are the engine's to ask for, in the device factory below.
-        hardware_ray_queries: false,
-        preferred_backends: wgpu::Backends::empty(),
-        // The window's device is the engine's (`RenderRuntimes::offer_device`): request it with
-        // Helio's features and limits on top of the window's own.
-        device_factory: Some(std::sync::Arc::new(|adapter, descriptor| {
-            engine_backend::services::render_runtimes::request_engine_device(adapter, descriptor)
-                .map_err(anyhow::Error::from)
-        })),
-    })
-    .with_assets(Assets);
-
-    // Reuse the system snapshot already used by Mission Control so startup
-    // compatibility checks and the diagnostics panel report the same device.
-    let system_info = ui_log_viewer::SystemInfo::gather();
-    let backend_alternatives = if renderer_backends == wgpu::Backends::VULKAN {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            flags: wgpu::InstanceFlags::default(),
-            backend_options: wgpu::BackendOptions::default(),
-            memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
-            display: None,
-        });
-        let adapters =
-            futures::executor::block_on(instance.enumerate_adapters(wgpu::Backends::all()));
-        let mut seen = std::collections::HashSet::new();
-        adapters
-            .into_iter()
-            .filter_map(|adapter| {
-                let (label, preference) = match adapter.get_info().backend {
-                    wgpu::Backend::Dx12 => ("Direct3D 12", "dx12"),
-                    wgpu::Backend::Metal => ("Metal", "metal"),
-                    wgpu::Backend::Gl => ("OpenGL", "gl"),
-                    _ => return None,
-                };
-                seen.insert(preference)
-                    .then(|| (label.to_owned(), preference.to_owned()))
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let hardware_profile = ui_loading_screen::HardwareProfile {
-        backend: if renderer_backends == wgpu::Backends::VULKAN {
-            "Vulkan".to_owned()
-        } else {
-            format!("{renderer_backends:?}")
-        },
-        backend_alternatives,
-        manufacturer: system_info.gpu_vendor,
-        gpu_brand: system_info.gpu_name,
-        driver: system_info.gpu_driver_version,
-        os: format!("{} {}", system_info.os_name, system_info.os_version),
-    };
-
-    gpui_app.run(move |cx: &mut gpui::App| {
-        profiling_v1::scope!("pulsar: gpui app run");
-        let t_gpui = std::time::Instant::now();
-        tracing::info!("[GPUI startup] begin");
-
-        cx.activate(true);
-
-        // Installed before any init: window crates self-register into
-        // WindowRegistry during their own init (e.g. SettingsWindow::init).
-        {
-            use window_manager::{WindowManager, WindowRegistry};
-            cx.set_global(WindowManager::new());
-            cx.set_global(WindowRegistry::new());
-        }
-
-        let t = std::time::Instant::now();
-        ui::init(cx);
-        tracing::info!("[GPUI startup] ui::init {}ms", t.elapsed().as_millis());
-
-        let t = std::time::Instant::now();
-        ui::themes::init(cx);
-        let config = engine_state::settings::global_config();
-        if let Ok(engine_state::settings::ConfigValue::Int(font_size)) =
-            config.get(engine_state::settings::NS_EDITOR, "appearance", "font_size")
-        {
-            ui::Theme::global_mut(cx).font_size = gpui::px(font_size.clamp(10, 24) as f32);
-        }
-        if let Ok(engine_state::settings::ConfigValue::Int(radius)) =
-            config.get(engine_state::settings::NS_EDITOR, "appearance", "radius")
-        {
-            ui::Theme::global_mut(cx).radius = gpui::px(match radius {
-                0 | 4 | 8 => radius as f32,
-                _ => 6.0,
-            });
-        }
-        if let Ok(engine_state::settings::ConfigValue::String(scrollbar)) =
-            config.get(engine_state::settings::NS_EDITOR, "appearance", "scrollbar_show")
-        {
-            ui::Theme::global_mut(cx).scrollbar_show = match scrollbar.as_str() {
-                "hover" => ui::scroll::ScrollbarShow::Hover,
-                "always" => ui::scroll::ScrollbarShow::Always,
-                _ => ui::scroll::ScrollbarShow::Scrolling,
-            };
-        }
-        tracing::info!(
-            "[GPUI startup] ui::themes::init {}ms",
-            t.elapsed().as_millis()
-        );
-
-        let t = std::time::Instant::now();
-        ui_core::init(cx);
-        tracing::info!("[GPUI startup] ui_core::init {}ms", t.elapsed().as_millis());
-
-        // Runs every inventory::submit! registrant from all linked crates automatically.
-        let t = std::time::Instant::now();
-        window_manager::register_all_windows(cx);
-        tracing::info!(
-            "[GPUI startup] register_all_windows {}ms",
-            t.elapsed().as_millis()
-        );
-
-        let uri_path = engine_context
-            .store
-            .get_or_init::<engine_state::LaunchContext>()
-            .update(|l| l.uri_project_path.take());
-
-        tracing::info!(
-            "[GPUI startup] pre-window total {}ms",
-            t_gpui.elapsed().as_millis()
-        );
-
-        if let Some(path) = uri_path {
-            tracing::info!("Opening project splash from URI: {}", path.display());
-            open_via_loading_screen(path, &hardware_profile, cx);
-        } else {
-            match project_path {
-                Some(path) if engine_fs::virtual_fs::is_dir(&path) => {
-                    tracing::info!("Opening project from --project-path: {}", path.display());
-                    open_via_loading_screen(path, &hardware_profile, cx);
-                }
-                Some(path) => {
-                    if engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
-                        tracing::error!(
-                            "Project path is not a directory: {}",
-                            path.display()
-                        );
-                    } else {
-                        tracing::error!("Project path does not exist: {}", path.display());
-                    }
-                    cx.quit();
-                }
-                None => {
-                    tracing::warn!("No project specified. Pass one with --project-path <PROJECT_PATH> or launch via Pulsar Hub.");
-                    cx.quit();
-                }
-            }
-        }
-    });
-}
-
-/// Open a project through the loading-screen splash, then transition to the editor.
-///
-/// Single canonical path for opening an editor window — URI-launch and entry-screen
-/// project-open both go through here.
-fn open_via_loading_screen(
-    path: std::path::PathBuf,
-    hardware_profile: &ui_loading_screen::HardwareProfile,
-    cx: &mut gpui::App,
-) {
-    use ui_common::PulsarWindowExt as _;
-    let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-        std::sync::Arc::new(|path, cx| {
-            ui_core::PulsarRoot::open(path, cx);
-        });
-    ui_loading_screen::open_before_loading(
-        path,
-        on_complete,
-        hardware_profile.clone(),
-        env!("CARGO_PKG_VERSION"),
-        cx,
-    );
 }

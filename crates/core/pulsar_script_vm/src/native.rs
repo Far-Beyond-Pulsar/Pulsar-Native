@@ -219,7 +219,7 @@ impl NativeFn {
         }
     }
 
-    /// The capability a module needs to import this native (#869): its
+    /// The capability a module needs to import this native: its
     /// [`CAPABILITY_ATTR`](crate::capability::CAPABILITY_ATTR) attribute.
     /// `None`: every module may import it.
     pub fn capability(&self) -> Option<&str> {

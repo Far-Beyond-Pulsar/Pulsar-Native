@@ -1,5 +1,5 @@
 //! The standalone game entry point: what a generated project's `main.rs`
-//! calls, for `cargo run` and for packaged games alike (#926).
+//! calls, for `cargo run` and for packaged games alike.
 //!
 //! ```rust,ignore
 //! fn main() {
@@ -116,7 +116,7 @@ pub fn install_content(options: &LaunchOptions) -> Result<ContentRoot, String> {
         Some(dir) => {
             ContentRoot::open(dir).map_err(|e| format!("--content {}: {e}", dir.display()))?
         }
-        None => ContentRoot::discover()?,
+        None => ContentRoot::discover().map_err(|e| e.to_string())?,
     };
     content.install();
     Ok(content)
@@ -186,18 +186,24 @@ pub fn run(setup: impl FnOnce(&mut TickLoop) -> Result<(), String>) -> i32 {
     let options = match LaunchOptions::from_env() {
         Ok(options) => options,
         Err(message) => {
+            // CLI output: bad arguments are reported to the person at the terminal.
+            // style: allow println - standalone runner output is its interface
             eprintln!("{message}");
             return 2;
         }
     };
     match run_with(options, setup) {
         Ok(Some(report)) => {
+            // The headless report on stdout is the process interface (a parent parses it).
+            // style: allow println - standalone runner output is its interface
             println!("{HEADLESS_REPORT_PREFIX}{}", report.to_json());
             i32::from(!report.ok())
         }
         Ok(None) => 0,
         Err(message) => {
             tracing::error!("{message}");
+            // CLI output: the person at the terminal reads this; the print is the feature.
+            // style: allow println - standalone runner output is its interface
             eprintln!("{message}");
             1
         }
@@ -490,6 +496,26 @@ pub fn select_level_pipeline(content_root: &std::path::Path, level: Option<&std:
 /// itself (the windowed game does, once the window exists) must call this
 /// too, or the session runs with the defaults.
 pub fn adopt_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
+    set_level_name(game, content, path);
+    game.load_world_roles(path, content.root());
+}
+
+/// [`adopt_level`] with the roles already resolved (by a loader thread, so the
+/// level file is not read again here).
+pub fn adopt_prepared_level(
+    game: &mut TickLoop,
+    content: &ContentRoot,
+    path: &std::path::Path,
+    roles: pulsar_traits::WorldRoles,
+) {
+    set_level_name(game, content, path);
+    for message in roles.diagnostics() {
+        tracing::warn!("{message}");
+    }
+    game.set_world_roles(roles);
+}
+
+fn set_level_name(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
     let name = content
         .relative(path)
         .unwrap_or_else(|| path.display().to_string());
@@ -499,7 +525,6 @@ pub fn adopt_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path:
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .set_level_name(name);
     }
-    game.load_world_roles(path, content.root());
 }
 
 #[cfg(test)]

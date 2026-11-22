@@ -89,9 +89,15 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            http_bind: "0.0.0.0:8080".parse().unwrap(),
-            quic_bind: "0.0.0.0:8443".parse().unwrap(),
-            udp_bind: "0.0.0.0:7000".parse().unwrap(),
+            http_bind: "0.0.0.0:8080"
+                .parse()
+                .expect("the literal bind address is valid"),
+            quic_bind: "0.0.0.0:8443"
+                .parse()
+                .expect("the literal bind address is valid"),
+            udp_bind: "0.0.0.0:7000"
+                .parse()
+                .expect("the literal bind address is valid"),
             tls_cert_path: None,
             tls_key_path: None,
             database_url: None,

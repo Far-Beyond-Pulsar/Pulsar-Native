@@ -1,3 +1,7 @@
+//! Provider-neutral types for the agent chat: provider registration (`ProviderCrate`,
+//! `ProviderEntry`, `AgentProviderRegistration`), the `ChatProvider` trait with its request
+//! and response types, and `ProviderRegistry` for configured provider instances.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 

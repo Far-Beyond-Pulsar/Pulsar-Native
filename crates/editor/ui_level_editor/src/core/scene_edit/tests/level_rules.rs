@@ -1,5 +1,5 @@
 //! What a level may hold only one of, through the editor's producers: one
-//! sky (#1057) and one global wind (#1123); directional lights are not
+//! sky and one global wind; directional lights are not
 //! limited (a sky rig holds a sun and a moon).
 
 use installed_plugins::lights_plugin::lights_component::{LightComponent, LightType};
@@ -278,7 +278,7 @@ fn a_level_file_with_two_skies_loads_with_the_first_one_enabled() {
     assert_eq!(found.object_name, sky::SKY_OBJECT_NAME);
 }
 
-/// The global wind (#1123): World Settings creates the level's one wind and
+/// The global wind: World Settings creates the level's one wind and
 /// edits it in place; a second is refused, through every producer, and a
 /// level file with two loads with the first one enabled.
 #[test]

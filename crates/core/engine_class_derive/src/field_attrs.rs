@@ -28,7 +28,7 @@ pub(crate) fn has_sub_props_attr(field: &Field) -> bool {
         .any(|attr| attr.path().is_ident("sub_props"))
 }
 
-// ── Auto-derived GPU mirroring (Pulsar-Native#561) ──────────────────────────
+// ── Auto-derived GPU mirroring ──────────────────────────
 //
 // `#[gpu]` on a `#[property]` field opts it into an auto-generated, `Pod`,
 // SceneDB-mirrored companion component -- the pattern `LightComponent`'s own

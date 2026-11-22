@@ -1,4 +1,4 @@
-//! Class assets and placed class instances (Pulsar-Native#921).
+//! Class assets and placed class instances.
 //!
 //! A *class* is a directory under `<project>/src/classes/<Name>/` holding the
 //! class graph, its compiled module and its `prefab.json` (the components

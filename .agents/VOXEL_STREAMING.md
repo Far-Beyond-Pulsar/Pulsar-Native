@@ -1,3 +1,5 @@
+Status: proposed (as of 2026-11-20) - its own text: spec, nothing built
+
 # Voxel edit streaming on SceneDB residency (spec, not implemented)
 
 Status: proposal. Nothing here is built. Written after `voxel_craft` filled

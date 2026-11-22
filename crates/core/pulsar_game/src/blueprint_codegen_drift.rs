@@ -1,4 +1,4 @@
-//! Rust-export drift guard (#652).
+//! Rust-export drift guard.
 //!
 //! The Blueprint editor's Rust export (`pulsar_script_codegen::actor`) emits
 //! the `impl pulsar_game::lifecycle::NativeActor` block every generated game

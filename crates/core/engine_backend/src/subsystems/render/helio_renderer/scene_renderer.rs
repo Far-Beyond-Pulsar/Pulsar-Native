@@ -521,6 +521,10 @@ impl SceneRenderer {
         // `SceneDb::step` flushes the mirror too, but writes queued after it
         // this frame (a gizmo drag, a script, a tool) must reach the GPU
         // before the frame reads them.
+        // Loads start nearest the viewer first (the previous frame's camera).
+        if let Some(camera) = &self.camera {
+            crate::scene::set_asset_focus(&self.scene, camera.eye.to_array());
+        }
         crate::scene::pump_assets(&self.scene);
         // The editor's `construct`s for what this frame wrote, before the
         // change window closes below (`scene::construct_pump`).

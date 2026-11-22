@@ -194,7 +194,10 @@ impl LevelEditorPanel {
                     loop {
                         let pending = {
                             let mut scene = scene_db.write();
-                            scene.world.pump_assets();
+                            // A bounded share per tick, so the lock is held briefly and
+                            // the UI keeps answering while a big level binds.
+                            let budget = engine_backend::scene::frame_asset_budget();
+                            scene.world.pump_assets_within(budget);
                             scene.world.asset_work_pending()
                         };
                         if !pending {
@@ -328,10 +331,18 @@ impl LevelEditorPanel {
                 (Option<std::path::PathBuf>, bool),
                 (Option<String>, TransformTool),
             )> = None;
+            let mut shown_levels = engine_backend::scene::sublevel_display::applied_generation();
             loop {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
+                // A sublevel's file is read by a worker and lands in some
+                // frame's sync: the hierarchy shows it from the next revision.
+                let applied = engine_backend::scene::sublevel_display::applied_generation();
+                if applied != shown_levels {
+                    shown_levels = applied;
+                    poll_state.write().scene.bump_revision(false);
+                }
                 // Report Play-In-Editor status to the engine-global playback state.
                 super::playback_host::publish_playback_status(playback_host_id, &poll_state.read());
                 // A plugin's interaction that ended (a released sculpt
@@ -342,7 +353,7 @@ impl LevelEditorPanel {
                     crate::extend::finish_interactions(&mut s, false);
                 }
                 // A Stop the Game viewport did not process in time still
-                // restores the editor world (#925).
+                // restores the editor world.
                 if poll_state.read().play.pie.restore_after_stop {
                     let mut s = poll_state.write();
                     crate::ui::panel::pie::finish_stop(&mut s, false);
@@ -392,7 +403,7 @@ impl LevelEditorPanel {
                         mailbox.set_render_pipeline(pipeline.clone());
                     }
                 }
-                // Finished gizmo drags become undo steps (#931), whichever
+                // Finished gizmo drags become undo steps, whichever
                 // viewport made them.
                 let drags: Vec<_> = poll_mailbox
                     .iter()
@@ -405,7 +416,7 @@ impl LevelEditorPanel {
                         s.scene.record_gizmo_drag(&drag.moved);
                     }
                 }
-                // A gizmo drag on a Static/Stationary object (#837); the
+                // A gizmo drag on a Static/Stationary object; the
                 // notification needs a window, so render shows it.
                 if let Some(warning) = poll_mailbox
                     .iter()
@@ -433,7 +444,7 @@ impl LevelEditorPanel {
                             s.play.pie.active,
                             s.play.pie.pending_start.is_some(),
                             s.play.pie.last_error.is_some(),
-                            // Class updates rebuilt placed instances (#935).
+                            // Class updates rebuilt placed instances.
                             s.scene.class_updates,
                         ),
                         (s.scene.current_scene.clone(), s.scene.has_unsaved_changes),

@@ -1,3 +1,6 @@
+//! Build-time documentation generator: finds the workspace crates, parses their sources,
+//! extracts the documented items and writes markdown (`generate_workspace_docs`).
+
 pub mod extractor;
 pub mod markdown;
 pub mod parser;

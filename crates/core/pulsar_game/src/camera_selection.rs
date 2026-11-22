@@ -1,4 +1,4 @@
-//! Camera selection for play-mode frames (Pulsar-Native#637).
+//! Camera selection for play-mode frames.
 //!
 //! Reads the frame's view camera from the ONE shared world instead of
 //! special-casing freecam everywhere. In order of precedence:
@@ -140,7 +140,7 @@ mod tests {
     use super::*;
     use engine_backend::scene::{ObjectType, Transform, Visibility};
 
-    /// #637: the rendered camera comes from the shared world, not a
+    /// The rendered camera comes from the shared world, not a
     /// renderer-private copy -- an ObjectType::Camera entity's transform
     /// drives the view.
     #[test]

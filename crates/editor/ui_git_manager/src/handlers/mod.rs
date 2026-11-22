@@ -1,3 +1,5 @@
+//! Handlers of the git manager's settings modal (`open_git_settings_modal`).
+
 mod git_settings;
 
 pub use git_settings::open_git_settings_modal;

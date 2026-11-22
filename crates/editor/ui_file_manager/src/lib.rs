@@ -1,3 +1,6 @@
+//! The file manager: the drawer and window, preloading of the folder tree, and the
+//! file-browser keyboard shortcuts (`init`).
+
 rust_i18n::i18n!("locales", fallback = "en");
 
 pub mod components;

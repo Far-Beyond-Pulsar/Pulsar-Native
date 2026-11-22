@@ -104,7 +104,7 @@ impl LevelEditorPanel {
             cx.dispatch_action(&SaveSceneAs);
             return;
         };
-        // Runs in the background; the editor stays responsive (#967).
+        // Runs in the background; the editor stays responsive.
         crate::ui::save::save_level(
             self.shared_state.clone(),
             path,

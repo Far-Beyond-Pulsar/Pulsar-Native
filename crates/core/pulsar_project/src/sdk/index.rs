@@ -26,6 +26,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
+use super::error::SdkError;
 use super::fs::{is_file, read_string as read};
 use crate::hash;
 
@@ -100,10 +101,10 @@ impl SdkIndex {
     }
 
     /// The parsed plugin descriptors, sorted by id.
-    pub fn plugin_descriptors(&self) -> Result<Vec<pulsar_plugins::PluginDescriptor>, String> {
+    pub fn plugin_descriptors(&self) -> Result<Vec<pulsar_plugins::PluginDescriptor>, SdkError> {
         self.plugins
             .iter()
-            .map(|source| pulsar_plugins::PluginDescriptor::parse(source))
+            .map(|source| pulsar_plugins::PluginDescriptor::parse(source).map_err(SdkError::from))
             .collect()
     }
 
@@ -111,13 +112,13 @@ impl SdkIndex {
         serde_json::to_string_pretty(self).expect("the index serializes")
     }
 
-    pub fn from_json(text: &str) -> Result<Self, String> {
+    pub fn from_json(text: &str) -> Result<Self, SdkError> {
         let index: Self = serde_json::from_str(text).map_err(|e| e.to_string())?;
         if index.format != INDEX_FORMAT {
-            return Err(format!(
+            return Err(SdkError::Message(format!(
                 "SDK index format {} (this engine reads format {INDEX_FORMAT})",
                 index.format
-            ));
+            )));
         }
         Ok(index)
     }
@@ -125,7 +126,7 @@ impl SdkIndex {
     /// Build the index of the engine source checkout at `root` (the
     /// directory of its workspace `Cargo.toml`). Runs Cargo there with
     /// `--locked`: the checkout is only read.
-    pub fn build(root: &Path) -> Result<Self, String> {
+    pub fn build(root: &Path) -> Result<Self, SdkError> {
         let manifest_path = root.join("Cargo.toml");
         let manifest_text = read(&manifest_path)?;
         let manifest: toml::Table = toml::from_str(&manifest_text)
@@ -159,12 +160,12 @@ impl SdkIndex {
             let parsed = pulsar_plugins::PluginDescriptor::parse(&source)
                 .map_err(|e| format!("{}: {e}", descriptor.display()))?;
             if parsed.root != member.name {
-                return Err(format!(
+                return Err(SdkError::Message(format!(
                     "{}: `root = \"{}\"` but the package beside it is `{}`",
                     descriptor.display(),
                     parsed.root,
                     member.name
-                ));
+                )));
             }
             plugins.push((parsed.id.clone(), source));
         }
@@ -182,10 +183,10 @@ impl SdkIndex {
             }
         }
         if !roots.contains("pulsar_game") {
-            return Err(format!(
+            return Err(SdkError::Message(format!(
                 "{} has no `pulsar_game` package: not an engine checkout",
                 root.display()
-            ));
+            )));
         }
 
         let tree = cargo_tree(root, &roots)?;
@@ -234,7 +235,7 @@ impl SdkIndex {
 /// found the way Cargo finds it: the path in its `package.workspace`, else
 /// the nearest directory at or above it, within `root`, whose `Cargo.toml`
 /// has a `[workspace]` that does not exclude it.
-fn workspace_of(root: &Path, dir: &str) -> Result<Option<String>, String> {
+fn workspace_of(root: &Path, dir: &str) -> Result<Option<String>, SdkError> {
     let manifest_path = crate::paths::join(root, dir).join("Cargo.toml");
     let manifest: toml::Table = toml::from_str(&read(&manifest_path)?)
         .map_err(|e| format!("{}: {e}", manifest_path.display()))?;

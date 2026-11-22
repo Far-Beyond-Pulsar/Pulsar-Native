@@ -1,4 +1,4 @@
-//! The plugin catalog's proofs (Pulsar-Native#1608, phase 1), over every
+//! The plugin catalog's proofs (phase 1), over every
 //! installed plugin plus a fixture plugin (`tests/fixtures/catalog_plugin`:
 //! a root crate registering what its component and editor crates hold).
 //!

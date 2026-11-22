@@ -1,4 +1,4 @@
-//! Per-project import-options persistence (issue #409).
+//! Per-project import-options persistence.
 //!
 //! Stores the options a user chose in an asset import configurator so that
 //! re-loading / reimporting the same source model reuses them. Layout:

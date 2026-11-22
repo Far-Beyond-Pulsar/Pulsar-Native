@@ -1,4 +1,4 @@
-//! The Create menu's objects (#1012): each kind adds one selected object
+//! The Create menu's objects: each kind adds one selected object
 //! with the components its name promises, as one undo step. The shell's own
 //! kinds here; the plugins' (lights, meshes, sky, wind) are tested where
 //! every installed plugin's editor registrations are linked

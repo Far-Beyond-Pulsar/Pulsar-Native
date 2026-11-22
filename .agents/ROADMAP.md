@@ -33,13 +33,16 @@ You build your game in the Pulsar editor. When you export, the engine:
 3. **Compile-time guarantees** — if the generated code compiles, your types
    match the engine's expectations. No runtime format mismatch, no missing
    fields, no serialization surprises
-4. **Tiny binaries** — your game doesn't carry the editor shell, the plugin
-   system, the AI copilot, or the asset pipeline
+4. **Tiny binaries** — your game doesn't carry the editor shell, the dynamic
+   plugin loader, the AI copilot, or the asset pipeline (it links only the
+   project plugins the project enables, never the editor tools)
 
 The editor itself also runs as a Pulsar project — `Pulsar-Native/crates/core/engine`
-is the editor binary. The same codegen path produces it. The plugin system
-(`plugin_editor_api`, `plugin_manager`) exists for editor extensions, not for
-game logic.
+is the editor binary. The same codegen path produces it. Plugins
+(`.agents/PLUGIN_SYSTEM.md`) come in two kinds: project plugins, which link
+statically into the editor and into games, and dynamic editor plugins
+(`plugin_editor_api`, `plugin_manager`), native libraries loaded at startup.
+Game logic is not written as a dynamic plugin.
 
 ### Comparison
 
@@ -77,10 +80,15 @@ The entire Pulsar editor UI is built on **WGPUI** (`crates/ui/wgpui`), a
 community fork of Zed's GPU-accelerated UI framework. The editor is not a
 separate program — it is a GPUI `App` that loads editor-specific subsystems.
 
-### Plugins are native Rust DLLs, never unloaded
+### Plugins are native Rust, and dynamic ones are never unloaded
 
-Pulsar's plugin system is the opposite of a sandboxed scripting runtime.
-Plugins are `cdylib` Rust libraries loaded via `libloading` and **never
+Pulsar's plugin system is the opposite of a sandboxed scripting runtime. Every
+first-party plugin under `plugins/vendor/` is a *project plugin*: a Rust crate
+linked statically into the editor (`plugins/installed`) and, except editor
+tools, into games; each registers what it contributes in its root crate, and a
+project enables some of them in `Pulsar.toml` (`.agents/PLUGIN_SYSTEM.md`).
+
+*Dynamic editor plugins* are `cdylib` Rust libraries loaded via `libloading` and **never
 unloaded** (the `Library` handle is wrapped in `ManuallyDrop`). This eliminates
 the entire class of FFI safety problems (dangling vtables, stale function
 pointers, `Arc` drop across a boundary). The cost is that plugins occupy
@@ -144,8 +152,9 @@ Pulsar prioritizes:
 2. **Reflection as infrastructure** — the entire editor is built on runtime
    type information, not hardcoded property editors. New types get editor
    support for free
-3. **Plugin-first design** — every built-in editor is also a plugin; the
-   plugin API is not an afterthought. This forces API quality
+3. **Plugin-first design** — every object kind, physics, animation, input and
+   UI feature is a plugin registered through its root crate; the plugin API is
+   not an afterthought. This forces API quality
 4. **AI copilot integration** — every plugin can expose AI-accessible tools
    through the agent provider system. The engine is being built for the
    AI-assisted workflow from day one

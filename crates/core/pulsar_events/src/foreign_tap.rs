@@ -1,4 +1,4 @@
-//! A tapped export of a hub's bus (Pulsar-Native#942).
+//! A tapped export of a hub's bus.
 //!
 //! [`EventHub::export_raw`](crate::EventHub::export_raw) hands plugins a
 //! Gamma [`RawBus`] whose functions forward to the hub's real bus, except

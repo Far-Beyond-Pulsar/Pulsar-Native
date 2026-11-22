@@ -1,4 +1,4 @@
-//! Headless Blueprint compile (#879): `pulsar build-scripts` compiles every
+//! Headless Blueprint compile: `pulsar build-scripts` compiles every
 //! class's saved graph through `ScriptLanguage::compile_project`, writes its
 //! module, and fails on classes that do not compile.
 #![cfg(feature = "scripting")]

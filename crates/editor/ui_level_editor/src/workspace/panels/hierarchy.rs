@@ -114,7 +114,7 @@ impl Render for HierarchyPanelWrapper {
             })
             .into_any_element();
         // The plugins' quick-add buttons (a 2D sprite at the centre of the
-        // view, #1060).
+        // view).
         let quick_adds = crate::extend::create_entries()
             .into_iter()
             .filter_map(|entry| {

@@ -16,9 +16,8 @@ use pulsar_scenedb::World;
 use pulsar_script_vm::{Type, TypeRegistry, Value, Variable};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    carry_state, value_from_json, ChangeKind, RuntimeError, ScriptRuntime, VariableChange,
-};
+use crate::reload::carry_state;
+use crate::{value_from_json, ChangeKind, RuntimeError, ScriptRuntime, VariableChange};
 
 /// One instance's saved variables. See the module docs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

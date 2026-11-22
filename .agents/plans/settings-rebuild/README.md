@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - steps 2-7 have settings modules in pulsar_settings; step 8 and the completion gate not verified
+
 # Settings catalog rebuild plan
 
 ## Goal

@@ -1,5 +1,5 @@
 //! The world crates' process-wide state, shared by every statically linked
-//! copy (Pulsar-Native#1083).
+//! copy.
 //!
 //! The editor links `pulsar_reflection`, `pulsar_scenedb`,
 //! `pulsar_scene_model` and this crate statically, and so does every plugin library it loads. Each crate's
@@ -399,7 +399,7 @@ pub unsafe fn attach(owner: *const WorldRuntimes) -> Result<(), WorldAttachError
     }
     // Check every runtime before attaching any: a refusal after the first
     // attach would leave this copy half on its own state and half on the
-    // host's (#1083). Each crate's `shared()` is still this copy's own
+    // host's. Each crate's `shared()` is still this copy's own
     // runtime here, or the host's if it is already attached, which then
     // matches.
     let checks = [
@@ -499,8 +499,8 @@ pub unsafe fn attach_exported(host: *const std::ffi::c_void) -> bool {
 #[macro_export]
 macro_rules! export_world_runtime_attach {
     () => {
-        /// Attach this library's world crates to the host's world runtimes
-        /// (Pulsar-Native#1083). Called by the plugin manager before
+        /// Attach this library's world crates to the host's world runtimes.
+        /// Called by the plugin manager before
         /// `_plugin_create`.
         ///
         /// # Safety
@@ -540,7 +540,7 @@ mod tests {
             Some(size_of::<ActorRegistration>())
         );
         assert_eq!(layout("ActorTable"), Some(size_of::<ActorTable>()));
-        // P2: the session handed to systems and callbacks is covered too.
+        // The session handed to systems and callbacks is covered too.
         assert_eq!(layout("Session"), Some(size_of::<crate::Session>()));
         assert!(layout("SessionScope").is_some() && layout("ActorCx").is_some());
         // `Runtime` carries the table accessor, `Registrations` the list.

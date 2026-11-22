@@ -1,5 +1,5 @@
-//! An api crate holds contracts, not state (Pulsar-Native#1608 phase 4,
-//! the architecture's invariant 5): every plugin's `api` crate
+//! An api crate holds contracts, not state
+//! (the architecture's invariant 5): every plugin's `api` crate
 //! (`plugins/vendor/*/api`) and Helio's `helio-feature-api` have no
 //! `static`, `thread_local!` or `inventory` collection or submission outside
 //! tests. A plugin library links its own copy of an api crate, so state there

@@ -3,7 +3,7 @@ use super::*;
 impl LevelEditorPanel {
     /// Redraw the views that show the transform tool: the toolbar and the
     /// viewport's options bar. Notifying this panel instead would rebuild the
-    /// whole editor for a tool switch (#812).
+    /// whole editor for a tool switch.
     fn notify_tool_views(&self, cx: &mut Context<Self>) {
         self.toolbar.update(cx, |_, cx| cx.notify());
         if let Some(viewport) = self.viewport_panel.as_ref().and_then(|v| v.upgrade()) {

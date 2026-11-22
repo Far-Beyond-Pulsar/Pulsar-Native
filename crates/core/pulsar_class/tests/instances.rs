@@ -1,5 +1,5 @@
 //! Class instances in a real World: instantiation, slot lookup, override
-//! round trips and unresolved classes (Pulsar-Native#921).
+//! round trips and unresolved classes.
 
 use engine_class_derive::{engine_class, register_world_component};
 use pulsar_class::world::{

@@ -4,7 +4,7 @@
 //! an `impl pulsar_game::lifecycle::NativeActor` that every generated game
 //! project compiles. That trait lives in this crate and the generator cannot
 //! see it, so drift between the two would otherwise
-//! surface only inside user projects (Pulsar-Native#652). This script
+//! surface only inside user projects. This script
 //! generates one actor through the real generator and `src/export_probe.rs`
 //! includes it into this crate's test build: it is compiled against the real
 //! trait on every `cargo test -p pulsar_game`, and any drift is a

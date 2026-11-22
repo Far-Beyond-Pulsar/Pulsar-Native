@@ -128,20 +128,26 @@ pub mod harness {
             move |text: Arc<str>, n: i64| {
                 recorder
                     .lock()
-                    .unwrap()
+                    .expect("the native log is never held across a panic, so it is never poisoned")
                     .push(format!("note({text:?}, {n})"));
             },
         ));
         let recorder = Arc::clone(log);
         add(
             NativeFn::builder("test::fail").build(move || -> Result<(), String> {
-                recorder.lock().unwrap().push("fail()".into());
+                recorder
+                    .lock()
+                    .expect("the native log is never held across a panic, so it is never poisoned")
+                    .push("fail()".into());
                 Err("deliberate failure".into())
             }),
         );
         let recorder = Arc::clone(log);
         add(NativeFn::builder("test::boom").build(move || -> () {
-            recorder.lock().unwrap().push("boom()".into());
+            recorder
+                .lock()
+                .expect("the native log is never held across a panic, so it is never poisoned")
+                .push("boom()".into());
             panic!("deliberate panic");
         }));
         add(NativeFn::builder("test::liar").build_raw(
@@ -156,7 +162,10 @@ pub mod harness {
                     unreachable!("checked by the VM")
                 };
                 *n += 1;
-                recorder.lock().unwrap().push(format!("bump -> {n}"));
+                recorder
+                    .lock()
+                    .expect("the native log is never held across a panic, so it is never poisoned")
+                    .push(format!("bump -> {n}"));
                 Ok(Value::Unit)
             }),
         ));
@@ -189,7 +198,9 @@ pub mod harness {
             .build_raw(
                 Signature::new([Param::new(Type::Int), Param::inout(Type::Int)], Type::Int),
                 Box::new(|_, args| {
-                    let n = args[0].as_int().unwrap();
+                    let n = args[0]
+                        .as_int()
+                        .expect("the signature declares an Int and the VM checked it");
                     args[1] = Value::Int(n * 10);
                     Ok(Value::Int(n % 3))
                 }),
@@ -310,7 +321,7 @@ pub mod harness {
                             .enumerate()
                             .filter(|(_, (_, wake, _, _))| *wake <= now)
                             .min_by(|(_, (_, wa, sa, _)), (_, (_, wb, sb, _))| {
-                                wa.partial_cmp(wb).unwrap().then(sa.cmp(sb))
+                                wa.total_cmp(wb).then(sa.cmp(sb))
                             })
                             .map(|(index, _)| index);
                         let Some(index) = due else { break };
@@ -353,9 +364,17 @@ pub mod harness {
                 .iter()
                 .map(|(i, wake, _, c)| (*i, *wake, c.functions().join(">")))
                 .collect();
-            waiting.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            waiting.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then(a.1.total_cmp(&b.1))
+                    .then_with(|| a.2.cmp(&b.2))
+            });
             trace.push(format!("waiting: {waiting:?}"));
-            trace.push(format!("natives: {:?}", log.lock().unwrap()));
+            trace.push(format!(
+                "natives: {:?}",
+                log.lock()
+                    .expect("the native log is never held across a panic, so it is never poisoned")
+            ));
         }
         trace
     }

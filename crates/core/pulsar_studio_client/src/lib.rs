@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
-use async_tungstenite::{tokio::connect_async, tungstenite::Message};
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 use tokio::sync::{mpsc, oneshot, watch, RwLock};
-use tracing::{debug, error, info, warn};
+use tracing::info;
+
+mod link;
+use link::{LinkShared, RelayTask, StudioTask};
 
 /// Wire-level message for the `pulsar-studio` WebSocket session protocol.
 ///
@@ -65,6 +66,50 @@ fn http_base_url(server_url: &str) -> String {
     };
 
     base.trim_end_matches("/ws").to_string()
+}
+
+/// The WebSocket URL of a Studio workspace session. It carries the auth
+/// token, so it is never logged.
+fn studio_session_url(
+    server_url: &str,
+    workspace_id: &str,
+    username: &str,
+    auth_token: &str,
+    environment_id: Option<&str>,
+) -> String {
+    let server_url_clean = server_url.trim().trim_end_matches('/');
+    let ws_base = if let Some(rest) = server_url_clean.strip_prefix("http://") {
+        format!("ws://{rest}")
+    } else if let Some(rest) = server_url_clean.strip_prefix("https://") {
+        format!("wss://{rest}")
+    } else {
+        format!("ws://{server_url_clean}")
+    };
+    // Use per-environment endpoint when available for proper dashboard presence;
+    // fall back to the legacy lobby endpoint.
+    if let Some(eid) = environment_id {
+        format!(
+            "{}/api/v1/workspaces/{}/environments/{}/session?user={}&token={}",
+            ws_base, workspace_id, eid, username, auth_token
+        )
+    } else {
+        format!(
+            "{}/api/v1/workspaces/{}/session?user={}&token={}",
+            ws_base, workspace_id, username, auth_token
+        )
+    }
+}
+
+/// The channels of one connection attempt (see `MultiuserClient::open_channels`).
+struct LinkChannels {
+    message_tx: mpsc::UnboundedSender<ClientMessage>,
+    message_rx: mpsc::UnboundedReceiver<ClientMessage>,
+    message_tx_for_client: mpsc::UnboundedSender<ClientMessage>,
+    event_tx: mpsc::UnboundedSender<ServerMessage>,
+    event_rx: mpsc::UnboundedReceiver<ServerMessage>,
+    shutdown_rx: watch::Receiver<bool>,
+    result_tx: oneshot::Sender<Result<()>>,
+    result_rx: oneshot::Receiver<Result<()>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -428,202 +473,32 @@ impl MultiuserClient {
         info!("🔗 WebSocket URL: {:?}", ws_url);
         info!("Connecting to WebSocket: {}", ws_url);
 
-        // Create channels for bidirectional communication
-        let (message_tx, message_rx) = mpsc::unbounded_channel::<ClientMessage>();
-        let message_tx_for_client = message_tx.clone();
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerMessage>();
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        self.shutdown_tx = Some(shutdown_tx.clone());
-
-        // Use oneshot channel to get connection result from Tokio runtime
-        let (result_tx, result_rx) = oneshot::channel();
-
-        let status_clone = self.status.clone();
-        let latency_ms_clone = self.latency_ms.clone();
-        let last_ping_at_clone = self.last_ping_at.clone();
-        let session_id_clone = session_id.clone();
-        let peer_id_clone = peer_id.clone();
+        let channels = self.open_channels();
 
         // Spawn the entire connection process on Tokio runtime
-        tokio_runtime().spawn(async move {
-            // Connect to WebSocket (runs in Tokio runtime context)
-            let connect_result = connect_async(&ws_url).await;
-
-            match connect_result {
-                Ok((ws_stream, _)) => {
-                    info!("WebSocket connected successfully");
-
-                    let (mut write, mut read) = ws_stream.split();
-
-                    // Send initial Join message
-                    let join_msg = ClientMessage::Join {
-                        session_id: session_id_clone.clone(),
-                        peer_id: peer_id_clone.clone(),
-                        join_token,
-                        display_name: identity.as_ref().and_then(|i| i.display_name.clone()),
-                        avatar_url: identity.as_ref().and_then(|i| i.avatar_url.clone()),
-                        github_login: identity.as_ref().and_then(|i| i.github_login.clone()),
-                    };
-
-                    if let Ok(join_json) = serde_json::to_string(&join_msg) {
-                        if let Err(e) = write.send(Message::Text(join_json.into())).await {
-                            error!("Failed to send join message: {}", e);
-                            let _ =
-                                result_tx.send(Err(anyhow::anyhow!("Failed to send join: {}", e)));
-                            return;
-                        }
-                    }
-
-                    // Signal successful connection
-                    let _ = result_tx.send(Ok(()));
-
-                    // Spawn task to handle outgoing messages
-                    let status_clone_out = status_clone.clone();
-                    let ping_tx = message_tx.clone();
-                    let status_clone_ping = status_clone.clone();
-                    let last_ping_at_for_ping = last_ping_at_clone.clone();
-                    let mut write_shutdown_rx = shutdown_rx.clone();
-                    tokio::spawn(async move {
-                        let mut message_rx = message_rx;
-                        loop {
-                            tokio::select! {
-                                changed = write_shutdown_rx.changed() => {
-                                    if changed.is_ok() && *write_shutdown_rx.borrow() {
-                                        let _ = write.send(Message::Close(None)).await;
-                                        break;
-                                    }
-                                }
-                                maybe_msg = message_rx.recv() => {
-                                    match maybe_msg {
-                                        Some(msg) => {
-                                            if let Ok(json) = serde_json::to_string(&msg) {
-                                                if let Err(e) = write.send(Message::Text(json.into())).await {
-                                                    error!("Failed to send message: {}", e);
-                                                    *status_clone_out.write().await =
-                                                        ConnectionStatus::Error(e.to_string());
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        None => {
-                                            let _ = write.send(Message::Close(None)).await;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    let mut read_shutdown_rx = shutdown_rx.clone();
-                    tokio::spawn(async move {
-                        loop {
-                            tokio::select! {
-                                changed = read_shutdown_rx.changed() => {
-                                    if changed.is_ok() && *read_shutdown_rx.borrow() {
-                                        break;
-                                    }
-                                }
-                                _ = tokio::time::sleep(std::time::Duration::from_secs(3)) => {
-                                    if matches!(*status_clone_ping.read().await, ConnectionStatus::Disconnected) {
-                                        break;
-                                    }
-
-                                    *last_ping_at_for_ping.write().await = Some(Instant::now());
-                                    if ping_tx.send(ClientMessage::Ping).is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // Handle incoming messages
-                    let mut incoming_shutdown_rx = shutdown_rx.clone();
-                    loop {
-                        tokio::select! {
-                            changed = incoming_shutdown_rx.changed() => {
-                                if changed.is_ok() && *incoming_shutdown_rx.borrow() {
-                                    break;
-                                }
-                            }
-                            result = read.next() => {
-                                match result {
-                                    Some(Ok(Message::Text(text))) => {
-                                        match serde_json::from_str::<ServerMessage>(&text) {
-                                            Ok(msg) => {
-                                                debug!("Received message: {:?}", msg);
-
-                                                if matches!(&msg, ServerMessage::Pong) {
-                                                    if let Some(sent_at) = last_ping_at_clone.write().await.take() {
-                                                        let rtt = sent_at.elapsed().as_millis();
-                                                        *latency_ms_clone.write().await = Some(rtt as u32);
-                                                    }
-                                                }
-
-                                                // Update status on successful join
-                                                if matches!(msg, ServerMessage::Joined { .. }) {
-                                                    *status_clone.write().await =
-                                                        ConnectionStatus::Connected;
-                                                }
-
-                                                if event_tx.send(msg).is_err() {
-                                                    warn!("Event receiver dropped");
-                                                    break;
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to parse server message: {}", e);
-                                            }
-                                        }
-                                    }
-                                    Some(Ok(Message::Close(_))) => {
-                                        info!("WebSocket closed by server");
-                                        *status_clone.write().await = ConnectionStatus::Disconnected;
-                                        *latency_ms_clone.write().await = None;
-                                        break;
-                                    }
-                                    Some(Ok(Message::Ping(_))) => {
-                                        // Pings are handled automatically by tungstenite
-                                    }
-                                    Some(Ok(_)) => {}
-                                    Some(Err(e)) => {
-                                        error!("WebSocket error: {}", e);
-                                        *status_clone.write().await =
-                                            ConnectionStatus::Error(e.to_string());
-                                        *latency_ms_clone.write().await = None;
-                                        break;
-                                    }
-                                    None => break,
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to connect to WebSocket: {}", e);
-                    *status_clone.write().await = ConnectionStatus::Error(e.to_string());
-                    *latency_ms_clone.write().await = None;
-                    let _ = result_tx.send(Err(anyhow::anyhow!("Connection failed: {}", e)));
-                }
+        tokio_runtime().spawn(
+            RelayTask {
+                ws_url,
+                shared: self.link_shared(),
+                session_id,
+                peer_id,
+                join_token,
+                identity,
+                message_tx: channels.message_tx,
+                message_rx: channels.message_rx,
+                event_tx: channels.event_tx,
+                shutdown_rx: channels.shutdown_rx,
+                result_tx: channels.result_tx,
             }
-        });
+            .run(),
+        );
 
-        // Wait for connection result from Tokio runtime
-        match result_rx.await {
-            Ok(Ok(())) => {
-                self.message_tx = Some(message_tx_for_client);
-                Ok(event_rx)
-            }
-            Ok(Err(e)) => {
-                self.shutdown_tx = None;
-                Err(e)
-            }
-            Err(_) => {
-                self.shutdown_tx = None;
-                Err(anyhow::anyhow!("Connection task failed"))
-            }
-        }
+        self.await_connection(
+            channels.result_rx,
+            channels.message_tx_for_client,
+            channels.event_rx,
+        )
+        .await
     }
 
     /// Connect to a `pulsar-studio` workspace session via Studio WebSocket protocol.
@@ -644,277 +519,84 @@ impl MultiuserClient {
         *self.latency_ms.write().await = None;
 
         let peer_id = username.clone();
-
-        // Build WebSocket URL for Studio session endpoint
-        let server_url_clean = self.server_url.trim().trim_end_matches('/');
-        let ws_base = if let Some(rest) = server_url_clean.strip_prefix("http://") {
-            format!("ws://{rest}")
-        } else if let Some(rest) = server_url_clean.strip_prefix("https://") {
-            format!("wss://{rest}")
-        } else {
-            format!("ws://{server_url_clean}")
-        };
-        // Use per-environment endpoint when available for proper dashboard presence;
-        // fall back to the legacy lobby endpoint.
-        let ws_url = if let Some(ref eid) = environment_id {
-            format!(
-                "{}/api/v1/workspaces/{}/environments/{}/session?user={}&token={}",
-                ws_base, workspace_id, eid, username, auth_token
-            )
-        } else {
-            format!(
-                "{}/api/v1/workspaces/{}/session?user={}&token={}",
-                ws_base, workspace_id, username, auth_token
-            )
-        };
+        let ws_url = studio_session_url(
+            &self.server_url,
+            &workspace_id,
+            &username,
+            &auth_token,
+            environment_id.as_deref(),
+        );
 
         // The URL carries the auth token, so it is never logged.
         info!("🔗 Connecting to Studio workspace session {}", workspace_id);
 
-        // Create channels for bidirectional communication
+        let channels = self.open_channels();
+
+        tokio_runtime().spawn(
+            StudioTask {
+                ws_url,
+                shared: self.link_shared(),
+                session_id: workspace_id,
+                peer_id,
+                username,
+                message_tx: channels.message_tx,
+                message_rx: channels.message_rx,
+                event_tx: channels.event_tx,
+                shutdown_rx: channels.shutdown_rx,
+                result_tx: channels.result_tx,
+            }
+            .run(),
+        );
+
+        self.await_connection(
+            channels.result_rx,
+            channels.message_tx_for_client,
+            channels.event_rx,
+        )
+        .await
+    }
+
+    /// The state a connection's tasks update.
+    fn link_shared(&self) -> LinkShared {
+        LinkShared {
+            status: self.status.clone(),
+            latency_ms: self.latency_ms.clone(),
+            last_ping_at: self.last_ping_at.clone(),
+        }
+    }
+
+    /// Create the channels of a new connection (bidirectional communication
+    /// plus the shutdown signal and the handshake result) and keep the
+    /// shutdown sender.
+    fn open_channels(&mut self) -> LinkChannels {
         let (message_tx, message_rx) = mpsc::unbounded_channel::<ClientMessage>();
         let message_tx_for_client = message_tx.clone();
         let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerMessage>();
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        self.shutdown_tx = Some(shutdown_tx.clone());
+        self.shutdown_tx = Some(shutdown_tx);
 
+        // Use oneshot channel to get connection result from Tokio runtime
         let (result_tx, result_rx) = oneshot::channel();
 
-        let status_clone = self.status.clone();
-        let latency_ms_clone = self.latency_ms.clone();
-        let last_ping_at_clone = self.last_ping_at.clone();
-        let session_id_clone = workspace_id.clone();
-        let peer_id_clone = peer_id.clone();
+        LinkChannels {
+            message_tx,
+            message_rx,
+            message_tx_for_client,
+            event_tx,
+            event_rx,
+            shutdown_rx,
+            result_tx,
+            result_rx,
+        }
+    }
 
-        tokio_runtime().spawn(async move {
-            let connect_result = connect_async(&ws_url).await;
-
-            match connect_result {
-                Ok((ws_stream, _)) => {
-                    info!("Studio WebSocket connected successfully");
-
-                    let (mut write, mut read) = ws_stream.split();
-
-                    // ── Send initial presence ──
-                    // Studio protocol doesn't require an explicit Join message;
-                    // just connecting with query params establishes identity.
-
-                    // Signal successful connection
-                    let _ = result_tx.send(Ok(()));
-
-                    // Spawn task to handle outgoing messages (map ClientMessage → StudioWsMessage)
-                    let status_clone_out = status_clone.clone();
-                    let ping_tx = message_tx.clone();
-                    let status_clone_ping = status_clone.clone();
-                    let last_ping_at_for_ping = last_ping_at_clone.clone();
-                    let mut write_shutdown_rx = shutdown_rx.clone();
-                    let username_for_write = username.clone();
-                    let (raw_tx, mut raw_rx) = mpsc::unbounded_channel::<StudioWsMessage>();
-                    tokio::spawn(async move {
-                        let mut message_rx = message_rx;
-                        loop {
-                            tokio::select! {
-                                changed = write_shutdown_rx.changed() => {
-                                    if changed.is_ok() && *write_shutdown_rx.borrow() {
-                                        let _ = write.send(Message::Close(None)).await;
-                                        break;
-                                    }
-                                }
-                                maybe_raw = raw_rx.recv() => {
-                                    match maybe_raw {
-                                        Some(ws_msg) => {
-                                            if let Ok(json) = serde_json::to_string(&ws_msg) {
-                                                if let Err(e) = write.send(Message::Text(json.into())).await {
-                                                    error!("Failed to send message: {}", e);
-                                                    *status_clone_out.write().await =
-                                                        ConnectionStatus::Error(e.to_string());
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        None => {
-                                            let _ = write.send(Message::Close(None)).await;
-                                            break;
-                                        }
-                                    }
-                                }
-                                maybe_msg = message_rx.recv() => {
-                                    match maybe_msg {
-                                        Some(msg) => {
-                                            let ws_msg = match msg {
-                                                ClientMessage::ChatMessage { message, .. } => {
-                                                    StudioWsMessage::Chat {
-                                                        user: username_for_write.clone(),
-                                                        text: message,
-                                                    }
-                                                }
-                                                ClientMessage::Ping => StudioWsMessage::Ping,
-                                                _ => continue,
-                                            };
-                                            if let Ok(json) = serde_json::to_string(&ws_msg) {
-                                                if let Err(e) = write.send(Message::Text(json.into())).await {
-                                                    error!("Failed to send message: {}", e);
-                                                    *status_clone_out.write().await =
-                                                        ConnectionStatus::Error(e.to_string());
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        None => {
-                                            let _ = write.send(Message::Close(None)).await;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // Spawn ping task
-                    let mut read_shutdown_rx = shutdown_rx.clone();
-                    tokio::spawn(async move {
-                        loop {
-                            tokio::select! {
-                                changed = read_shutdown_rx.changed() => {
-                                    if changed.is_ok() && *read_shutdown_rx.borrow() {
-                                        break;
-                                    }
-                                }
-                                _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
-                                    if matches!(*status_clone_ping.read().await, ConnectionStatus::Disconnected) {
-                                        break;
-                                    }
-                                    *last_ping_at_for_ping.write().await = Some(Instant::now());
-                                    if ping_tx.send(ClientMessage::Ping).is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // ── Handle incoming messages (StudioWsMessage → ServerMessage) ──
-                    let mut incoming_shutdown_rx = shutdown_rx.clone();
-                    let mut first_message = true;
-                    loop {
-                        tokio::select! {
-                            changed = incoming_shutdown_rx.changed() => {
-                                if changed.is_ok() && *incoming_shutdown_rx.borrow() {
-                                    break;
-                                }
-                            }
-                            result = read.next() => {
-                                match result {
-                                    Some(Ok(Message::Text(text))) => {
-                                        match serde_json::from_str::<StudioWsMessage>(&text) {
-                                            Ok(studio_msg) => {
-                                                debug!("Received Studio message: {:?}", studio_msg);
-
-                                                match studio_msg {
-                                                    StudioWsMessage::Pong => {
-                                                        if let Some(sent_at) = last_ping_at_clone.write().await.take() {
-                                                            let rtt = sent_at.elapsed().as_millis();
-                                                            *latency_ms_clone.write().await = Some(rtt as u32);
-                                                        }
-                                                    }
-                                                    StudioWsMessage::UserList { users } => {
-                                                        if first_message {
-                                                            first_message = false;
-                                                            *status_clone.write().await =
-                                                                ConnectionStatus::Connected;
-                                                            let _ = event_tx.send(ServerMessage::Joined {
-                                                                session_id: session_id_clone.clone(),
-                                                                peer_id: peer_id_clone.clone(),
-                                                                participants: users,
-                                                                join_token: None,
-                                                                participant_profiles: None,
-                                                            });
-                                                        }
-                                                    }
-                                                    StudioWsMessage::UserJoined { user } => {
-                                                        let _ = event_tx.send(ServerMessage::PeerJoined {
-                                                            session_id: session_id_clone.clone(),
-                                                            peer_id: user,
-                                                            profile: None,
-                                                        });
-                                                    }
-                                                    StudioWsMessage::UserLeft { user } => {
-                                                        let _ = event_tx.send(ServerMessage::PeerLeft {
-                                                            session_id: session_id_clone.clone(),
-                                                            peer_id: user,
-                                                        });
-                                                    }
-                                                    StudioWsMessage::Chat { user, text } => {
-                                                        let _ = event_tx.send(ServerMessage::ChatMessage {
-                                                            session_id: session_id_clone.clone(),
-                                                            peer_id: user,
-                                                            message: text,
-                                                            timestamp: std::time::SystemTime::now()
-                                                                .duration_since(std::time::UNIX_EPOCH)
-                                                                .map(|d| d.as_secs())
-                                                                .unwrap_or(0),
-                                                        });
-                                                    }
-                                                    StudioWsMessage::StatePatch { patch } => {
-                                                        let data = patch.to_string();
-                                                        let _ = event_tx.send(ServerMessage::ReplicationUpdate {
-                                                            session_id: session_id_clone.clone(),
-                                                            from_peer_id: "studio".to_string(),
-                                                            data,
-                                                        });
-                                                    }
-                                                    StudioWsMessage::Error { message } => {
-                                                        error!("Studio session error: {}", message);
-                                                        *status_clone.write().await =
-                                                            ConnectionStatus::Error(message.clone());
-                                                        let _ = event_tx.send(ServerMessage::Error { message });
-                                                        break;
-                                                    }
-                                                    StudioWsMessage::Ping => {
-                                                        // Respond with Pong
-                                                        let _ = raw_tx.send(StudioWsMessage::Pong);
-                                                    }
-                                                    StudioWsMessage::FileChanged { .. } => {
-                                                        // File changes are handled via HTTP file API; ignore for now
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                error!("Failed to parse Studio message: {}", e);
-                                            }
-                                        }
-                                    }
-                                    Some(Ok(Message::Close(_))) => {
-                                        info!("Studio WebSocket closed by server");
-                                        *status_clone.write().await = ConnectionStatus::Disconnected;
-                                        *latency_ms_clone.write().await = None;
-                                        break;
-                                    }
-                                    Some(Ok(Message::Ping(_))) => {}
-                                    Some(Ok(_)) => {}
-                                    Some(Err(e)) => {
-                                        error!("Studio WebSocket error: {}", e);
-                                        *status_clone.write().await =
-                                            ConnectionStatus::Error(e.to_string());
-                                        *latency_ms_clone.write().await = None;
-                                        break;
-                                    }
-                                    None => break,
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to connect to Studio WebSocket: {}", e);
-                    *status_clone.write().await = ConnectionStatus::Error(e.to_string());
-                    *latency_ms_clone.write().await = None;
-                    let _ = result_tx.send(Err(anyhow::anyhow!("Connection failed: {}", e)));
-                }
-            }
-        });
-
-        // Wait for connection result from Tokio runtime
+    /// Wait for connection result from the Tokio runtime.
+    async fn await_connection(
+        &mut self,
+        result_rx: oneshot::Receiver<Result<()>>,
+        message_tx_for_client: mpsc::UnboundedSender<ClientMessage>,
+        event_rx: mpsc::UnboundedReceiver<ServerMessage>,
+    ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
         match result_rx.await {
             Ok(Ok(())) => {
                 self.message_tx = Some(message_tx_for_client);

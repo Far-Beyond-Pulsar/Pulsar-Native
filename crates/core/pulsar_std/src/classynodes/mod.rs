@@ -1,3 +1,5 @@
+//! Control-flow nodes in the "ClassyPallet" category (`random_exec_switch`, `Var1`, `Var2`).
+
 use crate::{blueprint,NodeTypes,exec_output};
 
 static CATAGORY:&str = "ClassyPallet";

@@ -1,3 +1,6 @@
+//! The generated documentation embedded at compile time (`DocAssets`) and the parser for
+//! project documentation (`project_parser`).
+
 use serde::{Deserialize, Serialize};
 
 pub mod project_parser;

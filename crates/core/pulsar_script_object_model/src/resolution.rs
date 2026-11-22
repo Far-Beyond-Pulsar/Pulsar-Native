@@ -1,4 +1,4 @@
-//! Save/load identity for script references (#639): `StableId` ⇄ `Entity`.
+//! Save/load identity for script references: `StableId` ⇄ `Entity`.
 //!
 //! Raw `Entity` bits are only meaningful within ONE live world's lifetime
 //! -- slots are recycled with generation bumps and there is no public API
@@ -43,7 +43,7 @@ pub trait StableIdResolver {
 }
 
 /// A component reference in its save/load form -- what graphs and script
-/// state persist as (the exact serialized reference format #639 defines:
+/// state persist as (the exact serialized reference format defines:
 /// `{stable_id, class_name, component_index}`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SerializedComponentRef {
@@ -60,7 +60,7 @@ pub struct SerializedComponentRef {
 pub enum ResolveRefError {
     /// The stable id no longer maps to any object: deleted, or renamed
     /// without migration. Deliberately a LOUD typed state -- never a silent
-    /// rebinding to another object (#639 acceptance).
+    /// rebinding to another object.
     #[error(
         "reference target '{stable_id}' no longer exists (deleted or renamed since it was saved)"
     )]
@@ -162,7 +162,7 @@ mod tests {
         Entity::from_bits(bits)
     }
 
-    /// #639 acceptance: save -> load -> the reference still targets the
+    /// Save -> load -> the reference still targets the
     /// intended OBJECT (different world, same stable id).
     #[test]
     fn a_serialized_ref_resolves_across_table_generations() {
@@ -188,7 +188,7 @@ mod tests {
         assert_eq!(resolved.component_index, 0);
     }
 
-    /// #639 acceptance: deleting the target reports typed ReferenceLost --
+    /// Deleting the target reports typed ReferenceLost --
     /// never a silent rebinding to another object.
     #[test]
     fn deleted_target_resolves_to_reference_lost() {

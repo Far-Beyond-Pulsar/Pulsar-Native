@@ -1,3 +1,6 @@
+//! Handlers of the type debugger drawer: filtering by kind (all, aliases, structs, enums,
+//! traits).
+
 use gpui::{Context, Window};
 
 use plugin_editor_api::FileTypeId;

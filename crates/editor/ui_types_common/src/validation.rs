@@ -6,7 +6,7 @@ use regex::Regex;
 use std::collections::HashSet;
 
 lazy_static::lazy_static! {
-    static ref NAME_REGEX: Regex = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap();
+    static ref NAME_REGEX: Regex = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").expect("the regex literal is valid");
 }
 
 /// Validates a type name

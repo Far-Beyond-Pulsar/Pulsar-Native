@@ -223,7 +223,9 @@ pub(crate) fn compact_messages(
         block.priority = block_priority(block, index, dialog_block_count);
     }
 
-    let mandatory_block = dialog_blocks.pop().unwrap();
+    let mandatory_block = dialog_blocks
+        .pop()
+        .expect("dialog_blocks was checked nonempty above");
     let (mandatory_messages, mandatory_dropped) =
         shrink_suffix_to_budget(&mandatory_block.messages, dialog_budget);
     let mandatory_chars: usize = mandatory_messages.iter().map(message_chars).sum();

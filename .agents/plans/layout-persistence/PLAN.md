@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - implemented; as built in LAYOUT.md
+
 > **Status: implemented** (branch `layout-persistence`). As built: see `.agents/LAYOUT.md`.
 > Deviations that were decided while building:
 >

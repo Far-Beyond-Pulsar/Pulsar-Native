@@ -1,4 +1,4 @@
-//! Which ledger a row belongs in (Pulsar-Native#1606): a plugin owns the rows
+//! Which ledger a row belongs in: a plugin owns the rows
 //! of what it ships (its classes, schemas, buffers, pass crates and call
 //! sites), in `plugins/vendor/<dir>/ledger.toml`; the engine's rows stay in
 //! this crate's `ledger.toml`. A row's home is computed from the facts, not
@@ -123,7 +123,10 @@ impl Homes {
             homes = of(graph.consumers.get(key));
         }
         match homes.len() {
-            1 => homes.into_iter().next().unwrap(),
+            1 => homes
+                .into_iter()
+                .next()
+                .expect("the match arm checked there is exactly one home"),
             _ => Home::Core,
         }
     }

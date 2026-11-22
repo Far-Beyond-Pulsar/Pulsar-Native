@@ -1,4 +1,4 @@
-//! Packaging smoke test (#926, #889).
+//! Packaging smoke test.
 //!
 //! Packages `tests/fixtures/smoke_project` (one level, a `Spawner` class
 //! whose `begin_play` spawns a `Minion` and broadcasts `Spawner.Ping`,
@@ -442,7 +442,7 @@ fn packaged_game_runs_from_a_clean_directory() {
         "class GUID resolved"
     );
     // The mesh path lives in the component; the load migration drops the
-    // stale `props` copy (Pulsar-Native#1035 Phase 3).
+    // stale `props` copy.
     assert_eq!(
         level["objects"][1]["component_instances"][0]["data"]["mesh_asset"],
         "assets/meshes/glass_red.mesh"

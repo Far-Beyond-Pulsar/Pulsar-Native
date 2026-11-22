@@ -1,3 +1,6 @@
+//! The agent chat panel (`AgentChatPanel`): provider selection, request preparation,
+//! streaming and tool handling, subagents, chat history and storage, and the render modules.
+
 mod builder;
 mod chat_history;
 mod chat_storage;

@@ -1,4 +1,4 @@
-//! SceneDB corrective plan, Phase 2 acceptance (Pulsar-Native#1035): meshes
+//! Render acceptance: meshes
 //! and lights reach the rendered frame through the actual pass path, from
 //! every producer, with no subscription, refresh, resync or inspector.
 //!
@@ -10,7 +10,7 @@
 //! black"; color proves the material path. Every case runs with the camera
 //! at rest and with it nudging (which rebuilds Hi-Z).
 //!
-//! This replaces Phase 0's read-only baseline (`11-phase-0-closure.md`
+//! This replaces the earlier read-only baseline (`11-phase-0-closure.md`
 //! records its table): the cases it printed are assertions here. Run with
 //! `cargo test -p ui_level_editor --test render_acceptance -- --nocapture`;
 //! set `RENDER_ACCEPTANCE_DUMP_DIR` to also write every observed frame as a
@@ -183,8 +183,8 @@ struct Harness {
     texture: wgpu::Texture,
     camera: EditorCameraState,
     /// Nudge the camera on alternate frames (ending at the base pose). A
-    /// camera change rebuilds Helio's Hi-Z pyramid; Phase 0 found a camera
-    /// at rest culling everything (Helio `0e01e9fd`, fixed by Helio#317),
+    /// camera change rebuilds Helio's Hi-Z pyramid; a camera
+    /// at rest once culled everything (Helio `0e01e9fd`, since fixed),
     /// so every case runs both ways.
     nudge_camera: std::cell::Cell<bool>,
 }
@@ -855,11 +855,11 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
     }
 }
 
-/// Pulsar-Native#1035, Phase 4: fog media, post-process volumes and a
+/// Fog media, post-process volumes and a
 /// camera's post-process baseline, added through the editor's command path
 /// as component instances, change the rendered frame through the full
 /// default graph, and stop changing it when their instance is disabled.
-/// Phase 5 (Pulsar-Native#1035): the scene lifecycle needs no repair path.
+/// The scene lifecycle needs no repair path.
 /// Undo and redo, replacing the level, and a second viewport on the same
 /// scene all reach the frame through the ordinary revision step -- there is
 /// no forced resync to call.
@@ -1104,7 +1104,7 @@ fn environment_components_reach_the_frame() {
 
 /// Foliage reaches the foliage passes: grass grows on the ground plane
 /// inside its owner's layer, and goes away when the layer moves away or the
-/// component is disabled (Phase 4). The scene has no light, so blades are
+/// component is disabled. The scene has no light, so blades are
 /// checked by the depth they write. Blades are half a metre tall, so this
 /// camera stands 4 m from the origin, 0.7 m up.
 #[test]
@@ -1197,7 +1197,7 @@ fn foliage_reaches_the_frame() {
     );
 }
 
-/// Phase 6 (Pulsar-Native#1035): every pass of the editor's render graph
+/// Every pass of the editor's render graph
 /// runs on a scene with a mesh and a light. The passes fed by authored
 /// components are checked for their visible effect by the tests above; this
 /// covers the engine-internal ones (culling, Hi-Z, shadows' bookkeeping,
@@ -1544,7 +1544,7 @@ fn authored_mesh_lod_changes_with_distance_and_bias_and_disabling_restores_base_
     );
 }
 
-/// Mesh/light regression (Pulsar-Native#1035 acceptance, #1081): scale,
+/// Mesh/light regression: scale,
 /// every light type, intensity, direction, a light's shadow casting, and the
 /// inspector open or closed, through the editor's producers to the frame.
 #[test]
@@ -1691,7 +1691,7 @@ fn mesh_and_light_variations_reach_the_frame() {
     }
 }
 
-/// Real render output (Pulsar-Native#1035 acceptance, #1081): a spline added
+/// Real render output: a spline added
 /// through the editor is drawn by the editor debug pass, follows its owner,
 /// and disappears when disabled or removed.
 #[test]
@@ -1778,7 +1778,7 @@ fn splines_reach_the_frame() {
     );
 }
 
-/// Cost and architecture (Pulsar-Native#1035 acceptance, #1081): once a
+/// Cost and architecture: once a
 /// scene settles, an unchanged scene encodes no frame and writes nothing to
 /// the world, however often the viewport asks; one edit wakes the renderer,
 /// which settles back to idle.
@@ -2013,7 +2013,7 @@ fn sky_brightness(frame: &Frame) -> f64 {
     sum as f64 / (rows * SIZE as usize) as f64
 }
 
-/// The sky is the level's AtmosphereComponent (#1057): without one the sky
+/// The sky is the level's AtmosphereComponent: without one the sky
 /// is black, even with a sun; World Settings' "Create Sky" adds one and the
 /// sky lights up; disabling or removing it makes the sky black again.
 #[test]
@@ -2075,7 +2075,7 @@ fn the_sky_is_the_levels_atmosphere() {
 /// Illuminance of the acceptance tests' sun (lux).
 const SUN: f32 = 20.0;
 
-/// Decals (#1058): an authored decal recolours the surfaces in its box and
+/// Decals: an authored decal recolours the surfaces in its box and
 /// stays (it is permanent); scripts set how it disappears through its
 /// opacity: `DecalComponent::set_opacity` (its property accessor) and
 /// `DecalComponent::fade_by` (its method), called as a script calls them.
@@ -2219,7 +2219,7 @@ fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32
     (count, red / n, green / n)
 }
 
-/// Particle emitters (#1059): an authored emitter's particles reach the
+/// Particle emitters: an authored emitter's particles reach the
 /// frame; two emitters with different `max_particles` take their own
 /// ranges of the shared particle pool and both draw; disabling one
 /// restores its side of the frame while the other keeps drawing.
@@ -2379,7 +2379,7 @@ fn set_global_wind(
     );
 }
 
-/// Wind (#1123, #1109): foliage sways in the level's global wind, on the
+/// Wind: foliage sways in the level's global wind, on the
 /// renderer's frame clock. In a realtime viewport two observations with no
 /// scene write differ while the wind blows; they are identical in a calm or
 /// with Realtime off (the clock frozen). Changing the global wind changes
@@ -2495,7 +2495,7 @@ fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
     );
 }
 
-/// Realtime (#1123, #1109): content that animates on its own (particles,
+/// Realtime: content that animates on its own (particles,
 /// foliage in a wind) keeps a realtime viewport rendering with no scene
 /// write; with Realtime off, in a calm, or once the content is disabled,
 /// the viewport goes idle again.
@@ -2588,7 +2588,7 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
         "a disabled emitter kept rendering"
     );
 
-    // Water simulates on the frame clock (#1065).
+    // Water simulates on the frame clock.
     let water = add(
         &mut state,
         "Lake",
@@ -2711,7 +2711,7 @@ fn roughness(heights: &[f32]) -> f32 {
     heights.iter().map(|h| h.abs()).sum::<f32>() / heights.len() as f32
 }
 
-/// Water dynamics (#1065): each volume simulates on its own layers, read
+/// Water dynamics: each volume simulates on its own layers, read
 /// back from the simulation: a body pushing the lake moves the lake while
 /// the calm pond beside it stays flat, a body in the pond moves the pond,
 /// and the simulation advances on the frame clock, so it stands still with
@@ -2836,7 +2836,7 @@ fn water_volumes_simulate_their_own_disturbances_on_the_frame_clock() {
     );
 }
 
-/// Water interaction (#1080): a body on the `WaterSim` collision channel
+/// Water interaction: a body on the `WaterSim` collision channel
 /// pushes the water it sits in, read back from the simulation: the water
 /// under it is displaced while the water under an identical body off the
 /// channel is not; a body at rest does not keep pushing (the water's mass
@@ -2998,7 +2998,7 @@ fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
     assert!(close, "{what}: {actual:?}, expected {expected:?}");
 }
 
-/// 2D sprites (#1060): an authored sprite draws at its 2D position (pixels
+/// 2D sprites: an authored sprite draws at its 2D position (pixels
 /// from the centre of the view, Y up) on top of the 3D scene; between two
 /// overlapping sprites the higher Z index is on top, and changing it
 /// changes which; a textured sprite shows its image; moving the 3D camera

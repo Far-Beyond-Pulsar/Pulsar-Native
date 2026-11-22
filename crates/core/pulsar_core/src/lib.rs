@@ -1,3 +1,6 @@
+//! Core runtime primitives: event buffer with reader and writer, task pool, tick mode, and
+//! the clock and game time.
+
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 #![warn(clippy::undocumented_unsafe_blocks)]
 

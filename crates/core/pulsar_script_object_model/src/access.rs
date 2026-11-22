@@ -1,7 +1,7 @@
 //! Property and method accessors on [`ComponentRef`].
 //!
 //! Every attached component instance is its own entity holding its own
-//! typed value (Pulsar-Native#1035, D1), so a reference resolves to exactly
+//! typed value, so a reference resolves to exactly
 //! one instance and every accessor goes straight through that typed value
 //! (`pulsar_world_registry`'s dispatcher) -- no JSON copy of "other"
 //! instances, no instance-zero aliasing. Every accessor:
@@ -10,7 +10,7 @@
 //! 3. resolves `(class_name, component_index)` -- the actor's
 //!    `component_index`-th instance of the class -- to its instance entity
 //!    (`ComponentMissing`/`InstanceMissing` when absent),
-//! 4. fails with a typed error rather than panicking or guessing (#641).
+//! 4. fails with a typed error rather than panicking or guessing.
 //!
 //! Writes go through SceneDB's write guard, so change events and GPU rows
 //! follow exactly as for properties-panel edits.
@@ -135,7 +135,7 @@ mod tests {
         );
     }
 
-    /// #640 acceptance: refs held across a despawn (and slot churn) report
+    /// Refs held across a despawn (and slot churn) report
     /// staleness instead of writing into whoever inherited the slot.
     #[test]
     fn ref_held_across_despawn_and_reuse_reports_staleness() {
@@ -160,7 +160,7 @@ mod tests {
         );
     }
 
-    /// #640 acceptance: a change watch observes the writes made through the
+    /// A change watch observes the writes made through the
     /// ref (the detailed assertions live in subscribe.rs).
     #[test]
     fn set_property_is_observable_through_a_change_watch() {
@@ -238,7 +238,7 @@ mod tests {
         );
     }
 
-    /// Missing targets are typed, distinct errors (#641 taxonomy).
+    /// Missing targets are typed, distinct errors.
     #[test]
     fn missing_targets_are_distinct_typed_errors() {
         // Registered class, no instance -> ComponentMissing.

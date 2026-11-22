@@ -204,9 +204,12 @@ pub(crate) fn generate_property_metadata(
     property_attr: &PropertyAttrOptions,
     category_decl: Option<&PropertyCategoryDefinition>,
 ) -> proc_macro2::TokenStream {
-    let field_name = field.ident.as_ref().unwrap();
+    let field_name = field
+        .ident
+        .as_ref()
+        .expect("property fields come from Fields::Named, so they have identifiers");
     let field_name_str = field_name.to_string();
-    // Title-cased, space-separated label (#645): "linear_damping" renders
+    // Title-cased, space-separated label: "linear_damping" renders
     // as "Linear Damping", consistent with method display names.
     let display_name = property_attr
         .label
@@ -253,7 +256,7 @@ pub(crate) fn generate_property_metadata(
     // Generate getter closure that returns Box<dyn Any>
     let getter = quote! {
         Box::new(|obj: &dyn pulsar_reflection::EngineClass| -> Box<dyn std::any::Any> {
-            let concrete = obj.as_any().downcast_ref::<#struct_name>().unwrap();
+            let concrete = obj.as_any().downcast_ref::<#struct_name>().expect("the registry only calls this accessor with an instance of the class that generated it");
             Box::new(concrete.#field_name.clone())
         })
     };
@@ -261,7 +264,7 @@ pub(crate) fn generate_property_metadata(
     // Generate setter closure that accepts Box<dyn Any>
     let setter = quote! {
         Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, value: Box<dyn std::any::Any>| {
-            let concrete = obj.as_any_mut().downcast_mut::<#struct_name>().unwrap();
+            let concrete = obj.as_any_mut().downcast_mut::<#struct_name>().expect("the registry only calls this accessor with an instance of the class that generated it");
             if let Some(typed_value) = value.downcast_ref::<#field_type>() {
                 concrete.#field_name = typed_value.clone();
             } else {
@@ -301,7 +304,7 @@ pub(crate) fn capitalize_first(s: &str) -> String {
 }
 
 /// Title-case every whitespace-separated word -- "add charges" -> "Add
-/// Charges". Node display names are palette/search surfaces (#645): mixed
+/// Charges". Node display names are palette/search surfaces: mixed
 /// casing ("Set linear damping" vs "Add Charges") reads as inconsistency,
 /// so every generated display name goes through this.
 pub(crate) fn title_case(s: &str) -> String {
@@ -315,7 +318,7 @@ pub(crate) fn title_case(s: &str) -> String {
 ///
 /// `field_categories[i]` parallels `fields[i]`: the property's resolved
 /// category, so generated accessors group with their field in the palette
-/// instead of landing as ungrouped strays (#645).
+/// instead of landing as ungrouped strays.
 pub(crate) fn generate_property_method_items(
     fields: &[&Field],
     field_categories: &[Option<String>],
@@ -324,7 +327,10 @@ pub(crate) fn generate_property_method_items(
     let mut method_items = Vec::new();
 
     for (index, field) in fields.iter().enumerate() {
-        let field_name = field.ident.as_ref().unwrap();
+        let field_name = field
+            .ident
+            .as_ref()
+            .expect("property fields come from Fields::Named, so they have identifiers");
         let field_name_str = field_name.to_string();
         let getter_name = format!("get_{}", field_name_str);
         let setter_name = format!("set_{}", field_name_str);
@@ -347,7 +353,7 @@ pub(crate) fn generate_property_method_items(
                 }),
                 flags: pulsar_reflection::MethodFlags { side_effect_free: true, deterministic: false },
                 caller: Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, _args: pulsar_reflection::MethodArgs| {
-                    let concrete = obj.as_any().downcast_ref::<#struct_name>().unwrap();
+                    let concrete = obj.as_any().downcast_ref::<#struct_name>().expect("the registry only calls this accessor with an instance of the class that generated it");
                     Some(Box::new(concrete.#field_name.clone()) as Box<dyn std::any::Any>)
                 }),
             }
@@ -368,7 +374,7 @@ pub(crate) fn generate_property_method_items(
                 return_type: None,
                 flags: pulsar_reflection::MethodFlags::NONE,
                 caller: Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, args: pulsar_reflection::MethodArgs| {
-                    let concrete = obj.as_any_mut().downcast_mut::<#struct_name>().unwrap();
+                    let concrete = obj.as_any_mut().downcast_mut::<#struct_name>().expect("the registry only calls this accessor with an instance of the class that generated it");
                     if let Some(value) = args.into_iter().next() {
                         match value.downcast::<#field_type>() {
                             Ok(typed_value) => {

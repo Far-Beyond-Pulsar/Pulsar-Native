@@ -1,5 +1,5 @@
 //! Play-In-Editor host — loads a game project's `cdylib` and drives it from the
-//! editor's render loop (issue #243).
+//! editor's render loop.
 //!
 //! The heavy lifting (offscreen Helio renderer, ECS tick) lives inside the game
 //! library behind a stable C ABI ([`pulsar_pie_abi`]). This module is the editor
@@ -20,22 +20,22 @@
 //! * The resolved symbols are copied out as plain `fn` pointers; the `Library`
 //!   is kept alive in the struct and dropped **last** (after `shutdown`).
 
+mod loader;
+
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use libloading::Library;
 use parking_lot::{RwLock, RwLockWriteGuard};
-use pulsar_events::gamma::ffi::{ForeignBus, RawBus};
+use pulsar_events::gamma::ffi::ForeignBus;
 use pulsar_pie_abi::{
-    EngineContext as PieContext, FnAbiVersion, FnAssetUpdated, FnControl, FnEventBus,
-    FnEventsSnapshot, FnInit, FnInput, FnResize, FnShutdown, FnTakeProblems, FnTick, InputEvent,
-    INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION, SYM_ABI_VERSION,
-    SYM_ASSET_UPDATED, SYM_CONTROL, SYM_EVENTS_SNAPSHOT, SYM_EVENT_BUS, SYM_INIT, SYM_INPUT,
-    SYM_RESIZE, SYM_SHUTDOWN, SYM_TAKE_PROBLEMS, SYM_TICK,
+    EngineContext as PieContext, FnAssetUpdated, FnControl, FnEventBus, FnEventsSnapshot, FnInput,
+    FnResize, FnShutdown, FnTakeProblems, FnTick, InputEvent, INIT_OK, LOG_DEBUG, LOG_ERROR,
+    LOG_INFO, LOG_TRACE, LOG_WARN,
 };
 
-/// The host-side half of the ABI v2 shared-world contract (#635).
+/// The host-side half of the ABI v2 shared-world contract.
 ///
 /// Owns a strong count of the editor's world handle and implements the
 /// phase-boundary lock callbacks handed to the guest. The guard produced by
@@ -52,7 +52,7 @@ pub(crate) struct PieWorldBridge {
     /// The editor's authoritative world. One strong count belongs to this
     /// bridge for the session; a second count is transferred to the guest
     /// via `Arc::into_raw` at load time (the guest reclaims it with
-    /// `Arc::from_raw` -- exactly once, per #635's single-transfer rule).
+    /// `Arc::from_raw` -- exactly once, per the single-transfer rule).
     store: crate::scene::SharedScene,
     /// The open slice, if any. Occupied == locked: the non-reentrancy
     /// witness is "slot already holds a guard", checked before locking.
@@ -148,15 +148,15 @@ pub struct PieHost {
     resize: FnResize,
     input: FnInput,
     shutdown: FnShutdown,
-    /// Optional (#921): games built before it existed lack the symbol.
+    /// Optional: games built before it existed lack the symbol.
     asset_updated: Option<FnAssetUpdated>,
-    /// Optional (#924): the game's event hub debug snapshot.
+    /// Optional: the game's event hub debug snapshot.
     events_snapshot: Option<FnEventsSnapshot>,
-    /// Optional (#925): pause / step.
+    /// Optional: pause / step.
     control: Option<FnControl>,
-    /// Optional (#854): script problems raised by the game.
+    /// Optional: script problems raised by the game.
     take_problems: Option<FnTakeProblems>,
-    /// Optional (#942): the game's event hub for editor plugins.
+    /// Optional: the game's event hub for editor plugins.
     event_bus: Option<FnEventBus>,
     /// The editor's handle onto the game's hub, announced to plugins
     /// (`pulsar_events::session`); dropped before the game shuts down.
@@ -167,7 +167,7 @@ pub struct PieHost {
     /// `*const wgpu::Texture` the game renders into; set by `init`.
     out_texture: *const c_void,
 
-    /// The shared-world lock-callback state (#635). Boxed so its address is
+    /// The shared-world lock-callback state. Boxed so its address is
     /// stable; its pointer is the `userdata` the lock callbacks receive.
     world_bridge: Option<Box<PieWorldBridge>>,
 
@@ -201,19 +201,17 @@ impl PieHost {
         project_root.join("target").join(profile_dir).join(file)
     }
 
-    // std::fs allowed: loads the freshly built game dylib (libloading needs a real path); a temp copy of a build artifact, not a project file
-    #[allow(clippy::disallowed_methods)]
     /// Load a freshly-built game `cdylib` and initialize the embedded game.
     ///
     /// `device`/`queue` are the editor's (GPUI's) handles; the game clones them
     /// so it shares the same GPU device. `shared_world` is the editor's
-    /// authoritative scene store (#635, ABI v2): one count stays with the host
+    /// authoritative scene store (ABI v2): one count stays with the host
     /// for the session and one is transferred to the guest via `Arc::into_raw`
     /// (the single-count transfer rule -- the guest reclaims it exactly once).
     /// `scene_path` is a `.level` file the editor wrote from its current scene;
     /// under v2 it is advisory only (the guest adopts the already-hydrated
     /// shared world instead of loading it), kept for logging/legacy guests.
-    /// `reload` marks a NATIVE HOT RELOAD (#653): an earlier session's world
+    /// `reload` marks a NATIVE HOT RELOAD: an earlier session's world
     /// state is still in `shared_world`, so the guest re-binds actor
     /// registrations to their existing entities instead of spawning duplicates
     /// (the flag rides `EngineContext::session_flags`; see ABI v3).
@@ -242,82 +240,12 @@ impl PieHost {
             return Err(format!("Game library not found: {}", dylib_path.display()));
         }
 
-        // On Windows the original file stays locked while loaded, which blocks
-        // the next `cargo build --lib` (hot-reload). Load a temp copy instead.
-        let (load_path, temp_copy) = if cfg!(target_os = "windows") {
-            let mut tmp = std::env::temp_dir();
-            let stamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0);
-            let name = dylib_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("pie_game");
-            tmp.push(format!("{name}_{stamp}.dll"));
-            std::fs::copy(dylib_path, &tmp)
-                .map_err(|e| format!("Failed to copy game dll to temp: {e}"))?;
-            (tmp.clone(), Some(TempCopy(tmp)))
-        } else {
-            (dylib_path.to_path_buf(), None)
-        };
-
+        let (load_path, temp_copy) = loader::load_path_for(dylib_path)?;
         let lib =
             Library::new(&load_path).map_err(|e| format!("Failed to load game library: {e}"))?;
 
-        // ── ABI-version gate ─────────────────────────────────────────────────
-        let abi_version: FnAbiVersion = *lib
-            .get(SYM_ABI_VERSION)
-            .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_ABI_VERSION)))?;
-        let lib_abi = abi_version();
-        if lib_abi != PIE_ABI_VERSION {
-            return Err(if lib_abi < PIE_ABI_VERSION {
-                format!(
-                    "Game was built against PiE ABI v{lib_abi}, editor expects v{PIE_ABI_VERSION}. \
-                     Rebuild the project (Build Core)."
-                )
-            } else {
-                format!(
-                    "Game was built against PiE ABI v{lib_abi}, editor expects v{PIE_ABI_VERSION}. \
-                     Update Pulsar (the game library is newer than this editor)."
-                )
-            });
-        }
-
-        // ── Resolve the rest of the entry points ─────────────────────────────
-        let init: FnInit = *lib
-            .get(SYM_INIT)
-            .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_INIT)))?;
-        let tick: FnTick = *lib
-            .get(SYM_TICK)
-            .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_TICK)))?;
-        let resize: FnResize = *lib
-            .get(SYM_RESIZE)
-            .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_RESIZE)))?;
-        let input: FnInput = *lib
-            .get(SYM_INPUT)
-            .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_INPUT)))?;
-        let shutdown: FnShutdown = *lib
-            .get(SYM_SHUTDOWN)
-            .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_SHUTDOWN)))?;
-        let asset_updated: Option<FnAssetUpdated> = lib
-            .get::<FnAssetUpdated>(SYM_ASSET_UPDATED)
-            .ok()
-            .map(|symbol| *symbol);
-        let events_snapshot: Option<FnEventsSnapshot> = lib
-            .get::<FnEventsSnapshot>(SYM_EVENTS_SNAPSHOT)
-            .ok()
-            .map(|symbol| *symbol);
-        let control: Option<FnControl> =
-            lib.get::<FnControl>(SYM_CONTROL).ok().map(|symbol| *symbol);
-        let take_problems: Option<FnTakeProblems> = lib
-            .get::<FnTakeProblems>(SYM_TAKE_PROBLEMS)
-            .ok()
-            .map(|symbol| *symbol);
-        let event_bus: Option<FnEventBus> = lib
-            .get::<FnEventBus>(SYM_EVENT_BUS)
-            .ok()
-            .map(|symbol| *symbol);
+        loader::check_abi_version(&lib)?;
+        let entry = loader::resolve_entry_points(&lib)?;
 
         let color_format = format_to_u32(format)
             .ok_or_else(|| format!("Unsupported viewport format for PiE: {format:?}"))?;
@@ -330,7 +258,7 @@ impl PieHost {
         let project_root_s = project_root.to_string_lossy().into_owned();
         let scene_path_s = scene_path.map(|p| p.to_string_lossy().into_owned());
 
-        // ── Shared-world bridge (#635, ABI v2) ───────────────────────────────
+        // ── Shared-world bridge (ABI v2) ───────────────────────────────
         // One Arc count stays with the bridge for the session; a SECOND count
         // is transferred to the guest via into_raw (guest reclaims it with
         // exactly one from_raw). The bridge is boxed so its address is stable
@@ -339,45 +267,21 @@ impl PieHost {
         let shared_world_ptr = Arc::into_raw(Arc::clone(&shared_world)) as *const c_void;
         let userdata: *mut c_void = &mut *world_bridge as *mut PieWorldBridge as *mut c_void;
 
-        let mut ctx = Box::new(PieContext {
-            abi_version: PIE_ABI_VERSION,
-            device: Arc::as_ptr(&device) as *const c_void,
-            queue: Arc::as_ptr(&queue) as *const c_void,
+        let mut ctx = loader::build_context(&loader::ContextParams {
+            device: &device,
+            queue: &queue,
             color_format,
-            width: width.max(1),
-            height: height.max(1),
-            project_root_ptr: project_root_s.as_ptr(),
-            project_root_len: project_root_s.len(),
-            scene_path_ptr: scene_path_s
-                .as_ref()
-                .map(|s| s.as_ptr())
-                .unwrap_or(std::ptr::null()),
-            scene_path_len: scene_path_s.as_ref().map(|s| s.len()).unwrap_or(0),
+            width,
+            height,
+            project_root: &project_root_s,
+            scene_path: scene_path_s.as_deref(),
             userdata,
-            log: log_cb,
-            out_texture: std::ptr::null(),
             shared_world: shared_world_ptr,
-            lock_shared_world: pie_lock_world,
-            unlock_shared_world: pie_unlock_world,
-            session_flags: if reload {
-                pulsar_pie_abi::session_flags::RELOAD
-            } else {
-                0
-            },
-            view: view.map_or_else(Default::default, |view| pulsar_pie_abi::PieView {
-                position: view.position,
-                yaw: view.yaw,
-                pitch: view.pitch,
-                present: 1,
-                _reserved: 0,
-            }),
-            // The game is a session of its own on the editor's world: the
-            // host says so (ABI v5), the guest never guesses.
-            session_kind: pulsar_pie_abi::session_kind::PLAY_IN_EDITOR,
-            _reserved: 0,
+            reload,
+            view,
         });
 
-        let ok = init(&mut *ctx as *mut PieContext);
+        let ok = (entry.init)(&mut *ctx as *mut PieContext);
         // The path strings can drop now — the game has copied what it needs.
         drop(project_root_s);
         drop(scene_path_s);
@@ -396,41 +300,21 @@ impl PieHost {
 
         let out_texture = ctx.out_texture;
 
-        // #942: the game's hub for editor plugins, for the session.
-        let session_bus = event_bus.and_then(|export| {
-            let mut raw = std::mem::MaybeUninit::<RawBus>::uninit();
-            let ok = export(
-                raw.as_mut_ptr() as *mut c_void,
-                std::mem::size_of::<RawBus>(),
-            );
-            if ok != 1 {
-                return None;
-            }
-            // SAFETY: the game wrote a fresh export whose reference we own.
-            match ForeignBus::from_raw(raw.assume_init()) {
-                Ok(bus) => Some(bus),
-                Err(error) => {
-                    tracing::warn!(
-                        "PiE: the game's event bus speaks another Gamma FFI version: {error:?}"
-                    );
-                    None
-                }
-            }
-        });
+        let session_bus = loader::export_session_bus(entry.event_bus);
         if let Some(bus) = &session_bus {
             pulsar_events::announce_session_started(bus);
         }
 
         Ok(Self {
-            tick,
-            resize,
-            input,
-            shutdown,
-            asset_updated,
-            events_snapshot,
-            control,
-            take_problems,
-            event_bus,
+            tick: entry.tick,
+            resize: entry.resize,
+            input: entry.input,
+            shutdown: entry.shutdown,
+            asset_updated: entry.asset_updated,
+            events_snapshot: entry.events_snapshot,
+            control: entry.control,
+            take_problems: entry.take_problems,
+            event_bus: entry.event_bus,
             session_bus,
             ctx,
             out_texture,
@@ -464,7 +348,7 @@ impl PieHost {
         }
     }
 
-    /// Forward an asset-update notification to the running game (#921), so
+    /// Forward an asset-update notification to the running game, so
     /// it can reload what it built from the asset (a class's script module).
     /// Call on the thread that ticks the game. A no-op for games built
     /// without the entry point.
@@ -586,7 +470,7 @@ impl PieHost {
         Vec::new()
     }
 
-    /// The editor's handle onto the running game's event hub (#942), if
+    /// The editor's handle onto the running game's event hub, if
     /// the game exports it. Valid until [`stop`](Self::stop).
     pub fn session_bus(&self) -> Option<&ForeignBus> {
         self.session_bus.as_ref()
@@ -622,7 +506,7 @@ impl PieHost {
     #[allow(clippy::disallowed_methods)]
     /// Stop the game: run its teardown and unload the library.
     pub fn stop(&mut self) {
-        // #942: plugins drop their handles onto the game's hub now, while
+        // Plugins drop their handles onto the game's hub now, while
         // its code is still loaded; then the editor's own.
         if let Some(bus) = self.session_bus.take() {
             pulsar_events::announce_session_stopping();
@@ -719,7 +603,7 @@ fn format_to_u32(format: wgpu::TextureFormat) -> Option<u32> {
 mod tests {
     use super::*;
 
-    /// #635 locking protocol, host side: lock hands out an exclusive slice,
+    /// locking protocol, host side: lock hands out an exclusive slice,
     /// a second concurrent lock is refused (the non-reentrancy witness), and
     /// unlock closes the slice so the next one can open. Idempotent unlock.
     #[test]
@@ -759,7 +643,7 @@ mod tests {
         unsafe { pie_unlock_world(userdata) };
     }
 
-    /// #635: writes made through the handed-out pointer are visible through
+    /// Writes made through the handed-out pointer are visible through
     /// the editor's own handle afterwards -- same allocation, not a copy.
     #[test]
     fn slice_mutations_land_in_the_host_store() {

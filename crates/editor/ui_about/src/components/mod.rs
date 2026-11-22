@@ -1,3 +1,5 @@
+//! Render functions of the About window: feature cards, info section and logo.
+
 mod feature_cards;
 mod info_section;
 mod logo_section;

@@ -288,7 +288,7 @@ fn rewrite_image_urls(selected_file: Option<&Path>, markdown: &str) -> String {
         return markdown.to_string();
     };
 
-    let re = Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").unwrap();
+    let re = Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)").expect("the regex literal is valid");
 
     re.replace_all(markdown, |caps: &regex::Captures| {
         let alt = &caps[1];

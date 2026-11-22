@@ -1,3 +1,5 @@
+//! Render functions of the documentation window: content, sidebar and the new-file dialog.
+
 mod content;
 mod new_file_dialog;
 mod sidebar;

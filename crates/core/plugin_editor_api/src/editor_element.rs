@@ -41,7 +41,7 @@ pub struct EditorServices {
     /// root; a file is routed to its server by `server_for`). Editors attach
     /// to the service; they never start, restart or replace a server.
     pub language_servers: Option<Entity<LanguageServers>>,
-    /// The host's undo histories, one per document (Pulsar-Native#931).
+    /// The host's undo histories, one per document.
     /// The host makes one and hands the same to every editor.
     pub undo: crate::undo::UndoService,
 }
@@ -493,7 +493,7 @@ impl<H: EditorHandle> Clone for EditorElement<H> {
 /// 1 MiB chunk per frame's worth of elements, forever). Entering the scope
 /// here, using the `App` reference already crossing the FFI boundary, points
 /// this DLL's thread-local at the *same* arena the host resets every frame
-/// instead. See Pulsar-Native issue #261 and the `plugin-leak-demo` repro
+/// instead. See and the `plugin-leak-demo` repro
 /// for the full writeup and before/after measurements.
 impl<H: EditorHandle> Element for EditorElement<H> {
     type RequestLayoutState = AnyElement;
@@ -514,7 +514,7 @@ impl<H: EditorHandle> Element for EditorElement<H> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        // Fix for #261: point this DLL's element-arena thread-local at the
+        // Point this DLL's element-arena thread-local at the
         // host's real, per-frame-reset arena before building or laying out
         // anything. See this impl's doc comment above for why this is
         // needed at all.

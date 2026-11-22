@@ -67,7 +67,7 @@ pub struct ToolbarSignature {
     // profiling button
     show_performance_overlay: bool,
     // Edit menu: what Undo/Redo show and whether the selection items are
-    // enabled (Pulsar-Native#1012)
+    // enabled
     history_revision: u64,
     has_selection: bool,
 }

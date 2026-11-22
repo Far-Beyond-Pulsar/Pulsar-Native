@@ -1,4 +1,4 @@
-//! Script problems in the problems panel (Pulsar-Native#854, #868).
+//! Script problems in the problems panel.
 //!
 //! The Play-in-Editor host publishes the running game's script problems
 //! (runtime errors, link errors, dropped waiting calls: class, function and

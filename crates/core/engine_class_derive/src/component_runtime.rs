@@ -198,7 +198,13 @@ fn collect_handlers(impl_block: &mut ItemImpl, class_name: &str) -> syn::Result<
                     "native event handler arguments must use concrete registered value types",
                 ));
             }
-            let payload_ident = path.path.segments.last().unwrap().ident.clone();
+            let payload_ident = path
+                .path
+                .segments
+                .last()
+                .expect("a path parsed from source has at least one segment")
+                .ident
+                .clone();
             let payload_name = payload_ident.to_string();
             let local = quote::format_ident!("__pulsar_handler_arg_{index}");
             let payload_type = &arg.ty;

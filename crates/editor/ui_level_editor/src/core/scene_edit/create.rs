@@ -1,4 +1,4 @@
-//! What the level editor's Create menu adds (Pulsar-Native#1012): one object
+//! What the level editor's Create menu adds: one object
 //! of a kind, with the components that make it what its name says, as one
 //! undoable command. The new object is selected.
 //!

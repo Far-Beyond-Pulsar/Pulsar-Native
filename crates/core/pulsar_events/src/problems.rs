@@ -1,4 +1,4 @@
-//! Script problems on the host bus (Pulsar-Native#854, #868).
+//! Script problems on the host bus.
 //!
 //! Script errors raised while a game runs (a VM runtime error, a class
 //! whose module does not link, a waiting call a class reload had to drop)

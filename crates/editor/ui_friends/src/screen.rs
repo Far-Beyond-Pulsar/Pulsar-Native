@@ -72,15 +72,9 @@ impl FriendsScreen {
                 let input = input.clone();
                 subscriptions.push(cx.subscribe(
                     &input,
-                    |this: &mut Self, _input, event: &InputEvent, cx| match event {
+                    |this: &mut Self, input, event: &InputEvent, cx| match event {
                         InputEvent::Change => {
-                            this.add_friend_username = this
-                                .add_friend_input
-                                .as_ref()
-                                .unwrap()
-                                .read(cx)
-                                .text()
-                                .to_string();
+                            this.add_friend_username = input.read(cx).text().to_string();
                             if matches!(
                                 this.add_friend_state,
                                 AddFriendState::Success

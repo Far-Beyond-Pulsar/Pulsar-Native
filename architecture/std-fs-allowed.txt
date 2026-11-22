@@ -8,6 +8,7 @@
 
 crates/core/engine/build.rs | build script: walks the source tree for cargo rerun-if-changed
 crates/core/pulsar_dialog_embed/build.rs | build script: fetches and builds the pulsar-dialog helper into a cache under CARGO_HOME
+plugins/vendor/mocap/capture/build.rs | build script: downloads the pinned pose model with curl and caches it under CARGO_HOME
 crates/core/pulsar_dialog_embed/src/lib.rs | places the embedded dialog helper beside the engine's own executable, or in its per-user app data
 crates/core/engine/src/appdata.rs | the engine's own per-user app data, config and theme cache, outside any project
 crates/core/engine/src/assets.rs | RustEmbed's generated code reads the engine's own assets folder in debug builds (a module allow: derive output takes no item allow)
@@ -21,6 +22,7 @@ crates/core/engine/src/steps/settings.rs | reads the engine's own per-user confi
 crates/core/engine_backend/build.rs | build script: reads the engine source tree
 crates/core/engine_backend/src/services/core_project_builder.rs | resolves the engine's own source checkout, not a project path
 crates/core/engine_backend/src/services/pie_host.rs | loads and removes a temp copy of the built game dylib (libloading needs a real path)
+crates/core/engine_backend/src/services/pie_host/loader.rs | copies the built game dylib to a temp file (libloading needs a real path)
 crates/core/engine_fs/src/providers/local.rs | the local provider: the one place a project's files meet the disk
 crates/core/helio_component/src/subsystems.rs | the working directory and the engine's built-in assets: machine paths outside any project
 crates/core/one_owner/src/lib.rs | the one-owner checker reads the engine's own source tree, not a project
@@ -43,7 +45,7 @@ plugins/vendor/rust/src/discovery.rs | finds or installs rust-analyzer (PATH, ~/
 plugins/vendor/typescript/src/archive.rs | unpacks the approved managed install into the engine tools directory, outside any project
 plugins/vendor/typescript/src/install.rs | the managed typescript-language-server install in the engine tools directory (staging, verify, move into place), outside any project
 plugins/vendor/typescript/src/locate.rs | finds typescript-language-server and Node on PATH, in the person node_modules and install places, outside any project
-crates/core/pulsar_macros/src/lib.rs | a proc macro: runs inside rustc and reads its own crate's source dir
+crates/core/pulsar_macros/src/icons.rs | a proc macro: runs inside rustc and reads its own crate's source dir
 crates/core/pulsar_package/src/lib.rs | the packaged game's output folder and executable copy, and the engine source checkout lookup
 crates/core/pulsar_package/src/main.rs | the CLI writes its JSON report to the path it is given
 crates/core/pulsar_script_conformance/build.rs | build script reading fixtures, writing OUT_DIR

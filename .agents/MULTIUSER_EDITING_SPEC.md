@@ -1,3 +1,5 @@
+Status: proposed (as of 2026-11-20) - its own text says target behaviour, not shipped; client and presence UI exist but the spec's design is not verified as built
+
 # Multiuser Editing: Production Specification
 
 Status: architecture and implementation plan, based on the current Pulsar-Native

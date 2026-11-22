@@ -1,4 +1,4 @@
-//! Executable inventory from the SceneDB corrective plan (Pulsar-Native#1035).
+//! Executable inventory from the SceneDB corrective plan.
 //!
 //! The closure ledger (`ledger.toml`, beside this crate's manifest)
 //! has one row per exposed component class, GPU-bearing schema, GPU buffer
@@ -15,7 +15,7 @@
 //! until someone records where it belongs in the corrective plan.
 //!
 //! Each plugin owns the rows of what it ships, in its own
-//! `plugins/vendor/<dir>/ledger.toml` (Pulsar-Native#1606, [`home`]); the
+//! `plugins/vendor/<dir>/ledger.toml` ([`home`]); the
 //! engine's rows are in this crate's. The test checks the engine's rows and
 //! every installed plugin's, so a plugin repository changes its buffers
 //! without editing Pulsar-Native's ledger.

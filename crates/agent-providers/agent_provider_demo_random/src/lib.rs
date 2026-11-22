@@ -1,3 +1,6 @@
+//! A demo chat provider that answers with pseudo-random sentences. It makes no network
+//! calls and supports no tools.
+
 use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ModelDescriptor};
 use serde_json::json;
 use std::{

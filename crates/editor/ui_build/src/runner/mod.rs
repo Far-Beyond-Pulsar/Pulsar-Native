@@ -28,8 +28,8 @@ use std::time::Duration;
 use engine_state::build_config::{BuildConfiguration, TargetPlatform, build_cancel};
 use engine_state::playback::playback;
 use gpui::{
-    Animation, AnimationExt as _, App, AppContext as _, AsyncApp, IntoElement, ParentElement as _,
-    Styled as _, Window, radians,
+    Animation, AnimationExt as _, AnyWindowHandle, App, AppContext as _, AsyncApp, IntoElement,
+    ParentElement as _, Styled as _, Window, radians,
 };
 use parking_lot::Mutex;
 use rust_i18n::t;
@@ -56,6 +56,58 @@ fn progress_message(title: &str, detail: &str, pct: u32) -> String {
     } else {
         format!("{title}: {detail} ({pct}%)")
     }
+}
+
+/// The state the worker thread writes and the watching task reads.
+struct ProgressWatch {
+    pct: Arc<AtomicU32>,
+    detail: Arc<Mutex<String>>,
+    step_title: Arc<Mutex<String>>,
+}
+
+impl ProgressWatch {
+    /// Mirrors the worker's progress into the build notification until the
+    /// worker reports its result. `None` when the worker went away without one.
+    async fn wait_for_result(
+        &self,
+        result_rx: &smol::channel::Receiver<Result<(), StepError>>,
+        window_handle: AnyWindowHandle,
+        async_app: &mut AsyncApp,
+    ) -> Option<Result<(), StepError>> {
+        let mut last = (u32::MAX, String::new(), String::new());
+        loop {
+            match result_rx.try_recv() {
+                Ok(result) => break Some(result),
+                Err(smol::channel::TryRecvError::Closed) => break None,
+                Err(smol::channel::TryRecvError::Empty) => {}
+            }
+            let now = (
+                self.pct.load(Ordering::Relaxed),
+                self.step_title.lock().clone(),
+                self.detail.lock().clone(),
+            );
+            if now != last {
+                let message = progress_message(&now.1, &now.2, now.0);
+                let fraction = now.0 as f32 / 100.0;
+                last = now;
+                let _ = async_app.update_window(window_handle, |_, window, cx| {
+                    window.update_notification::<BuildNotification>(message, fraction, cx);
+                });
+            }
+            async_app
+                .background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+        }
+    }
+}
+
+/// What reporting a finished build needs.
+struct BuildRun {
+    name: String,
+    plan: Plan,
+    project_root: PathBuf,
+    window_handle: AnyWindowHandle,
 }
 
 /// Run `config` against the current project.
@@ -104,51 +156,102 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     session::begin(Arc::clone(&session));
 
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), StepError>>(1);
-    let task_id = {
-        let plan = plan.clone();
-        let root = project_root.clone();
-        let step_title = Arc::clone(&step_title);
-        let progress = progress.clone();
-        let task_title = name.clone();
-        editor_task_queue::global().submit(
-            editor_task_queue::TaskDescription::new(
-                t!("Build.Task.Title", name = task_title).to_string(),
-                "Build",
-                editor_task_queue::TaskDuration::Long,
-            ),
-            move |task| {
-                task.report_progress(0.0, t!("Build.Task.Starting"));
-                let result = execute(
-                    &plan,
-                    &root,
-                    &progress.with_task_context(task.clone()),
-                    &step_title,
-                );
-                match result {
-                    Ok(()) => {
-                        let _ = result_tx.send_blocking(Ok(()));
-                        Ok(())
-                    }
-                    Err(StepError::Failed(error)) => {
-                        let _ = result_tx.send_blocking(Err(StepError::Failed(error.clone())));
-                        Err(error)
-                    }
-                    Err(StepError::Cancelled) => {
-                        task.mark_cancelled();
-                        let _ = result_tx.send_blocking(Err(StepError::Cancelled));
-                        Err(t!("Build.Notification.Cancelled").to_string())
-                    }
-                }
-            },
-        )
-    };
+    let task_id = submit_build_task(
+        &plan,
+        &project_root,
+        &name,
+        &progress,
+        &step_title,
+        result_tx,
+    );
     session.set_task(task_id);
     crate::dashboard::open(cx);
+    show_starting_notification(&name, window, cx);
 
+    let watch = ProgressWatch {
+        pct,
+        detail,
+        step_title,
+    };
+    let run = BuildRun {
+        name,
+        plan,
+        project_root,
+        window_handle: window.window_handle(),
+    };
+    cx.spawn(async move |async_app: &mut AsyncApp| {
+        let result = watch
+            .wait_for_result(&result_rx, run.window_handle, async_app)
+            .await;
+
+        // The build is over whatever happened; free the button first.
+        playback().update(|s| s.build_running = false);
+        session.finish(match &result {
+            Some(Ok(())) => session::Outcome::Succeeded,
+            Some(Err(StepError::Failed(_))) => session::Outcome::Failed,
+            Some(Err(StepError::Cancelled)) | None => session::Outcome::Cancelled,
+        });
+
+        report_build_result(run, result, async_app).await;
+    })
+    .detach();
+}
+
+/// Queue the build on the task queue; the worker sends its result on
+/// `result_tx`.
+fn submit_build_task(
+    plan: &Plan,
+    project_root: &std::path::Path,
+    name: &str,
+    progress: &Progress,
+    step_title: &Arc<Mutex<String>>,
+    result_tx: smol::channel::Sender<Result<(), StepError>>,
+) -> editor_task_queue::TaskId {
+    let plan = plan.clone();
+    let root = project_root.to_path_buf();
+    let step_title = Arc::clone(step_title);
+    let progress = progress.clone();
+    let task_title = name.to_string();
+    editor_task_queue::global().submit(
+        editor_task_queue::TaskDescription::new(
+            t!("Build.Task.Title", name = task_title).to_string(),
+            "Build",
+            editor_task_queue::TaskDuration::Long,
+        ),
+        move |task| {
+            task.report_progress(0.0, t!("Build.Task.Starting"));
+            let result = execute(
+                &plan,
+                &root,
+                &progress.with_task_context(task.clone()),
+                &step_title,
+            );
+            match result {
+                Ok(()) => {
+                    let _ = result_tx.send_blocking(Ok(()));
+                    Ok(())
+                }
+                Err(StepError::Failed(error)) => {
+                    let _ = result_tx.send_blocking(Err(StepError::Failed(error.clone())));
+                    Err(error)
+                }
+                Err(StepError::Cancelled) => {
+                    task.mark_cancelled();
+                    let _ = result_tx.send_blocking(Err(StepError::Cancelled));
+                    Err(t!("Build.Notification.Cancelled").to_string())
+                }
+            }
+        },
+    )
+}
+
+/// The progress notification a build starts with, a swinging hammer beside
+/// the bar.
+fn show_starting_notification(name: &str, window: &mut Window, cx: &mut App) {
     window.push_notification(
         Notification::info(t!("Build.Notification.Starting").to_string())
             .id::<BuildNotification>()
-            .title(name.clone())
+            .title(name.to_string())
             .progress(0.0)
             .content(|_, _| {
                 h_flex()
@@ -173,103 +276,78 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
             .autohide(false),
         cx,
     );
+}
 
-    let window_handle = window.window_handle();
-    cx.spawn(async move |async_app: &mut AsyncApp| {
-        let mut last = (u32::MAX, String::new(), String::new());
-        let result = loop {
-            match result_rx.try_recv() {
-                Ok(result) => break Some(result),
-                Err(smol::channel::TryRecvError::Closed) => break None,
-                Err(smol::channel::TryRecvError::Empty) => {}
-            }
-            let now = (
-                pct.load(Ordering::Relaxed),
-                step_title.lock().clone(),
-                detail.lock().clone(),
-            );
-            if now != last {
-                let message = progress_message(&now.1, &now.2, now.0);
-                let fraction = now.0 as f32 / 100.0;
-                last = now;
-                let _ = async_app.update_window(window_handle, |_, window, cx| {
-                    window.update_notification::<BuildNotification>(message, fraction, cx);
-                });
-            }
-            async_app
-                .background_executor()
-                .timer(Duration::from_millis(250))
-                .await;
-        };
-
-        // The build is over whatever happened; free the button first.
-        playback().update(|s| s.build_running = false);
-        session.finish(match &result {
-            Some(Ok(())) => session::Outcome::Succeeded,
-            Some(Err(StepError::Failed(_))) => session::Outcome::Failed,
-            Some(Err(StepError::Cancelled)) | None => session::Outcome::Cancelled,
-        });
-
-        match result {
-            Some(Ok(())) => {
-                audio::play_build_success();
-                let _ = async_app.update_window(window_handle, |_, window, cx| {
+/// Tells the user how the build ended and, when it succeeded and the plan
+/// ends in a run step, launches the game.
+async fn report_build_result(
+    run: BuildRun,
+    result: Option<Result<(), StepError>>,
+    async_app: &mut AsyncApp,
+) {
+    let BuildRun {
+        name,
+        plan,
+        project_root,
+        window_handle,
+    } = run;
+    match result {
+        Some(Ok(())) => {
+            audio::play_build_success();
+            let _ = async_app.update_window(window_handle, |_, window, cx| {
+                window.push_notification(
+                    Notification::success(t!("Build.Notification.Succeeded").to_string())
+                        .id::<BuildNotification>()
+                        .title(name.clone())
+                        .progress(1.0)
+                        .autohide_delay(Duration::from_secs(3)),
+                    cx,
+                );
+                for warning in &plan.warnings {
                     window.push_notification(
-                        Notification::success(t!("Build.Notification.Succeeded").to_string())
-                            .id::<BuildNotification>()
-                            .title(name.clone())
-                            .progress(1.0)
-                            .autohide_delay(Duration::from_secs(3)),
+                        Notification::warning(warning.clone()).title(name.clone()),
                         cx,
                     );
-                    for warning in &plan.warnings {
-                        window.push_notification(
-                            Notification::warning(warning.clone()).title(name.clone()),
-                            cx,
-                        );
-                    }
-                });
-                let run = plan.steps.iter().find_map(|step| match step {
-                    Step::Run { invocation, .. } => Some(invocation.clone()),
-                    _ => None,
-                });
-                if let Some(invocation) = run {
-                    game::launch_and_monitor(invocation, project_root, window_handle, async_app)
-                        .await;
                 }
-            }
-            Some(Err(StepError::Failed(message))) => {
-                audio::play_build_error();
-                let _ = async_app.update_window(window_handle, |_, window, cx| {
-                    window.push_notification(
-                        Notification::error(t!("Build.Notification.Failed").to_string())
-                            .id::<BuildNotification>()
-                            .title(name.clone()),
-                        cx,
-                    );
-                    failure::show(message, name.clone(), window, cx);
-                });
-            }
-            Some(Err(StepError::Cancelled)) | None => {
-                let cancelled = result.is_some();
-                let _ = async_app.update_window(window_handle, |_, window, cx| {
-                    let note = if cancelled {
-                        t!("Build.Notification.Cancelled")
-                    } else {
-                        t!("Build.Notification.StoppedUnexpectedly")
-                    };
-                    window.push_notification(
-                        Notification::info(note.to_string())
-                            .id::<BuildNotification>()
-                            .title(name.clone())
-                            .autohide_delay(Duration::from_secs(3)),
-                        cx,
-                    );
-                });
+            });
+            let run = plan.steps.iter().find_map(|step| match step {
+                Step::Run { invocation, .. } => Some(invocation.clone()),
+                _ => None,
+            });
+            if let Some(invocation) = run {
+                game::launch_and_monitor(invocation, project_root, window_handle, async_app).await;
             }
         }
-    })
-    .detach();
+        Some(Err(StepError::Failed(message))) => {
+            audio::play_build_error();
+            let _ = async_app.update_window(window_handle, |_, window, cx| {
+                window.push_notification(
+                    Notification::error(t!("Build.Notification.Failed").to_string())
+                        .id::<BuildNotification>()
+                        .title(name.clone()),
+                    cx,
+                );
+                failure::show(message, name.clone(), window, cx);
+            });
+        }
+        Some(Err(StepError::Cancelled)) | None => {
+            let cancelled = result.is_some();
+            let _ = async_app.update_window(window_handle, |_, window, cx| {
+                let note = if cancelled {
+                    t!("Build.Notification.Cancelled")
+                } else {
+                    t!("Build.Notification.StoppedUnexpectedly")
+                };
+                window.push_notification(
+                    Notification::info(note.to_string())
+                        .id::<BuildNotification>()
+                        .title(name.clone())
+                        .autohide_delay(Duration::from_secs(3)),
+                    cx,
+                );
+            });
+        }
+    }
 }
 
 /// Run every step of `plan` in order, on the calling (worker) thread.

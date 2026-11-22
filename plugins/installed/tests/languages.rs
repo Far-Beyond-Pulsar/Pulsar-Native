@@ -1,5 +1,5 @@
 //! A language is one plugin registration (`pulsar_language::Language`), and the
-//! host only routes (P3 of `.agents/LANGUAGE_PLUGINS_PLAN.md`):
+//! host only routes (see `.agents/LANGUAGE_PLUGINS_PLAN.md`):
 //!
 //! - a class with two languages' marker files is one `MultipleLanguages`
 //!   problem, raised by the host at scan; neither plugin names the other;
@@ -7,7 +7,7 @@
 //!   change in either plugin, and neither compiles its classes;
 //! - disabling a plugin removes its language, its class markers and its
 //!   server from what the host routes through;
-//! - Rust is the `pulsar.rust` plugin (P4): enabled by default, it registers
+//! - Rust is the `pulsar.rust` plugin: enabled by default, it registers
 //!   the Rust language and rust-analyzer's spec; disabled, a `.rs` file has no
 //!   server, the server's diagnostics are cleared, its status entry and its
 //!   settings group are gone.

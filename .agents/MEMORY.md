@@ -111,6 +111,7 @@ Timings for your own images: `real_texture_cook.rs` (ignored test, see its heade
   `streaming.texture_vram_budget_mb` (default 3072, 0 = unlimited). Applied when a
   material is bound; a slot at a stale bias is uploaded again. It is not
   per-texture or per-frame streaming (no distance/screen-size selection).
+- **Textures load coarse first** (`streaming.coarse_texture_size`, default 128), the full cook following nearest-first; both are cooked, cached and budgeted like any texture (the coarse cook is keyed by its size). Binding is budgeted per frame (`streaming.asset_bind_budget_ms`, `asset_bind_max_per_frame`). See `LEVEL_LOADING.md`, "Asset streaming".
 - **Prefetch** reaches `bind_mesh_material` through `warm`.
 - **Parallel `gpu_assets` hang**: concurrent device creation in tests; every GPU
   test helper takes a `DEVICE_CREATION` mutex.

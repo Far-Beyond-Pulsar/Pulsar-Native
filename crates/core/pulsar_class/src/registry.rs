@@ -56,7 +56,7 @@ pub struct ClassDefinition {
     /// Components with slot ids filled in, plus variable defaults.
     pub prefab: PrefabAsset,
     /// Replaced slot id → current slot UUID (`class.json`'s `slot_aliases`),
-    /// for overrides saved before the replacement (#933).
+    /// for overrides saved before the replacement.
     pub slot_aliases: std::collections::BTreeMap<String, String>,
 }
 

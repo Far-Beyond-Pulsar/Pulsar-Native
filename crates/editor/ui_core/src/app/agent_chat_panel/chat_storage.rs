@@ -22,7 +22,7 @@ struct SaveDrain(bool);
 impl Drop for SaveDrain {
     fn drop(&mut self) {
         if self.0 {
-            CHAT_SAVES.lock().unwrap().clear();
+            CHAT_SAVES.lock().expect("queue not poisoned").clear();
         }
     }
 }
@@ -37,15 +37,24 @@ fn pending_chat(path: &Path) -> Option<Arc<ChatSessionFile>> {
     let provider = vfs::provider();
     CHAT_SAVES
         .lock()
-        .unwrap()
+        .expect("queue not poisoned")
         .iter()
         .rev()
         .find(|save| save.path == path && Arc::ptr_eq(&save.provider, &provider))
         .map(|save| save.chat.clone())
 }
 
+/// Read and parse one chat file. Blocking: call from a background thread.
+fn read_chat_file(path: &Path) -> Option<ChatSessionFile> {
+    if let Some(chat) = pending_chat(path) {
+        return Some((*chat).clone());
+    }
+    let raw = vfs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
 fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessionFile) {
-    let mut saves = CHAT_SAVES.lock().unwrap();
+    let mut saves = CHAT_SAVES.lock().expect("queue not poisoned");
     let start_worker = saves.is_empty();
     saves.push_back(PendingSave {
         provider,
@@ -65,7 +74,7 @@ fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessi
             let mut failure = None;
             loop {
                 let (provider, path, chat) = {
-                    let saves = CHAT_SAVES.lock().unwrap();
+                    let saves = CHAT_SAVES.lock().expect("queue not poisoned");
                     let save = saves.front().expect("the drain owns the nonempty queue");
                     (save.provider.clone(), save.path.clone(), save.chat.clone())
                 };
@@ -83,7 +92,7 @@ fn queue_chat_save(provider: Arc<dyn FsProvider>, path: PathBuf, chat: ChatSessi
                     tracing::warn!("{error}");
                     failure = Some(error);
                 }
-                let mut saves = CHAT_SAVES.lock().unwrap();
+                let mut saves = CHAT_SAVES.lock().expect("queue not poisoned");
                 saves.pop_front();
                 if saves.is_empty() {
                     drain.0 = false;
@@ -377,18 +386,32 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
         let Some(path) = Self::chat_file_path(chat_id) else {
             return;
         };
-        let chat = if let Some(chat) = pending_chat(&path) {
-            (*chat).clone()
-        } else {
-            let Ok(raw) = vfs::read_to_string(&path) else {
-                return;
-            };
-            let Ok(chat) = serde_json::from_str::<ChatSessionFile>(&raw) else {
-                return;
-            };
-            chat
-        };
+        let chat_id = chat_id.to_string();
+        cx.spawn(async move |this, cx| {
+            editor_task_queue::tracked(
+                TaskDescription::new("Open AI chat", "AI chat", TaskDuration::Short),
+                async move {
+                    let chat = cx
+                        .background_executor()
+                        .spawn(async move { read_chat_file(&path) })
+                        .await;
+                    let Some(chat) = chat else { return };
+                    cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            if !panel.is_request_in_flight {
+                                panel.apply_loaded_chat(&chat_id, chat, cx);
+                            }
+                        });
+                    });
+                },
+            )
+            .await;
+        })
+        .detach();
+    }
 
+    /// Install a chat read from disk as the current one (UI thread, no I/O).
+    fn apply_loaded_chat(&mut self, chat_id: &str, chat: ChatSessionFile, cx: &mut Context<Self>) {
         // The id the chat was opened by (a checked file name), not the one
         // written inside the file.
         self.current_chat_id = chat_id.to_string();
@@ -477,19 +500,51 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
     }
 
     pub(super) fn bootstrap_chat_storage(&mut self, cx: &mut Context<Self>) {
-        self.loaded_chat_project_root = engine_state::get_project_path().map(PathBuf::from);
+        // The root is recorded now so `maybe_reload_chats_from_disk` does not
+        // start a second scan while this one runs. The scan (every chat file
+        // is read and parsed) and the latest chat's load run off the UI thread.
+        let root = engine_state::get_project_path().map(PathBuf::from);
+        self.loaded_chat_project_root = root.clone();
         self.chat_storage_provider = vfs::provider();
-        let entries = Self::read_chat_index();
-        self.chat_history_entries = entries.clone();
-        self.chat_history_list.update(cx, |list, cx| {
-            list.set_items(entries.clone(), cx);
-        });
-
-        if let Some(latest) = entries.first() {
-            self.load_chat_session(&latest.id, cx);
-        } else {
-            self.start_new_chat(cx);
-        }
+        cx.spawn(async move |this, cx| {
+            editor_task_queue::tracked(
+                TaskDescription::new("Load AI chats", "AI chat", TaskDuration::Short),
+                async move {
+                    let (entries, latest) = cx
+                        .background_executor()
+                        .spawn(async move {
+                            let entries = AgentChatPanel::read_chat_index();
+                            let latest = entries.first().and_then(|entry| {
+                                let path = AgentChatPanel::chat_file_path(&entry.id)?;
+                                Some((entry.id.clone(), read_chat_file(&path)?))
+                            });
+                            (entries, latest)
+                        })
+                        .await;
+                    cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            if panel.loaded_chat_project_root != root {
+                                return; // a newer bootstrap owns the panel
+                            }
+                            panel.chat_history_entries = entries.clone();
+                            panel.chat_history_list.update(cx, |list, cx| {
+                                list.set_items(entries, cx);
+                            });
+                            // Never replace a chat the user already started.
+                            if panel.is_request_in_flight || !panel.current_chat_id.is_empty() {
+                                return;
+                            }
+                            match latest {
+                                Some((id, chat)) => panel.apply_loaded_chat(&id, chat, cx),
+                                None => panel.start_new_chat(cx),
+                            }
+                        });
+                    });
+                },
+            )
+            .await;
+        })
+        .detach();
     }
 
     pub(super) fn maybe_reload_chats_from_disk(&mut self, cx: &mut Context<Self>) {

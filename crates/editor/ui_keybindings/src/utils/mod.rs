@@ -1,3 +1,6 @@
+//! Keybinding data: the keybindings file, user overrides, the action registry, the
+//! `KeybindingStore` and the view model.
+
 pub mod file;
 pub mod overrides;
 pub mod registry;

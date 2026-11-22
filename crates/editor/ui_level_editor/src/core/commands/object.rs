@@ -247,8 +247,8 @@ fn set_transform(
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> CommandResult {
-    // `scene_edit::objects::set_transform`, NOT `get_object`+`update_object`
-    // (Pulsar-Native#561): the old whole-object round trip triggered
+    // `scene_edit::objects::set_transform`, NOT `get_object`+`update_object`:
+    // the old whole-object round trip triggered
     // `sync_registered_component_props_to_scene_db` -- a full
     // re-serialize/re-hydrate of every component on the object --
     // on every keystroke of a position/rotation/scale field, for a

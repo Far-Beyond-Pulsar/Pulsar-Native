@@ -30,6 +30,11 @@ members = [
     "crates/agent-providers/*",
     "crates/ui/wgpui-base",
     "plugins/vendor/asset_viewer",
+    # Motion capture (`pulsar.mocap`): in-tree plugin, its crates named one by one.
+    "plugins/vendor/mocap",
+    "plugins/vendor/mocap/format",
+    "plugins/vendor/mocap/capture",
+    "plugins/vendor/mocap/editor",
     # Skeletal animation editor; built-in plugin of the editor.
     "plugins/vendor/skm_editor",
     # The skeletal asset formats, shared by that plugin and the asset importer.
@@ -200,6 +205,7 @@ members = [
     "plugins/vendor/lights/feature/hlfs",
     "plugins/vendor/lights/feature/sampler",
     "plugins/vendor/lights/feature/shadows",
+    "plugins/vendor/lights/feature/sampler",
     "plugins/vendor/lights/host",
     "plugins/vendor/lights/component",
     "plugins/vendor/lights/editor",
@@ -443,8 +449,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -565,6 +571,7 @@ helio-pass-forward-lit = { path = "plugins/vendor/meshes/feature/forward" }
 helio-pass-gbuffer = { path = "plugins/vendor/meshes/feature/gbuffer" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
+helio-pass-reference = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-reference" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
 helio-mesh-api = { path = "plugins/vendor/meshes/api" }
 helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
@@ -717,6 +724,7 @@ pulsar_script_ts = { path = "plugins/vendor/typescript/compiler" }
 plugin_typescript = { path = "plugins/vendor/typescript" }
 rust_plugin = { path = "plugins/vendor/rust" }
 trait_editor_plugin = { path = "plugins/vendor/trait_editor" }
+mocap_plugin = { path = "plugins/vendor/mocap" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"
@@ -830,5 +838,5 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # patch point at a different rev of the same repository), so SceneDB's types
 # are one set of types for all of them.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154" }

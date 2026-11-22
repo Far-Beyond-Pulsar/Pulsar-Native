@@ -35,7 +35,7 @@ impl Render for HierarchyDragPayload {
 
 // ── Scene Object Item ─────────────────────────────────────────────────────────
 
-/// How an object relates to a placed class (#921).
+/// How an object relates to a placed class.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClassRole {
     None,
@@ -57,7 +57,7 @@ struct SceneObjectItem {
     is_selected: bool,
     is_folder: bool,
     class_role: ClassRole,
-    /// The object's authored movability (#837,
+    /// The object's authored movability (from
     /// `helio_component::components::object_movability`); `None` for objects
     /// with no mesh or light.
     movability: Option<helio::Movability>,
@@ -129,6 +129,31 @@ fn apply_row_selection(state: &mut LevelEditorState, id: &str, modifiers: &Modif
     }
     state.hierarchy.selection_anchor = Some(id.to_string());
     state.scene.select_object(Some(id.to_string()));
+}
+
+/// Select every object in the level (Ctrl/Cmd+A), the last in tree order the
+/// primary. Class-generated children and instance members are left out: they
+/// are rebuilt from their source and cannot be edited on their own. Returns
+/// how many objects are selected.
+pub(crate) fn select_all_objects(state: &mut LevelEditorState) -> usize {
+    let (objects, _) = {
+        let world = state.scene.world();
+        crate::scene_edit::objects::get_hierarchy_projection(&world)
+    };
+    let ids: Vec<String> = {
+        let world = state.scene.world();
+        objects
+            .iter()
+            .map(|object| &object.id)
+            .filter(|id| {
+                !crate::scene_edit::classes::is_generated_child(&world, id)
+                    && !crate::scene_edit::objects::is_instance_member(&world, id)
+            })
+            .cloned()
+            .collect()
+    };
+    state.scene.select_objects(&ids);
+    ids.len()
 }
 
 /// Ancestors of an object, nearest first.
@@ -569,7 +594,7 @@ impl HierarchyItem for SceneObjectItem {
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
         let delete_state = self.state_arc.clone();
-        // "Mark selection Static" (#837): the object and everything under
+        // "Mark selection Static": the object and everything under
         // it, one undo step. Objects with no mesh or light are skipped.
         let set_movability = |movability: helio_component::components::ObjectMovability| {
             let id = self.object.id.clone();

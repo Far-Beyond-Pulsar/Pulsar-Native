@@ -45,8 +45,8 @@ pub struct SceneFile {
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub world_settings: Value,
 
-    // ── Blueprint class bindings (#650, legacy) ───────────────────────────
-    /// **Legacy** (#921): placed classes are now a `ClassInstance` component
+    // ── Blueprint class bindings (legacy) ───────────────────────────
+    /// **Legacy**: placed classes are now a `ClassInstance` component
     /// on the object (`pulsar_class`). Loaders still read this section and
     /// migrate it (`pulsar_class::migrate`); writers no longer emit migrated
     /// entries.
@@ -57,7 +57,7 @@ pub struct SceneFile {
     ///
     /// Additive extension: older level files lack the key entirely and
     /// deserialize to an empty map; files without bindings serialize without
-    /// it, staying byte-compatible with the pre-#650 format.
+    /// it, staying byte-compatible with the earlier format.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub blueprint_bindings: BlueprintBindings,
 }
@@ -95,9 +95,9 @@ impl SceneFile {
     }
 }
 
-// ── Blueprint class bindings (#650) ───────────────────────────────────────────
+// ── Blueprint class bindings ───────────────────────────────────────────
 
-/// One compiled-Blueprint class bound to one scene object (#650).
+/// One compiled-Blueprint class bound to one scene object.
 ///
 /// At play-mode load each binding becomes exactly one dispatcher instance
 /// whose component ops address the bound object's entity. The class must
@@ -332,12 +332,12 @@ impl std::error::Error for SceneLoadError {}
 
 #[cfg(test)]
 mod blueprint_binding_tests {
-    //! #650 — the additive level-format extension for Blueprint class
+    //! The additive level-format extension for Blueprint class
     //! bindings: old files load unchanged, new sections round-trip.
 
     use super::*;
 
-    /// The additive guarantee: a pre-#650 file (no `blueprint_bindings` key)
+    /// The additive guarantee: a file from before bindings existed (no `blueprint_bindings` key)
     /// deserializes with empty bindings.
     #[test]
     fn old_files_without_bindings_load_unchanged() {

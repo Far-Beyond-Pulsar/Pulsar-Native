@@ -30,7 +30,7 @@
 //! [`register`](EventHub::register); plugins can register through Gamma's
 //! FFI on the bus [`export_raw`](EventHub::export_raw) hands them.
 //!
-//! # Performance (Pulsar-Native#939)
+//! # Performance
 //!
 //! Gamma's deferred queue is one mutex. The hub's publish methods and
 //! [`flush`](EventHub::flush) run inside profiler scopes
@@ -392,7 +392,7 @@ impl EventHub {
     /// `ForeignBus`.
     ///
     /// Publishes made through the table are noted in the debug tap like
-    /// the hub's own (#942); see [`crate::foreign_tap`].
+    /// the hub's own; see [`crate::foreign_tap`].
     pub fn export_raw(&self) -> RawBus {
         crate::foreign_tap::export_tapped(self.inner.bus.export_raw(), Arc::downgrade(&self.inner))
     }
@@ -624,7 +624,7 @@ mod tests {
         assert!(hub.recent_events().is_empty());
     }
 
-    /// #942: a plugin publishing through a `ForeignBus` on the exported
+    /// A plugin publishing through a `ForeignBus` on the exported
     /// table reaches the hub's subscribers and shows in the tap.
     #[test]
     fn foreign_publishes_are_tapped() {

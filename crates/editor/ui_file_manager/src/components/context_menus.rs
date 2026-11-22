@@ -256,7 +256,7 @@ struct CategoryNode {
     subcategories: HashMap<String, CategoryNode>,
 }
 
-/// Import actions for a file with an import state (#1102), followed by a
+/// Import actions for a file with an import state, followed by a
 /// separator; nothing for other files.
 fn import_items(
     menu: ui::popup_menu::PopupMenu,

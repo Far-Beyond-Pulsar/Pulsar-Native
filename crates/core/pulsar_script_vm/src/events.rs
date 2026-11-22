@@ -98,21 +98,36 @@ pub fn is_event_field_type(ty: &Type) -> bool {
     )
 }
 
+/// Why a handler cannot take an event: its parameters are not a prefix of
+/// the event's fields.
+#[derive(Debug, thiserror::Error)]
+pub enum HandlerMismatch {
+    #[error("the handler takes {handler} parameters, the event has {event} fields")]
+    TooManyParameters { handler: usize, event: usize },
+    #[error("parameter {index} is {param}, the event's field {index} is {field}")]
+    TypeDiffers {
+        index: usize,
+        param: Type,
+        field: Type,
+    },
+}
+
 /// Check `handler_params` against an event's field types: they must be a
 /// prefix of them.
-pub fn check_handler(handler_params: &[Type], fields: &[Type]) -> Result<(), String> {
+pub fn check_handler(handler_params: &[Type], fields: &[Type]) -> Result<(), HandlerMismatch> {
     if handler_params.len() > fields.len() {
-        return Err(format!(
-            "the handler takes {} parameters, the event has {} fields",
-            handler_params.len(),
-            fields.len()
-        ));
+        return Err(HandlerMismatch::TooManyParameters {
+            handler: handler_params.len(),
+            event: fields.len(),
+        });
     }
     for (i, (param, field)) in handler_params.iter().zip(fields).enumerate() {
         if param != field {
-            return Err(format!(
-                "parameter {i} is {param}, the event's field {i} is {field}"
-            ));
+            return Err(HandlerMismatch::TypeDiffers {
+                index: i,
+                param: param.clone(),
+                field: field.clone(),
+            });
         }
     }
     Ok(())

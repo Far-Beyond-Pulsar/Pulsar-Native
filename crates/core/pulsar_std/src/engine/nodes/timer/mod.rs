@@ -51,6 +51,6 @@ pub fn set_interval(ms: u64, count: u64) {
 pub fn now() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_millis()
 }

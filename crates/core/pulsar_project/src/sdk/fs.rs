@@ -12,27 +12,29 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-pub fn read(path: &Path) -> Result<Vec<u8>, String> {
-    std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
+use super::error::SdkError;
+
+pub fn read(path: &Path) -> Result<Vec<u8>, SdkError> {
+    std::fs::read(path).map_err(|e| SdkError::io(&path, e))
 }
 
-pub fn read_string(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
+pub fn read_string(path: &Path) -> Result<String, SdkError> {
+    std::fs::read_to_string(path).map_err(|e| SdkError::io(&path, e))
 }
 
 /// The file's bytes, or `None` when it does not exist.
-pub fn read_if_exists(path: &Path) -> Result<Option<Vec<u8>>, String> {
+pub fn read_if_exists(path: &Path) -> Result<Option<Vec<u8>>, SdkError> {
     match std::fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("{}: {e}", path.display())),
+        Err(e) => Err(SdkError::io(path, e)),
     }
 }
 
 /// `path` absolute, with `.`/`..` and links resolved, without the Windows
 /// verbatim (`\\?\`) prefix Cargo does not print.
-pub fn canonical(path: &Path) -> Result<PathBuf, String> {
-    let resolved = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+pub fn canonical(path: &Path) -> Result<PathBuf, SdkError> {
+    let resolved = std::fs::canonicalize(path).map_err(|e| SdkError::io(&path, e))?;
     let text = resolved.to_string_lossy();
     Ok(match text.strip_prefix(r"\\?\") {
         Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
@@ -45,8 +47,8 @@ pub fn is_file(path: &Path) -> bool {
 }
 
 /// Size and modification time (nanoseconds since the epoch) of a file.
-pub fn stamp(path: &Path) -> Result<(u64, u128), String> {
-    let meta = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
+pub fn stamp(path: &Path) -> Result<(u64, u128), SdkError> {
+    let meta = std::fs::metadata(path).map_err(|e| SdkError::io(&path, e))?;
     let modified = meta
         .modified()
         .ok()
@@ -65,29 +67,29 @@ pub fn size(path: &Path) -> Option<u64> {
 
 /// Write `bytes` to `path` (its directories created) through a temporary
 /// file and a rename, so Cargo never reads a half-written manifest.
-pub fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{}: no parent directory", path.display()))?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+pub fn write(path: &Path, bytes: &[u8]) -> Result<(), SdkError> {
+    let parent = path.parent().ok_or_else(|| SdkError::NoParent {
+        path: path.to_path_buf(),
+    })?;
+    std::fs::create_dir_all(parent).map_err(|e| SdkError::io(&parent, e))?;
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     let temp = parent.join(format!(".{name}.pulsar-tmp"));
-    std::fs::write(&temp, bytes).map_err(|e| format!("{}: {e}", temp.display()))?;
+    std::fs::write(&temp, bytes).map_err(|e| SdkError::io(&temp, e))?;
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
-        format!("{}: {e}", path.display())
+        SdkError::io(path, e)
     })
 }
 
 /// Remove a file, then each parent left empty, up to (not including) `root`.
-pub fn remove_file_and_empty_parents(path: &Path, root: &Path) -> Result<(), String> {
+pub fn remove_file_and_empty_parents(path: &Path, root: &Path) -> Result<(), SdkError> {
     match std::fs::remove_file(path) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("{}: {e}", path.display())),
+        Err(e) => return Err(SdkError::io(path, e)),
     }
     let mut dir = path.parent();
     while let Some(current) = dir {
@@ -116,14 +118,13 @@ pub struct Found {
 /// `examples/` (their targets are removed from the mirrored manifest), and
 /// nested packages (a directory with its own `Cargo.toml`, mirrored on its
 /// own when the game uses it).
-pub fn walk_package(dir: &Path) -> Result<Vec<Found>, String> {
+pub fn walk_package(dir: &Path) -> Result<Vec<Found>, SdkError> {
     let mut found = Vec::new();
     let mut stack = vec![(dir.to_path_buf(), String::new())];
     while let Some((current, rel)) = stack.pop() {
-        let entries =
-            std::fs::read_dir(&current).map_err(|e| format!("{}: {e}", current.display()))?;
+        let entries = std::fs::read_dir(&current).map_err(|e| SdkError::io(&current, e))?;
         for entry in entries {
-            let entry = entry.map_err(|e| format!("{}: {e}", current.display()))?;
+            let entry = entry.map_err(|e| SdkError::io(&current, e))?;
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') {
                 continue;
@@ -135,7 +136,7 @@ pub fn walk_package(dir: &Path) -> Result<Vec<Found>, String> {
                 format!("{rel}/{name}")
             };
             // Follows links: a linked file is mirrored as its content.
-            let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let meta = std::fs::metadata(&path).map_err(|e| SdkError::io(&path, e))?;
             if meta.is_dir() {
                 let skipped = name == "target"
                     || (rel.is_empty()
@@ -155,17 +156,16 @@ pub fn walk_package(dir: &Path) -> Result<Vec<Found>, String> {
 
 /// Every file under `dir`, relative and forward-slashed (for removing what
 /// the mirror no longer has after an interrupted run).
-pub fn all_files(dir: &Path) -> Result<Vec<String>, String> {
+pub fn all_files(dir: &Path) -> Result<Vec<String>, SdkError> {
     let mut out = Vec::new();
     if !dir.is_dir() {
         return Ok(out);
     }
     let mut stack = vec![(dir.to_path_buf(), String::new())];
     while let Some((current, rel)) = stack.pop() {
-        let entries =
-            std::fs::read_dir(&current).map_err(|e| format!("{}: {e}", current.display()))?;
+        let entries = std::fs::read_dir(&current).map_err(|e| SdkError::io(&current, e))?;
         for entry in entries {
-            let entry = entry.map_err(|e| format!("{}: {e}", current.display()))?;
+            let entry = entry.map_err(|e| SdkError::io(&current, e))?;
             let name = entry.file_name().to_string_lossy().into_owned();
             let child = if rel.is_empty() {
                 name
@@ -174,7 +174,7 @@ pub fn all_files(dir: &Path) -> Result<Vec<String>, String> {
             };
             let kind = entry
                 .file_type()
-                .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+                .map_err(|e| SdkError::io(&entry.path(), e))?;
             if kind.is_dir() {
                 stack.push((entry.path(), child));
             } else {

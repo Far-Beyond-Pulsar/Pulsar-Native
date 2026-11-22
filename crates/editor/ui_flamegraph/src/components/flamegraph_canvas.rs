@@ -68,7 +68,9 @@ pub fn build_ruler_instances(
     }
     // Fallback: if no candidate matched, use the largest
     if step_ms == 1 && target_step_ns > 1_000_000 {
-        step_ms = *candidates.last().unwrap();
+        step_ms = *candidates
+            .last()
+            .expect("candidates is a non-empty array literal");
     }
     let step_ns = step_ms * 1_000_000;
 
@@ -297,7 +299,9 @@ pub fn build_overlay_instances(
         }
     }
     if step_ms == 1 && target_step_ns > 1_000_000 {
-        step_ms = *candidates.last().unwrap();
+        step_ms = *candidates
+            .last()
+            .expect("candidates is a non-empty array literal");
     }
     let step_ns = step_ms * 1_000_000;
     let gfirst = (vr.start / step_ns) * step_ns;

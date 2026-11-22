@@ -12,7 +12,7 @@
 //!
 //! Several editors can host play sessions at once (one per open level). Only
 //! one of them, the *playback host*, reports into [`PlaybackState`]; the
-//! others would overwrite its status with their own (#1009). See
+//! others would overwrite its status with their own. See
 //! [`claim_playback_host`].
 
 use std::path::{Path, PathBuf};

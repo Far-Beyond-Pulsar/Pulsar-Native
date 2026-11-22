@@ -1,4 +1,4 @@
-//! Level migration to `ClassInstance` (Pulsar-Native#921).
+//! Level migration to `ClassInstance`.
 //!
 //! Older levels tie objects to classes two ways, both retired:
 //!
@@ -179,131 +179,196 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
 
     // ── ScriptComponent → ClassInstance ────────────────────────────────
     for (index, id) in object_ids.iter().enumerate() {
-        let lists = component_lists_of(root, index, id);
-        let mut converted_class: Option<String> = None;
-        for list in &lists {
-            let Some(entries) = component_list_mut(root, list) else {
-                continue;
-            };
-            let has_instance = entries
-                .iter()
-                .any(|e| class_name_of(e) == Some(CLASS_INSTANCE));
-            let mut placed_instance = has_instance;
-            let mut i = 0;
-            while i < entries.len() {
-                let entry = &entries[i];
-                if class_name_of(entry) != Some(SCRIPT_COMPONENT) {
-                    i += 1;
-                    continue;
-                }
-                // Rust-mode binding → NativeScriptComponent.
-                if entry
-                    .get("data")
-                    .and_then(|d| d.get("mode"))
-                    .and_then(Value::as_str)
-                    == Some("rust")
-                {
-                    let data = entry.get("data").cloned().unwrap_or_default();
-                    let field = |k: &str| {
-                        data.get(k)
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string()
-                    };
-                    let native = crate::NativeScriptComponent::new(
-                        field("script_crate"),
-                        field("actor_type"),
-                    );
-                    let mut converted = Map::new();
-                    if let Some(index) = entry.get("index").cloned() {
-                        converted.insert("index".into(), index);
-                    }
-                    converted.insert(
-                        "class_name".into(),
-                        Value::String(crate::native_script::NATIVE_SCRIPT_COMPONENT.into()),
-                    );
-                    converted.insert(
-                        "enabled".into(),
-                        entry.get("enabled").cloned().unwrap_or(Value::Bool(true)),
-                    );
-                    converted.insert(
-                        "data".into(),
-                        serde_json::to_value(&native).unwrap_or_default(),
-                    );
-                    report
-                        .native_scripts
-                        .push((id.clone(), native.actor_type.clone()));
-                    entries[i] = Value::Object(converted);
-                    i += 1;
-                    continue;
-                }
-                let path = entry
-                    .get("data")
-                    .and_then(|d| d.get("script_asset"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let Some(class) = registry.resolve_script_asset(path) else {
-                    i += 1;
-                    continue;
-                };
-                if placed_instance {
-                    if converted_class.as_deref().is_some_and(|c| c != class.name) {
-                        // A second class on one object: keep it as it was.
-                        tracing::warn!(object = %id, class = %class.name, "Object already has a class; keeping its extra ScriptComponent");
-                        i += 1;
-                        continue;
-                    }
-                    entries.remove(i);
-                } else {
-                    let instance = ClassInstance::new(class.id.clone(), class.name.clone());
-                    entries[i] = class_instance_entry(&instance, Some(&entries[i].clone()), i);
-                    placed_instance = true;
-                    i += 1;
-                }
-                if converted_class.is_none() {
-                    converted_class = Some(class.name.clone());
-                    report
-                        .script_components
-                        .push((id.clone(), class.name.clone()));
-                }
-            }
-        }
-
-        // Flat `props.script_asset` on a Blueprint object (oldest files).
-        let object = &root["objects"][index];
-        let is_blueprint = object.get("object_type").and_then(Value::as_str) == Some("Blueprint");
-        let flat = object
-            .get("props")
-            .and_then(|p| p.get("script_asset"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        if let Some(flat) = flat {
-            if let Some(class) = registry.resolve_script_asset(&flat).cloned() {
-                if converted_class.is_none() && is_blueprint {
-                    let list = authoritative_list(root, index, id);
-                    if !list
-                        .iter()
-                        .any(|e| class_name_of(e) == Some(CLASS_INSTANCE))
-                    {
-                        let instance = ClassInstance::new(class.id.clone(), class.name.clone());
-                        let len = list.len();
-                        list.insert(0, class_instance_entry(&instance, None, len));
-                        report
-                            .script_components
-                            .push((id.clone(), class.name.clone()));
-                    }
-                }
-                if let Some(props) = root["objects"][index]
-                    .get_mut("props")
-                    .and_then(Value::as_object_mut)
-                {
-                    props.remove("script_asset");
-                }
-            }
-        }
+        let converted_class = convert_script_components(root, registry, index, id, &mut report);
+        migrate_flat_script_asset(
+            root,
+            registry,
+            index,
+            id,
+            converted_class.is_none(),
+            &mut report,
+        );
     }
 
     // ── blueprint_bindings → ClassInstance ─────────────────────────────
+    migrate_blueprint_bindings(root, registry, &object_ids, &mut report);
+
+    // ── Component records ──────────────
+    report.records = crate::records::migrate_component_records(root);
+    report
+}
+
+/// Converts the `ScriptComponent`s in every component list of object `index`.
+/// Returns the class the object's first converted script resolved to.
+fn convert_script_components(
+    root: &mut Value,
+    registry: &ClassRegistry,
+    index: usize,
+    id: &str,
+    report: &mut MigrationReport,
+) -> Option<String> {
+    let lists = component_lists_of(root, index, id);
+    let mut converted_class: Option<String> = None;
+    for list in &lists {
+        let Some(entries) = component_list_mut(root, list) else {
+            continue;
+        };
+        convert_list_script_components(entries, registry, id, &mut converted_class, report);
+    }
+    converted_class
+}
+
+/// Converts the `ScriptComponent`s of one component list: a rust-mode one
+/// becomes a `NativeScriptComponent`, one naming a class becomes the object's
+/// `ClassInstance` (a repeat of the same class is dropped, a different second
+/// class is kept as it was).
+fn convert_list_script_components(
+    entries: &mut Vec<Value>,
+    registry: &ClassRegistry,
+    id: &str,
+    converted_class: &mut Option<String>,
+    report: &mut MigrationReport,
+) {
+    let has_instance = entries
+        .iter()
+        .any(|e| class_name_of(e) == Some(CLASS_INSTANCE));
+    let mut placed_instance = has_instance;
+    let mut i = 0;
+    while i < entries.len() {
+        let entry = &entries[i];
+        if class_name_of(entry) != Some(SCRIPT_COMPONENT) {
+            i += 1;
+            continue;
+        }
+        // Rust-mode binding → NativeScriptComponent.
+        if entry
+            .get("data")
+            .and_then(|d| d.get("mode"))
+            .and_then(Value::as_str)
+            == Some("rust")
+        {
+            let (converted, actor_type) = native_script_entry(entry);
+            report.native_scripts.push((id.to_string(), actor_type));
+            entries[i] = converted;
+            i += 1;
+            continue;
+        }
+        let path = entry
+            .get("data")
+            .and_then(|d| d.get("script_asset"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(class) = registry.resolve_script_asset(path) else {
+            i += 1;
+            continue;
+        };
+        if placed_instance {
+            if converted_class.as_deref().is_some_and(|c| c != class.name) {
+                // A second class on one object: keep it as it was.
+                tracing::warn!(object = %id, class = %class.name, "Object already has a class; keeping its extra ScriptComponent");
+                i += 1;
+                continue;
+            }
+            entries.remove(i);
+        } else {
+            let instance = ClassInstance::new(class.id.clone(), class.name.clone());
+            entries[i] = class_instance_entry(&instance, Some(&entries[i].clone()), i);
+            placed_instance = true;
+            i += 1;
+        }
+        if converted_class.is_none() {
+            *converted_class = Some(class.name.clone());
+            report
+                .script_components
+                .push((id.to_string(), class.name.clone()));
+        }
+    }
+}
+
+/// A rust-mode `ScriptComponent` as the `NativeScriptComponent` entry that
+/// replaces it, and its actor type.
+fn native_script_entry(entry: &Value) -> (Value, String) {
+    let data = entry.get("data").cloned().unwrap_or_default();
+    let field = |k: &str| {
+        data.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let native = crate::NativeScriptComponent::new(field("script_crate"), field("actor_type"));
+    let mut converted = Map::new();
+    if let Some(index) = entry.get("index").cloned() {
+        converted.insert("index".into(), index);
+    }
+    converted.insert(
+        "class_name".into(),
+        Value::String(crate::native_script::NATIVE_SCRIPT_COMPONENT.into()),
+    );
+    converted.insert(
+        "enabled".into(),
+        entry.get("enabled").cloned().unwrap_or(Value::Bool(true)),
+    );
+    converted.insert(
+        "data".into(),
+        serde_json::to_value(&native).unwrap_or_default(),
+    );
+    (Value::Object(converted), native.actor_type.clone())
+}
+
+/// The flat `props.script_asset` on a Blueprint object (oldest files): becomes
+/// a `ClassInstance` unless the object already got one (`no_class_yet` is
+/// false) or has one, and the prop is removed when it names a class.
+fn migrate_flat_script_asset(
+    root: &mut Value,
+    registry: &ClassRegistry,
+    index: usize,
+    id: &str,
+    no_class_yet: bool,
+    report: &mut MigrationReport,
+) {
+    let object = &root["objects"][index];
+    let is_blueprint = object.get("object_type").and_then(Value::as_str) == Some("Blueprint");
+    let flat = object
+        .get("props")
+        .and_then(|p| p.get("script_asset"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let Some(flat) = flat else {
+        return;
+    };
+    let Some(class) = registry.resolve_script_asset(&flat).cloned() else {
+        return;
+    };
+    if no_class_yet && is_blueprint {
+        let list = authoritative_list(root, index, id);
+        if !list
+            .iter()
+            .any(|e| class_name_of(e) == Some(CLASS_INSTANCE))
+        {
+            let instance = ClassInstance::new(class.id.clone(), class.name.clone());
+            let len = list.len();
+            list.insert(0, class_instance_entry(&instance, None, len));
+            report
+                .script_components
+                .push((id.to_string(), class.name.clone()));
+        }
+    }
+    if let Some(props) = root["objects"][index]
+        .get_mut("props")
+        .and_then(Value::as_object_mut)
+    {
+        props.remove("script_asset");
+    }
+}
+
+/// Moves the level's `blueprint_bindings` onto the objects' `ClassInstance`s.
+/// Bindings that cannot be expressed that way stay in `blueprint_bindings`.
+fn migrate_blueprint_bindings(
+    root: &mut Value,
+    registry: &ClassRegistry,
+    object_ids: &[String],
+    report: &mut MigrationReport,
+) {
     let bindings = root
         .as_object_mut()
         .and_then(|r| r.remove("blueprint_bindings"))
@@ -320,56 +385,11 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
         };
         let mut left = Vec::new();
         for binding in entries.as_array().cloned().unwrap_or_default() {
-            let class_name = binding
-                .get("class_name")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let overrides: Map<String, Value> = binding
-                .get("overrides")
-                .and_then(Value::as_object)
-                .cloned()
-                .unwrap_or_default();
-            let (fresh, resolved) = instance_for_class_name(registry, &class_name);
-            let list = authoritative_list(root, index, &stable_id);
-            let existing = list
-                .iter_mut()
-                .find(|e| class_name_of(e) == Some(CLASS_INSTANCE));
-            match existing {
-                Some(entry) => {
-                    let mut instance = entry
-                        .get("data")
-                        .and_then(ClassInstance::from_json)
-                        .unwrap_or_default();
-                    let same = (!fresh.class.is_empty() && instance.class == fresh.class)
-                        || (instance.class_name == class_name && !class_name.is_empty());
-                    if !same {
-                        report
-                            .kept_bindings
-                            .push((stable_id.clone(), class_name.clone()));
-                        left.push(binding);
-                        continue;
-                    }
-                    for (k, v) in overrides {
-                        instance.variable_overrides.entry(k).or_insert(v);
-                    }
-                    if let Some(map) = entry.as_object_mut() {
-                        map.insert("data".into(), instance.to_value());
-                    }
-                }
-                None => {
-                    let mut instance = fresh;
-                    instance.variable_overrides = overrides.into_iter().collect();
-                    let len = list.len();
-                    list.insert(0, class_instance_entry(&instance, None, len));
-                }
+            if let Some(unmigrated) =
+                migrate_binding(root, registry, index, &stable_id, binding, report)
+            {
+                left.push(unmigrated);
             }
-            if !resolved {
-                report
-                    .unresolved
-                    .push((stable_id.clone(), class_name.clone()));
-            }
-            report.bindings.push((stable_id.clone(), class_name));
         }
         if !left.is_empty() {
             kept.insert(stable_id, Value::Array(left));
@@ -380,10 +400,69 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
             map.insert("blueprint_bindings".into(), Value::Object(kept));
         }
     }
+}
 
-    // ── Component records (Pulsar-Native#1035, Phase 3) ──────────────
-    report.records = crate::records::migrate_component_records(root);
-    report
+/// Applies one binding to its object's `ClassInstance`, creating it when the
+/// object has none. Returns the binding when the object already has a
+/// different class, so it is kept.
+fn migrate_binding(
+    root: &mut Value,
+    registry: &ClassRegistry,
+    index: usize,
+    stable_id: &str,
+    binding: Value,
+    report: &mut MigrationReport,
+) -> Option<Value> {
+    let class_name = binding
+        .get("class_name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let overrides: Map<String, Value> = binding
+        .get("overrides")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let (fresh, resolved) = instance_for_class_name(registry, &class_name);
+    let list = authoritative_list(root, index, stable_id);
+    let existing = list
+        .iter_mut()
+        .find(|e| class_name_of(e) == Some(CLASS_INSTANCE));
+    match existing {
+        Some(entry) => {
+            let mut instance = entry
+                .get("data")
+                .and_then(ClassInstance::from_json)
+                .unwrap_or_default();
+            let same = (!fresh.class.is_empty() && instance.class == fresh.class)
+                || (instance.class_name == class_name && !class_name.is_empty());
+            if !same {
+                report
+                    .kept_bindings
+                    .push((stable_id.to_string(), class_name.clone()));
+                return Some(binding);
+            }
+            for (k, v) in overrides {
+                instance.variable_overrides.entry(k).or_insert(v);
+            }
+            if let Some(map) = entry.as_object_mut() {
+                map.insert("data".into(), instance.to_value());
+            }
+        }
+        None => {
+            let mut instance = fresh;
+            instance.variable_overrides = overrides.into_iter().collect();
+            let len = list.len();
+            list.insert(0, class_instance_entry(&instance, None, len));
+        }
+    }
+    if !resolved {
+        report
+            .unresolved
+            .push((stable_id.to_string(), class_name.clone()));
+    }
+    report.bindings.push((stable_id.to_string(), class_name));
+    None
 }
 
 #[cfg(test)]

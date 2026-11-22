@@ -103,7 +103,7 @@ impl LevelEditorPanel {
                 );
 
                 // Set center and right dock only (no left dock, matching DAW approach).
-                // The Game tab (Play In Editor, issue #243) is added dynamically
+                // The Game tab (Play In Editor) is added dynamically
                 // when the game starts and removed on stop — see `sync_game_tab`.
                 let viewport_handle = viewport_panel.downgrade();
                 let center_tabs = DockItem::tabs(

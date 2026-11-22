@@ -7,8 +7,8 @@
 //! predates the extraction and owns the gameplay-facing type. Neither crate
 //! can implement `From` across the boundary (orphan rule).
 //!
-//! THIS module is the one deliberate seam between them
-//! (Pulsar-Native#652). New call sites must convert here — never re-inline a
+//! THIS module is the one deliberate seam between them.
+//! New call sites must convert here — never re-inline a
 //! field copy, and never widen this module with anything beyond that one
 //! conversion. If a third spelling of frame time ever appears, extend this
 //! module rather than inventing a second seam.
@@ -33,7 +33,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    /// #652: the bridge maps every field verbatim — it is a type-system
+    /// The bridge maps every field verbatim — it is a type-system
     /// seam, not a transformation.
     #[test]
     fn converts_every_field_verbatim() {

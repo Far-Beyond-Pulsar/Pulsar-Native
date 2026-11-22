@@ -136,9 +136,15 @@ impl NatOrchestrator {
         // Default STUN servers for NAT detection
         // Note: Using IP addresses here. In production, you'd want to resolve DNS names.
         let stun_servers = vec![
-            "74.125.250.129:19302".parse().unwrap(), // stun.l.google.com
-            "74.125.250.130:19302".parse().unwrap(), // stun1.l.google.com
-            "74.125.250.131:19302".parse().unwrap(), // stun2.l.google.com
+            "74.125.250.129:19302"
+                .parse()
+                .expect("the literal STUN server address is valid"), // stun.l.google.com
+            "74.125.250.130:19302"
+                .parse()
+                .expect("the literal STUN server address is valid"), // stun1.l.google.com
+            "74.125.250.131:19302"
+                .parse()
+                .expect("the literal STUN server address is valid"), // stun2.l.google.com
         ];
 
         Self {

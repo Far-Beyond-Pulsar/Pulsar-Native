@@ -363,8 +363,8 @@ pub fn sites(root: &Path) -> BTreeMap<(String, String), usize> {
 /// (its root registers it) or the engine's `#[register_world_component]`.
 /// `class name -> file`.
 pub fn declared_world_components(root: &Path) -> BTreeMap<String, String> {
-    let target = Regex::new(r"^\s*impl\s+(\w+)\s*\{").unwrap();
-    let attribute = Regex::new(r"^\s*#\[(register_)?world_component\b").unwrap();
+    let target = Regex::new(r"^\s*impl\s+(\w+)\s*\{").expect("valid regex");
+    let attribute = Regex::new(r"^\s*#\[(register_)?world_component\b").expect("valid regex");
     let mut out = BTreeMap::new();
     for file in production_files(root) {
         let mut pending = false;
@@ -407,11 +407,11 @@ fn key_constants(root: &Path) -> HashMap<String, String> {
     let literal = Regex::new(
         r#"const\s+(\w+)\s*:\s*(?:&(?:'static\s+)?str|BufferKey|[\w:]*(?:Buffer|Pool)Contract<[^=]*>)\s*=\s*(?:[\w:]*BufferKey::of\(|[\w:]*(?:Buffer|Pool)Contract::new\()?\s*"([^"]+)""#,
     )
-    .unwrap();
+    .expect("valid regex");
     let alias = Regex::new(
         r#"const\s+(\w+)\s*:\s*[\w:]*(?:Buffer|Pool)Contract<[^=]*>\s*=\s*[\w:]*(?:Buffer|Pool)Contract::new\(\s*(?:[\w:]+::)?(\w+)\s*\)"#,
     )
-    .unwrap();
+    .expect("valid regex");
     let mut keys = HashMap::new();
     let mut aliases = Vec::new();
     for file in production_files(root) {
@@ -444,13 +444,13 @@ fn key_constants(root: &Path) -> HashMap<String, String> {
 }
 
 pub fn buffer_graph(root: &Path) -> BufferGraph {
-    let buffer = Regex::new(r#"#\[gpu\([^\]]*\bbuffer\s*=\s*"([^"]+)""#).unwrap();
-    let structure = Regex::new(r"\bstruct\s+(\w+)").unwrap();
-    let lookup = Regex::new(r#"BufferKey::of\(\s*"([^"]+)"\s*\)"#).unwrap();
+    let buffer = Regex::new(r#"#\[gpu\([^\]]*\bbuffer\s*=\s*"([^"]+)""#).expect("valid regex");
+    let structure = Regex::new(r"\bstruct\s+(\w+)").expect("valid regex");
+    let lookup = Regex::new(r#"BufferKey::of\(\s*"([^"]+)"\s*\)"#).expect("valid regex");
     let const_lookup = Regex::new(
         r"BufferKey::of\(\s*(?:[\w:]+::)?([A-Z][A-Z0-9_]*)\s*\)|(?:[\w:]+::)?([A-Z][A-Z0-9_]*)\.(?:key|name|resolve)\(",
     )
-    .unwrap();
+    .expect("valid regex");
     let constants = key_constants(root);
     let mut graph = BufferGraph::default();
     for file in production_files(root) {
@@ -499,7 +499,7 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
                     .insert(file.package.clone());
             }
             for caps in const_lookup.captures_iter(line) {
-                let name = caps.get(1).or_else(|| caps.get(2)).unwrap().as_str();
+                let name = caps.get(1).or(caps.get(2)).map_or("", |m| m.as_str());
                 if let Some(key) = constants.get(name) {
                     graph
                         .consumers
@@ -580,7 +580,7 @@ pub fn editor_packages(root: &Path) -> BTreeSet<String> {
 /// never reaches the GPU. Each entry is the path as written at the call
 /// site, e.g. `helio_mesh_api::StaticObjectRow`.
 pub fn registered_gpu_schemas(root: &Path, linked: &BTreeSet<String>) -> BTreeSet<String> {
-    let call = Regex::new(r"([A-Za-z_][\w:]*)::register_gpu_columns\w*\s*\(").unwrap();
+    let call = Regex::new(r"([A-Za-z_][\w:]*)::register_gpu_columns\w*\s*\(").expect("valid regex");
     let mut out = BTreeSet::new();
     for file in production_files(root)
         .iter()

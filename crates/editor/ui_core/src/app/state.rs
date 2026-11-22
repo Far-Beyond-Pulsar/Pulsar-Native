@@ -10,7 +10,7 @@ use ui_type_debugger::TypeDebuggerDrawer;
 
 /// Core application state
 pub struct AppState {
-    /// Hold-Tab radial quick-action menu (Pulsar-Native#387).
+    /// Hold-Tab radial quick-action menu.
     pub radial: super::radial_menu::RadialHost,
 
     // Dock system
@@ -88,7 +88,7 @@ pub struct AppState {
     // Navigation history
     pub navigation: super::navigation::NavigationHistory,
 
-    /// Unified left sidebar (Pulsar-Native#1000), drawn as its own cached view.
+    /// Unified left sidebar, drawn as its own cached view.
     pub nav_sidebar: gpui::Entity<super::nav_sidebar::NavSidebar>,
     /// The sidebar's drawer while it is open over the editor on hover.
     pub nav_overlay: gpui::Entity<super::nav_sidebar::NavSidebarOverlay>,

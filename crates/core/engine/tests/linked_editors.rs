@@ -1,7 +1,7 @@
 //! Scripting-language plugins are part of a build exactly when their crates
 //! are linked (the installed set's Blueprints and TypeScript plugins),
 //! through the plugin API alone: the editor shell (`ui_core`) depends on none
-//! of them (#882), and the editor and headless tools discover the same
+//! of them, and the editor and headless tools discover the same
 //! languages, because a language is one `pulsar_language::Language`
 //! registration that both read through the language registry.
 

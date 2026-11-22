@@ -1,4 +1,7 @@
-//! Backend step: engine backend subsystems (physics, etc.).
+//! Backend step: create the `EngineBackend` and publish it as the global.
+//!
+//! Plugin components are injected into the backend later, by the editor, once the
+//! plugin libraries are loaded.
 
 use crate::init::{InitContext, InitError};
 

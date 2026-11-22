@@ -40,6 +40,8 @@ pub use lens_plugin;
 pub use lights_plugin;
 pub use materials_plugin;
 pub use meshes_plugin;
+#[cfg(feature = "editor")]
+pub use mocap_plugin;
 pub use particles_plugin;
 pub use physics_plugin;
 #[cfg(feature = "editor")]

@@ -1,4 +1,4 @@
-//! Editor menu strips (Pulsar-Native#1012).
+//! Editor menu strips.
 //!
 //! The title bar's menus hold only engine-wide commands. Each editor puts its
 //! own menus (Edit, Selection, Go, ...) in its own top bar: it describes them

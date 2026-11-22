@@ -6,8 +6,8 @@ use pulsar_script_runtime::RuntimeError;
 use super::{DriverReport, ScriptDriver};
 
 impl ScriptDriver {
-    /// The frame's errors and dropped calls as editor problems (#854,
-    /// #868): class, instance, function, graph node and the class's source
+    /// The frame's errors and dropped calls as editor problems:
+    /// class, instance, function, graph node and the class's source
     /// file, where known.
     pub fn problems(&self, report: &DriverReport) -> Vec<pulsar_events::ScriptProblem> {
         let mut problems: Vec<_> = report

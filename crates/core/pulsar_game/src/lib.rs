@@ -39,10 +39,10 @@ pub mod freecam;
 pub mod window;
 pub mod windowed_app;
 
-// Play In Editor — host-driven embedding (issue #243)
+// Play In Editor — host-driven embedding
 pub mod embed;
 
-// Standalone entry point: content discovery, headless runs (#926)
+// Standalone entry point: content discovery, headless runs
 #[cfg(feature = "alloc-profile")]
 pub mod alloc_profile;
 pub mod standalone;
@@ -62,19 +62,19 @@ pub mod possession;
 // hosts' camera selection).
 pub mod view_target;
 
-// The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam (#652)
+// The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam
 pub mod time;
 
 // Gameplay script-crate actors: identity-tagged registration + native hot
-// reload (#653). Generated projects and scripts/ crates register through
+// reload. Generated projects and scripts/ crates register through
 // `TickLoop::register_native_actor`.
 pub mod scripts;
 
-// Cross-object reference resolution for blueprint graphs (#654): the one
+// Cross-object reference resolution for blueprint graphs: the one
 // implementation BOTH compile targets call (VM trampolines + generated Rust).
 pub mod script_refs;
 
-/// Component vocabulary gameplay scripts attach most often (#653).
+/// Component vocabulary gameplay scripts attach most often.
 ///
 /// User script crates depend only on `pulsar_game`; this module is their
 /// single import surface for making entities visible — a mesh plus its
@@ -83,7 +83,7 @@ pub mod script_refs;
 /// visible on the next frame exactly like editor edits.
 pub mod scene {
     pub use engine_backend::scene::{Name, Transform, Visibility};
-    /// Components attach to objects as instance entities (Pulsar-Native#1035):
+    /// Components attach to objects as instance entities:
     /// `attach_value` adds one, `attachments` finds and edits them.
     pub use pulsar_world_registry::pulsar_scene_model::attachments;
     pub use pulsar_world_registry::{attach_value, AttachError};

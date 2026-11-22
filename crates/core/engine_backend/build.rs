@@ -11,7 +11,7 @@ const HELIO_DEPENDENCIES: [&str; 4] = [
 /// build's `[workspace.dependencies]` so the game compiles against the exact
 /// same crate versions/sources as the editor.
 ///
-/// This matters doubly for Play-In-Editor (issue #243): the game is loaded into
+/// This matters doubly for Play-In-Editor: the game is loaded into
 /// the editor process and shares its `wgpu` device across a dylib boundary, so a
 /// version skew (e.g. a different `helio`/`wgpu` pulled from a newer git commit)
 /// would be undefined behaviour. Pinning to the engine's own resolved sources
@@ -25,7 +25,7 @@ const GAME_DEPENDENCIES: &[&str] = &[
     "engine_class_derive",
     // The EngineClass derive's generated code names this crate directly
     // (wrapper marshalling); without it every generated class fails E0433.
-    // Caught by the generated-project drift check (#652).
+    // Caught by the generated-project drift check.
     "pulsar_world_registry",
     "pulsar_reflection",
     "helio",
@@ -39,7 +39,10 @@ const GAME_DEPENDENCIES: &[&str] = &[
 // std::fs allowed: build script: reads the engine source tree under the build, not a project file
 #[allow(clippy::disallowed_methods)]
 fn main() {
-    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let manifest_dir = PathBuf::from(
+        env::var_os("CARGO_MANIFEST_DIR")
+            .expect("cargo sets CARGO_MANIFEST_DIR for every build script"),
+    );
     // engine_backend lives at crates/core/engine_backend → workspace root is
     // three levels up.
     let workspace_root = manifest_dir.join("../../..");
@@ -85,7 +88,8 @@ fn main() {
     // (graphy, gpui, …) unifies to single local copies instead of being
     // re-fetched at mismatched git commits.
     let manifest_deps = build_game_manifest_deps(&manifest, dependencies, &workspace_root);
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let out_dir =
+        PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR for every build script"));
     let deps_path = out_dir.join("game_manifest_deps.toml");
     fs::write(&deps_path, manifest_deps)
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", deps_path.display()));
@@ -390,7 +394,7 @@ fn absolute_path(workspace_root: &Path, rel: &str) -> String {
     let mut text = resolved.to_string_lossy().replace('\\', "/");
     // Windows `canonicalize()` returns an extended-length `//?/` path, which
     // cargo rejects as a dependency path url ("invalid path url"). Strip the
-    // prefix so baked game manifests parse (#652).
+    // prefix so baked game manifests parse.
     if let Some(stripped) = text.strip_prefix("//?/") {
         text = stripped.to_string();
     }

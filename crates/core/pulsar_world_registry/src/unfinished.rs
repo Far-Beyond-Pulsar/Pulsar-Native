@@ -1,5 +1,4 @@
-//! Component classes this engine keeps but does not consume yet
-//! (Pulsar-Native#1035, Phase 4).
+//! Component classes this engine keeps but does not consume yet.
 //!
 //! A class declares itself with [`declare_unfinished_component!`], naming
 //! why and the issue that tracks the work. Its data is attached, edited,

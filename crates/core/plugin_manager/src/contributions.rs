@@ -49,7 +49,7 @@ impl PluginManager {
     }
 
     // ========================================================================
-    // Component Registration (#269)
+    // Component Registration
     // ========================================================================
 
     /// Run every scripting language's pre-Play validation on `project_root`

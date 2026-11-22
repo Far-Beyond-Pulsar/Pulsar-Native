@@ -1,5 +1,5 @@
 //! The TypeScript plugin's language support as the editor assembles it
-//! (P5 of `.agents/LANGUAGE_PLUGINS_PLAN.md`): the real plugin set, the
+//! (see `.agents/LANGUAGE_PLUGINS_PLAN.md`): the real plugin set, the
 //! `LanguageServers` service, both diagnostic sources.
 //!
 //! * disabling `pulsar.typescript` clears both sources (the server's and the

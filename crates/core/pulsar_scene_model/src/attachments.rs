@@ -1,4 +1,4 @@
-//! Component instances as SceneDB entities (Pulsar-Native#1035, decision D1).
+//! Component instances as SceneDB entities (decision D1).
 //!
 //! Every component attached to a scene object is its own entity, carrying:
 //!

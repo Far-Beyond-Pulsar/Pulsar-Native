@@ -60,7 +60,9 @@ mod key;
 mod reader;
 mod writer;
 
-pub use key::{installed_content_key, install_content_key, ContentKey, CONTENT_KEY_FILE};
+pub use key::{
+    install_content_key, installed_content_key, ContentKey, ContentKeyError, CONTENT_KEY_FILE,
+};
 pub use reader::PakSet;
 pub use writer::{write_pak_set, PackEvent, PackReport, PackSettings};
 

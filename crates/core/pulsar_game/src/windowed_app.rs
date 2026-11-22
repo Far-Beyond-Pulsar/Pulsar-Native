@@ -379,7 +379,7 @@ pub struct PulsarApp {
     /// from it.
     content: pulsar_content::ContentRoot,
     default_scene: Option<PathBuf>,
-    /// The ONE shared, SceneDB-owned world (Pulsar-Native#634): cloned out
+    /// The ONE shared, SceneDB-owned world: cloned out
     /// of the TickLoop, hydrated with the requested level, and read by every
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
@@ -406,6 +406,37 @@ pub struct PulsarApp {
     last_redraw: Option<Instant>,
     /// Several copies of the game are running; unfocused windows draw slowly.
     throttle_background: bool,
+    /// The startup level a worker is preparing; the tick thread starts once
+    /// it has been applied.
+    pending_level: Option<PendingLevel>,
+}
+
+/// A level being prepared off the event loop.
+struct PendingLevel {
+    /// The window whose free camera takes the level's editor camera.
+    window: WindowHandle,
+    path: PathBuf,
+    state: LevelLoadState,
+}
+
+/// Where the startup level is: with the worker, or being hydrated a few
+/// milliseconds per frame.
+enum LevelLoadState {
+    Preparing(std::sync::mpsc::Receiver<Result<LoadedLevel, String>>),
+    Hydrating {
+        hydration: engine_backend::scene::LevelHydration,
+        roles: pulsar_traits::WorldRoles,
+    },
+}
+
+/// What one frame spends hydrating the level, so input and drawing stay
+/// responsive while it arrives.
+const LEVEL_HYDRATION_BUDGET: std::time::Duration = std::time::Duration::from_millis(4);
+
+/// What the worker hands back: the parsed level and the roles it selects.
+struct LoadedLevel {
+    prepared: engine_backend::scene::PreparedLevelFile,
+    roles: pulsar_traits::WorldRoles,
 }
 
 impl PulsarApp {
@@ -443,6 +474,7 @@ impl PulsarApp {
             last_frame: Instant::now(),
             last_redraw: None,
             throttle_background: running_beside_copies(),
+            pending_level: None,
         }
     }
 
@@ -574,7 +606,7 @@ impl PulsarApp {
         crate::standalone::select_level_pipeline(self.content.root(), scene_path.as_deref());
 
         let winit_id = window.id();
-        let mut game_window = GameWindow::new(
+        let game_window = GameWindow::new(
             handle,
             window,
             &self.gpu.instance,
@@ -588,72 +620,170 @@ impl PulsarApp {
         self.winit_to_handle.insert(winit_id, handle);
 
         // Load the scene into the SHARED world + wire this window's renderer
-        // to it (Pulsar-Native#637/#634). The store already exists (the tick
+        // to it. The store already exists (the tick
         // loop's), so the level merges INTO it -- setup-time-registered
         // actors survive; no pulsar_scene::SceneLoader's second world.
-        if let Some(ref path) = scene_path {
-            tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into shared world");
-            // The level's assets (its meshes) are loaded before it is shown;
-            // their sources resolve against the engine global, which
-            // `standalone::prepare_engine` set before the event loop ran.
-            // Placed classes resolve against the content's classes (its
-            // class index when packaged).
-            let registry = pulsar_class::ClassRegistry::scan(self.content.root());
-            let load_result = {
-                let mut store = self.scene_store.write();
-                RuntimeLevel::load_into_with_classes(path, &mut store.world, &registry)
-            };
-            match load_result {
-                Ok(extras) => {
-                    // `GameWindow::new` above already attached the shared
-                    // world's GPU mirror before constructing the renderer
-                    // (SceneDB must be present at construction time), so
-                    // components `RuntimeLevel::load_into` just inserted are
-                    // already auto-mirrored -- no separate seam-attach step
-                    // is needed here.
-
-                    // Seed the freecam from the editor camera saved in the
-                    // level file, if present, so the first frame matches the
-                    // editor view.
-                    if let Some(cam) = extras.editor_camera {
-                        game_window.freecam = FreeCam::default().place(
-                            glam::DVec3::from_array(cam.position),
-                            cam.yaw,
-                            cam.pitch,
-                        );
-                        tracing::info!(
-                            window = handle.id(),
-                            "FreeCam seeded from scene editor camera"
-                        );
-                    }
-
-                    // The level's roles and world settings (gravity,
-                    // `physics_enabled`, ...) are the session's: the loop is
-                    // still ours (its thread starts after the windows open).
-                    if let Some(tick_loop) = self.tick_loop.as_mut() {
-                        crate::standalone::adopt_level(tick_loop, &self.content, path);
-                    }
-
-                    // Scripts need nothing else here: the tick loop's script
-                    // driver finds the level's class instances in the shared
-                    // world at its first reconcile (#922).
-
-                    tracing::info!(
-                        window = handle.id(),
-                        scene = %path.display(),
-                        "Scene hydrated into shared world"
-                    );
-                }
-                Err(e) => tracing::warn!(
-                    window = handle.id(),
-                    scene = %path.display(),
-                    "Failed to load scene: {e}"
-                ),
-            }
+        // The level is read, parsed and migrated by a worker; the window is
+        // up and its event loop answering while that runs, and the level is
+        // hydrated by `poll_pending_level` once it is ready.
+        if let Some(path) = scene_path {
+            self.begin_level_load(handle, path);
         }
 
         self.windows.insert(handle, game_window);
         tracing::info!(id = handle.id(), title = %desc.title, "Window opened");
+    }
+
+    /// Start preparing the level at `path` on a worker. Its assets (meshes)
+    /// load through the renderer's per-frame pump; their sources resolve
+    /// against the engine global, which `standalone::prepare_engine` set before
+    /// the event loop ran. Placed classes resolve against the content's classes
+    /// (its class index when packaged).
+    fn begin_level_load(&mut self, window: WindowHandle, path: PathBuf) {
+        tracing::info!(scene = %path.display(), window = window.id(), "Preparing scene");
+        let (send, receive) = std::sync::mpsc::channel();
+        let root = self.content.root().to_path_buf();
+        let worker_path = path.clone();
+        let spawned = editor_task_queue::spawn_thread(
+            editor_task_queue::ThreadSpec::new("level-prepare", editor_task_queue::ThreadRole::Io)
+                .owner("pulsar_game"),
+            move || {
+                let registry = pulsar_class::ClassRegistry::scan(&root);
+                let loaded = RuntimeLevel::prepare(&worker_path, &registry)
+                    .map(|prepared| {
+                        let roles = match engine_fs::virtual_fs::read_to_string(&worker_path) {
+                            Ok(json) => pulsar_traits::WorldRoles::for_level(&json, &root),
+                            Err(_) => pulsar_traits::WorldRoles::default(),
+                        };
+                        LoadedLevel { prepared, roles }
+                    })
+                    .map_err(|error| error.to_string());
+                let _ = send.send(loaded);
+            },
+        );
+        match spawned {
+            Ok(_) => {
+                self.pending_level = Some(PendingLevel {
+                    window,
+                    path,
+                    state: LevelLoadState::Preparing(receive),
+                });
+            }
+            Err(error) => {
+                tracing::warn!(scene = %path.display(), "No thread to load the scene: {error}")
+            }
+        }
+    }
+
+    /// Advance the startup level: pick up what the worker prepared, then
+    /// hydrate it a few milliseconds per call (`LEVEL_HYDRATION_BUDGET`), so
+    /// the window keeps drawing and answering input however large the level
+    /// is. Objects appear as they are spawned and their assets stream in
+    /// through the renderer's pump. Nothing here reads a file or waits for an
+    /// asset. The tick thread starts when the level is complete, so the session
+    /// begins with all of it in place (its roles and world settings first).
+    fn poll_pending_level(&mut self) {
+        let Some(pending) = &mut self.pending_level else {
+            return;
+        };
+        if let LevelLoadState::Preparing(loaded) = &pending.state {
+            let loaded = match loaded.try_recv() {
+                Ok(loaded) => loaded,
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Err("the loader thread ended without a result".to_string())
+                }
+            };
+            let begun = loaded.and_then(|LoadedLevel { prepared, roles }| {
+                prepared
+                    .begin_hydration()
+                    .map(|hydration| LevelLoadState::Hydrating { hydration, roles })
+                    .map_err(|error| error.to_string())
+            });
+            match begun {
+                Ok(state) => pending.state = state,
+                Err(error) => {
+                    let PendingLevel { window, path, .. } = self.pending_level.take().unwrap();
+                    self.finish_level_load(window, path, Err(error));
+                    return;
+                }
+            }
+        }
+        let LevelLoadState::Hydrating { hydration, .. } = &mut pending.state else {
+            return;
+        };
+        let stepped = {
+            let mut store = self.scene_store.write();
+            hydration.step(&mut store.world, LEVEL_HYDRATION_BUDGET)
+        };
+        match stepped {
+            Ok(engine_backend::scene::HydrationProgress::More) => {}
+            Ok(engine_backend::scene::HydrationProgress::Done(extras)) => {
+                let PendingLevel {
+                    window,
+                    path,
+                    state,
+                } = self.pending_level.take().unwrap();
+                if let LevelLoadState::Hydrating { roles, .. } = state {
+                    // Displays of other levels are requested from workers.
+                    engine_backend::scene::sublevel_display::sync_level_instances_deferred(
+                        &mut self.scene_store.write().world,
+                    );
+                    self.finish_level_load(window, path, Ok((extras, roles)));
+                }
+            }
+            Err(error) => {
+                let PendingLevel { window, path, .. } = self.pending_level.take().unwrap();
+                self.finish_level_load(window, path, Err(error.to_string()));
+            }
+        }
+    }
+
+    /// The level is in (or could not be): seed the camera, adopt its roles
+    /// and settings, and start the game.
+    fn finish_level_load(
+        &mut self,
+        window: WindowHandle,
+        path: PathBuf,
+        result: Result<(engine_backend::scene::LevelExtras, pulsar_traits::WorldRoles), String>,
+    ) {
+        match result {
+            Ok((extras, roles)) => {
+                // Seed the freecam from the editor camera saved in the level
+                // file, if present, so the first frame matches the editor view.
+                if let (Some(cam), Some(game_window)) =
+                    (extras.editor_camera, self.windows.get_mut(&window))
+                {
+                    game_window.freecam = FreeCam::default().place(
+                        glam::DVec3::from_array(cam.position),
+                        cam.yaw,
+                        cam.pitch,
+                    );
+                    tracing::info!(window = window.id(), "FreeCam seeded from scene editor camera");
+                }
+                // The level's roles and world settings (gravity,
+                // `physics_enabled`, ...) are the session's: the loop is still
+                // ours (its thread starts below).
+                if let Some(tick_loop) = self.tick_loop.as_mut() {
+                    crate::standalone::adopt_prepared_level(tick_loop, &self.content, &path, roles);
+                }
+                // Scripts need nothing else here: the tick loop's script driver
+                // finds the level's class instances in the shared world at its
+                // first reconcile.
+                tracing::info!(
+                    window = window.id(),
+                    scene = %path.display(),
+                    "Scene hydrated into shared world"
+                );
+            }
+            Err(error) => tracing::warn!(
+                window = window.id(),
+                scene = %path.display(),
+                "Failed to load scene: {error}"
+            ),
+        }
+        // Loaded or not, the game runs.
+        self.spawn_ecs_thread();
     }
 
     fn close_window(&mut self, handle: WindowHandle) {
@@ -717,7 +847,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             self.open_window_with_scene(event_loop, handle, desc, scene);
         }
 
-        self.spawn_ecs_thread();
+        // With a level on its way, the tick thread starts when it is applied
+        // (`poll_pending_level`).
+        if self.pending_level.is_none() {
+            self.spawn_ecs_thread();
+        }
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WindowCommand) {
@@ -917,7 +1051,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
                 // then the SHARED world's (the view target's camera, the best
-                // CameraComponent, a Camera-typed entity -- #637; moving the
+                // CameraComponent, a Camera-typed entity; moving the
                 // camera's object moves the view next frame), then the
                 // freecam. See `camera_selection`.
                 let ecs_camera = camera_for_frame(
@@ -947,6 +1081,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         {
             self.recover_lost_device();
         }
+        self.poll_pending_level();
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
@@ -979,6 +1114,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             } else {
                 wake = Some(wake.map_or(gw.next_redraw, |w| w.min(gw.next_redraw)));
             }
+        }
+        // While a level is being prepared, look again soon.
+        if self.pending_level.is_some() {
+            let soon = now + std::time::Duration::from_millis(16);
+            wake = Some(wake.map_or(soon, |w| w.min(soon)));
         }
         event_loop.set_control_flow(match wake {
             Some(at) => ControlFlow::WaitUntil(at),

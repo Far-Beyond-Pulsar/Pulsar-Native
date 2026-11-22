@@ -1,5 +1,5 @@
 //! The `NativeScriptComponent`: binds a scene object to an actor type from a
-//! Rust gameplay script crate (#653).
+//! Rust gameplay script crate.
 //!
 //! Blueprint classes are placed as `ClassInstance`s; native script crates
 //! are not class assets (no class directory, prefab or GUID; the crate
@@ -35,11 +35,11 @@ impl NativeScriptComponent {
 }
 
 // Spawning native actors from this binding is the script-runtime phase's
-// job (#922); the component is data only for now.
+// job; the component is data only for now.
 #[register_world_component]
 impl NativeScriptComponent {}
 
-// Reported unfinished (Pulsar-Native#1035, Phase 4; tracked in #1079): the
+// Reported unfinished : the
 // properties card shows the reason and issue, and attaching one logs them once.
 pulsar_world_registry::declare_unfinished_component!(
     NATIVE_SCRIPT_COMPONENT,

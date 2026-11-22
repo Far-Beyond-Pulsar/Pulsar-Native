@@ -1,4 +1,4 @@
-//! Compiling and verifying a project's script classes headlessly (#879).
+//! Compiling and verifying a project's script classes headlessly.
 //!
 //! 1. Every scripting language linked into this tool compiles the project
 //!    ([`ScriptLanguage::compile_project`](plugin_editor_api::ScriptLanguage::compile_project)):

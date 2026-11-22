@@ -318,7 +318,11 @@ impl QuicServer {
         transport_config
             .max_concurrent_bidi_streams(VarInt::from_u32(100))
             .max_concurrent_uni_streams(VarInt::from_u32(100))
-            .max_idle_timeout(Some(IDLE_TIMEOUT.try_into().unwrap()))
+            .max_idle_timeout(Some(
+                IDLE_TIMEOUT
+                    .try_into()
+                    .context("IDLE_TIMEOUT out of range")?,
+            ))
             .keep_alive_interval(Some(KEEP_ALIVE_INTERVAL))
             .datagram_receive_buffer_size(Some(MAX_DATAGRAM_SIZE));
 
@@ -396,7 +400,7 @@ impl QuicServer {
             warn!("⚠️  P2P certificate verification is DISABLED — connections are vulnerable to MITM attacks");
             rustls::ClientConfig::builder_with_provider(Arc::new(provider))
                 .with_safe_default_protocol_versions()
-                .unwrap()
+                .context("rustls rejected its default protocol versions")?
                 .dangerous()
                 .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
                 .with_no_client_auth()
@@ -412,7 +416,7 @@ impl QuicServer {
 
             rustls::ClientConfig::builder_with_provider(Arc::new(provider))
                 .with_safe_default_protocol_versions()
-                .unwrap()
+                .context("rustls rejected its default protocol versions")?
                 .with_root_certificates(root_store)
                 .with_no_client_auth()
         };
@@ -423,7 +427,11 @@ impl QuicServer {
 
         let mut transport = quinn::TransportConfig::default();
         transport
-            .max_idle_timeout(Some(IDLE_TIMEOUT.try_into().unwrap()))
+            .max_idle_timeout(Some(
+                IDLE_TIMEOUT
+                    .try_into()
+                    .context("IDLE_TIMEOUT out of range")?,
+            ))
             .keep_alive_interval(Some(KEEP_ALIVE_INTERVAL));
 
         client_config.transport_config(Arc::new(transport));

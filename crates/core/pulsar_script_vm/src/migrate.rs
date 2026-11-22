@@ -101,19 +101,33 @@ fn same_variable(old: &Variable, new: &Variable) -> bool {
     }
 }
 
+/// Why a variable key could not be resolved.
+#[derive(Debug, thiserror::Error)]
+pub enum KeyError {
+    #[error("`{key}` is both the id of `{id_of}` and the name of `{name_of}`")]
+    Ambiguous {
+        key: String,
+        id_of: String,
+        name_of: String,
+    },
+    #[error("no variable `{0}`")]
+    Unknown(String),
+}
+
 /// The variable a saved or authored `key` (an id or a name) refers to.
 /// `Err` when it is ambiguous (the id of one variable is the name of
 /// another) or unknown.
-pub fn resolve_key(variables: &[Variable], key: &str) -> Result<usize, String> {
+pub fn resolve_key(variables: &[Variable], key: &str) -> Result<usize, KeyError> {
     let by_id = variables.iter().position(|v| v.id.as_deref() == Some(key));
     let by_name = variables.iter().position(|v| v.name == key);
     match (by_id, by_name) {
-        (Some(a), Some(b)) if a != b => Err(format!(
-            "`{key}` is both the id of `{}` and the name of `{}`",
-            variables[a].name, variables[b].name
-        )),
+        (Some(a), Some(b)) if a != b => Err(KeyError::Ambiguous {
+            key: key.to_string(),
+            id_of: variables[a].name.clone(),
+            name_of: variables[b].name.clone(),
+        }),
         (Some(i), _) | (None, Some(i)) => Ok(i),
-        (None, None) => Err(format!("no variable `{key}`")),
+        (None, None) => Err(KeyError::Unknown(key.to_string())),
     }
 }
 

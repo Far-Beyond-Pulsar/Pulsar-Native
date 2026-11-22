@@ -1,6 +1,6 @@
 //! World Settings' level component sections: one per registered
 //! [`crate::extend::LevelComponentSection`], a component the level holds at
-//! most once (its sky, #1057; its global wind, #1123).
+//! most once (its sky, its global wind).
 //!
 //! With one, the section edits that component's properties in place,
 //! through the same reflected property rows and `SetComponentProperty`

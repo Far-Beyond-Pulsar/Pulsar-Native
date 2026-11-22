@@ -9,9 +9,9 @@
 //! generated children are told apart from objects the user parented under
 //! an instance.
 //!
-//! Components are component-instance entities (Pulsar-Native#1035, D1).
+//! Components are component-instance entities.
 //! [`component_records`] is their JSON boundary view, used where class
-//! overrides are still diffed as JSON (Phase 3 converts that).
+//! overrides are still diffed as JSON.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -471,7 +471,7 @@ pub fn instantiate_template(
 
 /// [`instantiate_class`] onto `entity`, an already spawned but still bare
 /// entity (no scene-object components yet): the id a script's
-/// `world::spawn` handed out before the spawn was applied (#922).
+/// `world::spawn` handed out before the spawn was applied.
 pub fn instantiate_class_into(
     world: &mut World,
     def: &ClassDefinition,

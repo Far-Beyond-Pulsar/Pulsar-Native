@@ -1,3 +1,5 @@
+//! Handlers of the Problems drawer: filtering by severity and source.
+
 use gpui::*;
 
 use crate::components::ProblemsDrawer;

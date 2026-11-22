@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - agents A-F report STATUS: COMPLETE; world-access details superseded by SCENEDB_MIGRATION.md
+
 # Scripting Epic — Agent Pipeline Context
 
 Master context for the six sequential implementation agents (A→F) building
@@ -38,7 +40,7 @@ Key upstream facts (verified Aug 2026):
 
 - SceneDB pin `c761890`: Subsystems API merged (`Subsystem::simulate_a/b`,
   `SubsystemRegistry::dispatch`, `SceneDb::step()` — already called every
-  frame by `HelioRenderer` at `renderer.rs:1562`).
+  frame by `HelioRenderer` at `scene_renderer.rs`).
 - Subscriptions shipped (#47): `subscribe_id(entity, ComponentId)` → batched
   `take_component_change_events`; `Mut` guard fires events only on real
   writes.
@@ -170,7 +172,7 @@ fully-combined per-light GPU state (mirror translated via
 on `(entity, LightComponentGpuMirror)` and `(entity, Transform)` for every
 mirrored light, prunes on mirror-row disappearance, seeds new lights, and
 re-resolves only changed entities. `HelioRenderer::rebuild_light_frame`
-(`engine_backend/src/subsystems/render/helio_renderer/renderer.rs`) now reads
+(`engine_backend/src/subsystems/render/helio_renderer/renderer.rs`; its frame steps are in `renderer/`) now reads
 those rows only; the TRANSITIONAL per-frame CPU combine is deleted.
 Absence semantics preserved: light renders iff it has BOTH a mirror row AND a
 Transform.

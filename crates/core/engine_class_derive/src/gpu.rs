@@ -141,7 +141,7 @@ pub(crate) struct GpuLeafField {
 }
 
 /// Generates the composed `#[gpu]` mirror for one `#[engine_class]`-derived
-/// struct (Pulsar-Native#561): a `Pod`, `#[derive(SceneStore)]`,
+/// struct: a `Pod`, `#[derive(SceneStore)]`,
 /// packed-layout companion struct (named `{Struct}GpuMirror`) holding one
 /// field per `#[gpu]`-marked `#[property]` leaf PLUS one field per
 /// `#[sub_props]` field (that sub-struct's own, independently-generated
@@ -186,8 +186,7 @@ pub(crate) fn gpu_mirror_codegen(
     // Only an opted-in class (`#[engine_class(gpu_rows)]`) uploads its
     // companion as a SceneDB GPU row; otherwise the companion is a CPU
     // mapping helper (e.g. `LightComponent`'s, which its derived light row is
-    // built from) and nothing is uploaded that no pass reads
-    // (Pulsar-Native#1035, Phase 4).
+    // built from) and nothing is uploaded that no pass reads.
     let gpu_row_registration = if gpu_rows {
         quote! {
         // The companion is not a component anyone inserts. `#name`'s own
@@ -259,12 +258,18 @@ pub(crate) fn gpu_mirror_codegen(
     });
 
     let sub_props_field_defs = sub_props_fields.iter().map(|field| {
-        let ident = field.ident.as_ref().unwrap();
+        let ident = field
+            .ident
+            .as_ref()
+            .expect("sub_props fields come from Fields::Named, so they have identifiers");
         let ty = &field.ty;
         quote! { #[gpu] pub #ident: <#ty as pulsar_world_registry::GpuMirrored>::GpuMirror }
     });
     let sub_props_field_inits = sub_props_fields.iter().map(|field| {
-        let ident = field.ident.as_ref().unwrap();
+        let ident = field
+            .ident
+            .as_ref()
+            .expect("sub_props fields come from Fields::Named, so they have identifiers");
         quote! { #ident: pulsar_world_registry::GpuMirrored::to_gpu_mirror(&self.#ident) }
     });
 

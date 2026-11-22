@@ -35,6 +35,51 @@ pub fn register(cfg: &'static ConfigManager) {
             .validator(Validator::int_range(0, 65536)),
         )
         .setting(
+            "asset_bind_budget_ms",
+            SchemaEntry::new(
+                "Time a frame may spend applying finished asset loads and binding them to the scene, in ms; the rest waits for the next frame (0 = no time limit)",
+                2_i64,
+            )
+            .label("Asset Bind Budget (ms)")
+            .page("Streaming")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(50.0),
+                step: Some(1.0),
+            })
+            .validator(Validator::int_range(0, 50)),
+        )
+        .setting(
+            "asset_bind_max_per_frame",
+            SchemaEntry::new(
+                "Most assets a frame applies and binds, however much time is left (0 = no limit)",
+                8_i64,
+            )
+            .label("Asset Binds per Frame")
+            .page("Streaming")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(1024.0),
+                step: Some(1.0),
+            })
+            .validator(Validator::int_range(0, 1024)),
+        )
+        .setting(
+            "coarse_texture_size",
+            SchemaEntry::new(
+                "Largest side, in texels, of the first version of a texture that streams in low resolution first; the full version follows, nearest first (0 = load textures in one step)",
+                128_i64,
+            )
+            .label("Coarse Texture Size")
+            .page("Streaming")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(4096.0),
+                step: Some(64.0),
+            })
+            .validator(Validator::int_range(0, 4096)),
+        )
+        .setting(
             "max_texture_size",
             SchemaEntry::new(
                 "Largest side, in texels, a texture is kept at; larger images are scaled down as they load (0 = no cap)",

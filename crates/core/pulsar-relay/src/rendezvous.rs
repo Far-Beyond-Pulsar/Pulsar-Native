@@ -2,6 +2,7 @@
 //!
 //! This module wires together protocol types, peer state, and session lifecycle.
 
+mod message_routing;
 mod peer_discovery;
 mod session_manager;
 mod sync_protocol;
@@ -256,8 +257,9 @@ impl RendezvousCoordinator {
             }
         }
 
+        use ClientMessage::*;
         match msg {
-            ClientMessage::Join {
+            Join {
                 session_id: sid,
                 peer_id: pid,
                 join_token,
@@ -278,161 +280,20 @@ impl RendezvousCoordinator {
                 )
                 .await?;
             }
-            ClientMessage::Leave {
-                session_id: sid,
-                peer_id: pid,
-            } => {
-                self.handle_leave(&sid, &pid).await?;
-            }
-            ClientMessage::KickUser {
-                session_id: sid,
-                peer_id: pid,
-                target_peer_id,
-            } => {
-                self.handle_kick(&sid, &pid, target_peer_id).await?;
-            }
-            ClientMessage::ChatMessage {
-                session_id: sid,
-                peer_id: pid,
-                message,
-            } => {
-                self.relay_chat_message(&sid, &pid, message).await?;
-            }
-            ClientMessage::RequestFileManifest {
-                session_id: sid,
-                peer_id: pid,
-            } => {
-                self.forward_to_host(
-                    &sid,
-                    ServerMessage::RequestFileManifest {
-                        session_id: sid.clone(),
-                        from_peer_id: pid,
-                    },
-                )
-                .await?;
-            }
-            ClientMessage::FileManifest {
-                session_id: sid,
-                peer_id: pid,
-                manifest_json,
-            } => {
-                self.relay_file_manifest(&sid, &pid, manifest_json).await?;
-            }
-            ClientMessage::RequestFiles {
-                session_id: sid,
-                peer_id: pid,
-                file_paths,
-            } => {
-                self.forward_to_host(
-                    &sid,
-                    ServerMessage::RequestFiles {
-                        session_id: sid.clone(),
-                        from_peer_id: pid,
-                        file_paths,
-                    },
-                )
-                .await?;
-            }
-            ClientMessage::FilesChunk {
-                session_id: sid,
-                peer_id: pid,
-                files_json,
-                chunk_index,
-                total_chunks,
-            } => {
-                self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks)
-                    .await?;
-            }
-            ClientMessage::FileChanged {
-                session_id: sid,
-                peer_id: pid,
-                path,
-                kind,
-            } => {
-                self.relay_file_changed(&sid, &pid, path, kind).await?;
-            }
-            ClientMessage::P2PConnectionRequest {
-                session_id: sid,
-                peer_id: pid,
-                public_ip,
-                public_port,
-            } => {
-                self.relay_p2p_request(&sid, &pid, public_ip, public_port)
-                    .await?;
-            }
-            ClientMessage::P2PConnectionResponse {
-                session_id: sid,
-                peer_id: pid,
-                public_ip,
-                public_port,
-            } => {
-                self.relay_p2p_response(&sid, &pid, public_ip, public_port)
-                    .await?;
-            }
-            ClientMessage::RequestBinaryProxy {
-                session_id: sid,
-                peer_id: pid,
-            } => {
-                self.relay_binary_proxy_request(&sid, &pid).await?;
-            }
-            ClientMessage::BinaryProxyData {
-                session_id: sid,
-                peer_id: pid,
-                sequence,
-                is_git_protocol,
-            } => {
-                self.relay_binary_proxy_data(&sid, &pid, sequence, is_git_protocol)
-                    .await?;
-            }
-            ClientMessage::RequestProjectTree {
-                session_id: sid,
-                peer_id: pid,
-            } => {
-                self.forward_to_host(
-                    &sid,
-                    ServerMessage::RequestProjectTree {
-                        session_id: sid.clone(),
-                        from_peer_id: pid,
-                    },
-                )
-                .await?;
-            }
-            ClientMessage::ProjectTreeResponse {
-                session_id: sid,
-                peer_id: pid,
-                tree_json,
-            } => {
-                self.relay_project_tree(&sid, &pid, tree_json).await?;
-            }
-            ClientMessage::RequestFile {
-                session_id: sid,
-                peer_id: pid,
-                file_path,
-            } => {
-                self.forward_to_host(
-                    &sid,
-                    ServerMessage::RequestFile {
-                        session_id: sid.clone(),
-                        from_peer_id: pid,
-                        file_path,
-                    },
-                )
-                .await?;
-            }
-            ClientMessage::FileChunk {
-                session_id: sid,
-                peer_id: pid,
-                file_path,
-                offset,
-                data,
-                is_last,
-            } => {
-                self.relay_file_chunk(&sid, &pid, file_path, offset, data, is_last)
-                    .await?;
-            }
-            ClientMessage::Ping => {
+            Ping => {
                 tx.send(ServerMessage::Pong).await?;
             }
+            msg @ (RequestFileManifest { .. }
+            | RequestFiles { .. }
+            | RequestProjectTree { .. }
+            | RequestFile { .. }) => self.forward_request_to_host(msg).await?,
+            msg @ (Leave { .. }
+            | KickUser { .. }
+            | ChatMessage { .. }
+            | FileManifest { .. }
+            | FilesChunk { .. }
+            | FileChanged { .. }) => self.handle_session_message(msg).await?,
+            msg => self.relay_transport_message(msg).await?,
         }
 
         Ok(())

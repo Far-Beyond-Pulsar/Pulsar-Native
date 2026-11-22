@@ -290,6 +290,7 @@ cargo cannot load the workspace without them.
 | `physics_plugin` | [Plugin_Physics](https://github.com/Far-Beyond-Pulsar/Plugin_Physics) | `pulsar.physics`: physics components and the Rapier simulation, the first model's components (`legacy`), the `.physasset` schema (`api`, `physics_api`) |
 | `skm_editor` | [Plugin_SKM](https://github.com/Far-Beyond-Pulsar/Plugin_SKM) | Animation: skeletal assets, the animator (`animation_component`) and its editors (`.agents/ANIMATION.md`) |
 | `input_plugin` | [Plugin_Input](https://github.com/Far-Beyond-Pulsar/Plugin_Input) | Input actions and mappings, their editors and runtime |
+| `mocap` | [Plugin_Mocap](https://github.com/Far-Beyond-Pulsar/Plugin_Mocap) | `pulsar.mocap`: motion capture: camera and sensor sources, body tracking, multi-camera calibration, the fused scene and the `.mocap` take editor (`.agents/MOCAP.md`) |
 | `ui_editor` | [Plugin_UI](https://github.com/Far-Beyond-Pulsar/Plugin_UI) | Widget assets and the WYSIWYG widget editor |
 | `blueprint_editor` | [Plugin_Blueprints](https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints) | Blueprint visual scripting, plus its `compiler/` crate |
 | `code_editor` | [Plugin_CodeEditor](https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor) | Script/code editor, a host for Mockaco (`WgpuiEditorView`); `text_editor/lsp.rs` answers Mockaco's requests through the language server of the open file (`LanguageServers::server_for`) |
@@ -297,7 +298,7 @@ cargo cannot load the workspace without them.
 | `matter_editor` | [Plugin_Matter](https://github.com/Far-Beyond-Pulsar/Plugin_Matter) | Texture painting in the Pulsar Image Format (`.pif`) |
 | `asset_viewer` | in-tree | Viewers for model files, meshes and images |
 | `character` | [Plugin_Character](https://github.com/Far-Beyond-Pulsar/Plugin_Character) | `pulsar.character`: a character as one component (a facade) over a skeletal mesh, its animator, a character controller and the player's input, with its movement system |
-| `gameplay` | (local; no repository yet) | `pulsar.gameplay`: the four gameplay roles as scene defaults, and a mounted read-only default player character class (`PlayerCharacter.class`, selectable in World Settings) with the IA_/IMC_ input assets its Blueprint handles; requires the input and character class contracts |
+| `gameplay` | [Plugin_Gameplay](https://github.com/Far-Beyond-Pulsar/Plugin_Gameplay) | `pulsar.gameplay`: the four gameplay roles as scene defaults, and a mounted read-only default player character class (`PlayerCharacter.class`, selectable in World Settings) with the IA_/IMC_ input assets its Blueprint handles; requires the input and character class contracts |
 | `default_pipelines` | [Plugin_DefaultPipelines](https://github.com/Far-Beyond-Pulsar/Plugin_DefaultPipelines) | `pulsar.default_pipelines`: the render pipelines the engine ships, as `.rendergraph` assets in its folder, made for the enabled plugins (`.agents/RENDER_GRAPH.md`) |
 | `render_bps` | in-tree | Render graph editor (`.rendergraph`) on the Graphy canvas, no Blueprint code (`.agents/RENDER_GRAPH.md`) |
 | `trait_editor` | in-tree | `pulsar.trait_editor`: the trait definition editor (`.trait.json`, `.agents/TRAITS.md`) |

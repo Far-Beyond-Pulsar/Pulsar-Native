@@ -238,7 +238,7 @@ fn busy(name: &str) -> Module {
     m
 }
 
-/// Measure, don't guess (#860): the write-stage time and the whole phase for
+/// Measure, don't guess: the write-stage time and the whole phase for
 /// a growing number of read-only instances, sequentially and with threads.
 /// `cargo test -p pulsar_script_runtime --release --test phase -- --ignored --nocapture`
 #[test]

@@ -1,5 +1,4 @@
-//! The running Play-in-Editor session's event hub, for editor plugins
-//! (Pulsar-Native#942).
+//! The running Play-in-Editor session's event hub, for editor plugins.
 //!
 //! A PIE game runs in its own dynamic library with its own
 //! [`EventHub`](crate::EventHub). The editor's PIE host gets the hub's bus

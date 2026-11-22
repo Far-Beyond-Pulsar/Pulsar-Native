@@ -1,3 +1,5 @@
+mod phases;
+
 use crate::time::to_scenedb_time;
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
 
@@ -17,7 +19,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// All three run against ONE authoritative world state:
 /// `scene_store`, an `engine_backend::scene::SharedScene` wrapping SceneDB --
-/// the same store renderers read (Pulsar-Native#634). A mutation made by a
+/// the same store renderers read. A mutation made by a
 /// system or actor is visible to the renderer's next frame rebuild, and a
 /// level hydrated into the store after `setup()` is visible to gameplay on
 /// its next tick; there is no second world copy anywhere.
@@ -69,7 +71,7 @@ pub struct TickLoop {
     /// Contains identities only; component data remains authoritative in
     /// `scene_store` and is borrowed in place for each callback.
     component_runtime: pulsar_world_registry::ComponentRuntimeState,
-    /// Warns when a `Static`/`Stationary` object moves during play (#836).
+    /// Warns when a `Static`/`Stationary` object moves during play.
     /// Opened at the first tick, so level setup before it is not reported.
     static_moves: Option<helio_component::StaticMoveWatch>,
     /// The Blueprints the loaded level assigned to the engine roles (game
@@ -93,13 +95,13 @@ pub struct TickLoop {
     running: Arc<AtomicBool>,
     /// Shared running flag — lets external code stop the loop.
     pub running_flag: Arc<AtomicBool>,
-    // ── Native hot-reload bookkeeping (#653, see scripts.rs) ────────────────
+    // ── Native hot-reload bookkeeping (see scripts.rs) ────────────────
     /// Surviving [`ScriptTag`]s collected by `begin_script_reload`, consumed
     /// one-per-registration until empty.
     pub(crate) pending_rebinds: Vec<crate::scripts::RebindTarget>,
     /// Set once a reload has been armed, even after every tag is claimed.
     pub(crate) reload_armed: bool,
-    // ── Pause / step (Play-in-Editor simulate controls, #925) ───────────────
+    // ── Pause / step (Play-in-Editor simulate controls) ───────────────
     paused: bool,
     pending_steps: u32,
     /// The last tick's time, which a paused tick reports again.
@@ -254,7 +256,7 @@ impl TickLoop {
     }
 
     /// Build a `TickLoop` over an EXISTING shared store -- the ABI v2 PIE
-    /// path (#635): the guest adopts the HOST's authoritative world instead
+    /// path: the guest adopts the HOST's authoritative world instead
     /// of constructing its own, so editor edits and gameplay mutations hit
     /// one world. The handle must be the same `Arc` the host transferred;
     /// see `pulsar_pie_abi`'s module doc for the single-count transfer rule.
@@ -419,205 +421,37 @@ impl TickLoop {
     fn run_tick(&mut self, time: GameTime) -> GameTime {
         self.last_time = time;
         profiling::profile_scope!("TickLoop::tick");
-        let scenedb_time = to_scenedb_time(time);
-        if self.static_moves.is_none() {
-            let store = self.scene_store.read();
-            self.static_moves = Some(helio_component::StaticMoveWatch::new(&store.world));
-        }
+        self.ensure_static_move_watch();
 
-        // Flush 1 (after input): input published since the last tick
-        // (`publish_input`, PIE input forwarding) and anything else queued
-        // between ticks.
-        {
-            profiling::profile_scope!("TickLoop::flush_after_input");
-            self.events.flush(pulsar_events::FlushPoint::AfterInput);
-        }
-
-        // Phase 0: animation. Every live skeletal mesh component advances its
-        // animation instance and publishes its pose and GPU palettes *before* the
-        // schedule, so physics (which runs inside it) reads this frame's pose.
-        // Parameters and Montage commands written by scripts later in the frame
-        // apply at the next frame's animation phase.
-        {
-            profiling::profile_scope!("TickLoop::before_systems");
-            let mut store = self.scene_store.write();
-            for phase in engine_backend::scene::game_hooks::tick_phases() {
-                if let Some(before_systems) = phase.before_systems {
-                    before_systems(&mut store.world, time.delta.as_secs_f32());
-                }
-            }
-        }
-
-        // Phase 1: ECS systems. Short write scope -- the renderer takes this
-        // same lock every frame to step the scene and flush its GPU mirror, so
-        // nothing here may hold it across phases.
-        {
-            profiling::profile_scope!("TickLoop::schedule");
-            let mut store = self.scene_store.write();
-            self.schedule.run(&mut store.world, scenedb_time);
-        }
-
-        // Phase 1b: macro-registered native component callbacks. The
-        // registry resolves each component through a typed SceneDB query and
-        // calls it while borrowing the authoritative row in place. This is
-        // deliberately separate from renderer synchronization and owns no
-        // component copies. The callback contract forbids re-entering World
-        // while its component borrow is held.
-        {
-            profiling::profile_scope!("TickLoop::component_phase");
-            let scene_identity = Arc::as_ptr(&self.scene_store) as usize;
-            self.ensure_actor_bank();
-            if let Some(inbox) = &self.class_inbox {
-                if self
-                    .component_runtime
-                    .scope()
-                    .resource::<pulsar_class::ClassInbox>()
-                    .is_none()
-                {
-                    self.component_runtime
-                        .scope_mut()
-                        .insert_resource(inbox.clone());
-                }
-            }
-            let mut store = self.scene_store.write();
-            pulsar_world_registry::tick_live_components(
-                &mut store.world,
-                &self.events,
-                time.delta.as_secs_f32(),
-                scene_identity,
-                &mut self.component_runtime,
-            );
-        }
-
-        // Phase 2: native script actors tick in phase 1b, through the component
-        // lifecycle (`crate::lifecycle`), as every component does. This phase is
-        // what remains of the old actor registry's: flush what the actors and
-        // components queued. Separate lock acquisition from phase 1 on purpose.
-        {
-            profiling::profile_scope!("TickLoop::flush_component_events");
-            let mut store = self.scene_store.write();
-            // World-mutating component methods append to per-owner outboxes.
-            // Move them onto Gamma's deferred queue only after actors have
-            // released their component/World borrows; the following flush
-            // invokes subscribers outside the World lock.
-            pulsar_world_registry::flush_component_events(&mut store.world, &self.events);
-        }
+        self.flush_after_input();
+        self.run_before_systems(time);
+        self.run_schedule(to_scenedb_time(time));
+        self.run_component_phase(time);
+        self.flush_component_events();
 
         // Actors can remove/disable live components after their component
         // tick. End their owner-scoped lifecycle now, before SceneDB's
         // end-of-window cleanup drains the independent removal journal.
         {
             profiling::profile_scope!("TickLoop::removals_after_components");
-            let mut store = self.scene_store.write();
-            pulsar_world_registry::process_component_removals_mut(
-                &mut store.world,
-                &self.events,
-                &mut self.component_runtime,
-            );
+            self.process_component_removals();
         }
 
-        // Flush 2 (after the systems): the component systems (a physics
-        // plugin among them) run in the ECS schedule; their
-        // hits and overlaps (and whatever systems and actors published)
-        // are delivered before the script phase, which runs the script
-        // handlers they queued.
-        {
-            profiling::profile_scope!("TickLoop::flush_after_systems");
-            self.events.flush(pulsar_events::FlushPoint::AfterSystems);
-        }
-
-        // Phase 3: the script phase, AFTER ECS + actor updates: the driver
-        // starts/stops script instances to match the world's class
-        // instances, runs `begin_play` for the ones it started, `tick` for
-        // all, then applies the spawns/destroys scripts queued. Deferring
-        // `begin_play` to here (rather than firing it at registration during
-        // level setup) means it observes a fully initialised window/world/
-        // scene: `tick_once` only runs after `spawn_ecs_thread`, once the
-        // window is ready. Errors are per instance and logged.
-        if let Some(driver) = &self.scripts {
-            profiling::profile_scope!("TickLoop::script_phase");
-            let mut driver = driver
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            // Locks the scene itself, in short exclusive stretches around a
-            // shared one (see `ScriptDriver::run_frame_shared`).
-            let report = driver.run_frame_shared(&self.scene_store, time.delta.as_secs_f64());
-            self.script_stats.absorb(&report);
-            if self.collect_problems && report.has_problems() {
-                for mut problem in driver.problems(&report) {
-                    problem.frame = Some(time.tick);
-                    self.script_problems.push(problem);
-                }
-                let excess = self.script_problems.len().saturating_sub(MAX_KEPT_PROBLEMS);
-                self.script_problems.drain(..excess);
-            }
-        }
+        self.flush_after_systems();
+        self.run_script_phase(time);
 
         // Script commands may remove or disable typed components after the
         // native component and actor phases. Drain those lifecycle endings
         // before closing the SceneDB change window as well.
         {
             profiling::profile_scope!("TickLoop::removals_after_scripts");
-            let mut store = self.scene_store.write();
-            pulsar_world_registry::process_component_removals_mut(
-                &mut store.world,
-                &self.events,
-                &mut self.component_runtime,
-            );
+            self.process_component_removals();
         }
 
-        // Animation notifies the animation phase collected are published now that
-        // scripts have released the world. A notify aimed at a class variable
-        // resolves it from the owner's current script instance.
-        {
-            profiling::profile_scope!("TickLoop::after_scripts");
-            let mut store = self.scene_store.write();
-            let driver = self
-                .scripts
-                .as_ref()
-                .map(|d| d.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
-            let resolve = |owner, variable: &str| {
-                driver
-                    .as_ref()
-                    .and_then(|d| d.entity_variable(owner, variable))
-            };
-            for phase in engine_backend::scene::game_hooks::tick_phases() {
-                if let Some(after_scripts) = phase.after_scripts {
-                    after_scripts(&mut store.world, &self.events, &resolve);
-                }
-            }
-        }
-
-        // Flush 3 (after scripts): what scripts sent (`event::*`,
-        // BeginPlay, LevelLoaded, spawns...). Neither the world nor the
-        // driver is locked, so host subscribers may use both; script
-        // handlers are queued for the next script phase. Flush 4 (end of
-        // frame) delivers anything published after that, e.g. by host
-        // handlers of flush 3 on another thread.
-        {
-            profiling::profile_scope!("TickLoop::flush_after_scripts");
-            self.events.flush(pulsar_events::FlushPoint::AfterScripts);
-            self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
-        }
-
-        // Assets this tick referenced (a spawned actor's mesh) start loading,
-        // and the finished ones bind, also in a headless run with no render
-        // loop to do it (SceneDB#84). An already-loaded mesh binds here.
-        {
-            profiling::profile_scope!("TickLoop::pump_assets");
-            engine_backend::scene::pump_assets(&self.scene_store);
-        }
-
-        // The world's change history only covers the current frame, so the
-        // frame's moves are checked before it closes. Anything this tick
-        // moved that is authored fixed is a bug (it is logged once).
-        {
-            let store = self.scene_store.read();
-            if let Some(watch) = &mut self.static_moves {
-                watch.poll(&store.world);
-            }
-            engine_backend::scene::end_change_window(&store.world);
-        }
+        self.publish_animation_notifies();
+        self.flush_after_scripts();
+        self.pump_assets();
+        self.close_change_window();
 
         time
     }
@@ -697,7 +531,7 @@ impl TickLoop {
         let content = match pulsar_content::current() {
             Some(content) => content,
             None => {
-                let content = pulsar_content::ContentRoot::discover()?;
+                let content = pulsar_content::ContentRoot::discover().map_err(|e| e.to_string())?;
                 content.install();
                 content
             }
@@ -934,7 +768,7 @@ impl TickLoop {
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open. The renderer shares THIS
         // loop's scene store (cloned handle) -- one world for gameplay and
-        // rendering (Pulsar-Native#634).
+        // rendering.
         let display = event_loop.owned_display_handle();
         let mut app = PulsarApp::new(
             bridge,
@@ -989,7 +823,7 @@ impl SharedTickLoop {
             editor_task_queue::ThreadSpec::new(name, editor_task_queue::ThreadRole::Service)
                 .owner("pulsar_game"),
             move || {
-                let mut guard = shared.lock().unwrap();
+                let mut guard = shared.lock().expect("no panic while the tick lock is held");
                 guard.run_blocking();
             },
         )

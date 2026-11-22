@@ -1,6 +1,6 @@
 # Engine lifecycle
 
-The engine starts in `crates/core/engine/src/main.rs`. The startup is driven
+The engine starts in `crates/core/engine/src/main.rs` (the graph and the event loop; the GPUI application setup is in `startup.rs`). The startup is driven
 by an explicit dependency graph (`InitGraph`) rather than a linear sequence.
 
 ## InitGraph
@@ -31,22 +31,25 @@ init_task!(graph, BACKEND, "Engine Backend", [RUNTIME], steps::backend::run);
 
 ```
 main()
-├── Anti-debug check (Windows only)
-├── Rustls crypto provider init
-├── GPU policy check (discrete GPU enforcement)
-├── macOS accessibility permission
-├── Profiling init (Tracy)
-├── Parse args (clap, dotenv)
+├── dev_bootstrap::run_if_requested()  — developer bootstrap commands exit here
+├── prepare_process()
+│   ├── Rustls crypto provider
+│   ├── dialog helper placement
+│   ├── DXC requirement (Windows ARM64)
+│   └── macOS accessibility permission
+├── Register the main thread; route wgpui frame scopes to the flamegraph
+│   (profiling itself stays off until the Flamegraph panel records)
+├── Parse args (dotenv, pipeline cache path, clap)
 └── InitGraph execution (ordered by deps):
 
     1. LOGGING           — Tracy + tracing-subscriber setup
     2. APPDATA           — Config directory creation (~/.pulsar/)
     3. SETTINGS          — Load engine config from PulsarConfig
     4. RUNTIME           — Tokio async runtime (multi-threaded)
-    5. BACKEND           — EngineBackend::init()
+    5. BACKEND           — EngineBackend::init(), set as the global
                           Plugin components arrive later through `inject_plugin_components`
-                          Sets up the GPUI app and hot-reload watchers
-    6. ENGINE_CONTEXT    — EngineContext::new()
+    6. ENGINE_CONTEXT    — EngineContext::new() (no dependencies: it may run
+                          before any of 1-5 in the topological order)
                           Creates StateStore, KeyedStore, handles URI project paths
     7. DEV_DETECT        — Auto-detect source build (check if binary is in target/debug/)
                           Stash embedded default.level for editor scenarios
@@ -54,31 +57,48 @@ main()
     9. DISCORD           — Discord Rich Presence init
     10. URI_REGISTRATION — Register pulsar:// URL scheme
 
-└── GPUI Application::with_wgpu_options()
+└── GPU policy check (discrete GPU enforcement; after logging, so it can log)
+└── startup::build_gpui_application()
     └── app.run(move |cx| {
-        ├── ui::init(cx)                    — UI system bootstrap
-        ├── ui::themes::init(cx)            — Theme system (load .json themes)
-        ├── ui_core::init(cx)              — Core editor shell:
-        │   ├── PluginManager::new()
-        │   ├── Register built-in editor providers
-        │   └── load_plugins_from_dir()    — Scan plugins/vendor/*.dylib/.so/.dll
-        ├── WindowManager/WindowRegistry   — Global window management
-        ├── window_manager::register_all_windows(cx)
-        │                               — Process inventory::submit! registrations
-        └── Open entry window or loading screen
+        ├── startup::init_ui_stack(cx)
+        │   ├── WindowManager / WindowRegistry globals
+        │   ├── ui::init(cx)                — UI system bootstrap
+        │   ├── ui::themes::init(cx)        — Theme system (load .json themes)
+        │   ├── ui_core::init(cx)           — Core editor shell: keybindings, undo keys,
+        │   │                                 file manager, editor tools
+        │   └── window_manager::register_all_windows(cx)
+        │                                   — Process inventory::submit! registrations
+        └── startup::open_startup_project — entry window or loading screen
     })
 ```
 
+## Dynamic plugin libraries
+
+`ui_core::init` does not load plugin libraries. They go through
+`plugin_manager::startup`:
+
+1. The loading screen's plugin task calls `plugin_manager::prewarm_plugins("plugins/editor")`,
+   which loads each library and checks its integrity on worker threads
+   (`PluginManager::prepare_plugin`; no plugin code runs).
+2. The loading screen installs them (`install_prepared_plugin`) and
+   hands the manager over with `stage_manager`.
+3. `ui_core` (`create_plugin_manager`) takes the staged manager. If there is none,
+   it makes a fresh one and prepares the libraries itself
+   (`prepare_plugins_in_dir`, then `install_prepared_plugin`).
+
+`PluginManager::load_plugins_from_dir` and `load_plugin` have no callers in the
+workspace; do not add startup code on them. Project plugins need none of this: they
+are linked into the binary (`.agents/PLUGIN_SYSTEM.md`).
+
 ## EngineBackend
 
-`EngineBackend` owns the long-lived runtime systems:
+`EngineBackend` is the global backend handle (`EngineBackend::global()`); it holds the
+plugin-provided component factories:
 
 ```rust
 // From crates/core/engine_backend/src/lib.rs
 pub struct EngineBackend {
-    pub gpui_app: Option<Application>,
-    watchers: Vec<tokio::task::JoinHandle<()>>,
-    shutdown: Option<tokio::sync::oneshot::Sender<()>>,
+    plugin_components: component_registry::PluginComponentRegistry,
 }
 ```
 

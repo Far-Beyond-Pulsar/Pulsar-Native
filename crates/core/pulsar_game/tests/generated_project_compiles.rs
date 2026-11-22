@@ -1,4 +1,4 @@
-//! End-to-end generated-project drift check (#652).
+//! End-to-end generated-project drift check.
 //!
 //! Generates a COMPLETE minimal game project (engine bootstrap files from
 //! `core_project_builder` plus a class exported by `pulsar_script_codegen`)
@@ -93,7 +93,7 @@ fn generated_project_compiles_against_current_pins() {
 
     // Verify generation actually produced a compilable crate before invoking
     // cargo (guards against silent virtual-fs no-ops). The scripts/ crate
-    // (#653) is part of that contract: it must exist AND its path
+    // is part of that contract: it must exist AND its path
     // dependencies must resolve to real manifests (a wrong engine-checkout
     // anchor otherwise surfaces only as cargo ENOENT).
     for required in [
