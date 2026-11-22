@@ -18,6 +18,16 @@
 //!   `virtual_geometry` off brings the full geometry back.
 //! * `every_mode_renders_without_validation_errors` cycles Auto,
 //!   ForceNonRtFallback, ForceHwRaster and Off under a validation error scope.
+//! * `toggling_virtual_geometry_*`: three distinct spheres side by side, the
+//!   middle one VG on; turning the left one on (an instance ahead of it in
+//!   the compacted rows), then the right one, then the left one off again,
+//!   through the editor's property command. After each step, once every
+//!   asset is ready and every fallback swapped, each object's pixels and
+//!   depth match the all-classic render. Variants: generated meshes, native
+//!   `.mesh` files (cluster data embedded as it is built, the files reloaded
+//!   as the project watcher does), several hundred classic meshes ahead of
+//!   them, hardware ray queries, a second viewport drawing VG, and a second
+//!   viewport with VG Off (the world keeps the full geometry for both).
 //!
 //! No adapter, or one without the virtual-geometry device limits: skipped.
 //! Run with `--nocapture` to see the measured differences; set
@@ -49,11 +59,17 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const PIXEL_THRESHOLD: u32 = 48;
 const RADIUS: f32 = 40.0;
 
-fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
+fn device(rt: bool) -> Option<(wgpu::Device, wgpu::Queue)> {
     let instance =
         wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-    let features = adapter.features() - wgpu::Features::EXPERIMENTAL_RAY_QUERY;
+    // With `rt`, the hardware ray queries the editor uses when the adapter
+    // has them (the ray-traced scene, its proxies).
+    let features = if rt {
+        helio::usable_adapter_features(&adapter)
+    } else {
+        adapter.features() - wgpu::Features::EXPERIMENTAL_RAY_QUERY
+    };
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: helio::required_wgpu_features(features),
         required_limits: helio::required_wgpu_limits(adapter.limits()),
@@ -423,11 +439,15 @@ fn scene(vg: Option<VirtualGeometryComponent>) -> (LevelEditorState, String) {
 }
 
 fn setup() -> Option<Harness> {
+    setup_with(false)
+}
+
+fn setup_with(rt: bool) -> Option<Harness> {
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
         .with_test_writer()
         .try_init();
-    let Some((device, queue)) = device() else {
+    let Some((device, queue)) = device(rt) else {
         eprintln!("skipping: no GPU adapter available");
         return None;
     };
@@ -1563,4 +1583,459 @@ fn the_full_classic_geometry_leaves_the_gpu_and_comes_back() {
         o.color_pixels * 200 <= o.covered && o.depth_texels * 200 <= o.covered,
         "{o:?}"
     );
+}
+
+// ── Several virtual-geometry meshes ────────────────────────────────────────
+
+/// Rings and segments of the side-by-side spheres: large enough that their
+/// cluster data grows the page pool past its first allocation.
+const SPHERE_RINGS: u32 = 200;
+const SPHERE_SEGMENTS: u32 = 300;
+
+/// The content id of sphere `index` of a family: it names the geometry
+/// (stored cluster data is found by it), so it carries the resolution.
+fn sphere_content(family: u128, index: usize) -> u128 {
+    (family << 96)
+        | (u128::from(SPHERE_RINGS) << 48)
+        | (u128::from(SPHERE_SEGMENTS) << 16)
+        | 0x0b1e_c700
+        | index as u128
+}
+
+/// A generated dense sphere of `radius` under its own content id (each
+/// sphere is a distinct asset).
+fn sphere_mesh(content: u128, radius: f32, vg: bool) -> StaticMeshComponent {
+    let (vertices, indices) = dense_sphere(SPHERE_RINGS, SPHERE_SEGMENTS, radius);
+    StaticMeshComponent {
+        mesh_asset: MeshAssetPath::generated(content),
+        geometry_key: MeshGeometryKey(content),
+        virtual_geometry: vg,
+        material_slots: StaticMeshMaterialSlots {
+            slots: vec![StaticMeshMaterialSlot {
+                name: "dense".into(),
+                surface_override: Some(emissive_surface()),
+                ..Default::default()
+            }],
+        },
+        mesh_sections: vec![MeshSection {
+            first_index: 0,
+            index_count: indices.len() as u32,
+            material_slot: 0,
+        }],
+        vertices,
+        indices,
+        bounds_local: [0.0, 0.0, 0.0, radius],
+        ..Default::default()
+    }
+}
+
+/// Three spheres of distinct assets side by side (left, middle, right), each
+/// with virtual geometry as `vg` says: the scene, the objects' ids and their
+/// mesh entities.
+fn three_spheres(
+    vg: [bool; 3],
+    files: Option<&[String]>,
+    fillers: usize,
+) -> (LevelEditorState, Vec<String>, Vec<pulsar_scenedb::Entity>) {
+    let mut state = LevelEditorState::new();
+    let mut ids = Vec::new();
+    let mut meshes = Vec::new();
+    for (i, (x, radius)) in [(-48.0, 18.0f32), (0.0, 15.0), (48.0, 21.0)]
+        .into_iter()
+        .enumerate()
+    {
+        // Classic meshes before each sphere, as a large level holds: the
+        // spheres' rows sit among many others.
+        for f in 0..fillers / 3 {
+            add_filler(&mut state, i * 100_000 + f);
+        }
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: format!("sphere {i}"),
+                    object_type: ObjectType::Empty,
+                    transform: Transform {
+                        position: [x, 0.0, 0.0],
+                        ..Transform::default()
+                    },
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    props: HashMap::new(),
+                    scene_path: String::new(),
+                    component_instances: None,
+                },
+                parent_id: None,
+            },
+        )
+        .affected_ids
+        .first()
+        .cloned()
+        .expect("AddObject creates an object");
+        let mut world = state.scene.world_mut();
+        let object = world.entity_for(&id).expect("object exists");
+        let content = sphere_content(0x5eed_0000, i);
+        let mesh = pulsar_world_registry::attach_value(
+            &mut world,
+            object,
+            match files {
+                Some(files) => StaticMeshComponent {
+                    virtual_geometry: vg[i],
+                    ..StaticMeshComponent::for_mesh_asset(&files[i])
+                },
+                None => sphere_mesh(content, radius, vg[i]),
+            },
+        )
+        .expect("attach mesh");
+        drop(world);
+        ids.push(id);
+        meshes.push(mesh);
+    }
+    (state, ids, meshes)
+}
+
+/// A small classic mesh of its own asset, out of the camera's view.
+fn add_filler(state: &mut LevelEditorState, index: usize) {
+    let id = execute_command(
+        state,
+        SceneCommand::AddObject {
+            data: SceneObjectData {
+                id: String::new(),
+                name: format!("filler {index}"),
+                object_type: ObjectType::Empty,
+                transform: Transform {
+                    position: [(index % 97) as f64 * 3.0, 4000.0, (index / 97) as f64 * 3.0],
+                    ..Transform::default()
+                },
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                props: HashMap::new(),
+                scene_path: String::new(),
+                component_instances: None,
+            },
+            parent_id: None,
+        },
+    )
+    .affected_ids
+    .first()
+    .cloned()
+    .expect("AddObject creates an object");
+    let (vertices, indices) = dense_sphere(4, 6, 1.0);
+    let content = 0xf111_0000_0000_0000_0000_0000_0000_0000u128 | index as u128;
+    let mesh = StaticMeshComponent {
+        mesh_asset: MeshAssetPath::generated(content),
+        geometry_key: MeshGeometryKey(content),
+        material_slots: StaticMeshMaterialSlots {
+            slots: vec![StaticMeshMaterialSlot {
+                name: "filler".into(),
+                surface_override: Some(emissive_surface()),
+                ..Default::default()
+            }],
+        },
+        mesh_sections: vec![MeshSection {
+            first_index: 0,
+            index_count: indices.len() as u32,
+            material_slot: 0,
+        }],
+        vertices,
+        indices,
+        bounds_local: [0.0, 0.0, 0.0, 1.0],
+        ..Default::default()
+    };
+    let mut world = state.scene.world_mut();
+    let object = world.entity_for(&id).expect("object exists");
+    pulsar_world_registry::attach_value(&mut world, object, mesh).expect("attach filler");
+}
+
+/// Set `id`'s static mesh `virtual_geometry` through the editor's property
+/// command, as the properties panel does.
+fn set_virtual_geometry(state: &mut LevelEditorState, id: &str, on: bool) {
+    assert!(
+        execute_command(
+            state,
+            SceneCommand::SetComponentProperty {
+                id: id.to_string(),
+                class_name: "StaticMeshComponent".into(),
+                component_index: 0,
+                prop_name: "virtual_geometry".into(),
+                value: Box::new(on),
+            },
+        )
+        .changed,
+        "the virtual_geometry edit was refused"
+    );
+}
+
+impl Harness {
+    /// Render until every mesh of `meshes` with virtual geometry on has its
+    /// asset ready and shows its fallback (built, streamed, cut, swapped),
+    /// and every other shows its full geometry; then settle.
+    fn until_settled(
+        &self,
+        renderer: &mut HelioRenderer,
+        state: &LevelEditorState,
+        meshes: &[pulsar_scenedb::Entity],
+        objects: &[String],
+        others: &mut [HelioRenderer],
+        watched: &mut [(String, Option<std::time::SystemTime>)],
+        fallbacks: bool,
+    ) -> Frame {
+        let start = Instant::now();
+        loop {
+            // The project watcher: a mesh file rewritten (its cluster data
+            // embedded as it is built) is reloaded into the world.
+            for (path, seen) in watched.iter_mut() {
+                let modified = std::fs::metadata(&*path).and_then(|m| m.modified()).ok();
+                if modified != *seen {
+                    let first = seen.is_none();
+                    *seen = modified;
+                    if !first {
+                        let event = pulsar_events::AssetUpdated::new(pulsar_events::AssetKind::Mesh)
+                            .with_path(std::path::Path::new(path.as_str()));
+                        let mut world = state.scene.world_mut();
+                        engine_backend::scene::reload_updated_asset(&mut world, &event);
+                    }
+                }
+            }
+            // The objects' transforms are written as an editor writes a
+            // selected object's (a gizmo, the properties panel): the scene
+            // join re-places them through its moved-owner path.
+            {
+                let mut world = state.scene.world_mut();
+                for id in objects {
+                    let owner = world.entity_for(id);
+                    if let Some(owner) = owner {
+                        if let Some(mut transform) =
+                            world.get_mut::<engine_backend::scene::Transform>(owner)
+                        {
+                            let position = transform.position;
+                            transform.position = position;
+                        }
+                    }
+                }
+            }
+            self.frames(renderer, 4);
+            for other in others.iter_mut() {
+                self.frames(other, 2);
+            }
+            let (wanted, swapped) = {
+                let world = state.scene.world();
+                let wanted: Vec<bool> = meshes
+                    .iter()
+                    .map(|m| world.get::<StaticMeshComponent>(*m).unwrap().virtual_geometry)
+                    .collect();
+                let swapped = meshes.iter().zip(&wanted).all(|(m, on)| {
+                    world
+                        .get::<StaticMeshComponent>(*m)
+                        .unwrap()
+                        .full_geometry
+                        .is_some()
+                        == (*on && fallbacks)
+                });
+                (wanted, swapped)
+            };
+            let runtime = installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(renderer)
+                .expect("the viewport renderer is built")
+                .clone();
+            let (rows, _) = runtime.asset_ready_rows(1);
+            let ready = rows.iter().filter(|r| r.flags & 1 != 0).count();
+            if swapped && ready >= wanted.iter().filter(|on| **on).count() {
+                return self.frames(renderer, 16);
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(240),
+                "the meshes never settled (swapped {swapped}, {ready} assets ready, wanted {wanted:?})"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+/// The user's report: with one virtual-geometry mesh drawing, turning
+/// virtual geometry on for a second mesh must not move the first one's
+/// clusters onto the second (nor hide either). Three distinct spheres side
+/// by side, the middle one VG on; after every toggle (left on, right on,
+/// left off) the frame matches the all-classic render: each object's pixels
+/// and depth stay at its own place.
+#[test]
+fn toggling_virtual_geometry_on_one_mesh_leaves_the_others_in_place() {
+    toggle_three(None, None);
+}
+
+/// As above, with the meshes read from native `.mesh` files, as an imported
+/// project's are: their cluster data is embedded into the files as it is
+/// built.
+#[test]
+fn toggling_virtual_geometry_on_one_mesh_asset_leaves_the_others_in_place() {
+    let files = sphere_mesh_files();
+    toggle_three(Some(&files), None);
+    if let Some(dir) = std::path::Path::new(&files[0]).parent() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+/// As above, with a second viewport on the same level drawing virtual
+/// geometry too: each renderer has its own streaming runtime, and both
+/// draw the one world.
+#[test]
+fn toggling_virtual_geometry_with_two_viewports_leaves_the_others_in_place() {
+    toggle_three(None, Some(VirtualGeometryMode::Auto));
+}
+
+/// As above, with the second viewport not drawing virtual geometry (its
+/// mode Off): it draws every mesh classically from the same world.
+#[test]
+fn toggling_virtual_geometry_beside_a_classic_viewport_leaves_the_others_in_place() {
+    toggle_three(None, Some(VirtualGeometryMode::Off));
+}
+
+/// As above, in a level of several hundred classic meshes: the spheres'
+/// rows sit far into every scene buffer.
+#[test]
+fn toggling_virtual_geometry_among_many_meshes_leaves_the_others_in_place() {
+    toggle_three_among(None, None, 600);
+}
+
+/// As above, on a device with hardware ray queries, as the editor runs on
+/// one that has them: the ray-traced scene holds the meshes (their ray
+/// proxies, once virtual geometry is on).
+#[test]
+fn toggling_virtual_geometry_with_ray_queries_leaves_the_others_in_place() {
+    toggle_three_with(None, None, 0, true);
+}
+
+fn toggle_three(files: Option<&[String]>, second_viewport: Option<VirtualGeometryMode>) {
+    toggle_three_with(files, second_viewport, 0, false);
+}
+
+fn toggle_three_among(
+    files: Option<&[String]>,
+    second_viewport: Option<VirtualGeometryMode>,
+    fillers: usize,
+) {
+    toggle_three_with(files, second_viewport, fillers, false);
+}
+
+fn toggle_three_with(
+    files: Option<&[String]>,
+    second_viewport: Option<VirtualGeometryMode>,
+    fillers: usize,
+    rt: bool,
+) {
+    let Some(harness) = setup_with(rt) else { return };
+    let (classic_state, _, _) = three_spheres([false; 3], files, fillers);
+    let mut classic_renderer = harness.renderer(&classic_state);
+    // Asset meshes load and bind their materials over the first frames.
+    harness.frames(&mut classic_renderer, 60);
+    let classic = harness.frames(&mut classic_renderer, 12);
+    classic.dump("three_classic");
+    assert!(classic.difference(&classic).covered > 1000);
+
+    // The first virtual-geometry mesh is the middle one: turning the left one
+    // on puts an instance before it in the compacted instance rows.
+    let (mut state, ids, meshes) = three_spheres([false, true, false], files, fillers);
+    let mut renderer = harness.renderer(&state);
+    installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
+    // A second viewport on the same level, as the editor may hold.
+    let mut others: Vec<HelioRenderer> = second_viewport
+        .map(|mode| {
+            let mut other = harness.renderer(&state);
+            installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
+                &mut other,
+                Some(vg_settings(mode)),
+            );
+            other
+        })
+        .into_iter()
+        .collect();
+    // A viewport that does not draw virtual geometry keeps the full geometry
+    // in the world for both.
+    let fallbacks = second_viewport != Some(VirtualGeometryMode::Off);
+    // The mesh files, as the editor's project watcher follows them.
+    let mut watched: Vec<(String, Option<std::time::SystemTime>)> = files
+        .unwrap_or_default()
+        .iter()
+        .map(|path| {
+            let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+            (path.clone(), modified)
+        })
+        .collect();
+    let check = |frame: &Frame, label: &str| {
+        frame.dump(label);
+        let d = frame.difference(&classic);
+        println!("{label} vs classic: {d:?}");
+        assert!(
+            d.color_pixels * 100 <= d.covered * 3 && d.depth_texels * 100 <= d.covered * 5,
+            "{label}: an object is not where the classic render draws it: {d:?}"
+        );
+    };
+    let one = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    check(&one, "three_vg_b");
+
+    set_virtual_geometry(&mut state, &ids[0], true);
+    let two = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    check(&two, "three_vg_ab");
+
+    set_virtual_geometry(&mut state, &ids[2], true);
+    let three = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    check(&three, "three_vg_abc");
+
+    set_virtual_geometry(&mut state, &ids[0], false);
+    let back = harness.until_settled(&mut renderer, &state, &meshes, &ids, &mut others, &mut watched, fallbacks);
+    check(&back, "three_vg_bc");
+}
+
+/// Native `.mesh` files of the three spheres (distinct content ids), written
+/// fresh under the target directory: what an imported project holds. Their
+/// paths, absolute.
+fn sphere_mesh_files() -> Vec<String> {
+    use installed_plugins::meshes_plugin::meshes_component::mesh_cache::{
+        encode_asset, MeshAssetUpload, MeshLocalBounds, MeshMaterialSlot,
+    };
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/vg-acceptance-meshes")
+        .join(std::process::id().to_string());
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("mesh folder");
+    [18.0f32, 15.0, 21.0]
+        .into_iter()
+        .enumerate()
+        .map(|(i, radius)| {
+            let (vertices, indices) = dense_sphere(SPHERE_RINGS, SPHERE_SEGMENTS, radius);
+            let count = indices.len() as u32;
+            let geometry = helio_mesh_api::MeshUpload { vertices, indices };
+            let asset = MeshAssetUpload {
+                bounds: MeshLocalBounds::from_geometry(&geometry).expect("bounds"),
+                geometry,
+                sections: vec![MeshSection {
+                    first_index: 0,
+                    index_count: count,
+                    material_slot: 0,
+                }],
+                material_slots: vec![MeshMaterialSlot {
+                    source_material: Some(0),
+                    name: "dense".into(),
+                    surface: emissive_surface(),
+                    ..Default::default()
+                }],
+                settings: Default::default(),
+            };
+            let path = dir.join(format!("sphere_{i}.mesh"));
+            let content = sphere_content(0x5eed_f11e, i);
+            std::fs::write(&path, encode_asset(&asset, content)).expect("write mesh");
+            path.canonicalize()
+                .expect("written")
+                .to_string_lossy()
+                .trim_start_matches(r"\\?\")
+                .replace('\\', "/")
+        })
+        .collect()
 }
