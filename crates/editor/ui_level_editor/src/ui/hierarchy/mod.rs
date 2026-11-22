@@ -194,6 +194,82 @@ pub(crate) fn select_all_objects(state: &mut LevelEditorState) -> usize {
     ids.len()
 }
 
+/// Select every object whose settings match a selected object's
+/// (Ctrl/Cmd+Shift+A), ignoring where it is: same object type, same
+/// type-specific props, and the same components with the same enabled flags
+/// and values. Name, id, transform, parent, visibility and lock are not
+/// settings, nor is a component's instance id or slot-local transform.
+/// The current selection stays selected and the primary stays the primary.
+/// Class-generated children and instance members are left out, as with
+/// [`select_all_objects`]. Returns how many objects are selected; nothing
+/// changes when nothing is selected.
+pub(crate) fn select_similar_objects(state: &mut LevelEditorState) -> usize {
+    use crate::scene_edit::{components, objects as scene_objects};
+
+    let selected = {
+        let world = state.scene.world();
+        scene_objects::selected_object_ids(&world)
+    };
+    if selected.is_empty() {
+        return 0;
+    }
+    let (all, _) = {
+        let world = state.scene.world();
+        scene_objects::get_hierarchy_projection(&world)
+    };
+    let world = state.scene.world();
+    let signature = |id: &str| -> Option<String> {
+        let object = scene_objects::get_object(&world, id)?;
+        Some(settings_signature(
+            &object,
+            components::get_components(&world, id),
+        ))
+    };
+    let wanted: HashSet<String> = selected.iter().filter_map(|id| signature(id)).collect();
+    let already: HashSet<&str> = selected.iter().map(String::as_str).collect();
+    let mut ids: Vec<String> = all
+        .iter()
+        .map(|object| &object.id)
+        .filter(|id| !already.contains(id.as_str()))
+        .filter(|id| {
+            !crate::scene_edit::classes::is_generated_child(&world, id)
+                && !scene_objects::is_instance_member(&world, id)
+        })
+        .filter(|id| signature(id).is_some_and(|s| wanted.contains(&s)))
+        .cloned()
+        .collect();
+    drop(world);
+    // The existing selection last, so its primary stays the primary.
+    ids.extend(selected);
+    state.scene.select_objects(&ids);
+    ids.len()
+}
+
+/// What makes two objects "the same settings" for [`select_similar_objects`]:
+/// a canonical string of everything about the object except where it is and
+/// what it is called.
+fn settings_signature(
+    object: &SceneObjectData,
+    components: Vec<engine_backend::ComponentInstance>,
+) -> String {
+    use pulsar_world_registry::instances::{INSTANCE_ID_KEY, TRANSFORM_KEY};
+    use std::collections::BTreeMap;
+
+    let props: BTreeMap<&String, &serde_json::Value> = object.props.iter().collect();
+    let components: Vec<serde_json::Value> = components
+        .into_iter()
+        .map(|component| {
+            let mut data = component.data;
+            if let Some(map) = data.as_object_mut() {
+                map.remove(INSTANCE_ID_KEY);
+                map.remove(TRANSFORM_KEY);
+            }
+            serde_json::json!([component.class_name, component.enabled, data])
+        })
+        .collect();
+    serde_json::json!([format!("{:?}", object.object_type), props, components]).to_string()
+}
+
 /// Ancestors of an object, nearest first.
 fn ancestors(state: &LevelEditorState, id: &str) -> Vec<String> {
     use engine_backend::scene::SceneWorldExt;
@@ -1141,3 +1217,69 @@ pub(crate) fn editor_camera_spawn_transform(
 }
 
 use ui::dock::PanelEvent;
+
+#[cfg(test)]
+mod select_similar_tests {
+    use super::select_similar_objects;
+    use crate::commands::{execute_command, SceneCommand};
+    use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
+    use crate::state::LevelEditorState;
+
+    fn add(state: &mut LevelEditorState, name: &str, kind: ObjectType, x: f32) -> String {
+        let data = SceneObjectData {
+            id: String::new(),
+            name: name.to_string(),
+            object_type: kind,
+            transform: Transform {
+                position: [f64::from(x), 0.0, 0.0],
+                rotation: [0.0, x * 10.0, 0.0],
+                scale: [1.0 + x, 1.0, 1.0],
+            },
+            visible: true,
+            locked: false,
+            parent: None,
+            children: vec![],
+            scene_path: String::new(),
+            props: Default::default(),
+            component_instances: None,
+        };
+        execute_command(
+            state,
+            SceneCommand::AddObject {
+                data,
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone()
+    }
+
+    #[test]
+    fn selects_objects_with_the_same_settings_wherever_they_are() {
+        let mut state = LevelEditorState::new();
+        let a = add(&mut state, "Rock", ObjectType::Empty, 0.0);
+        let b = add(&mut state, "Rock 2", ObjectType::Empty, 5.0);
+        let c = add(&mut state, "Rock 3", ObjectType::Empty, -3.0);
+        let camera = add(&mut state, "Camera", ObjectType::Camera, 1.0);
+        let folder = add(&mut state, "Folder", ObjectType::Folder, 2.0);
+
+        state.scene.select_objects(std::slice::from_ref(&b));
+        assert_eq!(select_similar_objects(&mut state), 3);
+        let selected = state.scene.selected_objects();
+        for id in [&a, &b, &c] {
+            assert!(selected.contains(id), "{id} is selected");
+        }
+        assert!(!selected.contains(&camera) && !selected.contains(&folder));
+        // The object it started from stays the primary.
+        assert_eq!(state.scene.selected_object(), Some(b));
+    }
+
+    #[test]
+    fn nothing_selected_selects_nothing() {
+        let mut state = LevelEditorState::new();
+        add(&mut state, "Rock", ObjectType::Empty, 0.0);
+        state.scene.select_objects(&[]);
+        assert_eq!(select_similar_objects(&mut state), 0);
+        assert!(state.scene.selected_objects().is_empty());
+    }
+}

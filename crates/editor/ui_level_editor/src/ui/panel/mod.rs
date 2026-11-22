@@ -378,20 +378,24 @@ impl Render for LevelEditorPanel {
                     _ => {}
                 }
             }))
-            // Ctrl/Cmd+A selects everything in the scene (the handler above
-            // ignores modified keys).
+            // Ctrl/Cmd+A selects everything in the scene; with Shift, every
+            // object with the same settings as the selection, wherever it is
+            // (the handler above ignores modified keys).
             .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 let modifiers = &event.keystroke.modifiers;
-                if event.keystroke.key != "a"
+                if !event.keystroke.key.eq_ignore_ascii_case("a")
                     || !(modifiers.control || modifiers.platform)
                     || modifiers.alt
-                    || modifiers.shift
                     || event.is_held
                     || !this.focus_handle.contains_focused(window, cx)
                 {
                     return;
                 }
-                crate::ui::hierarchy::select_all_objects(&mut this.shared_state.write());
+                if modifiers.shift {
+                    crate::ui::hierarchy::select_similar_objects(&mut this.shared_state.write());
+                } else {
+                    crate::ui::hierarchy::select_all_objects(&mut this.shared_state.write());
+                }
                 this.sync_gizmo_to_helio();
                 cx.stop_propagation();
                 cx.notify();
