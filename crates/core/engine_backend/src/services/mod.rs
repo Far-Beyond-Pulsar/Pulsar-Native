@@ -9,6 +9,7 @@ pub mod core_project_builder;
 pub mod device_loss;
 #[cfg(feature = "render")]
 pub mod gpu_renderer;
+pub mod memory_owners;
 pub mod native_scripts;
 #[cfg(feature = "pie")]
 pub mod pie_blit;

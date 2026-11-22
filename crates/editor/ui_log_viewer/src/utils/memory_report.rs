@@ -2,13 +2,15 @@
 //!
 //! One click captures the heap's large allocations (with full stacks), the GPU
 //! allocator's view by name and block, the process's address space, and the
-//! residency and derived-data caches, so a run can be attached to a bug,
+//! residency and derived-data caches, and what the plugins report they own
+//! (their memory tables), so a run can be attached to a bug,
 //! compared with another, or quoted. Plain Markdown on purpose: it diffs, and
 //! reads in any editor.
 
 use crate::utils::gpu_alloc_report::GpuReport;
 use crate::utils::large_allocs::LargeSnapshot;
 use crate::utils::process_memory::{describe_protection, ProcessMemory};
+use engine_backend::services::memory_owners::MemoryTable;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -16,6 +18,8 @@ pub struct ReportInput<'a> {
     pub heap: &'a LargeSnapshot,
     pub gpu: &'a GpuReport,
     pub process: &'a ProcessMemory,
+    /// What the plugins report they own (`engine_backend::services::memory_owners`).
+    pub owners: &'a [MemoryTable],
     pub cache: pulsar_scenedb::ResidencyStats,
     pub derived: pulsar_scenedb::DerivedStats,
     pub tracking_was_on: bool,
@@ -110,6 +114,19 @@ pub fn render(input: &ReportInput) -> String {
         }
     }
     let _ = writeln!(out);
+
+    // ── Owners ──────────────────────────────────────────────────────────────
+    for table in input.owners {
+        let _ = writeln!(out, "## {} (by its owner)", table.owner);
+        let _ = writeln!(out);
+        let _ = writeln!(out, "| item | {} |", table.columns.join(" | "));
+        let _ = writeln!(out, "|---|{}", "---:|".repeat(table.columns.len()));
+        for row in &table.rows {
+            let bytes: Vec<String> = row.bytes.iter().map(|b| fmt_bytes(*b)).collect();
+            let _ = writeln!(out, "| {} | {} |", row.label, bytes.join(" | "));
+        }
+        let _ = writeln!(out);
+    }
 
     // ── GPU ─────────────────────────────────────────────────────────────────
     let _ = writeln!(out, "## GPU allocations (wgpu allocator report)");
@@ -244,6 +261,7 @@ pub fn write(project_root: &Path, unix_time: u64, markdown: &str) -> std::io::Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine_backend::services::memory_owners::MemoryRow;
     use crate::utils::gpu_alloc_report::{GpuDeviceReport, GpuNameGroup};
     use crate::utils::large_allocs::LargeGroup;
 
@@ -290,6 +308,14 @@ mod tests {
             heap: &heap,
             gpu: &gpu,
             process: &ProcessMemory::default(),
+            owners: &[MemoryTable {
+                owner: "Example owner",
+                columns: &["Resident", "Stand-in", "Streamed"],
+                rows: vec![MemoryRow {
+                    label: "statue".into(),
+                    bytes: vec![0, 2 * MB, 8 * MB],
+                }],
+            }],
             cache: pulsar_scenedb::ResidencyStats {
                 budget: (1024 * MB) as usize,
                 resident_bytes: (256 * MB) as usize,
@@ -322,11 +348,13 @@ mod tests {
             "## Heap: live allocations of 16.0 MiB or more",
             "## Rebuildable-data cache",
             "## Derived-data cache",
+            "## Example owner (by its owner)",
         ] {
             assert!(report.contains(heading), "missing {heading}\n{report}");
         }
         assert!(report.contains("| Scene Texture | 6 | 16.0 MiB | 96.0 MiB |"));
         assert!(report.contains("| rebuilds | 18 |"));
+        assert!(report.contains("| statue | 0 B | 2.0 MiB | 8.0 MiB |"));
         assert!(report.contains("| prefetched | 5 |"));
         assert!(report.contains("| hits (read from a file) | 40 |"));
         assert!(report.contains("| misses (cooked) | 8 |"));

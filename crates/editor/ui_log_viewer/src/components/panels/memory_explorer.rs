@@ -1,11 +1,14 @@
 //! Memory Explorer: where the process's memory is, by owner.
 //!
-//! Three views over three sources that no single tool covers:
+//! Four views over sources that no single tool covers:
 //!
 //! - **Heap** — live allocations of at least a threshold, grouped by call stack,
 //!   from the allocation tracker. Click a row for the whole stack.
 //! - **GPU** — each device's allocations by name, and how full its memory
 //!   blocks are, from wgpu's allocator report.
+//! - **Owners** — what the plugins report they own, item by item (a mesh's
+//!   classic geometry, its virtual-geometry fallback and pages), through
+//!   `engine_backend::services::memory_owners`.
 //! - **Process** — committed address space by type and protection. Write-combined
 //!   regions are GPU-visible memory, which the heap tracker cannot see.
 //!
@@ -15,6 +18,7 @@
 use crate::utils::gpu_alloc_report::{self, GpuReport};
 use crate::utils::large_allocs::{self, LargeSnapshot};
 use crate::utils::memory_report;
+use engine_backend::services::memory_owners::{self, MemoryTable};
 use crate::utils::process_memory::{self, ProcessMemory, RegionKind};
 use crate::utils::tracking_allocator::{disable_tracking, enable_tracking, is_tracking_active};
 use gpui::*;
@@ -31,6 +35,7 @@ use ui::{
 enum View {
     Heap,
     Gpu,
+    Owners,
     Process,
 }
 
@@ -39,6 +44,7 @@ struct Data {
     large: LargeSnapshot,
     gpu: GpuReport,
     process: ProcessMemory,
+    owners: Vec<MemoryTable>,
 }
 
 /// Thresholds offered in the toolbar, in MiB.
@@ -89,6 +95,9 @@ impl MemoryExplorerPanel {
                             let report = gpu_alloc_report::collect();
                             data.write().gpu = report;
                         }
+                        View::Owners => {
+                            data.write().owners = memory_owners::memory_tables();
+                        }
                         View::Process => {
                             let memory = process_memory::scan();
                             data.write().process = memory;
@@ -126,6 +135,7 @@ impl MemoryExplorerPanel {
                     let heap = large_allocs::build_snapshot();
                     let gpu = gpu_alloc_report::collect();
                     let process = process_memory::scan();
+                    let owners = memory_owners::memory_tables();
                     let unix_time = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map_or(0, |since| since.as_secs());
@@ -133,6 +143,7 @@ impl MemoryExplorerPanel {
                         heap: &heap,
                         gpu: &gpu,
                         process: &process,
+                        owners: &owners,
                         cache: pulsar_scenedb::residency_stats(),
                         derived: pulsar_scenedb::derived_stats(),
                         tracking_was_on: tracking,
@@ -238,6 +249,13 @@ impl Render for MemoryExplorerPanel {
                 }),
             )
             .child(self.chip(
+                "view-owners",
+                "Owners",
+                self.view == View::Owners,
+                cx,
+                |this, cx| this.set_view(View::Owners, cx),
+            ))
+            .child(self.chip(
                 "view-process",
                 "Process",
                 self.view == View::Process,
@@ -317,6 +335,7 @@ impl Render for MemoryExplorerPanel {
         let body = match self.view {
             View::Heap => self.render_heap(tracking, cx),
             View::Gpu => self.render_gpu(cx),
+            View::Owners => self.render_owners(cx),
             View::Process => self.render_process(cx),
         };
 
@@ -571,6 +590,71 @@ impl MemoryExplorerPanel {
             ))
             .children(rows)
             .children(empty)
+            .into_any_element()
+    }
+
+    /// Each plugin's table of what it owns: an item a row, a column of bytes
+    /// for each thing the owner names, and the totals.
+    fn render_owners(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme().clone();
+        let data = self.data.read();
+        if data.owners.is_empty() {
+            return div()
+                .p_3()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child("No plugin reports the memory it owns.")
+                .into_any_element();
+        }
+        v_flex()
+            .children(data.owners.iter().map(|table| {
+                let mut labels = vec!["Item"];
+                labels.extend(table.columns.iter().copied());
+                let totals: Vec<u64> = (0..table.columns.len())
+                    .map(|c| {
+                        table
+                            .rows
+                            .iter()
+                            .map(|row| row.bytes.get(c).copied().unwrap_or(0))
+                            .sum()
+                    })
+                    .collect();
+                v_flex()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .p_3()
+                            .flex_wrap()
+                            .child(self.stat("Owner", table.owner.to_string(), cx))
+                            .child(self.stat("Items", table.rows.len().to_string(), cx))
+                            .children(table.columns.iter().zip(&totals).map(
+                                |(column, total)| self.stat(column, fmt_bytes(*total), cx),
+                            )),
+                    )
+                    .child(header_row(&theme, &labels))
+                    .children(table.rows.iter().map(|row| {
+                        h_flex()
+                            .w_full()
+                            .px_3()
+                            .py(px(4.0))
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_xs()
+                                    .text_color(theme.foreground)
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(row.label.clone()),
+                            )
+                            .children(
+                                row.bytes
+                                    .iter()
+                                    .map(|bytes| cell(fmt_bytes(*bytes), theme.muted_foreground)),
+                            )
+                    }))
+            }))
             .into_any_element()
     }
 
