@@ -2,13 +2,15 @@
 //! headless `HelioRenderer`, the shipped deferred graph, hardware ray
 //! queries so the meshes' ray-traced scene and GI run): a bending tube
 //! skinned through the meshes' skin cache, a trunk-and-canopy tree, a ground
-//! and a sun. Writes the lit frame and the "Indirect Lighting" view (where
-//! the traced occlusion of GI shows) at rest and bent, into
-//! `SKINNED_FRAMES_DIR` (default `target-captures/r1-tlas`), and the frames'
-//! raw RGBA for an A/B against a baseline build of this same file.
+//! and a sun. Asserts that the lit frame follows the pose (rest and bent
+//! differ), that a bent pose shown after the rest pose matches the same pose
+//! on a renderer that never saw the rest pose (the shadow and the TLAS
+//! followed the pose), and that culling the tube and the tree out of the
+//! ray-traced scene changes the "Indirect Lighting" view (rays saw them).
+//! With `SKINNED_FRAMES_DIR` set it also writes the frames (PNG and raw
+//! RGBA, tagged `SKINNED_FRAMES_TAG`) for an A/B against a baseline build.
 //!
-//! Run by hand (it writes images): `skinned_frames --ignored --nocapture`.
-//! Needs hardware ray queries; skips without them.
+//! Needs hardware ray queries: without them it prints `skipped`.
 
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
@@ -303,7 +305,20 @@ fn read(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture) -> 
         .collect()
 }
 
-fn save(dir: &std::path::Path, name: &str, rgba: &[u8]) {
+/// Mean over pixels of the largest channel difference, in 8-bit steps.
+fn mean_difference(a: &[u8], b: &[u8]) -> f64 {
+    let sum: u64 = a
+        .chunks_exact(4)
+        .zip(b.chunks_exact(4))
+        .map(|(a, b)| (0..3).map(|c| a[c].abs_diff(b[c])).max().unwrap() as u64)
+        .sum();
+    sum as f64 / (a.len() / 4) as f64
+}
+
+fn save(dir: Option<&std::path::Path>, name: &str, rgba: &[u8]) {
+    let Some(dir) = dir else {
+        return;
+    };
     std::fs::write(dir.join(format!("{name}.rgba")), rgba).unwrap();
     image::RgbaImage::from_raw(WIDTH, HEIGHT, rgba.to_vec())
         .unwrap()
@@ -312,15 +327,17 @@ fn save(dir: &std::path::Path, name: &str, rgba: &[u8]) {
 }
 
 #[test]
-#[ignore = "writes frames; run by hand"]
 fn skinned_frames() {
     let Some((device, queue)) = device() else {
         return;
     };
-    let dir = std::path::PathBuf::from(
-        std::env::var("SKINNED_FRAMES_DIR").unwrap_or_else(|_| "target-captures/r1-tlas".into()),
-    );
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = std::env::var("SKINNED_FRAMES_DIR")
+        .ok()
+        .map(std::path::PathBuf::from);
+    if let Some(dir) = &dir {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    let dir = dir.as_deref();
     let tag = std::env::var("SKINNED_FRAMES_TAG").unwrap_or_else(|_| "new".into());
     let pipeline = shipped_pipeline();
     let target = Target {
@@ -376,21 +393,31 @@ fn skinned_frames() {
         bend(&mut mesh, angle);
     };
     // GI probes settle over many frames: the first observation waits long.
+    let mut lit_bent = None;
     for (mode, mode_name) in [(0u32, "lit"), (INDIRECT_VIEW, "indirect")] {
         renderer.editor_mailbox().set_viewport_debug_mode(mode);
         pose(0.0);
         let rest = render(&mut renderer, if mode == 0 { 240 } else { 120 });
-        save(&dir, &format!("{tag}_{mode_name}_rest"), &rest);
+        save(dir, &format!("{tag}_{mode_name}_rest"), &rest);
         pose(0.9);
         let bent = render(&mut renderer, 120);
-        save(&dir, &format!("{tag}_{mode_name}_bent"), &bent);
+        save(dir, &format!("{tag}_{mode_name}_bent"), &bent);
+        let moved = mean_difference(&rest, &bent);
+        println!("{mode_name}: rest against bent {moved:.3}");
+        assert!(
+            moved > 0.2,
+            "{mode_name}: the frame did not follow the pose ({moved:.3})"
+        );
+        if mode == 0 {
+            lit_bent = Some(bent);
+        }
         // Mid-animation: the pose moving every frame.
         for k in 0..30 {
             pose(0.9 - 0.03 * k as f32);
             render(&mut renderer, 1);
         }
         let moving = render(&mut renderer, 0);
-        save(&dir, &format!("{tag}_{mode_name}_moving"), &moving);
+        save(dir, &format!("{tag}_{mode_name}_moving"), &moving);
     }
     // The same bent pose on a renderer that never saw the rest pose: the
     // reference for "did the shadow follow the pose".
@@ -406,7 +433,14 @@ fn skinned_frames() {
             .set_render_pipeline(Some(shipped_pipeline()));
         pose(0.9);
         let bent = render(&mut fresh, 240);
-        save(&dir, &format!("{tag}_lit_bent_fresh"), &bent);
+        save(dir, &format!("{tag}_lit_bent_fresh"), &bent);
+        let after_rest = lit_bent.as_ref().expect("the lit bent frame");
+        let same = mean_difference(after_rest, &bent);
+        println!("bent after the rest pose against bent fresh: {same:.3}");
+        assert!(
+            same < 1.5,
+            "the bent pose after the rest pose differs from the same pose fresh ({same:.3}): its shadow or BLAS kept the rest pose"
+        );
     }
     // What rays see: the indirect view with the tree, then also the tube,
     // left out of the ray-traced scene by its culling (`ray_tracing`'s
@@ -421,6 +455,7 @@ fn skinned_frames() {
             .editor_mailbox()
             .set_viewport_debug_mode(INDIRECT_VIEW);
         pose(0.0);
+        let mut seen = Vec::new();
         for (radius, name) in [
             (8.0f64, "traced_none"),
             (9.6, "traced_no_tree"),
@@ -429,7 +464,8 @@ fn skinned_frames() {
             rays.set("culling_radius", radius).unwrap();
             rays.set("culling_angle", 90.0f64).unwrap();
             let frame = render(&mut renderer, 240);
-            save(&dir, &format!("{tag}_indirect_{name}"), &frame);
+            save(dir, &format!("{tag}_indirect_{name}"), &frame);
+            seen.push(frame.clone());
             if let Some(stats) = renderer.frame_stats() {
                 let stat = |key: &str| stats.get(key).unwrap_or(0);
                 println!(
@@ -440,8 +476,15 @@ fn skinned_frames() {
                 );
             }
         }
+        for (k, name) in [(1, "the tube"), (2, "the tree")] {
+            let changed = mean_difference(&seen[k - 1], &seen[k]);
+            println!("tracing {name}: indirect view changed by {changed:.3}");
+            assert!(
+                changed > 0.05,
+                "tracing {name} did not change the indirect view ({changed:.3}): rays did not see it"
+            );
+        }
     } else {
         println!("no ray_tracing settings group: the TLAS membership scenarios are skipped");
     }
-    println!("frames in {}", dir.display());
 }

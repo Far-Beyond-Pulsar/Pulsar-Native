@@ -719,6 +719,17 @@ status = "verified"
 
 
 [[pass]]
+crate = "helio-pass-reference"
+in_default_graph = true
+reads = []
+owner = "helio-pass-reference"
+disposition = "keep: the reference path tracer, a consumer of the frame's ray streams and light samples; reads no scene buffer, records nothing outside its debug views"
+target_contract = "r2; rendering.md section 4"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-reference/tests/reference_gpu.rs"
+status = "verified"
+
+
+[[pass]]
 crate = "helio-pass-ssr"
 in_default_graph = true
 reads = []
@@ -851,7 +862,7 @@ status = "unverified"
 [[buffer]]
 key = "directional_lights"
 producers = []
-consumers = ["helio-pass-gi", "helio-pass-light-cull", "helio-pass-sky", "helio-pass-water-sim"]
+consumers = ["helio-pass-light-cull", "helio-pass-sky", "helio-pass-water-sim"]
 owner = "lights plugin (the light join publishes it; contract helio_light_api::DIRECTIONAL_LIGHTS_ROW)"
 disposition = "keep: the directional lights, published by the lights' join and read through its contract const since p22 (was a string key the scan did not see)"
 target_contract = "Phase 3; .agents/PLUGIN_API_REFACTOR_PLAN.md section 14"
