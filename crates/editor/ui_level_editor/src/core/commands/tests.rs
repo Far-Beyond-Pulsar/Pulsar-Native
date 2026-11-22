@@ -269,6 +269,106 @@ mod undo_redo_tests {
         assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
     }
 
+    fn add_light_object(state: &mut LevelEditorState, name: &str, light: bool) -> String {
+        let id = execute_command(
+            state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: crate::scene_edit::ObjectType::Empty,
+                    transform: crate::scene_edit::Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        if light {
+            let json = serde_json::to_value(
+                installed_plugins::lights_plugin::lights_component::LightComponent::default(),
+            )
+            .unwrap();
+            crate::scene_edit::components::add_component(
+                &mut state.scene.world_mut(),
+                &id,
+                "LightComponent".to_string(),
+                json,
+            );
+        }
+        id
+    }
+
+    fn intensity(state: &LevelEditorState, id: &str) -> f32 {
+        let world = state.scene.world();
+        *crate::scene_edit::components::read_live_component_property(
+            &world,
+            id,
+            "LightComponent",
+            0,
+            "intensity",
+        )
+        .expect("live intensity")
+        .downcast_ref::<f32>()
+        .unwrap()
+    }
+
+    // Mass edit: one value reaches every target, each its own copy, and a
+    // single undo puts them all back.
+    #[test]
+    fn set_component_property_on_many_edits_every_target_as_one_undo_step() {
+        let mut state = LevelEditorState::new();
+        let ids: Vec<String> = (0..3)
+            .map(|i| add_light_object(&mut state, &format!("Lamp {i}"), true))
+            .collect();
+        let result = execute_command(
+            &mut state,
+            SceneCommand::SetComponentPropertyOnMany {
+                targets: ids.iter().map(|id| (id.clone(), 0)).collect(),
+                class_name: "LightComponent".to_string(),
+                prop_name: "intensity".to_string(),
+                value: Box::new(77.0_f32),
+            },
+        );
+        assert!(result.changed);
+        for id in &ids {
+            assert_eq!(intensity(&state, id), 77.0, "{id}");
+        }
+        assert!(state.scene.undo());
+        for id in &ids {
+            assert_eq!(intensity(&state, id), 1000.0, "{id} reverted by one undo");
+        }
+    }
+
+    // The properties panel mass-edits only a selection that shares one
+    // archetype (object type and component classes).
+    #[test]
+    fn mass_edit_needs_one_archetype_across_the_selection() {
+        use crate::ui::selection::{mass_edit, MassEdit};
+        let mut state = LevelEditorState::new();
+        let a = add_light_object(&mut state, "Lamp A", true);
+        let b = add_light_object(&mut state, "Lamp B", true);
+        let plain = add_light_object(&mut state, "Empty", false);
+
+        state.scene.select_objects(std::slice::from_ref(&a));
+        assert_eq!(mass_edit(&state, &a), MassEdit::Single);
+
+        state.scene.select_objects(&[b.clone(), a.clone()]);
+        assert_eq!(mass_edit(&state, &a), MassEdit::All(vec![b.clone()]));
+
+        state
+            .scene
+            .select_objects(&[b.clone(), plain.clone(), a.clone()]);
+        assert_eq!(mass_edit(&state, &a), MassEdit::PrimaryOnly(3));
+    }
+
     // Bool twin of the f32 test above: proves a widget toggling a `bool`
     // property (`BoolEditor`'s Switch → `SetComponentProperty` with a
     // `Box::new(bool)`) flips the live `World` value and is undo-tracked.

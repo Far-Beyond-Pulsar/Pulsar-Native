@@ -165,6 +165,17 @@ pub enum SceneCommand {
         prop_name: String,
         value: Box<dyn Any + Send>,
     },
+    /// [`Self::SetComponentProperty`] on several objects at once, as one undo
+    /// step: the properties panel's mass edit of a selection that shares one
+    /// archetype. `targets` are `(object id, component index)`; the value is
+    /// written to the first, then copied from it to the rest through the
+    /// property's reflected getter, so each gets its own value.
+    SetComponentPropertyOnMany {
+        targets: Vec<(String, usize)>,
+        class_name: String,
+        prop_name: String,
+        value: Box<dyn Any + Send>,
+    },
     /// Attach a new component instance of `class_name` holding `value` (a
     /// value of that class), or the class default when `None`.
     AddComponent {
@@ -354,6 +365,18 @@ impl std::fmt::Debug for SceneCommand {
                 .field("id", id)
                 .field("class_name", class_name)
                 .field("component_index", component_index)
+                .field("prop_name", prop_name)
+                .field("value_type", &value.type_id())
+                .finish(),
+            Self::SetComponentPropertyOnMany {
+                targets,
+                class_name,
+                prop_name,
+                value,
+            } => f
+                .debug_struct("SetComponentPropertyOnMany")
+                .field("targets", targets)
+                .field("class_name", class_name)
                 .field("prop_name", prop_name)
                 .field("value_type", &value.type_id())
                 .finish(),

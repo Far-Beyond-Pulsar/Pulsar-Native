@@ -617,7 +617,6 @@ helio-mesh-host = { path = "plugins/vendor/meshes/host" }
 helio-web-demos = { path = "plugins/vendor/meshes/web-demos" }
 helio-controls = { path = "crates/renderer/helio/crates/helio-controls" }
 helio-pass-fxaa = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-fxaa" }
-helio-pass-reference = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-reference" }
 helio-pass-hlfs = { path = "plugins/vendor/lights/feature/hlfs" }
 helio-wasm = { path = "crates/renderer/helio/crates/helio-wasm" }
 glam                  = { version = "0.33", features = ["bytemuck"] }

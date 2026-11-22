@@ -333,16 +333,30 @@ impl ObjectTypeFieldsSection {
             let pn = prop.name.to_string();
             Arc::new(
                 move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
-                    execute_command(
-                        &mut state_arc.write(),
-                        SceneCommand::SetComponentProperty {
+                    let mut state = state_arc.write();
+                    // A selection that shares one archetype is edited as one:
+                    // component `idx` is the same kind on every object.
+                    let command = match crate::ui::selection::mass_edit(&state, &oid) {
+                        crate::ui::selection::MassEdit::All(peers) => {
+                            SceneCommand::SetComponentPropertyOnMany {
+                                targets: std::iter::once(oid.clone())
+                                    .chain(peers)
+                                    .map(|id| (id, idx))
+                                    .collect(),
+                                class_name: cls.clone(),
+                                prop_name: pn.clone(),
+                                value: new_val,
+                            }
+                        }
+                        _ => SceneCommand::SetComponentProperty {
                             id: oid.clone(),
                             class_name: cls.clone(),
                             component_index: idx,
                             prop_name: pn.clone(),
                             value: new_val,
                         },
-                    );
+                    };
+                    execute_command(&mut state, command);
                 },
             )
         };

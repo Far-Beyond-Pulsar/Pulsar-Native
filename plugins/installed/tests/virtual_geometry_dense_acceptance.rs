@@ -226,7 +226,11 @@ fn scene_of(placements: Vec<([f64; 3], f32)>) -> LevelEditorState {
         .expect("AddObject creates an object");
         let mut world = state.scene.world_mut();
         let object = world.entity_for(&id).expect("object exists");
-        pulsar_world_registry::attach_value(&mut world, object, crowd_mesh()).expect("attach mesh");
+        let mesh = StaticMeshComponent {
+            virtual_geometry: true,
+            ..crowd_mesh()
+        };
+        pulsar_world_registry::attach_value(&mut world, object, mesh).expect("attach mesh");
         pulsar_world_registry::attach_value(
             &mut world,
             object,

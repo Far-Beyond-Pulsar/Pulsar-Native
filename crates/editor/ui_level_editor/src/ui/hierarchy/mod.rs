@@ -166,32 +166,9 @@ fn apply_origins(state: &mut LevelEditorState, entries: Vec<(String, [f32; 3])>)
     if entries.is_empty() {
         return 0;
     }
-    execute_command(state, SceneCommand::SetPivots { entries }).affected_ids.len()
-}
-
-/// Select every object in the level (Ctrl/Cmd+A), the last in tree order the
-/// primary. Class-generated children and instance members are left out: they
-/// are rebuilt from their source and cannot be edited on their own. Returns
-/// how many objects are selected.
-pub(crate) fn select_all_objects(state: &mut LevelEditorState) -> usize {
-    let (objects, _) = {
-        let world = state.scene.world();
-        crate::scene_edit::objects::get_hierarchy_projection(&world)
-    };
-    let ids: Vec<String> = {
-        let world = state.scene.world();
-        objects
-            .iter()
-            .map(|object| &object.id)
-            .filter(|id| {
-                !crate::scene_edit::classes::is_generated_child(&world, id)
-                    && !crate::scene_edit::objects::is_instance_member(&world, id)
-            })
-            .cloned()
-            .collect()
-    };
-    state.scene.select_objects(&ids);
-    ids.len()
+    execute_command(state, SceneCommand::SetPivots { entries })
+        .affected_ids
+        .len()
 }
 
 /// Ancestors of an object, nearest first.
@@ -610,8 +587,8 @@ impl HierarchyItem for SceneObjectItem {
     fn build_context_menu(
         &self,
         menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<PopupMenu>,
+        window: &mut Window,
+        cx: &mut Context<PopupMenu>,
     ) -> PopupMenu {
         use crate::commands::{execute_command, SceneCommand};
 
@@ -645,68 +622,71 @@ impl HierarchyItem for SceneObjectItem {
         };
         use helio_component::components::ObjectMovability;
 
-        menu.menu_handler_with_icon(
-            "Mark Static (with children)",
-            IconName::Pin,
-            set_movability(ObjectMovability::Static),
-        )
-        .menu_handler_with_icon(
-            "Mark Movable (with children)",
-            IconName::Drag,
-            set_movability(ObjectMovability::Movable),
-        )
-        .separator()
-        // A rigid frame draws its contents through one matrix: moving it costs
-        // nothing per member. An ordinary group composes its members instead.
-        .menu_handler_with_icon(
-            if is_rigid_frame {
-                "Make Ordinary Group"
-            } else {
-                "Make Rigid Frame"
-            },
-            IconName::Box,
-            {
-                let id = self.object.id.clone();
-                let state_arc = self.state_arc.clone();
-                move |_: &mut Window, _: &mut App| {
-                    let mut state = state_arc.write();
-                    let found = {
-                        let world = state.scene.world();
-                        crate::scene_edit::objects::get_object(&world, &id)
-                    };
-                    if let Some(mut obj) = found {
-                        if is_rigid_frame {
-                            obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
-                        } else {
-                            obj.props.insert(
-                                engine_backend::scene::frames::FRAME_PROP.to_string(),
-                                serde_json::Value::Bool(true),
-                            );
+        let menu = menu
+            .menu_handler_with_icon(
+                "Mark Static (with children)",
+                IconName::Pin,
+                set_movability(ObjectMovability::Static),
+            )
+            .menu_handler_with_icon(
+                "Mark Movable (with children)",
+                IconName::Drag,
+                set_movability(ObjectMovability::Movable),
+            )
+            .separator()
+            // A rigid frame draws its contents through one matrix: moving it costs
+            // nothing per member. An ordinary group composes its members instead.
+            .menu_handler_with_icon(
+                if is_rigid_frame {
+                    "Make Ordinary Group"
+                } else {
+                    "Make Rigid Frame"
+                },
+                IconName::Box,
+                {
+                    let id = self.object.id.clone();
+                    let state_arc = self.state_arc.clone();
+                    move |_: &mut Window, _: &mut App| {
+                        let mut state = state_arc.write();
+                        let found = {
+                            let world = state.scene.world();
+                            crate::scene_edit::objects::get_object(&world, &id)
+                        };
+                        if let Some(mut obj) = found {
+                            if is_rigid_frame {
+                                obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
+                            } else {
+                                obj.props.insert(
+                                    engine_backend::scene::frames::FRAME_PROP.to_string(),
+                                    serde_json::Value::Bool(true),
+                                );
+                            }
+                            execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                         }
-                        execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                     }
-                }
-            },
-        )
-        .when(
-            {
-                let state = self.state_arc.read();
-                let selection = state.scene.selected_objects();
-                selection.len() > 1 && selection.contains(&self.object.id)
-            },
-            |menu| {
-                let group_state = self.state_arc.clone();
-                menu.menu_handler_with_icon(
-                    "Group into Folder",
-                    IconName::FolderPlus,
-                    move |_, _| {
-                        group_selection_into_folder(&mut group_state.write());
-                    },
-                )
-                .separator()
-            },
-        )
-        .menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
+                },
+            )
+            .when(
+                {
+                    let state = self.state_arc.read();
+                    let selection = state.scene.selected_objects();
+                    selection.len() > 1 && selection.contains(&self.object.id)
+                },
+                |menu| {
+                    let group_state = self.state_arc.clone();
+                    menu.menu_handler_with_icon(
+                        "Group into Folder",
+                        IconName::FolderPlus,
+                        move |_, _| {
+                            group_selection_into_folder(&mut group_state.write());
+                        },
+                    )
+                    .separator()
+                },
+            );
+        let menu =
+            crate::ui::selection::select_submenu(menu, window, cx, &self.state_arc).separator();
+        menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
             let mut state = duplicate_state.write();
             crate::commands::duplicate_and_select(&mut state, &duplicate_id);
