@@ -1,6 +1,6 @@
 //! Virtual geometry end to end, headless (plan
-//! `.agents/plans/virtual-geometry.md`, T10): a dense mesh with a
-//! `VirtualGeometryComponent` is built into a `.vgeo` in the background,
+//! `.agents/plans/virtual-geometry.md`, T10): a dense mesh with
+//! `virtual_geometry` on is built into a `.vgeo` in the background,
 //! streamed in, and then drawn by the cluster pipeline instead of the classic
 //! mesh path, through the editor's real `HelioRenderer`.
 //!
@@ -398,7 +398,11 @@ fn scene(vg: Option<VirtualGeometryComponent>) -> (LevelEditorState, String) {
     let object = {
         let mut world = state.scene.world_mut();
         let object = world.entity_for(&id).expect("object exists");
-        pulsar_world_registry::attach_value(&mut world, object, dense_mesh()).expect("attach mesh");
+        let mesh = StaticMeshComponent {
+            virtual_geometry: vg.is_some(),
+            ..dense_mesh()
+        };
+        pulsar_world_registry::attach_value(&mut world, object, mesh).expect("attach mesh");
         if let Some(vg) = vg {
             pulsar_world_registry::attach_value(&mut world, object, vg)
                 .expect("attach VG component");
@@ -434,7 +438,7 @@ fn setup() -> Option<Harness> {
 fn virtual_geometry_matches_the_classic_render_and_off_restores_it() {
     let Some(harness) = setup() else { return };
 
-    // Classic: no VirtualGeometryComponent, so the mesh never becomes VG-active.
+    // Classic: `virtual_geometry` off, so the mesh never becomes VG-active.
     let (classic_state, _) = scene(None);
     let mut classic_renderer = harness.renderer(&classic_state);
     installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
@@ -1196,7 +1200,11 @@ fn add_sphere(state: &mut LevelEditorState, position: [f32; 3], vg: bool) {
     {
         let mut world = state.scene.world_mut();
         let object = world.entity_for(&id).expect("object exists");
-        pulsar_world_registry::attach_value(&mut world, object, dense_mesh()).expect("attach mesh");
+        let mesh = StaticMeshComponent {
+            virtual_geometry: vg,
+            ..dense_mesh()
+        };
+        pulsar_world_registry::attach_value(&mut world, object, mesh).expect("attach mesh");
         if vg {
             pulsar_world_registry::attach_value(
                 &mut world,
