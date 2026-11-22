@@ -30,6 +30,7 @@
 
 pub(crate) mod adapters;
 pub mod capability;
+pub mod class_schema;
 pub mod compiled;
 pub mod debugger;
 pub mod error;
@@ -49,6 +50,7 @@ pub mod value;
 pub mod verify;
 
 pub use capability::{CapabilityPolicy, CAPABILITY_ATTR};
+pub use class_schema::{ClassSchema, DeclaredField, SchemaField};
 pub use debugger::{
     Breakpoint, DebugCommand, DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot,
     RegisterSnapshot, StopReason,

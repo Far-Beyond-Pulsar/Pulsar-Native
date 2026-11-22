@@ -177,6 +177,40 @@ fn direct_children_and_duplicate_asset_ids_are_indexed() {
 }
 
 #[test]
+fn a_batch_resolves_like_one_lookup_per_id() {
+    let temp = tempfile::tempdir().unwrap();
+    let index = ProjectFileIndex::open(temp.path()).unwrap();
+    index
+        .reconcile(&[
+            file("a.tex", false, 1, Some(1)),
+            file("b.tex", false, 1, Some(1)),
+            file("c.tex", false, 1, Some(1)),
+            file("m.mesh", false, 1, Some(1)),
+        ])
+        .unwrap();
+    let path = |name: &str| temp.path().join(name);
+    index.record_typed_asset_id("texture", "t1", &path("a.tex")).unwrap();
+    // Claimed twice: ambiguous, so absent (as a single lookup answers None).
+    index.record_typed_asset_id("texture", "t2", &path("b.tex")).unwrap();
+    index.record_typed_asset_id("texture", "t2", &path("c.tex")).unwrap();
+    // Another kind.
+    index.record_typed_asset_id("mesh", "m1", &path("m.mesh")).unwrap();
+
+    let found = index
+        .paths_for_asset_ids_kind("texture", ["t1", "t2", "m1", "missing", "t1"])
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found["t1"], path("a.tex"));
+    for id in ["t1", "t2", "m1", "missing"] {
+        assert_eq!(
+            found.get(id).cloned(),
+            index.path_for_asset_id_kind("texture", id).unwrap(),
+            "{id}"
+        );
+    }
+}
+
+#[test]
 fn local_vfs_events_update_only_already_open_indexes() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();

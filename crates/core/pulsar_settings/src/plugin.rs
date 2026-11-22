@@ -273,6 +273,12 @@ pub(crate) fn bind(cfg: &'static ConfigManager) {
     let _ = MANAGER.set(cfg);
 }
 
+/// The database this copy of the crate is bound to: the host's, in the host and in
+/// every plugin library it attached ([`attach_exported`]); `None` before either.
+pub fn bound() -> Option<&'static ConfigManager> {
+    MANAGER.get().copied()
+}
+
 /// The entry point a plugin library exports for [`attach_exported`]
 /// (`export_settings_attach!`, which `plugin_editor_api::export_plugin!`
 /// invokes).

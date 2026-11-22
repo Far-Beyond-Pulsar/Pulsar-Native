@@ -186,6 +186,17 @@ impl Focusable for TaskQueuePanel {
 impl Render for TaskQueuePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let all_tasks = editor_task_queue::global().snapshots();
+        // A task something asked to show (a language server's "Open Log"): open
+        // the view that lists it, with it selected.
+        if let Some(id) = editor_task_queue::take_reveal_request() {
+            if let Some(task) = all_tasks.iter().find(|task| task.id == id) {
+                self.view = View::ALL
+                    .into_iter()
+                    .find(|view| view.lists(task))
+                    .unwrap_or(View::Tasks);
+                self.select(id, cx);
+            }
+        }
         let threads = editor_task_queue::thread_snapshots();
         let view = self.view;
         let live = |view: View| {

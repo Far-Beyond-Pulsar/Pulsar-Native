@@ -39,7 +39,12 @@ static SETTINGS_FILE_WRITE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::ne
 /// All subsystems share this instance — they register their schemas on startup
 /// and write through their [`OwnerHandle`]s.
 pub fn global_config() -> &'static ConfigManager {
-    &GLOBAL_CONFIG
+    // A plugin library links its own copy of this crate, whose `GLOBAL_CONFIG` would be a
+    // second, empty manager: its settings reads would never see the user's values.
+    // The loader binds the library to the host's manager before it runs
+    // (`pulsar_settings::plugin::attach_exported`), so that one is used. In the host this
+    // is `GLOBAL_CONFIG` itself (`register_all_settings` binds it).
+    pulsar_settings::plugin::bound().unwrap_or(&GLOBAL_CONFIG)
 }
 
 // ─── Namespace helpers ────────────────────────────────────────────────────────

@@ -164,6 +164,11 @@ impl LanguageServer {
         &self.id
     }
 
+    /// The editor task the server runs as (its log), while it runs.
+    pub fn task_id(&self) -> Option<editor_task_queue::TaskId> {
+        self.service.as_ref().map(editor_task_queue::ServiceHandle::id)
+    }
+
     /// The language this server is of.
     pub fn language(&self) -> &'static Language {
         self.language

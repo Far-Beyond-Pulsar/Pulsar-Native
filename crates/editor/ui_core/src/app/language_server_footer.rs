@@ -382,6 +382,15 @@ fn perform(
         Action::Stop => servers.update(cx, |servers, cx| servers.stop(&id, cx)),
         Action::Install => servers.update(cx, |servers, cx| servers.install(&id, cx)),
         Action::OpenLog => {
+            // The Tasks window opens on this server's task (its log), when it
+            // runs; otherwise it opens as it is.
+            let task = servers
+                .read(cx)
+                .server(&id, cx)
+                .and_then(|server| server.read(cx).task_id());
+            if let Some(task) = task {
+                editor_task_queue::request_reveal(task);
+            }
             window_manager::WindowRegistry::update_global(cx, |registry, cx| {
                 registry.open("EditorTasksWindow", cx)
             });

@@ -34,6 +34,18 @@ pulsar_world_registry = { workspace = true }
 profiling = { workspace = true }
 # A plugin library's settings handles bind to the host database (#1932).
 pulsar_settings = { workspace = true }
+# `export_plugin_build!` attaches a library's Helio to the host's (`helio_core::runtime`).
+helio-core = { workspace = true }
+# A library's parked threads must be found by the host's unlocks: `export_plugin!` attaches
+# its copy of the parking lot to the host's.
+parking_lot_core = "0.9"
+# The shared UI and renderer libraries (feature `shared-dylibs`): see `export_plugin_build!`.
+wgpui_dylib = { workspace = true, optional = true }
+helio_dylib = { workspace = true, optional = true }
+ui_dylib = { workspace = true, optional = true }
+profiling_dylib = { workspace = true, optional = true }
+reflection_dylib = { workspace = true, optional = true }
+scenedb_dylib = { workspace = true, optional = true }
 # Languages: the `Language` registration, its compiler trait and its server
 # spec (defined there, re-exported here for plugin authors).
 pulsar_language = { workspace = true }
@@ -48,7 +60,8 @@ tracing = { workspace = true }
 tracing = { workspace = true }
 gpui-ce = { workspace = true, features = ["test-support"] }
 [lib]
-crate-type = ["lib", "cdylib"]
+# Not a cdylib: it links the shared libraries (feature `shared-dylibs`), which a cdylib cannot.
+crate-type = ["lib"]
 
 [[test]]
 name = "editor_creation"
@@ -56,6 +69,10 @@ path = "tests/editor_creation.rs"
 required-features = ["editor"]
 
 [features]
+# Link the shared UI framework and renderer libraries (each in its owner repository), so this crate's
+# dependents (the editor, every plugin library) share one copy of them. Needs
+# `-C prefer-dynamic` (.cargo/config.toml).
+shared-dylibs = ["dep:wgpui_dylib", "dep:ui_dylib", "dep:profiling_dylib", "dep:reflection_dylib", "dep:scenedb_dylib", "dep:helio_dylib"]
 default = []
 # Runtime cooking and script compilation do not require the editor UI. Editor
 # hosts opt into this feature for GPUI panels, editor services and commands.

@@ -19,6 +19,7 @@
 //! packager and command-line tools use it without the editor.
 
 pub mod download;
+pub mod lsp_edits;
 pub mod registry;
 pub mod script;
 pub mod settings;

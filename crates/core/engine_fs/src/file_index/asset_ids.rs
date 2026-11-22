@@ -222,8 +222,8 @@ impl ProjectFileIndex {
     pub fn paths_for_asset_id(&self, id: &str) -> Result<Vec<PathBuf>> {
         editor_task_queue::blocking_call("file_index::paths_for_asset_id");
         let connection = self.connection.lock();
-        let mut statement =
-            connection.prepare("SELECT path FROM asset_ids WHERE asset_id = ?1 ORDER BY path")?;
+        let mut statement = connection
+            .prepare_cached("SELECT path FROM asset_ids WHERE asset_id = ?1 ORDER BY path")?;
         let rows = statement.query_map([id], |row| row.get::<_, String>(0))?;
         rows.map(|row| {
             row.map(|relative| {
@@ -240,7 +240,7 @@ impl ProjectFileIndex {
     pub fn path_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Option<PathBuf>> {
         editor_task_queue::blocking_call("file_index::path_for_asset_id_kind");
         let connection = self.connection.lock();
-        let mut statement = connection.prepare(
+        let mut statement = connection.prepare_cached(
             "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path LIMIT 2",
         )?;
         let mut rows = statement.query(params![kind, id])?;
@@ -256,12 +256,50 @@ impl ProjectFileIndex {
         )))
     }
 
+    /// [`path_for_asset_id_kind`](Self::path_for_asset_id_kind) for many ids
+    /// at once: one lock and one prepared statement for the whole batch (a
+    /// cold start resolving a large prefab's references, #2018). Each id maps
+    /// to its path when exactly one file carries it for `kind`; ids that are
+    /// missing or claimed twice are absent from the map.
+    #[track_caller]
+    pub fn paths_for_asset_ids_kind<'a>(
+        &self,
+        kind: &str,
+        ids: impl IntoIterator<Item = &'a str>,
+    ) -> Result<BTreeMap<String, PathBuf>> {
+        editor_task_queue::blocking_call("file_index::paths_for_asset_ids_kind");
+        let connection = self.connection.lock();
+        let mut statement = connection.prepare_cached(
+            "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path LIMIT 2",
+        )?;
+        let mut found = BTreeMap::new();
+        for id in ids {
+            if found.contains_key(id) {
+                continue;
+            }
+            let mut rows = statement.query(params![kind, id])?;
+            let Some(first) = rows.next()? else {
+                continue;
+            };
+            let relative: String = first.get(0)?;
+            if rows.next()?.is_some() {
+                continue;
+            }
+            found.insert(
+                id.to_string(),
+                self.project_root
+                    .join(relative.replace('/', std::path::MAIN_SEPARATOR_STR)),
+            );
+        }
+        Ok(found)
+    }
+
     /// Return every project path carrying `id` for `kind`.
     #[track_caller]
     pub fn paths_for_asset_id_kind(&self, kind: &str, id: &str) -> Result<Vec<PathBuf>> {
         editor_task_queue::blocking_call("file_index::paths_for_asset_id_kind");
         let connection = self.connection.lock();
-        let mut statement = connection.prepare(
+        let mut statement = connection.prepare_cached(
             "SELECT path FROM asset_ids WHERE kind = ?1 AND asset_id = ?2 ORDER BY path",
         )?;
         let rows = statement.query_map(params![kind, id], |row| row.get::<_, String>(0))?;

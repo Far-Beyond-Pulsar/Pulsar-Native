@@ -206,4 +206,22 @@ pub use pulsar_events;
 pub use pulsar_settings;
 /// `export_library_plugin!` exports the root's build through it.
 pub use pulsar_plugins;
+/// `export_plugin_build!` exports the library's Helio attach through it.
+pub use helio_core;
+/// The shared UI framework, reflection, SceneDB and renderer libraries, linked through this crate when `shared-dylibs`
+/// is on: a crate that references them links them dynamically instead of embedding a copy.
+#[cfg(feature = "shared-dylibs")]
+pub use helio_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use reflection_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use profiling_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use ui_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use scenedb_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use wgpui_dylib;
+/// `export_plugin!` exports the library's parking lot attach through it.
+pub use parking_lot_core;
 pub use pulsar_world_registry;

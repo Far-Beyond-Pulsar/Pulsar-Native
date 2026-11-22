@@ -11,6 +11,8 @@ inventory         = { workspace = true }
 libloading        = { workspace = true }
 serde             = { workspace = true, features = ["derive"] }
 serde_json        = { workspace = true }
+# Field ids of a class schema (`class_schema`).
+uuid              = { workspace = true, features = ["v4"] }
 bincode           = { workspace = true }
 thiserror         = { workspace = true }
 tracing           = { workspace = true }

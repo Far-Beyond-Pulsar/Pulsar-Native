@@ -1,35 +1,34 @@
 //! Builds each installed plugin as a library of its own and installs it where
 //! the editor loads it.
 //!
-//! A plugin's root crate (`pulsar-plugin.toml`, `root`) is an ordinary library
-//! crate: the one place the plugin registers what it contributes, through its
-//! `build`. The library the editor loads is a three-line crate generated here
-//! (`plugins/dll/<root>/`) that links the root and exports it
-//! (`plugin_editor_api::export_library_plugin!`) and attaches its copy of
-//! Helio to the host's (`helio_core::export_runtime_attach!`).
+//! A plugin's root crate (`pulsar-plugin.toml`, `root`) is the library: built
+//! with its `dll` feature it is a `cdylib` that exports the plugin's descriptor
+//! and registrations and attaches its copy of Helio, the parking lot and the
+//! world crates to the host's (`plugin_editor_api::export_library_plugin!`,
+//! `export_plugin_build!`). Each plugin's own repository builds and releases its
+//! library the same way (`cargo build -p <root> --release --features dll`);
+//! this tool builds all of them together with the editor.
 //!
 //! ```text
-//! cargo run -p plugin_builder -- [--release] [--only <id>,..] [--out <dir>] [--no-host] [--check] [--generate]
+//! cargo run -p plugin_builder -- [--release] [--only <id>,..] [--out <dir>] [--no-host] [--check]
 //! ```
 //!
-//! 1. Reads every `plugins/vendor/*/pulsar-plugin.toml` and writes the
-//!    generated crate of each plugin but `render_bps`, which the editor links
-//!    (`plugins/linked`). A crate whose content did not change is not touched.
-//! 2. Builds the editor and every generated crate in one cargo invocation, so
-//!    the editor and its libraries resolve the engine's crates with the same
-//!    features: the plugin loader refuses a library built against another
-//!    layout (`--no-host` builds only the libraries).
+//! 1. Reads every `plugins/vendor/*/pulsar-plugin.toml` (every plugin but
+//!    `render_bps`, which the editor links: `plugins/linked`).
+//! 2. Builds the editor and every plugin root with `--features <root>/dll` in one
+//!    cargo invocation, so the editor and its libraries resolve the engine's
+//!    crates with the same features: the plugin loader refuses a library built
+//!    against another layout (`--no-host` builds only the libraries).
 //! 3. Copies each library to `<install>/plugins/editor/<root>.<ext>` and
 //!    registers it in the install's integrity manifest and lock
-//!    (`pulsar_install_layout`), and unregisters a library this tool
-//!    installed earlier whose plugin is gone. `<install>` is the directory of
-//!    the editor executable that was built (or `--out`).
+//!    (`pulsar_install_layout`), and unregisters a library this tool installed
+//!    earlier whose plugin is gone. `<install>` is the directory of the editor
+//!    executable that was built, unless `PULSAR_INSTALL_DIR` is set (the engine
+//!    honors it first) or `--out` is given. Each file is then checked against the
+//!    manifest the way the engine checks it.
 //!
-//! `--generate` only writes the generated crates (the workspace needs them
-//! before it can build anything).
-//!
-//! `--check` writes nothing and builds nothing: it fails when a generated
-//! crate is out of date.
+//! `--check` builds and writes nothing: it fails when a plugin root is not set up
+//! to build as a library (no `dll` feature, or no `cdylib` crate type).
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -48,6 +47,17 @@ const LINKED: &[&str] = &["pulsar.render_graph"];
 /// The editor's package, built with the libraries.
 const EDITOR_PACKAGE: &str = "pulsar_engine";
 
+/// The shared UI and renderer libraries (each in its owner repository): the editor and every plugin library link
+/// them dynamically, so they ship beside the editor executable, not in `plugins/editor`.
+const SHARED_LIBRARIES: &[&str] = &[
+    "wgpui_dylib",
+    "ui_dylib",
+    "profiling_dylib",
+    "reflection_dylib",
+    "scenedb_dylib",
+    "helio_dylib",
+];
+
 /// The `repo_url` of a record this tool installs: `local:<plugin id>`.
 const RECORD_PREFIX: &str = "local:";
 
@@ -57,14 +67,10 @@ struct Plugin {
     name: String,
     /// The root crate's package name.
     root: String,
-    /// Whether the root has an `editor` feature, which the library enables.
-    editor_feature: bool,
-}
-
-impl Plugin {
-    fn crate_name(&self) -> String {
-        format!("{}_dll", self.root)
-    }
+    /// The root's manifest.
+    manifest: PathBuf,
+    /// Whether the root builds as a library: a `dll` feature and a `cdylib` crate type.
+    library_ready: bool,
 }
 
 struct Options {
@@ -73,7 +79,6 @@ struct Options {
     out: Option<PathBuf>,
     with_host: bool,
     check: bool,
-    generate_only: bool,
 }
 
 fn parse_options() -> Result<Options> {
@@ -83,7 +88,6 @@ fn parse_options() -> Result<Options> {
         out: None,
         with_host: true,
         check: false,
-        generate_only: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -91,7 +95,6 @@ fn parse_options() -> Result<Options> {
             "--release" => options.release = true,
             "--no-host" => options.with_host = false,
             "--check" => options.check = true,
-            "--generate" => options.generate_only = true,
             "--only" => {
                 let list = args.next().ok_or("--only needs a plugin id list")?;
                 options.only = Some(list.split(',').map(str::to_owned).collect());
@@ -147,116 +150,51 @@ fn discover(root: &Path) -> Result<Vec<Plugin>> {
             )
             .into());
         }
-        let editor_feature = manifest_table
+        let has_dll_feature = manifest_table
             .get("features")
             .and_then(toml::Value::as_table)
-            .is_some_and(|features| features.contains_key("editor"));
+            .is_some_and(|features| features.contains_key("dll"));
+        let has_cdylib = manifest_table
+            .get("lib")
+            .and_then(|lib| lib.get("crate-type"))
+            .and_then(toml::Value::as_array)
+            .is_some_and(|types| types.iter().any(|t| t.as_str() == Some("cdylib")));
         plugins.push(Plugin {
             id,
             name,
             root: root_crate,
-            editor_feature,
+            manifest,
+            library_ready: has_dll_feature && has_cdylib,
         });
     }
     plugins.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(plugins)
 }
 
-/// The generated crate's `Cargo.toml`.
-fn manifest_of(plugin: &Plugin) -> String {
-    let features = if plugin.editor_feature {
-        ", features = [\"editor\"]"
-    } else {
-        ""
-    };
-    format!(
-        "# Generated by `cargo run -p plugin_builder`: do not edit.\n\
-         [package]\n\
-         name = \"{name}\"\n\
-         version = \"0.1.0\"\n\
-         edition = \"2021\"\n\
-         publish = false\n\
-         description = {description:?}\n\
-         \n\
-         [lib]\n\
-         crate-type = [\"cdylib\"]\n\
-         test = false\n\
-         doctest = false\n\
-         \n\
-         [dependencies]\n\
-         {root} = {{ workspace = true{features} }}\n\
-         plugin_editor_api = {{ workspace = true, features = [\"editor\"] }}\n\
-         helio-core = {{ workspace = true }}\n",
-        name = plugin.crate_name(),
-        description = format!("{} (`{}`) as a library of its own", plugin.name, plugin.id),
-        root = plugin.root,
-    )
-}
-
-/// The generated crate's `src/lib.rs`.
-fn source_of(plugin: &Plugin) -> String {
-    format!(
-        "//! Generated by `cargo run -p plugin_builder`: do not edit.\n\
-         //!\n\
-         //! {name} (`{id}`) as a library of its own: the root's descriptor and\n\
-         //! registrations, exported for the editor to load.\n\
-         \n\
-         use {root} as _;\n\
-         \n\
-         plugin_editor_api::export_library_plugin!({id:?}, {name:?});\n\
-         helio_core::export_runtime_attach!();\n",
-        name = plugin.name,
-        id = plugin.id,
-        root = plugin.root,
-    )
-}
-
-/// Writes `content` to `path` unless it already is that; whether it changed.
-fn write_if_changed(path: &Path, content: &str) -> Result<bool> {
-    if virtual_fs::read_to_string(path).is_ok_and(|current| current == content) {
-        return Ok(false);
-    }
-    if let Some(parent) = path.parent() {
-        virtual_fs::create_dir_all(parent)?;
-    }
-    virtual_fs::write_file(path, content.as_bytes())?;
-    Ok(true)
-}
-
-/// Brings every plugin's generated crate up to date (or, with `check`, says
-/// which are not). Returns the stale ones.
-fn generate(root: &Path, plugins: &[&Plugin], check: bool) -> Result<Vec<String>> {
-    let mut stale = Vec::new();
-    for plugin in plugins {
-        let dir = root.join("plugins").join("dll").join(&plugin.root);
-        let files = [
-            (dir.join("Cargo.toml"), manifest_of(plugin)),
-            (dir.join("src").join("lib.rs"), source_of(plugin)),
-        ];
-        for (path, content) in files {
-            if check {
-                if !virtual_fs::read_to_string(&path).is_ok_and(|current| current == content) {
-                    stale.push(path.display().to_string());
-                }
-            } else if write_if_changed(&path, &content)? {
-                eprintln!("[plugin_builder] wrote {}", path.display());
-            }
-        }
-    }
-    Ok(stale)
-}
-
 /// A library cargo built, and where.
 struct Built {
-    /// The generated crate's package name.
-    package: String,
+    /// The root crate's package name.
+    root: String,
     file: PathBuf,
 }
 
 struct BuildOutput {
     libraries: Vec<Built>,
+    /// The shared libraries cargo built (`SHARED_LIBRARIES`).
+    shared: Vec<PathBuf>,
     /// The directory of the editor executable, when the editor was built.
     editor_dir: Option<PathBuf>,
+}
+
+/// The package name in a cargo package id: `path+file:///.../fog#fog_plugin@0.1.0`, or
+/// `path+file:///.../input_plugin#0.1.0` when the directory is named like the package
+/// (the name is then the last path segment).
+fn package_of(id: &str) -> &str {
+    let (location, tail) = id.rsplit_once('#').unwrap_or((id, ""));
+    match tail.split_once('@') {
+        Some((name, _version)) => name,
+        None => location.rsplit('/').next().unwrap_or_default(),
+    }
 }
 
 /// Builds the libraries (and the editor), reading cargo's artifact messages.
@@ -270,16 +208,27 @@ fn build(plugins: &[&Plugin], options: &Options) -> Result<BuildOutput> {
     if options.with_host {
         command.args(["-p", EDITOR_PACKAGE]);
     }
+    for shared in SHARED_LIBRARIES {
+        command.args(["-p", shared]);
+    }
     for plugin in plugins {
-        command.args(["-p", &plugin.crate_name()]);
+        command.args(["-p", &plugin.root]);
+    }
+    if !plugins.is_empty() {
+        let features: Vec<String> = plugins
+            .iter()
+            .map(|plugin| format!("{}/dll", plugin.root))
+            .collect();
+        command.args(["--features", &features.join(",")]);
     }
     command.stdout(Stdio::piped()).stderr(Stdio::inherit());
     let mut child = command.spawn()?;
 
-    let wanted: BTreeSet<String> = plugins.iter().map(|plugin| plugin.crate_name()).collect();
+    let wanted: BTreeSet<&str> = plugins.iter().map(|plugin| plugin.root.as_str()).collect();
     let extension = plugin_library_extension();
     let mut output = BuildOutput {
         libraries: Vec::new(),
+        shared: Vec::new(),
         editor_dir: None,
     };
     let stdout = child.stdout.take().ok_or("no cargo output")?;
@@ -291,10 +240,23 @@ fn build(plugins: &[&Plugin], options: &Options) -> Result<BuildOutput> {
             continue;
         }
         let name = message["target"]["name"].as_str().unwrap_or_default();
-        let is_cdylib = message["target"]["kind"]
-            .as_array()
-            .is_some_and(|kinds| kinds.iter().any(|kind| kind == "cdylib"));
-        if is_cdylib && wanted.contains(name) {
+        let package = package_of(message["package_id"].as_str().unwrap_or_default());
+        let has_kind = |wanted_kind: &str| {
+            message["target"]["kind"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == wanted_kind))
+        };
+        if has_kind("dylib") && SHARED_LIBRARIES.contains(&package) {
+            let file = message["filenames"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|file| file.as_str())
+                .find(|file| Path::new(file).extension().is_some_and(|e| e == extension));
+            if let Some(file) = file {
+                output.shared.push(file.into());
+            }
+        } else if has_kind("cdylib") && wanted.contains(package) {
             let file = message["filenames"]
                 .as_array()
                 .into_iter()
@@ -303,7 +265,7 @@ fn build(plugins: &[&Plugin], options: &Options) -> Result<BuildOutput> {
                 .find(|file| Path::new(file).extension().is_some_and(|e| e == extension));
             if let Some(file) = file {
                 output.libraries.push(Built {
-                    package: name.to_owned(),
+                    root: package.to_owned(),
                     file: file.into(),
                 });
             }
@@ -319,6 +281,50 @@ fn build(plugins: &[&Plugin], options: &Options) -> Result<BuildOutput> {
     Ok(output)
 }
 
+/// The toolchain's shared `std` (`std-<hash>.dll`): `-C prefer-dynamic` links every binary and
+/// library to it.
+fn std_library() -> Result<PathBuf> {
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+    let output = Command::new(rustc)
+        .args(["--print", "target-libdir"])
+        .output()?;
+    let libdir = PathBuf::from(String::from_utf8(output.stdout)?.trim());
+    let suffix = format!(".{}", plugin_library_extension());
+    for entry in virtual_fs::list_dir(&libdir)? {
+        if entry.name.starts_with("std-") && entry.name.ends_with(&suffix) {
+            return Ok(libdir.join(entry.name));
+        }
+    }
+    Err(format!("no shared std in {}", libdir.display()).into())
+}
+
+/// Copies the shared UI and renderer libraries and `std` beside the editor executable, where the
+/// loader finds what the editor and every plugin library import.
+fn install_shared(destination_dir: &Path, shared: &[PathBuf]) -> Result<()> {
+    if shared.len() != SHARED_LIBRARIES.len() {
+        return Err(format!(
+            "cargo built {} of the {} shared libraries",
+            shared.len(),
+            SHARED_LIBRARIES.len()
+        )
+        .into());
+    }
+    let std_dll = std_library()?;
+    for file in shared.iter().chain(std::iter::once(&std_dll)) {
+        let name = file.file_name().ok_or("a library without a name")?;
+        let destination = destination_dir.join(name);
+        // Cargo places a dylib beside the executable itself (a hard link of the build output):
+        // copying a file onto itself fails, and there is nothing to do.
+        let in_place = virtual_fs::is_file(&destination)
+            && pulsar_install_layout::hash_file(file)? == pulsar_install_layout::hash_file(&destination)?;
+        if !in_place {
+            virtual_fs::copy(file, &destination)?;
+        }
+        eprintln!("[plugin_builder] installed {}", name.to_string_lossy());
+    }
+    Ok(())
+}
+
 /// Copies each built library into the install's plugin directory and
 /// registers it; unregisters libraries this tool installed for plugins that
 /// are gone.
@@ -331,10 +337,7 @@ fn install(layout: &InstallLayout, plugins: &[&Plugin], built: &[Built]) -> Resu
     let extension = plugin_library_extension();
 
     for plugin in plugins {
-        let Some(library) = built
-            .iter()
-            .find(|library| library.package == plugin.crate_name())
-        else {
+        let Some(library) = built.iter().find(|library| library.root == plugin.root) else {
             return Err(format!("cargo built no library for {}", plugin.id).into());
         };
         let file = format!("{}.{extension}", plugin.root);
@@ -367,6 +370,22 @@ fn install(layout: &InstallLayout, plugins: &[&Plugin], built: &[Built]) -> Resu
     Ok(())
 }
 
+/// Checks what the engine checks before it loads a library: every plugin's file is in
+/// the install's plugin directory and its hash is the one in the integrity manifest.
+fn verify(layout: &InstallLayout, plugins: &[&Plugin]) -> Result<()> {
+    let manifest = layout.load_integrity_manifest();
+    for plugin in plugins {
+        let file = format!("{}.{}", plugin.root, plugin_library_extension());
+        let path = layout.plugins_dir().join(&file);
+        let hash = pulsar_install_layout::hash_file(&path)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        if manifest.0.get(&file) != Some(&hash) {
+            return Err(format!("{file} is not in the integrity manifest with its hash").into());
+        }
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let options = parse_options()?;
     let root = repo_root();
@@ -376,21 +395,26 @@ fn run() -> Result<()> {
         .filter(|plugin| !LINKED.contains(&plugin.id.as_str()))
         .collect();
 
-    // Generated crates exist for every plugin, so the workspace is one
-    // whatever `--only` builds.
-    let stale = generate(&root, &selected, options.check)?;
-    if options.generate_only {
-        return Ok(());
-    }
-    if options.check {
-        if stale.is_empty() {
-            return Ok(());
-        }
+    let not_ready: Vec<String> = selected
+        .iter()
+        .filter(|plugin| !plugin.library_ready)
+        .map(|plugin| {
+            format!(
+                "{} ({}): needs a `dll` feature and a `cdylib` crate type",
+                plugin.id,
+                plugin.manifest.display()
+            )
+        })
+        .collect();
+    if !not_ready.is_empty() {
         return Err(format!(
-            "generated plugin crates are out of date (run `cargo run -p plugin_builder`):\n  {}",
-            stale.join("\n  ")
+            "plugins that cannot build as a library:\n  {}",
+            not_ready.join("\n  ")
         )
         .into());
+    }
+    if options.check {
+        return Ok(());
     }
 
     let to_build: Vec<&Plugin> = match &options.only {
@@ -410,12 +434,34 @@ fn run() -> Result<()> {
     };
 
     let output = build(&to_build, &options)?;
+    let editor_dir = output.editor_dir.clone();
+    // Where the engine will look: `--out`, else `PULSAR_INSTALL_DIR` (which the engine
+    // honors before anything else, `InstallLayout::of_running_engine`), else the folder
+    // of the editor executable that was just built.
     let install_root = options
         .out
         .clone()
+        .or_else(|| {
+            std::env::var_os("PULSAR_INSTALL_DIR")
+                .filter(|dir| !dir.is_empty())
+                .map(PathBuf::from)
+        })
         .or(output.editor_dir)
         .ok_or("no install directory: build the editor, or pass --out <dir>")?;
-    install(&InstallLayout::new(install_root), &to_build, &output.libraries)
+    let layout = InstallLayout::new(install_root);
+    install(&layout, &to_build, &output.libraries)?;
+    // The shared libraries go beside the editor executable (the loader looks in the application
+    // directory), which is not the install folder when `--out` or `PULSAR_INSTALL_DIR` points
+    // elsewhere (a checkout whose libraries live in the repository root).
+    install_shared(editor_dir.as_deref().unwrap_or(layout.root()), &output.shared)?;
+    verify(&layout, &to_build)?;
+    eprintln!(
+        "[plugin_builder] {} plugin librar{} ready in {}",
+        to_build.len(),
+        if to_build.len() == 1 { "y" } else { "ies" },
+        layout.plugins_dir().display()
+    );
+    Ok(())
 }
 
 fn main() {

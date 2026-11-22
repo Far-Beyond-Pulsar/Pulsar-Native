@@ -55,3 +55,4 @@ docs/blog/helio-planet-scale-voxel-terrain.md
 /tools/dep_analysis-out
 # The bake plugin's cache, where an example bakes with the root as its working directory.
 /bake_cache
+/target-spike

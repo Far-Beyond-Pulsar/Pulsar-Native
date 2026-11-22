@@ -369,8 +369,8 @@ impl LanguageServers {
 
 /// The compiler's problems for `path`, as the diagnostics the editor draws and
 /// the drawer lists: one-based line and column from `location`, the range
-/// reaching to the end of the word at the position (the compiler reports a
-/// point), the source named `Pulsar`.
+/// ending at `end_location` when the compiler knows the span, else at the end
+/// of the word at the position, the source named `Pulsar`.
 pub fn compiler_diagnostics(
     path: &Path,
     text: &str,
@@ -385,12 +385,17 @@ pub fn compiler_diagnostics(
                 .as_deref()
                 .and_then(parse_location)
                 .unwrap_or((1, 1));
-            let end_column = word_end(text, line, column);
+            let (end_line, end_column) = problem
+                .end_location
+                .as_deref()
+                .and_then(parse_location)
+                .filter(|&end| end > (line, column))
+                .unwrap_or_else(|| (line, word_end(text, line, column)));
             Diagnostic {
                 file_path: file_path.clone(),
                 line,
                 column,
-                end_line: Some(line),
+                end_line: Some(end_line),
                 end_column: Some(end_column),
                 severity: match problem.severity {
                     CompileSeverity::Error => DiagnosticSeverity::Error,
@@ -437,6 +442,7 @@ mod tests {
             class: Some("Door".into()),
             file: None,
             location: location.map(str::to_owned),
+            end_location: None,
             message: message.into(),
         }
     }
@@ -457,6 +463,25 @@ mod tests {
         assert_eq!(d.source.as_deref(), Some("Pulsar"));
         assert_eq!(d.severity, DiagnosticSeverity::Error);
         assert!(d.raw_lsp_diagnostic.is_none());
+    }
+
+    #[test]
+    fn a_known_span_is_the_range_and_can_cross_lines() {
+        let text = "export default class Door {
+    f(): int { return missing_call(1); }
+}
+";
+        let mut found = problem(Some("2:23"), "bad call");
+        found.end_location = Some("2:38".into());
+        let d = &compiler_diagnostics(Path::new("a.ts"), text, &[found.clone()])[0];
+        assert_eq!((d.end_line, d.end_column), (Some(2), Some(38)), "the call, not the word");
+        found.end_location = Some("3:2".into());
+        let d = &compiler_diagnostics(Path::new("a.ts"), text, &[found.clone()])[0];
+        assert_eq!((d.end_line, d.end_column), (Some(3), Some(2)));
+        // An end before the start is ignored: the word, as without one.
+        found.end_location = Some("1:1".into());
+        let d = &compiler_diagnostics(Path::new("a.ts"), text, &[found])[0];
+        assert_eq!(d.end_column, Some(23 + "missing_call".len()));
     }
 
     #[test]
@@ -514,6 +539,7 @@ mod service_tests {
                 class: None,
                 file: Some(path.to_path_buf()),
                 location: Some("1:1".into()),
+                end_location: None,
                 message: format!("saw: {text}"),
             }]
         }

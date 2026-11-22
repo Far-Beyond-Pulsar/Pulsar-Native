@@ -726,8 +726,9 @@ pub struct HierarchyPanel {
     history_revision: Option<u64>,
     /// Whether the rows have been built at all.
     built: bool,
-    cached_items: Vec<SceneObjectItem>,
-    cached_root_ids: Vec<String>,
+    /// Shared with the tree each render (no per-frame copy of every row, #1895).
+    cached_items: Arc<[SceneObjectItem]>,
+    cached_root_ids: Arc<[String]>,
     /// The tree's rows as one persistent `gpui::list` (the list the
     /// properties panel uses): it keeps its scroll position and measured row
     /// heights across renders, and builds only the rows on screen.
@@ -748,8 +749,8 @@ impl HierarchyPanel {
             pending: Default::default(),
             history_revision: None,
             built: false,
-            cached_items: Vec::new(),
-            cached_root_ids: Vec::new(),
+            cached_items: Arc::from([]),
+            cached_root_ids: Arc::from([]),
             list_state: HierarchyListState::new(),
             expanded: Rc::default(),
             tree_generation: 0,
@@ -805,7 +806,7 @@ impl HierarchyPanel {
             // Only the selection moved: flip the flags, keep every row.
             drop(world);
             let _flags_scope = gpui::render_stats::scope("hierarchy: selection flags");
-            for item in &mut self.cached_items {
+            for item in Arc::make_mut(&mut self.cached_items) {
                 item.is_selected = selected.contains(&item.object.id);
             }
             return;
@@ -843,7 +844,7 @@ impl HierarchyPanel {
             })
             .collect();
         drop(world);
-        self.cached_root_ids = root_ids;
+        self.cached_root_ids = root_ids.into();
         self.built = true;
         self.tree_generation += 1;
     }

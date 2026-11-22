@@ -27,6 +27,7 @@ mod blocking;
 pub mod helio;
 mod log;
 mod micro;
+mod reveal;
 pub mod pools;
 mod services;
 pub mod threads;
@@ -36,6 +37,7 @@ mod ui_watch;
 pub use blocking::{allow_blocking, blocking_call, blocking_snapshots, BlockingSnapshot};
 pub use log::{LogRead, TaskLog, TaskLogLayer, MAX_LOG_LINES};
 pub use micro::{micro, micro_snapshots, MicroSnapshot};
+pub use reveal::{request_reveal, take_reveal_request};
 pub use services::{spawn_service, PersistentTask, ServiceDescription, ServiceHandle};
 pub use threads::{
     current_thread, on_ui_thread, register_current_thread, service_spawner, spawn_named,

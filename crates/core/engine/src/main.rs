@@ -39,6 +39,14 @@ use ui_log_viewer::TrackingAllocator;
 // plugins/editor at startup; the project the editor opens enables some of them
 // (`pulsar_plugins`).
 use linked_plugins as _;
+// The shared UI framework and renderer: this binary and every plugin library use these
+// copies (see .agents/PLUGIN_SYSTEM.md, "Shared libraries").
+use helio_dylib as _;
+use profiling_dylib as _;
+use ui_dylib as _;
+use reflection_dylib as _;
+use scenedb_dylib as _;
+use wgpui_dylib as _;
 // The content packer the build's pack step uses (`pulsar_content::ContentPacker`).
 use pulsar_package as _;
 

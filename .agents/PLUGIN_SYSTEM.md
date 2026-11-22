@@ -418,32 +418,92 @@ keeping all three (fields of one size reordered) must bump the type's `VERSION`;
 links its own copy of every crate, and only the world crates and Helio share their process-wide
 state with the host (their runtimes, `helio_core::runtime`: see below).
 
-### One library per plugin: `tools/plugin_builder`
+### Shared libraries: one copy of each framework per process
 
-The editor loads every first-party plugin but `render_bps` from its own library, so a plugin's
-memory (and its leaks) is its library's. `cargo run -p plugin_builder` (flags: `--release`,
-`--only <id>,..`, `--out <dir>`, `--no-host`, `--check`, `--generate`):
+The editor and every plugin library link the frameworks as **shared Rust dylibs** instead of
+embedding a copy each (`-C prefer-dynamic`, `.cargo/config.toml`; `std` is shared too, so
+`std-<hash>.dll` ships beside the executable). Each library lives in, and builds and releases
+from, the repository that owns what it contains, in dependency order:
 
-1. writes one generated crate per plugin, `plugins/dll/<root>_dll` (a `cdylib` that links the
-   root, `plugin_editor_api::export_library_plugin!(id, name)` and
-   `helio_core::export_runtime_attach!()`); the workspace lists `plugins/dll/*`;
-2. builds the editor and every library in one cargo invocation (one feature resolution, which
-   the loader's layout checks require);
-3. copies each library to `<install>/plugins/editor/<root>.<ext>` and registers it in
-   `plugin_integrity.json` and `plugins.lock.json` (`pulsar_install_layout`, records
-   `local:<plugin id>`).
+| Library | Repository (path) | Contains |
+|---|---|---|
+| `wgpui_dylib` | WGPUI (`crates/ui/wgpui/dylib`) | `gpui-ce`, wgpu, zlib |
+| `ui_dylib` | WGPUI-Component (`crates/ui/wgpui-component/crates/ui_dylib`) | `ui`, tree-sitter |
+| `profiling_dylib` | Pulsar-Profiling (`crates/external/pulsar-profiling/crates/profiling_dylib`) | `profiling`, SQLite |
+| `reflection_dylib` | Pulsar-Reflection (`crates/external/pulsar-reflection/crates/reflection_dylib`) | `pulsar_reflection` |
+| `scenedb_dylib` | SceneDB (`crates/scenedb_dylib`; the `shared-dylib` branch until pushed) | `pulsar_scenedb` |
+| `helio_dylib` | Helio (`crates/renderer/helio/crates/helio_dylib`) | Helio's kernel crates |
 
-`plugins/linked` is what the editor links (`render_bps`); `plugins/installed` still links every
-plugin for games and tests.
+A library depends on the ones below it (git dependencies; this workspace patches them to the local
+checkouts) and links them in code (`use x as _;`), so a crate is in exactly one library. Rules:
+a library pins the feature set every consumer builds with (features are additive: a consumer that
+needs one more builds a different crate); the editor and the plugin libraries are built in one
+cargo invocation (`tools/plugin_builder`); a native C library inside a library has its API exported
+with `/EXPORT` directives (`build.rs`, `native_exports/*.txt`), because callers outside the library
+cannot otherwise link it (`unresolved external symbol`); a crate that links a shared library must
+not be a `cdylib` unless it is a plugin root built with `--features dll`. `plugin_editor_api`'s
+`shared-dylibs` feature links them for a plugin library. A library's list of exported native
+symbols is generated from the native crate's bindings: remove a name the linker reports as
+undefined (a compile-time feature that is off), and regenerate when the crate's version changes.
 
-**Helio in a library.** A library links its own copy of Helio, so its process-wide state must be
-the host's. `helio_core::runtime::Shared` holds it (shader hot-reload registry and watcher,
-driver pipeline caches, compile and upload counters); the host exports a handle, the loader
-calls the library's `_plugin_attach_helio` before it runs any code, and the library's copy
-points at the host's `Shared` and installs the host's task host (so the library's threads and
-jobs are tasks, not raw threads). A library of another layout is refused
-(`HelioRuntimeRefused`). `helio-core/tests/runtime_statics.rs` fails on a Helio `static` not in
-`runtime_statics_allowed.txt` (name interners and constants, each with its reason).
+### One library per plugin: the `dll` feature and `tools/plugin_builder`
+
+The editor loads every first-party plugin but `render_bps` from a library of its own, so a
+plugin's memory (and its leaks) is its library's. The library is the plugin's **root crate**
+built with its `dll` feature, so each plugin's own repository builds and releases it:
+
+```toml
+[lib]
+crate-type = ["cdylib", "rlib"]
+[features]
+dll = ["editor", "dep:plugin_editor_api", "plugin_editor_api/editor"]
+```
+
+```rust
+#[cfg(feature = "dll")]
+plugin_editor_api::export_library_plugin!();   // or export_plugin_build!() beside the root's own export_plugin!
+```
+
+`cargo build -p <root> --release --features dll` writes the library. Without `dll` (a game, the
+installed set) the root exports no symbol, so many roots link into one binary. The macro exports
+the root's descriptor and registrations (`pulsar_plugins::export_library!`), an empty editor
+plugin named after the descriptor (the loader requires an entry point), and the attach entry
+points below.
+
+`cargo run -p plugin_builder` (flags `--release`, `--only <id>,..`, `--out <dir>`, `--no-host`,
+`--check`) builds the editor and every plugin root with `--features <root>/dll` in one cargo
+invocation (one feature resolution, which the loader's layout checks need), copies each library
+to `<install>/plugins/editor/<root>.<ext>`, registers it in `plugin_integrity.json` and
+`plugins.lock.json` (`pulsar_install_layout`, records `local:<plugin id>`) and re-checks each
+against the manifest. `<install>` is `--out`, else `PULSAR_INSTALL_DIR` (which the engine
+honors first), else the folder of the editor executable. `plugins/linked` is what the editor
+links (`render_bps`); `plugins/installed` still links every plugin for games and tests.
+
+**State a library shares with the host.** A library links its own copy of every crate, so each
+`static` exists once per copy. What must be one per process is attached to the host's before
+the library runs any code (the loader calls each `_plugin_attach_*` entry point first):
+
+- the **parking lot** (`parking_lot_core`, vendored in `crates/third-party/parking_lot_core`
+  and patched): a thread parked in a library's table was never woken by the host's unlock of a
+  lock they share (the settings database, the world registries), which hung the editor when
+  the Extensions window opened. The parked-thread table and thread count are the host's
+  (`_plugin_attach_parking_lot`; a library of other sources is refused, `ParkingLotRefused`);
+- **Helio** (`helio_core::runtime::Shared`: shader hot-reload registry and watcher, driver
+  pipeline caches, compile and upload counters) and the host's task host, so the library's
+  threads and jobs are tasks, not raw threads (`_plugin_attach_helio`, `HelioRuntimeRefused`;
+  `helio-core/tests/runtime_statics.rs` fails on a Helio `static` not in
+  `runtime_statics_allowed.txt`);
+- the settings database (`engine_state::settings::global_config()` resolves to the host's
+  manager once bound), the world crates, the profiler and the event bus (as before);
+- WGPUI's id sequences (images, surfaces, invalid entities) in its shared runtime: a
+  per-copy counter handed the host and a library the same image id, and the renderer showed
+  one the other's picture.
+
+Known per-copy state not yet shared: `engine_state`'s `GLOBAL_CONTEXT`, `PLAYBACK_HOST`
+and plugin-settings `STATE`, and the settings file write lock. Audit a library's reads of
+`engine_state` before relying on them.
+
+
 ## Dynamic editor plugins
 
 Plugins built as native Rust `cdylib` DLLs are loaded at startup and **never unloaded**.

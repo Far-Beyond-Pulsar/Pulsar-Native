@@ -5,8 +5,9 @@
 //! (or whose module another language wrote) whichever languages are enabled.
 //! The project's classes are scanned on a worker, once when the project
 //! opens, when the plugin set changes (enabling or disabling a language
-//! changes which markers count) and then every half minute, under their own
-//! source.
+//! changes which markers count), within a tick of a change to the project's
+//! files (`engine_fs::events`: a class folder created, a module written), and
+//! every half minute for anything the events miss, under their own source.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -32,12 +33,14 @@ pub(crate) fn watch<T: 'static>(
         return;
     };
     let drawer = drawer.downgrade();
+    let mut files = engine_fs::events::subscribe();
     cx.spawn(async move |_, cx| {
         let mut generation = None;
         let mut ticks = RESCAN_TICKS;
         loop {
             let now = pulsar_plugins::generation();
-            if generation != Some(now) || ticks >= RESCAN_TICKS {
+            let changed = project_files_changed(&mut files, &project);
+            if generation != Some(now) || changed || ticks >= RESCAN_TICKS {
                 generation = Some(now);
                 ticks = 0;
                 let root = project.clone();
@@ -62,6 +65,27 @@ pub(crate) fn watch<T: 'static>(
     .detach();
 }
 
+/// Whether any project file changed since the last tick (build and VCS folders
+/// aside). Takes every queued event, so a burst (a save, a checkout) is one
+/// rescan; a lagged receiver dropped events, which counts as a change.
+fn project_files_changed(
+    files: &mut tokio::sync::broadcast::Receiver<engine_fs::events::FsEvent>,
+    project: &std::path::Path,
+) -> bool {
+    use tokio::sync::broadcast::error::TryRecvError;
+    let mut changed = false;
+    loop {
+        match files.try_recv() {
+            Ok(event) => {
+                changed |= event.path.starts_with(project)
+                    && !engine_fs::file_index::is_unindexed_path(project, &event.path);
+            }
+            Err(TryRecvError::Lagged(_)) => changed = true,
+            Err(TryRecvError::Empty | TryRecvError::Closed) => return changed,
+        }
+    }
+}
+
 fn diagnostic(problem: &pulsar_class::ClassProblem) -> Diagnostic {
     Diagnostic {
         file_path: problem.file().display().to_string(),
@@ -75,5 +99,45 @@ fn diagnostic(problem: &pulsar_class::ClassProblem) -> Diagnostic {
         hints: Vec::new(),
         subitems: Vec::new(),
         loading_actions: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use engine_fs::events::{FsChangeKind, FsEvent, FsEventSource};
+    use std::path::Path;
+    use tokio::sync::broadcast;
+
+    fn event(path: &str) -> FsEvent {
+        FsEvent {
+            path: PathBuf::from(path),
+            kind: FsChangeKind::Modified,
+            source: FsEventSource::Local,
+        }
+    }
+
+    #[test]
+    fn a_change_inside_the_project_triggers_a_rescan_once() {
+        let project = Path::new("/proj");
+        let (tx, mut rx) = broadcast::channel(8);
+        assert!(!project_files_changed(&mut rx, project), "nothing queued");
+
+        tx.send(event("/elsewhere/a.json")).unwrap();
+        tx.send(event("/proj/target/debug/x")).unwrap();
+        assert!(!project_files_changed(&mut rx, project), "outside, or a build folder");
+
+        tx.send(event("/proj/src/classes/Door.class/graph.json")).unwrap();
+        tx.send(event("/proj/src/classes/Door.class/prefab.json")).unwrap();
+        assert!(project_files_changed(&mut rx, project));
+        assert!(!project_files_changed(&mut rx, project), "the burst was taken");
+    }
+
+    #[test]
+    fn dropped_events_count_as_a_change() {
+        let (tx, mut rx) = broadcast::channel(1);
+        tx.send(event("/elsewhere/a")).unwrap();
+        tx.send(event("/elsewhere/b")).unwrap();
+        assert!(project_files_changed(&mut rx, Path::new("/proj")));
     }
 }

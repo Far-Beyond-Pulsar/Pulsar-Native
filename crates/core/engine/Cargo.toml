@@ -65,6 +65,15 @@ window_manager.workspace = true
 # editors among them): the editor has
 # every one, the project it opens enables some (`pulsar_plugins`).
 linked_plugins = { workspace = true }
+# The shared UI and renderer libraries: the editor and every plugin library link them dynamically
+# (`-C prefer-dynamic`, .cargo/config.toml), so each framework static exists once per process.
+wgpui_dylib = { workspace = true }
+helio_dylib = { workspace = true }
+ui_dylib = { workspace = true }
+profiling_dylib = { workspace = true }
+reflection_dylib = { workspace = true }
+scenedb_dylib = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["shared-dylibs"] }
 # The content packer (`pulsar_content::ContentPacker`): the build's pack step cooks
 # and packs the project through it, before Cargo builds the game.
 # Without `link-plugins`: the editor loads plugins from their libraries.

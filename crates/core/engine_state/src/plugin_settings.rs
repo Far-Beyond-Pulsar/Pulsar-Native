@@ -74,7 +74,22 @@ fn read_table(root: &Path, owner: &str) -> anyhow::Result<toml::Table> {
 /// with no editor and no database: the keys the project overrides, as raw
 /// TOML. For `pulsar package`, CI and anything else that runs headless.
 pub fn read_project_layer(project_root: &Path, owner: &str) -> anyhow::Result<toml::Table> {
-    read_table(&project_root.join(".pulsar"), owner)
+    let root = project_root.join(".pulsar");
+    let table = read_table(&root, owner)?;
+    if !table.is_empty() {
+        return Ok(table);
+    }
+    // A project the editor has not opened since a group moved still has the
+    // values under the old owner path (the editor copies them on open).
+    for moved in pulsar_plugins::registered::<pulsar_settings::plugin::SettingsMove>() {
+        if pulsar_settings::plugin::owner_of(moved.origin, moved.id) == owner {
+            let old = read_table(&root, moved.from)?;
+            if !old.is_empty() {
+                return Ok(old);
+            }
+        }
+    }
+    Ok(table)
 }
 
 fn typed_layer(root: &Path, owner: &str) -> BTreeMap<String, ConfigValue> {
@@ -105,7 +120,8 @@ fn typed_layer(root: &Path, owner: &str) -> BTreeMap<String, ConfigValue> {
 
 /// Move the saved values of groups a plugin took over from another owner path
 /// (`pulsar_settings::plugin::SettingsMove`) to the group's own: the old file
-/// is renamed when it exists and the new one does not.
+/// is copied when it exists and the new one does not. The old file stays, so an
+/// editor build from before the move still finds its values (#1944).
 fn apply_moves<'a>(
     root: &Path,
     moves: impl IntoIterator<Item = &'a pulsar_settings::plugin::SettingsMove>,
@@ -132,15 +148,15 @@ fn apply_moves<'a>(
             Some(dir) => engine_fs::virtual_fs::create_dir_all(dir),
             None => Ok(()),
         }
-        .and_then(|()| provider.rename(&from_file, &to_file));
+        .and_then(|()| provider.copy(&from_file, &to_file));
         match moved_to {
             Ok(()) => tracing::info!(
-                "plugin settings: moved {} to {}",
+                "plugin settings: copied {} to {}",
                 from_file.display(),
                 to_file.display()
             ),
             Err(error) => tracing::error!(
-                "plugin settings: cannot move {} to {}: {error:#}",
+                "plugin settings: cannot copy {} to {}: {error:#}",
                 from_file.display(),
                 to_file.display()
             ),
@@ -510,7 +526,8 @@ mod tests {
     }
 
     /// A group a plugin took over keeps the values saved under its old owner
-    /// path: the file moves, an existing new file is never overwritten.
+    /// path: the file is copied (the old one stays for older editor builds), an
+    /// existing new file is never overwritten.
     #[test]
     fn a_moved_group_keeps_its_saved_values() {
         use pulsar_settings::plugin::SettingsMove;
@@ -529,7 +546,7 @@ mod tests {
         std::fs::write(&old, "path = \"C:/tools/server.exe\"\n").unwrap();
 
         apply_moves(&root, [&moved]);
-        assert!(!old.exists(), "the old file moved");
+        assert!(old.exists(), "the old file stays for older editor builds");
         assert_eq!(
             std::fs::read_to_string(&new).unwrap(),
             "path = \"C:/tools/server.exe\"\n",
@@ -549,5 +566,36 @@ mod tests {
             "path = \"C:/tools/server.exe\"\n"
         );
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    pulsar_plugins::inventory::submit! {
+        pulsar_settings::plugin::SettingsMove {
+            origin: pulsar_plugins::engine_origin!(),
+            id: "headless_moved",
+            from: "engine.headless_old/server",
+        }
+    }
+
+    /// A headless read (`pulsar package`) of a project the editor has not opened
+    /// since a group moved finds the values under the old owner path.
+    #[test]
+    fn a_headless_read_falls_back_to_a_moved_groups_old_file() {
+        let project = temp("headless_moved");
+        let root = project.join(".pulsar");
+        let old = layer_file(&root, "engine.headless_old/server");
+        std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+        std::fs::write(&old, "level = 3
+").unwrap();
+        let owner = pulsar_settings::plugin::owner_of(pulsar_plugins::engine_origin!(), "headless_moved");
+        let table = read_project_layer(&project, &owner).unwrap();
+        assert_eq!(table.get("level").and_then(toml::Value::as_integer), Some(3));
+        // The new file, once there, is what counts.
+        let new = layer_file(&root, &owner);
+        std::fs::create_dir_all(new.parent().unwrap()).unwrap();
+        std::fs::write(&new, "level = 5
+").unwrap();
+        let table = read_project_layer(&project, &owner).unwrap();
+        assert_eq!(table.get("level").and_then(toml::Value::as_integer), Some(5));
+        let _ = std::fs::remove_dir_all(project);
     }
 }

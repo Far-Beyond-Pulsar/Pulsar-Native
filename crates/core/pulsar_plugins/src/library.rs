@@ -174,6 +174,15 @@ macro_rules! export_library {
     };
 }
 
+/// The descriptor of the plugin root linked into this copy: a plugin built as a
+/// library of its own links exactly one (`export_library_plugin!` names the
+/// library's editor plugin after it). The first, when a bundle links several.
+pub fn linked_descriptor() -> Option<PluginDescriptor> {
+    inventory::iter::<crate::InstalledPlugin>
+        .into_iter()
+        .find_map(|linked| PluginDescriptor::parse(linked.descriptor).ok())
+}
+
 /// This copy's linked plugin roots, built, as a library exports them. The
 /// memory lives for the process (a library is never unloaded).
 pub fn exported() -> FfiLibrary {

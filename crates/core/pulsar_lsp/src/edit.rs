@@ -649,7 +649,7 @@ mod tests {
             ],
         };
         let applied = apply_workspace_edit(&workspace, Some(&buffers), &mut ()).unwrap();
-        assert_eq!(applied.edited_buffers, [in_buffer.clone()]);
+        assert_eq!(applied.edited_buffers, std::slice::from_ref(&in_buffer));
         assert_eq!(
             buffers.applied.borrow().as_slice(),
             [(in_buffer.clone(), 2)],

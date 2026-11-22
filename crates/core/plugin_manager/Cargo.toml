@@ -15,6 +15,8 @@ plugin_editor_api = { workspace = true, features = ["editor"] }
 pulsar_world_registry = { workspace = true }
 # Attaches each loaded plugin library's copy of Helio to the host's shared state and task host.
 helio-core = { workspace = true }
+# Attaches each loaded library's parking lot to the host's (a lost wakeup otherwise).
+parking_lot_core = "0.9"
 profiling = { workspace = true }
 # Hands each loaded plugin the host's Gamma event bus (#930).
 pulsar_events = { workspace = true }

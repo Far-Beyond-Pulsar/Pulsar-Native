@@ -22,6 +22,23 @@ check:
 release:
     cargo build -p {{project}} --release
 
+# Build the editor and every plugin (release): each plugin is its own DLL, built with the editor in one
+# cargo invocation (their feature sets must match) and installed where a cargo-built editor looks:
+# plugins/editor in the repository root. The shared libraries and std go beside the executable in
+# target/release. Run the editor afterwards from the repository root as target/release/pulsar_engine.exe
+# (a plain `cargo run` rebuilds it with another feature set, which the plugin DLLs no longer match).
+# One folder serves both profiles: the profile built last is the one that is installed.
+plugins:
+    cargo run -p plugin_builder -- --release --out "{{justfile_directory()}}"
+
+# The same in debug (not measured: the shared libraries may exceed the Windows export limit).
+plugins-debug:
+    cargo run -p plugin_builder -- --out "{{justfile_directory()}}"
+
+# The same, installing the plugins into another folder (another checkout's root).
+plugins-to out:
+    cargo run -p plugin_builder -- --release --out "{{out}}"
+
 # Run the engine
 run:
     cargo run -p {{project}}

@@ -10,8 +10,8 @@
 //! in the workspace. `order_prepared_plugins` puts dependencies first.
 
 use crate::attach::{
-    attach_event_bus, attach_helio, attach_profiler, attach_settings, attach_world_runtime,
-    read_manifest,
+    attach_event_bus, attach_helio, attach_parking_lot, attach_profiler, attach_settings,
+    attach_world_runtime, read_manifest,
 };
 use crate::{
     dependencies, panel_restorers, LoadedPlugin, PermanentLibrary, PluginManager,
@@ -384,6 +384,20 @@ impl PluginManager {
         library: &PermanentLibrary,
         path: &Path,
     ) -> Result<(), PluginManagerError> {
+        // Share the host's parking lot first, before the library runs any code that
+        // could park a thread: a thread parked in the library's own table is never
+        // woken by the host's unlock of a lock they share (the settings database, the
+        // world registries), which hangs the editor.
+        match attach_parking_lot(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host parking lot", path),
+            Some(false) => {
+                return Err(PluginManagerError::ParkingLotRefused {
+                    path: path.to_path_buf(),
+                })
+            }
+            None => tracing::debug!("Plugin at {:?} predates the shared parking lot", path),
+        }
+
         // Attach the plugin's world crates to the editor's world runtimes
         // before it runs any code of its own, so its component classes are
         // World components of the editor. A library built from other

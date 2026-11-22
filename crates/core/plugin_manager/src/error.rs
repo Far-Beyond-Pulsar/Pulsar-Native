@@ -38,6 +38,10 @@ pub enum PluginManagerError {
     /// the shader registry, pipeline caches and counters.
     HelioRuntimeRefused { path: PathBuf },
 
+    /// The plugin's copy of the parking lot refused the host's: it was built from other
+    /// `parking_lot_core` sources, so a thread it parks would not be woken by the host.
+    ParkingLotRefused { path: PathBuf },
+
     /// Failed to create plugin instance
     PluginCreationFailed { message: String },
 
@@ -120,6 +124,11 @@ impl std::fmt::Display for PluginManagerError {
                 f,
                 "Plugin '{}' refused the editor's world runtimes: it was built from other \
                  SceneDB or world-registry sources or features. Rebuild it against this engine.",
+                path.display()
+            ),
+            Self::ParkingLotRefused { path } => write!(
+                f,
+                "Plugin '{}' refused the editor's parking lot: it was built from other \n                 parking_lot_core sources. Rebuild it against this engine.",
                 path.display()
             ),
             Self::HelioRuntimeRefused { path } => write!(

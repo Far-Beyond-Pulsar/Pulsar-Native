@@ -65,6 +65,11 @@ pub struct CompileDiagnostic {
     /// The graph node (visual languages) or `line:column` (text).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
+    /// For a text language, where the problem ends (`line:column`, one past
+    /// its last character), when the compiler knows its span; editors then
+    /// underline that range instead of guessing one from `location` (#1939).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_location: Option<String>,
     pub message: String,
 }
 
@@ -75,6 +80,7 @@ impl CompileDiagnostic {
             class,
             file,
             location: None,
+            end_location: None,
             message: message.into(),
         }
     }

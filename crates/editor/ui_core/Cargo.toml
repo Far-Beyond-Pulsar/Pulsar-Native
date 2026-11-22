@@ -40,6 +40,8 @@ ui_friends.workspace = true
 # Engine
 engine_state.workspace = true
 engine_fs = { workspace = true }
+# The receiver type of `engine_fs::events` (class problems rescan on file changes).
+tokio = { workspace = true, features = ["sync"] }
 pulsar_settings.workspace = true
 engine_backend.workspace = true
 pulsar_lsp.workspace = true

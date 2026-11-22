@@ -218,6 +218,7 @@ impl GpuRenderer {
     }
 
     /// Render one frozen time-slice tile for an oversized screenshot.
+    #[allow(clippy::too_many_arguments)] // the device and queue, the target, and the crop's geometry
     pub fn render_capture_tile(
         &mut self,
         device: &wgpu::Device,
@@ -231,6 +232,7 @@ impl GpuRenderer {
         self.render_frame_to_surface_inner(device, queue, view, width, height, format, Some(crop))
     }
 
+    #[allow(clippy::too_many_arguments)] // render_frame_to_surface's and render_capture_tile's shared body
     fn render_frame_to_surface_inner(
         &mut self,
         device: &wgpu::Device,

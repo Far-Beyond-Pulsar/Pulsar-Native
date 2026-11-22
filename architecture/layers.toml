@@ -60,9 +60,8 @@ names_kinds = true
 "crates/renderer" = { layer = "foundation" }
 "plugins/vendor" = { layer = "plugin" }
 "plugins/installed" = { layer = "host" }
-# What the editor links (render_bps) and one generated library crate per other plugin (tools/plugin_builder).
+# What the editor links (render_bps); every other plugin root builds as its own library (tools/plugin_builder).
 "plugins/linked" = { layer = "host" }
-"plugins/dll" = { layer = "host" }
 "tools" = { layer = "host" }
 # A crate's test fixtures are kernel crates like it.
 "crates/core/plugin_manager/tests/fixtures" = { layer = "kernel" }

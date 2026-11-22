@@ -350,6 +350,12 @@ macro_rules! export_plugin {
             Some(&*(ptr as *const $crate::ui::theme::Theme))
         }
 
+        // Share the host's parking lot: `_plugin_attach_parking_lot`, called by the
+        // plugin manager before anything else of this library runs, makes a thread
+        // parked here findable by the host's unlock (and the other way round) for
+        // every `parking_lot` and `dashmap` lock the library and the host share.
+        $crate::parking_lot_core::export_attach!();
+
         // Receive the host's event bus when loaded:
         // `_plugin_attach_event_bus`, called by the plugin manager before
         // `_plugin_create`, makes this library's `pulsar_events` host bus
