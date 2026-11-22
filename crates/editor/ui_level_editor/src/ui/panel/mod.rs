@@ -392,9 +392,17 @@ impl Render for LevelEditorPanel {
                     return;
                 }
                 if modifiers.shift {
-                    crate::ui::hierarchy::select_similar_objects(&mut this.shared_state.write());
+                    crate::ui::selection::select(
+                        &mut this.shared_state.write(),
+                        crate::ui::selection::SelectOp::Similar(
+                            crate::ui::selection::Similarity::Settings,
+                        ),
+                    );
                 } else {
-                    crate::ui::hierarchy::select_all_objects(&mut this.shared_state.write());
+                    crate::ui::selection::select(
+                        &mut this.shared_state.write(),
+                        crate::ui::selection::SelectOp::All,
+                    );
                 }
                 this.sync_gizmo_to_helio();
                 cx.stop_propagation();

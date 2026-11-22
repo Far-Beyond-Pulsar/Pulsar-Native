@@ -166,108 +166,9 @@ fn apply_origins(state: &mut LevelEditorState, entries: Vec<(String, [f32; 3])>)
     if entries.is_empty() {
         return 0;
     }
-    execute_command(state, SceneCommand::SetPivots { entries }).affected_ids.len()
-}
-
-/// Select every object in the level (Ctrl/Cmd+A), the last in tree order the
-/// primary. Class-generated children and instance members are left out: they
-/// are rebuilt from their source and cannot be edited on their own. Returns
-/// how many objects are selected.
-pub(crate) fn select_all_objects(state: &mut LevelEditorState) -> usize {
-    let (objects, _) = {
-        let world = state.scene.world();
-        crate::scene_edit::objects::get_hierarchy_projection(&world)
-    };
-    let ids: Vec<String> = {
-        let world = state.scene.world();
-        objects
-            .iter()
-            .map(|object| &object.id)
-            .filter(|id| {
-                !crate::scene_edit::classes::is_generated_child(&world, id)
-                    && !crate::scene_edit::objects::is_instance_member(&world, id)
-            })
-            .cloned()
-            .collect()
-    };
-    state.scene.select_objects(&ids);
-    ids.len()
-}
-
-/// Select every object whose settings match a selected object's
-/// (Ctrl/Cmd+Shift+A), ignoring where it is: same object type, same
-/// type-specific props, and the same components with the same enabled flags
-/// and values. Name, id, transform, parent, visibility and lock are not
-/// settings, nor is a component's instance id or slot-local transform.
-/// The current selection stays selected and the primary stays the primary.
-/// Class-generated children and instance members are left out, as with
-/// [`select_all_objects`]. Returns how many objects are selected; nothing
-/// changes when nothing is selected.
-pub(crate) fn select_similar_objects(state: &mut LevelEditorState) -> usize {
-    use crate::scene_edit::{components, objects as scene_objects};
-
-    let selected = {
-        let world = state.scene.world();
-        scene_objects::selected_object_ids(&world)
-    };
-    if selected.is_empty() {
-        return 0;
-    }
-    let (all, _) = {
-        let world = state.scene.world();
-        scene_objects::get_hierarchy_projection(&world)
-    };
-    let world = state.scene.world();
-    let signature = |id: &str| -> Option<String> {
-        let object = scene_objects::get_object(&world, id)?;
-        Some(settings_signature(
-            &object,
-            components::get_components(&world, id),
-        ))
-    };
-    let wanted: HashSet<String> = selected.iter().filter_map(|id| signature(id)).collect();
-    let already: HashSet<&str> = selected.iter().map(String::as_str).collect();
-    let mut ids: Vec<String> = all
-        .iter()
-        .map(|object| &object.id)
-        .filter(|id| !already.contains(id.as_str()))
-        .filter(|id| {
-            !crate::scene_edit::classes::is_generated_child(&world, id)
-                && !scene_objects::is_instance_member(&world, id)
-        })
-        .filter(|id| signature(id).is_some_and(|s| wanted.contains(&s)))
-        .cloned()
-        .collect();
-    drop(world);
-    // The existing selection last, so its primary stays the primary.
-    ids.extend(selected);
-    state.scene.select_objects(&ids);
-    ids.len()
-}
-
-/// What makes two objects "the same settings" for [`select_similar_objects`]:
-/// a canonical string of everything about the object except where it is and
-/// what it is called.
-fn settings_signature(
-    object: &SceneObjectData,
-    components: Vec<engine_backend::ComponentInstance>,
-) -> String {
-    use pulsar_world_registry::instances::{INSTANCE_ID_KEY, TRANSFORM_KEY};
-    use std::collections::BTreeMap;
-
-    let props: BTreeMap<&String, &serde_json::Value> = object.props.iter().collect();
-    let components: Vec<serde_json::Value> = components
-        .into_iter()
-        .map(|component| {
-            let mut data = component.data;
-            if let Some(map) = data.as_object_mut() {
-                map.remove(INSTANCE_ID_KEY);
-                map.remove(TRANSFORM_KEY);
-            }
-            serde_json::json!([component.class_name, component.enabled, data])
-        })
-        .collect();
-    serde_json::json!([format!("{:?}", object.object_type), props, components]).to_string()
+    execute_command(state, SceneCommand::SetPivots { entries })
+        .affected_ids
+        .len()
 }
 
 /// Ancestors of an object, nearest first.
@@ -686,8 +587,8 @@ impl HierarchyItem for SceneObjectItem {
     fn build_context_menu(
         &self,
         menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<PopupMenu>,
+        window: &mut Window,
+        cx: &mut Context<PopupMenu>,
     ) -> PopupMenu {
         use crate::commands::{execute_command, SceneCommand};
 
@@ -721,68 +622,71 @@ impl HierarchyItem for SceneObjectItem {
         };
         use helio_component::components::ObjectMovability;
 
-        menu.menu_handler_with_icon(
-            "Mark Static (with children)",
-            IconName::Pin,
-            set_movability(ObjectMovability::Static),
-        )
-        .menu_handler_with_icon(
-            "Mark Movable (with children)",
-            IconName::Drag,
-            set_movability(ObjectMovability::Movable),
-        )
-        .separator()
-        // A rigid frame draws its contents through one matrix: moving it costs
-        // nothing per member. An ordinary group composes its members instead.
-        .menu_handler_with_icon(
-            if is_rigid_frame {
-                "Make Ordinary Group"
-            } else {
-                "Make Rigid Frame"
-            },
-            IconName::Box,
-            {
-                let id = self.object.id.clone();
-                let state_arc = self.state_arc.clone();
-                move |_: &mut Window, _: &mut App| {
-                    let mut state = state_arc.write();
-                    let found = {
-                        let world = state.scene.world();
-                        crate::scene_edit::objects::get_object(&world, &id)
-                    };
-                    if let Some(mut obj) = found {
-                        if is_rigid_frame {
-                            obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
-                        } else {
-                            obj.props.insert(
-                                engine_backend::scene::frames::FRAME_PROP.to_string(),
-                                serde_json::Value::Bool(true),
-                            );
+        let menu = menu
+            .menu_handler_with_icon(
+                "Mark Static (with children)",
+                IconName::Pin,
+                set_movability(ObjectMovability::Static),
+            )
+            .menu_handler_with_icon(
+                "Mark Movable (with children)",
+                IconName::Drag,
+                set_movability(ObjectMovability::Movable),
+            )
+            .separator()
+            // A rigid frame draws its contents through one matrix: moving it costs
+            // nothing per member. An ordinary group composes its members instead.
+            .menu_handler_with_icon(
+                if is_rigid_frame {
+                    "Make Ordinary Group"
+                } else {
+                    "Make Rigid Frame"
+                },
+                IconName::Box,
+                {
+                    let id = self.object.id.clone();
+                    let state_arc = self.state_arc.clone();
+                    move |_: &mut Window, _: &mut App| {
+                        let mut state = state_arc.write();
+                        let found = {
+                            let world = state.scene.world();
+                            crate::scene_edit::objects::get_object(&world, &id)
+                        };
+                        if let Some(mut obj) = found {
+                            if is_rigid_frame {
+                                obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
+                            } else {
+                                obj.props.insert(
+                                    engine_backend::scene::frames::FRAME_PROP.to_string(),
+                                    serde_json::Value::Bool(true),
+                                );
+                            }
+                            execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                         }
-                        execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                     }
-                }
-            },
-        )
-        .when(
-            {
-                let state = self.state_arc.read();
-                let selection = state.scene.selected_objects();
-                selection.len() > 1 && selection.contains(&self.object.id)
-            },
-            |menu| {
-                let group_state = self.state_arc.clone();
-                menu.menu_handler_with_icon(
-                    "Group into Folder",
-                    IconName::FolderPlus,
-                    move |_, _| {
-                        group_selection_into_folder(&mut group_state.write());
-                    },
-                )
-                .separator()
-            },
-        )
-        .menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
+                },
+            )
+            .when(
+                {
+                    let state = self.state_arc.read();
+                    let selection = state.scene.selected_objects();
+                    selection.len() > 1 && selection.contains(&self.object.id)
+                },
+                |menu| {
+                    let group_state = self.state_arc.clone();
+                    menu.menu_handler_with_icon(
+                        "Group into Folder",
+                        IconName::FolderPlus,
+                        move |_, _| {
+                            group_selection_into_folder(&mut group_state.write());
+                        },
+                    )
+                    .separator()
+                },
+            );
+        let menu =
+            crate::ui::selection::select_submenu(menu, window, cx, &self.state_arc).separator();
+        menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
             let mut state = duplicate_state.write();
             crate::commands::duplicate_and_select(&mut state, &duplicate_id);
@@ -1217,69 +1121,3 @@ pub(crate) fn editor_camera_spawn_transform(
 }
 
 use ui::dock::PanelEvent;
-
-#[cfg(test)]
-mod select_similar_tests {
-    use super::select_similar_objects;
-    use crate::commands::{execute_command, SceneCommand};
-    use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
-    use crate::state::LevelEditorState;
-
-    fn add(state: &mut LevelEditorState, name: &str, kind: ObjectType, x: f32) -> String {
-        let data = SceneObjectData {
-            id: String::new(),
-            name: name.to_string(),
-            object_type: kind,
-            transform: Transform {
-                position: [f64::from(x), 0.0, 0.0],
-                rotation: [0.0, x * 10.0, 0.0],
-                scale: [1.0 + x, 1.0, 1.0],
-            },
-            visible: true,
-            locked: false,
-            parent: None,
-            children: vec![],
-            scene_path: String::new(),
-            props: Default::default(),
-            component_instances: None,
-        };
-        execute_command(
-            state,
-            SceneCommand::AddObject {
-                data,
-                parent_id: None,
-            },
-        )
-        .affected_ids[0]
-            .clone()
-    }
-
-    #[test]
-    fn selects_objects_with_the_same_settings_wherever_they_are() {
-        let mut state = LevelEditorState::new();
-        let a = add(&mut state, "Rock", ObjectType::Empty, 0.0);
-        let b = add(&mut state, "Rock 2", ObjectType::Empty, 5.0);
-        let c = add(&mut state, "Rock 3", ObjectType::Empty, -3.0);
-        let camera = add(&mut state, "Camera", ObjectType::Camera, 1.0);
-        let folder = add(&mut state, "Folder", ObjectType::Folder, 2.0);
-
-        state.scene.select_objects(std::slice::from_ref(&b));
-        assert_eq!(select_similar_objects(&mut state), 3);
-        let selected = state.scene.selected_objects();
-        for id in [&a, &b, &c] {
-            assert!(selected.contains(id), "{id} is selected");
-        }
-        assert!(!selected.contains(&camera) && !selected.contains(&folder));
-        // The object it started from stays the primary.
-        assert_eq!(state.scene.selected_object(), Some(b));
-    }
-
-    #[test]
-    fn nothing_selected_selects_nothing() {
-        let mut state = LevelEditorState::new();
-        add(&mut state, "Rock", ObjectType::Empty, 0.0);
-        state.scene.select_objects(&[]);
-        assert_eq!(select_similar_objects(&mut state), 0);
-        assert!(state.scene.selected_objects().is_empty());
-    }
-}

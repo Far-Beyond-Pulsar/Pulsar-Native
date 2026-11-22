@@ -10,6 +10,7 @@ pub(crate) mod mode_widgets;
 pub(crate) mod panel;
 mod properties;
 pub(crate) mod save;
+pub(crate) mod selection;
 mod toolbar;
 mod viewport;
 mod world_settings;

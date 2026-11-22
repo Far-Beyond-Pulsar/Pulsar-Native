@@ -211,12 +211,8 @@ fn build_selection_menu(
                 submenu.submenu(t!("LevelEditor.Origin.Group"), window, cx, group_menu)
             }
         })
-        .separator()
-        .menu_handler(
-            t!("LevelEditor.Selection.Deselect"),
-            handler(|state| state.scene.select_objects(&[])),
-        )
         .separator();
+    let menu = crate::ui::selection::select_submenu(menu, window, cx, state).separator();
     let level_context = action_context.clone();
     menu.submenu(
         t!("LevelEditor.Selection.Level"),
@@ -248,6 +244,7 @@ fn context_menu_builder(
     create_entries: Vec<(i32, String, String)>,
     action_context: FocusHandle,
     selected_object: bool,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
 ) -> ContextMenuBuilder {
     Rc::new(
         move |mut menu: PopupMenu,
@@ -293,6 +290,7 @@ fn context_menu_builder(
                 }
             });
             menu = menu.separator();
+            menu = crate::ui::selection::select_submenu(menu, window, cx, &state);
             menu = menu.submenu(t!("LevelEditor.Menu.Go"), window, cx, {
                 let submenu_action_context = action_context.clone();
                 move |menu, _, _| {
@@ -367,6 +365,7 @@ impl ViewportPanel {
                 create_menu_entries(),
                 action_context.clone(),
                 state.scene.selected_object().is_some(),
+                state_arc.clone(),
             ),
             &state_arc,
             &action_context,
