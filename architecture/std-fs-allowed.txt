@@ -10,6 +10,7 @@ crates/core/engine/build.rs | build script: walks the source tree for cargo reru
 crates/core/pulsar_dialog_embed/build.rs | build script: fetches and builds the pulsar-dialog helper into a cache under CARGO_HOME
 plugins/vendor/mocap/capture/build.rs | build script: downloads the pinned pose model with curl and caches it under CARGO_HOME
 crates/core/pulsar_dialog_embed/src/lib.rs | places the embedded dialog helper beside the engine's own executable, or in its per-user app data
+crates/core/pulsar_install_layout/src/lib.rs | the Hub/engine install contract: engine installs, their plugin dirs and the per-user app data, outside any project
 crates/core/engine/src/appdata.rs | the engine's own per-user app data, config and theme cache, outside any project
 crates/core/engine/src/assets.rs | RustEmbed's generated code reads the engine's own assets folder in debug builds (a module allow: derive output takes no item allow)
 crates/core/engine/src/dev_bootstrap.rs | the restart sidecar: its log in the OS temp dir, restoring the engine's own executable

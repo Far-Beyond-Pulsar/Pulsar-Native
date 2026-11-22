@@ -276,7 +276,7 @@ pub fn on_add_friend(_this: &mut FriendsScreen, username: &str, cx: &mut Context
                             screen.add_friend_state = AddFriendState::SelfFriended;
                             let self_entry = FriendEntry {
                                 username: "yourself".to_string(),
-                                pfp_url: format!("https://github.com/{}.png", &target_for_self),
+                                pfp_url: format!("https://github.com/{}.png", target_for_self),
                                 relation_status: RelationStatus::Mutual,
                                 current_project: Some("self-love".to_string()),
                                 current_project_version: None,

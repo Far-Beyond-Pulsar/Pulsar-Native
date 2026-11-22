@@ -308,8 +308,8 @@ impl NatOrchestrator {
         // Sort candidates by priority
         let mut local = local_candidates;
         let mut remote = remote_candidates;
-        local.sort_by(|a, b| b.priority.cmp(&a.priority));
-        remote.sort_by(|a, b| b.priority.cmp(&a.priority));
+        local.sort_by_key(|c| std::cmp::Reverse(c.priority));
+        remote.sort_by_key(|c| std::cmp::Reverse(c.priority));
 
         // Generate candidate pairs based on NAT types
         for l in &local {

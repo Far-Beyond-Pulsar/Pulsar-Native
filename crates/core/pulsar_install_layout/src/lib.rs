@@ -22,6 +22,10 @@
 //! Themes are shared by all installs; plugins belong to one install, because a
 //! plugin library only loads into the engine build it was compiled against.
 
+// The install layout is real disk outside any project: engine installs and
+// the per-user app data the Hub writes (architecture/std-fs-allowed.txt).
+#![allow(clippy::disallowed_methods)]
+
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};

@@ -367,7 +367,7 @@ pub fn string_join(strings: Vec<String>, separator: String) -> String {
 /// Formats a string by replacing placeholders with values.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_format(template: String, value: String) -> String {
-    format!("{}", template.replacen("{}", &value, 1))
+    template.replacen("{}", &value, 1)
 }
 
 // =============================================================================

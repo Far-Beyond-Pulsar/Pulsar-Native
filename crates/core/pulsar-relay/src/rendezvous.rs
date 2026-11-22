@@ -299,6 +299,7 @@ impl RendezvousCoordinator {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)] // the join message's fields and the connection's state
     async fn handle_join(
         &self,
         mut sid: String,

@@ -14,7 +14,7 @@
 //! the source its asset was declared under, for
 //! `World::asset_source_changed`, which rebinds every component showing it.
 
-use pulsar_scenedb::{AssetId, AssetPayload, AssetView, TierLoad};
+use pulsar_scenedb::{AssetId, AssetView, TierLoad};
 use std::sync::Arc;
 
 use crate::cooked_texture::{COOK_VERSION, CookFormat, CookedTexture, TextureUse, cook_as};
