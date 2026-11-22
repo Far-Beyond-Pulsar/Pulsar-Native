@@ -292,6 +292,55 @@ fn settings_signature(
     serde_json::json!([format!("{:?}", object.object_type), props, components]).to_string()
 }
 
+/// An object's archetype for mass editing: its object type and its
+/// component classes in order (with each component's parent), so component
+/// index N is the same kind of component on every object that shares it.
+fn archetype(world: &pulsar_scenedb::World, id: &str) -> Option<String> {
+    use pulsar_world_registry::instances::PARENT_INDEX_KEY;
+    let object_type = scene_objects::get_object(world, id)?.object_type;
+    let components: Vec<serde_json::Value> = components::get_components_metadata(world, id)
+        .into_iter()
+        .map(|c| serde_json::json!([c.class_name, c.data.get(PARENT_INDEX_KEY)]))
+        .collect();
+    Some(serde_json::json!([format!("{object_type:?}"), components]).to_string())
+}
+
+/// How the properties panel edits the selection.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MassEdit {
+    /// One object (or none) selected: edits go to it.
+    Single,
+    /// Several objects sharing one archetype: an edit goes to all of them.
+    /// Holds every selected object other than the primary.
+    All(Vec<String>),
+    /// Several objects of different archetypes: the panel shows and edits
+    /// only the primary. Holds the selection's size.
+    PrimaryOnly(usize),
+}
+
+/// Whether a property edit on `shown` (the object the properties panel
+/// shows, the primary) also applies to the rest of the selection: it does
+/// when `shown` is selected and every selected object shares its archetype
+/// ([`archetype`]).
+pub(crate) fn mass_edit(state: &LevelEditorState, shown: &str) -> MassEdit {
+    let world = state.scene.world();
+    let selection = scene_objects::selected_object_ids(&world);
+    if selection.len() < 2 || !selection.iter().any(|id| id == shown) {
+        return MassEdit::Single;
+    }
+    let key = archetype(&world, shown);
+    let rest: Vec<String> = selection
+        .iter()
+        .filter(|id| *id != shown)
+        .cloned()
+        .collect();
+    if key.is_some() && rest.iter().all(|id| archetype(&world, id) == key) {
+        MassEdit::All(rest)
+    } else {
+        MassEdit::PrimaryOnly(selection.len())
+    }
+}
+
 type SharedState = Arc<parking_lot::RwLock<LevelEditorState>>;
 
 /// Add the "Select" submenu: select all, deselect all, invert, and

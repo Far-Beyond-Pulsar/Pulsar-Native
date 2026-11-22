@@ -43,13 +43,18 @@ impl PropertiesPanel {
     ) -> impl IntoElement {
         let _scope = gpui::render_stats::scope("properties: inner render");
         let _header_scope = gpui::render_stats::scope("properties: header");
-        let has_selection = state.scene.selected_object().is_some();
+        let primary = state.scene.selected_object();
+        let has_selection = primary.is_some();
+        let mass_edit = primary
+            .as_deref()
+            .map(|primary| crate::ui::selection::mass_edit(state, primary));
         drop(_header_scope);
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             // Professional header
             .child(self.render_header(has_selection, cx))
+            .children(mass_edit.and_then(|mode| Self::render_mass_edit_banner(&mode, cx)))
             // Main content area
             .child(
                 div().flex_1().overflow_hidden().w_full().child(
@@ -100,6 +105,41 @@ impl PropertiesPanel {
             t!("LevelEditor.Properties.Selected").to_string(),
             "level-editor-properties-more",
             cx,
+        )
+    }
+
+    /// With several objects selected: whether a property edit goes to all of
+    /// them (they share one archetype) or only to the primary shown below.
+    fn render_mass_edit_banner(
+        mode: &crate::ui::selection::MassEdit,
+        cx: &Context<PropertiesPanelWrapper>,
+    ) -> Option<AnyElement> {
+        use crate::ui::selection::MassEdit;
+        let (text, color) = match mode {
+            MassEdit::Single => return None,
+            MassEdit::All(peers) => (
+                t!("LevelEditor.Properties.MassEdit", count = peers.len() + 1).to_string(),
+                cx.theme().accent_foreground,
+            ),
+            MassEdit::PrimaryOnly(count) => (
+                t!("LevelEditor.Properties.MixedSelection", count = count).to_string(),
+                cx.theme().muted_foreground,
+            ),
+        };
+        let background = match mode {
+            MassEdit::All(_) => cx.theme().accent,
+            _ => cx.theme().muted,
+        };
+        Some(
+            div()
+                .w_full()
+                .px_3()
+                .py_1()
+                .bg(background)
+                .text_xs()
+                .text_color(color)
+                .child(text)
+                .into_any_element(),
         )
     }
 
