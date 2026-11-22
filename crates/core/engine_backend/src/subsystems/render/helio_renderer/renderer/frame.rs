@@ -27,6 +27,7 @@ impl HelioRenderer {
     }
 
     /// Draw one crop of a larger output while keeping scene time fixed.
+    #[allow(clippy::too_many_arguments)] // the device and queue, the target, and the crop's geometry
     pub fn render_capture_tile(
         &mut self,
         device: &wgpu::Device,

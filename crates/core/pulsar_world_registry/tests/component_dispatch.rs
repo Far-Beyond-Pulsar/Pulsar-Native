@@ -679,7 +679,7 @@ fn property_access_builds_descriptors_once() {
             "DispatchGizmo",
             0,
             "charges",
-            Box::new(i as i32),
+            Box::new(i),
         )
         .unwrap();
         set_component_property(

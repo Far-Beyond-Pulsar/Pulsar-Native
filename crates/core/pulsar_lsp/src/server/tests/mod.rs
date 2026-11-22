@@ -1,7 +1,7 @@
 use super::process::serve;
 use super::*;
 use crate::protocol::fake::*;
-use crate::protocol::{RequestOutcome, METHOD_NOT_FOUND};
+use crate::protocol::{Handler, RequestOutcome, METHOD_NOT_FOUND};
 use pulsar_language::spec::{section_of, LocateError, RootStrategy, ServerHooks};
 
 fn spec() -> &'static LanguageServerSpec {

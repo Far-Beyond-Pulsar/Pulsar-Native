@@ -39,7 +39,7 @@ use serde_json::{json, Value};
 use crate::diagnostics::{DiagnosticSource, DiagnosticsStore, ServerId};
 use crate::documents::Documents;
 use crate::edit::{apply_workspace_edit_in_app, WorkspaceEdit};
-use crate::protocol::{Connection, Handler};
+use crate::protocol::Connection;
 use crate::session::{ServerEvent, ServerStatus, Session, StopReason};
 use pulsar_language::settings::{ServerSettings, TraceLevel};
 use pulsar_language::spec::{
