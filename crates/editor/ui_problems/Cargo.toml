@@ -8,6 +8,8 @@ publish = false
 # UI framework
 gpui-ce.workspace = true
 engine_fs = { workspace = true }
+# Findings the panel lists besides code diagnostics.
+pulsar_findings = { workspace = true }
 # A language's highlighter id for the preview of a problem's file.
 pulsar_language = { workspace = true }
 ui.workspace = true

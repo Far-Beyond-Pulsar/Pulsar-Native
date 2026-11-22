@@ -279,6 +279,44 @@ pub(super) fn subscribe_drawer_events(
         event_handlers::on_navigate_to_diagnostic,
     )
     .detach();
+    cx.subscribe(problems_drawer, run_finding_action).detach();
+}
+
+/// Carry out a finding's button (the drawer opens files itself): open a
+/// settings window, on a page when the finding names one, or another window.
+fn run_finding_action(
+    app: &mut PulsarApp,
+    _: Entity<ProblemsDrawer>,
+    event: &ui_problems::RunFindingAction,
+    cx: &mut Context<PulsarApp>,
+) {
+    use gpui::UpdateGlobal as _;
+    use pulsar_findings::{Action, SettingsWindow};
+    match &event.0 {
+        Action::OpenSettings {
+            window: SettingsWindow::Project,
+            page,
+        } => {
+            let project = app.state.project_path.clone();
+            match page {
+                Some(page) => ui_settings::ProjectSettingsWindow::open_page(project, page.clone(), cx),
+                None => ui_settings::ProjectSettingsWindow::open_scoped(project, cx),
+            }
+        }
+        Action::OpenSettings {
+            window: SettingsWindow::Editor,
+            ..
+        } => {
+            window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                reg.open("EditorSettingsWindow", cx)
+            });
+        }
+        Action::OpenWindow { name } => {
+            let name = name.clone();
+            window_manager::WindowRegistry::update_global(cx, move |reg, cx| reg.open(&name, cx));
+        }
+        Action::OpenFile { .. } => {}
+    }
 }
 
 /// Creates the language servers service, opens the project in it (the

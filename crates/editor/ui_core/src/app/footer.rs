@@ -278,12 +278,12 @@ impl PulsarApp {
             .state
             .problems_drawer
             .read(cx)
-            .count_by_severity(ui_problems::DiagnosticSeverity::Error);
+            .count_all(ui_problems::FindingSeverity::Error);
         let warning_count = self
             .state
             .problems_drawer
             .read(cx)
-            .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
+            .count_all(ui_problems::FindingSeverity::Warning);
 
         let type_count = self.state.type_debugger_drawer.read(cx).total_count();
         let active_task_count = editor_task_queue::global()

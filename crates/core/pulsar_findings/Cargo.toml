@@ -1,0 +1,16 @@
+[package]
+name = "pulsar_findings"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Findings for the editor's Problems panel: the model (category, severity, location, actions), the process-wide store sources publish their complete sets into, and the FindingSource registration plugins contribute checks through."
+
+[dependencies]
+# The plugin gate: a FindingSource names its origin and is collected only
+# while its plugin is enabled.
+pulsar_plugins = { workspace = true }
+inventory = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

@@ -454,6 +454,7 @@ pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pul
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
+pulsar_findings                    = { path = "crates/core/pulsar_findings" }
 # Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
 # hub. Pinned to the merged v0.2.0 on Gamma `main`.
 gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b" }

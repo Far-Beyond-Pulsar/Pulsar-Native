@@ -21,6 +21,8 @@ ui_types_common.workspace = true
 ui_level_editor.workspace = true
 ui_multiplayer.workspace = true
 ui_problems.workspace = true
+# The actions of findings in the Problems panel.
+pulsar_findings.workspace = true
 ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
