@@ -133,6 +133,12 @@ pub enum SceneCommand {
         visible: Option<bool>,
         locked: Option<bool>,
     },
+    /// Set objects' pivot offsets (`engine_backend::scene::pivots`: where each
+    /// origin sits in its object's local space) in one undo step. Nothing
+    /// that is drawn moves.
+    SetPivots {
+        entries: Vec<(String, [f32; 3])>,
+    },
     /// Set a single property on a reflected component, by class + property
     /// name, carrying the widget-produced value as `Box<dyn Any + Send>` --
     /// exactly what `update_live_component_property` needs, with zero JSON
@@ -332,6 +338,10 @@ impl std::fmt::Debug for SceneCommand {
                 .field("id", id)
                 .field("visible", visible)
                 .field("locked", locked)
+                .finish(),
+            Self::SetPivots { entries } => f
+                .debug_struct("SetPivots")
+                .field("entries", entries)
                 .finish(),
             Self::SetComponentProperty {
                 id,

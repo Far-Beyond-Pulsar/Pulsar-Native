@@ -149,6 +149,69 @@ fn build_selection_menu(
             }
         })
         .separator()
+        .submenu(t!("LevelEditor.Origin.Menu"), window, cx, {
+            let state = state.clone();
+            let several = selection.len() > 1;
+            move |mut submenu, window, cx| {
+                use crate::scene_edit::origin::{GroupOrigin, ObjectOrigin};
+                let each = {
+                    let state = state.clone();
+                    move |origin: ObjectOrigin| {
+                        let state = state.clone();
+                        move |_: &mut Window, _: &mut gpui::App| {
+                            crate::ui::hierarchy::set_selection_origins(&mut state.write(), origin);
+                        }
+                    }
+                };
+                let group = {
+                    let state = state.clone();
+                    move |origin: GroupOrigin| {
+                        let state = state.clone();
+                        move |_: &mut Window, _: &mut gpui::App| {
+                            crate::ui::hierarchy::set_group_origin(&mut state.write(), origin);
+                        }
+                    }
+                };
+                // With several objects selected, "Each Object" and "Group" are
+                // separate lists; with one, the object's own list is the menu.
+                let own: [(&str, ObjectOrigin); 5] = [
+                    ("LevelEditor.Origin.BoundsCenter", ObjectOrigin::BoundsCenter),
+                    ("LevelEditor.Origin.BoundsBottom", ObjectOrigin::BoundsBottom),
+                    ("LevelEditor.Origin.BoundsTop", ObjectOrigin::BoundsTop),
+                    ("LevelEditor.Origin.World", ObjectOrigin::World),
+                    ("LevelEditor.Origin.Transform", ObjectOrigin::Transform),
+                ];
+                if !several {
+                    for (key, origin) in own {
+                        submenu = submenu.menu_handler(t!(key), each(origin));
+                    }
+                    return submenu;
+                }
+                let own_menu = move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
+                    for (key, origin) in own {
+                        menu = menu.menu_handler(t!(key), each(origin));
+                    }
+                    menu
+                };
+                let group_menu = move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
+                    let entries: [(&str, GroupOrigin); 6] = [
+                        ("LevelEditor.Origin.MedianCenter", GroupOrigin::MedianCenter),
+                        ("LevelEditor.Origin.GroupBoundsCenter", GroupOrigin::BoundsCenter),
+                        ("LevelEditor.Origin.GroupBoundsBottom", GroupOrigin::BoundsBottom),
+                        ("LevelEditor.Origin.GroupBoundsTop", GroupOrigin::BoundsTop),
+                        ("LevelEditor.Origin.Primary", GroupOrigin::Primary),
+                        ("LevelEditor.Origin.World", GroupOrigin::World),
+                    ];
+                    for (key, origin) in entries {
+                        menu = menu.menu_handler(t!(key), group(origin));
+                    }
+                    menu
+                };
+                submenu = submenu.submenu(t!("LevelEditor.Origin.PerObject"), window, cx, own_menu);
+                submenu.submenu(t!("LevelEditor.Origin.Group"), window, cx, group_menu)
+            }
+        })
+        .separator()
         .menu_handler(
             t!("LevelEditor.Selection.Deselect"),
             handler(|state| state.scene.select_objects(&[])),

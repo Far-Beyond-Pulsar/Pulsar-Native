@@ -7,6 +7,7 @@ use super::{
     DragState, Handle, SceneInteraction, HANDLE_PIXELS, LOCATION_SNAP, ROTATION_SNAP, SCALE_SNAP,
 };
 use crate::scene::hierarchy_transform::{set_world_transform, world_transform_of};
+use crate::scene::pivots::{pivot_point, position_for_pivot};
 use crate::scene::{GizmoType, SceneWorldExt, Transform, Visibility};
 use glam::{DVec3, EulerRot, Mat3, Quat, Vec2, Vec3};
 use pulsar_scenedb::{Entity, World};
@@ -171,8 +172,18 @@ impl SceneInteraction {
         self.drag = Some(drag);
         self.hovered = Some(drag.handle);
         if !drag.group {
-            if next != current {
-                set_world_transform(world, self.drag_targets[0].entity, next);
+            let target = self.drag_targets[0];
+            // The handles sit on the pivot: a translate carries it to the
+            // solved position, a turn or a stretch holds it where it was. The
+            // object's position follows from where its pivot must be.
+            let pivot = match drag.mode {
+                GizmoType::Translate => next.position,
+                _ => drag.initial.position,
+            };
+            let mut object = next;
+            object.position = position_for_pivot(&object, target.pivot_offset, pivot);
+            if object != current {
+                set_world_transform(world, target.entity, object);
             }
             return;
         }
@@ -212,21 +223,26 @@ impl SceneInteraction {
         let stretch = Vec3::from_array(next.scale);
         for target in &self.drag_targets {
             let start = target.initial;
-            let offset = (DVec3::from_array(start.position) - pivot_start).as_vec3();
+            // Each object's own pivot is the point the group turns or
+            // stretches about the shared pivot; its position follows from it.
+            let own_pivot = pivot_point(&start, target.pivot_offset);
+            let offset = (DVec3::from_array(own_pivot) - pivot_start).as_vec3();
             let mut moved = start;
             match drag.mode {
                 GizmoType::Translate => {
                     moved.position = (DVec3::from_array(start.position) + travel).to_array();
                 }
                 GizmoType::Rotate => {
-                    moved.position = (pivot_start + (turn * offset).as_dvec3()).to_array();
                     moved.rotation = euler_degrees(turn * rotation_quat(start));
+                    let pivot = (pivot_start + (turn * offset).as_dvec3()).to_array();
+                    moved.position = position_for_pivot(&moved, target.pivot_offset, pivot);
                 }
                 GizmoType::Scale => {
-                    moved.position = (pivot_start + (offset * stretch).as_dvec3()).to_array();
                     for axis in 0..3 {
                         moved.scale[axis] = (start.scale[axis] * stretch[axis]).max(0.001);
                     }
+                    let pivot = (pivot_start + (offset * stretch).as_dvec3()).to_array();
+                    moved.position = position_for_pivot(&moved, target.pivot_offset, pivot);
                 }
                 GizmoType::None => {}
             }

@@ -225,6 +225,31 @@ fn rotation_follows_ring_plane_and_preserves_other_fields() {
 }
 
 #[test]
+fn rotation_turns_an_object_about_its_pivot_and_holds_the_pivot_still() {
+    let (mut world, mut interaction, entity) = setup(GizmoType::Rotate);
+    assert!(crate::scene::pivots::set_pivot_offset(
+        &mut world,
+        entity,
+        [1.0, 0.0, 0.0]
+    ));
+    // The handles sit on the pivot, one unit along the object's X.
+    let pivot = Vec3::new(1.0, 0.0, -10.0);
+    let length = interaction.view.length(pivot).unwrap();
+    // The ring shows only the quadrant facing the camera (here the -X one).
+    let start = pivot + Vec3::new(-0.6, 0.6, 0.0) * length;
+    assert!(interaction.try_start_drag(&world, DVec3::ZERO, start.normalize()));
+    let end = pivot + Vec3::new(-0.6, -0.6, 0.0) * length;
+    interaction.update_drag(&mut world, DVec3::ZERO, end.normalize());
+    let t = *world.get::<Transform>(entity).unwrap();
+    assert!((t.rotation[2] - 90.0).abs() < 0.01);
+    let at = crate::scene::pivots::pivot_point(&t, [1.0, 0.0, 0.0]);
+    for (axis, expected) in [1.0, 0.0, -10.0].into_iter().enumerate() {
+        assert!((at[axis] - expected).abs() < 1e-4, "pivot moved: {at:?}");
+    }
+    assert!((t.position[1] + 1.0).abs() < 1e-4, "the object swung round it");
+}
+
+#[test]
 fn projected_rotation_tracks_oblique_rings_through_multiple_turns() {
     let (_, interaction, _) = setup(GizmoType::Rotate);
     let pivot = Vec3::new(0.0, 0.0, -10.0);
