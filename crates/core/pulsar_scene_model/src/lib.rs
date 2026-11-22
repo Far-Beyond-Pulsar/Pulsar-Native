@@ -18,6 +18,7 @@ pub mod level_instances;
 pub mod motion;
 pub mod partitions;
 pub mod payload_catalog;
+pub mod pivots;
 pub mod runtime;
 pub mod sublevels;
 mod transform_script;

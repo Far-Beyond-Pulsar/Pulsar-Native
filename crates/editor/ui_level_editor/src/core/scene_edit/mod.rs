@@ -31,6 +31,7 @@ pub mod create;
 pub mod history;
 pub mod level_io;
 pub mod objects;
+pub mod origin;
 
 #[cfg(test)]
 mod default_level;

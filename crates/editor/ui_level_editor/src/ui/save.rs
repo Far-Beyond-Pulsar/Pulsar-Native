@@ -471,9 +471,9 @@ mod tests {
             let n = NEXT_SAVE.fetch_add(1, Ordering::Relaxed);
             numbers.push(n);
             let snapshot = snapshot_of(&state_with_object(name));
-            let path = path.clone();
+            let thread_path = path.clone();
             waiting.push(std::thread::spawn(move || {
-                write_coalesced(&path, snapshot, n)
+                write_coalesced(&thread_path, snapshot, n)
             }));
             // Let it register as the pending one before the next arrives.
             while !WRITERS

@@ -11,6 +11,7 @@ pub use registrations::{content_triangles, ContentGeometryRegistration, ViewIcon
 
 use super::gizmo_geometry::{shapes, Handle};
 use crate::scene::hierarchy_transform::world_transform_of;
+use crate::scene::pivots::{pivot_offset_of, pivot_point};
 use crate::scene::{GizmoType, SceneWorldExt, Transform, Visibility};
 use glam::{DVec3, Mat3, Mat4, Vec2, Vec3};
 use math::{
@@ -110,6 +111,9 @@ struct DragTarget {
     initial: Transform,
     /// Its own (parent-relative) transform then, which undo restores.
     initial_local: Transform,
+    /// Its pivot, in its local space (`pivots`): what it turns and scales
+    /// about.
+    pivot_offset: [f32; 3],
 }
 
 /// What the gizmo acts on: the selected objects that can move, and the pose
@@ -118,9 +122,10 @@ struct GizmoTargets {
     /// Visible, unlocked selected objects, less any inside another of them
     /// (moving the outer one carries them). Never empty.
     objects: Vec<(Entity, Transform)>,
-    /// One object: its own world transform, so the handles follow its axes.
-    /// Several: their average position on world axes at unit scale, as
-    /// Unreal and Blender place a multi-object gizmo by default.
+    /// One object: its own world transform, so the handles follow its axes,
+    /// placed at its pivot. Several: the average of their pivots on world
+    /// axes at unit scale, as Unreal and Blender place a multi-object gizmo
+    /// by default.
     pivot: Transform,
 }
 
@@ -239,12 +244,18 @@ impl SceneInteraction {
             .filter(|&entity| movable(entity) && !inside_selected(entity))
             .filter_map(|entity| Some((entity, world_transform_of(world, entity)?)))
             .collect();
+        let pivot_of = |entity: Entity, transform: &Transform| {
+            pivot_point(transform, pivot_offset_of(world, entity))
+        };
         let pivot = match objects.as_slice() {
             [] => return None,
-            [(_, transform)] => *transform,
+            [(entity, transform)] => Transform {
+                position: pivot_of(*entity, transform),
+                ..*transform
+            },
             many => {
-                let sum = many.iter().fold(DVec3::ZERO, |sum, (_, t)| {
-                    sum + DVec3::from_array(t.position)
+                let sum = many.iter().fold(DVec3::ZERO, |sum, (entity, t)| {
+                    sum + DVec3::from_array(pivot_of(*entity, t))
                 });
                 Transform {
                     position: (sum / many.len() as f64).to_array(),
@@ -391,6 +402,7 @@ impl SceneInteraction {
                     .get::<Transform>(entity)
                     .copied()
                     .unwrap_or(world_pose),
+                pivot_offset: pivot_offset_of(world, entity),
             })
             .collect();
         self.drag = Some(DragState {

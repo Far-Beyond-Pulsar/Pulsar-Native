@@ -131,6 +131,44 @@ fn apply_row_selection(state: &mut LevelEditorState, id: &str, modifiers: &Modif
     state.scene.select_object(Some(id.to_string()));
 }
 
+/// Put each selected object's origin at its own `origin` (Set Origin, "Each
+/// Object"): one undo step. Returns how many objects changed.
+pub(crate) fn set_selection_origins(
+    state: &mut LevelEditorState,
+    origin: crate::scene_edit::origin::ObjectOrigin,
+) -> usize {
+    let ids = state.scene.selected_objects();
+    let entries = {
+        let world = state.scene.world();
+        crate::scene_edit::origin::object_origins(&world, &ids, origin)
+    };
+    apply_origins(state, entries)
+}
+
+/// Put every selected object's origin at the one point `origin` names for the
+/// group (Set Origin, "Group"): one undo step. Returns how many objects
+/// changed.
+pub(crate) fn set_group_origin(
+    state: &mut LevelEditorState,
+    origin: crate::scene_edit::origin::GroupOrigin,
+) -> usize {
+    let ids = state.scene.selected_objects();
+    let primary = state.scene.selected_object();
+    let entries = {
+        let world = state.scene.world();
+        crate::scene_edit::origin::group_origins(&world, &ids, primary.as_deref(), origin)
+    };
+    apply_origins(state, entries)
+}
+
+fn apply_origins(state: &mut LevelEditorState, entries: Vec<(String, [f32; 3])>) -> usize {
+    use crate::commands::{execute_command, SceneCommand};
+    if entries.is_empty() {
+        return 0;
+    }
+    execute_command(state, SceneCommand::SetPivots { entries }).affected_ids.len()
+}
+
 /// Select every object in the level (Ctrl/Cmd+A), the last in tree order the
 /// primary. Class-generated children and instance members are left out: they
 /// are rebuilt from their source and cannot be edited on their own. Returns
