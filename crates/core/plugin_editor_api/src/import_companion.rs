@@ -35,11 +35,61 @@ pub enum SourceImageRole {
     Emissive,
 }
 
+/// How a source surface maps its mesh UVs onto one of its images, as the
+/// source authors it: glTF's `KHR_texture_transform`. The image is sampled
+/// at `offset + R(rotation) * (scale * uv)`, with
+/// `R(θ)(u, v) = (cos θ u + sin θ v, -sin θ u + cos θ v)` and the UV origin
+/// at the image's top-left. A companion that builds a surface from the
+/// image keeps this mapping.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceUvTransform {
+    pub offset: [f32; 2],
+    pub scale: [f32; 2],
+    /// Radians.
+    pub rotation: f32,
+}
+
+impl SourceUvTransform {
+    /// UVs as they are.
+    pub const IDENTITY: Self = Self {
+        offset: [0.0, 0.0],
+        scale: [1.0, 1.0],
+        rotation: 0.0,
+    };
+
+    pub fn is_identity(&self) -> bool {
+        *self == Self::IDENTITY
+    }
+}
+
+impl Default for SourceUvTransform {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
 /// An image file a source surface refers to, located on disk.
 #[derive(Clone, Debug)]
 pub struct SourceImage {
     pub role: SourceImageRole,
     pub path: PathBuf,
+    /// The mesh UV set the image is sampled with (glTF `texCoord`).
+    pub uv_set: u32,
+    /// How the UVs map onto the image.
+    pub transform: SourceUvTransform,
+}
+
+impl SourceImage {
+    /// `path` for `role`, read from UV set 0 as it is: an image found next
+    /// to the source rather than named by one of its texture slots.
+    pub fn new(role: SourceImageRole, path: PathBuf) -> Self {
+        Self {
+            role,
+            path,
+            uv_set: 0,
+            transform: SourceUvTransform::IDENTITY,
+        }
+    }
 }
 
 /// One surface slot of an imported source (an FBX material) and the image
