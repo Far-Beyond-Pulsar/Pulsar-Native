@@ -12,6 +12,10 @@
 //! * `authored_lod_is_ignored_while_virtual_geometry_is_active` puts a
 //!   `LODComponent` on the sphere that would swap it for a cube at distance:
 //!   VG-active keeps the sphere, Off applies the cube.
+//! * `the_full_classic_geometry_leaves_the_gpu_and_comes_back`: once the
+//!   clusters draw, only the mesh's fallback stays in the GPU mesh pools
+//!   (and the Memory Explorer rows say so); turning the instance's
+//!   `virtual_geometry` off brings the full geometry back.
 //! * `every_mode_renders_without_validation_errors` cycles Auto,
 //!   ForceNonRtFallback, ForceHwRaster and Off under a validation error scope.
 //!
@@ -1405,4 +1409,153 @@ fn diag_vg_portal_cost() {
             );
         }
     }
+}
+
+/// The mesh's entity (its `StaticMeshComponent`) and its full geometry's
+/// content id.
+fn dense_mesh_entity(state: &LevelEditorState) -> pulsar_scenedb::Entity {
+    let world = state.scene.world();
+    world
+        .query::<&StaticMeshComponent>()
+        .map(|(entity, _)| entity)
+        .next()
+        .expect("the dense sphere's mesh")
+}
+
+/// Bytes of `key`'s geometry interned in the scene's mesh pools.
+fn resident_bytes(state: &LevelEditorState, key: u128) -> u64 {
+    let world = state.scene.world();
+    let store = world.gpu_mirror().expect("a GPU mirror").store();
+    let id = pulsar_scenedb::handle_ledger::HandleId(key);
+    let vertices = store
+        .interned_var_len_pool::<helio_mesh_api::PackedVertex>(helio_mesh_api::MESH_VERTICES.key())
+        .and_then(|pool| pool.resolve(id))
+        .map_or(0, |(_, count)| u64::from(count) * 40);
+    let indices = store
+        .interned_var_len_pool::<u32>(helio_mesh_api::MESH_INDICES.key())
+        .and_then(|pool| pool.resolve(id))
+        .map_or(0, |(_, count)| u64::from(count) * 4);
+    vertices + indices
+}
+
+/// #2048: once the clusters are drawn, a virtual-geometry mesh's full
+/// classic geometry leaves the GPU and only its error-bounded fallback stays
+/// (the Memory Explorer's rows say so); the frame is still the cluster
+/// render. Turning the instance's `virtual_geometry` off brings the full
+/// geometry back, drawn classically as before.
+#[test]
+fn the_full_classic_geometry_leaves_the_gpu_and_comes_back() {
+    let Some(harness) = setup() else { return };
+    let (classic_state, _) = scene(None);
+    let mut classic_renderer = harness.renderer(&classic_state);
+    let classic = harness.frames(&mut classic_renderer, 12);
+
+    let (mut state, id) = scene(Some(VirtualGeometryComponent::default()));
+    let mut renderer = harness.renderer(&state);
+    installed_plugins::meshes_plugin::meshes_component::host_part::set_virtual_geometry_settings(
+        &mut renderer,
+        Some(vg_settings(VirtualGeometryMode::Auto)),
+    );
+    // The first frames attach the scene's GPU mirror and upload the mesh.
+    harness.frames(&mut renderer, 2);
+    let mesh = dense_mesh_entity(&state);
+    let content = state
+        .scene
+        .world()
+        .get::<StaticMeshComponent>(mesh)
+        .unwrap()
+        .geometry_key
+        .0;
+    let full_bytes = resident_bytes(&state, content);
+    assert!(full_bytes > 0, "the full geometry starts on the GPU");
+
+    harness.until_ready(&mut renderer);
+    // The fallback is cut on a worker, then swapped in.
+    let start = Instant::now();
+    while state
+        .scene
+        .world()
+        .get::<StaticMeshComponent>(mesh)
+        .unwrap()
+        .full_geometry
+        .is_none()
+    {
+        assert!(
+            start.elapsed() < Duration::from_secs(120),
+            "the fallback was never swapped in"
+        );
+        harness.frames(&mut renderer, 2);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let active = harness.frames(&mut renderer, 12);
+    let (fallback_key, fallback_vertices) = {
+        let world = state.scene.world();
+        let component = world.get::<StaticMeshComponent>(mesh).unwrap();
+        assert_eq!(component.source_key().0, content);
+        (component.geometry_key.0, component.vertices.len())
+    };
+    assert_ne!(fallback_key, content);
+    let fallback_bytes = resident_bytes(&state, fallback_key);
+    println!(
+        "full geometry {full_bytes} bytes, fallback {fallback_bytes} bytes ({fallback_vertices} vertices)"
+    );
+    assert_eq!(
+        resident_bytes(&state, content),
+        0,
+        "the full classic geometry is still on the GPU"
+    );
+    // What the bound saves depends on the cluster DAG; it is always less.
+    assert!(fallback_bytes > 0 && fallback_bytes < full_bytes);
+
+    // What the Memory Explorer shows for the asset.
+    let runtime = installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(&renderer)
+        .expect("the viewport renderer is built")
+        .clone();
+    let memory = runtime.asset_memory();
+    let row = memory
+        .iter()
+        .find(|row| row.content == [content as u64, (content >> 64) as u64])
+        .expect("the asset's memory row");
+    println!("memory row: {row:?}");
+    assert_eq!(row.report.classic_bytes, 0);
+    assert_eq!(row.report.fallback_bytes, fallback_bytes);
+    assert!(row.page_bytes > 0);
+
+    // Still the cluster render, not the fallback's.
+    let d = active.difference(&classic);
+    println!("VG active (fallback resident) vs classic: {d:?}");
+    assert!(
+        d.color_pixels * 100 <= d.covered * 3 && d.depth_texels * 100 <= d.covered * 5,
+        "{d:?}"
+    );
+
+    // The instance stops using virtual geometry: its full geometry is back.
+    assert!(
+        execute_command(
+            &mut state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "StaticMeshComponent".into(),
+                component_index: 0,
+                prop_name: "virtual_geometry".into(),
+                value: Box::new(false),
+            },
+        )
+        .changed,
+        "the virtual_geometry edit was refused"
+    );
+    let off = harness.frames(&mut renderer, 16);
+    {
+        let world = state.scene.world();
+        let component = world.get::<StaticMeshComponent>(mesh).unwrap();
+        assert_eq!(component.geometry_key.0, content);
+        assert!(component.full_geometry.is_none());
+    }
+    assert_eq!(resident_bytes(&state, content), full_bytes);
+    let o = off.difference(&classic);
+    println!("instance VG off vs classic: {o:?}");
+    assert!(
+        o.color_pixels * 200 <= o.covered && o.depth_texels * 200 <= o.covered,
+        "{o:?}"
+    );
 }
