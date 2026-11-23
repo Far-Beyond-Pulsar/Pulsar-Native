@@ -10,6 +10,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `ARCHITECTURE.md` | Human-oriented tour: layers, plugin model, startup, scene data, one traced editor action |
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
 | `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
+| `.agents/BUILD_LESSONS.md` | Why these builds went wrong and what not to do: per-image statics, feature unification and the workspace hack, build-script environment leaks, floating git dependencies, hash-named libraries, per-platform linking; the diagnostics that worked. Read before changing linking, features or a CI build |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend (no subsystem registry), EngineContext |
 | `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
