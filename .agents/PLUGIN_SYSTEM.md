@@ -387,7 +387,7 @@ A class's lifecycle is a registration of its own, never reflected methods:
 `ClassSpec::actor` makes `Components::class` add an `ActorRegistration`
 (category `component.lifecycle`, origin the plugin root), gated with the class
 (`class_enabled`: a disabled plugin's table is not handed out or driven) and
-carried across plugin libraries by the world runtime (`ABI_VERSION` 6, the
+carried across plugin libraries by the world runtime (`ABI_VERSION` 7, the
 fingerprint covers `ActorRegistration` and `ActorTable`). A class that uses
 `#[register_component_runtime]` gets its table from the macro instead
 (`EngineActor`, link-time, still gated by the class name; the raw `inventory`
