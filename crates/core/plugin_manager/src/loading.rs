@@ -10,8 +10,8 @@
 //! in the workspace. `order_prepared_plugins` puts dependencies first.
 
 use crate::attach::{
-    attach_event_bus, attach_helio, attach_parking_lot, attach_profiler, attach_settings,
-    attach_plugins, attach_world_runtime, read_manifest,
+    attach_engine_state, attach_event_bus, attach_helio, attach_parking_lot, attach_plugins,
+    attach_profiler, attach_settings, attach_world_runtime, read_manifest,
 };
 use crate::{
     dependencies, panel_restorers, LoadedPlugin, PermanentLibrary, PluginManager,
@@ -464,6 +464,22 @@ impl PluginManager {
             ),
             None => tracing::debug!(
                 "Plugin at {:?} predates the shared event bus; its events stay local",
+                path
+            ),
+        }
+
+        // Bind the library's copy of the engine state to the editor's engine context,
+        // so the project path and the engine-wide state answer inside the library: a
+        // component resolves its assets against the project (a mesh's `.mesh` file),
+        // and with none it loads nothing.
+        match attach_engine_state(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host engine context", path),
+            Some(false) => tracing::error!(
+                "Plugin at {:?} refused the host engine context (or there is none yet); its project path stays unset and its components resolve no assets",
+                path
+            ),
+            None => tracing::debug!(
+                "Plugin at {:?} predates the shared engine context; its project path stays unset",
                 path
             ),
         }

@@ -22,6 +22,8 @@ profiling = { workspace = true }
 pulsar_events = { workspace = true }
 # Binds each loaded plugin's settings handles to the host database (#1932).
 pulsar_settings = { workspace = true }
+# The host's engine context, attached to each plugin library (`attach_engine_state`).
+engine_state = { workspace = true }
 parking_lot = { workspace = true }
 # Built-in providers register themselves at link time (`LinkedEditorProvider`).
 inventory = { workspace = true }

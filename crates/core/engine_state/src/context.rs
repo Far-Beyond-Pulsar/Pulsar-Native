@@ -390,9 +390,11 @@ impl EngineContext {
         }
     }
 
-    /// Get global instance
+    /// Get global instance: this process's engine context. In a plugin library it is the
+    /// host's, bound by [`attach_exported`] before the plugin runs any code (the library's
+    /// own copy of this crate never has a context of its own).
     pub fn global() -> Option<&'static Self> {
-        GLOBAL_CONTEXT.get()
+        GLOBAL_CONTEXT.get().or_else(|| HOST_CONTEXT.get().copied())
     }
 }
 
@@ -404,9 +406,159 @@ impl Default for EngineContext {
 
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
 
+/// The host's context, in a plugin library's copy of this crate ([`attach_exported`]). Every plugin
+/// library links its own copy of this crate, whose [`GLOBAL_CONTEXT`] nothing sets; without this
+/// binding the project path, the engine-wide state store and every window the host opened read as
+/// absent inside the library, and a component that resolves its assets against the project (a
+/// mesh's `.mesh` file) loads nothing.
+static HOST_CONTEXT: OnceLock<&'static EngineContext> = OnceLock::new();
+
+/// The entry point a plugin library exports for [`attach_exported`]
+/// ([`export_engine_state_attach!`](crate::export_engine_state_attach), which
+/// `plugin_editor_api::export_plugin!` invokes).
+pub const ATTACH_SYMBOL: &str = "_plugin_attach_engine_state";
+
+/// Bumped on any change to [`HostContext`] or to how a copy reads it.
+const ATTACH_VERSION: u64 = 1;
+
+/// The layout this copy of the crate was built with: a library built from other sources of this crate
+/// refuses the host's context instead of reading it as the wrong type.
+const fn layout() -> u64 {
+    let parts = [
+        ATTACH_VERSION as usize,
+        size_of::<HostContext>(),
+        size_of::<EngineContext>(),
+        size_of::<ProjectContext>(),
+        size_of::<WindowContext>(),
+        size_of::<crate::StateStore>(),
+    ];
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut index = 0;
+    while index < parts.len() {
+        hash ^= parts[index] as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        index += 1;
+    }
+    hash
+}
+
+/// What the host hands a plugin library: its engine context, with the layout it was built with.
+#[repr(C)]
+pub struct HostContext {
+    layout: u64,
+    context: *const EngineContext,
+}
+
+// SAFETY: `context` points to the process's global `EngineContext`, a `static` that is never moved or
+// dropped and is only read through shared references (it is `Sync`: its state is behind locks).
+unsafe impl Send for HostContext {}
+// SAFETY: as above.
+unsafe impl Sync for HostContext {}
+
+/// The host's engine context for a plugin library, or null before [`EngineContext::set_global`] ran.
+/// It lives for the process (plugins are never unloaded).
+pub fn export_host_context() -> *const std::ffi::c_void {
+    static EXPORTED: OnceLock<HostContext> = OnceLock::new();
+    let Some(context) = GLOBAL_CONTEXT.get() else {
+        return std::ptr::null();
+    };
+    let exported = EXPORTED.get_or_init(|| HostContext {
+        layout: layout(),
+        context: std::ptr::from_ref(context),
+    });
+    (exported as *const HostContext).cast()
+}
+
+/// Bind this copy of the crate (a plugin library's) to the host's engine context, so
+/// [`EngineContext::global`] answers inside the library. `false` when `host` is null or was built with
+/// another layout.
+///
+/// # Safety
+///
+/// `host` is null or a pointer from the host's [`export_host_context`], alive for the process.
+#[doc(hidden)]
+pub unsafe fn attach_exported(host: *const std::ffi::c_void) -> bool {
+    // SAFETY: the caller's contract.
+    let Some(host) = (unsafe { host.cast::<HostContext>().as_ref() }) else {
+        return false;
+    };
+    if host.layout != layout() || host.context.is_null() {
+        tracing::error!("refused the host's engine context: built with another layout");
+        return false;
+    }
+    // SAFETY: the host's context lives for the process, and the layout matches this copy's.
+    let _ = HOST_CONTEXT.set(unsafe { &*host.context });
+    true
+}
+
+/// Export [`ATTACH_SYMBOL`] from a plugin library, so the editor's plugin manager binds the library's
+/// copy of this crate to the editor's engine context before the plugin runs any code.
+/// `plugin_editor_api::export_plugin!` invokes it.
+#[macro_export]
+macro_rules! export_engine_state_attach {
+    () => {
+        /// Bind this library's copy of `engine_state` to the host's engine context.
+        /// Called by the plugin manager before `_plugin_create`.
+        ///
+        /// # Safety
+        ///
+        /// `host` is the host's exported engine context, alive for the process.
+        #[no_mangle]
+        pub unsafe extern "C" fn _plugin_attach_engine_state(
+            host: *const ::std::ffi::c_void,
+        ) -> bool {
+            // A panic must not unwind across the FFI boundary: the host reads it as a refusal.
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: the caller's contract.
+                unsafe { $crate::context::attach_exported(host) }
+            }))
+            .unwrap_or(false)
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A plugin library's copy of this crate has no context of its own (nothing calls `set_global`
+    /// in it): after the host's is attached, the project path reads as the host's. Without it every
+    /// component that resolves its assets against the project (a mesh) found no project at all.
+    #[test]
+    fn an_attached_host_context_answers_in_a_copy_with_none_of_its_own() {
+        assert!(
+            GLOBAL_CONTEXT.get().is_none(),
+            "this test stands for a copy that has no context of its own"
+        );
+        assert!(EngineContext::global().is_none());
+        assert_eq!(crate::get_project_path(), None);
+
+        // A null pointer and another layout are refused, and bind nothing.
+        // SAFETY: null is allowed by the contract.
+        assert!(!unsafe { attach_exported(std::ptr::null()) });
+        let mut host = EngineContext::new();
+        host.set_project(ProjectContext::new(PathBuf::from("/host/project")));
+        let host: &'static EngineContext = Box::leak(Box::new(host));
+        let wrong = HostContext {
+            layout: layout() ^ 1,
+            context: std::ptr::from_ref(host),
+        };
+        // SAFETY: `wrong` is a live `HostContext`.
+        assert!(!unsafe { attach_exported(std::ptr::from_ref(&wrong).cast()) });
+        assert!(EngineContext::global().is_none());
+
+        let right = HostContext {
+            layout: layout(),
+            context: std::ptr::from_ref(host),
+        };
+        // SAFETY: `right` is a live `HostContext` of this copy's layout.
+        assert!(unsafe { attach_exported(std::ptr::from_ref(&right).cast()) });
+        assert!(EngineContext::global().is_some());
+        assert_eq!(
+            crate::get_project_path().as_deref(),
+            Some(PathBuf::from("/host/project").to_string_lossy().as_ref())
+        );
+    }
 
     #[test]
     fn test_window_context_creation() {

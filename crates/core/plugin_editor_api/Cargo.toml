@@ -34,6 +34,8 @@ pulsar_world_registry = { workspace = true }
 profiling = { workspace = true }
 # A plugin library's settings handles bind to the host database (#1932).
 pulsar_settings = { workspace = true }
+# A plugin library's copy of the engine state binds to the host's engine context (the project path).
+engine_state = { workspace = true }
 # `export_plugin_build!` attaches a library's Helio to the host's (`helio_core::runtime`).
 helio-core = { workspace = true }
 # A library's parked threads must be found by the host's unlocks: `export_plugin!` attaches

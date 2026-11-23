@@ -294,7 +294,9 @@ macro_rules! export_plugin {
             match created {
                 Ok(plugin) => plugin,
                 Err(_) => {
-                    $crate::tracing::error!("[Plugin] The plugin panicked while it was being created");
+                    $crate::tracing::error!(
+                        "[Plugin] The plugin panicked while it was being created"
+                    );
                     None
                 }
             }
@@ -379,6 +381,12 @@ macro_rules! export_plugin {
         // `_plugin_create`, so `pulsar_settings::plugin::handle` answers here.
         $crate::pulsar_settings::export_settings_attach!();
 
+        // Bind the library's copy of `engine_state` to the editor's engine context:
+        // `_plugin_attach_engine_state`, called by the plugin manager before
+        // `_plugin_create`, so the project path and the engine-wide state answer here
+        // (a mesh component resolves its `.mesh` file against the project).
+        $crate::engine_state::export_engine_state_attach!();
+
         /// Get the plugin's version information. It builds a constant and
         /// cannot panic, so unlike the other entry points it needs no
         /// `catch_unwind`.
@@ -395,7 +403,9 @@ macro_rules! export_plugin {
             // theme it had.
             let initialized = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if theme_ptr.is_null() {
-                    $crate::tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
+                    $crate::tracing::error!(
+                        "[Plugin] ERROR: Received null theme pointer in init_globals!"
+                    );
                     return;
                 }
 
@@ -404,7 +414,9 @@ macro_rules! export_plugin {
                 }
             }));
             if initialized.is_err() {
-                $crate::tracing::error!("[Plugin] The plugin panicked while initializing its globals");
+                $crate::tracing::error!(
+                    "[Plugin] The plugin panicked while initializing its globals"
+                );
             }
         }
     };

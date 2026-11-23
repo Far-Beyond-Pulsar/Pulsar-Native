@@ -584,18 +584,33 @@ mod tests {
         let root = project.join(".pulsar");
         let old = layer_file(&root, "engine.headless_old/server");
         std::fs::create_dir_all(old.parent().unwrap()).unwrap();
-        std::fs::write(&old, "level = 3
-").unwrap();
-        let owner = pulsar_settings::plugin::owner_of(pulsar_plugins::engine_origin!(), "headless_moved");
+        std::fs::write(
+            &old,
+            "level = 3
+",
+        )
+        .unwrap();
+        let owner =
+            pulsar_settings::plugin::owner_of(pulsar_plugins::engine_origin!(), "headless_moved");
         let table = read_project_layer(&project, &owner).unwrap();
-        assert_eq!(table.get("level").and_then(toml::Value::as_integer), Some(3));
+        assert_eq!(
+            table.get("level").and_then(toml::Value::as_integer),
+            Some(3)
+        );
         // The new file, once there, is what counts.
         let new = layer_file(&root, &owner);
         std::fs::create_dir_all(new.parent().unwrap()).unwrap();
-        std::fs::write(&new, "level = 5
-").unwrap();
+        std::fs::write(
+            &new,
+            "level = 5
+",
+        )
+        .unwrap();
         let table = read_project_layer(&project, &owner).unwrap();
-        assert_eq!(table.get("level").and_then(toml::Value::as_integer), Some(5));
+        assert_eq!(
+            table.get("level").and_then(toml::Value::as_integer),
+            Some(5)
+        );
         let _ = std::fs::remove_dir_all(project);
     }
 }

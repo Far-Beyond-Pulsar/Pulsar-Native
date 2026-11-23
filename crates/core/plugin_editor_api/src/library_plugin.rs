@@ -53,11 +53,11 @@ macro_rules! __link_shared_dylibs {
         #[allow(unused_imports)]
         use $crate::profiling_dylib as _;
         #[allow(unused_imports)]
-        use $crate::ui_dylib as _;
-        #[allow(unused_imports)]
         use $crate::reflection_dylib as _;
         #[allow(unused_imports)]
         use $crate::scenedb_dylib as _;
+        #[allow(unused_imports)]
+        use $crate::ui_dylib as _;
         #[allow(unused_imports)]
         use $crate::wgpui_dylib as _;
     };
