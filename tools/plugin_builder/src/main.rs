@@ -336,11 +336,60 @@ fn install_shared(destination_dir: &Path, shared: &[PathBuf]) -> Result<()> {
         // Cargo places a dylib beside the executable itself (a hard link of the build output):
         // copying a file onto itself fails, and there is nothing to do.
         let in_place = virtual_fs::is_file(&destination)
-            && pulsar_install_layout::hash_file(file)? == pulsar_install_layout::hash_file(&destination)?;
+            && pulsar_install_layout::hash_file(file)?
+                == pulsar_install_layout::hash_file(&destination)?;
         if !in_place {
             virtual_fs::copy(file, &destination)?;
         }
         eprintln!("[plugin_builder] installed {}", name.to_string_lossy());
+        install_hashed_twins(file, destination_dir)?;
+    }
+    Ok(())
+}
+
+/// Cargo reports a shared library under its plain name (`release/scenedb_dylib.dll`), but a plugin library links
+/// against the file it was linked with: for a library from a git dependency (SceneDB's) that is
+/// `deps/scenedb_dylib-<build hash>.dll`, a name the loader looks for and the plain copy does not answer to. Every file
+/// in `deps` of that name plus a hash and the same content as `file` is installed beside it too.
+fn install_hashed_twins(file: &Path, destination_dir: &Path) -> Result<()> {
+    let (Some(stem), Some(extension), Some(dir)) = (
+        file.file_stem().and_then(|s| s.to_str()),
+        file.extension().and_then(|e| e.to_str()),
+        file.parent(),
+    ) else {
+        return Ok(());
+    };
+    let deps = dir.join("deps");
+    let Ok(entries) = virtual_fs::list_dir(&deps) else {
+        return Ok(());
+    };
+    let wanted = pulsar_install_layout::hash_file(file)?;
+    for entry in entries {
+        let Some(hash) = entry
+            .name
+            .strip_prefix(&format!("{stem}-"))
+            .and_then(|rest| rest.strip_suffix(&format!(".{extension}")))
+        else {
+            continue;
+        };
+        let is_build_hash = hash.len() == 16 && hash.bytes().all(|b| b.is_ascii_hexdigit());
+        if !is_build_hash {
+            continue;
+        }
+        let twin = deps.join(&entry.name);
+        if pulsar_install_layout::hash_file(&twin)? != wanted {
+            continue;
+        }
+        let destination = destination_dir.join(&entry.name);
+        let in_place = virtual_fs::is_file(&destination)
+            && pulsar_install_layout::hash_file(&destination)? == wanted;
+        if !in_place {
+            virtual_fs::copy(&twin, &destination)?;
+        }
+        eprintln!(
+            "[plugin_builder] installed {} (the name plugin libraries import)",
+            entry.name
+        );
     }
     Ok(())
 }
@@ -473,7 +522,10 @@ fn run() -> Result<()> {
     // The shared libraries go beside the editor executable (the loader looks in the application
     // directory), which is not the install folder when `--out` or `PULSAR_INSTALL_DIR` points
     // elsewhere (a checkout whose libraries live in the repository root).
-    install_shared(editor_dir.as_deref().unwrap_or(layout.root()), &output.shared)?;
+    install_shared(
+        editor_dir.as_deref().unwrap_or(layout.root()),
+        &output.shared,
+    )?;
     verify(&layout, &to_build)?;
     eprintln!(
         "[plugin_builder] {} plugin librar{} ready in {}",
