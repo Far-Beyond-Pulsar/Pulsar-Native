@@ -89,16 +89,18 @@ const ATTACH_VERSION: usize = 1;
 /// What the host hands a library: the state and a check that both copies
 /// were built from the same sources.
 pub struct HostHandle {
-    layout: usize,
+    layout: u64,
     shared: &'static Shared,
 }
 
-fn layout() -> usize {
-    ATTACH_VERSION
-        ^ (core::mem::size_of::<Shared>() << 8)
-        ^ (core::mem::size_of::<HashTable>() << 20)
-        ^ (core::mem::size_of::<Bucket>() << 36)
-        ^ (core::mem::size_of::<ThreadData>() << 48)
+/// A fingerprint of the layout of what the two copies share. 64 bits on every target: the shifts below
+/// overflow a 32-bit `usize`.
+fn layout() -> u64 {
+    ATTACH_VERSION as u64
+        ^ ((core::mem::size_of::<Shared>() as u64) << 8)
+        ^ ((core::mem::size_of::<HashTable>() as u64) << 20)
+        ^ ((core::mem::size_of::<Bucket>() as u64) << 36)
+        ^ ((core::mem::size_of::<ThreadData>() as u64) << 48)
 }
 
 /// The host's state, for [`attach`]: leak the box, a library keeps it for
