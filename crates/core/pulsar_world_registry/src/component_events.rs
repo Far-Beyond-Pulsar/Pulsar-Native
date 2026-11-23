@@ -261,7 +261,10 @@ inventory::collect!(ComponentEventSourceRegistration);
 pub fn component_event_sources(
     class_name: &str,
 ) -> impl Iterator<Item = &'static ComponentEventSourceRegistration> + '_ {
-    inventory::iter::<ComponentEventSourceRegistration>
-        .into_iter()
+    // Through the runtime, so a plugin library's classes (whose
+    // `#[bp_event_source]` submissions sit in the library's copy) count.
+    crate::runtime::event_sources()
+        .iter()
+        .copied()
         .filter(move |source| source.class_name == class_name)
 }

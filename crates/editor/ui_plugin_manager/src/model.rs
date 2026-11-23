@@ -190,7 +190,11 @@ impl Extensions {
             .iter()
             .map(|plugin| plugin_entry(catalog, plugin))
             .collect();
-        entries.extend(catalog.libraries.iter().map(library_entry));
+        // A library is the loaded form of a plugin whose descriptor id it
+        // carries (one library per plugin): its row folds into the plugin's.
+        // One with no descriptor of that id (a bundle, a plugin of its own
+        // metadata) keeps a row of its own.
+        merge_libraries(&mut entries, catalog.libraries.iter().map(library_entry));
         entries.push(Entry {
             id: "engine".into(),
             name: "Pulsar engine".into(),
@@ -370,6 +374,59 @@ fn names(
         | P::UndeclaredRead { plugin, .. }
         | P::UndeclaredTraitUse { plugin, .. }
         | P::UndeclaredTraitDefinition { plugin, .. } => *plugin == descriptor.id,
+    }
+}
+
+/// Add the library entries to `entries`: each folds into the plugin entry of
+/// its id, or is a row of its own when no plugin has it.
+fn merge_libraries(entries: &mut Vec<Entry>, libraries: impl IntoIterator<Item = Entry>) {
+    for library in libraries {
+        match entries
+            .iter_mut()
+            .find(|entry| entry.kind != EntryKind::Library && entry.id == library.id)
+        {
+            Some(plugin) => fold_library(plugin, library),
+            None => entries.push(library),
+        }
+    }
+}
+
+/// Fold the loaded library of `plugin` into its entry: what the library's
+/// editor plugin brings joins the plugin's contributions, its file is part
+/// of the entry's source, and the plugins it depends on or that depend on it
+/// join the requirements and `required_by` (without repeating a row).
+fn fold_library(plugin: &mut Entry, library: Entry) {
+    for group in library.groups {
+        match plugin
+            .groups
+            .iter_mut()
+            .find(|existing| existing.category == group.category)
+        {
+            Some(existing) => {
+                for item in group.items {
+                    if !existing.items.iter().any(|have| have.id == item.id) {
+                        existing.items.push(item);
+                    }
+                }
+            }
+            None => plugin.groups.push(group),
+        }
+    }
+    plugin.groups.sort_by(|a, b| a.category.cmp(&b.category));
+    plugin.source = format!("{} · {}", plugin.source, library.source);
+    for row in library.requirements {
+        if !plugin
+            .requirements
+            .iter()
+            .any(|have| have.contract == row.contract)
+        {
+            plugin.requirements.push(row);
+        }
+    }
+    for id in library.required_by {
+        if !plugin.required_by.contains(&id) {
+            plugin.required_by.push(id);
+        }
     }
 }
 
@@ -634,6 +691,61 @@ mod tests {
             model.entries[model.visible(Filter::All, "", Sort::Contributions)[0]].id,
             "p.fog"
         );
+    }
+
+    /// One library per plugin: the library's row folds into its plugin's (so
+    /// the list shows each plugin once), and a library no descriptor owns
+    /// keeps a row of its own.
+    #[test]
+    fn a_library_folds_into_the_plugin_of_its_id() {
+        let resolution = pulsar_plugins::resolve(installed(), &ProjectPlugins::default());
+        let catalog = CatalogSnapshot::from_parts(installed(), contributions(), Some(resolution));
+        let mut entries = Extensions::from_snapshot(&catalog).entries;
+        let before = entries.len();
+        let library = |id: &str, editor: &str| Entry {
+            id: id.into(),
+            name: "lib".into(),
+            description: String::new(),
+            kind: EntryKind::Library,
+            enabled: true,
+            source: format!("plugins/editor/{id}.dll"),
+            groups: vec![Group {
+                category: "editor.editor".into(),
+                title: "Editors".into(),
+                items: vec![Item {
+                    id: editor.into(),
+                    label: editor.into(),
+                    details: Vec::new(),
+                }],
+            }],
+            provides: Vec::new(),
+            requirements: Vec::new(),
+            required_by: vec!["p.viewer".into()],
+            problems: Vec::new(),
+        };
+        merge_libraries(
+            &mut entries,
+            [library("p.fog", "Fog Editor"), library("bundle.x", "X")],
+        );
+        // The fog library folded in; the unowned one is a row of its own.
+        assert_eq!(entries.len(), before + 1);
+        assert_eq!(
+            entries.iter().filter(|e| e.id == "p.fog").count(),
+            1,
+            "each plugin is listed once"
+        );
+        let fog = entries.iter().find(|e| e.id == "p.fog").unwrap();
+        assert_eq!(fog.kind, EntryKind::Plugin);
+        assert!(fog.source.contains("fog_plugin") && fog.source.contains("p.fog.dll"));
+        assert!(fog
+            .groups
+            .iter()
+            .any(|g| g.category == "editor.editor" && g.items[0].label == "Fog Editor"));
+        assert_eq!(fog.required_by, ["p.viewer"]);
+        // Its own contributions are still there.
+        assert!(fog.groups.iter().any(|g| g.category == "render.feature"));
+        let bundle = entries.iter().find(|e| e.id == "bundle.x").unwrap();
+        assert_eq!(bundle.kind, EntryKind::Library);
     }
 
     /// A disabled provider: its consumer is disabled too, and both entries

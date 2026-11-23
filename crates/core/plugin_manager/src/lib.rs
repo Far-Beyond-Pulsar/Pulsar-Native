@@ -100,7 +100,8 @@ pub mod tool_bridge;
 /// dependency (see [`PluginEditorProvider`]).
 pub use ::inventory;
 pub use attach::{
-    attach_event_bus, attach_helio, attach_profiler, attach_world_runtime, read_manifest,
+    attach_event_bus, attach_helio, attach_plugins, attach_profiler, attach_world_runtime,
+    read_manifest,
 };
 pub use builtin::{
     BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, PluginEditorProvider,

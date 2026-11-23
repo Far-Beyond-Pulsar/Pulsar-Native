@@ -76,25 +76,26 @@ impl pulsar_plugins::Contribution for AssetLoaderRegistration {
 
 pulsar_plugins::registration!(AssetLoaderRegistration);
 
-/// Install every linked asset kind's loader with SceneDB. Once per
-/// process; whether a kind's plugin is enabled is checked on every load, so
-/// switching projects needs nothing here.
+/// Install every asset kind's loader with SceneDB: each registration once
+/// (by origin and kind), including those a plugin library brings after an
+/// earlier call (`pulsar_plugins::Handled`: a `Once` would have been spent
+/// before the library was imported, and a library's own copy of this crate
+/// has its own). Whether a kind's plugin is enabled is checked on every load,
+/// so switching projects needs nothing here.
 pub fn install_asset_loaders() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        for registration in pulsar_plugins::all_registered::<AssetLoaderRegistration>() {
-            let (origin, load) = (registration.origin, registration.load);
-            pulsar_scenedb::register_loader(registration.kind, move |source| {
-                if !pulsar_plugins::origin_enabled(origin) {
-                    return Err(format!("the plugin of '{origin}' is not enabled"));
-                }
-                load(source)
-            });
-            if let Some(size) = registration.size {
-                pulsar_scenedb::register_payload_size(registration.kind, size);
+    static HANDLED: pulsar_plugins::Handled = pulsar_plugins::Handled::new();
+    for registration in HANDLED.take_new_ungated::<AssetLoaderRegistration>() {
+        let (origin, load) = (registration.origin, registration.load);
+        pulsar_scenedb::register_loader(registration.kind, move |source| {
+            if !pulsar_plugins::origin_enabled(origin) {
+                return Err(format!("the plugin of '{origin}' is not enabled"));
             }
+            load(source)
+        });
+        if let Some(size) = registration.size {
+            pulsar_scenedb::register_payload_size(registration.kind, size);
         }
-    });
+    }
 }
 
 /// The id of the asset of `kind` at `source`, declared so a world can load

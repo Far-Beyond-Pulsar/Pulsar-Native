@@ -283,11 +283,15 @@ pulsar_plugins::registration!(TextureBindingRegistration);
 
 /// Registers the texture asset kind with SceneDB: its loader and payload
 /// size, and how the registered components take in a loaded image
-/// ([`TextureBindingRegistration`]). Idempotent; done on the first
-/// [`texture_asset_id`].
+/// ([`TextureBindingRegistration`]). Idempotent, and incremental: each
+/// binding runs once, also one a plugin library brings after an earlier call
+/// (`pulsar_plugins::Handled`). Done on each [`texture_asset_id`].
 pub fn register_texture_assets() {
-    static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(|| {
+    static LOADER: std::sync::Once = std::sync::Once::new();
+    static HANDLED: pulsar_plugins::Handled = pulsar_plugins::Handled::new();
+    // The loader and size are this crate's own and need no registration
+    // from anywhere else: once per copy is right (SceneDB replaces).
+    LOADER.call_once(|| {
         pulsar_scenedb::register_tiered_loader(TEXTURE_ASSET_KIND, load_texture_tier);
         pulsar_scenedb::register_payload_size(TEXTURE_ASSET_KIND, |payload| {
             // The texels are budgeted by SceneDB's residency cache; the
@@ -296,10 +300,10 @@ pub fn register_texture_assets() {
                 .downcast_ref::<LoadedTexture>()
                 .map_or(0, |_| std::mem::size_of::<LoadedTexture>())
         });
-        for registration in pulsar_plugins::registered::<TextureBindingRegistration>() {
-            (registration.register)();
-        }
     });
+    for registration in HANDLED.take_new::<TextureBindingRegistration>() {
+        (registration.register)();
+    }
 }
 
 /// The source string of the image at `path` (project-relative, or

@@ -11,7 +11,7 @@
 
 use crate::attach::{
     attach_event_bus, attach_helio, attach_parking_lot, attach_profiler, attach_settings,
-    attach_world_runtime, read_manifest,
+    attach_plugins, attach_world_runtime, read_manifest,
 };
 use crate::{
     dependencies, panel_restorers, LoadedPlugin, PermanentLibrary, PluginManager,
@@ -396,6 +396,19 @@ impl PluginManager {
                 })
             }
             None => tracing::debug!("Plugin at {:?} predates the shared parking lot", path),
+        }
+
+        // Give the library's copy of `pulsar_plugins` the host's view of the
+        // plugins: what its code (helio_component, linked into it) reads as
+        // registered, installed or enabled must be every plugin's, not only
+        // the library's own. A library without the entry point keeps its own.
+        match attach_plugins(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host's plugin view", path),
+            Some(false) => tracing::error!(
+                "Plugin at {:?} refused the host's plugin view; its registry reads see only its own plugin",
+                path
+            ),
+            None => {}
         }
 
         // Attach the plugin's world crates to the editor's world runtimes
