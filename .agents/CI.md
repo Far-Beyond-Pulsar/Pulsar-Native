@@ -26,7 +26,7 @@ issues before this check can pass.
 The shared UI, reflection, profiling, SceneDB and renderer libraries (`.agents/PLUGIN_SYSTEM.md`, "Shared
 libraries") are released from the repository that owns each. Each repository's `sdk-release.yml` is a short
 caller of one reusable workflow here, `.github/workflows/library-release.yml`: on a version bump of its `*_dylib`
-crate it builds six platforms and publishes, under the tag `shared-v<version>` (its own series, so the
+crate it builds five platforms (Linux x86_64, Windows x86_64 and arm64, macOS x86_64 and arm64; wgpu's DX12 shader compiler has no 32-bit Windows build) and publishes, under the tag `shared-v<version>` (its own series, so the
 repository's other releases never count as it):
 
 - the library and, on Windows, its import library;

@@ -119,7 +119,6 @@ jobs:
         include:
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  platform: linux-x86_64,   prefix: lib, ext: so }
           - { os: windows-latest, target: x86_64-pc-windows-msvc,    platform: windows-x86_64, prefix: "",  ext: dll }
-          - { os: windows-latest, target: i686-pc-windows-msvc,      platform: windows-i686,   prefix: "",  ext: dll }
           - { os: windows-latest, target: aarch64-pc-windows-msvc,   platform: windows-arm64,  prefix: "",  ext: dll }
           - { os: macos-latest,   target: x86_64-apple-darwin,       platform: macos-x86_64,   prefix: lib, ext: dylib }
           - { os: macos-latest,   target: aarch64-apple-darwin,      platform: macos-arm64,    prefix: lib, ext: dylib }
