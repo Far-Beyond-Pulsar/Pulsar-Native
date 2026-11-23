@@ -161,24 +161,25 @@ fn generate(root: &Path) -> Result<String> {
     let roots = plugin_roots(root)?;
     let libraries: Vec<String> = SHARED_LIBRARIES.iter().map(|p| p.to_string()).collect();
 
-    // The crates inside the shared libraries. One `cargo tree` per library: the libraries live in
-    // nested workspaces (their owner repositories), and cargo cannot select packages of several of
-    // them in one command.
-    let mut inside: BTreeSet<Package> = BTreeSet::new();
-    let mut closure_args: Vec<String> = Vec::new();
-    for library in &libraries {
-        let args = vec!["-p".to_owned(), library.clone()];
-        for (package, _) in cargo_tree(root, "all", &args)? {
-            if !libraries.contains(&package.name) {
-                inside.insert(package);
+    // The crates inside the shared libraries, per platform. `sdk_roots` depends on all six libraries, so one
+    // `cargo tree` per platform gives them (the libraries live in nested workspaces and cargo cannot select
+    // packages of several of them in one command, which is what that package is for). Which platform a crate
+    // belongs to is decided here, from the libraries' own graph: the engine's graph lists crates a platform does
+    // not build (a Windows-only crate reached through an optional dependency), and pinning one of those would
+    // compile it where it cannot build.
+    let skip: Vec<&str> = libraries.iter().map(String::as_str).chain(["sdk_roots", "pulsar_workspace_hack"]).collect();
+    let mut inside: BTreeMap<&str, BTreeSet<Package>> = BTreeMap::new();
+    for target in TARGETS {
+        let packages = inside.entry(target).or_default();
+        for (package, _) in cargo_tree(root, target, &["-p".to_owned(), "sdk_roots".to_owned()])? {
+            if !skip.contains(&package.name.as_str()) {
+                packages.insert(package);
             }
         }
-        closure_args.extend(args);
     }
 
     // Their features in the build every consumer is part of: the editor, every plugin and the libraries.
-    let mut union_args = closure_args.clone();
-    union_args.extend(["-p".into(), "pulsar_engine".into()]);
+    let mut union_args: Vec<String> = vec!["-p".into(), "sdk_roots".into(), "-p".into(), "pulsar_engine".into()];
     for root_crate in &roots {
         union_args.extend(["-p".into(), root_crate.clone()]);
     }
@@ -190,7 +191,7 @@ fn generate(root: &Path) -> Result<String> {
     for target in TARGETS {
         let pinned = per_target.entry(target).or_default();
         for (package, enabled) in cargo_tree(root, target, &union_args)? {
-            if inside.contains(&package) {
+            if inside[target].contains(&package) {
                 pinned.entry(package).or_default().extend(enabled);
             }
         }

@@ -10,13 +10,10 @@ description = "Pins one feature set for every crate inside the shared libraries,
 adler2 = { version = "=2.0.1", default-features = false, features = [] }
 aho-corasick = { version = "=1.1.5", default-features = false, features = ["default", "perf-literal", "std"] }
 aligned-vec = { version = "=0.6.4", default-features = false, features = ["default", "std"] }
-alloc-no-stdlib = { version = "=2.0.4", default-features = false, features = [] }
-alloc-stdlib = { version = "=0.2.4", default-features = false, features = [] }
 allocator-api2 = { version = "=0.2.21", default-features = false, features = ["alloc", "default", "std"] }
 annotate-snippets = { version = "=0.12.5", default-features = false, features = ["default"] }
 anstyle = { version = "=1.0.14", default-features = false, features = ["default", "std"] }
 anyhow = { version = "=1.0.104", default-features = false, features = ["default", "std"] }
-approx = { version = "=0.5.1", default-features = false, features = ["std"] }
 ar_archive_writer = { version = "=0.5.3", default-features = false, features = [] }
 arboard = { version = "=3.6.1", default-features = false, features = ["core-graphics", "default", "image", "image-data", "wayland-data-control", "windows-sys", "wl-clipboard-rs"] }
 arc-swap = { version = "=1.9.2", default-features = false, features = [] }
@@ -36,19 +33,16 @@ async-net = { version = "=2.0.0", default-features = false, features = [] }
 async-process = { version = "=2.5.0", default-features = false, features = [] }
 async-std = { version = "=1.13.2", default-features = false, features = ["alloc", "async-channel", "async-global-executor", "async-io", "async-lock", "async-process", "crossbeam-utils", "default", "futures-channel", "futures-core", "futures-io", "futures-lite", "gloo-timers", "kv-log-macro", "log", "memchr", "once_cell", "pin-project-lite", "pin-utils", "slab", "std", "unstable", "wasm-bindgen-futures"] }
 async-task = { version = "=4.7.1", default-features = false, features = ["default", "std"] }
-async-trait = { version = "=0.1.92", default-features = false, features = [] }
 async_zip = { version = "=0.0.17", default-features = false, features = ["async-compression", "deflate", "deflate64"] }
 atomic = { version = "=0.5.3", default-features = false, features = ["default", "fallback"] }
 atomic-waker = { version = "=1.1.2", default-features = false, features = [] }
 autocfg = { version = "=1.5.1", default-features = false, features = [] }
-backtrace = { version = "=0.3.76", default-features = false, features = ["default", "std"] }
 base62 = { version = "=2.2.4", default-features = false, features = ["alloc", "default"] }
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc", "default", "std"] }
 bincode = { version = "=2.0.1", default-features = false, features = ["alloc", "bincode_derive", "default", "derive", "serde", "std"] }
 bincode_derive = { version = "=2.0.1", default-features = false, features = [] }
 bit-set = { version = "=0.10.0", default-features = false, features = [] }
 bit-vec = { version = "=0.9.1", default-features = false, features = [] }
-bit_field = { version = "=0.10.3", default-features = false, features = [] }
 bitflags-1_3_2 = { package = "bitflags", version = "=1.3.2", default-features = false, features = ["default"] }
 bitflags-2_13_1 = { package = "bitflags", version = "=2.13.1", default-features = false, features = ["serde", "serde_core", "std"] }
 block-buffer-0_10_4 = { package = "block-buffer", version = "=0.10.4", default-features = false, features = [] }
@@ -61,9 +55,6 @@ boa_interner = { version = "=0.21.1", default-features = false, features = [] }
 boa_macros = { version = "=0.21.1", default-features = false, features = [] }
 boa_parser = { version = "=0.21.1", default-features = false, features = [] }
 boa_string = { version = "=0.21.1", default-features = false, features = [] }
-brotli = { version = "=8.0.4", default-features = false, features = ["alloc-stdlib", "default", "std"] }
-brotli-decompressor = { version = "=5.0.3", default-features = false, features = ["alloc-stdlib", "std"] }
-bumpalo = { version = "=3.20.3", default-features = false, features = ["default"] }
 bytemuck = { version = "=1.25.2", default-features = false, features = ["aarch64_simd", "bytemuck_derive", "derive", "extern_crate_alloc", "min_const_generics", "wasm_simd"] }
 bytemuck_derive = { version = "=1.12.0", default-features = false, features = [] }
 byteorder = { version = "=1.5.0", default-features = false, features = ["default", "std"] }
@@ -76,7 +67,6 @@ chacha20 = { version = "=0.10.2", default-features = false, features = ["rng"] }
 chrono = { version = "=0.4.45", default-features = false, features = ["alloc", "clock", "default", "iana-time-zone", "js-sys", "now", "oldtime", "serde", "std", "wasm-bindgen", "wasmbind", "winapi", "windows-link"] }
 circular-buffer = { version = "=1.2.1", default-features = false, features = ["alloc", "default", "std"] }
 clipboard-rs = { version = "=0.3.5", default-features = false, features = ["image", "wayland"] }
-cmov = { version = "=0.5.4", default-features = false, features = [] }
 codespan-reporting = { version = "=0.13.1", default-features = false, features = [] }
 color_quant = { version = "=1.1.0", default-features = false, features = [] }
 compression-codecs = { version = "=0.4.38", default-features = false, features = ["brotli", "deflate", "deflate64", "flate2", "gzip", "memchr"] }
@@ -96,12 +86,10 @@ crossbeam-deque = { version = "=0.8.7", default-features = false, features = ["d
 crossbeam-epoch = { version = "=0.9.20", default-features = false, features = ["alloc", "std"] }
 crossbeam-queue = { version = "=0.3.13", default-features = false, features = ["alloc", "default", "std"] }
 crossbeam-utils = { version = "=0.8.22", default-features = false, features = ["default", "std"] }
-crunchy = { version = "=0.2.4", default-features = false, features = ["default", "limit_128"] }
 crypto-common-0_1_6 = { package = "crypto-common", version = "=0.1.6", default-features = false, features = ["std"] }
 crypto-common-0_2_2 = { package = "crypto-common", version = "=0.2.2", default-features = false, features = [] }
 ctor = { version = "=0.6.3", default-features = false, features = ["__no_warn_on_missing_unsafe", "default", "dtor", "proc_macro"] }
 ctor-proc-macro = { version = "=0.0.7", default-features = false, features = ["default"] }
-ctutils = { version = "=0.4.8", default-features = false, features = [] }
 cursor-icon = { version = "=1.2.0", default-features = false, features = ["alloc", "default", "std"] }
 dashmap = { version = "=6.2.1", default-features = false, features = [] }
 data-url = { version = "=0.3.2", default-features = false, features = ["alloc", "default", "std"] }
@@ -141,7 +129,6 @@ etagere = { version = "=0.2.15", default-features = false, features = [] }
 euclid = { version = "=0.22.14", default-features = false, features = ["default", "std"] }
 event-listener-2_5_3 = { package = "event-listener", version = "=2.5.3", default-features = false, features = [] }
 event-listener-5_4_2 = { package = "event-listener", version = "=5.4.2", default-features = false, features = ["default", "parking", "std"] }
-exr = { version = "=1.74.2", default-features = false, features = [] }
 fallible-iterator = { version = "=0.3.0", default-features = false, features = ["alloc", "default"] }
 fallible-streaming-iterator = { version = "=0.1.9", default-features = false, features = [] }
 fast-float2 = { version = "=0.2.4", default-features = false, features = ["default", "std"] }
@@ -151,8 +138,7 @@ fax = { version = "=0.2.7", default-features = false, features = [] }
 fdeflate = { version = "=0.3.7", default-features = false, features = [] }
 filetime = { version = "=0.2.29", default-features = false, features = [] }
 find-msvc-tools = { version = "=0.1.11", default-features = false, features = [] }
-fixedbitset-0_4_2 = { package = "fixedbitset", version = "=0.4.2", default-features = false, features = [] }
-fixedbitset-0_5_7 = { package = "fixedbitset", version = "=0.5.7", default-features = false, features = [] }
+fixedbitset = { version = "=0.5.7", default-features = false, features = [] }
 flate2 = { version = "=1.1.9", default-features = false, features = ["any_c_zlib", "any_impl", "any_zlib", "default", "libz-sys", "miniz_oxide", "rust_backend", "zlib", "zlib-rs"] }
 float-cmp = { version = "=0.9.0", default-features = false, features = ["std"] }
 float-ord = { version = "=0.3.2", default-features = false, features = [] }
@@ -161,7 +147,6 @@ float_next_after = { version = "=1.0.0", default-features = false, features = []
 fluent-uri = { version = "=0.1.4", default-features = false, features = ["default", "std"] }
 flume = { version = "=0.12.0", default-features = false, features = ["async", "default", "eventual-fairness", "fastrand", "futures-core", "futures-sink", "select"] }
 fnv = { version = "=1.0.7", default-features = false, features = ["default", "std"] }
-foldhash-0_1_5 = { package = "foldhash", version = "=0.1.5", default-features = false, features = [] }
 foldhash-0_2_0 = { package = "foldhash", version = "=0.2.0", default-features = false, features = [] }
 font-kit = { version = "=0.14.3", default-features = false, features = ["default", "source"] }
 font-types-0_11_3 = { package = "font-types", version = "=0.11.3", default-features = false, features = ["bytemuck", "std"] }
@@ -185,13 +170,10 @@ getrandom-0_2_17 = { package = "getrandom", version = "=0.2.17", default-feature
 getrandom-0_3_4 = { package = "getrandom", version = "=0.3.4", default-features = false, features = ["std"] }
 getrandom-0_4_3 = { package = "getrandom", version = "=0.4.3", default-features = false, features = ["std", "sys_rng"] }
 gif = { version = "=0.14.2", default-features = false, features = ["color_quant", "default", "raii_no_panic", "std"] }
-gl_generator = { version = "=0.14.0", default-features = false, features = [] }
 glam = { version = "=0.33.5", default-features = false, features = ["all-types", "approx", "bytemuck", "default", "f64", "float-types", "i16", "i32", "i64", "i8", "integer-types", "isize", "nostd-libm", "serde", "size-types", "std", "u16", "u32", "u64", "u8", "usize"] }
 glob = { version = "=0.3.4", default-features = false, features = [] }
 globset = { version = "=0.4.20", default-features = false, features = ["default", "log"] }
 globwalk = { version = "=0.8.1", default-features = false, features = [] }
-glow = { version = "=0.17.0", default-features = false, features = [] }
-glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
 gpu-allocator = { version = "=0.28.0", default-features = false, features = ["d3d12", "hashbrown", "vulkan"] }
 gpui-ce = { path = "../../crates/ui/wgpui", default-features = false, features = ["default", "flamegraph", "font-kit", "inspector"] }
 gpui-macros = { version = "=0.2.2", default-features = false, features = ["inspector"] }
@@ -209,7 +191,6 @@ h2 = { version = "=0.4.19", default-features = false, features = [] }
 half = { version = "=2.7.1", default-features = false, features = ["alloc", "bytemuck", "default", "num-traits", "std"] }
 harfrust = { version = "=0.5.2", default-features = false, features = ["std"] }
 hashbrown-0_14_5 = { package = "hashbrown", version = "=0.14.5", default-features = false, features = ["ahash", "inline-more", "raw"] }
-hashbrown-0_15_5 = { package = "hashbrown", version = "=0.15.5", default-features = false, features = ["allocator-api2", "default", "default-hasher", "equivalent", "inline-more", "raw-entry"] }
 hashbrown-0_16_1 = { package = "hashbrown", version = "=0.16.1", default-features = false, features = ["allocator-api2", "default", "default-hasher", "equivalent", "inline-more", "raw-entry"] }
 hashbrown-0_17_1 = { package = "hashbrown", version = "=0.17.1", default-features = false, features = ["allocator-api2", "default-hasher", "inline-more"] }
 hashlink = { version = "=0.9.1", default-features = false, features = [] }
@@ -275,17 +256,13 @@ itertools-0_14_0 = { package = "itertools", version = "=0.14.0", default-feature
 itoa = { version = "=1.0.18", default-features = false, features = [] }
 jobserver = { version = "=0.1.35", default-features = false, features = [] }
 json5 = { version = "=1.3.1", default-features = false, features = [] }
-khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
-khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 kurbo = { version = "=0.13.1", default-features = false, features = ["default", "std"] }
 kv-log-macro = { version = "=1.0.7", default-features = false, features = [] }
 lazy_static = { version = "=1.5.0", default-features = false, features = [] }
-lebe = { version = "=0.5.3", default-features = false, features = [] }
 libloading-0_8_9 = { package = "libloading", version = "=0.8.9", default-features = false, features = [] }
 libloading-0_9_0 = { package = "libloading", version = "=0.9.0", default-features = false, features = ["default", "std"] }
 libm = { version = "=0.2.16", default-features = false, features = ["arch", "default"] }
 libsqlite3-sys = { version = "=0.30.1", default-features = false, features = ["bundled", "bundled_bindings", "cc", "default", "min_sqlite_version_3_14_0", "pkg-config", "vcpkg"] }
-libz-sys = { version = "=1.1.33", default-features = false, features = ["libc"] }
 linebender_resource_handle = { version = "=0.1.1", default-features = false, features = ["std"] }
 linkme = { version = "=0.3.37", default-features = false, features = [] }
 linkme-impl = { version = "=0.3.37", default-features = false, features = [] }
@@ -323,14 +300,13 @@ notify-6_1_1 = { package = "notify", version = "=6.1.1", default-features = fals
 notify-8_2_0 = { package = "notify", version = "=8.2.0", default-features = false, features = ["default", "fsevent-sys", "kqueue", "macos_fsevent", "macos_kqueue", "mio"] }
 notify-types = { version = "=2.1.0", default-features = false, features = [] }
 num-bigint = { version = "=0.4.8", default-features = false, features = ["default", "serde", "std"] }
-num-complex = { version = "=0.4.6", default-features = false, features = ["bytemuck", "default", "std"] }
 num-conv = { version = "=0.2.2", default-features = false, features = [] }
 num-integer = { version = "=0.1.47", default-features = false, features = ["default", "i128", "std"] }
 num-traits = { version = "=0.2.19", default-features = false, features = ["default", "i128", "libm", "std"] }
 num_cpus = { version = "=1.17.0", default-features = false, features = [] }
 num_enum = { version = "=0.7.6", default-features = false, features = ["default", "std"] }
 num_enum_derive = { version = "=0.7.6", default-features = false, features = ["proc-macro-crate", "std"] }
-object-0_39_1 = { package = "object", version = "=0.39.1", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read", "read_core", "std", "xcoff"] }
+object = { version = "=0.39.1", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read", "read_core", "std", "xcoff"] }
 once_cell = { version = "=1.21.4", default-features = false, features = ["alloc", "default", "race", "std"] }
 open = { version = "=5.4.2", default-features = false, features = [] }
 opener = { version = "=0.8.5", default-features = false, features = ["reveal"] }
@@ -347,15 +323,13 @@ paste = { version = "=1.0.15", default-features = false, features = [] }
 pathfinder_geometry = { version = "=0.5.1", default-features = false, features = [] }
 pathfinder_simd = { version = "=0.5.6", default-features = false, features = [] }
 percent-encoding = { version = "=2.3.2", default-features = false, features = ["alloc", "default", "std"] }
-petgraph-0_6_5 = { package = "petgraph", version = "=0.6.5", default-features = false, features = ["default", "graphmap", "matrix_graph", "stable_graph"] }
 phf-0_11_3 = { package = "phf", version = "=0.11.3", default-features = false, features = ["default", "macros", "phf_macros", "std"] }
 phf-0_13_1 = { package = "phf", version = "=0.13.1", default-features = false, features = ["default", "macros", "phf_macros", "std"] }
 phf_codegen-0_11_3 = { package = "phf_codegen", version = "=0.11.3", default-features = false, features = [] }
 phf_codegen-0_13_1 = { package = "phf_codegen", version = "=0.13.1", default-features = false, features = [] }
 phf_generator-0_11_3 = { package = "phf_generator", version = "=0.11.3", default-features = false, features = [] }
 phf_generator-0_13_1 = { package = "phf_generator", version = "=0.13.1", default-features = false, features = [] }
-phf_macros-0_11_3 = { package = "phf_macros", version = "=0.11.3", default-features = false, features = [] }
-phf_macros-0_13_1 = { package = "phf_macros", version = "=0.13.1", default-features = false, features = [] }
+phf_macros = { version = "=0.13.1", default-features = false, features = [] }
 phf_shared-0_11_3 = { package = "phf_shared", version = "=0.11.3", default-features = false, features = ["default", "std"] }
 phf_shared-0_13_1 = { package = "phf_shared", version = "=0.13.1", default-features = false, features = ["default", "std"] }
 pico-args = { version = "=0.5.0", default-features = false, features = ["default", "eq-separator"] }
@@ -384,8 +358,6 @@ profiling-0_1_0 = { package = "profiling", path = "../../crates/external/pulsar-
 profiling-1_0_18 = { package = "profiling", version = "=1.0.18", default-features = false, features = ["default", "procmacros", "profiling-procmacros"] }
 profiling-procmacros = { version = "=1.0.18", default-features = false, features = [] }
 psm = { version = "=0.1.32", default-features = false, features = [] }
-pulp = { version = "=0.22.3", default-features = false, features = ["default", "relaxed-simd", "std", "x86-v3"] }
-pulp-wasm-simd-flag = { version = "=0.1.1", default-features = false, features = ["relaxed-simd"] }
 pulsar_reflection = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection", default-features = false, features = ["default", "prims-core", "prims-glam", "prims-gpui", "prims-std"] }
 pulsar_reflection_codegen = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen", default-features = false, features = [] }
 pulsar_reflection_derive = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive", default-features = false, features = [] }
@@ -399,19 +371,16 @@ quote = { version = "=1.0.47", default-features = false, features = ["default", 
 rand-0_10_2 = { package = "rand", version = "=0.10.2", default-features = false, features = ["alloc", "default", "std", "std_rng", "sys_rng", "thread_rng"] }
 rand-0_8_8 = { package = "rand", version = "=0.8.8", default-features = false, features = ["alloc", "default", "getrandom", "libc", "rand_chacha", "small_rng", "std", "std_rng"] }
 rand-0_9_5 = { package = "rand", version = "=0.9.5", default-features = false, features = ["alloc", "default", "os_rng", "small_rng", "std", "std_rng", "thread_rng"] }
-rand_chacha-0_3_1 = { package = "rand_chacha", version = "=0.3.1", default-features = false, features = ["std"] }
-rand_chacha-0_9_0 = { package = "rand_chacha", version = "=0.9.0", default-features = false, features = ["std"] }
+rand_chacha = { version = "=0.9.0", default-features = false, features = ["std"] }
 rand_core-0_10_1 = { package = "rand_core", version = "=0.10.1", default-features = false, features = [] }
 rand_core-0_6_4 = { package = "rand_core", version = "=0.6.4", default-features = false, features = ["alloc", "getrandom", "std"] }
 rand_core-0_9_5 = { package = "rand_core", version = "=0.9.5", default-features = false, features = ["os_rng", "std"] }
-range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rangemap = { version = "=1.8.0", default-features = false, features = [] }
 raw-window-handle = { version = "=0.6.2", default-features = false, features = ["alloc", "std"] }
 rayon = { version = "=1.12.0", default-features = false, features = [] }
 rayon-core = { version = "=1.13.0", default-features = false, features = [] }
 read-fonts-0_37_0 = { package = "read-fonts", version = "=0.37.0", default-features = false, features = ["libm", "std"] }
 read-fonts-0_41_0 = { package = "read-fonts", version = "=0.41.0", default-features = false, features = ["std"] }
-reborrow = { version = "=0.5.5", default-features = false, features = ["default"] }
 ref-cast = { version = "=1.0.27", default-features = false, features = [] }
 ref-cast-impl = { version = "=1.0.27", default-features = false, features = [] }
 regex = { version = "=1.13.1", default-features = false, features = ["default", "perf", "perf-backtrack", "perf-cache", "perf-dfa", "perf-inline", "perf-literal", "perf-onepass", "std", "unicode", "unicode-age", "unicode-bool", "unicode-case", "unicode-gencat", "unicode-perl", "unicode-script", "unicode-segment"] }
@@ -433,7 +402,6 @@ rust-i18n = { version = "=4.2.1", default-features = false, features = [] }
 rust-i18n-macro = { version = "=4.2.1", default-features = false, features = [] }
 rust-i18n-support = { version = "=4.2.1", default-features = false, features = ["codegen"] }
 rust_decimal = { version = "=1.42.1", default-features = false, features = ["default", "serde", "std"] }
-rustc-demangle = { version = "=0.1.28", default-features = false, features = [] }
 rustc-hash-1_1_0 = { package = "rustc-hash", version = "=1.1.0", default-features = false, features = ["default", "std"] }
 rustc-hash-2_1_3 = { package = "rustc-hash", version = "=2.1.3", default-features = false, features = ["default", "std"] }
 rustc_version = { version = "=0.4.1", default-features = false, features = [] }
@@ -447,7 +415,6 @@ rustybuzz = { version = "=0.20.1", default-features = false, features = ["defaul
 ryu = { version = "=1.0.23", default-features = false, features = [] }
 ryu-js = { version = "=1.0.3", default-features = false, features = [] }
 same-file = { version = "=1.0.6", default-features = false, features = [] }
-schannel = { version = "=0.1.29", default-features = false, features = [] }
 schemars = { version = "=1.2.2", default-features = false, features = ["default", "derive", "indexmap2", "schemars_derive", "std"] }
 schemars_derive = { version = "=1.2.2", default-features = false, features = [] }
 scopeguard = { version = "=1.2.0", default-features = false, features = [] }
@@ -483,8 +450,7 @@ smallvec = { version = "=1.15.2", default-features = false, features = ["const_g
 smol = { version = "=2.0.2", default-features = false, features = [] }
 smol_str-0_2_2 = { package = "smol_str", version = "=0.2.2", default-features = false, features = ["default", "std"] }
 smol_str-0_3_6 = { package = "smol_str", version = "=0.3.6", default-features = false, features = ["default", "std"] }
-socket2-0_5_10 = { package = "socket2", version = "=0.5.10", default-features = false, features = [] }
-socket2-0_6_5 = { package = "socket2", version = "=0.6.5", default-features = false, features = ["all"] }
+socket2 = { version = "=0.6.5", default-features = false, features = ["all"] }
 spin-0_10_1 = { package = "spin", version = "=0.10.1", default-features = false, features = ["barrier", "default", "lazy", "lock_api", "mutex", "once", "rwlock", "spin_mutex"] }
 spin-0_9_9 = { package = "spin", version = "=0.9.9", default-features = false, features = ["barrier", "default", "lazy", "lock_api", "lock_api_crate", "mutex", "once", "rwlock", "spin_mutex"] }
 spirv = { version = "=0.4.0+sdk-1.4.341.0", default-features = false, features = [] }
@@ -531,7 +497,6 @@ tiny-skia-path-0_12_0 = { package = "tiny-skia-path", version = "=0.12.0", defau
 tinystr = { version = "=0.8.4", default-features = false, features = ["alloc", "zerovec"] }
 tinyvec = { version = "=1.12.0", default-features = false, features = ["alloc", "default", "tinyvec_macros"] }
 tinyvec_macros = { version = "=0.1.1", default-features = false, features = [] }
-tokio-macros = { version = "=2.7.2", default-features = false, features = [] }
 tokio-rustls = { version = "=0.26.4", default-features = false, features = ["ring", "tls12"] }
 tokio-socks = { version = "=0.5.3", default-features = false, features = ["default", "tokio"] }
 tokio-util = { version = "=0.7.19", default-features = false, features = ["codec", "default", "io", "libc"] }
@@ -617,33 +582,19 @@ walkdir = { version = "=2.5.0", default-features = false, features = [] }
 want = { version = "=0.3.1", default-features = false, features = [] }
 web-time = { version = "=1.1.0", default-features = false, features = [] }
 web_atoms = { version = "=0.2.6", default-features = false, features = ["serde"] }
-webpki-roots = { version = "=1.0.12", default-features = false, features = [] }
 weezl = { version = "=0.1.12", default-features = false, features = ["alloc", "default", "std"] }
 wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "parking_lot", "static-dxc", "std", "vulkan", "vulkan-portability", "web", "webgpu", "wgsl"] }
-wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-naga-bridge = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = [] }
 wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "std", "web"] }
 wgpui-base = { path = "../../crates/ui/wgpui-base", default-features = false, features = ["editor-core"] }
 which = { version = "=6.0.3", default-features = false, features = [] }
 winapi-util = { version = "=0.1.11", default-features = false, features = [] }
-windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
-windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
-windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
-windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
-windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_2_1 = { package = "windows-link", version = "=0.2.1", default-features = false, features = [] }
-windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
-windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
-windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
-windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
-windows-threading = { version = "=0.2.1", default-features = false, features = [] }
-windows_x86_64_msvc-0_52_6 = { package = "windows_x86_64_msvc", version = "=0.52.6", default-features = false, features = [] }
 winit = { version = "=0.30.13", default-features = false, features = ["ahash", "bytemuck", "default", "memmap2", "percent-encoding", "rwh_06", "sctk", "sctk-adwaita", "wayland", "wayland-backend", "wayland-client", "wayland-csd-adwaita", "wayland-dlopen", "wayland-protocols", "wayland-protocols-plasma", "x11", "x11-dl", "x11rb"] }
 winnow-0_7_15 = { package = "winnow", version = "=0.7.15", default-features = false, features = ["alloc", "default", "std"] }
 winnow-1_0_4 = { package = "winnow", version = "=1.0.4", default-features = false, features = ["alloc", "ascii", "binary", "default", "parser", "std"] }
 write16 = { version = "=1.0.0", default-features = false, features = ["alloc"] }
 writeable = { version = "=0.6.4", default-features = false, features = ["alloc"] }
-xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 xml5ever-0_18_1 = { package = "xml5ever", version = "=0.18.1", default-features = false, features = [] }
 xml5ever-0_39_0 = { package = "xml5ever", version = "=0.39.0", default-features = false, features = [] }
 xmlwriter = { version = "=0.1.0", default-features = false, features = [] }
@@ -659,21 +610,17 @@ zerocopy-derive = { version = "=0.8.56", default-features = false, features = []
 zerofrom = { version = "=0.1.8", default-features = false, features = ["alloc", "derive"] }
 zerofrom-derive = { version = "=0.1.7", default-features = false, features = [] }
 zeroize = { version = "=1.9.0", default-features = false, features = ["alloc", "default", "derive", "zeroize_derive"] }
-zeroize_derive = { version = "=1.5.0", default-features = false, features = [] }
 zerotrie = { version = "=0.2.5", default-features = false, features = ["alloc", "yoke", "zerofrom"] }
 zerovec = { version = "=0.11.8", default-features = false, features = ["alloc", "derive", "yoke"] }
 zerovec-derive = { version = "=0.11.6", default-features = false, features = [] }
-zlib-rs = { version = "=0.6.8", default-features = false, features = ["rust-allocator", "std"] }
 zmij = { version = "=1.0.23", default-features = false, features = [] }
 zstd = { version = "=0.13.4", default-features = false, features = ["arrays", "default", "legacy", "zdict_builder"] }
 zstd-safe = { version = "=7.4.0", default-features = false, features = ["arrays", "legacy", "std", "zdict_builder"] }
 zstd-sys = { version = "=2.1.2+zstd.1.5.7", default-features = false, features = ["legacy", "std", "zdict_builder"] }
 zune-core = { version = "=0.5.3", default-features = false, features = ["std"] }
-zune-inflate = { version = "=0.2.54", default-features = false, features = ["simd-adler32", "zlib"] }
 zune-jpeg = { version = "=0.5.15", default-features = false, features = ["default", "neon", "std", "x86"] }
 
 [target.aarch64-apple-darwin.dependencies]
-addr2line = { version = "=0.25.1", default-features = false, features = [] }
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "runtime-rng", "std"] }
 async-signal = { version = "=0.2.14", default-features = false, features = [] }
 block = { version = "=0.1.6", default-features = false, features = [] }
@@ -699,11 +646,8 @@ foreign-types-macros = { version = "=0.2.4", default-features = false, features 
 foreign-types-shared = { version = "=0.3.1", default-features = false, features = [] }
 fsevent-sys = { version = "=4.1.0", default-features = false, features = [] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
-gimli = { version = "=0.32.3", default-features = false, features = ["read", "read-core"] }
 iana-time-zone = { version = "=0.1.65", default-features = false, features = ["fallback"] }
 io-surface = { version = "=0.16.1", default-features = false, features = [] }
-kqueue = { version = "=1.2.1", default-features = false, features = [] }
-kqueue-sys = { version = "=1.1.2", default-features = false, features = [] }
 leak = { version = "=0.1.2", default-features = false, features = [] }
 leaky-cow = { version = "=0.1.1", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "extra_traits", "std"] }
@@ -730,7 +674,6 @@ objc2-foundation-0_2_2 = { package = "objc2-foundation", version = "=0.2.2", def
 objc2-foundation-0_3_2 = { package = "objc2-foundation", version = "=0.3.2", default-features = false, features = ["FoundationErrors", "FoundationLegacySwiftCompatibility", "NSAffineTransform", "NSAppleEventDescriptor", "NSAppleEventManager", "NSAppleScript", "NSArchiver", "NSArray", "NSAttributedString", "NSAutoreleasePool", "NSBackgroundActivityScheduler", "NSBundle", "NSByteCountFormatter", "NSByteOrder", "NSCache", "NSCalendar", "NSCalendarDate", "NSCharacterSet", "NSClassDescription", "NSCoder", "NSComparisonPredicate", "NSCompoundPredicate", "NSConnection", "NSData", "NSDate", "NSDateComponentsFormatter", "NSDateFormatter", "NSDateInterval", "NSDateIntervalFormatter", "NSDebug", "NSDecimal", "NSDecimalNumber", "NSDictionary", "NSDistantObject", "NSDistributedLock", "NSDistributedNotificationCenter", "NSEnergyFormatter", "NSEnumerator", "NSError", "NSException", "NSExpression", "NSExtensionContext", "NSExtensionItem", "NSExtensionRequestHandling", "NSFileCoordinator", "NSFileHandle", "NSFileManager", "NSFilePresenter", "NSFileVersion", "NSFileWrapper", "NSFormatter", "NSGarbageCollector", "NSGeometry", "NSHFSFileTypes", "NSHTTPCookie", "NSHTTPCookieStorage", "NSHashTable", "NSHost", "NSISO8601DateFormatter", "NSIndexPath", "NSIndexSet", "NSInflectionRule", "NSInvocation", "NSItemProvider", "NSJSONSerialization", "NSKeyValueCoding", "NSKeyValueObserving", "NSKeyValueSharedObservers", "NSKeyedArchiver", "NSLengthFormatter", "NSLinguisticTagger", "NSListFormatter", "NSLocale", "NSLocalizedNumberFormatRule", "NSLock", "NSMapTable", "NSMassFormatter", "NSMeasurement", "NSMeasurementFormatter", "NSMetadata", "NSMetadataAttributes", "NSMethodSignature", "NSMorphology", "NSNetServices", "NSNotification", "NSNotificationQueue", "NSNull", "NSNumberFormatter", "NSObjCRuntime", "NSObject", "NSObjectScripting", "NSOperation", "NSOrderedCollectionChange", "NSOrderedCollectionDifference", "NSOrderedSet", "NSOrthography", "NSPathUtilities", "NSPersonNameComponents", "NSPersonNameComponentsFormatter", "NSPointerArray", "NSPointerFunctions", "NSPort", "NSPortCoder", "NSPortMessage", "NSPortNameServer", "NSPredicate", "NSProcessInfo", "NSProgress", "NSPropertyList", "NSProtocolChecker", "NSProxy", "NSRange", "NSRegularExpression", "NSRelativeDateTimeFormatter", "NSRunLoop", "NSScanner", "NSScriptClassDescription", "NSScriptCoercionHandler", "NSScriptCommand", "NSScriptCommandDescription", "NSScriptExecutionContext", "NSScriptKeyValueCoding", "NSScriptObjectSpecifiers", "NSScriptStandardSuiteCommands", "NSScriptSuiteRegistry", "NSScriptWhoseTests", "NSSet", "NSSortDescriptor", "NSSpellServer", "NSStream", "NSString", "NSTask", "NSTermOfAddress", "NSTextCheckingResult", "NSThread", "NSTimeZone", "NSTimer", "NSURL", "NSURLAuthenticationChallenge", "NSURLCache", "NSURLConnection", "NSURLCredential", "NSURLCredentialStorage", "NSURLDownload", "NSURLError", "NSURLHandle", "NSURLProtectionSpace", "NSURLProtocol", "NSURLRequest", "NSURLResponse", "NSURLSession", "NSUUID", "NSUbiquitousKeyValueStore", "NSUndoManager", "NSUnit", "NSUserActivity", "NSUserDefaults", "NSUserNotification", "NSUserScriptTask", "NSValue", "NSValueTransformer", "NSXMLDTD", "NSXMLDTDNode", "NSXMLDocument", "NSXMLElement", "NSXMLNode", "NSXMLNodeOptions", "NSXMLParser", "NSXPCConnection", "NSZone", "alloc", "bitflags", "block2", "default", "libc", "objc2-core-foundation", "std"] }
 objc2-metal = { version = "=0.3.2", default-features = false, features = ["MTLAccelerationStructure", "MTLAccelerationStructureCommandEncoder", "MTLAccelerationStructureTypes", "MTLAllocation", "MTLArgument", "MTLBlitCommandEncoder", "MTLBlitPass", "MTLBuffer", "MTLCaptureManager", "MTLCaptureScope", "MTLCommandBuffer", "MTLCommandEncoder", "MTLCommandQueue", "MTLComputeCommandEncoder", "MTLComputePass", "MTLComputePipeline", "MTLCounters", "MTLDataType", "MTLDepthStencil", "MTLDevice", "MTLDrawable", "MTLEvent", "MTLGPUAddress", "MTLLibrary", "MTLPipeline", "MTLPixelFormat", "MTLRenderCommandEncoder", "MTLRenderPass", "MTLRenderPipeline", "MTLResidencySet", "MTLResource", "MTLSampler", "MTLStageInputOutputDescriptor", "MTLTexture", "MTLTypes", "MTLVertexDescriptor", "alloc", "bitflags", "block2", "std"] }
 objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CADisplayLink", "CALayer", "CAMediaTiming", "CAMediaTimingFunction", "CAMetalLayer", "CAOpenGLLayer", "alloc", "bitflags", "objc2-core-foundation", "objc2-core-graphics", "objc2-metal", "std"] }
-object-0_37_3 = { package = "object", version = "=0.37.3", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read_core", "unaligned", "xcoff"] }
 raw-window-metal = { version = "=1.1.0", default-features = false, features = ["alloc", "default", "std"] }
 readkey = { version = "=0.2.2", default-features = false, features = [] }
 readmouse = { version = "=0.2.1", default-features = false, features = [] }
@@ -740,17 +683,13 @@ security-framework = { version = "=3.7.0", default-features = false, features = 
 security-framework-sys = { version = "=2.17.0", default-features = false, features = ["OSX_10_13", "default"] }
 signal-hook-registry = { version = "=1.4.8", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
-system-configuration-0_6_1 = { package = "system-configuration", version = "=0.6.1", default-features = false, features = [] }
-system-configuration-0_7_0 = { package = "system-configuration", version = "=0.7.0", default-features = false, features = [] }
+system-configuration = { version = "=0.6.1", default-features = false, features = [] }
 system-configuration-sys = { version = "=0.6.0", default-features = false, features = [] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-apple", "wgpu-core-deps-windows-linux-android", "wgsl"] }
 wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["metal", "vulkan-portability"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
-winapi = { version = "=0.3.9", default-features = false, features = ["winsock2"] }
-windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Security", "Win32_System", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Performance", "Win32_System_Threading", "Win32_UI", "Win32_UI_WindowsAndMessaging", "default", "std"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_System", "Win32_System_Threading", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI", "Win32_UI_Shell", "default"] }
 xattr = { version = "=0.2.3", default-features = false, features = ["default", "unsupported"] }
 
@@ -763,40 +702,56 @@ errno = { version = "=0.3.14", default-features = false, features = ["std"] }
 error-code = { version = "=3.4.0", default-features = false, features = ["std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
+gl_generator = { version = "=0.14.0", default-features = false, features = [] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
+khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "std"] }
 mio-1_2_2 = { package = "mio", version = "=1.2.2", default-features = false, features = ["net", "os-ext", "os-poll"] }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
-rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "fs", "libc-extra-traits", "std"] }
+range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "fs", "net", "std"] }
+schannel = { version = "=0.1.29", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros", "windows-sys"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
 winapi = { version = "=0.3.9", default-features = false, features = ["cfg", "consoleapi", "dwrite", "dwrite_1", "dwrite_3", "errhandlingapi", "evntrace", "fileapi", "handleapi", "in6addr", "inaddr", "ioapiset", "knownfolders", "libloaderapi", "minwinbase", "minwindef", "namedpipeapi", "ntsecapi", "objbase", "processthreadsapi", "shellapi", "shlobj", "std", "synchapi", "sysinfoapi", "unknwnbase", "winbase", "wincon", "windef", "winerror", "winioctl", "winnls", "winnt", "winsock2", "winuser"] }
 windows-0_48_0 = { package = "windows", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-0_59_0 = { package = "windows", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_System", "Win32_System_DataExchange", "default", "std"] }
 windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Devices", "Devices_Power", "Foundation", "Foundation_Collections", "Gaming", "Gaming_Input", "Gaming_Input_ForceFeedback", "System", "System_Power", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_NetManagement", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Rpc", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WindowsProgramming", "Win32_System_Wmi", "Win32_UI", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "default", "std"] }
+windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-core-0_59_0 = { package = "windows-core", version = "=0.59.0", default-features = false, features = ["std"] }
+windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
+windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-implement-0_59_0 = { package = "windows-implement", version = "=0.59.0", default-features = false, features = [] }
+windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
+windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_1_3 = { package = "windows-link", version = "=0.1.3", default-features = false, features = [] }
-windows-registry-0_4_0 = { package = "windows-registry", version = "=0.4.0", default-features = false, features = ["default", "std"] }
-windows-registry-0_6_1 = { package = "windows-registry", version = "=0.6.1", default-features = false, features = ["default", "std"] }
+windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
+windows-registry = { version = "=0.4.0", default-features = false, features = ["default", "std"] }
 windows-result-0_3_4 = { package = "windows-result", version = "=0.3.4", default-features = false, features = ["std"] }
+windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
 windows-strings-0_3_1 = { package = "windows-strings", version = "=0.3.1", default-features = false, features = ["std"] }
+windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
 windows-sys-0_48_0 = { package = "windows-sys", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_52_0 = { package = "windows-sys", version = "=0.52.0", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Globalization", "Win32_Graphics", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_System", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Pointer", "Win32_UI_Input_Touch", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging", "default"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Console", "Win32_System_Threading", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "default"] }
 windows-sys-0_60_2 = { package = "windows-sys", version = "=0.60.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Wdk", "Wdk_Foundation", "Wdk_Storage", "Wdk_Storage_FileSystem", "Wdk_System", "Wdk_System_IO", "Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-targets-0_48_5 = { package = "windows-targets", version = "=0.48.5", default-features = false, features = [] }
+windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
 windows-targets-0_53_5 = { package = "windows-targets", version = "=0.53.5", default-features = false, features = [] }
+windows-threading = { version = "=0.2.1", default-features = false, features = [] }
 windows-win = { version = "=3.0.0", default-features = false, features = [] }
 windows_aarch64_msvc-0_48_5 = { package = "windows_aarch64_msvc", version = "=0.48.5", default-features = false, features = [] }
 windows_aarch64_msvc-0_52_6 = { package = "windows_aarch64_msvc", version = "=0.52.6", default-features = false, features = [] }
 windows_aarch64_msvc-0_53_1 = { package = "windows_aarch64_msvc", version = "=0.53.1", default-features = false, features = [] }
 winsafe = { version = "=0.0.19", default-features = false, features = ["kernel"] }
 wio = { version = "=0.2.2", default-features = false, features = [] }
+xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 
 [target.i686-pc-windows-msvc.dependencies]
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "runtime-rng", "std"] }
@@ -807,45 +762,59 @@ errno = { version = "=0.3.14", default-features = false, features = ["std"] }
 error-code = { version = "=3.4.0", default-features = false, features = ["std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
+gl_generator = { version = "=0.14.0", default-features = false, features = [] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
+khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "std"] }
 mach-dxcompiler-rs = { version = "=0.1.4+2024.11.22-df583a3.1", default-features = false, features = [] }
 mio-1_2_2 = { package = "mio", version = "=1.2.2", default-features = false, features = ["net", "os-ext", "os-poll"] }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
-rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "fs", "libc-extra-traits", "std"] }
+range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "fs", "net", "std"] }
+schannel = { version = "=0.1.29", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros", "windows-sys"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
 winapi = { version = "=0.3.9", default-features = false, features = ["cfg", "consoleapi", "dwrite", "dwrite_1", "dwrite_3", "errhandlingapi", "evntrace", "fileapi", "handleapi", "in6addr", "inaddr", "ioapiset", "knownfolders", "libloaderapi", "minwinbase", "minwindef", "namedpipeapi", "ntsecapi", "objbase", "processthreadsapi", "shellapi", "shlobj", "std", "synchapi", "sysinfoapi", "unknwnbase", "winbase", "wincon", "windef", "winerror", "winioctl", "winnls", "winnt", "winsock2", "winuser"] }
 windows-0_48_0 = { package = "windows", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-0_59_0 = { package = "windows", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_System", "Win32_System_DataExchange", "default", "std"] }
 windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Devices", "Devices_Power", "Foundation", "Foundation_Collections", "Gaming", "Gaming_Input", "Gaming_Input_ForceFeedback", "System", "System_Power", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_NetManagement", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Rpc", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WindowsProgramming", "Win32_System_Wmi", "Win32_UI", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "default", "std"] }
+windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-core-0_59_0 = { package = "windows-core", version = "=0.59.0", default-features = false, features = ["std"] }
+windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
+windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-implement-0_59_0 = { package = "windows-implement", version = "=0.59.0", default-features = false, features = [] }
+windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
+windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_1_3 = { package = "windows-link", version = "=0.1.3", default-features = false, features = [] }
-windows-registry-0_4_0 = { package = "windows-registry", version = "=0.4.0", default-features = false, features = ["default", "std"] }
-windows-registry-0_6_1 = { package = "windows-registry", version = "=0.6.1", default-features = false, features = ["default", "std"] }
+windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
+windows-registry = { version = "=0.4.0", default-features = false, features = ["default", "std"] }
 windows-result-0_3_4 = { package = "windows-result", version = "=0.3.4", default-features = false, features = ["std"] }
+windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
 windows-strings-0_3_1 = { package = "windows-strings", version = "=0.3.1", default-features = false, features = ["std"] }
+windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
 windows-sys-0_48_0 = { package = "windows-sys", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_52_0 = { package = "windows-sys", version = "=0.52.0", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Globalization", "Win32_Graphics", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_System", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Pointer", "Win32_UI_Input_Touch", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging", "default"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Console", "Win32_System_Threading", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "default"] }
 windows-sys-0_60_2 = { package = "windows-sys", version = "=0.60.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Wdk", "Wdk_Foundation", "Wdk_Storage", "Wdk_Storage_FileSystem", "Wdk_System", "Wdk_System_IO", "Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-targets-0_48_5 = { package = "windows-targets", version = "=0.48.5", default-features = false, features = [] }
+windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
 windows-targets-0_53_5 = { package = "windows-targets", version = "=0.53.5", default-features = false, features = [] }
+windows-threading = { version = "=0.2.1", default-features = false, features = [] }
 windows-win = { version = "=3.0.0", default-features = false, features = [] }
 windows_i686_msvc-0_48_5 = { package = "windows_i686_msvc", version = "=0.48.5", default-features = false, features = [] }
 windows_i686_msvc-0_52_6 = { package = "windows_i686_msvc", version = "=0.52.6", default-features = false, features = [] }
 windows_i686_msvc-0_53_1 = { package = "windows_i686_msvc", version = "=0.53.1", default-features = false, features = [] }
 winsafe = { version = "=0.0.19", default-features = false, features = ["kernel"] }
 wio = { version = "=0.2.2", default-features = false, features = [] }
+xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 
 [target.x86_64-apple-darwin.dependencies]
-addr2line = { version = "=0.25.1", default-features = false, features = [] }
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "runtime-rng", "std"] }
 async-signal = { version = "=0.2.14", default-features = false, features = [] }
 block = { version = "=0.1.6", default-features = false, features = [] }
@@ -871,11 +840,8 @@ foreign-types-macros = { version = "=0.2.4", default-features = false, features 
 foreign-types-shared = { version = "=0.3.1", default-features = false, features = [] }
 fsevent-sys = { version = "=4.1.0", default-features = false, features = [] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
-gimli = { version = "=0.32.3", default-features = false, features = ["read", "read-core"] }
 iana-time-zone = { version = "=0.1.65", default-features = false, features = ["fallback"] }
 io-surface = { version = "=0.16.1", default-features = false, features = [] }
-kqueue = { version = "=1.2.1", default-features = false, features = [] }
-kqueue-sys = { version = "=1.1.2", default-features = false, features = [] }
 leak = { version = "=0.1.2", default-features = false, features = [] }
 leaky-cow = { version = "=0.1.1", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "extra_traits", "std"] }
@@ -902,8 +868,6 @@ objc2-foundation-0_2_2 = { package = "objc2-foundation", version = "=0.2.2", def
 objc2-foundation-0_3_2 = { package = "objc2-foundation", version = "=0.3.2", default-features = false, features = ["FoundationErrors", "FoundationLegacySwiftCompatibility", "NSAffineTransform", "NSAppleEventDescriptor", "NSAppleEventManager", "NSAppleScript", "NSArchiver", "NSArray", "NSAttributedString", "NSAutoreleasePool", "NSBackgroundActivityScheduler", "NSBundle", "NSByteCountFormatter", "NSByteOrder", "NSCache", "NSCalendar", "NSCalendarDate", "NSCharacterSet", "NSClassDescription", "NSCoder", "NSComparisonPredicate", "NSCompoundPredicate", "NSConnection", "NSData", "NSDate", "NSDateComponentsFormatter", "NSDateFormatter", "NSDateInterval", "NSDateIntervalFormatter", "NSDebug", "NSDecimal", "NSDecimalNumber", "NSDictionary", "NSDistantObject", "NSDistributedLock", "NSDistributedNotificationCenter", "NSEnergyFormatter", "NSEnumerator", "NSError", "NSException", "NSExpression", "NSExtensionContext", "NSExtensionItem", "NSExtensionRequestHandling", "NSFileCoordinator", "NSFileHandle", "NSFileManager", "NSFilePresenter", "NSFileVersion", "NSFileWrapper", "NSFormatter", "NSGarbageCollector", "NSGeometry", "NSHFSFileTypes", "NSHTTPCookie", "NSHTTPCookieStorage", "NSHashTable", "NSHost", "NSISO8601DateFormatter", "NSIndexPath", "NSIndexSet", "NSInflectionRule", "NSInvocation", "NSItemProvider", "NSJSONSerialization", "NSKeyValueCoding", "NSKeyValueObserving", "NSKeyValueSharedObservers", "NSKeyedArchiver", "NSLengthFormatter", "NSLinguisticTagger", "NSListFormatter", "NSLocale", "NSLocalizedNumberFormatRule", "NSLock", "NSMapTable", "NSMassFormatter", "NSMeasurement", "NSMeasurementFormatter", "NSMetadata", "NSMetadataAttributes", "NSMethodSignature", "NSMorphology", "NSNetServices", "NSNotification", "NSNotificationQueue", "NSNull", "NSNumberFormatter", "NSObjCRuntime", "NSObject", "NSObjectScripting", "NSOperation", "NSOrderedCollectionChange", "NSOrderedCollectionDifference", "NSOrderedSet", "NSOrthography", "NSPathUtilities", "NSPersonNameComponents", "NSPersonNameComponentsFormatter", "NSPointerArray", "NSPointerFunctions", "NSPort", "NSPortCoder", "NSPortMessage", "NSPortNameServer", "NSPredicate", "NSProcessInfo", "NSProgress", "NSPropertyList", "NSProtocolChecker", "NSProxy", "NSRange", "NSRegularExpression", "NSRelativeDateTimeFormatter", "NSRunLoop", "NSScanner", "NSScriptClassDescription", "NSScriptCoercionHandler", "NSScriptCommand", "NSScriptCommandDescription", "NSScriptExecutionContext", "NSScriptKeyValueCoding", "NSScriptObjectSpecifiers", "NSScriptStandardSuiteCommands", "NSScriptSuiteRegistry", "NSScriptWhoseTests", "NSSet", "NSSortDescriptor", "NSSpellServer", "NSStream", "NSString", "NSTask", "NSTermOfAddress", "NSTextCheckingResult", "NSThread", "NSTimeZone", "NSTimer", "NSURL", "NSURLAuthenticationChallenge", "NSURLCache", "NSURLConnection", "NSURLCredential", "NSURLCredentialStorage", "NSURLDownload", "NSURLError", "NSURLHandle", "NSURLProtectionSpace", "NSURLProtocol", "NSURLRequest", "NSURLResponse", "NSURLSession", "NSUUID", "NSUbiquitousKeyValueStore", "NSUndoManager", "NSUnit", "NSUserActivity", "NSUserDefaults", "NSUserNotification", "NSUserScriptTask", "NSValue", "NSValueTransformer", "NSXMLDTD", "NSXMLDTDNode", "NSXMLDocument", "NSXMLElement", "NSXMLNode", "NSXMLNodeOptions", "NSXMLParser", "NSXPCConnection", "NSZone", "alloc", "bitflags", "block2", "default", "libc", "objc2-core-foundation", "std"] }
 objc2-metal = { version = "=0.3.2", default-features = false, features = ["MTLAccelerationStructure", "MTLAccelerationStructureCommandEncoder", "MTLAccelerationStructureTypes", "MTLAllocation", "MTLArgument", "MTLBlitCommandEncoder", "MTLBlitPass", "MTLBuffer", "MTLCaptureManager", "MTLCaptureScope", "MTLCommandBuffer", "MTLCommandEncoder", "MTLCommandQueue", "MTLComputeCommandEncoder", "MTLComputePass", "MTLComputePipeline", "MTLCounters", "MTLDataType", "MTLDepthStencil", "MTLDevice", "MTLDrawable", "MTLEvent", "MTLGPUAddress", "MTLLibrary", "MTLPipeline", "MTLPixelFormat", "MTLRenderCommandEncoder", "MTLRenderPass", "MTLRenderPipeline", "MTLResidencySet", "MTLResource", "MTLSampler", "MTLStageInputOutputDescriptor", "MTLTexture", "MTLTypes", "MTLVertexDescriptor", "alloc", "bitflags", "block2", "std"] }
 objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CADisplayLink", "CALayer", "CAMediaTiming", "CAMediaTimingFunction", "CAMetalLayer", "CAOpenGLLayer", "alloc", "bitflags", "objc2-core-foundation", "objc2-core-graphics", "objc2-metal", "std"] }
-object-0_37_3 = { package = "object", version = "=0.37.3", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read_core", "unaligned", "xcoff"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
 raw-window-metal = { version = "=1.1.0", default-features = false, features = ["alloc", "default", "std"] }
 readkey = { version = "=0.2.2", default-features = false, features = [] }
 readmouse = { version = "=0.2.1", default-features = false, features = [] }
@@ -913,17 +877,13 @@ security-framework = { version = "=3.7.0", default-features = false, features = 
 security-framework-sys = { version = "=2.17.0", default-features = false, features = ["OSX_10_13", "default"] }
 signal-hook-registry = { version = "=1.4.8", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
-system-configuration-0_6_1 = { package = "system-configuration", version = "=0.6.1", default-features = false, features = [] }
-system-configuration-0_7_0 = { package = "system-configuration", version = "=0.7.0", default-features = false, features = [] }
+system-configuration = { version = "=0.6.1", default-features = false, features = [] }
 system-configuration-sys = { version = "=0.6.0", default-features = false, features = [] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-apple", "wgpu-core-deps-windows-linux-android", "wgsl"] }
 wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["metal", "vulkan-portability"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
-winapi = { version = "=0.3.9", default-features = false, features = ["winsock2"] }
-windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Security", "Win32_System", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Performance", "Win32_System_Threading", "Win32_UI", "Win32_UI_WindowsAndMessaging", "default", "std"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_System", "Win32_System_Threading", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI", "Win32_UI_Shell", "default"] }
 xattr = { version = "=0.2.3", default-features = false, features = ["default", "unsupported"] }
 
@@ -936,52 +896,68 @@ errno = { version = "=0.3.14", default-features = false, features = ["std"] }
 error-code = { version = "=3.4.0", default-features = false, features = ["std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
+gl_generator = { version = "=0.14.0", default-features = false, features = [] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
+khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "std"] }
 mach-dxcompiler-rs = { version = "=0.1.4+2024.11.22-df583a3.1", default-features = false, features = [] }
 mio-1_2_2 = { package = "mio", version = "=1.2.2", default-features = false, features = ["net", "os-ext", "os-poll"] }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
-rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "fs", "libc-extra-traits", "std"] }
+range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "fs", "net", "std"] }
+schannel = { version = "=0.1.29", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros", "windows-sys"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
 winapi = { version = "=0.3.9", default-features = false, features = ["cfg", "consoleapi", "dwrite", "dwrite_1", "dwrite_3", "errhandlingapi", "evntrace", "fileapi", "handleapi", "in6addr", "inaddr", "ioapiset", "knownfolders", "libloaderapi", "minwinbase", "minwindef", "namedpipeapi", "ntsecapi", "objbase", "processthreadsapi", "shellapi", "shlobj", "std", "synchapi", "sysinfoapi", "unknwnbase", "winbase", "wincon", "windef", "winerror", "winioctl", "winnls", "winnt", "winsock2", "winuser"] }
 windows-0_48_0 = { package = "windows", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-0_59_0 = { package = "windows", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_System", "Win32_System_DataExchange", "default", "std"] }
 windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Devices", "Devices_Power", "Foundation", "Foundation_Collections", "Gaming", "Gaming_Input", "Gaming_Input_ForceFeedback", "System", "System_Power", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_NetManagement", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Rpc", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WindowsProgramming", "Win32_System_Wmi", "Win32_UI", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "default", "std"] }
+windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-core-0_59_0 = { package = "windows-core", version = "=0.59.0", default-features = false, features = ["std"] }
+windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
+windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-implement-0_59_0 = { package = "windows-implement", version = "=0.59.0", default-features = false, features = [] }
+windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
+windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_1_3 = { package = "windows-link", version = "=0.1.3", default-features = false, features = [] }
-windows-registry-0_4_0 = { package = "windows-registry", version = "=0.4.0", default-features = false, features = ["default", "std"] }
-windows-registry-0_6_1 = { package = "windows-registry", version = "=0.6.1", default-features = false, features = ["default", "std"] }
+windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
+windows-registry = { version = "=0.4.0", default-features = false, features = ["default", "std"] }
 windows-result-0_3_4 = { package = "windows-result", version = "=0.3.4", default-features = false, features = ["std"] }
+windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
 windows-strings-0_3_1 = { package = "windows-strings", version = "=0.3.1", default-features = false, features = ["std"] }
+windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
 windows-sys-0_48_0 = { package = "windows-sys", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_52_0 = { package = "windows-sys", version = "=0.52.0", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Globalization", "Win32_Graphics", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_System", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Pointer", "Win32_UI_Input_Touch", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging", "default"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Console", "Win32_System_Threading", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "default"] }
 windows-sys-0_60_2 = { package = "windows-sys", version = "=0.60.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Wdk", "Wdk_Foundation", "Wdk_Storage", "Wdk_Storage_FileSystem", "Wdk_System", "Wdk_System_IO", "Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-targets-0_48_5 = { package = "windows-targets", version = "=0.48.5", default-features = false, features = [] }
+windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
 windows-targets-0_53_5 = { package = "windows-targets", version = "=0.53.5", default-features = false, features = [] }
+windows-threading = { version = "=0.2.1", default-features = false, features = [] }
 windows-win = { version = "=3.0.0", default-features = false, features = [] }
 windows_x86_64_msvc-0_48_5 = { package = "windows_x86_64_msvc", version = "=0.48.5", default-features = false, features = [] }
+windows_x86_64_msvc-0_52_6 = { package = "windows_x86_64_msvc", version = "=0.52.6", default-features = false, features = [] }
 windows_x86_64_msvc-0_53_1 = { package = "windows_x86_64_msvc", version = "=0.53.1", default-features = false, features = [] }
 winsafe = { version = "=0.0.19", default-features = false, features = ["kernel"] }
 wio = { version = "=0.2.2", default-features = false, features = [] }
+xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 ab_glyph = { version = "=0.2.32", default-features = false, features = ["default", "gvar-alloc", "std", "variable-fonts"] }
 ab_glyph_rasterizer = { version = "=0.1.10", default-features = false, features = ["default", "std"] }
-addr2line = { version = "=0.25.1", default-features = false, features = [] }
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "no-rng", "runtime-rng", "std"] }
 as-raw-xcb-connection = { version = "=1.0.1", default-features = false, features = ["alloc", "default"] }
 ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
 async-broadcast = { version = "=0.7.2", default-features = false, features = [] }
 async-recursion = { version = "=1.1.1", default-features = false, features = [] }
 async-signal = { version = "=0.2.14", default-features = false, features = [] }
+async-trait = { version = "=0.1.92", default-features = false, features = [] }
 bstr = { version = "=1.13.1", default-features = false, features = ["alloc", "default", "std", "unicode"] }
 calloop = { version = "=0.13.0", default-features = false, features = [] }
 calloop-wayland-source = { version = "=0.3.0", default-features = false, features = [] }
@@ -993,11 +969,13 @@ enumflags2 = { version = "=0.7.12", default-features = false, features = ["serde
 enumflags2_derive = { version = "=0.7.12", default-features = false, features = [] }
 errno = { version = "=0.3.14", default-features = false, features = ["default", "std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["default", "std"] }
+foldhash-0_1_5 = { package = "foldhash", version = "=0.1.5", default-features = false, features = [] }
 fontconfig-parser = { version = "=0.5.8", default-features = false, features = [] }
 freetype-sys = { version = "=0.20.1", default-features = false, features = [] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "default", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
 gethostname = { version = "=1.1.0", default-features = false, features = [] }
-gimli = { version = "=0.32.3", default-features = false, features = ["read", "read-core"] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+hashbrown-0_15_5 = { package = "hashbrown", version = "=0.15.5", default-features = false, features = ["allocator-api2", "default", "default-hasher", "equivalent", "inline-more", "raw-entry"] }
 hex = { version = "=0.4.3", default-features = false, features = ["alloc", "default", "std"] }
 iana-time-zone = { version = "=0.1.65", default-features = false, features = ["fallback"] }
 inotify-0_11_5 = { package = "inotify", version = "=0.11.5", default-features = false, features = [] }
@@ -1005,6 +983,7 @@ inotify-0_9_6 = { package = "inotify", version = "=0.9.6", default-features = fa
 inotify-sys = { version = "=0.1.8", default-features = false, features = [] }
 is-docker = { version = "=0.2.0", default-features = false, features = [] }
 is-wsl = { version = "=0.4.0", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "extra_traits", "std"] }
 linux-raw-sys-0_12_1 = { package = "linux-raw-sys", version = "=0.12.1", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
 linux-raw-sys-0_4_15 = { package = "linux-raw-sys", version = "=0.4.15", default-features = false, features = ["elf", "errno", "general", "ioctl", "no_std", "prctl", "system"] }
@@ -1015,14 +994,12 @@ nix-0_29_0 = { package = "nix", version = "=0.29.0", default-features = false, f
 nix-0_31_3 = { package = "nix", version = "=0.31.3", default-features = false, features = ["default", "event", "fs", "ioctl", "poll"] }
 nom = { version = "=8.0.0", default-features = false, features = ["alloc", "default", "std"] }
 num_threads = { version = "=0.1.7", default-features = false, features = [] }
-object-0_37_3 = { package = "object", version = "=0.37.3", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read_core", "unaligned", "xcoff"] }
 openssl-probe = { version = "=0.2.1", default-features = false, features = [] }
 ordered-stream = { version = "=0.2.0", default-features = false, features = [] }
 os_pipe = { version = "=1.2.3", default-features = false, features = ["io_safety"] }
 owned_ttf_parser = { version = "=0.25.1", default-features = false, features = ["apple-layout", "default", "glyph-names", "gvar-alloc", "opentype-layout", "std", "variable-fonts"] }
-petgraph-0_8_3 = { package = "petgraph", version = "=0.8.3", default-features = false, features = [] }
+petgraph = { version = "=0.8.3", default-features = false, features = [] }
 quick-xml = { version = "=0.41.0", default-features = false, features = ["default"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
 roxmltree-0_20_0 = { package = "roxmltree", version = "=0.20.0", default-features = false, features = ["default", "positions", "std"] }
 rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "default", "event", "fs", "libc-extra-traits", "pipe", "process", "shm", "std", "system", "thread", "use-libc-auxv"] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "default", "event", "fs", "net", "pipe", "process", "shm", "std", "system", "time"] }
@@ -1046,10 +1023,8 @@ wayland-protocols-wlr = { version = "=0.3.12", default-features = false, feature
 wayland-scanner = { version = "=0.31.11", default-features = false, features = [] }
 wayland-sys = { version = "=0.31.11", default-features = false, features = ["client", "dlopen", "egl", "once_cell"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
-winapi = { version = "=0.3.9", default-features = false, features = ["winsock2"] }
-windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Security", "Win32_System", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Performance", "Win32_System_Threading", "Win32_UI", "Win32_UI_WindowsAndMessaging", "default", "std"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_System", "Win32_System_Threading", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI", "Win32_UI_Shell", "default"] }
 wl-clipboard-rs = { version = "=0.9.5", default-features = false, features = [] }
 x11 = { version = "=2.21.0", default-features = false, features = ["xlib"] }
@@ -1073,13 +1048,10 @@ zvariant_utils = { version = "=4.2.0", default-features = false, features = ["de
 adler2 = { version = "=2.0.1", default-features = false, features = [] }
 aho-corasick = { version = "=1.1.5", default-features = false, features = ["default", "perf-literal", "std"] }
 aligned-vec = { version = "=0.6.4", default-features = false, features = ["default", "std"] }
-alloc-no-stdlib = { version = "=2.0.4", default-features = false, features = [] }
-alloc-stdlib = { version = "=0.2.4", default-features = false, features = [] }
 allocator-api2 = { version = "=0.2.21", default-features = false, features = ["alloc", "default", "std"] }
 annotate-snippets = { version = "=0.12.5", default-features = false, features = ["default"] }
 anstyle = { version = "=1.0.14", default-features = false, features = ["default", "std"] }
 anyhow = { version = "=1.0.104", default-features = false, features = ["default", "std"] }
-approx = { version = "=0.5.1", default-features = false, features = ["std"] }
 ar_archive_writer = { version = "=0.5.3", default-features = false, features = [] }
 arboard = { version = "=3.6.1", default-features = false, features = ["core-graphics", "default", "image", "image-data", "wayland-data-control", "windows-sys", "wl-clipboard-rs"] }
 arc-swap = { version = "=1.9.2", default-features = false, features = [] }
@@ -1099,19 +1071,16 @@ async-net = { version = "=2.0.0", default-features = false, features = [] }
 async-process = { version = "=2.5.0", default-features = false, features = [] }
 async-std = { version = "=1.13.2", default-features = false, features = ["alloc", "async-channel", "async-global-executor", "async-io", "async-lock", "async-process", "crossbeam-utils", "default", "futures-channel", "futures-core", "futures-io", "futures-lite", "gloo-timers", "kv-log-macro", "log", "memchr", "once_cell", "pin-project-lite", "pin-utils", "slab", "std", "unstable", "wasm-bindgen-futures"] }
 async-task = { version = "=4.7.1", default-features = false, features = ["default", "std"] }
-async-trait = { version = "=0.1.92", default-features = false, features = [] }
 async_zip = { version = "=0.0.17", default-features = false, features = ["async-compression", "deflate", "deflate64"] }
 atomic = { version = "=0.5.3", default-features = false, features = ["default", "fallback"] }
 atomic-waker = { version = "=1.1.2", default-features = false, features = [] }
 autocfg = { version = "=1.5.1", default-features = false, features = [] }
-backtrace = { version = "=0.3.76", default-features = false, features = ["default", "std"] }
 base62 = { version = "=2.2.4", default-features = false, features = ["alloc", "default"] }
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc", "default", "std"] }
 bincode = { version = "=2.0.1", default-features = false, features = ["alloc", "bincode_derive", "default", "derive", "serde", "std"] }
 bincode_derive = { version = "=2.0.1", default-features = false, features = [] }
 bit-set = { version = "=0.10.0", default-features = false, features = [] }
 bit-vec = { version = "=0.9.1", default-features = false, features = [] }
-bit_field = { version = "=0.10.3", default-features = false, features = [] }
 bitflags-1_3_2 = { package = "bitflags", version = "=1.3.2", default-features = false, features = ["default"] }
 bitflags-2_13_1 = { package = "bitflags", version = "=2.13.1", default-features = false, features = ["serde", "serde_core", "std"] }
 block-buffer-0_10_4 = { package = "block-buffer", version = "=0.10.4", default-features = false, features = [] }
@@ -1124,9 +1093,6 @@ boa_interner = { version = "=0.21.1", default-features = false, features = [] }
 boa_macros = { version = "=0.21.1", default-features = false, features = [] }
 boa_parser = { version = "=0.21.1", default-features = false, features = [] }
 boa_string = { version = "=0.21.1", default-features = false, features = [] }
-brotli = { version = "=8.0.4", default-features = false, features = ["alloc-stdlib", "default", "std"] }
-brotli-decompressor = { version = "=5.0.3", default-features = false, features = ["alloc-stdlib", "std"] }
-bumpalo = { version = "=3.20.3", default-features = false, features = ["default"] }
 bytemuck = { version = "=1.25.2", default-features = false, features = ["aarch64_simd", "bytemuck_derive", "derive", "extern_crate_alloc", "min_const_generics", "wasm_simd"] }
 bytemuck_derive = { version = "=1.12.0", default-features = false, features = [] }
 byteorder = { version = "=1.5.0", default-features = false, features = ["default", "std"] }
@@ -1139,7 +1105,6 @@ chacha20 = { version = "=0.10.2", default-features = false, features = ["rng"] }
 chrono = { version = "=0.4.45", default-features = false, features = ["alloc", "clock", "default", "iana-time-zone", "js-sys", "now", "oldtime", "serde", "std", "wasm-bindgen", "wasmbind", "winapi", "windows-link"] }
 circular-buffer = { version = "=1.2.1", default-features = false, features = ["alloc", "default", "std"] }
 clipboard-rs = { version = "=0.3.5", default-features = false, features = ["image", "wayland"] }
-cmov = { version = "=0.5.4", default-features = false, features = [] }
 codespan-reporting = { version = "=0.13.1", default-features = false, features = [] }
 color_quant = { version = "=1.1.0", default-features = false, features = [] }
 compression-codecs = { version = "=0.4.38", default-features = false, features = ["brotli", "deflate", "deflate64", "flate2", "gzip", "memchr"] }
@@ -1159,12 +1124,10 @@ crossbeam-deque = { version = "=0.8.7", default-features = false, features = ["d
 crossbeam-epoch = { version = "=0.9.20", default-features = false, features = ["alloc", "std"] }
 crossbeam-queue = { version = "=0.3.13", default-features = false, features = ["alloc", "default", "std"] }
 crossbeam-utils = { version = "=0.8.22", default-features = false, features = ["default", "std"] }
-crunchy = { version = "=0.2.4", default-features = false, features = ["default", "limit_128"] }
 crypto-common-0_1_6 = { package = "crypto-common", version = "=0.1.6", default-features = false, features = ["std"] }
 crypto-common-0_2_2 = { package = "crypto-common", version = "=0.2.2", default-features = false, features = [] }
 ctor = { version = "=0.6.3", default-features = false, features = ["__no_warn_on_missing_unsafe", "default", "dtor", "proc_macro"] }
 ctor-proc-macro = { version = "=0.0.7", default-features = false, features = ["default"] }
-ctutils = { version = "=0.4.8", default-features = false, features = [] }
 cursor-icon = { version = "=1.2.0", default-features = false, features = ["alloc", "default", "std"] }
 dashmap = { version = "=6.2.1", default-features = false, features = [] }
 data-url = { version = "=0.3.2", default-features = false, features = ["alloc", "default", "std"] }
@@ -1204,7 +1167,6 @@ etagere = { version = "=0.2.15", default-features = false, features = [] }
 euclid = { version = "=0.22.14", default-features = false, features = ["default", "std"] }
 event-listener-2_5_3 = { package = "event-listener", version = "=2.5.3", default-features = false, features = [] }
 event-listener-5_4_2 = { package = "event-listener", version = "=5.4.2", default-features = false, features = ["default", "parking", "std"] }
-exr = { version = "=1.74.2", default-features = false, features = [] }
 fallible-iterator = { version = "=0.3.0", default-features = false, features = ["alloc", "default"] }
 fallible-streaming-iterator = { version = "=0.1.9", default-features = false, features = [] }
 fast-float2 = { version = "=0.2.4", default-features = false, features = ["default", "std"] }
@@ -1214,8 +1176,7 @@ fax = { version = "=0.2.7", default-features = false, features = [] }
 fdeflate = { version = "=0.3.7", default-features = false, features = [] }
 filetime = { version = "=0.2.29", default-features = false, features = [] }
 find-msvc-tools = { version = "=0.1.11", default-features = false, features = [] }
-fixedbitset-0_4_2 = { package = "fixedbitset", version = "=0.4.2", default-features = false, features = [] }
-fixedbitset-0_5_7 = { package = "fixedbitset", version = "=0.5.7", default-features = false, features = [] }
+fixedbitset = { version = "=0.5.7", default-features = false, features = [] }
 flate2 = { version = "=1.1.9", default-features = false, features = ["any_c_zlib", "any_impl", "any_zlib", "default", "libz-sys", "miniz_oxide", "rust_backend", "zlib", "zlib-rs"] }
 float-cmp = { version = "=0.9.0", default-features = false, features = ["std"] }
 float-ord = { version = "=0.3.2", default-features = false, features = [] }
@@ -1224,7 +1185,6 @@ float_next_after = { version = "=1.0.0", default-features = false, features = []
 fluent-uri = { version = "=0.1.4", default-features = false, features = ["default", "std"] }
 flume = { version = "=0.12.0", default-features = false, features = ["async", "default", "eventual-fairness", "fastrand", "futures-core", "futures-sink", "select"] }
 fnv = { version = "=1.0.7", default-features = false, features = ["default", "std"] }
-foldhash-0_1_5 = { package = "foldhash", version = "=0.1.5", default-features = false, features = [] }
 foldhash-0_2_0 = { package = "foldhash", version = "=0.2.0", default-features = false, features = [] }
 font-kit = { version = "=0.14.3", default-features = false, features = ["default", "source"] }
 font-types-0_11_3 = { package = "font-types", version = "=0.11.3", default-features = false, features = ["bytemuck", "std"] }
@@ -1248,13 +1208,10 @@ getrandom-0_2_17 = { package = "getrandom", version = "=0.2.17", default-feature
 getrandom-0_3_4 = { package = "getrandom", version = "=0.3.4", default-features = false, features = ["std"] }
 getrandom-0_4_3 = { package = "getrandom", version = "=0.4.3", default-features = false, features = ["std", "sys_rng"] }
 gif = { version = "=0.14.2", default-features = false, features = ["color_quant", "default", "raii_no_panic", "std"] }
-gl_generator = { version = "=0.14.0", default-features = false, features = [] }
 glam = { version = "=0.33.5", default-features = false, features = ["all-types", "approx", "bytemuck", "default", "f64", "float-types", "i16", "i32", "i64", "i8", "integer-types", "isize", "nostd-libm", "serde", "size-types", "std", "u16", "u32", "u64", "u8", "usize"] }
 glob = { version = "=0.3.4", default-features = false, features = [] }
 globset = { version = "=0.4.20", default-features = false, features = ["default", "log"] }
 globwalk = { version = "=0.8.1", default-features = false, features = [] }
-glow = { version = "=0.17.0", default-features = false, features = [] }
-glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
 gpu-allocator = { version = "=0.28.0", default-features = false, features = ["d3d12", "hashbrown", "vulkan"] }
 gpui-ce = { path = "../../crates/ui/wgpui", default-features = false, features = ["default", "flamegraph", "font-kit", "inspector"] }
 gpui-macros = { version = "=0.2.2", default-features = false, features = ["inspector"] }
@@ -1272,7 +1229,6 @@ h2 = { version = "=0.4.19", default-features = false, features = [] }
 half = { version = "=2.7.1", default-features = false, features = ["alloc", "bytemuck", "default", "num-traits", "std"] }
 harfrust = { version = "=0.5.2", default-features = false, features = ["std"] }
 hashbrown-0_14_5 = { package = "hashbrown", version = "=0.14.5", default-features = false, features = ["ahash", "inline-more", "raw"] }
-hashbrown-0_15_5 = { package = "hashbrown", version = "=0.15.5", default-features = false, features = ["allocator-api2", "default", "default-hasher", "equivalent", "inline-more", "raw-entry"] }
 hashbrown-0_16_1 = { package = "hashbrown", version = "=0.16.1", default-features = false, features = ["allocator-api2", "default", "default-hasher", "equivalent", "inline-more", "raw-entry"] }
 hashbrown-0_17_1 = { package = "hashbrown", version = "=0.17.1", default-features = false, features = ["allocator-api2", "default-hasher", "inline-more"] }
 hashlink = { version = "=0.9.1", default-features = false, features = [] }
@@ -1338,17 +1294,13 @@ itertools-0_14_0 = { package = "itertools", version = "=0.14.0", default-feature
 itoa = { version = "=1.0.18", default-features = false, features = [] }
 jobserver = { version = "=0.1.35", default-features = false, features = [] }
 json5 = { version = "=1.3.1", default-features = false, features = [] }
-khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
-khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 kurbo = { version = "=0.13.1", default-features = false, features = ["default", "std"] }
 kv-log-macro = { version = "=1.0.7", default-features = false, features = [] }
 lazy_static = { version = "=1.5.0", default-features = false, features = [] }
-lebe = { version = "=0.5.3", default-features = false, features = [] }
 libloading-0_8_9 = { package = "libloading", version = "=0.8.9", default-features = false, features = [] }
 libloading-0_9_0 = { package = "libloading", version = "=0.9.0", default-features = false, features = ["default", "std"] }
 libm = { version = "=0.2.16", default-features = false, features = ["arch", "default"] }
 libsqlite3-sys = { version = "=0.30.1", default-features = false, features = ["bundled", "bundled_bindings", "cc", "default", "min_sqlite_version_3_14_0", "pkg-config", "vcpkg"] }
-libz-sys = { version = "=1.1.33", default-features = false, features = ["libc"] }
 linebender_resource_handle = { version = "=0.1.1", default-features = false, features = ["std"] }
 linkme = { version = "=0.3.37", default-features = false, features = [] }
 linkme-impl = { version = "=0.3.37", default-features = false, features = [] }
@@ -1386,14 +1338,13 @@ notify-6_1_1 = { package = "notify", version = "=6.1.1", default-features = fals
 notify-8_2_0 = { package = "notify", version = "=8.2.0", default-features = false, features = ["default", "fsevent-sys", "kqueue", "macos_fsevent", "macos_kqueue", "mio"] }
 notify-types = { version = "=2.1.0", default-features = false, features = [] }
 num-bigint = { version = "=0.4.8", default-features = false, features = ["default", "serde", "std"] }
-num-complex = { version = "=0.4.6", default-features = false, features = ["bytemuck", "default", "std"] }
 num-conv = { version = "=0.2.2", default-features = false, features = [] }
 num-integer = { version = "=0.1.47", default-features = false, features = ["default", "i128", "std"] }
 num-traits = { version = "=0.2.19", default-features = false, features = ["default", "i128", "libm", "std"] }
 num_cpus = { version = "=1.17.0", default-features = false, features = [] }
 num_enum = { version = "=0.7.6", default-features = false, features = ["default", "std"] }
 num_enum_derive = { version = "=0.7.6", default-features = false, features = ["proc-macro-crate", "std"] }
-object-0_39_1 = { package = "object", version = "=0.39.1", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read", "read_core", "std", "xcoff"] }
+object = { version = "=0.39.1", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read", "read_core", "std", "xcoff"] }
 once_cell = { version = "=1.21.4", default-features = false, features = ["alloc", "default", "race", "std"] }
 open = { version = "=5.4.2", default-features = false, features = [] }
 opener = { version = "=0.8.5", default-features = false, features = ["reveal"] }
@@ -1410,15 +1361,13 @@ paste = { version = "=1.0.15", default-features = false, features = [] }
 pathfinder_geometry = { version = "=0.5.1", default-features = false, features = [] }
 pathfinder_simd = { version = "=0.5.6", default-features = false, features = [] }
 percent-encoding = { version = "=2.3.2", default-features = false, features = ["alloc", "default", "std"] }
-petgraph-0_6_5 = { package = "petgraph", version = "=0.6.5", default-features = false, features = ["default", "graphmap", "matrix_graph", "stable_graph"] }
 phf-0_11_3 = { package = "phf", version = "=0.11.3", default-features = false, features = ["default", "macros", "phf_macros", "std"] }
 phf-0_13_1 = { package = "phf", version = "=0.13.1", default-features = false, features = ["default", "macros", "phf_macros", "std"] }
 phf_codegen-0_11_3 = { package = "phf_codegen", version = "=0.11.3", default-features = false, features = [] }
 phf_codegen-0_13_1 = { package = "phf_codegen", version = "=0.13.1", default-features = false, features = [] }
 phf_generator-0_11_3 = { package = "phf_generator", version = "=0.11.3", default-features = false, features = [] }
 phf_generator-0_13_1 = { package = "phf_generator", version = "=0.13.1", default-features = false, features = [] }
-phf_macros-0_11_3 = { package = "phf_macros", version = "=0.11.3", default-features = false, features = [] }
-phf_macros-0_13_1 = { package = "phf_macros", version = "=0.13.1", default-features = false, features = [] }
+phf_macros = { version = "=0.13.1", default-features = false, features = [] }
 phf_shared-0_11_3 = { package = "phf_shared", version = "=0.11.3", default-features = false, features = ["default", "std"] }
 phf_shared-0_13_1 = { package = "phf_shared", version = "=0.13.1", default-features = false, features = ["default", "std"] }
 pico-args = { version = "=0.5.0", default-features = false, features = ["default", "eq-separator"] }
@@ -1447,8 +1396,6 @@ profiling-0_1_0 = { package = "profiling", path = "../../crates/external/pulsar-
 profiling-1_0_18 = { package = "profiling", version = "=1.0.18", default-features = false, features = ["default", "procmacros", "profiling-procmacros"] }
 profiling-procmacros = { version = "=1.0.18", default-features = false, features = [] }
 psm = { version = "=0.1.32", default-features = false, features = [] }
-pulp = { version = "=0.22.3", default-features = false, features = ["default", "relaxed-simd", "std", "x86-v3"] }
-pulp-wasm-simd-flag = { version = "=0.1.1", default-features = false, features = ["relaxed-simd"] }
 pulsar_reflection = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection", default-features = false, features = ["default", "prims-core", "prims-glam", "prims-gpui", "prims-std"] }
 pulsar_reflection_codegen = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen", default-features = false, features = [] }
 pulsar_reflection_derive = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive", default-features = false, features = [] }
@@ -1462,19 +1409,16 @@ quote = { version = "=1.0.47", default-features = false, features = ["default", 
 rand-0_10_2 = { package = "rand", version = "=0.10.2", default-features = false, features = ["alloc", "default", "std", "std_rng", "sys_rng", "thread_rng"] }
 rand-0_8_8 = { package = "rand", version = "=0.8.8", default-features = false, features = ["alloc", "default", "getrandom", "libc", "rand_chacha", "small_rng", "std", "std_rng"] }
 rand-0_9_5 = { package = "rand", version = "=0.9.5", default-features = false, features = ["alloc", "default", "os_rng", "small_rng", "std", "std_rng", "thread_rng"] }
-rand_chacha-0_3_1 = { package = "rand_chacha", version = "=0.3.1", default-features = false, features = ["std"] }
-rand_chacha-0_9_0 = { package = "rand_chacha", version = "=0.9.0", default-features = false, features = ["std"] }
+rand_chacha = { version = "=0.9.0", default-features = false, features = ["std"] }
 rand_core-0_10_1 = { package = "rand_core", version = "=0.10.1", default-features = false, features = [] }
 rand_core-0_6_4 = { package = "rand_core", version = "=0.6.4", default-features = false, features = ["alloc", "getrandom", "std"] }
 rand_core-0_9_5 = { package = "rand_core", version = "=0.9.5", default-features = false, features = ["os_rng", "std"] }
-range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rangemap = { version = "=1.8.0", default-features = false, features = [] }
 raw-window-handle = { version = "=0.6.2", default-features = false, features = ["alloc", "std"] }
 rayon = { version = "=1.12.0", default-features = false, features = [] }
 rayon-core = { version = "=1.13.0", default-features = false, features = [] }
 read-fonts-0_37_0 = { package = "read-fonts", version = "=0.37.0", default-features = false, features = ["libm", "std"] }
 read-fonts-0_41_0 = { package = "read-fonts", version = "=0.41.0", default-features = false, features = ["std"] }
-reborrow = { version = "=0.5.5", default-features = false, features = ["default"] }
 ref-cast = { version = "=1.0.27", default-features = false, features = [] }
 ref-cast-impl = { version = "=1.0.27", default-features = false, features = [] }
 regex = { version = "=1.13.1", default-features = false, features = ["default", "perf", "perf-backtrack", "perf-cache", "perf-dfa", "perf-inline", "perf-literal", "perf-onepass", "std", "unicode", "unicode-age", "unicode-bool", "unicode-case", "unicode-gencat", "unicode-perl", "unicode-script", "unicode-segment"] }
@@ -1496,7 +1440,6 @@ rust-i18n = { version = "=4.2.1", default-features = false, features = [] }
 rust-i18n-macro = { version = "=4.2.1", default-features = false, features = [] }
 rust-i18n-support = { version = "=4.2.1", default-features = false, features = ["codegen"] }
 rust_decimal = { version = "=1.42.1", default-features = false, features = ["default", "serde", "std"] }
-rustc-demangle = { version = "=0.1.28", default-features = false, features = [] }
 rustc-hash-1_1_0 = { package = "rustc-hash", version = "=1.1.0", default-features = false, features = ["default", "std"] }
 rustc-hash-2_1_3 = { package = "rustc-hash", version = "=2.1.3", default-features = false, features = ["default", "std"] }
 rustc_version = { version = "=0.4.1", default-features = false, features = [] }
@@ -1510,7 +1453,6 @@ rustybuzz = { version = "=0.20.1", default-features = false, features = ["defaul
 ryu = { version = "=1.0.23", default-features = false, features = [] }
 ryu-js = { version = "=1.0.3", default-features = false, features = [] }
 same-file = { version = "=1.0.6", default-features = false, features = [] }
-schannel = { version = "=0.1.29", default-features = false, features = [] }
 schemars = { version = "=1.2.2", default-features = false, features = ["default", "derive", "indexmap2", "schemars_derive", "std"] }
 schemars_derive = { version = "=1.2.2", default-features = false, features = [] }
 scopeguard = { version = "=1.2.0", default-features = false, features = [] }
@@ -1546,8 +1488,7 @@ smallvec = { version = "=1.15.2", default-features = false, features = ["const_g
 smol = { version = "=2.0.2", default-features = false, features = [] }
 smol_str-0_2_2 = { package = "smol_str", version = "=0.2.2", default-features = false, features = ["default", "std"] }
 smol_str-0_3_6 = { package = "smol_str", version = "=0.3.6", default-features = false, features = ["default", "std"] }
-socket2-0_5_10 = { package = "socket2", version = "=0.5.10", default-features = false, features = [] }
-socket2-0_6_5 = { package = "socket2", version = "=0.6.5", default-features = false, features = ["all"] }
+socket2 = { version = "=0.6.5", default-features = false, features = ["all"] }
 spin-0_10_1 = { package = "spin", version = "=0.10.1", default-features = false, features = ["barrier", "default", "lazy", "lock_api", "mutex", "once", "rwlock", "spin_mutex"] }
 spin-0_9_9 = { package = "spin", version = "=0.9.9", default-features = false, features = ["barrier", "default", "lazy", "lock_api", "lock_api_crate", "mutex", "once", "rwlock", "spin_mutex"] }
 spirv = { version = "=0.4.0+sdk-1.4.341.0", default-features = false, features = [] }
@@ -1594,7 +1535,6 @@ tiny-skia-path-0_12_0 = { package = "tiny-skia-path", version = "=0.12.0", defau
 tinystr = { version = "=0.8.4", default-features = false, features = ["alloc", "zerovec"] }
 tinyvec = { version = "=1.12.0", default-features = false, features = ["alloc", "default", "tinyvec_macros"] }
 tinyvec_macros = { version = "=0.1.1", default-features = false, features = [] }
-tokio-macros = { version = "=2.7.2", default-features = false, features = [] }
 tokio-rustls = { version = "=0.26.4", default-features = false, features = ["ring", "tls12"] }
 tokio-socks = { version = "=0.5.3", default-features = false, features = ["default", "tokio"] }
 tokio-util = { version = "=0.7.19", default-features = false, features = ["codec", "default", "io", "libc"] }
@@ -1680,33 +1620,19 @@ walkdir = { version = "=2.5.0", default-features = false, features = [] }
 want = { version = "=0.3.1", default-features = false, features = [] }
 web-time = { version = "=1.1.0", default-features = false, features = [] }
 web_atoms = { version = "=0.2.6", default-features = false, features = ["serde"] }
-webpki-roots = { version = "=1.0.12", default-features = false, features = [] }
 weezl = { version = "=0.1.12", default-features = false, features = ["alloc", "default", "std"] }
 wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "parking_lot", "static-dxc", "std", "vulkan", "vulkan-portability", "web", "webgpu", "wgsl"] }
-wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-naga-bridge = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = [] }
 wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "std", "web"] }
 wgpui-base = { path = "../../crates/ui/wgpui-base", default-features = false, features = ["editor-core"] }
 which = { version = "=6.0.3", default-features = false, features = [] }
 winapi-util = { version = "=0.1.11", default-features = false, features = [] }
-windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
-windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
-windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
-windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
-windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_2_1 = { package = "windows-link", version = "=0.2.1", default-features = false, features = [] }
-windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
-windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
-windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
-windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
-windows-threading = { version = "=0.2.1", default-features = false, features = [] }
-windows_x86_64_msvc-0_52_6 = { package = "windows_x86_64_msvc", version = "=0.52.6", default-features = false, features = [] }
 winit = { version = "=0.30.13", default-features = false, features = ["ahash", "bytemuck", "default", "memmap2", "percent-encoding", "rwh_06", "sctk", "sctk-adwaita", "wayland", "wayland-backend", "wayland-client", "wayland-csd-adwaita", "wayland-dlopen", "wayland-protocols", "wayland-protocols-plasma", "x11", "x11-dl", "x11rb"] }
 winnow-0_7_15 = { package = "winnow", version = "=0.7.15", default-features = false, features = ["alloc", "default", "std"] }
 winnow-1_0_4 = { package = "winnow", version = "=1.0.4", default-features = false, features = ["alloc", "ascii", "binary", "default", "parser", "std"] }
 write16 = { version = "=1.0.0", default-features = false, features = ["alloc"] }
 writeable = { version = "=0.6.4", default-features = false, features = ["alloc"] }
-xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 xml5ever-0_18_1 = { package = "xml5ever", version = "=0.18.1", default-features = false, features = [] }
 xml5ever-0_39_0 = { package = "xml5ever", version = "=0.39.0", default-features = false, features = [] }
 xmlwriter = { version = "=0.1.0", default-features = false, features = [] }
@@ -1722,21 +1648,17 @@ zerocopy-derive = { version = "=0.8.56", default-features = false, features = []
 zerofrom = { version = "=0.1.8", default-features = false, features = ["alloc", "derive"] }
 zerofrom-derive = { version = "=0.1.7", default-features = false, features = [] }
 zeroize = { version = "=1.9.0", default-features = false, features = ["alloc", "default", "derive", "zeroize_derive"] }
-zeroize_derive = { version = "=1.5.0", default-features = false, features = [] }
 zerotrie = { version = "=0.2.5", default-features = false, features = ["alloc", "yoke", "zerofrom"] }
 zerovec = { version = "=0.11.8", default-features = false, features = ["alloc", "derive", "yoke"] }
 zerovec-derive = { version = "=0.11.6", default-features = false, features = [] }
-zlib-rs = { version = "=0.6.8", default-features = false, features = ["rust-allocator", "std"] }
 zmij = { version = "=1.0.23", default-features = false, features = [] }
 zstd = { version = "=0.13.4", default-features = false, features = ["arrays", "default", "legacy", "zdict_builder"] }
 zstd-safe = { version = "=7.4.0", default-features = false, features = ["arrays", "legacy", "std", "zdict_builder"] }
 zstd-sys = { version = "=2.1.2+zstd.1.5.7", default-features = false, features = ["legacy", "std", "zdict_builder"] }
 zune-core = { version = "=0.5.3", default-features = false, features = ["std"] }
-zune-inflate = { version = "=0.2.54", default-features = false, features = ["simd-adler32", "zlib"] }
 zune-jpeg = { version = "=0.5.15", default-features = false, features = ["default", "neon", "std", "x86"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
-addr2line = { version = "=0.25.1", default-features = false, features = [] }
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "runtime-rng", "std"] }
 async-signal = { version = "=0.2.14", default-features = false, features = [] }
 block = { version = "=0.1.6", default-features = false, features = [] }
@@ -1762,11 +1684,8 @@ foreign-types-macros = { version = "=0.2.4", default-features = false, features 
 foreign-types-shared = { version = "=0.3.1", default-features = false, features = [] }
 fsevent-sys = { version = "=4.1.0", default-features = false, features = [] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
-gimli = { version = "=0.32.3", default-features = false, features = ["read", "read-core"] }
 iana-time-zone = { version = "=0.1.65", default-features = false, features = ["fallback"] }
 io-surface = { version = "=0.16.1", default-features = false, features = [] }
-kqueue = { version = "=1.2.1", default-features = false, features = [] }
-kqueue-sys = { version = "=1.1.2", default-features = false, features = [] }
 leak = { version = "=0.1.2", default-features = false, features = [] }
 leaky-cow = { version = "=0.1.1", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "extra_traits", "std"] }
@@ -1793,7 +1712,6 @@ objc2-foundation-0_2_2 = { package = "objc2-foundation", version = "=0.2.2", def
 objc2-foundation-0_3_2 = { package = "objc2-foundation", version = "=0.3.2", default-features = false, features = ["FoundationErrors", "FoundationLegacySwiftCompatibility", "NSAffineTransform", "NSAppleEventDescriptor", "NSAppleEventManager", "NSAppleScript", "NSArchiver", "NSArray", "NSAttributedString", "NSAutoreleasePool", "NSBackgroundActivityScheduler", "NSBundle", "NSByteCountFormatter", "NSByteOrder", "NSCache", "NSCalendar", "NSCalendarDate", "NSCharacterSet", "NSClassDescription", "NSCoder", "NSComparisonPredicate", "NSCompoundPredicate", "NSConnection", "NSData", "NSDate", "NSDateComponentsFormatter", "NSDateFormatter", "NSDateInterval", "NSDateIntervalFormatter", "NSDebug", "NSDecimal", "NSDecimalNumber", "NSDictionary", "NSDistantObject", "NSDistributedLock", "NSDistributedNotificationCenter", "NSEnergyFormatter", "NSEnumerator", "NSError", "NSException", "NSExpression", "NSExtensionContext", "NSExtensionItem", "NSExtensionRequestHandling", "NSFileCoordinator", "NSFileHandle", "NSFileManager", "NSFilePresenter", "NSFileVersion", "NSFileWrapper", "NSFormatter", "NSGarbageCollector", "NSGeometry", "NSHFSFileTypes", "NSHTTPCookie", "NSHTTPCookieStorage", "NSHashTable", "NSHost", "NSISO8601DateFormatter", "NSIndexPath", "NSIndexSet", "NSInflectionRule", "NSInvocation", "NSItemProvider", "NSJSONSerialization", "NSKeyValueCoding", "NSKeyValueObserving", "NSKeyValueSharedObservers", "NSKeyedArchiver", "NSLengthFormatter", "NSLinguisticTagger", "NSListFormatter", "NSLocale", "NSLocalizedNumberFormatRule", "NSLock", "NSMapTable", "NSMassFormatter", "NSMeasurement", "NSMeasurementFormatter", "NSMetadata", "NSMetadataAttributes", "NSMethodSignature", "NSMorphology", "NSNetServices", "NSNotification", "NSNotificationQueue", "NSNull", "NSNumberFormatter", "NSObjCRuntime", "NSObject", "NSObjectScripting", "NSOperation", "NSOrderedCollectionChange", "NSOrderedCollectionDifference", "NSOrderedSet", "NSOrthography", "NSPathUtilities", "NSPersonNameComponents", "NSPersonNameComponentsFormatter", "NSPointerArray", "NSPointerFunctions", "NSPort", "NSPortCoder", "NSPortMessage", "NSPortNameServer", "NSPredicate", "NSProcessInfo", "NSProgress", "NSPropertyList", "NSProtocolChecker", "NSProxy", "NSRange", "NSRegularExpression", "NSRelativeDateTimeFormatter", "NSRunLoop", "NSScanner", "NSScriptClassDescription", "NSScriptCoercionHandler", "NSScriptCommand", "NSScriptCommandDescription", "NSScriptExecutionContext", "NSScriptKeyValueCoding", "NSScriptObjectSpecifiers", "NSScriptStandardSuiteCommands", "NSScriptSuiteRegistry", "NSScriptWhoseTests", "NSSet", "NSSortDescriptor", "NSSpellServer", "NSStream", "NSString", "NSTask", "NSTermOfAddress", "NSTextCheckingResult", "NSThread", "NSTimeZone", "NSTimer", "NSURL", "NSURLAuthenticationChallenge", "NSURLCache", "NSURLConnection", "NSURLCredential", "NSURLCredentialStorage", "NSURLDownload", "NSURLError", "NSURLHandle", "NSURLProtectionSpace", "NSURLProtocol", "NSURLRequest", "NSURLResponse", "NSURLSession", "NSUUID", "NSUbiquitousKeyValueStore", "NSUndoManager", "NSUnit", "NSUserActivity", "NSUserDefaults", "NSUserNotification", "NSUserScriptTask", "NSValue", "NSValueTransformer", "NSXMLDTD", "NSXMLDTDNode", "NSXMLDocument", "NSXMLElement", "NSXMLNode", "NSXMLNodeOptions", "NSXMLParser", "NSXPCConnection", "NSZone", "alloc", "bitflags", "block2", "default", "libc", "objc2-core-foundation", "std"] }
 objc2-metal = { version = "=0.3.2", default-features = false, features = ["MTLAccelerationStructure", "MTLAccelerationStructureCommandEncoder", "MTLAccelerationStructureTypes", "MTLAllocation", "MTLArgument", "MTLBlitCommandEncoder", "MTLBlitPass", "MTLBuffer", "MTLCaptureManager", "MTLCaptureScope", "MTLCommandBuffer", "MTLCommandEncoder", "MTLCommandQueue", "MTLComputeCommandEncoder", "MTLComputePass", "MTLComputePipeline", "MTLCounters", "MTLDataType", "MTLDepthStencil", "MTLDevice", "MTLDrawable", "MTLEvent", "MTLGPUAddress", "MTLLibrary", "MTLPipeline", "MTLPixelFormat", "MTLRenderCommandEncoder", "MTLRenderPass", "MTLRenderPipeline", "MTLResidencySet", "MTLResource", "MTLSampler", "MTLStageInputOutputDescriptor", "MTLTexture", "MTLTypes", "MTLVertexDescriptor", "alloc", "bitflags", "block2", "std"] }
 objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CADisplayLink", "CALayer", "CAMediaTiming", "CAMediaTimingFunction", "CAMetalLayer", "CAOpenGLLayer", "alloc", "bitflags", "objc2-core-foundation", "objc2-core-graphics", "objc2-metal", "std"] }
-object-0_37_3 = { package = "object", version = "=0.37.3", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read_core", "unaligned", "xcoff"] }
 raw-window-metal = { version = "=1.1.0", default-features = false, features = ["alloc", "default", "std"] }
 readkey = { version = "=0.2.2", default-features = false, features = [] }
 readmouse = { version = "=0.2.1", default-features = false, features = [] }
@@ -1803,17 +1721,13 @@ security-framework = { version = "=3.7.0", default-features = false, features = 
 security-framework-sys = { version = "=2.17.0", default-features = false, features = ["OSX_10_13", "default"] }
 signal-hook-registry = { version = "=1.4.8", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
-system-configuration-0_6_1 = { package = "system-configuration", version = "=0.6.1", default-features = false, features = [] }
-system-configuration-0_7_0 = { package = "system-configuration", version = "=0.7.0", default-features = false, features = [] }
+system-configuration = { version = "=0.6.1", default-features = false, features = [] }
 system-configuration-sys = { version = "=0.6.0", default-features = false, features = [] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-apple", "wgpu-core-deps-windows-linux-android", "wgsl"] }
 wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["metal", "vulkan-portability"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
-winapi = { version = "=0.3.9", default-features = false, features = ["winsock2"] }
-windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Security", "Win32_System", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Performance", "Win32_System_Threading", "Win32_UI", "Win32_UI_WindowsAndMessaging", "default", "std"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_System", "Win32_System_Threading", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI", "Win32_UI_Shell", "default"] }
 xattr = { version = "=0.2.3", default-features = false, features = ["default", "unsupported"] }
 
@@ -1826,40 +1740,56 @@ errno = { version = "=0.3.14", default-features = false, features = ["std"] }
 error-code = { version = "=3.4.0", default-features = false, features = ["std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
+gl_generator = { version = "=0.14.0", default-features = false, features = [] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
+khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "std"] }
 mio-1_2_2 = { package = "mio", version = "=1.2.2", default-features = false, features = ["net", "os-ext", "os-poll"] }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
-rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "fs", "libc-extra-traits", "std"] }
+range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "fs", "net", "std"] }
+schannel = { version = "=0.1.29", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros", "windows-sys"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
 winapi = { version = "=0.3.9", default-features = false, features = ["cfg", "consoleapi", "dwrite", "dwrite_1", "dwrite_3", "errhandlingapi", "evntrace", "fileapi", "handleapi", "in6addr", "inaddr", "ioapiset", "knownfolders", "libloaderapi", "minwinbase", "minwindef", "namedpipeapi", "ntsecapi", "objbase", "processthreadsapi", "shellapi", "shlobj", "std", "synchapi", "sysinfoapi", "unknwnbase", "winbase", "wincon", "windef", "winerror", "winioctl", "winnls", "winnt", "winsock2", "winuser"] }
 windows-0_48_0 = { package = "windows", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-0_59_0 = { package = "windows", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_System", "Win32_System_DataExchange", "default", "std"] }
 windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Devices", "Devices_Power", "Foundation", "Foundation_Collections", "Gaming", "Gaming_Input", "Gaming_Input_ForceFeedback", "System", "System_Power", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_NetManagement", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Rpc", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WindowsProgramming", "Win32_System_Wmi", "Win32_UI", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "default", "std"] }
+windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-core-0_59_0 = { package = "windows-core", version = "=0.59.0", default-features = false, features = ["std"] }
+windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
+windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-implement-0_59_0 = { package = "windows-implement", version = "=0.59.0", default-features = false, features = [] }
+windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
+windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_1_3 = { package = "windows-link", version = "=0.1.3", default-features = false, features = [] }
-windows-registry-0_4_0 = { package = "windows-registry", version = "=0.4.0", default-features = false, features = ["default", "std"] }
-windows-registry-0_6_1 = { package = "windows-registry", version = "=0.6.1", default-features = false, features = ["default", "std"] }
+windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
+windows-registry = { version = "=0.4.0", default-features = false, features = ["default", "std"] }
 windows-result-0_3_4 = { package = "windows-result", version = "=0.3.4", default-features = false, features = ["std"] }
+windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
 windows-strings-0_3_1 = { package = "windows-strings", version = "=0.3.1", default-features = false, features = ["std"] }
+windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
 windows-sys-0_48_0 = { package = "windows-sys", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_52_0 = { package = "windows-sys", version = "=0.52.0", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Globalization", "Win32_Graphics", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_System", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Pointer", "Win32_UI_Input_Touch", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging", "default"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Console", "Win32_System_Threading", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "default"] }
 windows-sys-0_60_2 = { package = "windows-sys", version = "=0.60.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Wdk", "Wdk_Foundation", "Wdk_Storage", "Wdk_Storage_FileSystem", "Wdk_System", "Wdk_System_IO", "Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-targets-0_48_5 = { package = "windows-targets", version = "=0.48.5", default-features = false, features = [] }
+windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
 windows-targets-0_53_5 = { package = "windows-targets", version = "=0.53.5", default-features = false, features = [] }
+windows-threading = { version = "=0.2.1", default-features = false, features = [] }
 windows-win = { version = "=3.0.0", default-features = false, features = [] }
 windows_aarch64_msvc-0_48_5 = { package = "windows_aarch64_msvc", version = "=0.48.5", default-features = false, features = [] }
 windows_aarch64_msvc-0_52_6 = { package = "windows_aarch64_msvc", version = "=0.52.6", default-features = false, features = [] }
 windows_aarch64_msvc-0_53_1 = { package = "windows_aarch64_msvc", version = "=0.53.1", default-features = false, features = [] }
 winsafe = { version = "=0.0.19", default-features = false, features = ["kernel"] }
 wio = { version = "=0.2.2", default-features = false, features = [] }
+xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 
 [target.i686-pc-windows-msvc.build-dependencies]
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "runtime-rng", "std"] }
@@ -1870,45 +1800,59 @@ errno = { version = "=0.3.14", default-features = false, features = ["std"] }
 error-code = { version = "=3.4.0", default-features = false, features = ["std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
+gl_generator = { version = "=0.14.0", default-features = false, features = [] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
+khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "std"] }
 mach-dxcompiler-rs = { version = "=0.1.4+2024.11.22-df583a3.1", default-features = false, features = [] }
 mio-1_2_2 = { package = "mio", version = "=1.2.2", default-features = false, features = ["net", "os-ext", "os-poll"] }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
-rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "fs", "libc-extra-traits", "std"] }
+range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "fs", "net", "std"] }
+schannel = { version = "=0.1.29", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros", "windows-sys"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
 winapi = { version = "=0.3.9", default-features = false, features = ["cfg", "consoleapi", "dwrite", "dwrite_1", "dwrite_3", "errhandlingapi", "evntrace", "fileapi", "handleapi", "in6addr", "inaddr", "ioapiset", "knownfolders", "libloaderapi", "minwinbase", "minwindef", "namedpipeapi", "ntsecapi", "objbase", "processthreadsapi", "shellapi", "shlobj", "std", "synchapi", "sysinfoapi", "unknwnbase", "winbase", "wincon", "windef", "winerror", "winioctl", "winnls", "winnt", "winsock2", "winuser"] }
 windows-0_48_0 = { package = "windows", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-0_59_0 = { package = "windows", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_System", "Win32_System_DataExchange", "default", "std"] }
 windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Devices", "Devices_Power", "Foundation", "Foundation_Collections", "Gaming", "Gaming_Input", "Gaming_Input_ForceFeedback", "System", "System_Power", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_NetManagement", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Rpc", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WindowsProgramming", "Win32_System_Wmi", "Win32_UI", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "default", "std"] }
+windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-core-0_59_0 = { package = "windows-core", version = "=0.59.0", default-features = false, features = ["std"] }
+windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
+windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-implement-0_59_0 = { package = "windows-implement", version = "=0.59.0", default-features = false, features = [] }
+windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
+windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_1_3 = { package = "windows-link", version = "=0.1.3", default-features = false, features = [] }
-windows-registry-0_4_0 = { package = "windows-registry", version = "=0.4.0", default-features = false, features = ["default", "std"] }
-windows-registry-0_6_1 = { package = "windows-registry", version = "=0.6.1", default-features = false, features = ["default", "std"] }
+windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
+windows-registry = { version = "=0.4.0", default-features = false, features = ["default", "std"] }
 windows-result-0_3_4 = { package = "windows-result", version = "=0.3.4", default-features = false, features = ["std"] }
+windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
 windows-strings-0_3_1 = { package = "windows-strings", version = "=0.3.1", default-features = false, features = ["std"] }
+windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
 windows-sys-0_48_0 = { package = "windows-sys", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_52_0 = { package = "windows-sys", version = "=0.52.0", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Globalization", "Win32_Graphics", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_System", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Pointer", "Win32_UI_Input_Touch", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging", "default"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Console", "Win32_System_Threading", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "default"] }
 windows-sys-0_60_2 = { package = "windows-sys", version = "=0.60.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Wdk", "Wdk_Foundation", "Wdk_Storage", "Wdk_Storage_FileSystem", "Wdk_System", "Wdk_System_IO", "Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-targets-0_48_5 = { package = "windows-targets", version = "=0.48.5", default-features = false, features = [] }
+windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
 windows-targets-0_53_5 = { package = "windows-targets", version = "=0.53.5", default-features = false, features = [] }
+windows-threading = { version = "=0.2.1", default-features = false, features = [] }
 windows-win = { version = "=3.0.0", default-features = false, features = [] }
 windows_i686_msvc-0_48_5 = { package = "windows_i686_msvc", version = "=0.48.5", default-features = false, features = [] }
 windows_i686_msvc-0_52_6 = { package = "windows_i686_msvc", version = "=0.52.6", default-features = false, features = [] }
 windows_i686_msvc-0_53_1 = { package = "windows_i686_msvc", version = "=0.53.1", default-features = false, features = [] }
 winsafe = { version = "=0.0.19", default-features = false, features = ["kernel"] }
 wio = { version = "=0.2.2", default-features = false, features = [] }
+xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 
 [target.x86_64-apple-darwin.build-dependencies]
-addr2line = { version = "=0.25.1", default-features = false, features = [] }
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "runtime-rng", "std"] }
 async-signal = { version = "=0.2.14", default-features = false, features = [] }
 block = { version = "=0.1.6", default-features = false, features = [] }
@@ -1934,11 +1878,8 @@ foreign-types-macros = { version = "=0.2.4", default-features = false, features 
 foreign-types-shared = { version = "=0.3.1", default-features = false, features = [] }
 fsevent-sys = { version = "=4.1.0", default-features = false, features = [] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
-gimli = { version = "=0.32.3", default-features = false, features = ["read", "read-core"] }
 iana-time-zone = { version = "=0.1.65", default-features = false, features = ["fallback"] }
 io-surface = { version = "=0.16.1", default-features = false, features = [] }
-kqueue = { version = "=1.2.1", default-features = false, features = [] }
-kqueue-sys = { version = "=1.1.2", default-features = false, features = [] }
 leak = { version = "=0.1.2", default-features = false, features = [] }
 leaky-cow = { version = "=0.1.1", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "extra_traits", "std"] }
@@ -1965,8 +1906,6 @@ objc2-foundation-0_2_2 = { package = "objc2-foundation", version = "=0.2.2", def
 objc2-foundation-0_3_2 = { package = "objc2-foundation", version = "=0.3.2", default-features = false, features = ["FoundationErrors", "FoundationLegacySwiftCompatibility", "NSAffineTransform", "NSAppleEventDescriptor", "NSAppleEventManager", "NSAppleScript", "NSArchiver", "NSArray", "NSAttributedString", "NSAutoreleasePool", "NSBackgroundActivityScheduler", "NSBundle", "NSByteCountFormatter", "NSByteOrder", "NSCache", "NSCalendar", "NSCalendarDate", "NSCharacterSet", "NSClassDescription", "NSCoder", "NSComparisonPredicate", "NSCompoundPredicate", "NSConnection", "NSData", "NSDate", "NSDateComponentsFormatter", "NSDateFormatter", "NSDateInterval", "NSDateIntervalFormatter", "NSDebug", "NSDecimal", "NSDecimalNumber", "NSDictionary", "NSDistantObject", "NSDistributedLock", "NSDistributedNotificationCenter", "NSEnergyFormatter", "NSEnumerator", "NSError", "NSException", "NSExpression", "NSExtensionContext", "NSExtensionItem", "NSExtensionRequestHandling", "NSFileCoordinator", "NSFileHandle", "NSFileManager", "NSFilePresenter", "NSFileVersion", "NSFileWrapper", "NSFormatter", "NSGarbageCollector", "NSGeometry", "NSHFSFileTypes", "NSHTTPCookie", "NSHTTPCookieStorage", "NSHashTable", "NSHost", "NSISO8601DateFormatter", "NSIndexPath", "NSIndexSet", "NSInflectionRule", "NSInvocation", "NSItemProvider", "NSJSONSerialization", "NSKeyValueCoding", "NSKeyValueObserving", "NSKeyValueSharedObservers", "NSKeyedArchiver", "NSLengthFormatter", "NSLinguisticTagger", "NSListFormatter", "NSLocale", "NSLocalizedNumberFormatRule", "NSLock", "NSMapTable", "NSMassFormatter", "NSMeasurement", "NSMeasurementFormatter", "NSMetadata", "NSMetadataAttributes", "NSMethodSignature", "NSMorphology", "NSNetServices", "NSNotification", "NSNotificationQueue", "NSNull", "NSNumberFormatter", "NSObjCRuntime", "NSObject", "NSObjectScripting", "NSOperation", "NSOrderedCollectionChange", "NSOrderedCollectionDifference", "NSOrderedSet", "NSOrthography", "NSPathUtilities", "NSPersonNameComponents", "NSPersonNameComponentsFormatter", "NSPointerArray", "NSPointerFunctions", "NSPort", "NSPortCoder", "NSPortMessage", "NSPortNameServer", "NSPredicate", "NSProcessInfo", "NSProgress", "NSPropertyList", "NSProtocolChecker", "NSProxy", "NSRange", "NSRegularExpression", "NSRelativeDateTimeFormatter", "NSRunLoop", "NSScanner", "NSScriptClassDescription", "NSScriptCoercionHandler", "NSScriptCommand", "NSScriptCommandDescription", "NSScriptExecutionContext", "NSScriptKeyValueCoding", "NSScriptObjectSpecifiers", "NSScriptStandardSuiteCommands", "NSScriptSuiteRegistry", "NSScriptWhoseTests", "NSSet", "NSSortDescriptor", "NSSpellServer", "NSStream", "NSString", "NSTask", "NSTermOfAddress", "NSTextCheckingResult", "NSThread", "NSTimeZone", "NSTimer", "NSURL", "NSURLAuthenticationChallenge", "NSURLCache", "NSURLConnection", "NSURLCredential", "NSURLCredentialStorage", "NSURLDownload", "NSURLError", "NSURLHandle", "NSURLProtectionSpace", "NSURLProtocol", "NSURLRequest", "NSURLResponse", "NSURLSession", "NSUUID", "NSUbiquitousKeyValueStore", "NSUndoManager", "NSUnit", "NSUserActivity", "NSUserDefaults", "NSUserNotification", "NSUserScriptTask", "NSValue", "NSValueTransformer", "NSXMLDTD", "NSXMLDTDNode", "NSXMLDocument", "NSXMLElement", "NSXMLNode", "NSXMLNodeOptions", "NSXMLParser", "NSXPCConnection", "NSZone", "alloc", "bitflags", "block2", "default", "libc", "objc2-core-foundation", "std"] }
 objc2-metal = { version = "=0.3.2", default-features = false, features = ["MTLAccelerationStructure", "MTLAccelerationStructureCommandEncoder", "MTLAccelerationStructureTypes", "MTLAllocation", "MTLArgument", "MTLBlitCommandEncoder", "MTLBlitPass", "MTLBuffer", "MTLCaptureManager", "MTLCaptureScope", "MTLCommandBuffer", "MTLCommandEncoder", "MTLCommandQueue", "MTLComputeCommandEncoder", "MTLComputePass", "MTLComputePipeline", "MTLCounters", "MTLDataType", "MTLDepthStencil", "MTLDevice", "MTLDrawable", "MTLEvent", "MTLGPUAddress", "MTLLibrary", "MTLPipeline", "MTLPixelFormat", "MTLRenderCommandEncoder", "MTLRenderPass", "MTLRenderPipeline", "MTLResidencySet", "MTLResource", "MTLSampler", "MTLStageInputOutputDescriptor", "MTLTexture", "MTLTypes", "MTLVertexDescriptor", "alloc", "bitflags", "block2", "std"] }
 objc2-quartz-core = { version = "=0.3.2", default-features = false, features = ["CADisplayLink", "CALayer", "CAMediaTiming", "CAMediaTimingFunction", "CAMetalLayer", "CAOpenGLLayer", "alloc", "bitflags", "objc2-core-foundation", "objc2-core-graphics", "objc2-metal", "std"] }
-object-0_37_3 = { package = "object", version = "=0.37.3", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read_core", "unaligned", "xcoff"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
 raw-window-metal = { version = "=1.1.0", default-features = false, features = ["alloc", "default", "std"] }
 readkey = { version = "=0.2.2", default-features = false, features = [] }
 readmouse = { version = "=0.2.1", default-features = false, features = [] }
@@ -1976,17 +1915,13 @@ security-framework = { version = "=3.7.0", default-features = false, features = 
 security-framework-sys = { version = "=2.17.0", default-features = false, features = ["OSX_10_13", "default"] }
 signal-hook-registry = { version = "=1.4.8", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
-system-configuration-0_6_1 = { package = "system-configuration", version = "=0.6.1", default-features = false, features = [] }
-system-configuration-0_7_0 = { package = "system-configuration", version = "=0.7.0", default-features = false, features = [] }
+system-configuration = { version = "=0.6.1", default-features = false, features = [] }
 system-configuration-sys = { version = "=0.6.0", default-features = false, features = [] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-apple", "wgpu-core-deps-windows-linux-android", "wgsl"] }
 wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["metal", "vulkan-portability"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
-winapi = { version = "=0.3.9", default-features = false, features = ["winsock2"] }
-windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Security", "Win32_System", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Performance", "Win32_System_Threading", "Win32_UI", "Win32_UI_WindowsAndMessaging", "default", "std"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_System", "Win32_System_Threading", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI", "Win32_UI_Shell", "default"] }
 xattr = { version = "=0.2.3", default-features = false, features = ["default", "unsupported"] }
 
@@ -1999,52 +1934,68 @@ errno = { version = "=0.3.14", default-features = false, features = ["std"] }
 error-code = { version = "=3.4.0", default-features = false, features = ["std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["std"] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
+gl_generator = { version = "=0.14.0", default-features = false, features = [] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+glutin_wgl_sys = { version = "=0.6.1", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
+khronos_api = { version = "=3.1.0", default-features = false, features = [] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "std"] }
 mach-dxcompiler-rs = { version = "=0.1.4+2024.11.22-df583a3.1", default-features = false, features = [] }
 mio-1_2_2 = { package = "mio", version = "=1.2.2", default-features = false, features = ["net", "os-ext", "os-poll"] }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
-rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "fs", "libc-extra-traits", "std"] }
+range-alloc = { version = "=0.1.5", default-features = false, features = [] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "fs", "net", "std"] }
+schannel = { version = "=0.1.29", default-features = false, features = [] }
 syn-3_0_4 = { package = "syn", version = "=3.0.4", default-features = false, features = ["clone-impls", "default", "derive", "extra-traits", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["bytes", "default", "fs", "full", "io-std", "io-util", "libc", "macros", "mio", "net", "parking_lot", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros", "windows-sys"] }
 url = { version = "=2.5.8", default-features = false, features = ["default", "std"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
 winapi = { version = "=0.3.9", default-features = false, features = ["cfg", "consoleapi", "dwrite", "dwrite_1", "dwrite_3", "errhandlingapi", "evntrace", "fileapi", "handleapi", "in6addr", "inaddr", "ioapiset", "knownfolders", "libloaderapi", "minwinbase", "minwindef", "namedpipeapi", "ntsecapi", "objbase", "processthreadsapi", "shellapi", "shlobj", "std", "synchapi", "sysinfoapi", "unknwnbase", "winbase", "wincon", "windef", "winerror", "winioctl", "winnls", "winnt", "winsock2", "winuser"] }
 windows-0_48_0 = { package = "windows", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-0_59_0 = { package = "windows", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_System", "Win32_System_DataExchange", "default", "std"] }
 windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Devices", "Devices_Power", "Foundation", "Foundation_Collections", "Gaming", "Gaming_Input", "Gaming_Input_ForceFeedback", "System", "System_Power", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Wdk_System_SystemServices", "Wdk_System_Threading", "Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Media", "Win32_Media_DirectShow", "Win32_Media_KernelStreaming", "Win32_Media_MediaFoundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_NetworkManagement_NetManagement", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Ioctl", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Performance", "Win32_System_Power", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_RemoteDesktop", "Win32_System_Rpc", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WindowsProgramming", "Win32_System_Wmi", "Win32_UI", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "default", "std"] }
+windows-collections = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-core-0_59_0 = { package = "windows-core", version = "=0.59.0", default-features = false, features = ["std"] }
+windows-core-0_62_2 = { package = "windows-core", version = "=0.62.2", default-features = false, features = ["std"] }
+windows-future = { version = "=0.3.2", default-features = false, features = ["std"] }
 windows-implement-0_59_0 = { package = "windows-implement", version = "=0.59.0", default-features = false, features = [] }
+windows-implement-0_60_2 = { package = "windows-implement", version = "=0.60.2", default-features = false, features = [] }
+windows-interface = { version = "=0.59.3", default-features = false, features = [] }
 windows-link-0_1_3 = { package = "windows-link", version = "=0.1.3", default-features = false, features = [] }
-windows-registry-0_4_0 = { package = "windows-registry", version = "=0.4.0", default-features = false, features = ["default", "std"] }
-windows-registry-0_6_1 = { package = "windows-registry", version = "=0.6.1", default-features = false, features = ["default", "std"] }
+windows-numerics = { version = "=0.3.1", default-features = false, features = ["std"] }
+windows-registry = { version = "=0.4.0", default-features = false, features = ["default", "std"] }
 windows-result-0_3_4 = { package = "windows-result", version = "=0.3.4", default-features = false, features = ["std"] }
+windows-result-0_4_1 = { package = "windows-result", version = "=0.4.1", default-features = false, features = ["std"] }
 windows-strings-0_3_1 = { package = "windows-strings", version = "=0.3.1", default-features = false, features = ["std"] }
+windows-strings-0_5_1 = { package = "windows-strings", version = "=0.5.1", default-features = false, features = ["std"] }
 windows-sys-0_48_0 = { package = "windows-sys", version = "=0.48.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_Registry", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_52_0 = { package = "windows-sys", version = "=0.52.0", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_HumanInterfaceDevice", "Win32_Foundation", "Win32_Globalization", "Win32_Graphics", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_System", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Accessibility", "Win32_UI_Controls", "Win32_UI_HiDpi", "Win32_UI_Input", "Win32_UI_Input_Ime", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Input_Pointer", "Win32_UI_Input_Touch", "Win32_UI_Shell", "Win32_UI_TextServices", "Win32_UI_WindowsAndMessaging", "default"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Console", "Win32_System_Threading", "Win32_UI", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "default"] }
 windows-sys-0_60_2 = { package = "windows-sys", version = "=0.60.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Gdi", "Win32_Security", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_DataExchange", "Win32_System_IO", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Wdk", "Wdk_Foundation", "Wdk_Storage", "Wdk_Storage_FileSystem", "Wdk_System", "Wdk_System_IO", "Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Networking", "Win32_Networking_WinSock", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Authorization", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_IO", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Pipes", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_System_Time", "Win32_System_WindowsProgramming", "Win32_UI", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "default"] }
 windows-targets-0_48_5 = { package = "windows-targets", version = "=0.48.5", default-features = false, features = [] }
+windows-targets-0_52_6 = { package = "windows-targets", version = "=0.52.6", default-features = false, features = [] }
 windows-targets-0_53_5 = { package = "windows-targets", version = "=0.53.5", default-features = false, features = [] }
+windows-threading = { version = "=0.2.1", default-features = false, features = [] }
 windows-win = { version = "=3.0.0", default-features = false, features = [] }
 windows_x86_64_msvc-0_48_5 = { package = "windows_x86_64_msvc", version = "=0.48.5", default-features = false, features = [] }
+windows_x86_64_msvc-0_52_6 = { package = "windows_x86_64_msvc", version = "=0.52.6", default-features = false, features = [] }
 windows_x86_64_msvc-0_53_1 = { package = "windows_x86_64_msvc", version = "=0.53.1", default-features = false, features = [] }
 winsafe = { version = "=0.0.19", default-features = false, features = ["kernel"] }
 wio = { version = "=0.2.2", default-features = false, features = [] }
+xml-rs = { version = "=0.8.29", default-features = false, features = [] }
 
 [target.x86_64-unknown-linux-gnu.build-dependencies]
 ab_glyph = { version = "=0.2.32", default-features = false, features = ["default", "gvar-alloc", "std", "variable-fonts"] }
 ab_glyph_rasterizer = { version = "=0.1.10", default-features = false, features = ["default", "std"] }
-addr2line = { version = "=0.25.1", default-features = false, features = [] }
 ahash = { version = "=0.8.12", default-features = false, features = ["default", "getrandom", "no-rng", "runtime-rng", "std"] }
 as-raw-xcb-connection = { version = "=1.0.1", default-features = false, features = ["alloc", "default"] }
 ashpd = { version = "=0.13.13", default-features = false, features = ["async-io", "settings"] }
 async-broadcast = { version = "=0.7.2", default-features = false, features = [] }
 async-recursion = { version = "=1.1.1", default-features = false, features = [] }
 async-signal = { version = "=0.2.14", default-features = false, features = [] }
+async-trait = { version = "=0.1.92", default-features = false, features = [] }
 bstr = { version = "=1.13.1", default-features = false, features = ["alloc", "default", "std", "unicode"] }
 calloop = { version = "=0.13.0", default-features = false, features = [] }
 calloop-wayland-source = { version = "=0.3.0", default-features = false, features = [] }
@@ -2056,11 +2007,13 @@ enumflags2 = { version = "=0.7.12", default-features = false, features = ["serde
 enumflags2_derive = { version = "=0.7.12", default-features = false, features = [] }
 errno = { version = "=0.3.14", default-features = false, features = ["default", "std"] }
 event-listener-strategy = { version = "=0.5.4", default-features = false, features = ["default", "std"] }
+foldhash-0_1_5 = { package = "foldhash", version = "=0.1.5", default-features = false, features = [] }
 fontconfig-parser = { version = "=0.5.8", default-features = false, features = [] }
 freetype-sys = { version = "=0.20.1", default-features = false, features = [] }
 futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "channel", "default", "futures-channel", "futures-io", "futures-macro", "futures-sink", "io", "memchr", "sink", "slab", "std"] }
 gethostname = { version = "=1.1.0", default-features = false, features = [] }
-gimli = { version = "=0.32.3", default-features = false, features = ["read", "read-core"] }
+glow = { version = "=0.17.0", default-features = false, features = [] }
+hashbrown-0_15_5 = { package = "hashbrown", version = "=0.15.5", default-features = false, features = ["allocator-api2", "default", "default-hasher", "equivalent", "inline-more", "raw-entry"] }
 hex = { version = "=0.4.3", default-features = false, features = ["alloc", "default", "std"] }
 iana-time-zone = { version = "=0.1.65", default-features = false, features = ["fallback"] }
 inotify-0_11_5 = { package = "inotify", version = "=0.11.5", default-features = false, features = [] }
@@ -2068,6 +2021,7 @@ inotify-0_9_6 = { package = "inotify", version = "=0.9.6", default-features = fa
 inotify-sys = { version = "=0.1.8", default-features = false, features = [] }
 is-docker = { version = "=0.2.0", default-features = false, features = [] }
 is-wsl = { version = "=0.4.0", default-features = false, features = [] }
+khronos-egl = { version = "=6.0.0", default-features = false, features = ["1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "default", "dynamic", "libloading"] }
 libc = { version = "=0.2.189", default-features = false, features = ["default", "extra_traits", "std"] }
 linux-raw-sys-0_12_1 = { package = "linux-raw-sys", version = "=0.12.1", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
 linux-raw-sys-0_4_15 = { package = "linux-raw-sys", version = "=0.4.15", default-features = false, features = ["elf", "errno", "general", "ioctl", "no_std", "prctl", "system"] }
@@ -2078,14 +2032,12 @@ nix-0_29_0 = { package = "nix", version = "=0.29.0", default-features = false, f
 nix-0_31_3 = { package = "nix", version = "=0.31.3", default-features = false, features = ["default", "event", "fs", "ioctl", "poll"] }
 nom = { version = "=8.0.0", default-features = false, features = ["alloc", "default", "std"] }
 num_threads = { version = "=0.1.7", default-features = false, features = [] }
-object-0_37_3 = { package = "object", version = "=0.37.3", default-features = false, features = ["archive", "coff", "elf", "macho", "pe", "read_core", "unaligned", "xcoff"] }
 openssl-probe = { version = "=0.2.1", default-features = false, features = [] }
 ordered-stream = { version = "=0.2.0", default-features = false, features = [] }
 os_pipe = { version = "=1.2.3", default-features = false, features = ["io_safety"] }
 owned_ttf_parser = { version = "=0.25.1", default-features = false, features = ["apple-layout", "default", "glyph-names", "gvar-alloc", "opentype-layout", "std", "variable-fonts"] }
-petgraph-0_8_3 = { package = "petgraph", version = "=0.8.3", default-features = false, features = [] }
+petgraph = { version = "=0.8.3", default-features = false, features = [] }
 quick-xml = { version = "=0.41.0", default-features = false, features = ["default"] }
-raw-cpuid = { version = "=11.6.0", default-features = false, features = [] }
 roxmltree-0_20_0 = { package = "roxmltree", version = "=0.20.0", default-features = false, features = ["default", "positions", "std"] }
 rustix-0_38_44 = { package = "rustix", version = "=0.38.44", default-features = false, features = ["alloc", "default", "event", "fs", "libc-extra-traits", "pipe", "process", "shm", "std", "system", "thread", "use-libc-auxv"] }
 rustix-1_1_4 = { package = "rustix", version = "=1.1.4", default-features = false, features = ["alloc", "default", "event", "fs", "net", "pipe", "process", "shm", "std", "system", "time"] }
@@ -2109,10 +2061,8 @@ wayland-protocols-wlr = { version = "=0.3.12", default-features = false, feature
 wayland-scanner = { version = "=0.31.11", default-features = false, features = [] }
 wayland-sys = { version = "=0.31.11", default-features = false, features = ["client", "dlopen", "egl", "once_cell"] }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["default", "dx12", "fragile-send-sync-non-atomic-wasm", "gles", "metal", "portable-atomic", "renderdoc", "static-dxc", "std", "vulkan", "vulkan-portability", "wgpu-core-deps-windows-linux-android", "wgsl"] }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "gles", "renderdoc", "vulkan"] }
 wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1", default-features = false, features = ["dx12", "fragile-send-sync-non-atomic-wasm", "gles", "portable-atomic", "renderdoc", "static-dxc", "vulkan"] }
-winapi = { version = "=0.3.9", default-features = false, features = ["winsock2"] }
-windows-0_62_2 = { package = "windows", version = "=0.62.2", default-features = false, features = ["Win32", "Win32_Devices", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12", "Win32_Graphics_Direct3D_Dxc", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_DirectComposition", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Graphics_OpenGL", "Win32_Security", "Win32_System", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_LibraryLoader", "Win32_System_Performance", "Win32_System_Threading", "Win32_UI", "Win32_UI_WindowsAndMessaging", "default", "std"] }
-windows-sys-0_59_0 = { package = "windows-sys", version = "=0.59.0", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_NetworkManagement", "Win32_NetworkManagement_IpHelper", "Win32_Networking", "Win32_Networking_WinSock", "Win32_System", "Win32_System_Threading", "default"] }
 windows-sys-0_61_2 = { package = "windows-sys", version = "=0.61.2", default-features = false, features = ["Win32", "Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Authentication", "Win32_Security_Authentication_Identity", "Win32_Security_Credentials", "Win32_Security_Cryptography", "Win32_Storage", "Win32_Storage_FileSystem", "Win32_System", "Win32_System_Com", "Win32_System_Console", "Win32_System_Diagnostics", "Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_UI", "Win32_UI_Shell", "default"] }
 wl-clipboard-rs = { version = "=0.9.5", default-features = false, features = [] }
 x11 = { version = "=2.21.0", default-features = false, features = ["xlib"] }
