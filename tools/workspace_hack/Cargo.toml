@@ -390,7 +390,7 @@ quark-macros = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-fea
 quick-error = { version = "=2.0.1", default-features = false, features = [] }
 quote = { version = "=1.0.47", default-features = false, features = ["default", "proc-macro"] }
 rand-0_10_2 = { package = "rand", version = "=0.10.2", default-features = false, features = ["alloc", "default", "std", "std_rng", "sys_rng", "thread_rng"] }
-rand-0_8_8 = { package = "rand", version = "=0.8.8", default-features = false, features = ["alloc", "default", "getrandom", "libc", "rand_chacha", "small_rng", "std", "std_rng"] }
+rand-0_8_8 = { package = "rand", version = "=0.9.3", default-features = false, features = ["alloc", "default", "getrandom", "libc", "rand_chacha", "small_rng", "std", "std_rng"] }
 rand-0_9_5 = { package = "rand", version = "=0.9.5", default-features = false, features = ["alloc", "default", "os_rng", "small_rng", "std", "std_rng", "thread_rng"] }
 rand_chacha-0_3_1 = { package = "rand_chacha", version = "=0.3.1", default-features = false, features = ["std"] }
 rand_chacha-0_9_0 = { package = "rand_chacha", version = "=0.9.0", default-features = false, features = ["std"] }
@@ -1478,7 +1478,7 @@ quark-macros = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-fea
 quick-error = { version = "=2.0.1", default-features = false, features = [] }
 quote = { version = "=1.0.47", default-features = false, features = ["default", "proc-macro"] }
 rand-0_10_2 = { package = "rand", version = "=0.10.2", default-features = false, features = ["alloc", "default", "std", "std_rng", "sys_rng", "thread_rng"] }
-rand-0_8_8 = { package = "rand", version = "=0.8.8", default-features = false, features = ["alloc", "default", "getrandom", "libc", "rand_chacha", "small_rng", "std", "std_rng"] }
+rand-0_8_8 = { package = "rand", version = "=0.9.3", default-features = false, features = ["alloc", "default", "getrandom", "libc", "rand_chacha", "small_rng", "std", "std_rng"] }
 rand-0_9_5 = { package = "rand", version = "=0.9.5", default-features = false, features = ["alloc", "default", "os_rng", "small_rng", "std", "std_rng", "thread_rng"] }
 rand_chacha-0_3_1 = { package = "rand_chacha", version = "=0.3.1", default-features = false, features = ["std"] }
 rand_chacha-0_9_0 = { package = "rand_chacha", version = "=0.9.0", default-features = false, features = ["std"] }
