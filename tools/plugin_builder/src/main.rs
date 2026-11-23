@@ -211,6 +211,8 @@ fn build(plugins: &[&Plugin], options: &Options) -> Result<BuildOutput> {
     for shared in SHARED_LIBRARIES {
         command.args(["-p", shared]);
     }
+    // The pinned feature set of the shared libraries: part of every build, with or without the editor.
+    command.args(["-p", "pulsar_workspace_hack"]);
     for plugin in plugins {
         command.args(["-p", &plugin.root]);
     }

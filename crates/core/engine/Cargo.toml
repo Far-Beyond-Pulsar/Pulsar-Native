@@ -71,6 +71,9 @@ wgpui_dylib = { workspace = true }
 helio_dylib = { workspace = true }
 ui_dylib = { workspace = true }
 profiling_dylib = { workspace = true }
+# Pins the features of every crate inside those libraries, so building the editor alone gives the same
+# libraries as building it with every plugin (tools/hack_gen). Nothing links it.
+pulsar_workspace_hack = { path = "../../../tools/workspace_hack" }
 reflection_dylib = { workspace = true }
 scenedb_dylib = { workspace = true }
 plugin_editor_api = { workspace = true, features = ["shared-dylibs"] }

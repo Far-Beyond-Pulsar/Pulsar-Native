@@ -219,6 +219,10 @@ members = [
     # own library (feature `dll`, tools/plugin_builder).
     "plugins/linked",
     "tools/plugin_builder",
+    # The feature-pinning crate for the shared libraries, and the generator that writes it (cargo run -p hack_gen).
+    "tools/hack_gen",
+    "tools/workspace_hack",
+    "tools/sdk_roots",
     # The plugin catalog's fixture plugin (plugins/installed/tests/catalog.rs).
     "plugins/installed/tests/fixtures/catalog_plugin",
     "plugins/installed/tests/fixtures/catalog_plugin/component",

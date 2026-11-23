@@ -1,0 +1,12 @@
+[package]
+name = "hack_gen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Generates tools/workspace_hack: one pinned feature set for the crates inside the shared libraries. Run: cargo run -p hack_gen (or with --check)"
+
+[dependencies]
+engine_fs = { workspace = true }
+
+[lints]
+workspace = true

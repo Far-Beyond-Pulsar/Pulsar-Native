@@ -73,10 +73,9 @@ jobs:
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "root=$root version=$current previous=$previous release=$release"
 
-  # The plugin and the shared libraries must be built from the same Cargo.lock and patches (rustc refuses
-  # a library whose crate hashes differ). Each library's latest release records the hash of the lock it was
-  # built with; this fails until all six were released for the workspace's current lock, so a plugin never
-  # starts building ahead of the libraries it links.
+  # Each shared library must have a release (with its SDK) before a plugin builds. The SDK carries the hash of the
+  # Cargo.lock it was built with; a plugin built from another lock still builds correctly (the wrapper serves a
+  # crate only when its hash matches), only slower, so a different lock is a warning, a missing release an error.
   libraries:
     name: shared libraries released
     needs: gate
@@ -88,7 +87,7 @@ jobs:
           repository: Far-Beyond-Pulsar/Pulsar-Native
           ref: main
           persist-credentials: false
-      - name: Compare each library's release with the workspace lock
+      - name: Check each library has a release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -97,11 +96,14 @@ jobs:
           failed=0
           for pair in Pulsar-Profiling:profiling_dylib WGPUI:wgpui_dylib WGPUI-Component:ui_dylib Pulsar-Reflection:reflection_dylib SceneDB:scenedb_dylib Helio:helio_dylib; do
             repo=${pair%%:*}; pkg=${pair##*:}
-            have=$(gh release download --repo "Far-Beyond-Pulsar/$repo" --pattern "${pkg}-linux-x86_64-manifest.json" --output - 2>/dev/null | sed -n 's/.*"cargo_lock_sha256": "\(.*\)".*/\1/p')
-            if [ "$have" = "$want" ]; then echo "ok      $repo ($pkg)"; else echo "STALE   $repo ($pkg): released for lock '${have:-none}'"; failed=1; fi
+            # The newest release of the library's own series (`shared-v<version>`, see library-release.yml).
+            tag=$(gh release list --repo "Far-Beyond-Pulsar/$repo" --limit 50 --json tagName --jq '[.[]|select(.tagName|startswith("shared-v"))][0].tagName')
+            if [ -z "$tag" ]; then echo "MISSING $repo ($pkg): no shared-v release"; failed=1; continue; fi
+            have=$(gh release download "$tag" --repo "Far-Beyond-Pulsar/$repo" --pattern "${pkg}-linux-x86_64-manifest.json" --output - 2>/dev/null | sed -n 's/.*"cargo_lock_sha256": "\(.*\)".*/\1/p')
+            if [ "$have" = "$want" ]; then echo "ok      $repo ($pkg) $tag"; else echo "::warning::$repo ($pkg) $tag was built for another Cargo.lock ('${have:-unknown}'): the SDK may serve fewer crates"; fi
           done
           if [ $failed -ne 0 ]; then
-            echo "::error::A shared library has no release for the workspace's current Cargo.lock: release the libraries first (their sdk-release workflows), then re-run this."
+            echo "::error::A shared library has no release: release the libraries first (their sdk-release workflows), then re-run this."
             exit 1
           fi
 
@@ -156,12 +158,36 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake pkg-config
 
+      # The released binaries of the tool: nothing is compiled here.
+      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.0
+
+      # Every crate inside the shared libraries, already compiled by the library release (Helio's SDK covers the
+      # whole chain: Helio, SceneDB, Reflection, UI, WGPUI and Profiling). The build below serves them from it
+      # instead of compiling them, which is most of a plugin build.
+      - name: Fetch the shared libraries' SDK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag=$(gh release list --repo Far-Beyond-Pulsar/Helio --limit 50 --json tagName --jq '[.[]|select(.tagName|startswith("shared-v"))][0].tagName')
+          test -n "$tag" || { echo "::error::Helio has no shared-v release yet: release the shared libraries first"; exit 1; }
+          cargo sdk fetch --repo Far-Beyond-Pulsar/Helio --tag "$tag" \
+            --asset "helio_dylib-${{ matrix.platform }}-sdk.tar.gz" --out "$RUNNER_TEMP/sdk"
+
       # The plugin library: the root crate with its `dll` feature, a cdylib that exports the
-      # plugin's descriptor and registrations (plugin_editor_api::export_library_plugin!).
+      # plugin's descriptor and registrations (plugin_editor_api::export_library_plugin!). The feature pin
+      # (`pulsar_workspace_hack`) is part of every build, so the crates' hashes match the SDK's.
       - name: Build the plugin library
         working-directory: pulsar
         shell: bash
-        run: cargo build -p "$ROOT" --release --target "${{ matrix.target }}" --features "$ROOT/dll"
+        run: |
+          cargo sdk exec --sdk "$RUNNER_TEMP/sdk" --verbose -- \
+            cargo build -p "$ROOT" --release --target "${{ matrix.target }}" --features "$ROOT/dll" -p pulsar_workspace_hack \
+            2>&1 | tee "$RUNNER_TEMP/build.log"
+          served=$(grep -c 'sdk-rustc: served' "$RUNNER_TEMP/build.log" || true)
+          echo "served from the SDK: $served"
+          # A build the SDK does not match still succeeds, only slowly: say so.
+          if [ "$served" -lt 100 ]; then echo "::warning::the SDK served only $served crates: the build and the SDK differ (Cargo.lock, toolchain, flags or features)"; fi
 
       - name: Package
         id: package
@@ -204,7 +230,8 @@ jobs:
             echo "{"
             first=1
             for repo in $SDK_REPOS; do
-              tag=$(gh api "repos/Far-Beyond-Pulsar/$repo/releases/latest" --jq .tag_name 2>/dev/null || echo "none")
+              tag=$(gh release list --repo "Far-Beyond-Pulsar/$repo" --limit 50 --json tagName --jq '[.[]|select(.tagName|startswith("shared-v"))][0].tagName' 2>/dev/null || true)
+              tag=${tag:-none}
               [ $first -eq 0 ] && echo ","
               printf '  "%s": "%s"' "$repo" "$tag"
               first=0
