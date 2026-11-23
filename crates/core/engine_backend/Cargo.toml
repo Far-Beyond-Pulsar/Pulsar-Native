@@ -117,7 +117,12 @@ default = ["render", "editor-ui", "pie"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-frame-api", "dep:helio-pass-tsr"]
+render     = ["dep:helio", "dep:helio-core", "dep:helio-presets", "dep:helio-scene-derivations", "dep:helio-graph-asset", "dep:pollster", "dep:helio-pass-postprocess", "dep:helio-scene-join", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-feature-api", "dep:helio-frame-api", "dep:helio-pass-tsr"]
+# The live SceneDB inspector bridge (a shared-memory debug agent). Not part of `render`: it links `shared_memory`, which links the
+# `windows` 0.34 crate, whose bundled import library (`windows.lib`) contains import stubs for the Windows SDK's
+# `winsqlite3` functions. On the link line of the editor and of every plugin library it took SQLite calls away from the
+# bundled SQLite in `profiling_dylib` (a statement prepared by one SQLite and finalized by the other: an access violation).
+scenedb-inspector = ["render", "dep:scenedb-inspector-agent"]
 editor-ui  = ["dep:gpui-ce", "dep:ui"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 # Hot-reload `.wgsl` edits into the running renderer (Helio's

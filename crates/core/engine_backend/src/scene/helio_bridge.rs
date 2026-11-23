@@ -364,7 +364,7 @@ pub fn ensure_gpu_mirror(
 }
 
 /// Point SceneDB's derived-data cache at the project's cache folder and keep it
-/// within `streaming.derived_cache_mb` (default 4096), pruning the least
+/// within `streaming.derived_cache_mb` (default 32768: a large scene cooks more than the old 4096 MiB, and a cache smaller than one scene is evicted and recooked on every launch), pruning the least
 /// recently used files on a background thread. Done once per process: a second
 /// scene in the same project only repeats it.
 fn install_derived_cache() {
@@ -383,7 +383,7 @@ fn install_derived_cache() {
             "derived_cache_mb",
         ) {
             Ok(engine_state::settings::ConfigValue::Int(mb)) => mb.clamp(64, 1_048_576) as u64,
-            _ => 4096,
+            _ => 32768,
         };
         pulsar_scenedb::set_derived_cache_dir(Some(directory));
         editor_task_queue::spawn_named(

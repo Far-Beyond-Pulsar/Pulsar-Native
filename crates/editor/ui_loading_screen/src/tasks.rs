@@ -386,7 +386,9 @@ fn task_prepare_plugins(_project: &Path) -> TaskResult {
             detail: Some("already loaded".to_string()),
         };
     }
-    let count = plugin_manager::prewarm_plugins("plugins/editor");
+    let count = plugin_manager::prewarm_plugins(
+        pulsar_install_layout::InstallLayout::of_running_engine().plugins_dir(),
+    );
     TaskResult {
         elapsed: t.elapsed(),
         detail: Some(format!("{count} plugin librar(ies)")),

@@ -71,12 +71,12 @@ pub use editor_postprocess::EditorPostProcess;
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for
 /// every replacement world (undo/redo, level load).
-#[cfg(feature = "render")]
+#[cfg(feature = "scenedb-inspector")]
 pub fn install_scenedb_inspector(world: &mut pulsar_scenedb::World) -> bool {
     scenedb_inspector_agent::install_world(world)
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(feature = "scenedb-inspector"))]
 pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }

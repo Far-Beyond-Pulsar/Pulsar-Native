@@ -19671,6 +19671,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_class",
+ "pulsar_install_layout",
  "pulsar_language",
  "pulsar_lsp",
  "serde",

@@ -106,7 +106,7 @@ pub fn register(cfg: &'static ConfigManager) {
         )
         .setting(
             "derived_cache_mb",
-            SchemaEntry::new("Disk space for cooked assets under .pulsar/cache/derived, in MB", 4096_i64)
+            SchemaEntry::new("Disk space for cooked assets under .pulsar/cache/derived, in MB", 32768_i64)
                 .label("Cooked Asset Cache (MB)")
                 .page("Caches")
                 .field_type(FieldType::NumberInput {

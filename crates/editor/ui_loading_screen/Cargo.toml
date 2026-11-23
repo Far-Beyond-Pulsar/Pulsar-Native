@@ -13,6 +13,7 @@ pulsar_lsp.workspace = true
 pulsar_language.workspace = true
 engine_state.workspace = true
 plugin_manager.workspace = true
+pulsar_install_layout.workspace = true
 plugin_editor_api = { workspace = true, features = ["editor"] }
 engine_fs = { workspace = true }
 pulsar_class = { workspace = true }
