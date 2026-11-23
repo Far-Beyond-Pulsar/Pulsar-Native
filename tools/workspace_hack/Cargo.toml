@@ -430,7 +430,7 @@ rust-embed = { version = "=8.12.0", default-features = false, features = ["inclu
 rust-embed-impl = { version = "=8.12.0", default-features = false, features = ["include-exclude", "interpolate-folder-path", "shellexpand"] }
 rust-embed-utils = { version = "=8.12.0", default-features = false, features = ["globset", "include-exclude"] }
 rust-i18n = { version = "=4.2.1", default-features = false, features = [] }
-rust-i18n-macro = { version = "=4.2.1", default-features = false, features = [] }
+rust-i18n-macro = { version = "=4.2.4", default-features = false, features = [] }
 rust-i18n-support = { version = "=4.2.1", default-features = false, features = ["codegen"] }
 rust_decimal = { version = "=1.42.1", default-features = false, features = ["default", "serde", "std"] }
 rustc-demangle = { version = "=0.1.28", default-features = false, features = [] }
@@ -1493,7 +1493,7 @@ rust-embed = { version = "=8.12.0", default-features = false, features = ["inclu
 rust-embed-impl = { version = "=8.12.0", default-features = false, features = ["include-exclude", "interpolate-folder-path", "shellexpand"] }
 rust-embed-utils = { version = "=8.12.0", default-features = false, features = ["globset", "include-exclude"] }
 rust-i18n = { version = "=4.2.1", default-features = false, features = [] }
-rust-i18n-macro = { version = "=4.2.1", default-features = false, features = [] }
+rust-i18n-macro = { version = "=4.2.4", default-features = false, features = [] }
 rust-i18n-support = { version = "=4.2.1", default-features = false, features = ["codegen"] }
 rust_decimal = { version = "=1.42.1", default-features = false, features = ["default", "serde", "std"] }
 rustc-demangle = { version = "=0.1.28", default-features = false, features = [] }
