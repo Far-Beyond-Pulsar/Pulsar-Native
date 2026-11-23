@@ -6062,6 +6062,7 @@ name = "helio-mats"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "engine_state",
  "helio-components",
  "helio-core",
  "helio-frame-api",
