@@ -223,6 +223,24 @@ fn build(plugins: &[&Plugin], options: &Options) -> Result<BuildOutput> {
             .collect();
         command.args(["--features", &features.join(",")]);
     }
+    // `cargo run -p plugin_builder` sets the tool's own package variables (`CARGO_MANIFEST_DIR`,
+    // `CARGO_PKG_*`, ...) for it, and a child cargo inherits them. Build scripts declare some of them as inputs
+    // (`ring`'s does: `rerun-if-env-changed`) and cargo compares those against its own environment, so a build
+    // started from here would differ from a plain `cargo build` or `cargo run --release` of the editor: every
+    // switch between the two reran `ring` and rebuilt everything above it, the shared libraries included.
+    for (name, _) in std::env::vars_os() {
+        let Some(name) = name.to_str() else { continue };
+        let package_variable = name == "CARGO_MANIFEST_DIR"
+            || name == "CARGO_MANIFEST_PATH"
+            || name == "CARGO_CRATE_NAME"
+            || name == "CARGO_BIN_NAME"
+            || name == "CARGO_PRIMARY_PACKAGE"
+            || name.starts_with("CARGO_PKG_")
+            || name.starts_with("CARGO_BIN_EXE_");
+        if package_variable {
+            command.env_remove(name);
+        }
+    }
     command.stdout(Stdio::piped()).stderr(Stdio::inherit());
     let mut child = command.spawn()?;
 

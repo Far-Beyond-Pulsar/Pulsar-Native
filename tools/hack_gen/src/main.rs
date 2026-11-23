@@ -123,6 +123,60 @@ fn cargo_tree(root: &Path, target: &str, args: &[String]) -> Result<Vec<(Package
         .collect())
 }
 
+/// The crates under `root_name` on `target`: every package reachable from it through normal and build
+/// dependencies in cargo's own resolve for that platform (`cargo metadata --filter-platform`), as (name, version).
+/// This is exact for membership: unlike `cargo tree` it lists no dependency a platform does not build, and
+/// it sees the crates a feature enabled by any workspace member makes reachable.
+fn closure_under(root: &Path, target: &str, root_name: &str) -> Result<BTreeSet<(String, String)>> {
+    let output = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+        .current_dir(root)
+        .args(["metadata", "--format-version", "1", "--filter-platform", target])
+        .output()?;
+    if !output.status.success() {
+        return Err(format!("cargo metadata failed:
+{}", String::from_utf8_lossy(&output.stderr)).into());
+    }
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+    let mut package_of: BTreeMap<&str, (String, String)> = BTreeMap::new();
+    for package in metadata["packages"].as_array().into_iter().flatten() {
+        if let (Some(id), Some(name), Some(version)) =
+            (package["id"].as_str(), package["name"].as_str(), package["version"].as_str())
+        {
+            package_of.insert(id, (name.to_owned(), version.to_owned()));
+        }
+    }
+    let mut deps_of: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for node in metadata["resolve"]["nodes"].as_array().into_iter().flatten() {
+        let Some(id) = node["id"].as_str() else { continue };
+        let out = deps_of.entry(id).or_default();
+        for dep in node["deps"].as_array().into_iter().flatten() {
+            let wanted = dep["dep_kinds"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|kind| matches!(kind["kind"].as_str(), None | Some("build")));
+            if let (true, Some(pkg)) = (wanted, dep["pkg"].as_str()) {
+                out.push(pkg);
+            }
+        }
+    }
+    let mut stack: Vec<&str> = package_of
+        .iter()
+        .filter(|(_, (name, _))| name == root_name)
+        .map(|(id, _)| *id)
+        .collect();
+    if stack.is_empty() {
+        return Err(format!("no package named {root_name} in the workspace").into());
+    }
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    while let Some(id) = stack.pop() {
+        if seen.insert(id) {
+            stack.extend(deps_of.get(id).into_iter().flatten());
+        }
+    }
+    Ok(seen.into_iter().filter_map(|id| package_of.get(id).cloned()).collect())
+}
+
 /// The dependency specification of `package` with its pinned features.
 fn dependency(package: &Package, features: &BTreeSet<String>, root: &Path, renamed: bool) -> String {
     let features: Vec<String> = features.iter().map(|f| format!("\"{f}\"")).collect();
@@ -161,24 +215,17 @@ fn generate(root: &Path) -> Result<String> {
     let roots = plugin_roots(root)?;
     let libraries: Vec<String> = SHARED_LIBRARIES.iter().map(|p| p.to_string()).collect();
 
-    // The crates inside the shared libraries, per platform. `sdk_roots` depends on all six libraries, so one
-    // `cargo tree` per platform gives them (the libraries live in nested workspaces and cargo cannot select
-    // packages of several of them in one command, which is what that package is for). Which platform a crate
-    // belongs to is decided here, from the libraries' own graph: the engine's graph lists crates a platform does
-    // not build (a Windows-only crate reached through an optional dependency), and pinning one of those would
-    // compile it where it cannot build.
+    // The build every consumer is part of: the libraries, the editor and every plugin, in one resolve, so the
+    // features are the union of what any of them asks for. What is *inside the libraries* is every crate under
+    // `sdk_roots` (which depends on all six) in the workspace's resolve for the platform, not in a libraries-only
+    // graph: a feature a pinned crate has only in the union (`glam`'s `approx`) makes dependencies reachable that a
+    // libraries-only graph lacks, and left out they were never pinned, so a plugin enabling one more feature of
+    // one of them changed every hash above it (the plugin DLLs then imported a library file that no longer existed).
+    //
+    // Membership per platform comes from `cargo metadata --filter-platform`, which lists no crate a platform does
+    // not build; `cargo tree` over-reports those (a Windows-only crate reached through an optional dependency), and
+    // pinning one would compile it where it cannot build.
     let skip: Vec<&str> = libraries.iter().map(String::as_str).chain(["sdk_roots", "pulsar_workspace_hack"]).collect();
-    let mut inside: BTreeMap<&str, BTreeSet<Package>> = BTreeMap::new();
-    for target in TARGETS {
-        let packages = inside.entry(target).or_default();
-        for (package, _) in cargo_tree(root, target, &["-p".to_owned(), "sdk_roots".to_owned()])? {
-            if !skip.contains(&package.name.as_str()) {
-                packages.insert(package);
-            }
-        }
-    }
-
-    // Their features in the build every consumer is part of: the editor, every plugin and the libraries.
     let mut union_args: Vec<String> = vec!["-p".into(), "sdk_roots".into(), "-p".into(), "pulsar_engine".into()];
     for root_crate in &roots {
         union_args.extend(["-p".into(), root_crate.clone()]);
@@ -189,11 +236,18 @@ fn generate(root: &Path) -> Result<String> {
     // Per platform: what the build of that platform pulls from inside the libraries, with its features.
     let mut per_target: BTreeMap<&str, BTreeMap<Package, BTreeSet<String>>> = BTreeMap::new();
     for target in TARGETS {
+        // What is inside the libraries on this platform: the crates under `sdk_roots`.
+        let inside = closure_under(root, target, "sdk_roots")?;
+        // Their features: the union over the build every consumer is part of.
         let pinned = per_target.entry(target).or_default();
         for (package, enabled) in cargo_tree(root, target, &union_args)? {
-            if inside[target].contains(&package) {
+            let member = inside.contains(&(package.name.clone(), package.version.clone()));
+            if member && !skip.contains(&package.name.as_str()) {
                 pinned.entry(package).or_default().extend(enabled);
             }
+        }
+        if pinned.is_empty() {
+            return Err(format!("no crates found under sdk_roots for {target}").into());
         }
     }
 
