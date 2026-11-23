@@ -84,6 +84,7 @@ pub mod builtin;
 pub mod catalog;
 mod contributions;
 pub mod dependencies;
+mod imports;
 mod details;
 mod editors;
 mod error;

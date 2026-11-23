@@ -164,11 +164,13 @@ impl PluginManager {
         tracing::debug!("Loading plugin from: {:?}", path);
 
         // Load the library permanently
-        let library =
-            PermanentLibrary::new(&path).map_err(|e| PluginManagerError::LibraryLoadError {
+        let library = PermanentLibrary::new(&path).map_err(|e| {
+            let message = e.to_string();
+            PluginManagerError::LibraryLoadError {
+                message: crate::imports::explain(&path, &message),
                 path: path.to_path_buf(),
-                message: e.to_string(),
-            })?;
+            }
+        })?;
 
         // Verify the plugin binary against the required integrity manifest.
         // The manifest is a sibling JSON file named "plugin_integrity.json" that
