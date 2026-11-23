@@ -60,7 +60,7 @@ env:
   PACKAGE: ${{ inputs.package }}
   CRATE_DIR: ${{ inputs.crate_dir }}
   MONO_PATH: ${{ inputs.mono_path }}
-  CARGO_SDK_VERSION: v0.1.0
+  CARGO_SDK_VERSION: v0.1.1
 
 jobs:
   gate:
@@ -127,6 +127,13 @@ jobs:
           # warning in one crate on one platform would fail a release. The SDK and its consumers build with the same flags.
           rustflags: ""
 
+      # The repository pins its toolchain (rust-toolchain.toml in the checkout), which is not the one the step above
+      # set up: the target (a cross build, or i686 / arm64 on an x86_64 runner) must be installed for the pinned one.
+      - name: Install the target for the pinned toolchain
+        working-directory: pulsar
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
+
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -142,7 +149,7 @@ jobs:
         run: brew install cmake pkg-config
 
       # The released binaries of the tool: nothing is compiled here.
-      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.0
+      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.1
 
       # Build every shared library (`sdk_roots`) and cut the SDK of this one: its crates, and everything under
       # them, already compiled. A later build of a plugin serves them from it instead of compiling them again.

@@ -147,6 +147,13 @@ jobs:
           # warning in one crate on one platform would fail a release. The SDK and its consumers build with the same flags.
           rustflags: ""
 
+      # The repository pins its toolchain (rust-toolchain.toml in the checkout), which is not the one the step above
+      # set up: the target (a cross build, or i686 / arm64 on an x86_64 runner) must be installed for the pinned one.
+      - name: Install the target for the pinned toolchain
+        working-directory: pulsar
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
+
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -162,7 +169,7 @@ jobs:
         run: brew install cmake pkg-config
 
       # The released binaries of the tool: nothing is compiled here.
-      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.0
+      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.1
 
       # Every crate inside the shared libraries, already compiled by the library release (Helio's SDK covers the
       # whole chain: Helio, SceneDB, Reflection, UI, WGPUI and Profiling). The build below serves them from it
