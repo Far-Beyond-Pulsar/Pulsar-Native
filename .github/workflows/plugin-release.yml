@@ -26,6 +26,11 @@ on:
         description: "Where Pulsar-Native vendors the plugin, e.g. plugins/vendor/fog"
         required: true
         type: string
+      optional_platforms:
+        description: "Platforms (space separated, e.g. macos-x86_64) whose build may fail without failing the release: a plugin whose dependency has no build for them, such as ONNX Runtime on Intel macOS"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -112,6 +117,7 @@ jobs:
     needs: [gate, libraries]
     if: needs.gate.outputs.release == 'true'
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ contains(inputs.optional_platforms, matrix.platform) }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
