@@ -68,7 +68,7 @@ impl WaitAddress {
                 .checked_mul(1000)
                 .and_then(|x| x.checked_add((diff.subsec_nanos() as u64 + 999999) / 1000000))
                 .map(|ms| {
-                    if ms > std::u32::MAX as u64 {
+                    if ms > u32::MAX as u64 {
                         INFINITE
                     } else {
                         ms as u32

@@ -218,7 +218,7 @@ fn timespec_now() -> libc::timespec {
 #[inline]
 fn timeout_to_timespec(timeout: Duration) -> Option<libc::timespec> {
     // Handle overflows early on
-    if timeout.as_secs() > libc::time_t::max_value() as u64 {
+    if timeout.as_secs() > libc::time_t::MAX as u64 {
         return None;
     }
 

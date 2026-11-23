@@ -56,7 +56,7 @@ impl super::ThreadParkerT for ThreadParker {
     unsafe fn park_until(&self, timeout: Instant) -> bool {
         while self.parked.load(Ordering::Acquire) == PARKED {
             if let Some(left) = timeout.checked_duration_since(Instant::now()) {
-                let nanos_left = i64::try_from(left.as_nanos()).unwrap_or(i64::max_value());
+                let nanos_left = i64::try_from(left.as_nanos()).unwrap_or(i64::MAX);
                 let r = wasm32::memory_atomic_wait32(self.ptr(), PARKED, nanos_left);
                 debug_assert!(r == 0 || r == 1 || r == 2);
             } else {

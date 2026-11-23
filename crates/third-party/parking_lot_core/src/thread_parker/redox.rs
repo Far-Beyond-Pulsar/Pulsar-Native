@@ -63,7 +63,7 @@ impl super::ThreadParkerT for ThreadParker {
                 return false;
             }
             let diff = timeout - now;
-            if diff.as_secs() > i64::max_value() as u64 {
+            if diff.as_secs() > i64::MAX as u64 {
                 // Timeout overflowed, just sleep indefinitely
                 self.park();
                 return true;

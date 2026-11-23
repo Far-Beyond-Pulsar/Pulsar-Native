@@ -143,6 +143,9 @@ jobs:
         with:
           target: ${{ matrix.target }}
           cache-workspaces: pulsar
+          # No `-D warnings`: it is a lint, it is part of every crate's hash (the engine release does not set it), and one
+          # warning in one crate on one platform would fail a release. The SDK and its consumers build with the same flags.
+          rustflags: ""
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
