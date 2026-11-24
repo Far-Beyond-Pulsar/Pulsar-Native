@@ -44,6 +44,8 @@ walkdir = { workspace = true }
 
 # Cryptographic hash verification
 sha2 = { workspace = true }
+# Where the renamed copies of older plugins are kept (`imports::compat_copy`).
+pulsar_install_layout = { workspace = true }
 
 [dev-dependencies]
 env_logger = "=0.11.11"

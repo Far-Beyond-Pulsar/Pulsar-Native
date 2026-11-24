@@ -163,14 +163,38 @@ impl PluginManager {
 
         tracing::debug!("Loading plugin from: {:?}", path);
 
+        // A plugin built against shared libraries of another build imports them by another file name
+        // (hash-named libraries carry a hash of the dependency graph in it) while their symbols are the
+        // same: load a copy whose imports name the libraries this engine has, instead of refusing it for
+        // a file name. The manifest below still checks the original.
+        let compat = crate::imports::compat_copy(
+            &path,
+            &pulsar_install_layout::appdata_dir().join("plugin_compat"),
+        );
+        if let Some(compat) = &compat {
+            for rename in &compat.renames {
+                tracing::warn!(
+                    "{:?} imports {}, which this engine does not have; loading a copy that imports {} (the same library of another build)",
+                    path,
+                    rename.from,
+                    rename.to
+                );
+            }
+        }
+        let load_path = compat.as_ref().map_or(path.clone(), |c| c.path.clone());
+
         // Load the library permanently
-        let library = PermanentLibrary::new(&path).map_err(|e| {
+        let library = PermanentLibrary::new(&load_path).map_err(|e| {
             let message = e.to_string();
             PluginManagerError::LibraryLoadError {
-                message: crate::imports::explain(&path, &message),
+                message: crate::imports::explain(&load_path, &message),
                 path: path.to_path_buf(),
             }
         })?;
+        // What the manifest lists is the original file, not the renamed copy.
+        let actual_sha256 = compat
+            .as_ref()
+            .map_or(*library.sha256(), |c| c.original_sha256);
 
         // Verify the plugin binary against the required integrity manifest.
         // The manifest is a sibling JSON file named "plugin_integrity.json" that
@@ -187,11 +211,11 @@ impl PluginManager {
                     message: format!("Invalid hash in manifest for '{}': {}", file_name, e),
                 }
             })?;
-            if library.sha256() != &expected {
+            if actual_sha256 != expected {
                 return Err(PluginManagerError::IntegrityCheckFailed {
                     path: path.to_path_buf(),
                     expected: expected,
-                    actual: *library.sha256(),
+                    actual: actual_sha256,
                 });
             }
             tracing::debug!("Integrity check passed for plugin: {:?}", path);
@@ -205,7 +229,7 @@ impl PluginManager {
                 return Err(PluginManagerError::IntegrityCheckFailed {
                     path: path.to_path_buf(),
                     expected: [0u8; 32],
-                    actual: *library.sha256(),
+                    actual: actual_sha256,
                 });
             }
         }
