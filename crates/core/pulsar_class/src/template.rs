@@ -1,4 +1,4 @@
-//! Typed class templates (Pulsar-Native#1035, Phase 3).
+//! Typed class templates.
 //!
 //! A [`ClassTemplate`] is a class definition with every prefab slot's
 //! default decoded once into a typed value. Instances are built by cloning

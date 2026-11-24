@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - phases 3-5 done (VM, Blueprint compiler, old dispatcher removed); a few 'Not yet' items remain
+
 # Script VM refactor plan
 
 Goal: the engine core knows exactly one thing about scripting: how to load,

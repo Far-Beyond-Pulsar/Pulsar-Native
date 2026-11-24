@@ -63,7 +63,7 @@ pub enum LinkError {
     #[error("`{name}`: {message}")]
     PolyNative { name: String, message: String },
     /// The module imports a native gated behind a capability the link
-    /// policy does not allow (#869).
+    /// policy does not allow.
     #[error("native `{name}` needs capability `{capability}`, which this project does not allow")]
     CapabilityDenied { name: String, capability: String },
     /// The module compares or prints a value type that has no equality or
@@ -135,7 +135,7 @@ pub struct ScriptError {
     /// `(function, pc)`, innermost first.
     pub trace: Vec<(String, usize)>,
     /// The source location of each [`trace`](Self::trace) entry, from the
-    /// functions' debug info (#854); `None` where a function has none.
+    /// functions' debug info; `None` where a function has none.
     /// Same length as `trace` when filled by the VM.
     pub locations: Vec<Option<SourceLoc>>,
 }

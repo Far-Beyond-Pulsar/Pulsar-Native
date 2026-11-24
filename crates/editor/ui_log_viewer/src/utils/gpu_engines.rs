@@ -57,7 +57,9 @@ mod windows_impl {
     static PDH: Mutex<Option<PdhState>> = Mutex::new(None);
 
     fn ensure_init() -> bool {
-        let mut guard = PDH.lock().unwrap();
+        let mut guard = PDH
+            .lock()
+            .expect("the PDH lock only spans plain FFI calls, so nothing panics while it is held");
         if guard.is_some() {
             return true;
         }
@@ -92,7 +94,9 @@ mod windows_impl {
             return HashMap::new();
         }
 
-        let guard = PDH.lock().unwrap();
+        let guard = PDH
+            .lock()
+            .expect("the PDH lock only spans plain FFI calls, so nothing panics while it is held");
         let state = match guard.as_ref() {
             Some(s) => s,
             None => return HashMap::new(),

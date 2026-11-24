@@ -1,3 +1,6 @@
+//! Render functions of the friends window: header, tab bar, friend list, add-friend bar and
+//! popover.
+
 pub mod add_friend;
 pub mod friend_list;
 pub mod header;

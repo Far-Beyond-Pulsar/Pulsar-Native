@@ -1,3 +1,5 @@
+Status: unknown - needs owner review (as of 2026-11-20) - only the phase 1 commit (89604b4db) is traceable; later phases not verified
+
 # Flamegraph viewer: session (file) mode overhaul
 
 Scope: `crates/editor/ui_flamegraph`, the screen shown once a session is loaded

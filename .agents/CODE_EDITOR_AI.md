@@ -102,3 +102,21 @@ Mockaco changes live on its `ai-inline-integration` branch. Until it is pushed
 and the `rev` in `plugins/vendor/code_editor/Cargo.toml` re-pinned, the root
 `Cargo.toml` and the plugin's own manifest carry a local `[patch]` to the
 checkout under `Documents/GitHub/Mockaco`. Remove both when re-pinning.
+
+## Chat panel: nothing blocks the UI thread
+
+The agent chat panel (`ui_core::app::agent_chat_panel`) keeps all I/O and
+provider work off the frame thread:
+
+- Provider calls, `@file` expansion and tool execution run in the "Process AI
+  chat request" editor task; events reach the UI through an unbounded channel
+  that `spawn_stream_event_pump` drains in batches (chunks coalesced, 16 ms
+  pacing, max 64 events per UI update).
+- Chat saves serialize and write in the FIFO "Save AI chats" task.
+- Chat loads do too: `bootstrap_chat_storage` (index scan of every
+  `.pulsar/chats/*.json` plus the latest chat) and `load_chat_session` read
+  and parse on the background executor ("Load AI chats" / "Open AI chat"
+  tasks) and apply the parsed `ChatSessionFile` on the UI thread
+  (`apply_loaded_chat`, no I/O). Before this the panel read and parsed every
+  saved chat inside its constructor and on every history click.
+- A bootstrap never replaces a chat the user already started or one in flight.

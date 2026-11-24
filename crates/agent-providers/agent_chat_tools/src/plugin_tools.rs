@@ -1,0 +1,371 @@
+//! Tools for the editor's open files and plugin-provided tools.
+
+use anyhow::anyhow;
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::Instant;
+use tool_registry_macros::tool;
+use tracing::debug;
+
+use crate::tool_context::{runtime_current_file, runtime_extras, runtime_workspace_root};
+use crate::workspace_paths::{resolve_workspace_path, resolve_workspace_path_soft};
+
+/// Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access.
+#[tool(category = "pulsar")]
+pub fn open_file_in_default_editor(file_path: String) -> anyhow::Result<Value> {
+    let root = runtime_workspace_root()?;
+    let full = resolve_workspace_path(&root, &file_path)?;
+
+    let callback = runtime_extras()?
+        .open_file_request
+        .ok_or_else(|| anyhow!("Open-file callback unavailable in this context"))?;
+    callback(full.clone()).map_err(|err| anyhow!(err))?;
+
+    Ok(json!({
+        "ok": true,
+        "file_path": full.display().to_string(),
+        "opened": true,
+    }))
+}
+
+/// List already-open editors and indicate which is active. Returns file_path for each - use those exact paths with query_plugin_tools and execute_plugin_tool.
+#[tool(category = "pulsar")]
+pub fn query_open_editors() -> anyhow::Result<Value> {
+    let callback = runtime_extras()?
+        .query_open_editors
+        .ok_or_else(|| anyhow!("Open-editors callback unavailable in this context"))?;
+    callback().map_err(|err| anyhow!(err))
+}
+
+/// Switch focus to an already-open editor by its index returned from query_open_editors.
+#[tool(category = "pulsar")]
+pub fn activate_open_editor(index: i64) -> anyhow::Result<Value> {
+    let index =
+        usize::try_from(index).map_err(|_| anyhow!("activate_open_editor.index must be >= 0"))?;
+
+    let callback = runtime_extras()?
+        .activate_open_editor_request
+        .ok_or_else(|| anyhow!("Activate-open-editor callback unavailable in this context"))?;
+    callback(index).map_err(|err| anyhow!(err))?;
+
+    Ok(json!({
+        "ok": true,
+        "index": index,
+        "activated": true,
+    }))
+}
+
+/// List all file types registered by installed plugins/editors.
+#[tool(category = "pulsar")]
+pub fn query_available_file_types() -> anyhow::Result<Value> {
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager = manager_lock.read();
+
+    let file_types = manager
+        .file_type_registry()
+        .get_all_file_types()
+        .into_iter()
+        .map(|ft| {
+            json!({
+                "id": ft.id.to_string(),
+                "extension": ft.extension,
+                "display_name": ft.display_name,
+                "structure": format!("{:?}", ft.structure),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "count": file_types.len(),
+        "file_types": file_types,
+    }))
+}
+
+/// Query which plugins/editors can handle a given file path.
+#[tool(category = "pulsar")]
+pub fn query_file_editors(file_path: String) -> anyhow::Result<Value> {
+    let root = runtime_workspace_root()?;
+    let full = resolve_workspace_path(&root, &file_path)?;
+
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager = manager_lock.read();
+
+    let Some(file_type_id) = manager.file_type_registry().get_file_type_for_path(&full) else {
+        return Ok(json!({
+            "file_path": full.display().to_string(),
+            "file_type": null,
+            "editors": [],
+        }));
+    };
+
+    let editors = manager
+        .editor_registry()
+        .get_editors_for_file_type(&file_type_id)
+        .into_iter()
+        .map(|editor_id| {
+            let plugin_id = manager
+                .editor_registry()
+                .get_plugin_for_editor(&editor_id)
+                .map(|pid| pid.to_string());
+            json!({
+                "editor_id": editor_id.to_string(),
+                "plugin_id": plugin_id,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "file_path": full.display().to_string(),
+        "file_type": file_type_id.to_string(),
+        "editors": editors,
+    }))
+}
+
+/// Discover AI tools available from plugins for a specific file. Use the file_path returned by query_open_editors - do not guess paths.
+#[tool(category = "pulsar")]
+pub fn query_plugin_tools(file_path: Option<String>) -> anyhow::Result<Value> {
+    let file_path_raw = file_path.or_else(|| {
+        runtime_current_file()
+            .ok()
+            .and_then(|p| p.map(|p| p.display().to_string()))
+    });
+
+    let Some(file_path_raw) = file_path_raw else {
+        return Ok(json!({
+            "ok": false,
+            "error": "file_path is required. Provide the path of the file you want to query tools for.",
+            "tools_available": 0,
+            "tools": [],
+            "plugins": [],
+        }));
+    };
+
+    let root = runtime_workspace_root()?;
+    let full = resolve_workspace_path_soft(&root, &file_path_raw)?;
+    let file_path_str = full.display().to_string();
+
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager = manager_lock.read();
+
+    let tools = manager.build_tool_bridge_for_file(&full).all_tools();
+
+    let tool_schemas: Vec<Value> = tools
+        .iter()
+        .map(|tool| {
+            json!({
+                "name": tool.definition.name,
+                "description": tool.definition.description,
+                "category": tool.definition.category,
+                "parameters": tool.definition.parameters_json_schema,
+                "plugin_id": tool.plugin_id.to_string(),
+            })
+        })
+        .collect();
+
+    let mut tools_by_plugin: HashMap<String, Vec<Value>> = HashMap::new();
+    for tool in &tool_schemas {
+        if let Some(plugin_id) = tool.get("plugin_id").and_then(|v| v.as_str()) {
+            tools_by_plugin
+                .entry(plugin_id.to_string())
+                .or_default()
+                .push(tool.clone());
+        }
+    }
+
+    let plugins = tools_by_plugin
+        .into_iter()
+        .map(|(plugin_id, tools)| {
+            json!({
+                "plugin_id": plugin_id,
+                "tool_count": tools.len(),
+                "tools": tools,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "ok": true,
+        "file_path": file_path_str,
+        "tools_available": tool_schemas.len(),
+        "note": if tool_schemas.is_empty() {
+            format!(
+                "No tools are registered for '{}'. The file type may not be supported, or the required editor is not loaded. Check that the file is open in an editor first.",
+                file_path_str
+            )
+        } else {
+            format!("Found {} tool(s) for this file.", tool_schemas.len())
+        },
+        "tools": tool_schemas,
+        "plugins": plugins,
+    }))
+}
+
+/// List AI tools provided by a specific plugin, optionally scoped to a file.
+#[tool(category = "pulsar")]
+pub fn query_tools_for_plugin(
+    plugin_id: String,
+    file_path: Option<String>,
+) -> anyhow::Result<Value> {
+    let full = if let Some(file_path) = file_path {
+        let root = runtime_workspace_root()?;
+        Some(resolve_workspace_path_soft(&root, &file_path)?)
+    } else {
+        None
+    };
+
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager = manager_lock.read();
+
+    let bridge = if let Some(path) = full.as_ref() {
+        manager.build_tool_bridge_for_file(path)
+    } else {
+        manager.build_tool_bridge()
+    };
+
+    let tool_schemas = bridge
+        .all_tools()
+        .into_iter()
+        .filter(|tool| tool.plugin_id.to_string() == plugin_id)
+        .map(|tool| {
+            json!({
+                "name": tool.definition.name,
+                "description": tool.definition.description,
+                "category": tool.definition.category,
+                "parameters": tool.definition.parameters_json_schema,
+                "plugin_id": tool.plugin_id.to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "plugin_id": plugin_id,
+        "file_path": full.as_ref().map(|p| p.display().to_string()),
+        "tools_available": tool_schemas.len(),
+        "tools": tool_schemas,
+    }))
+}
+
+fn execute_plugin_tool_inner(
+    tool_name: String,
+    args: Value,
+    plugin_id: Option<String>,
+    full_file_path: PathBuf,
+) -> anyhow::Result<Value> {
+    let started_at = Instant::now();
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = ?plugin_id, "call_plugin_tool start");
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager = manager_lock.read();
+
+    // Resolve through the same file-scoped bridge used by query_plugin_tools so
+    // execution matches file capabilities and plugin ownership for that file.
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), "building tool bridge for file");
+    let bridge = manager.build_tool_bridge_for_file(&full_file_path);
+    let resolved_plugin_id = if let Some(explicit_plugin_id) = plugin_id.as_deref() {
+        bridge
+            .all_tools()
+            .into_iter()
+            .find(|tool| {
+                tool.plugin_id.to_string() == explicit_plugin_id
+                    && tool.definition.name == tool_name
+            })
+            .map(|tool| tool.plugin_id)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Tool '{}' not found for plugin id '{}'",
+                    tool_name,
+                    explicit_plugin_id
+                )
+            })?
+    } else {
+        let matches = bridge
+            .all_tools()
+            .into_iter()
+            .filter(|tool| tool.definition.name == tool_name)
+            .map(|tool| tool.plugin_id)
+            .collect::<Vec<_>>();
+
+        match matches.len() {
+            0 => {
+                return Err(anyhow!(
+                    "Tool not found for file '{}': {}",
+                    full_file_path.display(),
+                    tool_name
+                ));
+            }
+            1 => matches.into_iter().next().expect("len checked"),
+            _ => {
+                let plugin_ids = matches
+                    .into_iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>();
+                return Err(anyhow!(
+                    "Ambiguous tool '{}'. Provide plugin_id. Candidates: {}",
+                    tool_name,
+                    plugin_ids.join(", ")
+                ));
+            }
+        }
+    };
+
+    let result = bridge
+        .execute_tool_direct(&tool_name, &full_file_path, args)
+        .ok_or_else(|| {
+            anyhow!(
+                "No direct handler registered for tool '{}' (plugin '{}').",
+                tool_name,
+                resolved_plugin_id
+            )
+        })?
+        .map_err(|err| anyhow!(err.to_string()))?;
+
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = %resolved_plugin_id, elapsed_ms = started_at.elapsed().as_millis() as u64, "call_plugin_tool end");
+
+    Ok(json!({
+        "status": "ok",
+        "plugin_id": resolved_plugin_id.to_string(),
+        "tool_name": tool_name,
+        "file_path": full_file_path.display().to_string(),
+        "result": result,
+    }))
+}
+
+/// Execute a plugin tool with explicit file context (preferred for LLM calls).
+#[tool(category = "pulsar")]
+pub fn call_plugin_tool(
+    file_path: String,
+    tool_name: String,
+    args: Value,
+    plugin_id: Option<String>,
+) -> anyhow::Result<Value> {
+    let root = runtime_workspace_root()?;
+    let full_file_path = resolve_workspace_path_soft(&root, &file_path)?;
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = ?plugin_id, "call_plugin_tool resolved file path");
+    execute_plugin_tool_inner(tool_name, args, plugin_id, full_file_path)
+}
+
+/// Execute an AI tool provided by a plugin. Back-compat wrapper around call_plugin_tool.
+#[tool(category = "pulsar")]
+pub fn execute_plugin_tool(
+    tool_name: String,
+    args: Value,
+    plugin_id: Option<String>,
+    file_path: Option<String>,
+) -> anyhow::Result<Value> {
+    let file_path = if let Some(path) = file_path {
+        path
+    } else {
+        runtime_current_file()?
+            .map(|p| p.display().to_string())
+            .ok_or_else(|| anyhow!(
+                "No file path provided. Prefer call_plugin_tool(file_path, tool_name, args, plugin_id)."
+            ))?
+    };
+
+    call_plugin_tool(file_path, tool_name, args, plugin_id)
+}

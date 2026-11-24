@@ -1,5 +1,4 @@
-//! A view's feed of one object's changes, over SceneDB object subscriptions
-//! (Pulsar-Native#1035, Phase 6).
+//! A view's feed of one object's changes, over SceneDB object subscriptions.
 //!
 //! Data flows from an edit straight into the `World`; views that display an
 //! object follow writes made elsewhere (a gizmo drag, a script, an undo)

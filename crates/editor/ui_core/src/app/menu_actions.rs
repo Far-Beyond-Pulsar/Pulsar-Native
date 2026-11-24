@@ -6,7 +6,7 @@
 //! shortcuts and toolbar already use, so a menu entry is never a second
 //! implementation.
 
-use gpui::{Context, InteractiveElement, Window, px};
+use gpui::{px, Context, InteractiveElement, Window};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt as _;
 use std::path::PathBuf;
@@ -74,7 +74,7 @@ impl PulsarApp {
             .on_action(cx.listener(|_, _: &menu::ProjectSettings, _, cx| {
                 use gpui::UpdateGlobal as _;
                 window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                    reg.open("SettingsWindow", cx)
+                    reg.open("ProjectSettingsWindow", cx)
                 });
             }))
             .on_action(cx.listener(|this, _: &menu::OpenCargoToml, window, cx| {

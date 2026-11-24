@@ -27,7 +27,6 @@ use crate::blueprint;
 /// # Example
 /// If `a` is true and `b` is false, the output will be false.
 /// # And
-/// Performs a logical AND operation between two boolean values.
 /// Returns true if both inputs are true, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn and(a: bool, b: bool) -> bool {
@@ -53,7 +52,6 @@ pub fn and(a: bool, b: bool) -> bool {
 /// # Notes
 /// Logical OR returns true if at least one input is true. Use for combining conditions in control flow.
 /// # Or
-/// Performs a logical OR operation between two boolean values.
 /// Returns true if either input is true, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn or(a: bool, b: bool) -> bool {
@@ -77,7 +75,6 @@ pub fn or(a: bool, b: bool) -> bool {
 /// # Notes
 /// Use this node to invert conditions in branches, filters, or toggles.
 /// # Not
-/// Performs a logical NOT operation on a boolean value.
 /// Returns the opposite boolean value.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn not(value: bool) -> bool {
@@ -107,7 +104,6 @@ pub fn not(value: bool) -> bool {
 /// # Notes
 /// Comparison uses the standard equality operator. For custom types, ensure they implement equality.
 /// # Equals
-/// Checks if two values are equal.
 /// Returns true if the values are equal, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn equals(a: i64, b: i64) -> bool {
@@ -133,7 +129,6 @@ pub fn equals(a: i64, b: i64) -> bool {
 /// # Notes
 /// Comparison uses the standard inequality operator. For custom types, ensure they implement equality/inequality.
 /// # Not Equals
-/// Checks if two values are not equal.
 /// Returns true if the values are not equal, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn not_equals(a: i64, b: i64) -> bool {
@@ -162,7 +157,6 @@ pub fn not_equals(a: i64, b: i64) -> bool {
 /// # Notes
 /// Useful for conditional logic, filtering, and comparisons in your graph.
 /// # Greater Than
-/// Checks if one number is greater than another.
 /// Returns true if a > b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn greater_than(a: i64, b: i64) -> bool {
@@ -188,7 +182,6 @@ pub fn greater_than(a: i64, b: i64) -> bool {
 /// # Notes
 /// Useful for branching, validation, and enforcing numeric constraints.
 /// # Less Than
-/// Checks if one number is less than another.
 /// Returns true if a < b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn less_than(a: i64, b: i64) -> bool {
@@ -214,7 +207,6 @@ pub fn less_than(a: i64, b: i64) -> bool {
 /// # Notes
 /// Useful for conditional logic, filtering, and comparisons in control flow.
 /// # Greater Equal
-/// Checks if one number is greater than or equal to another.
 /// Returns true if a >= b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn greater_equal(a: i64, b: i64) -> bool {
@@ -241,7 +233,6 @@ pub fn greater_equal(a: i64, b: i64) -> bool {
 /// # Notes
 /// Useful for range checks, validation, and branching logic.
 /// # Less Equal
-/// Checks if one number is less than or equal to another.
 /// Returns true if a <= b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn less_equal(a: i64, b: i64) -> bool {
@@ -272,7 +263,6 @@ pub fn less_equal(a: i64, b: i64) -> bool {
 /// # Notes
 /// The check is exclusive: value > a && value < b.
 /// # Is Between
-/// Checks if a value is strictly between two other values (exclusive).
 /// Returns true if a < value < b, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn is_between(value: f64, a: f64, b: f64) -> bool {
@@ -299,7 +289,6 @@ pub fn is_between(value: f64, a: f64, b: f64) -> bool {
 /// # Notes
 /// Useful for floating-point comparisons where exact equality is not reliable.
 /// # Nearly Equal
-/// Checks if two numbers are nearly equal within a tolerance.
 /// Returns true if |a - b| <= tolerance, false otherwise.
 #[blueprint(type: NodeTypes::pure, category: "Logic", color: "#E2A04A")]
 pub fn nearly_equal(a: f64, b: f64, tolerance: f64) -> bool {

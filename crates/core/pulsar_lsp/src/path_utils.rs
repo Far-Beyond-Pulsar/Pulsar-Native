@@ -1,6 +1,6 @@
 //! Path and URI helpers for LSP communication.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Convert a file path to an LSP-compatible `file://` URI.
 ///
@@ -15,38 +15,9 @@ pub fn path_to_uri(path: &Path) -> String {
     }
 }
 
-/// Decodes `%XX` escapes (servers send `file:///c%3A/Users/…`).
-fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok();
-            if let Some(value) = hex.and_then(|hex| u8::from_str_radix(hex, 16).ok()) {
-                decoded.push(value);
-                i += 3;
-                continue;
-            }
-        }
-        decoded.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&decoded).into_owned()
-}
-
-/// The filesystem path a `file://` URI names.
-pub fn uri_to_path(uri: &str) -> PathBuf {
-    let rest = uri.strip_prefix("file://").unwrap_or(uri);
-    let decoded = percent_decode(rest);
-    // `/C:/Users/…` is a Windows drive path with a leading slash.
-    let bytes = decoded.as_bytes();
-    if bytes.len() >= 3 && bytes[0] == b'/' && bytes[2] == b':' && bytes[1].is_ascii_alphabetic() {
-        PathBuf::from(&decoded[1..])
-    } else {
-        PathBuf::from(decoded)
-    }
-}
+// The filesystem path a `file://` URI names: parsed in `pulsar_language`,
+// which language plugins use without the editor.
+pub use pulsar_language::lsp_edits::uri_to_path;
 
 /// A string that is equal for every spelling of the same file: separators are
 /// forward slashes, and on Windows the case is folded (drive letters arrive as

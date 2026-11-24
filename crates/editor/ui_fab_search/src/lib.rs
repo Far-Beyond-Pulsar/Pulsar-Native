@@ -1,3 +1,6 @@
+//! The Fab asset search window (`FabSearchWindow`): authentication, result parsing, image
+//! loading and the search index.
+
 pub mod auth;
 pub mod image_loader;
 pub mod parser;

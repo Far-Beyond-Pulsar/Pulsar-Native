@@ -667,3 +667,86 @@ fn a_cut_out_casts_the_shadow_of_its_leaves_only() {
         "the cut-out's holes cast a shadow too: leaves {leaves}, holes {holes}"
     );
 }
+
+/// #1744: a static mesh that can deform (`Dynamic`) and whose vertices
+/// change in place (no content key: a private GPU range) is refit in the
+/// engine world's TLAS, its BLAS kept; a change of its triangles rebuilds
+/// it. A rigid mesh beside it is built once and never again.
+#[test]
+fn a_deforming_static_mesh_is_refit_when_its_vertices_change_in_place() {
+    let Some((device, queue)) = device() else {
+        return;
+    };
+    let frames = Frames::new(device, queue);
+    let state = LevelEditorState::new();
+    {
+        let mut world = state.scene.world_mut();
+        sun(&mut world, [-0.9, 0.3, 0.0]);
+        place(
+            &mut world,
+            "ground",
+            [0.0, -0.5, 0.0],
+            mesh_box(
+                0xd5_0001,
+                Vec3::ZERO,
+                Vec3::new(8.0, 0.5, 8.0),
+                "",
+                [0.8; 3],
+            ),
+        );
+        let mut cloth = mesh_box(0, Vec3::ZERO, Vec3::splat(0.5), "", [0.6, 0.3, 0.2]);
+        cloth.geometry_key = MeshGeometryKey::NONE;
+        cloth.movability = helio_component::components::ObjectMovability::Dynamic;
+        place(&mut world, "cloth", [0.0, 1.0, 0.0], cloth);
+    }
+    let cloth = {
+        let world = state.scene.world();
+        world
+            .query::<&StaticMeshComponent>()
+            .find(|(_, mesh)| mesh.geometry_key == MeshGeometryKey::NONE)
+            .map(|(entity, _)| entity)
+            .expect("the deforming mesh")
+    };
+    let mut renderer = renderer_for(&state);
+    let counters = |renderer: &HelioRenderer| {
+        renderer
+            .host_part::<installed_plugins::meshes_plugin::meshes_component::host_part::MeshesHostPart>()
+            .and_then(|part| part.ray_scene())
+            .map(|rays| (rays.blas_counters(), rays.instance_count()))
+            .expect("the ray-traced scene")
+    };
+    frames.render(&mut renderer, 4);
+    let (before, instances) = counters(&renderer);
+    assert_eq!(instances, 2, "the ground and the deforming mesh are traced");
+
+    // Its vertices move in place: a refit, not a new build.
+    {
+        let mut world = state.scene.world_mut();
+        let mut mesh = world.get_mut::<StaticMeshComponent>(cloth).unwrap();
+        for vertex in &mut mesh.vertices {
+            vertex.position[1] += 0.25;
+        }
+    }
+    frames.render(&mut renderer, 2);
+    let (moved, instances) = counters(&renderer);
+    println!("before {before:?}, after the vertices moved {moved:?}");
+    assert_eq!(instances, 2, "it stays traced");
+    assert!(moved.refits > before.refits, "{before:?} -> {moved:?}");
+    assert_eq!(moved.builds, before.builds, "no BLAS was built again");
+
+    // Nothing changed: nothing is refit.
+    frames.render(&mut renderer, 2);
+    let (idle, _) = counters(&renderer);
+    assert_eq!((idle.refits, idle.builds), (moved.refits, moved.builds));
+
+    // Its triangles change: a rebuild.
+    {
+        let mut world = state.scene.world_mut();
+        let mut mesh = world.get_mut::<StaticMeshComponent>(cloth).unwrap();
+        mesh.indices.swap(0, 1);
+    }
+    frames.render(&mut renderer, 2);
+    let (rebuilt, instances) = counters(&renderer);
+    assert_eq!(instances, 2);
+    assert!(rebuilt.builds > idle.builds, "{idle:?} -> {rebuilt:?}");
+}

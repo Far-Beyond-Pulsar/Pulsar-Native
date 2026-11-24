@@ -26,7 +26,13 @@ pub fn run() -> anyhow::Result<()> {
 }
 
 fn handle_client(mut stream: TcpStream) {
-    let peer_addr = stream.peer_addr().unwrap();
+    let peer_addr = match stream.peer_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            tracing::error!("Could not read the peer address: {}", e);
+            return;
+        }
+    };
     tracing::debug!("✅ Connection from: {}", peer_addr);
 
     let mut buffer = [0; 1024];

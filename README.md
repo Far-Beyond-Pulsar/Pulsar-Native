@@ -21,6 +21,8 @@
 </p>
 <img width="3384" height="1283" alt="image" src="https://github.com/user-attachments/assets/abf89535-0b8e-42d7-a405-73500797a902" />
 
+New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md): the layers, the plugin model, startup, scene data and one traced editor action.
+
 ---
 
 ## ⚡ Beyond the Standard

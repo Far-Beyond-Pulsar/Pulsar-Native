@@ -1,8 +1,8 @@
 //! Stopping a cargo command and everything it started.
 //!
 //! cargo runs rustc, build scripts and linkers as its own children, and
-//! `cargo run` starts the game as one. Killing only cargo leaves them running
-//! (#1004): a cancelled build keeps compiling, and a stopped game keeps
+//! `cargo run` starts the game as one. Killing only cargo leaves them running:
+//! a cancelled build keeps compiling, and a stopped game keeps
 //! playing. [`kill_tree`] kills the whole tree.
 //!
 //! The commands stay in the editor's process group, so a Ctrl+C in the

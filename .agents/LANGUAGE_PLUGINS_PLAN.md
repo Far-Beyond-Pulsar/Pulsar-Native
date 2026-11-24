@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - P2-P6 built; the cleanup pass (section 'After P6') is open
+
 # Language plugins: audit and plan
 
 **Status: Phase 1 (the audit) is written and Phases 2 to 6 are built (section 6 "As built", section 8); what remains is the cleanup pass ("After P6").** Every claim about

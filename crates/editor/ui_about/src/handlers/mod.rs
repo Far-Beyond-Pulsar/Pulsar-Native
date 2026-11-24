@@ -1,3 +1,5 @@
+//! Click handlers of the About window (open GitHub, open the documentation).
+
 use gpui::*;
 
 use crate::screen::AboutWindow;

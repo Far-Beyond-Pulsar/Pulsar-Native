@@ -20,6 +20,7 @@ pub(super) fn label(cmd: &SceneCommand) -> Option<&'static str> {
         }
         SceneCommand::RemoveComponent { .. } => "LevelEditor.Undo.RemoveComponent",
         SceneCommand::SetComponentProperty { .. }
+        | SceneCommand::SetComponentPropertyOnMany { .. }
         | SceneCommand::SetComponentEnabled { .. }
         | SceneCommand::ReorderComponent { .. }
         | SceneCommand::SetComponentParent { .. }
@@ -42,6 +43,9 @@ pub(super) fn scope(cmd: &SceneCommand) -> Option<Vec<String>> {
         | SceneCommand::SetComponentParent { id, .. }
         | SceneCommand::SetComponentData { id, .. } => vec![id.clone()],
         SceneCommand::SetMovability { ids, .. } => ids.clone(),
+        SceneCommand::SetComponentPropertyOnMany { targets, .. } => {
+            targets.iter().map(|(id, _)| id.clone()).collect()
+        }
         _ => return None,
     })
 }
@@ -59,6 +63,12 @@ pub(super) fn apply(
             prop_name,
             value,
         } => set_component_property(state, &id, &class_name, component_index, &prop_name, value),
+        SceneCommand::SetComponentPropertyOnMany {
+            targets,
+            class_name,
+            prop_name,
+            value,
+        } => set_component_property_on_many(state, &targets, &class_name, &prop_name, value),
         SceneCommand::AddComponent {
             id,
             class_name,
@@ -166,15 +176,15 @@ fn set_component_property(
     class_name: &String,
     component_index: usize,
     prop_name: &String,
-    value: Box<dyn Any + Send>,
+    value: Box<dyn Any>,
 ) -> CommandResult {
     // Typed path first -- `update_live_component_property` writes
     // `value` straight onto the live `World` component via its
-    // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
+    // reflected setter closure, no JSON anywhere.
     //
-    // `component_index` targets the exact instance being edited
-    // (Pulsar-Native#519): every instance is its own entity with
-    // its own typed value (Pulsar-Native#1035). Only an
+    // `component_index` targets the exact instance being edited:
+    // every instance is its own entity with
+    // its own typed value. Only an
     // unresolved payload falls back to the payload write below.
     //
     // A class a level rule covers is checked after the write
@@ -239,6 +249,46 @@ fn set_component_property(
                 }
             }
         }
+    }
+}
+
+/// Write `value` to the first target, then copy the written property from
+/// it to every other target (its reflected getter hands out an owned copy,
+/// so each object gets its own value). Each write goes through
+/// [`set_component_property`], so level rules and derived-field updates
+/// apply per object; one that refuses or fails leaves the others written.
+fn set_component_property_on_many(
+    state: &mut LevelEditorState,
+    targets: &[(String, usize)],
+    class_name: &String,
+    prop_name: &String,
+    value: Box<dyn Any + Send>,
+) -> CommandResult {
+    let Some(((first_id, first_index), rest)) = targets.split_first() else {
+        return CommandResult::noop("No objects to edit");
+    };
+    let mut changed: Vec<String> =
+        set_component_property(state, first_id, class_name, *first_index, prop_name, value)
+            .affected_ids;
+    for (id, index) in rest {
+        let copy = crate::scene_edit::components::read_live_component_property(
+            &state.scene.world(),
+            first_id,
+            class_name,
+            *first_index,
+            prop_name,
+        );
+        let Some(copy) = copy else {
+            continue;
+        };
+        changed.extend(
+            set_component_property(state, id, class_name, *index, prop_name, copy).affected_ids,
+        );
+    }
+    if changed.is_empty() {
+        CommandResult::noop("No property changed")
+    } else {
+        CommandResult::ok(changed)
     }
 }
 

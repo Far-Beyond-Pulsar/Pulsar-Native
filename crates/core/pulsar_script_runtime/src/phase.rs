@@ -36,8 +36,9 @@ use std::time::{Duration, Instant};
 use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::{Access, Budget, Completion, Continuation, Host, Type, Value, Vm, Wake};
 
+use crate::class::{Class, ScriptInstance};
 use crate::latent::park;
-use crate::{Class, RuntimeError, ScriptInstance, ScriptRuntime};
+use crate::{RuntimeError, ScriptRuntime};
 
 /// Fewer read-only instances than this run on the calling thread: spawning
 /// workers costs more than it saves.

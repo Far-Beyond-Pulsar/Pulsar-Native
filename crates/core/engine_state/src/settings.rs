@@ -2,17 +2,17 @@
 //!
 //! # Architecture
 //!
-//! All engine settings are stored in a single global [`ConfigManager`].
-//! The top-level namespaces map directly to the old `SettingScope`:
+//! All engine settings are stored in a single global [`ConfigManager`]
+//! ([`global_config()`]), in three namespaces:
 //!
-//! | Old scope              | PulsarConfig namespace |
-//! |------------------------|------------------------|
-//! | `SettingScope::Global` | `"editor"`             |
-//! | `SettingScope::Project`| `"project"`            |
+//! | Namespace | What | Registered by | Edited in |
+//! |---|---|---|---|
+//! | `"editor"` | the editor's own settings, for every project | core only (`pulsar_settings::editor`) | Editor Settings |
+//! | `"project"` | the open project's settings | core (`pulsar_settings::project`) and plugins (`ProjectSettingsRegistration`, `SettingsGroupRegistration`) | Project Settings |
+//! | `"plugin"` | a plugin's own groups, layered per project | plugins (`pulsar_settings::plugin::PluginSettings`) | Project Settings |
 //!
-//! Within each namespace, every subsystem or page registers its settings
-//! via [`ConfigManager::register`].  The old flat `registry()` global is
-//! replaced by [`global_config()`].
+//! Plugins are project relative: they register project and plugin settings
+//! only, never editor settings.
 
 use std::{
     io::ErrorKind,
@@ -39,7 +39,12 @@ static SETTINGS_FILE_WRITE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::ne
 /// All subsystems share this instance — they register their schemas on startup
 /// and write through their [`OwnerHandle`]s.
 pub fn global_config() -> &'static ConfigManager {
-    &GLOBAL_CONFIG
+    // A plugin library links its own copy of this crate, whose `GLOBAL_CONFIG` would be a
+    // second, empty manager: its settings reads would never see the user's values.
+    // The loader binds the library to the host's manager before it runs
+    // (`pulsar_settings::plugin::attach_exported`), so that one is used. In the host this
+    // is `GLOBAL_CONFIG` itself (`register_all_settings` binds it).
+    pulsar_settings::plugin::bound().unwrap_or(&GLOBAL_CONFIG)
 }
 
 // ─── Namespace helpers ────────────────────────────────────────────────────────
@@ -334,7 +339,10 @@ fn has_io_kind(error: &anyhow::Error, kind: ErrorKind) -> bool {
 
 /// The config value a TOML value stands for, typed by the setting's default
 /// (`None`: it does not fit that type).
-pub(crate) fn toml_to_config_value(value: &toml::Value, expected: &ConfigValue) -> Option<ConfigValue> {
+pub(crate) fn toml_to_config_value(
+    value: &toml::Value,
+    expected: &ConfigValue,
+) -> Option<ConfigValue> {
     Some(match expected {
         ConfigValue::Bool(_) => ConfigValue::Bool(value.as_bool()?),
         ConfigValue::Int(_) => ConfigValue::Int(value.as_integer()?),
@@ -346,7 +354,8 @@ pub(crate) fn toml_to_config_value(value: &toml::Value, expected: &ConfigValue) 
         ConfigValue::String(_) => ConfigValue::String(value.as_str()?.to_owned()),
         ConfigValue::Color(_) => {
             let table = value.as_table()?;
-            let channel = |name: &str| -> Option<u8> { u8::try_from(table.get(name)?.as_integer()?).ok() };
+            let channel =
+                |name: &str| -> Option<u8> { u8::try_from(table.get(name)?.as_integer()?).ok() };
             ConfigValue::Color(Color {
                 r: channel("r")?,
                 g: channel("g")?,

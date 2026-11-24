@@ -23,6 +23,11 @@ Game and runtime work never goes here (`pulsar_game` has its own scheduling).
 5. **Framework paths are enforced.** Building an editor tab and Helio's
    first-frame initialisation always run as tasks. Plugins do not opt in and
    cannot opt out; do not add a second way to build an editor or a renderer.
+6. **The UI thread never blocks.** It builds and updates views. Disk, the
+   file index, a process, the network, a lock another thread holds, heavy
+   parsing: each runs in a task that sends its result back with
+   `cx.in_task(desc, work, apply)` (`ui_common::in_task::InTask`). This is
+   checked, not just asked (below, "The UI thread never blocks").
 
 ## Entry points
 
@@ -87,6 +92,56 @@ clears. Defaults (`StallThresholds`):
 
 A future that is dropped before it finishes ends `Cancelled` with "dropped
 before it completed", which is what a cancelled-by-drop `cx.spawn` looks like.
+
+### The UI thread never blocks
+
+Three checks, all reported as **failed** tasks in category `ui`, so they show
+in the Tasks window's Failed tab with the place to fix:
+
+| Check | Where | Reports |
+|---|---|---|
+| Blocking call | `editor_task_queue::blocking_call(what)`, called first by every `engine_fs::virtual_fs` function and every `ProjectFileIndex` method (all `#[track_caller]`) | `Blocking call on the UI thread: virtual_fs::read_file`, with the caller's `file:line`, how often, and what the UI thread was running. Each site once a minute at most; `blocking_snapshots()` has every site, busiest first |
+| Slow UI work | wgpui `ui_work`: the framework brackets each winit event, foreground future (by spawn `file:line`), view `render` (by view type), action, and click/mouse/key/scroll listener (by the listener's type, i.e. the function that wrote the closure). The engine installs a 50ms budget | `Slow UI work (120ms): Main: WindowEvent::MouseInput > click listener ui_file_manager::...::{{closure}}`. Only the innermost slow piece; a parent only for time its reported children don't explain |
+| Unresponsive | `ui_watch` (below): no UI beat for 500ms | `UI thread unresponsive for 3.2s`, with what wgpui said the UI thread was inside, by share of samples |
+
+Off the UI thread `blocking_call` is one thread-local read; before
+`ui_work::install` the framework's brackets are one atomic load.
+
+`PULSAR_STRICT_UI_THREAD=1` makes a blocking call on the UI thread panic at
+the call, for tests and debugging; the default only reports while the
+existing call sites are migrated. `allow_blocking(reason, || ..)` is the
+escape hatch for a call that must block (a modal native dialog): scoped,
+named, and kept rare.
+
+The fix for any report is the same: move the work into `cx.in_task`. A view
+that needs "latest request wins" (a refresh asked for while one runs) keeps
+the task and a stale flag, as `ui_file_manager`'s `refresh_folder_tree` does.
+
+Not covered yet: observer/subscription callbacks are timed as one "effects"
+piece, not one by one, and gpui copies inside dynamic plugin DLLs have their
+own statics, so their work is not bracketed.
+
+### The UI thread itself (`ui_watch`)
+
+Stalls above cover work that is a task. Work on the UI thread that is not
+one (a synchronous directory walk in an event handler, a lock the UI waits
+on) is caught by the UI beat: `engine/src/main.rs` runs a timer on the UI
+thread's own executor that calls `ui_beat()` every `UI_BEAT_EVERY` (100ms),
+so it only fires when the thread is free. A watcher thread samples the beat;
+when it stops for longer than `UI_UNRESPONSIVE_AFTER` (500ms) it samples what
+the UI thread is running (the task polled on it and its phase, or "untracked
+work") until the beats resume, then records a **failed** task, `UI thread
+unresponsive for 3.2s`, category `ui`, whose log lists what it saw by share of
+samples. "Untracked work" is the work to move into a task. A gap in the
+watcher's own sampling (debugger, machine asleep) discards the episode.
+
+Example fixed this way: a cargo build writes tens of thousands of files under
+the project's `target/`. The file-index watcher reindexed each one and the
+file manager rebuilt its folder tree on the UI thread per event, waiting on
+the index's lock; the editor went "Not responding". Now the watcher drops
+anything under `engine_fs::UNINDEXED_DIRS` (`file_index::is_unindexed_path`),
+coalesces bursts and runs as a service task, and the file manager rebuilds the
+tree with `refresh_folder_tree` (a pooled task, one rebuild per burst).
 
 ## The Tasks window
 

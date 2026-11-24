@@ -1,4 +1,4 @@
-//! Phase 2 of a restore: attach a validated [`ResolvedLayout`] to the live UI.
+//! Second step of a restore: attach a validated [`ResolvedLayout`] to the live UI.
 //!
 //! Everything fallible happened in [`resolve`](super::resolve); this only
 //! builds dock items from the plan and installs them. It is the single place a

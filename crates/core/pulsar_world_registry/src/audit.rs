@@ -1,4 +1,4 @@
-//! Reflection-metadata audit (#645): registry-wide consistency checks plus
+//! Reflection-metadata audit: registry-wide consistency checks plus
 //! a deterministic snapshot of every class's method/property surface.
 //!
 //! Two consumers:
@@ -26,7 +26,7 @@ use pulsar_reflection::REGISTRY;
 /// One metadata-policy violation found by an audit sweep.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, thiserror::Error)]
 pub enum MetadataAuditError {
-    /// #645 overload policy: two reflected methods share a name on one
+    /// overload policy: two reflected methods share a name on one
     /// class. Name-keyed dispatch (`REGISTRY.get_method`) resolves to the
     /// first registration, so the duplicate would be unreachable shadowed
     /// surface.
@@ -137,7 +137,7 @@ pub fn find_lifecycle_problems() -> Vec<LifecycleAuditError> {
 /// what a checked-in golden file needs.
 ///
 /// `flags` is included deliberately: it is the purity contract
-/// rust_codegen inlining relies on (#645), so a flipped purity flag must show
+/// rust_codegen inlining relies on, so a flipped purity flag must show
 /// up as a reviewable snapshot diff, not a silent behavior change.
 pub fn metadata_snapshot_json() -> Value {
     let mut classes: Vec<Value> = Vec::new();
@@ -254,7 +254,7 @@ mod tests {
     }
 
     /// Snapshot entries carry the fields downstream discovery needs --
-    /// including the load-bearing purity flags (#645).
+    /// including the load-bearing purity flags.
     #[test]
     fn snapshot_entries_are_fully_populated() {
         let snapshot = metadata_snapshot_json();

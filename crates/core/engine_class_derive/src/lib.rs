@@ -118,14 +118,13 @@ pub fn component_events(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Opt an engine component into `pulsar_world_registry`'s `World` bridge
-/// (Pulsar-Native#555/#556, Phase B4/B5) and register it: its typed value
+/// and register it: its typed value
 /// can be hydrated from JSON once (a boundary decode) and inserted into
 /// `pulsar_scenedb::World` through SceneDB's erased insert.
 ///
 /// Applied to an inherent `impl Type {}` block (emitted unchanged); the
 /// class is named after the type. Components reach their consumers through
-/// their data: there is no per-component runtime behavior to register
-/// (Pulsar-Native#1035, Phases 4 and 6).
+/// their data: there is no per-component runtime behavior to register.
 ///
 /// For the engine's own components. A plugin's component uses
 /// [`macro@world_component`] instead, and its root crate registers it.

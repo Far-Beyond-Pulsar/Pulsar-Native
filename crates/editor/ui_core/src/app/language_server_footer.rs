@@ -4,12 +4,10 @@
 //! trace, the plugin's settings, and for a missing server its install). It is
 //! a function of what `LanguageServers` knows: nothing here names a server.
 
-use engine_state::plugin_settings::{self, SettingScope};
+use engine_state::plugin_settings;
 use engine_state::{global_config, ConfigValue};
 use gpui::UpdateGlobal as _;
-use gpui::{
-    prelude::*, px, AnyElement, App, Context, Corner, Hsla, IntoElement,
-};
+use gpui::{prelude::*, px, AnyElement, App, Context, Corner, Hsla, IntoElement};
 use pulsar_language::TraceLevel;
 use pulsar_lsp::{LanguageServer, LanguageServers, ServerId, ServerStatus};
 use ui::{
@@ -177,7 +175,11 @@ pub(super) fn aggregate(entries: &[ServerEntry]) -> Option<Aggregate> {
         Health::Ready => "Ready".to_string(),
         Health::Idle => "Idle".to_string(),
     };
-    Some(Aggregate { health, text, progress })
+    Some(Aggregate {
+        health,
+        text,
+        progress,
+    })
 }
 
 /// One server's row in the dropdown: name, root and state.
@@ -222,9 +224,16 @@ pub(super) enum Action {
 pub(super) enum MenuLine {
     Label(String),
     Separator,
-    Item { label: String, action: Action, checked: Option<bool> },
+    Item {
+        label: String,
+        action: Action,
+        checked: Option<bool>,
+    },
     /// A nested menu (the install's approval step).
-    Submenu { label: String, lines: Vec<MenuLine> },
+    Submenu {
+        label: String,
+        lines: Vec<MenuLine>,
+    },
 }
 
 /// The widest a server's menu gets: long texts wrap inside it instead of
@@ -257,7 +266,9 @@ pub(super) fn wrap_text(text: &str, columns: usize) -> Vec<String> {
 }
 
 fn wrapped_labels(text: &str) -> impl Iterator<Item = MenuLine> {
-    wrap_text(text, WRAP_COLUMNS).into_iter().map(MenuLine::Label)
+    wrap_text(text, WRAP_COLUMNS)
+        .into_iter()
+        .map(MenuLine::Label)
 }
 
 /// The submenu of one server, from its state alone: a generic function of
@@ -327,12 +338,12 @@ fn status_style(health: Health, cx: &App) -> (Hsla, IconName) {
     }
 }
 
-/// Persist `trace` for a server as the person's own setting; the service
+/// Persist `trace` for a server as the project's setting; the service
 /// applies it to the running server when the setting changes.
 fn set_trace(origin: &'static str, group: &str, trace: TraceLevel) {
     let owner = pulsar_settings::plugin::owner_of(origin, group);
     let value = ConfigValue::String(trace.as_str().to_string());
-    match plugin_settings::set(&owner, "trace", SettingScope::User, value) {
+    match plugin_settings::set(&owner, "trace", value) {
         Ok(()) => {
             if let Err(error) = plugin_settings::save() {
                 tracing::warn!("could not save the trace level: {error:#}");
@@ -342,11 +353,11 @@ fn set_trace(origin: &'static str, group: &str, trace: TraceLevel) {
     }
 }
 
-/// Persist the executable the person picked as their own `path` setting.
+/// Persist the executable the person picked as the project's `path` setting.
 fn set_path(origin: &'static str, group: &str, path: &std::path::Path) {
     let owner = pulsar_settings::plugin::owner_of(origin, group);
     let value = ConfigValue::String(path.to_string_lossy().into_owned());
-    match plugin_settings::set(&owner, "path", SettingScope::User, value) {
+    match plugin_settings::set(&owner, "path", value) {
         Ok(()) => {
             if let Err(error) = plugin_settings::save() {
                 tracing::warn!("could not save the executable path: {error:#}");
@@ -371,6 +382,15 @@ fn perform(
         Action::Stop => servers.update(cx, |servers, cx| servers.stop(&id, cx)),
         Action::Install => servers.update(cx, |servers, cx| servers.install(&id, cx)),
         Action::OpenLog => {
+            // The Tasks window opens on this server's task (its log), when it
+            // runs; otherwise it opens as it is.
+            let task = servers
+                .read(cx)
+                .server(&id, cx)
+                .and_then(|server| server.read(cx).task_id());
+            if let Some(task) = task {
+                editor_task_queue::request_reveal(task);
+            }
             window_manager::WindowRegistry::update_global(cx, |registry, cx| {
                 registry.open("EditorTasksWindow", cx)
             });
@@ -400,7 +420,7 @@ fn perform(
         Action::OpenSettings => {
             let owner = pulsar_settings::plugin::page_key(entry.origin);
             let title = pulsar_settings::plugin::page_title(global_config(), &owner);
-            ui_settings::SettingsWindow::open_page(project, format!("Plugin: {title}"), cx);
+            ui_settings::ProjectSettingsWindow::open_page(project, title, cx);
         }
     }
 }
@@ -458,18 +478,32 @@ fn fill_submenu(
         menu = match line {
             MenuLine::Label(text) => menu.label(text.clone()),
             MenuLine::Separator => menu.separator(),
-            MenuLine::Item { label, action, checked } => {
-                let (action, entry, servers, project) =
-                    (action.clone(), entry.clone(), servers.clone(), project.clone());
+            MenuLine::Item {
+                label,
+                action,
+                checked,
+            } => {
+                let (action, entry, servers, project) = (
+                    action.clone(),
+                    entry.clone(),
+                    servers.clone(),
+                    project.clone(),
+                );
                 menu.item(
                     PopupMenuItem::new(label.clone())
                         .checked(checked.unwrap_or(false))
-                        .on_click(move |_, _, cx| perform(&action, &entry, &servers, project.clone(), cx)),
+                        .on_click(move |_, _, cx| {
+                            perform(&action, &entry, &servers, project.clone(), cx)
+                        }),
                 )
             }
             MenuLine::Submenu { label, lines } => {
-                let (lines, entry, servers, project) =
-                    (lines.clone(), entry.clone(), servers.clone(), project.clone());
+                let (lines, entry, servers, project) = (
+                    lines.clone(),
+                    entry.clone(),
+                    servers.clone(),
+                    project.clone(),
+                );
                 menu.submenu(label.clone(), window, cx, move |submenu, window, cx| {
                     fill_submenu(submenu, &lines, &entry, &servers, &project, window, cx)
                 })
@@ -495,7 +529,15 @@ fn servers_menu(
         let project = project.clone();
         let label = format!("{} - {}", row.label, row.state);
         menu = menu.submenu(label, window, cx, move |submenu, window, cx| {
-            fill_submenu(submenu, &server_menu_lines(&entry), &entry, &servers, &project, window, cx)
+            fill_submenu(
+                submenu,
+                &server_menu_lines(&entry),
+                &entry,
+                &servers,
+                &project,
+                window,
+                cx,
+            )
         });
     }
     menu
@@ -508,7 +550,10 @@ mod tests {
 
     fn entry(status: ServerStatus) -> ServerEntry {
         ServerEntry {
-            id: ServerId { server: "rust-analyzer", root: PathBuf::from("/p") },
+            id: ServerId {
+                server: "rust-analyzer",
+                root: PathBuf::from("/p"),
+            },
             name: "rust-analyzer",
             root_label: None,
             status,
@@ -525,10 +570,17 @@ mod tests {
         assert_eq!(entry(ServerStatus::Idle).summary().0, "Idle");
         assert_eq!(
             entry(ServerStatus::Starting).summary(),
-            ("Starting...".to_string(), "Installing rust-analyzer...".to_string())
+            (
+                "Starting...".to_string(),
+                "Installing rust-analyzer...".to_string()
+            )
         );
         assert_eq!(
-            entry(ServerStatus::Indexing { progress: 0.5, message: "crate x".into() }).summary(),
+            entry(ServerStatus::Indexing {
+                progress: 0.5,
+                message: "crate x".into()
+            })
+            .summary(),
             ("Indexing 50%".to_string(), "crate x".to_string())
         );
         assert_eq!(entry(ServerStatus::Ready).summary().0, "Ready");
@@ -539,7 +591,10 @@ mod tests {
         // A missing server says what is missing; the footer offers its install.
         assert_eq!(
             entry(ServerStatus::Missing("Node.js was not found".into())).summary(),
-            ("Not installed".to_string(), "Node.js was not found".to_string())
+            (
+                "Not installed".to_string(),
+                "Node.js was not found".to_string()
+            )
         );
     }
 
@@ -562,16 +617,28 @@ mod tests {
     fn the_one_entry_shows_the_worst_state_of_all_servers() {
         assert_eq!(aggregate(&[]), None, "no servers, no entry");
         let ready = named("a", ServerStatus::Ready);
-        let working = named("b", ServerStatus::Indexing { progress: 0.45, message: String::new() });
+        let working = named(
+            "b",
+            ServerStatus::Indexing {
+                progress: 0.45,
+                message: String::new(),
+            },
+        );
         let missing = named("c", ServerStatus::Missing("no node".into()));
         let broken = named("d", ServerStatus::Error("boom".into()));
         let both_broken = named("e", ServerStatus::Error("bang".into()));
 
         let all_ready = aggregate(&[ready.clone()]).unwrap();
-        assert_eq!((all_ready.health, all_ready.text.as_str()), (Health::Ready, "Ready"));
+        assert_eq!(
+            (all_ready.health, all_ready.text.as_str()),
+            (Health::Ready, "Ready")
+        );
 
         let busy = aggregate(&[ready.clone(), working.clone()]).unwrap();
-        assert_eq!((busy.health, busy.text.as_str()), (Health::Working, "Indexing 45%"));
+        assert_eq!(
+            (busy.health, busy.text.as_str()),
+            (Health::Working, "Indexing 45%")
+        );
         assert_eq!(busy.progress, 0.45);
 
         let not_installed = aggregate(&[ready.clone(), working, missing.clone()]).unwrap();
@@ -581,14 +648,20 @@ mod tests {
         );
 
         let errors = aggregate(&[ready, missing, broken.clone(), both_broken]).unwrap();
-        assert_eq!((errors.health, errors.text.as_str()), (Health::Error, "2 errors"));
+        assert_eq!(
+            (errors.health, errors.text.as_str()),
+            (Health::Error, "2 errors")
+        );
         assert_eq!(aggregate(&[broken]).unwrap().text, "1 error");
         assert_eq!(FOOTER_LABEL, "LSP Servers");
     }
 
     #[test]
     fn the_dropdown_lists_every_server_with_name_root_and_state() {
-        let mut shared = named("typescript-language-server", ServerStatus::Missing("x".into()));
+        let mut shared = named(
+            "typescript-language-server",
+            ServerStatus::Missing("x".into()),
+        );
         shared.root_label = Some("classes".into());
         let listed = rows(&[named("rust-analyzer", ServerStatus::Ready), shared]);
         assert_eq!(listed.len(), 2);
@@ -619,9 +692,11 @@ mod tests {
         let traces: Vec<_> = lines
             .iter()
             .filter_map(|l| match l {
-                MenuLine::Item { action: Action::SetTrace(level), checked, .. } => {
-                    Some((*level, *checked))
-                }
+                MenuLine::Item {
+                    action: Action::SetTrace(level),
+                    checked,
+                    ..
+                } => Some((*level, *checked)),
                 _ => None,
             })
             .collect();
@@ -643,8 +718,10 @@ mod tests {
 
     #[test]
     fn a_missing_server_says_why_and_offers_install_and_a_path() {
-        let mut missing =
-            named("typescript-language-server", ServerStatus::Missing("Node.js was not found".into()));
+        let mut missing = named(
+            "typescript-language-server",
+            ServerStatus::Missing("Node.js was not found".into()),
+        );
         missing.install = Some(InstallOffer {
             label: "Install typescript-language-server",
             description: "Downloads typescript-language-server 4.4.0".into(),
@@ -655,7 +732,10 @@ mod tests {
             "the message is reachable here"
         );
         // One click never installs: the offer is an approval step with its own button.
-        assert!(!actions(&lines).contains(&Action::Install), "not directly in the menu");
+        assert!(
+            !actions(&lines).contains(&Action::Install),
+            "not directly in the menu"
+        );
         let approval = lines
             .iter()
             .find_map(|line| match line {
@@ -664,18 +744,36 @@ mod tests {
             })
             .expect("an approval step");
         assert_eq!(approval.0, "Install typescript-language-server...");
-        assert!(actions(approval.1).contains(&Action::Install) && actions(approval.1).contains(&Action::Dismiss));
+        assert!(
+            actions(approval.1).contains(&Action::Install)
+                && actions(approval.1).contains(&Action::Dismiss)
+        );
         let said: String = approval
             .1
             .iter()
-            .filter_map(|l| if let MenuLine::Label(t) = l { Some(t.as_str()) } else { None })
+            .filter_map(|l| {
+                if let MenuLine::Label(t) = l {
+                    Some(t.as_str())
+                } else {
+                    None
+                }
+            })
             .collect::<Vec<_>>()
             .join(" ");
-        assert!(said.contains("Downloads typescript-language-server 4.4.0"), "{said}");
+        assert!(
+            said.contains("Downloads typescript-language-server 4.4.0"),
+            "{said}"
+        );
         let found = actions(&lines);
-        assert!(found.contains(&Action::SetPath), "a file dialog picks the executable");
+        assert!(
+            found.contains(&Action::SetPath),
+            "a file dialog picks the executable"
+        );
         // Without an install on offer the path remains.
-        let bare = actions(&server_menu_lines(&named("b", ServerStatus::Missing("m".into()))));
+        let bare = actions(&server_menu_lines(&named(
+            "b",
+            ServerStatus::Missing("m".into()),
+        )));
         assert!(!bare.contains(&Action::Install) && bare.contains(&Action::SetPath));
     }
 
@@ -684,10 +782,16 @@ mod tests {
         let long = "The TypeScript language server (typescript-language-server) was not found: it is not in the project's node_modules and not on PATH. Use Install on this entry to download a pinned, checksum-verified copy, or run `npm i -g typescript typescript-language-server`, or set its path in Settings.";
         let wrapped = wrap_text(long, WRAP_COLUMNS);
         assert!(wrapped.len() > 3);
-        assert!(wrapped.iter().all(|l| l.chars().count() <= WRAP_COLUMNS), "{wrapped:?}");
+        assert!(
+            wrapped.iter().all(|l| l.chars().count() <= WRAP_COLUMNS),
+            "{wrapped:?}"
+        );
         assert_eq!(wrapped.join(" "), long, "nothing is lost");
         // A word longer than a line gets its own line rather than being cut.
-        assert_eq!(wrap_text("aaaa bbbbbbbbbbbb cc", 6), ["aaaa", "bbbbbbbbbbbb", "cc"]);
+        assert_eq!(
+            wrap_text("aaaa bbbbbbbbbbbb cc", 6),
+            ["aaaa", "bbbbbbbbbbbb", "cc"]
+        );
 
         // Every label of a server's menu fits, whatever the message.
         let mut missing = named("tsls", ServerStatus::Missing(long.into()));
@@ -707,7 +811,10 @@ mod tests {
         let mut labels = Vec::new();
         let menu = server_menu_lines(&missing);
         all_labels(&menu, &mut labels);
-        assert!(labels.iter().all(|l| l.chars().count() <= WRAP_COLUMNS), "{labels:?}");
+        assert!(
+            labels.iter().all(|l| l.chars().count() <= WRAP_COLUMNS),
+            "{labels:?}"
+        );
         assert!(MENU_MAX_WIDTH <= 420.0);
     }
 }

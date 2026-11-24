@@ -1,5 +1,5 @@
 //! The TypeScript plugin's language support as the editor assembles it
-//! (P5 of `.agents/LANGUAGE_PLUGINS_PLAN.md`): the real plugin set, the
+//! (see `.agents/LANGUAGE_PLUGINS_PLAN.md`): the real plugin set, the
 //! `LanguageServers` service, both diagnostic sources.
 //!
 //! * disabling `pulsar.typescript` clears both sources (the server's and the
@@ -40,7 +40,11 @@ fn activate(off: &[&str]) {
     pulsar_settings::plugin::sync(engine_state::global_config());
 }
 
-fn wait_for(cx: &mut TestAppContext, what: &str, mut done: impl FnMut(&mut TestAppContext) -> bool) {
+fn wait_for(
+    cx: &mut TestAppContext,
+    what: &str,
+    mut done: impl FnMut(&mut TestAppContext) -> bool,
+) {
     cx.executor().allow_parking();
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
@@ -83,7 +87,10 @@ fn setup(cx: &mut TestAppContext) -> Setup {
     engine_state::global_config()
         .owner_handle(pulsar_settings::plugin::NS, SERVER_GROUP)
         .expect("the server group is registered while the plugin is enabled")
-        .set("path", "/pulsar-test/no-such-typescript-language-server/cli.mjs")
+        .set(
+            "path",
+            "/pulsar-test/no-such-typescript-language-server/cli.mjs",
+        )
         .unwrap();
     let handle = engine_state::global_config()
         .owner_handle(pulsar_settings::plugin::NS, TYPESCRIPT)
@@ -102,7 +109,12 @@ fn setup(cx: &mut TestAppContext) -> Setup {
         service.set_check_debounce(Duration::from_millis(10));
     });
     let store = service.read_with(cx, |service, _| service.diagnostics());
-    Setup { _project: project, class, service, store }
+    Setup {
+        _project: project,
+        class,
+        service,
+        store,
+    }
 }
 
 fn sources(cx: &mut TestAppContext, setup: &Setup) -> Vec<String> {
@@ -127,35 +139,64 @@ fn disabling_typescript_clears_both_sources_and_removes_the_server(cx: &mut Test
         .expect("the TypeScript plugin claims .ts files");
     let id = server.read_with(cx, |server, _| server.id().clone());
     assert_eq!(id.server, "typescript-language-server");
-    assert_eq!(id.root, s.class.parent().unwrap().parent().unwrap().to_path_buf(), "rooted at the class folder");
+    assert_eq!(
+        id.root,
+        s.class.parent().unwrap().parent().unwrap().to_path_buf(),
+        "rooted at the class folder"
+    );
 
     // ... which publishes something (put by hand: the process is not the
     // subject), while the compiler checks the unsaved text.
     s.store.update(cx, |store, cx| {
-        store.set(DiagnosticSource::Server(id.clone()), &s.class, vec![diagnostic(&s.class, "from tsserver")], cx)
+        store.set(
+            DiagnosticSource::Server(id.clone()),
+            &s.class,
+            vec![diagnostic(&s.class, "from tsserver")],
+            cx,
+        )
     });
-    s.service.update(cx, |service, cx| service.check_source(&s.class, ARROW, cx));
+    s.service
+        .update(cx, |service, cx| service.check_source(&s.class, ARROW, cx));
     cx.executor().advance_clock(Duration::from_secs(1));
     wait_for(cx, "both sources", |cx| sources(cx, &s).len() == 2);
     let labels = sources(cx, &s);
-    assert!(labels.contains(&"typescript-language-server".to_string()) && labels.contains(&"typescript compiler".to_string()));
+    assert!(
+        labels.contains(&"typescript-language-server".to_string())
+            && labels.contains(&"typescript compiler".to_string())
+    );
 
     // The project turns the plugin off; the service notices on its tick.
     activate(&[TYPESCRIPT]);
     cx.executor().advance_clock(Duration::from_secs(5));
     cx.run_until_parked();
-    assert!(sources(cx, &s).is_empty(), "both sources are gone: {:?}", sources(cx, &s));
-    assert!(s.service.read_with(cx, |service, _| service.servers().is_empty()), "the server and its footer entry are gone");
+    assert!(
+        sources(cx, &s).is_empty(),
+        "both sources are gone: {:?}",
+        sources(cx, &s)
+    );
+    assert!(
+        s.service
+            .read_with(cx, |service, _| service.servers().is_empty()),
+        "the server and its footer entry are gone"
+    );
     assert!(
         engine_state::global_config()
             .owner_handle(pulsar_settings::plugin::NS, SERVER_GROUP)
             .is_none(),
         "its settings group is withdrawn"
     );
-    assert!(!s.service.read_with(cx, |service, _| service.has_compiler_for(&s.class)));
-    assert!(s.service.update(cx, |service, cx| service.server_for(&s.class, cx)).is_none(), "no server for .ts");
+    assert!(!s
+        .service
+        .read_with(cx, |service, _| service.has_compiler_for(&s.class)));
+    assert!(
+        s.service
+            .update(cx, |service, cx| service.server_for(&s.class, cx))
+            .is_none(),
+        "no server for .ts"
+    );
     // An edit of the file now checks nothing.
-    s.service.update(cx, |service, cx| service.check_source(&s.class, ARROW, cx));
+    s.service
+        .update(cx, |service, cx| service.check_source(&s.class, ARROW, cx));
     cx.executor().advance_clock(Duration::from_secs(1));
     cx.run_until_parked();
     assert!(sources(cx, &s).is_empty());
@@ -167,9 +208,12 @@ fn disabling_typescript_clears_both_sources_and_removes_the_server(cx: &mut Test
 fn the_plugins_own_setting_turns_the_compiler_source_off_and_on(cx: &mut TestAppContext) {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let s = setup(cx);
-    s.service.update(cx, |service, cx| service.check_source(&s.class, ARROW, cx));
+    s.service
+        .update(cx, |service, cx| service.check_source(&s.class, ARROW, cx));
     cx.executor().advance_clock(Duration::from_secs(1));
-    wait_for(cx, "the compiler's problem", |cx| sources(cx, &s) == ["typescript compiler"]);
+    wait_for(cx, "the compiler's problem", |cx| {
+        sources(cx, &s) == ["typescript compiler"]
+    });
     let entries = s.store.read_with(cx, |store, _| store.for_file(&s.class));
     assert_eq!(entries[0].1.source.as_deref(), Some("Pulsar"));
 
@@ -183,7 +227,9 @@ fn the_plugins_own_setting_turns_the_compiler_source_off_and_on(cx: &mut TestApp
 
     handle.set("compiler_diagnostics", true).unwrap();
     cx.executor().advance_clock(Duration::from_secs(5));
-    wait_for(cx, "the check to resume", |cx| sources(cx, &s) == ["typescript compiler"]);
+    wait_for(cx, "the check to resume", |cx| {
+        sources(cx, &s) == ["typescript compiler"]
+    });
 
     pulsar_plugins::deactivate();
 }

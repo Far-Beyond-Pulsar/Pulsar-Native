@@ -13,9 +13,17 @@ pulsar_class = { workspace = true }
 engine_fs = { workspace = true }
 plugin_editor_api = { workspace = true, features = ["editor"] }
 pulsar_world_registry = { workspace = true }
+# Attaches each loaded plugin library's copy of Helio to the host's shared state and task host.
+helio-core = { workspace = true }
+# Attaches each loaded library's parking lot to the host's (a lost wakeup otherwise).
+parking_lot_core = "0.9"
 profiling = { workspace = true }
 # Hands each loaded plugin the host's Gamma event bus (#930).
 pulsar_events = { workspace = true }
+# Binds each loaded plugin's settings handles to the host database (#1932).
+pulsar_settings = { workspace = true }
+# The host's engine context, attached to each plugin library (`attach_engine_state`).
+engine_state = { workspace = true }
 parking_lot = { workspace = true }
 # Built-in providers register themselves at link time (`LinkedEditorProvider`).
 inventory = { workspace = true }
@@ -36,6 +44,8 @@ walkdir = { workspace = true }
 
 # Cryptographic hash verification
 sha2 = { workspace = true }
+# Where the renamed copies of older plugins are kept (`imports::compat_copy`).
+pulsar_install_layout = { workspace = true }
 
 [dev-dependencies]
 env_logger = "=0.11.11"

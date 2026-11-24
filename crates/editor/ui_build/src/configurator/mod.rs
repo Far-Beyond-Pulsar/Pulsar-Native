@@ -797,7 +797,7 @@ mod tests {
     /// with the form and list scrolled, when `PULSAR_BUILD_SHOTS` names a
     /// folder and a GPU adapter is available. The scrollbars inside the
     /// scrolling form (the description's, the platform list's) must sit on
-    /// their own boxes' right edges (Pulsar-Native#1001).
+    /// their own boxes' right edges.
     #[test]
     fn configurator_screenshots() {
         let Some(dir) = std::env::var_os("PULSAR_BUILD_SHOTS").map(std::path::PathBuf::from) else {

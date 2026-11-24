@@ -470,7 +470,7 @@ fn waiting_events_resume_after_game_time_passes() {
     assert_eq!(rt.waiting_calls("a"), 0);
     assert!((rt.time() - 1.1).abs() < 1e-9);
 
-    // #862: a reload whose code keeps the waiting function's layout keeps
+    // A reload whose code keeps the waiting function's layout keeps
     // the waiting call, and it finishes in the NEW code (here the second
     // constant changed from "b" to "B").
     rt.spawn("b", "Latent", None, &[]).unwrap();
@@ -507,7 +507,7 @@ fn waiting_events_resume_after_game_time_passes() {
     );
 }
 
-/// #854: a runtime error names the class, the instance, the function and
+/// A runtime error names the class, the instance, the function and
 /// the graph node the function's debug info maps the failing pc to; a link
 /// error names the node that calls the missing native.
 #[test]
@@ -592,7 +592,7 @@ fn errors_carry_class_function_and_node() {
     assert!(error.to_string().contains("node call_3"), "{error}");
 }
 
-// ---- events (#924) ----------------------------------------------------------
+// ---- events ----------------------------------------------------------
 
 mod events {
     use super::*;
@@ -761,7 +761,7 @@ mod events {
     }
 }
 
-// ---- packaging: binary modules, limits, capabilities (#852, #857, #858, #869)
+// ---- packaging: binary modules, limits, capabilities
 
 #[test]
 fn class_files_load_as_json_or_binary() {

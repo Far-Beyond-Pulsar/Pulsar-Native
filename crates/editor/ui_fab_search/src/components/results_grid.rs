@@ -26,7 +26,10 @@ pub fn render_results_grid(
     let cols: usize = (((avail_w + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
     let actual_card_w: f32 = (avail_w - (cols - 1) as f32 * GAP) / cols as f32;
 
-    let entity = window.entity.clone().unwrap();
+    let entity = window
+        .entity
+        .clone()
+        .expect("FabSearch::new stores its own entity in the constructor");
     let total_results = window.results.len();
     let result_rows = total_results.div_ceil(cols);
     let skel_rows: usize = if window.is_loading_more { 2 } else { 0 };

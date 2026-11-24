@@ -1,4 +1,4 @@
-//! Import configurator modal (issue #391).
+//! Import configurator modal.
 //!
 //! Shown when model files are dropped into the content drawer. Renders the
 //! format's import-options schema using the engine's reflection-based property

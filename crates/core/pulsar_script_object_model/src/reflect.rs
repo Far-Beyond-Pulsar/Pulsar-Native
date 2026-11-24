@@ -1,4 +1,4 @@
-//! Identity types through the reflection layer (#642).
+//! Identity types through the reflection layer.
 //!
 //! Goal: `Entity`/`ActorRef`/`ComponentRef` ride `pulsar_reflection`'s
 //! registries like any other value, so reflected methods can take and
@@ -265,20 +265,14 @@ fn serialize_u32_json(value: &dyn std::any::Any) -> ReflectResult<Value> {
 }
 
 fn deserialize_u32_json(value: Value) -> ReflectResult<u32> {
-    // Accept only values that fit exactly; a float/overflowed value is a
+    // Accept only values that fit exactly; a float or overflowed value is a
     // hard mismatch, not a truncation.
-    if value.is_u64()
-        && value
-            .as_u64()
-            .map(|n| n <= u32::MAX as u64)
-            .unwrap_or(false)
-    {
-        Ok(value.as_u64().unwrap() as u32)
-    } else {
-        Err(ReflectError::TypeMismatch {
+    match value.as_u64().and_then(|n| u32::try_from(n).ok()) {
+        Some(n) => Ok(n),
+        None => Err(ReflectError::TypeMismatch {
             expected: "u32",
             found: format!("{value}"),
-        })
+        }),
     }
 }
 
@@ -358,7 +352,7 @@ mod tests {
     use super::*;
     use pulsar_reflection::{JsonDeserializer, JsonSerializer};
 
-    /// #642: Entity is registered end-to-end through the registry shim --
+    /// Entity is registered end-to-end through the registry shim --
     /// lookup by TypeId AND by name both find it, and JSON carries the
     /// packed bits.
     #[test]
@@ -379,7 +373,7 @@ mod tests {
         assert_eq!(back.downcast_ref::<Entity>(), Some(&entity));
     }
 
-    /// #642: u32 (the component_index field type) marshals through the
+    /// U32 (the component_index field type) marshals through the
     /// registry -- and rejects out-of-range/typed garbage instead of
     /// truncating.
     #[test]
@@ -401,7 +395,7 @@ mod tests {
             .is_err());
     }
 
-    /// #642: ActorRef implements Reflectable end-to-end -- trait serialize
+    /// ActorRef implements Reflectable end-to-end -- trait serialize
     /// through JsonSerializer, trait deserialize back, registry path too.
     #[test]
     fn actor_ref_reflectable_round_trip() {
@@ -424,7 +418,7 @@ mod tests {
         assert_eq!(back_any.downcast_ref::<ActorRef>(), Some(&r));
     }
 
-    /// #642: ComponentRef serializes as a real struct ({entity, class_name,
+    /// ComponentRef serializes as a real struct ({entity, class_name,
     /// component_index}) through BOTH the trait path and the registry path.
     #[test]
     fn component_ref_reflectable_struct_round_trip() {
@@ -456,7 +450,7 @@ mod tests {
         assert_eq!(back_any.downcast_ref::<ComponentRef>(), Some(&r));
     }
 
-    /// #642: the descriptors are stable statics with distinct declared pin
+    /// The descriptors are stable statics with distinct declared pin
     /// colors (F's graph pins color/filter by these).
     #[test]
     fn descriptors_expose_distinct_pin_colors() {

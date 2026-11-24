@@ -64,10 +64,23 @@ window_manager.workspace = true
 # TypeScript, the trait and render graph editors and every other plugin's
 # editors among them): the editor has
 # every one, the project it opens enables some (`pulsar_plugins`).
-installed_plugins = { workspace = true, features = ["editor"] }
+linked_plugins = { workspace = true }
+# The shared UI and renderer libraries: the editor and every plugin library link them dynamically
+# (`-C prefer-dynamic`, .cargo/config.toml), so each framework static exists once per process.
+wgpui_dylib = { workspace = true }
+helio_dylib = { workspace = true }
+ui_dylib = { workspace = true }
+profiling_dylib = { workspace = true }
+# Pins the features of every crate inside those libraries, so building the editor alone gives the same
+# libraries as building it with every plugin (tools/hack_gen). Nothing links it.
+pulsar_workspace_hack = { path = "../../../tools/workspace_hack" }
+reflection_dylib = { workspace = true }
+scenedb_dylib = { workspace = true }
+plugin_editor_api = { workspace = true, features = ["shared-dylibs"] }
 # The content packer (`pulsar_content::ContentPacker`): the build's pack step cooks
 # and packs the project through it, before Cargo builds the game.
-pulsar_package = { workspace = true }
+# Without `link-plugins`: the editor loads plugins from their libraries.
+pulsar_package = { workspace = true, default-features = false, features = ["scripting"] }
 # The optional editor tools this editor ships (architecture/layers.toml's
 # `tool` layer): each registers its status-bar button, title-bar item,
 # loading step or chat provider (`ui_common::editor_tools`,

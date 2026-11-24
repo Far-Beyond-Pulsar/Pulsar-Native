@@ -23,6 +23,7 @@ pub fn set_locale(locale: &str) {
     rust_i18n::set_locale(locale)
 }
 
+pub mod appearance;
 pub mod asset_path_editor;
 pub mod asset_picker;
 pub mod asset_ref_editor;
@@ -33,6 +34,7 @@ pub mod composite_editor;
 pub mod composite_model;
 pub mod file_utils;
 pub mod generic_window;
+pub mod in_task;
 pub mod inspector;
 pub mod inspector_model;
 pub mod locale_picker;

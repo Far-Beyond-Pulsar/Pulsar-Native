@@ -3,7 +3,6 @@ use gpui::*;
 use std::path::PathBuf;
 
 use crate::components::FileManagerDrawer;
-use crate::utils::tree::FolderNode;
 
 impl FileManagerDrawer {
     pub fn commit_rename(&mut self, cx: &mut Context<Self>) {
@@ -38,9 +37,7 @@ impl FileManagerDrawer {
     }
 
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
-        if let Some(ref p) = self.project_path {
-            self.set_folder_tree(FolderNode::from_path(p));
-        }
+        self.refresh_folder_tree(cx);
         self.mark_directory_cache_dirty();
         cx.notify();
     }

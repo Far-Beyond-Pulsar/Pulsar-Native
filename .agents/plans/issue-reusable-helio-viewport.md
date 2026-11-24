@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - ui_helio_viewport exists and is used by ui_level_editor and render_bps
+
 ## Extract a reusable Helio viewport from `ui_level_editor`
 
 ### What we did

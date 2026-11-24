@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - waves 0-2 landed, waves 3-5 not started
+
 # Hierarchy (Outliner) Performance Plan
 
 Status: waves 0, 1 and 2 landed (2026-11-16); waves 3-5 are not started.

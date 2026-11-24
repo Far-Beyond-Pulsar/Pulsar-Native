@@ -55,7 +55,14 @@ impl<P: AssetPathValue> AssetPathEditor<P> {
             .map(|extension| AssetQuery::extension(*extension))
             .collect();
         let picker = cx.new(|cx| {
-            AssetPicker::new(path.clone(), Vec::new(), project_root(), queries, window, cx)
+            AssetPicker::new(
+                path.clone(),
+                Vec::new(),
+                project_root(),
+                queries,
+                window,
+                cx,
+            )
         });
         let subscriptions = vec![cx.subscribe_in(
             &picker,
@@ -146,8 +153,9 @@ impl<P: AssetPathValue> Render for AssetPathEditor<P> {
                                 .ghost()
                                 .tooltip("Remove the path")
                                 .on_click(move |_, window, cx| {
-                                    picker_for_clear
-                                        .update(cx, |picker, _| picker.set_selected_path(String::new()));
+                                    picker_for_clear.update(cx, |picker, _| {
+                                        picker.set_selected_path(String::new())
+                                    });
                                     entity.update(cx, |this, cx| {
                                         this.path.clear();
                                         cx.notify();

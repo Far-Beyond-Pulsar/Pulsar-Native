@@ -4,6 +4,12 @@ use super::*;
 use rust_i18n::t;
 use ui::menu::popup_menu::PopupMenu;
 
+use super::build_mouse::{
+    bind_left_button, bind_middle_button, bind_mouse_move, bind_right_button, bind_scroll_wheel,
+    pointer_tracking_canvas, selection_box_overlay, viewport_container, ContextMenuOpener,
+    MouseHandles, PointerQueue,
+};
+
 use crate::ui::actions::{
     AddObjectOfType, DeleteObject, DuplicateObject, FocusSelected, OpenEnvironmentConfig,
     OpenHighResScreenshot,
@@ -143,11 +149,84 @@ fn build_selection_menu(
             }
         })
         .separator()
-        .menu_handler(
-            t!("LevelEditor.Selection.Deselect"),
-            handler(|state| state.scene.select_objects(&[])),
-        )
+        .submenu(t!("LevelEditor.Origin.Menu"), window, cx, {
+            let state = state.clone();
+            let several = selection.len() > 1;
+            move |mut submenu, window, cx| {
+                use crate::scene_edit::origin::{GroupOrigin, ObjectOrigin};
+                let each = {
+                    let state = state.clone();
+                    move |origin: ObjectOrigin| {
+                        let state = state.clone();
+                        move |_: &mut Window, _: &mut gpui::App| {
+                            crate::ui::hierarchy::set_selection_origins(&mut state.write(), origin);
+                        }
+                    }
+                };
+                let group = {
+                    let state = state.clone();
+                    move |origin: GroupOrigin| {
+                        let state = state.clone();
+                        move |_: &mut Window, _: &mut gpui::App| {
+                            crate::ui::hierarchy::set_group_origin(&mut state.write(), origin);
+                        }
+                    }
+                };
+                // With several objects selected, "Each Object" and "Group" are
+                // separate lists; with one, the object's own list is the menu.
+                let own: [(&str, ObjectOrigin); 5] = [
+                    (
+                        "LevelEditor.Origin.BoundsCenter",
+                        ObjectOrigin::BoundsCenter,
+                    ),
+                    (
+                        "LevelEditor.Origin.BoundsBottom",
+                        ObjectOrigin::BoundsBottom,
+                    ),
+                    ("LevelEditor.Origin.BoundsTop", ObjectOrigin::BoundsTop),
+                    ("LevelEditor.Origin.World", ObjectOrigin::World),
+                    ("LevelEditor.Origin.Transform", ObjectOrigin::Transform),
+                ];
+                if !several {
+                    for (key, origin) in own {
+                        submenu = submenu.menu_handler(t!(key), each(origin));
+                    }
+                    return submenu;
+                }
+                let own_menu =
+                    move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
+                        for (key, origin) in own {
+                            menu = menu.menu_handler(t!(key), each(origin));
+                        }
+                        menu
+                    };
+                let group_menu =
+                    move |mut menu: PopupMenu, _: &mut Window, _: &mut Context<PopupMenu>| {
+                        let entries: [(&str, GroupOrigin); 6] = [
+                            ("LevelEditor.Origin.MedianCenter", GroupOrigin::MedianCenter),
+                            (
+                                "LevelEditor.Origin.GroupBoundsCenter",
+                                GroupOrigin::BoundsCenter,
+                            ),
+                            (
+                                "LevelEditor.Origin.GroupBoundsBottom",
+                                GroupOrigin::BoundsBottom,
+                            ),
+                            ("LevelEditor.Origin.GroupBoundsTop", GroupOrigin::BoundsTop),
+                            ("LevelEditor.Origin.Primary", GroupOrigin::Primary),
+                            ("LevelEditor.Origin.World", GroupOrigin::World),
+                        ];
+                        for (key, origin) in entries {
+                            menu = menu.menu_handler(t!(key), group(origin));
+                        }
+                        menu
+                    };
+                submenu = submenu.submenu(t!("LevelEditor.Origin.PerObject"), window, cx, own_menu);
+                submenu.submenu(t!("LevelEditor.Origin.Group"), window, cx, group_menu)
+            }
+        })
         .separator();
+    let menu = crate::ui::selection::select_submenu(menu, window, cx, state).separator();
     let level_context = action_context.clone();
     menu.submenu(
         t!("LevelEditor.Selection.Level"),
@@ -157,6 +236,116 @@ fn build_selection_menu(
             level_menu(submenu.action_context(level_context.clone()), window, cx)
         },
     )
+}
+
+type ContextMenuBuilder =
+    Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>, Option<[f64; 3]>) -> PopupMenu>;
+/// The entries of the viewport's "Create" submenu, as `(order, label, id)`.
+fn create_menu_entries() -> Vec<(i32, String, String)> {
+    crate::extend::create_entries()
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .menu_label
+                .map(|label| (entry.order, label(), entry.id.to_string()))
+        })
+        .collect()
+}
+
+/// The viewport's right-click menu when nothing is selected: create objects
+/// at the clicked world position, tools, and actions on the selection.
+fn context_menu_builder(
+    create_entries: Vec<(i32, String, String)>,
+    action_context: FocusHandle,
+    selected_object: bool,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
+) -> ContextMenuBuilder {
+    Rc::new(
+        move |mut menu: PopupMenu,
+              window: &mut Window,
+              cx: &mut Context<PopupMenu>,
+              world_position: Option<[f64; 3]>| {
+            menu = menu.action_context(action_context.clone());
+            menu = menu.submenu(t!("LevelEditor.Menu.Create"), window, cx, {
+                let create_entries = create_entries.clone();
+                let submenu_action_context = action_context.clone();
+                move |mut submenu, _, _| {
+                    submenu = submenu.action_context(submenu_action_context.clone());
+                    let mut last_group = None;
+                    for (order, label, object_type) in &create_entries {
+                        let group = order.div_euclid(100);
+                        if last_group.is_some_and(|last| last != group) {
+                            submenu = submenu.separator();
+                        }
+                        last_group = Some(group);
+                        submenu = submenu.menu(
+                            label.clone(),
+                            Box::new(AddObjectOfType {
+                                object_type: object_type.clone(),
+                                world_position: world_position,
+                            }),
+                        );
+                    }
+                    submenu
+                }
+            });
+            menu = menu.submenu(t!("LevelEditor.Menu.Tools"), window, cx, {
+                let submenu_action_context = action_context.clone();
+                move |menu, _, _| {
+                    menu.action_context(submenu_action_context.clone())
+                        .menu(
+                            t!("LevelEditor.Menu.EnvironmentConfig"),
+                            Box::new(OpenEnvironmentConfig),
+                        )
+                        .menu(
+                            t!("LevelEditor.Menu.HighResScreenshot"),
+                            Box::new(OpenHighResScreenshot),
+                        )
+                }
+            });
+            menu = menu.separator();
+            menu = crate::ui::selection::select_submenu(menu, window, cx, &state);
+            menu = menu.submenu(t!("LevelEditor.Menu.Go"), window, cx, {
+                let submenu_action_context = action_context.clone();
+                move |menu, _, _| {
+                    menu.action_context(submenu_action_context.clone())
+                        .menu_with_disabled(
+                            t!("LevelEditor.Menu.FocusSelected"),
+                            Box::new(FocusSelected),
+                            !selected_object,
+                        )
+                }
+            });
+            menu.menu_with_disabled(
+                t!("LevelEditor.Menu.Duplicate"),
+                Box::new(DuplicateObject),
+                !selected_object,
+            )
+            .menu_with_disabled(
+                t!("LevelEditor.Menu.Delete"),
+                Box::new(DeleteObject),
+                !selected_object,
+            )
+        },
+    )
+}
+
+/// The anchored popup that shows the open context menu, or an empty element.
+fn context_menu_popup(
+    context_menu: &Rc<RefCell<Option<(Point<Pixels>, Entity<PopupMenu>)>>>,
+) -> AnyElement {
+    match context_menu.borrow().clone() {
+        Some((position, menu)) => deferred(
+            anchored()
+                .position(position)
+                .snap_to_window_with_margin(px(8.0))
+                .anchor(gpui::Corner::TopLeft)
+                .child(div().occlude().child(menu)),
+        )
+        .with_priority(1)
+        .into_any_element(),
+        None => div().into_any_element(),
+    }
 }
 
 impl ViewportPanel {
@@ -173,605 +362,170 @@ impl ViewportPanel {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let _viewport_hovered = self.viewport_hovered.clone();
-        let _element_bounds = self.element_bounds.clone();
         let viewport_entity = self.viewport.clone();
 
         if let Some(snapshot) = snapshot {
             self.cached_frame_snapshot = snapshot;
         }
-        let snap = &self.cached_frame_snapshot;
-
-        // Clone for event handlers
-        let _input_state_scroll = Arc::clone(&self.input_state);
-        let mouse_right_captured = self.mouse_right_captured.clone();
-        let mouse_middle_captured = self.mouse_middle_captured.clone();
         // Retain the mailbox across busy renderer frames. Event delivery must
         // not depend on whether this particular UI rebuild could sample stats.
-        let pointer_events_for_click = snap.pointer_events.clone();
-        let camera_input_for_prepaint = snap.camera_input.clone();
-        let element_bounds_for_prepaint = self.element_bounds.clone();
-        let element_bounds_for_click = self.element_bounds.clone();
-        let _state_arc_scroll = state_arc.clone();
-        let last_mouse_x = self.last_mouse_x.clone();
-        let last_mouse_y = self.last_mouse_y.clone();
-        let locked_cursor_x = self.locked_cursor_x.clone();
-        let locked_cursor_y = self.locked_cursor_y.clone();
-        let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
-        let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
-        let cursor_capture =
-            ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
-        let selected_object = state.scene.selected_object().is_some();
-        let create_entries: Vec<(i32, String, String)> = crate::extend::create_entries()
-            .into_iter()
-            .filter_map(|entry| {
-                entry
-                    .menu_label
-                    .map(|label| (entry.order, label(), entry.id.to_string()))
-            })
-            .collect();
-        let build_context_menu = {
-            let create_entries = create_entries.clone();
-            let action_context = action_context.clone();
-            Rc::new(
-                move |mut menu: PopupMenu,
-                      window: &mut Window,
-                      cx: &mut Context<PopupMenu>,
-                      world_position: Option<[f64; 3]>| {
-                    menu = menu.action_context(action_context.clone());
-                    menu = menu.submenu(t!("LevelEditor.Menu.Create"), window, cx, {
-                        let create_entries = create_entries.clone();
-                        let submenu_action_context = action_context.clone();
-                        move |mut submenu, _, _| {
-                            submenu = submenu.action_context(submenu_action_context.clone());
-                            let mut last_group = None;
-                            for (order, label, object_type) in &create_entries {
-                                let group = order.div_euclid(100);
-                                if last_group.is_some_and(|last| last != group) {
-                                    submenu = submenu.separator();
-                                }
-                                last_group = Some(group);
-                                submenu = submenu.menu(
-                                    label.clone(),
-                                    Box::new(AddObjectOfType {
-                                        object_type: object_type.clone(),
-                                        world_position: world_position,
-                                    }),
-                                );
-                            }
-                            submenu
-                        }
-                    });
-                    menu = menu.submenu(t!("LevelEditor.Menu.Tools"), window, cx, {
-                        let submenu_action_context = action_context.clone();
-                        move |menu, _, _| {
-                            menu.action_context(submenu_action_context.clone())
-                                .menu(
-                                    t!("LevelEditor.Menu.EnvironmentConfig"),
-                                    Box::new(OpenEnvironmentConfig),
-                                )
-                                .menu(
-                                    t!("LevelEditor.Menu.HighResScreenshot"),
-                                    Box::new(OpenHighResScreenshot),
-                                )
-                        }
-                    });
-                    menu = menu.separator();
-                    menu = menu.submenu(t!("LevelEditor.Menu.Go"), window, cx, {
-                        let submenu_action_context = action_context.clone();
-                        move |menu, _, _| {
-                            menu.action_context(submenu_action_context.clone())
-                                .menu_with_disabled(
-                                    t!("LevelEditor.Menu.FocusSelected"),
-                                    Box::new(FocusSelected),
-                                    !selected_object,
-                                )
-                        }
-                    });
-                    menu.menu_with_disabled(
-                        t!("LevelEditor.Menu.Duplicate"),
-                        Box::new(DuplicateObject),
-                        !selected_object,
-                    )
-                    .menu_with_disabled(
-                        t!("LevelEditor.Menu.Delete"),
-                        Box::new(DeleteObject),
-                        !selected_object,
-                    )
-                },
-            )
-        };
-        let context_menu = self.context_menu.clone();
-        let placement_bounds = self.element_bounds.clone();
-        let placement_gpu = gpu_engine.clone();
-        let right_mouse_down_position = self.right_mouse_down_position.clone();
-        let right_mouse_dragged = self.right_mouse_dragged.clone();
+        let pointer_events = self.cached_frame_snapshot.pointer_events.clone();
+        let camera_input = self.cached_frame_snapshot.camera_input.clone();
         let owner_view = cx.entity().entity_id();
-        let show_context_menu = {
-            let context_menu = context_menu.clone();
-            let build_context_menu = build_context_menu.clone();
-            let selection_state = state_arc.clone();
-            let action_context = action_context.clone();
-            Rc::new(move |position, window: &mut Window, cx: &mut gpui::App| {
-                let world_position = placement_bounds.borrow().and_then(|bounds| {
-                    let gpu = placement_gpu.lock().ok()?;
-                    let camera = gpu.editor_camera_state()?;
-                    world_position_on_ground_plane(position, bounds, camera)
-                });
-                // With objects selected, the menu acts on them; the usual
-                // level menu moves into a submenu.
-                let selection = selection_state.read().scene.selected_objects();
-                let menu = PopupMenu::build(window, cx, |menu, window, cx| {
-                    if selection.is_empty() {
-                        build_context_menu(menu, window, cx, world_position)
-                    } else {
-                        build_selection_menu(
-                            menu,
-                            window,
-                            cx,
-                            &selection_state,
-                            &selection,
-                            &action_context,
-                            {
-                                let build_context_menu = build_context_menu.clone();
-                                move |menu, window, cx| {
-                                    build_context_menu(menu, window, cx, world_position)
-                                }
-                            },
-                        )
-                    }
-                });
-                if menu.read(cx).is_empty() {
-                    return;
-                }
-                window
-                    .subscribe(&menu, cx, {
-                        let context_menu = context_menu.clone();
-                        let owner_view = owner_view.clone();
-                        move |_, _: &gpui::DismissEvent, _, cx| {
-                            context_menu.borrow_mut().take();
-                            cx.notify(owner_view.clone());
-                        }
-                    })
-                    .detach();
-                *context_menu.borrow_mut() = Some((position, menu));
-                cx.notify(owner_view.clone());
-            })
-        };
-        let popup_element = match context_menu.borrow().clone() {
-            Some((position, menu)) => deferred(
-                anchored()
-                    .position(position)
-                    .snap_to_window_with_margin(px(8.0))
-                    .anchor(gpui::Corner::TopLeft)
-                    .child(div().occlude().child(menu)),
-            )
-            .with_priority(1)
-            .into_any_element(),
-            None => div().into_any_element(),
-        };
 
-        // This viewport's own settings (the shared state for the primary one,
-        // which the caller already holds locked).
+        let mouse = self.mouse_handles(pointer_events, &state_arc, gpu_engine, owner_view);
+        let show_context_menu = self.context_menu_opener(
+            context_menu_builder(
+                create_menu_entries(),
+                action_context.clone(),
+                state.scene.selected_object().is_some(),
+                state_arc.clone(),
+            ),
+            &state_arc,
+            &action_context,
+            gpu_engine,
+            owner_view,
+        );
+        let popup_element = context_menu_popup(&self.context_menu);
+        let ortho_zoom_camera = self.ortho_zoom_camera(state, &camera_input);
+        // A Shift + drag selection box: drawn here, finished on release.
+        let box_overlay = selection_box_overlay(
+            &self.box_select,
+            &self.element_bounds,
+            cx.theme().foreground,
+        );
+        let cursor_capture =
+            ViewportCursorCapture::load(&mouse.mouse_right_captured, &mouse.mouse_middle_captured);
+
+        let container = viewport_container(
+            cursor_capture,
+            cx.theme().radius,
+            self.element_bounds.clone(),
+            camera_input,
+        );
+        let container = bind_mouse_move(container, &mouse);
+        let container = bind_right_button(container, &mouse, &show_context_menu);
+        let container = bind_middle_button(container, &mouse);
+        let container = bind_scroll_wheel(container, &mouse, ortho_zoom_camera);
+        bind_left_button(container, &mouse)
+            .child(viewport_entity)
+            .child(pointer_tracking_canvas(&mouse))
+            // Overlays
+            .child(box_overlay)
+            .child(self.render_overlays(state, state_arc, gpu_engine, cx))
+            .child(popup_element)
+            .id("level-editor-viewport-context-menu")
+    }
+
+    /// Clone the shared input state the mouse handlers capture.
+    fn mouse_handles(
+        &self,
+        pointer_events: PointerQueue,
+        state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        owner_view: EntityId,
+    ) -> MouseHandles {
+        MouseHandles {
+            input_state: self.input_state.clone(),
+            last_mouse_x: self.last_mouse_x.clone(),
+            last_mouse_y: self.last_mouse_y.clone(),
+            locked_cursor_x: self.locked_cursor_x.clone(),
+            locked_cursor_y: self.locked_cursor_y.clone(),
+            locked_cursor_screen_x: self.locked_cursor_screen_x.clone(),
+            locked_cursor_screen_y: self.locked_cursor_screen_y.clone(),
+            mouse_right_captured: self.mouse_right_captured.clone(),
+            mouse_middle_captured: self.mouse_middle_captured.clone(),
+            right_mouse_down_position: self.right_mouse_down_position.clone(),
+            right_mouse_dragged: self.right_mouse_dragged.clone(),
+            element_bounds: self.element_bounds.clone(),
+            box_select: self.box_select.clone(),
+            pointer_events,
+            state_arc: state_arc.clone(),
+            gpu_engine: gpu_engine.clone(),
+            owner_view,
+        }
+    }
+
+    /// The camera input an orthographic view zooms with the wheel instead of
+    /// flying; `None` for a perspective view.
+    ///
+    /// This viewport's own settings are in `view_state` (the shared state for
+    /// the primary one, which the caller already holds locked as `state`).
+    fn ortho_zoom_camera(
+        &self,
+        state: &LevelEditorState,
+        camera_input: &Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>>,
+    ) -> Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>> {
         let view_state = self.view_state.clone();
         let camera_mode = if self.own_view {
             view_state.read().editor.camera_mode
         } else {
             state.editor.camera_mode
         };
-        // An orthographic view zooms with the wheel instead of flying.
-        let ortho_zoom_camera = (camera_mode != crate::state::CameraMode::Perspective)
-            .then(|| snap.camera_input.clone())
-            .flatten();
+        (camera_mode != crate::state::CameraMode::Perspective)
+            .then(|| camera_input.clone())
+            .flatten()
+    }
 
-        // A Shift + drag selection box: drawn here, finished on release.
-        let box_select = self.box_select.clone();
-        let box_overlay = match (*box_select.borrow(), *self.element_bounds.borrow()) {
-            (Some((start, end)), Some(bounds)) => {
-                let min = point(start.x.min(end.x), start.y.min(end.y)) - bounds.origin;
-                let max = point(start.x.max(end.x), start.y.max(end.y)) - bounds.origin;
-                let foreground = cx.theme().foreground;
-                div()
-                    .absolute()
-                    .left(min.x)
-                    .top(min.y)
-                    .w(max.x - min.x)
-                    .h(max.y - min.y)
-                    .bg(foreground.opacity(0.08))
-                    .border_1()
-                    .border_color(foreground.opacity(0.7))
-                    .into_any_element()
-            }
-            _ => div().into_any_element(),
-        };
-
-        // For mouse move tracking
-        let element_bounds_move = self.element_bounds.clone();
-        let gpu_engine_move = gpu_engine.clone();
-        let last_mouse_pos = Rc::new(RefCell::new(None::<(f32, f32)>));
-
-        // Main viewport container
-        div()
-            .size_full()
-            .relative()
-            // Cursor requests are paint state in GPUI. Event handlers update the
-            // capture atomics and refresh the window; paint owns presentation.
-            .when(cursor_capture.is_active(), |viewport| {
-                viewport.cursor(CursorStyle::None)
-            })
-            // TRANSPARENT - no background for direct Helio rendering
-            .rounded(cx.theme().radius)
-            // CRITICAL: Capture element bounds and update Helio camera viewport.
-            // Runs every frame, cached or not — geometry stashing belongs here,
-            // not in on_children_prepainted (which is skipped on cache hits).
-            .on_frame(move |geom, _window, _cx| {
-                *element_bounds_for_prepaint.borrow_mut() = Some(geom.bounds);
-
-                // Update Helio camera viewport to match GPUI viewport bounds
-                if let Some(cam) = &camera_input_for_prepaint {
-                    if let Ok(mut camera_input) = cam.try_lock() {
-                        let origin_x: f32 = geom.bounds.origin.x.into();
-                        let origin_y: f32 = geom.bounds.origin.y.into();
-                        let width: f32 = geom.bounds.size.width.into();
-                        let height: f32 = geom.bounds.size.height.into();
-                        camera_input.viewport_x = origin_x;
-                        camera_input.viewport_y = origin_y;
-                        camera_input.viewport_width = width;
-                        camera_input.viewport_height = height;
-                    }
-                }
-            })
-            // Track mouse movement and update Helio input
-            .on_mouse_move({
-                let input_state_clone = self.input_state.clone();
-                let last_mouse_x = last_mouse_x.clone();
-                let last_mouse_y = last_mouse_y.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let right_mouse_down_position = right_mouse_down_position.clone();
-                let right_mouse_dragged = right_mouse_dragged.clone();
-                let state_arc_move = state_arc.clone();
-                let pointer_events_move = snap.pointer_events.clone();
-                let box_select = box_select.clone();
-
-                move |event: &gpui::MouseMoveEvent, _window, cx| {
-                    let mut drawing_box = box_select.borrow_mut();
-                    if let Some((_, end)) = drawing_box.as_mut() {
-                        if event.pressed_button == Some(gpui::MouseButton::Left) {
-                            *end = event.position;
-                        } else {
-                            // The release was missed (focus loss): drop it.
-                            *drawing_box = None;
-                        }
-                        cx.notify(owner_view);
-                        return;
-                    }
-                    drop(drawing_box);
-                    if event.pressed_button == Some(gpui::MouseButton::Right) {
-                        if let Some(start) = *right_mouse_down_position.borrow() {
-                            let dx: f32 = (event.position.x - start.x).into();
-                            let dy: f32 = (event.position.y - start.y).into();
-                            if dx * dx + dy * dy > 9.0 {
-                                right_mouse_dragged.store(true, Ordering::Release);
+    /// The closure that opens the context menu at a pointer position: the
+    /// selection menu when objects are selected, otherwise the create menu
+    /// placed on the ground under the pointer.
+    fn context_menu_opener(
+        &self,
+        build_context_menu: ContextMenuBuilder,
+        state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
+        action_context: &FocusHandle,
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        owner_view: EntityId,
+    ) -> ContextMenuOpener {
+        let context_menu = self.context_menu.clone();
+        let placement_bounds = self.element_bounds.clone();
+        let placement_gpu = gpu_engine.clone();
+        let selection_state = state_arc.clone();
+        let action_context = action_context.clone();
+        Rc::new(move |position, window: &mut Window, cx: &mut gpui::App| {
+            let world_position = placement_bounds.borrow().and_then(|bounds| {
+                let gpu = placement_gpu.lock().ok()?;
+                let camera = gpu.editor_camera_state()?;
+                world_position_on_ground_plane(position, bounds, camera)
+            });
+            // With objects selected, the menu acts on them; the usual
+            // level menu moves into a submenu.
+            let selection = selection_state.read().scene.selected_objects();
+            let menu = PopupMenu::build(window, cx, |menu, window, cx| {
+                if selection.is_empty() {
+                    build_context_menu(menu, window, cx, world_position)
+                } else {
+                    build_selection_menu(
+                        menu,
+                        window,
+                        cx,
+                        &selection_state,
+                        &selection,
+                        &action_context,
+                        {
+                            let build_context_menu = build_context_menu.clone();
+                            move |menu, window, cx| {
+                                build_context_menu(menu, window, cx, world_position)
                             }
-                        }
-                    }
-                    super::build_handlers::handle_mouse_move(
-                        event,
-                        input_state_clone.clone(),
-                        last_mouse_x.clone(),
-                        last_mouse_y.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        state_arc_move.clone(),
-                        gpu_engine_move.clone(),
-                        pointer_events_move.clone(),
-                        element_bounds_move.clone(),
-                        last_mouse_pos.clone(),
-                    );
+                        },
+                    )
                 }
-            })
-            // Right drag remains the viewport's orbit gesture. A stationary
-            // right click opens the context menu on release.
-            .on_mouse_down(gpui::MouseButton::Right, {
-                let last_mouse_x = last_mouse_x.clone();
-                let last_mouse_y = last_mouse_y.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let locked_cursor_x = locked_cursor_x.clone();
-                let locked_cursor_y = locked_cursor_y.clone();
-                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
-                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
-                let input_state_clone = self.input_state.clone();
-                let right_mouse_down_position = right_mouse_down_position.clone();
-                let right_mouse_dragged = right_mouse_dragged.clone();
-                move |event: &gpui::MouseDownEvent,
-                      window: &mut gpui::Window,
-                      _cx: &mut gpui::App| {
-                    *right_mouse_down_position.borrow_mut() = Some(event.position);
-                    right_mouse_dragged.store(false, Ordering::Release);
-                    super::build_handlers::handle_right_mouse_down(
-                        event,
-                        window,
-                        last_mouse_x.clone(),
-                        last_mouse_y.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        locked_cursor_x.clone(),
-                        locked_cursor_y.clone(),
-                        locked_cursor_screen_x.clone(),
-                        locked_cursor_screen_y.clone(),
-                        input_state_clone.clone(),
-                    );
-                }
-            })
-            .on_mouse_up(gpui::MouseButton::Right, {
-                let last_mouse_x = last_mouse_x.clone();
-                let last_mouse_y = last_mouse_y.clone();
-                let locked_cursor_x = locked_cursor_x.clone();
-                let locked_cursor_y = locked_cursor_y.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
-                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
-                let right_mouse_down_position = right_mouse_down_position.clone();
-                let right_mouse_dragged = right_mouse_dragged.clone();
-                let show_context_menu = show_context_menu.clone();
-                move |_event, window, cx| {
-                    super::build_handlers::handle_right_mouse_up(
-                        last_mouse_x.clone(),
-                        last_mouse_y.clone(),
-                        locked_cursor_x.clone(),
-                        locked_cursor_y.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        locked_cursor_screen_x.clone(),
-                        locked_cursor_screen_y.clone(),
-                    );
-                    let down_position = right_mouse_down_position.borrow_mut().take();
-                    if !right_mouse_dragged.swap(false, Ordering::AcqRel) {
-                        if let Some(position) = down_position {
-                            show_context_menu(position, window, cx);
-                        }
-                    }
-                }
-            })
-            .on_mouse_up_out(gpui::MouseButton::Right, {
-                let last_mouse_x = last_mouse_x.clone();
-                let last_mouse_y = last_mouse_y.clone();
-                let locked_cursor_x = locked_cursor_x.clone();
-                let locked_cursor_y = locked_cursor_y.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
-                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
-                let right_mouse_down_position = right_mouse_down_position.clone();
-                let right_mouse_dragged = right_mouse_dragged.clone();
-                let show_context_menu = show_context_menu.clone();
-                move |_event, window, cx| {
-                    super::build_handlers::handle_right_mouse_up(
-                        last_mouse_x.clone(),
-                        last_mouse_y.clone(),
-                        locked_cursor_x.clone(),
-                        locked_cursor_y.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        locked_cursor_screen_x.clone(),
-                        locked_cursor_screen_y.clone(),
-                    );
-                    let down_position = right_mouse_down_position.borrow_mut().take();
-                    if !right_mouse_dragged.swap(false, Ordering::AcqRel) {
-                        if let Some(position) = down_position {
-                            show_context_menu(position, window, cx);
-                        }
-                    }
-                }
-            })
-            // Middle-click drag to pan the camera along the current view plane
-            .on_mouse_down(gpui::MouseButton::Middle, {
-                let last_mouse_x = last_mouse_x.clone();
-                let last_mouse_y = last_mouse_y.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let locked_cursor_x = locked_cursor_x.clone();
-                let locked_cursor_y = locked_cursor_y.clone();
-                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
-                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
-                let input_state_clone = self.input_state.clone();
-
-                move |event: &gpui::MouseDownEvent,
-                      window: &mut gpui::Window,
-                      _cx: &mut gpui::App| {
-                    super::build_handlers::handle_middle_mouse_down(
-                        event,
-                        window,
-                        last_mouse_x.clone(),
-                        last_mouse_y.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        locked_cursor_x.clone(),
-                        locked_cursor_y.clone(),
-                        locked_cursor_screen_x.clone(),
-                        locked_cursor_screen_y.clone(),
-                        input_state_clone.clone(),
-                    );
-                }
-            })
-            // Middle-click release
-            .on_mouse_up(gpui::MouseButton::Middle, {
-                let last_mouse_x = last_mouse_x.clone();
-                let last_mouse_y = last_mouse_y.clone();
-                let locked_cursor_x = locked_cursor_x.clone();
-                let locked_cursor_y = locked_cursor_y.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
-                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
-
-                move |_event, _window, _cx| {
-                    super::build_handlers::handle_middle_mouse_up(
-                        last_mouse_x.clone(),
-                        last_mouse_y.clone(),
-                        locked_cursor_x.clone(),
-                        locked_cursor_y.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        locked_cursor_screen_x.clone(),
-                        locked_cursor_screen_y.clone(),
-                    );
-                }
-            })
-            // Scroll wheel for camera speed adjustment
-            .on_scroll_wheel({
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let input_state_scroll = self.input_state.clone();
-                let zoom_camera = ortho_zoom_camera.clone();
-
-                move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
-                    super::build_handlers::handle_scroll_wheel(
-                        event,
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        input_state_scroll.clone(),
-                        zoom_camera.clone(),
-                    );
-                }
-            })
-            // Left-click for object selection
-            .on_mouse_down(gpui::MouseButton::Left, {
-                let pointer_events = pointer_events_for_click.clone();
-                let element_bounds = element_bounds_for_click.clone();
-                let mouse_right_captured = mouse_right_captured.clone();
-                let mouse_middle_captured = mouse_middle_captured.clone();
-                let state_arc_click = state_arc.clone();
-                let gpu_engine_click = gpu_engine.clone();
-                let box_select = box_select.clone();
-
-                move |event: &gpui::MouseDownEvent,
-                      window: &mut gpui::Window,
-                      _cx: &mut gpui::App| {
-                    super::build_handlers::handle_left_mouse_down(
-                        event,
-                        window,
-                        pointer_events.clone(),
-                        element_bounds.clone(),
-                        mouse_right_captured.clone(),
-                        mouse_middle_captured.clone(),
-                        state_arc_click.clone(),
-                        gpu_engine_click.clone(),
-                        box_select.clone(),
-                    );
-                }
-            })
-            // Left-click release
-            .on_mouse_up(gpui::MouseButton::Left, {
-                let pointer_events = pointer_events_for_click.clone();
-                let state_arc_up = state_arc.clone();
-                let gpu_engine_up = gpu_engine.clone();
-                let box_select = box_select.clone();
-                let element_bounds = element_bounds_for_click.clone();
-
-                move |event: &gpui::MouseUpEvent, _window: &mut gpui::Window, cx: &mut gpui::App| {
-                    if super::build_handlers::finish_box_select(
-                        &box_select,
-                        &element_bounds,
-                        &pointer_events,
-                        event.position,
-                    ) {
+            });
+            if menu.read(cx).is_empty() {
+                return;
+            }
+            window
+                .subscribe(&menu, cx, {
+                    let context_menu = context_menu.clone();
+                    move |_, _: &gpui::DismissEvent, _, cx| {
+                        context_menu.borrow_mut().take();
                         cx.notify(owner_view);
                     }
-                    super::build_handlers::handle_left_mouse_up(
-                        event,
-                        pointer_events.clone(),
-                        state_arc_up.clone(),
-                        gpu_engine_up.clone(),
-                    );
-                }
-            })
-            .on_mouse_up_out(gpui::MouseButton::Left, {
-                let pointer_events = pointer_events_for_click.clone();
-                let state = state_arc.clone();
-                let engine = gpu_engine.clone();
-                let box_select = box_select.clone();
-                let element_bounds = element_bounds_for_click.clone();
-                move |event, _window, cx| {
-                    if super::build_handlers::finish_box_select(
-                        &box_select,
-                        &element_bounds,
-                        &pointer_events,
-                        event.position,
-                    ) {
-                        cx.notify(owner_view);
-                    }
-                    super::build_handlers::handle_left_mouse_up(
-                        event,
-                        pointer_events.clone(),
-                        state.clone(),
-                        engine.clone(),
-                    );
-                }
-            })
-            .child(viewport_entity)
-            .child({
-                let queue = pointer_events_for_click.clone();
-                let right = mouse_right_captured.clone();
-                let middle = mouse_middle_captured.clone();
-                let box_select = box_select.clone();
-                gpui::canvas(
-                    |_, _, _| (),
-                    move |bounds, (), window, _cx| {
-                        window.on_mouse_event(
-                            move |event: &gpui::MouseMoveEvent, phase, _window, cx| {
-                                // A selection box keeps following the pointer
-                                // past the viewport's edge, clamped to it.
-                                if phase == gpui::DispatchPhase::Capture
-                                    && !bounds.contains(&event.position)
-                                {
-                                    if let Some((_, end)) = box_select.borrow_mut().as_mut() {
-                                        let max = bounds.bottom_right();
-                                        *end = point(
-                                            event.position.x.clamp(bounds.origin.x, max.x),
-                                            event.position.y.clamp(bounds.origin.y, max.y),
-                                        );
-                                        cx.notify(owner_view);
-                                        return;
-                                    }
-                                }
-                                if phase != gpui::DispatchPhase::Capture
-                                    || bounds.contains(&event.position)
-                                    || right.load(Ordering::Relaxed)
-                                    || middle.load(Ordering::Relaxed)
-                                {
-                                    return;
-                                }
-                                let x: f32 = (event.position.x - bounds.origin.x).into();
-                                let y: f32 = (event.position.y - bounds.origin.y).into();
-                                let w: f32 = bounds.size.width.into();
-                                let h: f32 = bounds.size.height.into();
-                                if let Some(queue) = &queue {
-                                    if let Ok(mut events) = queue.lock() {
-                                        use engine_backend::subsystems::render::PendingPointerEvent;
-                                        PendingPointerEvent::queue(
-                                            &mut events,
-                                            PendingPointerEvent::MouseMove {
-                                                norm_x: x / w.max(1.0),
-                                                norm_y: y / h.max(1.0),
-                                            },
-                                        );
-                                    }
-                                }
-                            },
-                        );
-                    },
-                )
-                .absolute()
-                .size_full()
-            })
-            // Overlays
-            .child(box_overlay)
-            .child(self.render_overlays(state, state_arc, gpu_engine, cx))
-            .child(popup_element)
-            .id("level-editor-viewport-context-menu")
+                })
+                .detach();
+            *context_menu.borrow_mut() = Some((position, menu));
+            cx.notify(owner_view);
+        })
     }
 }

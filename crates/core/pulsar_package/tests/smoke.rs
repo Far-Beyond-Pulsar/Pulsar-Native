@@ -1,4 +1,4 @@
-//! Packaging smoke test (#926, #889).
+//! Packaging smoke test.
 //!
 //! Packages `tests/fixtures/smoke_project` (one level, a `Spawner` class
 //! whose `begin_play` spawns a `Minion` and broadcasts `Spawner.Ping`,
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use pulsar_content::BuildProfile;
 use pulsar_game::prelude::TickLoop;
-use pulsar_game::standalone::{HeadlessReport, LaunchOptions, run_with};
+use pulsar_game::standalone::{run_with, HeadlessReport, LaunchOptions};
 use pulsar_script_vm::{
     BinOp, Constant, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param,
     Signature, Subscription, SubscriptionScope, Type, Variable,
@@ -378,11 +378,9 @@ fn packaged_game_runs_from_a_clean_directory() {
     assert_eq!(report.startup_level.as_deref(), Some("scenes/main.level"));
     assert_eq!(report.assets, 1);
     assert!(report.files.contains_key("assets/meshes/glass_red.mesh"));
-    assert!(
-        report
-            .files
-            .contains_key("Pulsar/modules/762f7d93-1e8c-44dd-b20d-0707e5506e5f.pvm")
-    );
+    assert!(report
+        .files
+        .contains_key("Pulsar/modules/762f7d93-1e8c-44dd-b20d-0707e5506e5f.pvm"));
     assert!(
         !report.files.keys().any(|f| f.ends_with("module.json")),
         "shipped modules are binary"
@@ -442,7 +440,7 @@ fn packaged_game_runs_from_a_clean_directory() {
         "class GUID resolved"
     );
     // The mesh path lives in the component; the load migration drops the
-    // stale `props` copy (Pulsar-Native#1035 Phase 3).
+    // stale `props` copy.
     assert_eq!(
         level["objects"][1]["component_instances"][0]["data"]["mesh_asset"],
         "assets/meshes/glass_red.mesh"

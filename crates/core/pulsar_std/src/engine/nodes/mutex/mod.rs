@@ -24,7 +24,9 @@ impl<T: 'static> OwnedMutexGuard<T> {
     /// Create a new OwnedMutexGuard by locking the provided Arc<Mutex<T>>
     fn new(arc: Arc<Mutex<T>>) -> Self {
         // Lock the mutex while we own the Arc
-        let guard = arc.lock().unwrap();
+        let guard = arc.lock().expect(
+            "a Blueprint mutex is poisoned only if an earlier holder panicked while locked",
+        );
 
         // SAFETY: We transmute the guard's lifetime to 'static, but this is safe because:
         // 1. We store the Arc in _arc, which keeps the Mutex alive

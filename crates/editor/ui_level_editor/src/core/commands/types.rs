@@ -6,7 +6,7 @@ use std::any::Any;
 /// A self-contained scene mutation.  All fields use owned data so the command
 /// can be constructed on a background thread and executed on the UI thread.
 ///
-/// Deliberately NOT `Clone` or `#[derive(Debug)]` (Pulsar-Native#561): no call
+/// Deliberately NOT `Clone` or `#[derive(Debug)]`: no call
 /// site anywhere in the codebase clones a `SceneCommand` value or
 /// `{:?}`-prints one (checked -- every `execute_command` caller constructs a
 /// command and immediately passes it by value; `undo`/`redo` are snapshot-
@@ -60,7 +60,7 @@ pub enum SceneCommand {
         components: Vec<TypedComponent>,
     },
     /// Remove an object and all descendants.
-    /// Place an instance of the class in `class_dir` (#921): the root with
+    /// Place an instance of the class in `class_dir`: the root with
     /// its `ClassInstance`, every prefab component and generated children.
     InstantiateClass {
         class_dir: std::path::PathBuf,
@@ -68,7 +68,7 @@ pub enum SceneCommand {
         parent_id: Option<String>,
     },
     /// Put one property of a component built from a class slot back to the
-    /// class default (#921). The default is read from the current class
+    /// class default. The default is read from the current class
     /// definition; the write takes the same path as `SetComponentProperty`.
     RevertComponentProperty {
         id: String,
@@ -116,7 +116,7 @@ pub enum SceneCommand {
     },
     /// Rename an object.
     ///
-    /// Pulsar-Native#561: added so the properties panel's name field can go
+    /// Added so the properties panel's name field can go
     /// through `execute_command` (undo-tracked) like every other edit,
     /// instead of calling `scene_edit::objects::update_object` (whole-object
     /// overwrite, NOT undo-tracked despite a comment that used to claim
@@ -127,16 +127,22 @@ pub enum SceneCommand {
     },
     /// Set an object's visible/locked flags; `None` fields are unchanged.
     ///
-    /// Pulsar-Native#561, same reasoning as `SetName`.
+    /// Same reasoning as `SetName`.
     SetVisibility {
         id: String,
         visible: Option<bool>,
         locked: Option<bool>,
     },
+    /// Set objects' pivot offsets (`engine_backend::scene::pivots`: where each
+    /// origin sits in its object's local space) in one undo step. Nothing
+    /// that is drawn moves.
+    SetPivots {
+        entries: Vec<(String, [f32; 3])>,
+    },
     /// Set a single property on a reflected component, by class + property
     /// name, carrying the widget-produced value as `Box<dyn Any + Send>` --
     /// exactly what `update_live_component_property` needs, with zero JSON
-    /// in between (Pulsar-Native#561: the previous `value_json:
+    /// in between (the previous `value_json:
     /// serde_json::Value` shape round-tripped every edit through
     /// `RUNTIME_TYPE_REGISTRY.serialize_json_for_any`/`deserialize_json_for_type`
     /// for no reason a real caller needed -- see this enum's top doc).
@@ -147,7 +153,7 @@ pub enum SceneCommand {
     /// edit is undo-tracked and goes through exactly one code path.
     ///
     /// `component_index` identifies WHICH instance of `class_name` is being
-    /// edited (Pulsar-Native#519): an object can carry several instances of
+    /// edited: an object can carry several instances of
     /// the same class, each with its own field values, and they are
     /// addressed by their index in the object's component list -- the same
     /// identity `remove_component`/`set_component_enabled`/
@@ -156,6 +162,17 @@ pub enum SceneCommand {
         id: String,
         class_name: String,
         component_index: usize,
+        prop_name: String,
+        value: Box<dyn Any + Send>,
+    },
+    /// [`Self::SetComponentProperty`] on several objects at once, as one undo
+    /// step: the properties panel's mass edit of a selection that shares one
+    /// archetype. `targets` are `(object id, component index)`; the value is
+    /// written to the first, then copied from it to the rest through the
+    /// property's reflected getter, so each gets its own value.
+    SetComponentPropertyOnMany {
+        targets: Vec<(String, usize)>,
+        class_name: String,
         prop_name: String,
         value: Box<dyn Any + Send>,
     },
@@ -217,7 +234,7 @@ pub enum SceneCommand {
         id: String,
     },
     /// Set the `movability` of every mesh and light component on each of
-    /// `ids` (Pulsar-Native#837: "Mark selection Static"). One undo step;
+    /// `ids` ("Mark selection Static"). One undo step;
     /// objects with neither component are skipped.
     SetMovability {
         ids: Vec<String>,
@@ -333,6 +350,10 @@ impl std::fmt::Debug for SceneCommand {
                 .field("visible", visible)
                 .field("locked", locked)
                 .finish(),
+            Self::SetPivots { entries } => f
+                .debug_struct("SetPivots")
+                .field("entries", entries)
+                .finish(),
             Self::SetComponentProperty {
                 id,
                 class_name,
@@ -344,6 +365,18 @@ impl std::fmt::Debug for SceneCommand {
                 .field("id", id)
                 .field("class_name", class_name)
                 .field("component_index", component_index)
+                .field("prop_name", prop_name)
+                .field("value_type", &value.type_id())
+                .finish(),
+            Self::SetComponentPropertyOnMany {
+                targets,
+                class_name,
+                prop_name,
+                value,
+            } => f
+                .debug_struct("SetComponentPropertyOnMany")
+                .field("targets", targets)
+                .field("class_name", class_name)
                 .field("prop_name", prop_name)
                 .field("value_type", &value.type_id())
                 .finish(),

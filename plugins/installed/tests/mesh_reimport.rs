@@ -1,4 +1,4 @@
-//! Asset reload (Pulsar-Native#1035 acceptance, #1081, SceneDB#84):
+//! Asset reload:
 //! re-importing a mesh publishes a mesh `AssetUpdated`, and the level
 //! editor's world loads that file again and rebinds every static mesh
 //! showing it; a mesh naming another file is left alone. Its own test binary: the project path the loader resolves

@@ -20,8 +20,7 @@ use super::{find_script_path, ComponentInstance, ObjectId, SceneObjectData, Tran
 /// Build a [`SceneObjectData`] for `entity` straight off its components: transform,
 /// name, visibility, type and render props plus the derived `parent` / `children`
 /// / `scene_path`. `props` are the object's own render props only: component
-/// values are read from their instances, never copied into them
-/// (Pulsar-Native#1035, Phase 3).
+/// values are read from their instances, never copied into them.
 pub fn entity_to_scene_object_data(world: &World, entity: Entity) -> SceneObjectData {
     let transform = world
         .get::<WorldTransform>(entity)
@@ -385,7 +384,7 @@ pub fn get_selected_object(world: &World) -> Option<SceneObjectData> {
 ///
 /// A Blueprint object described by a legacy class path (a
 /// `ScriptComponent.script_asset` or flat `script_asset` prop) becomes a
-/// placed class instance (#921).
+/// placed class instance.
 pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
     profiling::profile_scope!("scene_edit::add_object");
     if !obj.id.is_empty() && world.entity_for(&obj.id).is_some() {
@@ -474,7 +473,7 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
 
     // Legacy callers still describe a placed class by its directory path
     // (`ScriptComponent.script_asset` or a flat `script_asset` prop). A path
-    // that names a class becomes a real class instance (#921).
+    // that names a class becomes a real class instance.
     if let Some(script_path) = blueprint_script_path {
         adopt_legacy_script_path(world, &object_id, &script_path);
     }

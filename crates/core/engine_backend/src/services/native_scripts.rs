@@ -1,5 +1,5 @@
 //! Discovery of user gameplay script crates under a project's `scripts/`
-//! directory (#653).
+//! directory.
 //!
 //! Convention (scaffolded by [`super::core_project_builder`]):
 //!

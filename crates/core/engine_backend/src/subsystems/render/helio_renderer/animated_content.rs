@@ -1,5 +1,5 @@
-//! Whether the scene holds content that moves on its own (Pulsar-Native
-//! #1123, #1109): what plugins register ([`AnimatedContentRegistration`]:
+//! Whether the scene holds content that moves on its own:
+//! what plugins register ([`AnimatedContentRegistration`]:
 //! meshes whose shader graph reads `time`, particle emitters, foliage in a
 //! wind, water). While the viewport is realtime such
 //! content changes every frame with no scene write, so the editor renderer
@@ -8,7 +8,7 @@
 //! The answer depends only on the authored components, so it is
 //! re-checked only when one of the components it reads changed (through
 //! SceneDB change cursors), never per frame, and not when an object merely
-//! moves: a drag changes the world every frame (Pulsar-Native#995), and a
+//! moves: a drag changes the world every frame, and a
 //! check may walk every mesh's material slots.
 
 use pulsar_scene_model::attachments;
@@ -120,7 +120,7 @@ mod tests {
         assert!(!content.live(&world));
         assert_eq!(content.checks, 1);
 
-        // A drag (Pulsar-Native#995): the world changes every frame, the
+        // A drag: the world changes every frame, the
         // answer cannot, and the slots are not walked again.
         for x in 0..10 {
             world.get_mut::<Transform>(object).unwrap().position = [f64::from(x), 0.0, 0.0];

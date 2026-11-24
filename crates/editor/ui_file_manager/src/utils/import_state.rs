@@ -1,4 +1,4 @@
-//! Per-file import actions and the out-of-date badge (#1102).
+//! Per-file import actions and the out-of-date badge.
 //!
 //! The drawer keeps the [`asset_import::FileImportState`] of each file in the
 //! open folder, computed off the UI thread (it hashes linked sources) and
@@ -276,7 +276,7 @@ mod tests {
     }
 
     /// The drawer badges an out-of-date source and its asset, and the
-    /// Unlink action drops the link while keeping both files (#1102).
+    /// Unlink action drops the link while keeping both files.
     #[gpui::test]
     fn the_drawer_badges_stale_links_and_unlinks_from_the_menu(cx: &mut TestAppContext) {
         walk(cx, None);

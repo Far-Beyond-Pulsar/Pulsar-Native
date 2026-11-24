@@ -100,6 +100,8 @@ pub mod helpers;
 pub mod identifiers;
 pub mod import_companion;
 #[cfg(feature = "editor")]
+mod library_plugin;
+#[cfg(feature = "editor")]
 pub mod llm;
 pub mod manifest;
 #[cfg(feature = "editor")]
@@ -190,9 +192,38 @@ pub use ui::dock::{Panel, PanelView};
 /// The `export_plugin!` macro references `$crate::JsonValue`.
 pub use serde_json::Value as JsonValue;
 
+/// `export_plugin!` binds a library's copy of the engine state to the host's engine context.
+pub use engine_state;
+/// `export_plugin_build!` exports the library's Helio attach through it.
+pub use helio_core;
+/// The shared UI framework, reflection, SceneDB and renderer libraries, linked through this crate when `shared-dylibs`
+/// is on: a crate that references them links them dynamically instead of embedding a copy.
+#[cfg(feature = "shared-dylibs")]
+pub use helio_dylib;
+/// `export_plugin!` exports the library's parking lot attach through it.
+pub use parking_lot_core;
 pub use profiling;
+#[cfg(feature = "shared-dylibs")]
+pub use profiling_dylib;
 /// The engine's event plumbing (Gamma v2 host bus, engine event hub,
 /// built-in events). `export_plugin!` wires every plugin library to the
-/// host's bus through it (Pulsar-Native#930).
+/// host's bus through it.
 pub use pulsar_events;
+/// `export_library_plugin!` exports the root's build through it.
+pub use pulsar_plugins;
+/// Plugin settings: `export_plugin!` binds a library's handles to the host.
+pub use pulsar_settings;
 pub use pulsar_world_registry;
+#[cfg(feature = "shared-dylibs")]
+pub use reflection_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use scenedb_dylib;
+/// `export_plugin!` logs through it, so a plugin crate needs no `tracing` of its own.
+pub use tracing;
+/// `export_plugin!` registers the plugin's theme accessor through it.
+#[cfg(feature = "editor")]
+pub use ui;
+#[cfg(feature = "shared-dylibs")]
+pub use ui_dylib;
+#[cfg(feature = "shared-dylibs")]
+pub use wgpui_dylib;

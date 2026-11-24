@@ -1,4 +1,4 @@
-//! #639 integration: script references survive save/load through a REAL
+//! Script references survive save/load through a REAL
 //! save/load round trip of the scene world.
 //!
 //! Registers one small component class (`BridgeGizmo`) into both registries
@@ -174,7 +174,7 @@ fn session_with_door_and_chest() -> (Saved, SerializedComponentRef) {
     (save(&world), saved)
 }
 
-// ── the #639 acceptance tests ──────────────────────────────────────────────
+// ── the acceptance tests ──────────────────────────────────────────────
 
 /// Save -> load -> the same reference still targets the intended component:
 /// writes through the RESOLVED ref mutate the reloaded object, not whatever
@@ -209,7 +209,7 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
         "the sibling was never touched"
     );
 
-    // And the shared-scene handle pattern works end to end (#634 contract):
+    // And the shared-scene handle pattern works end to end:
     let scene = pulsar_scenedb::SceneDb::new();
     let mut scene = scene;
     scene.world = world;
@@ -280,7 +280,7 @@ fn freezing_a_despawned_target_is_a_typed_error() {
             stable_id: String::new()
         })
     );
-    // Per-access staleness stays the #641 taxonomy:
+    // Per-access staleness stays the taxonomy:
     assert!(matches!(
         dangling.validate(&world),
         Err(ScriptRefError::ReferenceDespawned { .. })

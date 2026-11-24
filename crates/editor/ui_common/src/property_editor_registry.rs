@@ -18,7 +18,7 @@ use std::sync::{LazyLock, RwLock};
 pub use pulsar_reflection::{BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory};
 
 /// Built from every registered hint: the editor's and those of every plugin
-/// library attached to the world runtimes (Pulsar-Native#1083), rebuilt when
+/// library attached to the world runtimes, rebuilt when
 /// a plugin's hints arrive after first access.
 pub struct PropertyEditorRegistry {
     factories: RwLock<(usize, HashMap<TypeId, PropertyEditorFactory>)>,

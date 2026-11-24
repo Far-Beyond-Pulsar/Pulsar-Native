@@ -8,7 +8,7 @@
 
 // Persistent texture/material/sectioned-mesh/object resource components.
 
-// Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
+// Play-mode level bootstrap -- hydrates a `.level` file
 // into SceneDb instead of pulsar_scene::SceneLoader's direct
 // Helio Scene writes.
 pub mod runtime_level;
@@ -16,21 +16,21 @@ pub mod runtime_level;
 /// Placed class instances follow class edits in every world (SceneDB#84).
 pub mod classes;
 
-// What a level may hold only one of (one sky, #1057), checked by editors
+// What a level may hold only one of (one sky), checked by editors
 // before an edit and repaired on load.
 pub mod level_rules;
 
-// World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
+// World/Entity-backed scene store -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 
-// Script object model bridge (Pulsar-Native#639) -- `SceneDb` as
+// Script object model bridge -- `SceneDb` as
 // the StableId⇄Entity resolver + duplicate-instance store the script-facing
 // handles route through. Impls only; no new storage.
 pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
-pub mod component_events;
 pub mod asset_event_sources;
+pub mod component_events;
 // A plugin's component classes, registered from its root's build.
 pub mod class_spec;
 pub mod construct_pump;
@@ -40,17 +40,16 @@ pub use class_spec::{ClassSpec, ComponentsBuilder};
 pub use construct_pump::EditorConstructPump;
 pub mod game_hooks;
 pub use asset_event_sources::{
-    asset_slots, component_events, component_events_with, node_title, AssetEventSource, AssetEvents, AssetPathSlot,
-    AssetSlot, AssetUse,
-    CacheStats,
-    ComponentData, EventCache, SourceCx,
+    asset_slots, component_events, component_events_with, node_title, AssetEventSource,
+    AssetEvents, AssetPathSlot, AssetSlot, AssetUse, CacheStats, ComponentData, EventCache,
+    SourceCx,
 };
 pub use component_events::{
     CatalogEvent, ComponentEventCatalog, EventFamily, EventView, FamilyOption, FamilyParam,
     ParamKind, ParamValues, ResolvedFamily, ResolvedOutput,
 };
 #[cfg(feature = "render")]
-// Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
+// Shared SceneDb <-> helio::Renderer seam: GPU mirror attach
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
 pub mod sublevel_display;
@@ -72,22 +71,25 @@ pub use editor_postprocess::EditorPostProcess;
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for
 /// every replacement world (undo/redo, level load).
-#[cfg(feature = "render")]
+#[cfg(feature = "scenedb-inspector")]
 pub fn install_scenedb_inspector(world: &mut pulsar_scenedb::World) -> bool {
     scenedb_inspector_agent::install_world(world)
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(feature = "scenedb-inspector"))]
 pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
 pub use pulsar_scene_model::{
     attachments, components, frames, hierarchy_transform, instance, level_instances, partitions,
-    world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name, ObjectId, ObjectType,
-    Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId,
-    Transform, Visibility,
+    pivots, world_ext, ComponentAttachments, ComponentInstance, EditorObjectId, Name, ObjectId,
+    ObjectType, Parent, RenderProps, SceneError, SceneWorldExt, Selected, SiblingIndex,
+    SpawnObject, StableId, Transform, Visibility,
 };
-pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
+pub use runtime_level::{
+    EditorCamera, HydrationProgress, LevelExtras, LevelHydration, PreparedLevelFile, RuntimeLevel,
+    RuntimeLevelError,
+};
 
 /// The scene is a `pulsar_scenedb::SceneDb` shared between the editor UI, the
 /// renderer and the play-mode runtime. This alias only names the sharing.
@@ -105,6 +107,7 @@ pub fn new_scene() -> pulsar_scenedb::SceneDb {
     scene
         .world
         .attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+    scene.world.set_asset_priority(Some(asset_priority));
     scene
 }
 
@@ -126,18 +129,61 @@ pub fn resolve_level_assets(world: &mut pulsar_scenedb::World) {
     }
 }
 
-/// Advance asset loading in the shared scene: start loads for newly
-/// referenced assets and bind the finished ones. Takes the scene's write
-/// lock only when there is work. Called once per frame before the GPU
+/// Advance asset loading in the shared scene within a frame's budget: start
+/// the nearest loads, apply and bind the finished ones, and leave the rest for
+/// the next frame (`pending` in the report says how much). Takes the scene's
+/// write lock only when there is work. Called once per frame before the GPU
 /// upload by every render loop (the editor viewport's, and the game's
 /// windowed and embedded ones), and at the end of every game tick, which
-/// also covers headless runs.
+/// also covers headless runs. See [`frame_asset_budget`].
 pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     if !scene.read().world.asset_work_pending() {
         return pulsar_scenedb::AssetPumpReport::default();
     }
     profiling::profile_scope!("scene::pump_assets");
-    scene.write().world.pump_assets()
+    let budget = frame_asset_budget();
+    scene.write().world.pump_assets_within(budget)
+}
+
+/// Tell the scene where the viewer is, so loads start nearest first
+/// (`new_scene` installs the ranking). Free when no asset work is pending.
+pub fn set_asset_focus(scene: &SharedScene, eye: [f64; 3]) {
+    if scene.read().world.asset_work_pending() {
+        scene.write().world.set_asset_focus(eye);
+    }
+}
+
+/// What one frame may spend in [`pump_assets`]: project settings
+/// `streaming.asset_bind_budget_ms` (default 2) and
+/// `streaming.asset_bind_max_per_frame` (default 8); 0 lifts that limit.
+pub fn frame_asset_budget() -> pulsar_scenedb::AssetBudget {
+    let setting = |key: &str, default: i64| match engine_state::settings::global_config().get(
+        engine_state::settings::NS_PROJECT,
+        "streaming",
+        key,
+    ) {
+        Ok(engine_state::settings::ConfigValue::Int(value)) => value.max(0),
+        _ => default,
+    };
+    let (ms, max) = (
+        setting("asset_bind_budget_ms", 2),
+        setting("asset_bind_max_per_frame", 8),
+    );
+    pulsar_scenedb::AssetBudget {
+        max_assets: if max == 0 { usize::MAX } else { max as usize },
+        time: (ms > 0).then(|| std::time::Duration::from_millis(ms as u64)),
+    }
+}
+
+/// How soon an entity's assets are wanted: its distance from the viewer
+/// ([`pulsar_scenedb::World::asset_focus`]). Parent-relative transforms rank
+/// by their local position, which is the nearest guess before a world
+/// transform exists.
+fn asset_priority(world: &pulsar_scenedb::World, entity: pulsar_scenedb::Entity) -> Option<f32> {
+    let position = world.get::<pulsar_scene_model::Transform>(entity)?.position;
+    let focus = world.asset_focus();
+    let delta = [0, 1, 2].map(|axis| position[axis] - focus[axis]);
+    Some((delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt() as f32)
 }
 
 /// Apply one asset update to `world` (SceneDB#84): a changed file reloads
@@ -281,5 +327,39 @@ mod change_window_tests {
                 && delta.component_deltas.is_empty()
         );
         assert!(tracker.drain_component_removals().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod asset_pump_tests {
+    use super::*;
+
+    #[test]
+    fn a_frame_pumps_a_bounded_share_of_the_assets() {
+        let budget = frame_asset_budget();
+        assert_eq!(budget.max_assets, 8);
+        assert_eq!(budget.time, Some(std::time::Duration::from_millis(2)));
+    }
+
+    #[test]
+    fn assets_rank_by_distance_from_the_viewer() {
+        let mut scene = new_scene();
+        let world = &mut scene.world;
+        let near = world.spawn();
+        let far = world.spawn();
+        let at = |x: f64| pulsar_scene_model::Transform {
+            position: [x, 0.0, 0.0],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+        };
+        world.insert(near, at(3.0));
+        world.insert(far, at(300.0));
+        world.set_asset_focus([0.0; 3]);
+        assert_eq!(asset_priority(world, near), Some(3.0));
+        assert_eq!(asset_priority(world, far), Some(300.0));
+        world.set_asset_focus([300.0, 0.0, 0.0]);
+        assert_eq!(asset_priority(world, far), Some(0.0));
+        let bare = world.spawn();
+        assert_eq!(asset_priority(world, bare), None, "no transform, no rank");
     }
 }

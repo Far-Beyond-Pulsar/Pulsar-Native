@@ -81,8 +81,8 @@ impl Render for Host {
         let items = self.nodes.clone();
         drop(clone_scope);
         let config = HierarchyConfig {
-            items,
-            root_ids: self.roots.clone(),
+            items: items.into(),
+            root_ids: self.roots.clone().into(),
             layout: HierarchyLayout::Panel,
             title: Some("Hierarchy".into()),
             header_buttons: Vec::new(),

@@ -1,3 +1,6 @@
+//! Assertion nodes for Blueprint tests: boolean, integer, float, range and comparison checks
+//! (`assert_true`, `assert_eq_int`, ...).
+
 use crate::blueprint;
 
 /// Assert that a boolean condition is true.

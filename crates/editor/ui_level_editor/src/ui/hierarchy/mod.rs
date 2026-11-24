@@ -35,7 +35,7 @@ impl Render for HierarchyDragPayload {
 
 // ── Scene Object Item ─────────────────────────────────────────────────────────
 
-/// How an object relates to a placed class (#921).
+/// How an object relates to a placed class.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClassRole {
     None,
@@ -57,7 +57,7 @@ struct SceneObjectItem {
     is_selected: bool,
     is_folder: bool,
     class_role: ClassRole,
-    /// The object's authored movability (#837,
+    /// The object's authored movability (from
     /// `helio_component::components::object_movability`); `None` for objects
     /// with no mesh or light.
     movability: Option<helio::Movability>,
@@ -129,6 +129,46 @@ fn apply_row_selection(state: &mut LevelEditorState, id: &str, modifiers: &Modif
     }
     state.hierarchy.selection_anchor = Some(id.to_string());
     state.scene.select_object(Some(id.to_string()));
+}
+
+/// Put each selected object's origin at its own `origin` (Set Origin, "Each
+/// Object"): one undo step. Returns how many objects changed.
+pub(crate) fn set_selection_origins(
+    state: &mut LevelEditorState,
+    origin: crate::scene_edit::origin::ObjectOrigin,
+) -> usize {
+    let ids = state.scene.selected_objects();
+    let entries = {
+        let world = state.scene.world();
+        crate::scene_edit::origin::object_origins(&world, &ids, origin)
+    };
+    apply_origins(state, entries)
+}
+
+/// Put every selected object's origin at the one point `origin` names for the
+/// group (Set Origin, "Group"): one undo step. Returns how many objects
+/// changed.
+pub(crate) fn set_group_origin(
+    state: &mut LevelEditorState,
+    origin: crate::scene_edit::origin::GroupOrigin,
+) -> usize {
+    let ids = state.scene.selected_objects();
+    let primary = state.scene.selected_object();
+    let entries = {
+        let world = state.scene.world();
+        crate::scene_edit::origin::group_origins(&world, &ids, primary.as_deref(), origin)
+    };
+    apply_origins(state, entries)
+}
+
+fn apply_origins(state: &mut LevelEditorState, entries: Vec<(String, [f32; 3])>) -> usize {
+    use crate::commands::{execute_command, SceneCommand};
+    if entries.is_empty() {
+        return 0;
+    }
+    execute_command(state, SceneCommand::SetPivots { entries })
+        .affected_ids
+        .len()
 }
 
 /// Ancestors of an object, nearest first.
@@ -547,8 +587,8 @@ impl HierarchyItem for SceneObjectItem {
     fn build_context_menu(
         &self,
         menu: PopupMenu,
-        _window: &mut Window,
-        _cx: &mut Context<PopupMenu>,
+        window: &mut Window,
+        cx: &mut Context<PopupMenu>,
     ) -> PopupMenu {
         use crate::commands::{execute_command, SceneCommand};
 
@@ -569,7 +609,7 @@ impl HierarchyItem for SceneObjectItem {
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
         let delete_state = self.state_arc.clone();
-        // "Mark selection Static" (#837): the object and everything under
+        // "Mark selection Static": the object and everything under
         // it, one undo step. Objects with no mesh or light are skipped.
         let set_movability = |movability: helio_component::components::ObjectMovability| {
             let id = self.object.id.clone();
@@ -582,68 +622,71 @@ impl HierarchyItem for SceneObjectItem {
         };
         use helio_component::components::ObjectMovability;
 
-        menu.menu_handler_with_icon(
-            "Mark Static (with children)",
-            IconName::Pin,
-            set_movability(ObjectMovability::Static),
-        )
-        .menu_handler_with_icon(
-            "Mark Movable (with children)",
-            IconName::Drag,
-            set_movability(ObjectMovability::Movable),
-        )
-        .separator()
-        // A rigid frame draws its contents through one matrix: moving it costs
-        // nothing per member. An ordinary group composes its members instead.
-        .menu_handler_with_icon(
-            if is_rigid_frame {
-                "Make Ordinary Group"
-            } else {
-                "Make Rigid Frame"
-            },
-            IconName::Box,
-            {
-                let id = self.object.id.clone();
-                let state_arc = self.state_arc.clone();
-                move |_: &mut Window, _: &mut App| {
-                    let mut state = state_arc.write();
-                    let found = {
-                        let world = state.scene.world();
-                        crate::scene_edit::objects::get_object(&world, &id)
-                    };
-                    if let Some(mut obj) = found {
-                        if is_rigid_frame {
-                            obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
-                        } else {
-                            obj.props.insert(
-                                engine_backend::scene::frames::FRAME_PROP.to_string(),
-                                serde_json::Value::Bool(true),
-                            );
+        let menu = menu
+            .menu_handler_with_icon(
+                "Mark Static (with children)",
+                IconName::Pin,
+                set_movability(ObjectMovability::Static),
+            )
+            .menu_handler_with_icon(
+                "Mark Movable (with children)",
+                IconName::Drag,
+                set_movability(ObjectMovability::Movable),
+            )
+            .separator()
+            // A rigid frame draws its contents through one matrix: moving it costs
+            // nothing per member. An ordinary group composes its members instead.
+            .menu_handler_with_icon(
+                if is_rigid_frame {
+                    "Make Ordinary Group"
+                } else {
+                    "Make Rigid Frame"
+                },
+                IconName::Box,
+                {
+                    let id = self.object.id.clone();
+                    let state_arc = self.state_arc.clone();
+                    move |_: &mut Window, _: &mut App| {
+                        let mut state = state_arc.write();
+                        let found = {
+                            let world = state.scene.world();
+                            crate::scene_edit::objects::get_object(&world, &id)
+                        };
+                        if let Some(mut obj) = found {
+                            if is_rigid_frame {
+                                obj.props.remove(engine_backend::scene::frames::FRAME_PROP);
+                            } else {
+                                obj.props.insert(
+                                    engine_backend::scene::frames::FRAME_PROP.to_string(),
+                                    serde_json::Value::Bool(true),
+                                );
+                            }
+                            execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                         }
-                        execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                     }
-                }
-            },
-        )
-        .when(
-            {
-                let state = self.state_arc.read();
-                let selection = state.scene.selected_objects();
-                selection.len() > 1 && selection.contains(&self.object.id)
-            },
-            |menu| {
-                let group_state = self.state_arc.clone();
-                menu.menu_handler_with_icon(
-                    "Group into Folder",
-                    IconName::FolderPlus,
-                    move |_, _| {
-                        group_selection_into_folder(&mut group_state.write());
-                    },
-                )
-                .separator()
-            },
-        )
-        .menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
+                },
+            )
+            .when(
+                {
+                    let state = self.state_arc.read();
+                    let selection = state.scene.selected_objects();
+                    selection.len() > 1 && selection.contains(&self.object.id)
+                },
+                |menu| {
+                    let group_state = self.state_arc.clone();
+                    menu.menu_handler_with_icon(
+                        "Group into Folder",
+                        IconName::FolderPlus,
+                        move |_, _| {
+                            group_selection_into_folder(&mut group_state.write());
+                        },
+                    )
+                    .separator()
+                },
+            );
+        let menu =
+            crate::ui::selection::select_submenu(menu, window, cx, &self.state_arc).separator();
+        menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
             let mut state = duplicate_state.write();
             crate::commands::duplicate_and_select(&mut state, &duplicate_id);
@@ -683,8 +726,9 @@ pub struct HierarchyPanel {
     history_revision: Option<u64>,
     /// Whether the rows have been built at all.
     built: bool,
-    cached_items: Vec<SceneObjectItem>,
-    cached_root_ids: Vec<String>,
+    /// Shared with the tree each render (no per-frame copy of every row, #1895).
+    cached_items: Arc<[SceneObjectItem]>,
+    cached_root_ids: Arc<[String]>,
     /// The tree's rows as one persistent `gpui::list` (the list the
     /// properties panel uses): it keeps its scroll position and measured row
     /// heights across renders, and builds only the rows on screen.
@@ -705,8 +749,8 @@ impl HierarchyPanel {
             pending: Default::default(),
             history_revision: None,
             built: false,
-            cached_items: Vec::new(),
-            cached_root_ids: Vec::new(),
+            cached_items: Arc::from([]),
+            cached_root_ids: Arc::from([]),
             list_state: HierarchyListState::new(),
             expanded: Rc::default(),
             tree_generation: 0,
@@ -762,7 +806,7 @@ impl HierarchyPanel {
             // Only the selection moved: flip the flags, keep every row.
             drop(world);
             let _flags_scope = gpui::render_stats::scope("hierarchy: selection flags");
-            for item in &mut self.cached_items {
+            for item in Arc::make_mut(&mut self.cached_items) {
                 item.is_selected = selected.contains(&item.object.id);
             }
             return;
@@ -800,7 +844,7 @@ impl HierarchyPanel {
             })
             .collect();
         drop(world);
-        self.cached_root_ids = root_ids;
+        self.cached_root_ids = root_ids.into();
         self.built = true;
         self.tree_generation += 1;
     }

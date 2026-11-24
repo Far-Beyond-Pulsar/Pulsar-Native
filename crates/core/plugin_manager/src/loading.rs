@@ -4,12 +4,15 @@
 //! [`PluginManager::prepare_plugin`] loads a library and checks its SHA-256
 //! against `plugin_integrity.json` (no plugin code runs), then
 //! [`PluginManager::install_prepared_plugin`] runs the plugin and registers
-//! what it provides (on the thread that owns the manager). Entry points for
-//! callers are [`PluginManager::load_plugins_from_dir`] and
-//! [`PluginManager::load_plugin`]; `order_prepared_plugins` puts dependencies
-//! first.
+//! what it provides (on the thread that owns the manager). The editor drives
+//! both phases itself (see the `startup` module); [`PluginManager::load_plugins_from_dir`]
+//! and [`PluginManager::load_plugin`] are one-call conveniences with no callers
+//! in the workspace. `order_prepared_plugins` puts dependencies first.
 
-use crate::attach::{attach_event_bus, attach_profiler, attach_world_runtime, read_manifest};
+use crate::attach::{
+    attach_engine_state, attach_event_bus, attach_helio, attach_parking_lot, attach_plugins,
+    attach_profiler, attach_settings, attach_world_runtime, read_manifest,
+};
 use crate::{
     dependencies, panel_restorers, LoadedPlugin, PermanentLibrary, PluginManager,
     PluginManagerError, PreparedPlugin,
@@ -160,12 +163,38 @@ impl PluginManager {
 
         tracing::debug!("Loading plugin from: {:?}", path);
 
+        // A plugin built against shared libraries of another build imports them by another file name
+        // (hash-named libraries carry a hash of the dependency graph in it) while their symbols are the
+        // same: load a copy whose imports name the libraries this engine has, instead of refusing it for
+        // a file name. The manifest below still checks the original.
+        let compat = crate::imports::compat_copy(
+            &path,
+            &pulsar_install_layout::appdata_dir().join("plugin_compat"),
+        );
+        if let Some(compat) = &compat {
+            for rename in &compat.renames {
+                tracing::warn!(
+                    "{:?} imports {}, which this engine does not have; loading a copy that imports {} (the same library of another build)",
+                    path,
+                    rename.from,
+                    rename.to
+                );
+            }
+        }
+        let load_path = compat.as_ref().map_or(path.clone(), |c| c.path.clone());
+
         // Load the library permanently
-        let library =
-            PermanentLibrary::new(&path).map_err(|e| PluginManagerError::LibraryLoadError {
+        let library = PermanentLibrary::new(&load_path).map_err(|e| {
+            let message = e.to_string();
+            PluginManagerError::LibraryLoadError {
+                message: crate::imports::explain(&load_path, &message),
                 path: path.to_path_buf(),
-                message: e.to_string(),
-            })?;
+            }
+        })?;
+        // What the manifest lists is the original file, not the renamed copy.
+        let actual_sha256 = compat
+            .as_ref()
+            .map_or(*library.sha256(), |c| c.original_sha256);
 
         // Verify the plugin binary against the required integrity manifest.
         // The manifest is a sibling JSON file named "plugin_integrity.json" that
@@ -182,11 +211,11 @@ impl PluginManager {
                     message: format!("Invalid hash in manifest for '{}': {}", file_name, e),
                 }
             })?;
-            if library.sha256() != &expected {
+            if actual_sha256 != expected {
                 return Err(PluginManagerError::IntegrityCheckFailed {
                     path: path.to_path_buf(),
                     expected: expected,
-                    actual: *library.sha256(),
+                    actual: actual_sha256,
                 });
             }
             tracing::debug!("Integrity check passed for plugin: {:?}", path);
@@ -200,7 +229,7 @@ impl PluginManager {
                 return Err(PluginManagerError::IntegrityCheckFailed {
                     path: path.to_path_buf(),
                     expected: [0u8; 32],
-                    actual: *library.sha256(),
+                    actual: actual_sha256,
                 });
             }
         }
@@ -381,9 +410,36 @@ impl PluginManager {
         library: &PermanentLibrary,
         path: &Path,
     ) -> Result<(), PluginManagerError> {
+        // Share the host's parking lot first, before the library runs any code that
+        // could park a thread: a thread parked in the library's own table is never
+        // woken by the host's unlock of a lock they share (the settings database, the
+        // world registries), which hangs the editor.
+        match attach_parking_lot(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host parking lot", path),
+            Some(false) => {
+                return Err(PluginManagerError::ParkingLotRefused {
+                    path: path.to_path_buf(),
+                })
+            }
+            None => tracing::debug!("Plugin at {:?} predates the shared parking lot", path),
+        }
+
+        // Give the library's copy of `pulsar_plugins` the host's view of the
+        // plugins: what its code (helio_component, linked into it) reads as
+        // registered, installed or enabled must be every plugin's, not only
+        // the library's own. A library without the entry point keeps its own.
+        match attach_plugins(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host's plugin view", path),
+            Some(false) => tracing::error!(
+                "Plugin at {:?} refused the host's plugin view; its registry reads see only its own plugin",
+                path
+            ),
+            None => {}
+        }
+
         // Attach the plugin's world crates to the editor's world runtimes
         // before it runs any code of its own, so its component classes are
-        // World components of the editor (#1083). A library built from other
+        // World components of the editor. A library built from other
         // world-crate sources or features refuses, and is not loaded.
         match attach_world_runtime(library) {
             Some(true) => tracing::debug!("Plugin at {:?} attached to the world runtimes", path),
@@ -398,6 +454,21 @@ impl PluginManager {
             ),
         }
 
+        // Attach the library's Helio to the host's shared state (shader registry,
+        // pipeline caches, counters) and task host before it runs any code of
+        // its own: a second copy would split them, and its threads would be
+        // raw threads no task list shows. A library that links no Helio
+        // exports nothing.
+        match attach_helio(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the Helio runtime", path),
+            Some(false) => {
+                return Err(PluginManagerError::HelioRuntimeRefused {
+                    path: path.to_path_buf(),
+                })
+            }
+            None => {}
+        }
+
         // Share the editor's profiler so the plugin's scopes reach the
         // flamegraph; plugins built before this export nothing and keep a
         // private (never-read) profiler.
@@ -408,7 +479,7 @@ impl PluginManager {
         }
 
         // Give the plugin the host's event bus before it runs any code of
-        // its own, so its asset updates and events reach the editor (#930).
+        // its own, so its asset updates and events reach the editor.
         match attach_event_bus(library) {
             Some(pulsar_events::host::ATTACH_OK) => {
                 tracing::debug!("Plugin at {:?} attached to the host event bus", path)
@@ -421,6 +492,33 @@ impl PluginManager {
                 "Plugin at {:?} predates the shared event bus; its events stay local",
                 path
             ),
+        }
+
+        // Bind the library's copy of the engine state to the editor's engine context,
+        // so the project path and the engine-wide state answer inside the library: a
+        // component resolves its assets against the project (a mesh's `.mesh` file),
+        // and with none it loads nothing.
+        match attach_engine_state(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host engine context", path),
+            Some(false) => tracing::error!(
+                "Plugin at {:?} refused the host engine context (or there is none yet); its project path stays unset and its components resolve no assets",
+                path
+            ),
+            None => tracing::debug!(
+                "Plugin at {:?} predates the shared engine context; its project path stays unset",
+                path
+            ),
+        }
+
+        // Bind the plugin's settings handles to the editor's database, so
+        // its own settings answer inside the library.
+        match attach_settings(library) {
+            Some(true) => tracing::debug!("Plugin at {:?} attached to the host settings", path),
+            Some(false) => tracing::warn!(
+                "Plugin at {:?} refused the host settings (or there are none yet); its settings handles stay empty",
+                path
+            ),
+            None => {}
         }
 
         Ok(())
@@ -560,9 +658,9 @@ impl PluginManager {
             // A plugin class is a World component only when its
             // `#[register_world_component]` registration reached the host's
             // registry: the class has one, and the plugin attached to the
-            // editor's world runtimes (#1083). A plugin built before them
+            // editor's world runtimes. A plugin built before them
             // registered into its own copy's registry, which the host never
-            // reads (#1081).
+            // reads.
             let unregistered: Vec<&str> = component_regs
                 .iter()
                 .map(|(name, _)| name.as_str())

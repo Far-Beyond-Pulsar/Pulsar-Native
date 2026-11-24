@@ -30,7 +30,7 @@ impl ObjectHeaderSection {
         use super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
         // Name/visible/locked all go through `SceneCommand`/`execute_command`
-        // now (Pulsar-Native#561), not `scene_edit::objects::update_object`
+        // now, not `scene_edit::objects::update_object`
         // (whole-object overwrite, and -- despite a since-removed comment
         // claiming otherwise -- never actually undo-tracked).
 

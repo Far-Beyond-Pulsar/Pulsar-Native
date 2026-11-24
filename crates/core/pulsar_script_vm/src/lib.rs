@@ -30,6 +30,7 @@
 
 pub(crate) mod adapters;
 pub mod capability;
+pub mod class_schema;
 pub mod compiled;
 pub mod debugger;
 pub mod error;
@@ -49,6 +50,7 @@ pub mod value;
 pub mod verify;
 
 pub use capability::{CapabilityPolicy, CAPABILITY_ATTR};
+pub use class_schema::{ClassSchema, DeclaredField, SchemaField};
 pub use debugger::{
     Breakpoint, DebugCommand, DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot,
     RegisterSnapshot, StopReason,
@@ -67,7 +69,9 @@ pub use module::{
     SourceLoc, Subscription, SubscriptionScope, UnOp, Variable, BINARY_MAGIC, FORMAT_VERSION,
     MIN_FORMAT_VERSION,
 };
-pub use module_builder::{BuildError, FunctionBuilder, FunctionHandle, Label, Local, ModuleBuilder};
+pub use module_builder::{
+    BuildError, FunctionBuilder, FunctionHandle, Label, Local, ModuleBuilder,
+};
 pub use native::{
     Access, GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider,
     NativeRegistration, NativeRegistry, Origin, PolyNative,

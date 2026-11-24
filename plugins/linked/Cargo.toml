@@ -1,0 +1,9 @@
+[package]
+name = "linked_plugins"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The plugins the editor links statically: render_bps only. Every other installed plugin is built as a library of its own by tools/plugin_builder and loaded from plugins/editor."
+
+[dependencies]
+render_bps_plugin = { workspace = true }

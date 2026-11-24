@@ -28,8 +28,6 @@ use crate::blueprint;
 /// # Notes
 /// Use this node to initialize a vector before adding elements.
 /// The type of the vector will be inferred from usage.
-/// # Array New
-/// Creates a new empty vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_new<T>() -> Vec<T> {
     Vec::new()
@@ -176,8 +174,6 @@ pub fn array_get<T: Clone>(array: Vec<T>, index: i64) -> Option<T> {
 ///
 /// # Notes
 /// This is equivalent to getting the element at index 0.
-/// # Array First
-/// Returns the first element of a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_first<T: Clone>(array: Vec<T>) -> Option<T> {
     array.first().cloned()
@@ -197,8 +193,6 @@ pub fn array_first<T: Clone>(array: Vec<T>) -> Option<T> {
 ///
 /// # Notes
 /// This is equivalent to getting the element at index (length - 1).
-/// # Array Last
-/// Returns the last element of a vector.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_last<T: Clone>(array: Vec<T>) -> Option<T> {
     array.last().cloned()
@@ -266,8 +260,6 @@ pub fn array_is_empty<T>(array: Vec<T>) -> bool {
 /// # Notes
 /// This performs a linear search through the vector.
 /// The element type must implement PartialEq for comparison.
-/// # Array Contains
-/// Checks if a vector contains a specific element.
 #[blueprint(type: NodeTypes::pure, category: "Array", color: "#50E3C2")]
 pub fn array_contains<T: PartialEq>(array: Vec<T>, item: T) -> bool {
     array.contains(&item)
@@ -321,8 +313,6 @@ pub fn array_slice<T: Clone>(array: Vec<T>, start: i64, end: i64) -> Vec<T> {
 /// # Notes
 /// This creates a new vector with elements in reverse order.
 /// The original order is not preserved.
-/// # Array Reverse
-/// Reverses the order of elements in a vector.
 #[blueprint(type: NodeTypes::fn_, category: "Array", color: "#50E3C2")]
 pub fn array_reverse<T>(array: Vec<T>) -> Vec<T> {
     let mut arr = array;
@@ -345,8 +335,6 @@ pub fn array_reverse<T>(array: Vec<T>) -> Vec<T> {
 /// Sorting is based on the natural ordering of the element type.
 /// For custom types, ensure they implement `Ord`.
 /// The original input vector is not modified; a sorted copy is returned.
-/// # Array Sort
-/// Sorts a vector in ascending order.
 #[blueprint(type: NodeTypes::fn_, category: "Array", color: "#50E3C2")]
 pub fn array_sort<T: Ord>(array: Vec<T>) -> Vec<T> {
     let mut arr = array;

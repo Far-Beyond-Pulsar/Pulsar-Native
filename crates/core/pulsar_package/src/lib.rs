@@ -1,4 +1,4 @@
-//! Packaging a Pulsar project as a standalone game (Pulsar-Native#926).
+//! Packaging a Pulsar project as a standalone game.
 //!
 //! ```text
 //! pulsar package --project <dir> --out <dir> [--profile dev|shipping] [--target <triple>]
@@ -30,20 +30,25 @@
 //! (`pulsar_content::ContentRoot::discover`).
 
 pub mod compile;
+mod content;
 pub mod cook;
 
-// Links every installed plugin's registrations (record migrations among them).
+// Links every installed plugin's registrations (record migrations among them) into the
+// `pulsar` CLI, which loads no plugin libraries. The editor loads them instead.
+#[cfg(feature = "link-plugins")]
 use installed_plugins as _;
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use content::cook_content;
+pub use content::machine_path_in;
+
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use engine_fs::virtual_fs;
-use pulsar_class::{ClassIndex, ClassRegistry};
 use pulsar_content::{
-    ASSET_REGISTRY_FILE, AssetRegistry, BuildProfile, CONTENT_DIR_NAME, ContentKey,
-    PROJECT_SETTINGS_FILE, PackSettings, ProjectSettings, TOC_FILE_NAME, write_pak_set,
+    write_pak_set, BuildProfile, ContentKey, PackSettings, ProjectSettings, CONTENT_DIR_NAME,
+    PROJECT_SETTINGS_FILE, TOC_FILE_NAME,
 };
 pub use pulsar_content::{PackEvent, PackReport};
 use serde::Serialize;
@@ -159,7 +164,9 @@ fn project_settings(
 ) -> Result<ProjectSettings, PackageError> {
     let path = project.join(PROJECT_SETTINGS_FILE);
     let mut settings = match virtual_fs::read_file(&path) {
-        Ok(bytes) => ProjectSettings::from_json(&bytes).map_err(PackageError::Project)?,
+        Ok(bytes) => {
+            ProjectSettings::from_json(&bytes).map_err(|e| PackageError::Project(e.to_string()))?
+        }
         Err(_) => ProjectSettings::default(),
     };
     settings.profile = profile;
@@ -187,7 +194,8 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
             write_loose(&content_dir, rel, bytes)?;
         }
     } else {
-        let key = ContentKey::load_or_create(&project).map_err(PackageError::Write)?;
+        let key =
+            ContentKey::load_or_create(&project).map_err(|e| PackageError::Write(e.to_string()))?;
         let pack = write_pak_set(
             &content_dir,
             &content,
@@ -261,7 +269,8 @@ pub fn pack_content(
         report.assets,
         content.len()
     );
-    let key = ContentKey::load_or_create(&project).map_err(PackageError::Write)?;
+    let key =
+        ContentKey::load_or_create(&project).map_err(|e| PackageError::Write(e.to_string()))?;
     let pack = write_pak_set(
         content_dir,
         &content,
@@ -385,491 +394,6 @@ fn log_pack_report(pack: &PackReport) {
     );
 }
 
-/// Scripts and cook (steps 1 and 2 of [`package`]): every file the game's
-/// content holds, content-relative, with the asset registry.
-fn cook_content(
-    project: &Path,
-    options: &PackageOptions,
-    report: &mut PackageReport,
-) -> Result<BTreeMap<String, Vec<u8>>, PackageError> {
-    let mut settings = project_settings(project, options.profile)?;
-    // The project's plugins, as its game links them: what is cooked (and
-    // which plugin folders are snapshotted) follows the project's list.
-    pulsar_plugins::activate_project(project, engine_state::project_plugins(project));
-    let file_types = plugin_manager::builtin::linked_file_type_definitions();
-
-    // 1. Scripts.
-    let compiled = compile::compile_project(&project, &settings, options.optimization);
-    if compiled.has_errors() {
-        return Err(PackageError::Scripts(compiled.problems));
-    }
-    report
-        .warnings
-        .extend(compiled.problems.iter().map(ToString::to_string));
-    let registry = ClassRegistry::scan(&project);
-
-    // 2. Cook.
-    let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let engine_assets = options.engine_assets.clone().or_else(default_engine_assets);
-    let resolver = cook::AssetResolver::new(&project, engine_assets);
-    let mut assets = cook::AssetSet::default();
-    let mut selected_pipelines = BTreeMap::<String, PathBuf>::new();
-    let json = |value: &serde_json::Value| serde_json::to_vec(value).unwrap_or_default();
-
-    for class in &compiled.classes {
-        let entry = &class.entry;
-        // The class directory relative to the project (`src/classes/Door`,
-        // or a `Door.class/` folder anywhere in the project).
-        let dir = entry
-            .dir
-            .strip_prefix(&project)
-            .ok()
-            .map(|rel| {
-                rel.components()
-                    .map(|c| c.as_os_str().to_string_lossy())
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .filter(|rel| !rel.is_empty())
-            .unwrap_or_else(|| format!("src/classes/{}", entry.name));
-        files.insert(
-            format!("{dir}/{}", pulsar_class::CLASS_META_FILE),
-            json(&serde_json::json!({ "class_id": entry.id.as_str() })),
-        );
-        let prefab_path = entry.dir.join(pulsar_class::PREFAB_FILE);
-        if virtual_fs::is_file(&prefab_path) {
-            // Slot ids are assigned by the load; cooking repairs the project's
-            // prefab so the cooked ids match the project's.
-            let (prefab, outcome) = pulsar_class::PrefabAsset::load_and_repair(&entry.dir)
-                .map_err(PackageError::Cook)?;
-            if let pulsar_class::prefab::RepairOutcome::Failed(e) = outcome {
-                tracing::warn!(class = %entry.name, "slot ids not saved: {e}");
-            }
-            let mut value =
-                serde_json::to_value(&prefab).map_err(|e| PackageError::Cook(e.to_string()))?;
-            if let Some(class_ref) = value
-                .get_mut("blueprint_class")
-                .and_then(|v| v.as_object_mut())
-            {
-                class_ref.insert("class_path".into(), serde_json::Value::String(dir.clone()));
-            }
-            cook::rewrite_assets(
-                &mut value,
-                &resolver,
-                &mut assets,
-                &format!("{dir}/prefab.json"),
-            );
-            cook::relativize_project_paths(&mut value, &project);
-            files.insert(format!("{dir}/{}", pulsar_class::PREFAB_FILE), json(&value));
-        }
-        if let Some(module) = &class.module {
-            // Keyed by the class id, where the game looks
-            // (`pulsar_class::modules::module_file`).
-            files.insert(
-                pulsar_class::modules::cooked_module_path(&entry.id),
-                module.to_binary(),
-            );
-        }
-        report.classes.push((
-            entry.name.clone(),
-            entry.id.as_str().to_owned(),
-            class.module.is_some(),
-        ));
-    }
-    files.insert(
-        pulsar_class::CLASS_INDEX_FILE.into(),
-        ClassIndex::from_registry(&registry, &project)
-            .to_json()
-            .into_bytes(),
-    );
-    if let Some(config) =
-        cook::cook_scripting_config(&project, &registry).map_err(PackageError::Cook)?
-    {
-        files.insert(
-            pulsar_game::scripting::SCRIPTING_CONFIG_FILE.into(),
-            json(&config),
-        );
-    }
-
-    // The plugins' folders (`plugins/<id>/`): a snapshot of what each
-    // enabled plugin provides now, which the game serves read-only
-    // (`engine_fs::virtual_fs::plugin_snapshot`), so the game does not depend
-    // on where a plugin got its files in the editor.
-    for (rel, bytes) in virtual_fs::plugin_snapshot(&project) {
-        files.insert(rel, bytes);
-    }
-
-    // Levels: every `.level` file, plus the startup level.
-    let startup = options
-        .startup_level
-        .clone()
-        .or_else(|| settings.startup_level.clone())
-        .or_else(|| default_map(&project))
-        .or_else(|| {
-            [
-                "scene/default.level",
-                "scenes/default.level",
-                "scenes/default_level.json",
-            ]
-            .into_iter()
-            .find(|rel| virtual_fs::is_file(&project.join(rel)))
-            .map(str::to_owned)
-        })
-        .map(|rel| rel.replace('\\', "/"));
-    let mut levels = cook::find_levels(&project, &[options.out.clone()]);
-    if let Some(startup) = &startup {
-        if !virtual_fs::is_file(&project.join(startup)) {
-            return Err(PackageError::Project(format!(
-                "startup level {startup} does not exist"
-            )));
-        }
-        levels.insert(startup.clone());
-    } else {
-        report
-            .warnings
-            .push("no startup level: the game starts with an empty world".into());
-    }
-    for rel in &levels {
-        let path = project.join(rel);
-        let bytes =
-            virtual_fs::read_file(&path).map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
-        let level_text = std::str::from_utf8(&bytes)
-            .map_err(|e| PackageError::Cook(format!("{rel}: level is not UTF-8: {e}")))?;
-        if let Some(pipeline) = selected_pipeline_for_cook(level_text)? {
-            selected_pipelines
-                .entry(pipeline.clone())
-                .or_insert_with(|| project.join(&pipeline));
-        }
-        let value: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
-        let (cooked, level_report) =
-            cook::cook_level(value, &registry, &resolver, &mut assets, rel);
-        for class in level_report.unresolved_classes {
-            report
-                .warnings
-                .push(format!("{rel}: placed class {class} is not in the project"));
-        }
-        let rel = pulsar_content::normalize_rel(rel)
-            .ok_or_else(|| PackageError::Cook(format!("bad level path {rel}")))?;
-        files.insert(rel.clone(), json(&cooked));
-        report.levels.push(rel);
-    }
-    let mut cooked_assets = BTreeMap::new();
-    collect_asset_dependencies(
-        &project,
-        options.optimization,
-        &file_types,
-        &resolver,
-        &mut assets,
-        &mut cooked_assets,
-    )?;
-
-    for (context, value) in &assets.unresolved {
-        report
-            .warnings
-            .push(format!("{context}: asset `{value}` not found; not shipped"));
-    }
-
-    // Project settings, cooked.
-    settings.profile = options.profile;
-    settings.startup_level = startup.as_deref().and_then(pulsar_content::normalize_rel);
-    if settings.name.is_empty() {
-        settings.name = project_name(&project);
-    }
-    report.startup_level = settings.startup_level.clone();
-    files.insert(
-        PROJECT_SETTINGS_FILE.into(),
-        settings.to_json().into_bytes(),
-    );
-
-    // Assets.
-    let mut registry_out = AssetRegistry::new();
-    let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    for (id, source) in &assets.assets {
-        let cooked = cooked_assets
-            .get(id)
-            .map(|(_, cooked)| cooked)
-            .expect("the dependency walk cooks every reachable asset");
-        for artifact in &cooked.files {
-            let path_text = artifact.path.to_string_lossy().replace('\\', "/");
-            let output_id = pulsar_content::normalize_rel(&path_text).ok_or_else(|| {
-                PackageError::Cook(format!("asset {id}: invalid cooked path `{path_text}`"))
-            })?;
-            if !output_id.starts_with("assets/") {
-                return Err(PackageError::Cook(format!(
-                    "asset {id}: cooked output `{output_id}` must be under assets/"
-                )));
-            }
-            if asset_bytes.contains_key(&output_id) {
-                return Err(PackageError::Cook(format!(
-                    "asset {id}: cooked output `{output_id}` collides with another asset"
-                )));
-            }
-            registry_out.insert(cook::asset_record(
-                &output_id,
-                source,
-                &project,
-                &artifact.bytes,
-            ));
-            asset_bytes.insert(output_id, artifact.bytes.clone());
-        }
-    }
-
-    // A level's render graph is a hard file dependency, just like its placed
-    // classes. Preserve its path because the runtime pipeline registry uses
-    // that same project-relative id (including plugin-folder mounts).
-    for (id, source) in &selected_pipelines {
-        // Plugin-provided pipelines are already present in the snapshot above.
-        // Some providers expose their generated files through that snapshot
-        // without making them addressable through the project VFS path.
-        let artifact_bytes = if let Some(bytes) = files.get(id) {
-            bytes.clone()
-        } else {
-            if !virtual_fs::is_file(source) {
-                return Err(PackageError::Cook(format!(
-                    "selected render pipeline `{id}` is unavailable to the packager; enable its provider plugin or keep the .rendergraph in the project"
-                )));
-            }
-            let handler = cook_handler_for_path(&file_types, source)
-                .map_err(|e| PackageError::Cook(format!("render pipeline {id}: {e}")))?;
-            let context = plugin_editor_api::CookContext {
-                project_root: &project,
-                source_path: source,
-                content_path: Path::new(id),
-                optimization: options.optimization,
-            };
-            let cooked = handler(&context)
-                .map_err(|e| PackageError::Cook(format!("render pipeline {id}: {e}")))?;
-            if cooked.files.len() != 1 {
-                return Err(PackageError::Cook(format!(
-                    "render pipeline {id}: its cook handler must emit exactly one graph file"
-                )));
-            }
-            let artifact = cooked.files.into_iter().next().expect("one graph artifact");
-            let path_text = artifact.path.to_string_lossy().replace('\\', "/");
-            let output_id = pulsar_content::normalize_rel(&path_text).ok_or_else(|| {
-                PackageError::Cook(format!(
-                    "render pipeline {id}: invalid cooked path `{path_text}`"
-                ))
-            })?;
-            if output_id != *id {
-                return Err(PackageError::Cook(format!(
-                    "render pipeline {id}: its cook handler changed the runtime path to `{output_id}`"
-                )));
-            }
-            artifact.bytes
-        };
-        files.insert(id.clone(), artifact_bytes.clone());
-        asset_bytes.insert(id.clone(), artifact_bytes.clone());
-        registry_out.insert(cook::asset_record(id, source, &project, &artifact_bytes));
-    }
-    report.assets = asset_bytes.len();
-    files.extend(asset_bytes);
-    files.insert(
-        ASSET_REGISTRY_FILE.into(),
-        registry_out.to_json().into_bytes(),
-    );
-
-    for (rel, bytes) in &files {
-        if let Some(problem) = machine_path_in(rel, bytes, project) {
-            return Err(PackageError::AbsolutePaths(vec![problem]));
-        }
-    }
-    Ok(files)
-}
-
-/// Follow each asset type's direct references until the reachable asset set is
-/// exhausted. The queue and visited ids make arbitrarily deep graphs and
-/// cycles safe without a recursion limit.
-fn collect_asset_dependencies(
-    project: &Path,
-    optimization: plugin_editor_api::CookOptimization,
-    file_types: &[plugin_editor_api::FileTypeDefinition],
-    resolver: &cook::AssetResolver,
-    assets: &mut cook::AssetSet,
-    cooked_assets: &mut BTreeMap<String, (PathBuf, plugin_editor_api::file_types::CookOutput)>,
-) -> Result<(), PackageError> {
-    collect_asset_dependencies_with(resolver, assets, |id, source| {
-        let context = plugin_editor_api::CookContext {
-            project_root: project,
-            source_path: source,
-            content_path: Path::new(id),
-            optimization,
-        };
-        let handler = cook_handler_for_path(file_types, source)
-            .map_err(|error| PackageError::Cook(format!("asset {id}: {error}")))?;
-        let output = handler(&context)
-            .map_err(|error| PackageError::Cook(format!("asset {id}: {error}")))?;
-        if output.files.is_empty() {
-            return Err(PackageError::Cook(format!(
-                "asset {id}: its registered cook handler emitted no files"
-            )));
-        }
-        let dependencies = output.dependencies.clone();
-        cooked_assets.insert(id.to_owned(), (source.to_path_buf(), output));
-        Ok(dependencies)
-    })
-}
-
-fn collect_asset_dependencies_with(
-    resolver: &cook::AssetResolver,
-    assets: &mut cook::AssetSet,
-    mut direct_dependencies: impl FnMut(&str, &Path) -> Result<Vec<String>, PackageError>,
-) -> Result<(), PackageError> {
-    let mut pending: VecDeque<String> = assets.assets.keys().cloned().collect();
-    let mut visited = BTreeSet::new();
-
-    while let Some(id) = pending.pop_front() {
-        if !visited.insert(id.clone()) {
-            continue;
-        }
-        let Some(source) = assets.assets.get(&id).cloned() else {
-            continue;
-        };
-        let dependencies = direct_dependencies(&id, &source)?;
-
-        for dependency in dependencies {
-            match resolver.resolve(&dependency) {
-                Some((dependency_id, dependency_source)) => {
-                    if let std::collections::btree_map::Entry::Vacant(entry) =
-                        assets.assets.entry(dependency_id.clone())
-                    {
-                        entry.insert(dependency_source);
-                        pending.push_back(dependency_id);
-                    }
-                }
-                None => assets.unresolved.push((format!("asset {id}"), dependency)),
-            }
-        }
-    }
-    Ok(())
-}
-
-/// The selected graph is stored in the level as a path, not as one of the
-/// generic asset-path properties. Resolve plugin aliases and old pipeline
-/// ids using the same migration path as the runtime.
-fn selected_pipeline_for_cook(level_json: &str) -> Result<Option<String>, PackageError> {
-    let level: serde_json::Value = serde_json::from_str(level_json)
-        .map_err(|error| PackageError::Cook(format!("invalid level JSON: {error}")))?;
-    let selected = level
-        .get("world_settings")
-        .and_then(|settings| settings.get("render_pipeline"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|id| !id.trim().is_empty());
-    // A missing/null setting is not a direct file reference. Legacy implicit
-    // defaults remain supplied by the enabled plugin snapshot.
-    let Some(_) = selected else {
-        return Ok(None);
-    };
-    let pipeline =
-        engine_backend::subsystems::render::helio_renderer::pipelines::render_pipeline_of_level(
-            level_json,
-        )
-        .ok_or_else(|| {
-            PackageError::Cook("could not read the level's selected render pipeline".into())
-        })?;
-    let pipeline = virtual_fs::canonical_mount_path(&pipeline);
-    let pipeline = pulsar_content::normalize_rel(&pipeline).ok_or_else(|| {
-        PackageError::Cook(format!(
-            "selected render pipeline has an invalid path `{pipeline}`"
-        ))
-    })?;
-    if Path::new(&pipeline)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        != Some("rendergraph")
-    {
-        return Err(PackageError::Cook(format!(
-            "selected render pipeline `{pipeline}` does not resolve to a .rendergraph asset"
-        )));
-    }
-    Ok(Some(pipeline))
-}
-
-/// Resolve the most specific registered file type suffix. Compound types
-/// such as `trait.json` take precedence over a generic `json` type.
-fn cook_handler_for_path(
-    file_types: &[plugin_editor_api::FileTypeDefinition],
-    path: &Path,
-) -> Result<plugin_editor_api::file_types::CookCallback, String> {
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return Ok(plugin_editor_api::file_types::copy_file_for_cook);
-    };
-    let mut candidates: Vec<_> = file_types
-        .iter()
-        .filter(|definition| {
-            let Some(suffix_start) = name.len().checked_sub(definition.extension.len()) else {
-                return false;
-            };
-            name.get(suffix_start..)
-                .is_some_and(|suffix| suffix.eq_ignore_ascii_case(&definition.extension))
-                && name
-                    .get(..suffix_start)
-                    .is_some_and(|prefix| prefix.ends_with('.'))
-        })
-        .collect();
-    candidates.sort_by(|a, b| b.extension.len().cmp(&a.extension.len()));
-    let Some(selected) = candidates.first() else {
-        return Ok(plugin_editor_api::file_types::copy_file_for_cook);
-    };
-    let tied: Vec<_> = candidates
-        .iter()
-        .take_while(|candidate| candidate.extension.len() == selected.extension.len())
-        .collect();
-    if tied
-        .iter()
-        .any(|candidate| !std::ptr::fn_addr_eq(candidate.cook, selected.cook))
-    {
-        return Err(format!(
-            "multiple enabled file types register different cook handlers for .{}",
-            selected.extension
-        ));
-    }
-    Ok(selected.cook)
-}
-
-#[cfg(test)]
-mod asset_dependency_tests {
-    use super::*;
-
-    static PROCESS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    #[test]
-    fn dependency_walk_is_unbounded_iterative_and_cycle_safe() {
-        let _lock = PROCESS_LOCK.lock().unwrap();
-        engine_fs::virtual_fs::reset_to_local();
-        engine_fs::virtual_fs::serve_packaged_folders(None);
-        let project = tempfile::tempdir().unwrap();
-        let assets_dir = project.path().join("assets");
-        std::fs::create_dir_all(&assets_dir).unwrap();
-
-        const DEPTH: usize = 1_100;
-        for index in 0..DEPTH {
-            let next = if index + 1 == DEPTH { 0 } else { index + 1 };
-            std::fs::write(
-                assets_dir.join(format!("{index:04}.dep")),
-                format!("assets/{next:04}.dep\n"),
-            )
-            .unwrap();
-        }
-
-        let resolver = cook::AssetResolver::new(project.path(), None);
-        let (root_id, root_source) = resolver.resolve("assets/0000.dep").unwrap();
-        let mut assets = cook::AssetSet::default();
-        assets.assets.insert(root_id, root_source);
-
-        collect_asset_dependencies_with(&resolver, &mut assets, |_, source| {
-            engine_fs::virtual_fs::read_to_string(source)
-                .map(|text| text.lines().map(str::to_owned).collect())
-                .map_err(|error| PackageError::Cook(error.to_string()))
-        })
-        .unwrap();
-
-        assert_eq!(assets.assets.len(), DEPTH);
-        assert!(assets.unresolved.is_empty());
-    }
-}
-
 // std::fs allowed: the packaged game's output folder is the user's chosen real machine path,
 // not a project file (and not under the project's provider)
 #[allow(clippy::disallowed_methods)]
@@ -890,52 +414,6 @@ fn write_loose(content_dir: &Path, rel: &str, bytes: &[u8]) -> Result<(), Packag
     }
     std::fs::write(&path, bytes)
         .map_err(|e| PackageError::Write(format!("{}: {e}", path.display())))
-}
-
-/// A machine-specific path in a shipped text file: the project's own
-/// location, `CARGO_MANIFEST_DIR`, or any JSON string that is an absolute
-/// path. Binary files are skipped.
-pub fn machine_path_in(rel: &str, bytes: &[u8], project: &Path) -> Option<String> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    if text.contains("CARGO_MANIFEST_DIR") {
-        return Some(format!("{rel}: mentions CARGO_MANIFEST_DIR"));
-    }
-    let project_text = project.display().to_string();
-    if !project_text.is_empty() && text.contains(&project_text) {
-        return Some(format!("{rel}: contains the project path {project_text}"));
-    }
-    let value: serde_json::Value = serde_json::from_str(text).ok()?;
-    fn find(value: &serde_json::Value) -> Option<String> {
-        match value {
-            serde_json::Value::String(s) if cook::is_absolute_path(s) && s.len() > 1 => {
-                Some(s.clone())
-            }
-            serde_json::Value::Array(items) => items.iter().find_map(find),
-            serde_json::Value::Object(map) => map.values().find_map(find),
-            _ => None,
-        }
-    }
-    find(&value).map(|path| format!("{rel}: absolute path `{path}`"))
-}
-
-/// The editor's `project.default_map` setting (`.pulsar/project/*.toml`).
-fn default_map(project: &Path) -> Option<String> {
-    pulsar_settings::register_all_settings(engine_state::settings::global_config());
-    let settings = engine_state::settings::ProjectSettings::new(project)?;
-    settings.load_all();
-    let map = settings
-        .get("project", "default_map")?
-        .as_str()
-        .ok()?
-        .to_owned();
-    (!map.is_empty() && virtual_fs::is_file(&project.join(&map))).then_some(map)
-}
-
-fn project_name(project: &Path) -> String {
-    project
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Pulsar Game".into())
 }
 
 /// `cargo build --release` of the project's game binary, copied to `out`.

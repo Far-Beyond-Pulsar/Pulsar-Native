@@ -246,7 +246,6 @@ macro_rules! export_plugin {
             }
         }
 
-
         impl $crate::plugin::EditorPluginFull for __PluginExport {}
 
         /// Create the plugin instance.
@@ -271,18 +270,18 @@ macro_rules! export_plugin {
             let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 // Validate theme pointer
                 if theme_ptr.is_null() {
-                    tracing::error!("[Plugin] Received null theme pointer from host");
+                    $crate::tracing::error!("[Plugin] Received null theme pointer from host");
                     return None;
                 }
 
                 // Store theme pointer (fail if already set)
                 if SYNCED_THEME.set(theme_ptr as usize).is_err() {
-                    tracing::error!("[Plugin] Theme pointer already initialized");
+                    $crate::tracing::error!("[Plugin] Theme pointer already initialized");
                     return None;
                 }
 
                 // Register our theme accessor with the ui crate
-                ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
+                $crate::ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
 
                 // Create the plugin instance wrapped for full trait access
                 let plugin = <$plugin_type>::default();
@@ -295,7 +294,9 @@ macro_rules! export_plugin {
             match created {
                 Ok(plugin) => plugin,
                 Err(_) => {
-                    tracing::error!("[Plugin] The plugin panicked while it was being created");
+                    $crate::tracing::error!(
+                        "[Plugin] The plugin panicked while it was being created"
+                    );
                     None
                 }
             }
@@ -340,7 +341,7 @@ macro_rules! export_plugin {
         ///
         /// SAFETY: Returns None if theme pointer is null or not initialized.
         /// The caller (ui crate) must handle None gracefully.
-        unsafe fn plugin_theme_unsafe() -> Option<&'static ui::theme::Theme> {
+        unsafe fn plugin_theme_unsafe() -> Option<&'static $crate::ui::theme::Theme> {
             let ptr = SYNCED_THEME.get().copied()? as *const std::ffi::c_void;
 
             if ptr.is_null() {
@@ -348,16 +349,22 @@ macro_rules! export_plugin {
             }
 
             // SAFETY: The engine contract guarantees this pointer remains valid.
-            Some(&*(ptr as *const ui::theme::Theme))
+            Some(&*(ptr as *const $crate::ui::theme::Theme))
         }
 
-        // Receive the host's event bus when loaded (Pulsar-Native#930):
+        // Share the host's parking lot: `_plugin_attach_parking_lot`, called by the
+        // plugin manager before anything else of this library runs, makes a thread
+        // parked here findable by the host's unlock (and the other way round) for
+        // every `parking_lot` and `dashmap` lock the library and the host share.
+        $crate::parking_lot_core::export_attach!();
+
+        // Receive the host's event bus when loaded:
         // `_plugin_attach_event_bus`, called by the plugin manager before
         // `_plugin_create`, makes this library's `pulsar_events` host bus
         // (asset updates, ...) the editor's own, over Gamma's FFI.
         $crate::pulsar_events::export_host_bus_attach!();
 
-        // Attach to the host's world runtimes when loaded (Pulsar-Native#1083):
+        // Attach to the host's world runtimes when loaded:
         // `_plugin_attach_world_runtime`, called by the plugin manager before
         // `_plugin_create`, makes this library's copy of the world crates
         // share the editor's component ids, counters and registries, so its
@@ -368,6 +375,17 @@ macro_rules! export_plugin {
         // the plugin manager before `_plugin_create`, makes this library's
         // `profiling` scopes land in the editor's flamegraph.
         $crate::profiling::export_profiler_attach!();
+
+        // Bind the plugin's settings handles to the editor's database:
+        // `_plugin_attach_settings`, called by the plugin manager before
+        // `_plugin_create`, so `pulsar_settings::plugin::handle` answers here.
+        $crate::pulsar_settings::export_settings_attach!();
+
+        // Bind the library's copy of `engine_state` to the editor's engine context:
+        // `_plugin_attach_engine_state`, called by the plugin manager before
+        // `_plugin_create`, so the project path and the engine-wide state answer here
+        // (a mesh component resolves its `.mesh` file against the project).
+        $crate::engine_state::export_engine_state_attach!();
 
         /// Get the plugin's version information. It builds a constant and
         /// cannot panic, so unlike the other entry points it needs no
@@ -385,7 +403,9 @@ macro_rules! export_plugin {
             // theme it had.
             let initialized = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if theme_ptr.is_null() {
-                    tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
+                    $crate::tracing::error!(
+                        "[Plugin] ERROR: Received null theme pointer in init_globals!"
+                    );
                     return;
                 }
 
@@ -394,7 +414,9 @@ macro_rules! export_plugin {
                 }
             }));
             if initialized.is_err() {
-                tracing::error!("[Plugin] The plugin panicked while initializing its globals");
+                $crate::tracing::error!(
+                    "[Plugin] The plugin panicked while initializing its globals"
+                );
             }
         }
     };

@@ -1,3 +1,6 @@
+//! Data sources of the log viewer: live logs, memory tracking and reports, allocator
+//! tracking, GPU information and allocations, system information and performance metrics.
+
 pub mod atomic_memory_tracking;
 pub mod caller_tracking;
 pub mod gpu_alloc_report;

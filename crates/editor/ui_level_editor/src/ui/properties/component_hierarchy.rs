@@ -289,8 +289,8 @@ impl ComponentHierarchyPanel {
         let notify_entity = cx.entity().downgrade();
 
         let config = HierarchyConfig {
-            items,
-            root_ids,
+            items: items.into(),
+            root_ids: root_ids.into(),
             layout: HierarchyLayout::Widget,
 
             // Header config (for Panel layout) - not used in Widget mode

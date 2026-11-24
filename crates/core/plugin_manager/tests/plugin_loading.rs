@@ -113,7 +113,7 @@ fn missing_plugin_reports_the_real_open_error() {
     );
 }
 
-/// #930: the loader hands a plugin library the host's event bus through
+/// The loader hands a plugin library the host's event bus through
 /// the entry point `export_plugin!` exports, and the plugin accepts it.
 #[test]
 fn plugins_are_attached_to_the_host_event_bus() {
@@ -130,7 +130,7 @@ fn plugins_are_attached_to_the_host_event_bus() {
     );
 }
 
-/// #1083: the loader hands a plugin library the host's world runtimes
+/// The loader hands a plugin library the host's world runtimes
 /// through the entry point `export_plugin!` exports, and the plugin's world
 /// crates attach to them; attaching again to the same runtimes is a no-op.
 #[test]

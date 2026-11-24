@@ -1,4 +1,4 @@
-//! Plugin component classes as World components (Pulsar-Native#1083).
+//! Plugin component classes as World components.
 //!
 //! A plugin library links its own static copy of the engine's world crates,
 //! so its classes register into registries the editor never reads and its
@@ -149,7 +149,7 @@ fn a_plugin_refuses_a_world_runtime_of_another_abi() {
     assert_eq!(report["host_reflects_class"], "false", "{report:?}");
 }
 
-/// Phase 4 (Pulsar-Native#1608): the plugin's root build runs in the
+/// The plugin's root build runs in the
 /// library's copy and crosses the boundary as data; the host installs its
 /// descriptor and takes its registrations as its own types (their layout
 /// fingerprints agree), so the class the build registered is the host's.

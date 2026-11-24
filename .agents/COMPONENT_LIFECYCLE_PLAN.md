@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - P1-P6 built; crates/core/pulsar_component_lifecycle exists
+
 # Component lifecycle refactor: audit and plan
 
 **Status (current).** P1-P6 are all built, P5b included (each has an "As built"
@@ -71,8 +73,8 @@ physics, Blueprints and any plugin share one foundation.
    `Added`, and thereafter reads only the journal.
 6. **`#[register_component_runtime]` is registered by raw `inventory::submit!`**
    (`component_runtime.rs:371-380`), not through `ClassSpec`; its gate is by class
-   name (`pulsar_world_registry/src/runtime.rs:151-153`). The registry's ABI
-   fingerprint hashes `size_of::<ComponentTickRegistration>()` (`runtime.rs:37`),
+   name (`pulsar_world_registry/src/runtime.rs`). The registry's ABI
+   fingerprint hashes `size_of::<ComponentTickRegistration>()` (`runtime.rs`),
    so any new registration type or a changed layout bumps `ABI_VERSION`
    (`runtime.rs:28`, currently 3).
 7. **Only two shipped plugins use the component-runtime macro**: voxel
@@ -90,7 +92,7 @@ physics, Blueprints and any plugin share one foundation.
 9. **Removal carries no component data.** SceneDB's journal entry is
    `{ entity, kind }` only (`change_journal.rs:86-89` in SceneDB), and
    `end_play` is documented as owner-only after removal
-   (`pulsar_world_registry/src/lib.rs:100-102`, `component_lifecycle.rs:363-368`).
+   (`pulsar_world_registry/src/component_lifecycle.rs`).
 10. **Hand-written native script crates are the only user code that `impl Actor`.**
     Generated Blueprint classes are regenerated ("Generated. Do not hand-edit",
     `pulsar_script_codegen/src/actor.rs:228,321`) and the project's `engine_main` is
@@ -143,7 +145,7 @@ at `:800-806`), and Helio `Cargo.toml:64-65`.
 
 | Piece | Where | Facts |
 |---|---|---|
-| `ComponentTickRegistration` | `pulsar_world_registry/src/lib.rs:79-105` | `inventory::collect!`ed struct: `type_name`, `class_name`, `handler_events`, `component_type: fn() -> ComponentId`, `tick: fn(&mut World, &EventHub, f32, &HashMap<Entity,Entity> /*previous*/, &mut HashMap<Entity,Entity> /*current*/, &mut ComponentRuntimeState)`, `end_play: Option<fn(Entity, &EventHub)>`. The `tick` fn is a whole-class loop, not a per-instance callback. |
+| `ComponentTickRegistration` | `pulsar_world_registry` (the struct has since been removed) | `inventory::collect!`ed struct: `type_name`, `class_name`, `handler_events`, `component_type: fn() -> ComponentId`, `tick: fn(&mut World, &EventHub, f32, &HashMap<Entity,Entity> /*previous*/, &mut HashMap<Entity,Entity> /*current*/, &mut ComponentRuntimeState)`, `end_play: Option<fn(Entity, &EventHub)>`. The `tick` fn is a whole-class loop, not a per-instance callback. |
 | Registry plumbing | `runtime.rs:72-89,122-126,151-153,255-257` | `TICKS` append list; gated by `class_enabled(class_name)`; handed across DLLs through the `Runtime` fn table (`ABI_VERSION` 3, `:28`, fingerprint `:30-53`). |
 | `ComponentRuntimeState` | `component_lifecycle.rs:31-54` | "Lifecycle bookkeeping for one running game session", identities only, owned by `TickLoop` (`tick.rs:64,223,273`). Fields: scene identity, `active: class -> {instance entity -> owner entity}`, event inbox, Gamma subscriptions, per-type removal cursors, scratch, cached system order. Its own doc says it must not be global so independent PIE/game worlds do not share activation state (`:33-36`). |
 | `tick_live_components` | `component_lifecycle.rs:204-266` | If the scene allocation changed, `end_all`. Then `process_component_removals`; open one change cursor per registered type (first time); compute and cache the system order; walk steps: `Step::Components` -> `tick_component_lifecycles`, `Step::System(r)` -> `(r.system.run)(&mut SystemContext {world, events, delta_seconds, runtime})`. |
@@ -218,9 +220,9 @@ The script driver (`pulsar_game/src/scripting/driver/`):
   script; `start`/`try_spawn` (`:259-363`) call `runtime.spawn_with_json`, bind
   class slots and subscribe; `stop` (`:365-400`) despawns the script instance and
   publishes `EndPlay` if it had begun.
-- `begin_play` is **queued** by `ScriptRuntime::spawn` (`pulsar_script_runtime/src/lib.rs:890-938`,
+- `begin_play` is **queued** by `ScriptRuntime::spawn` (`pulsar_script_runtime/src/runtime/instances.rs`,
   `pending_begin_play`) and run later by `dispatch_pending_begin_play`
-  (`:1083`) from `frame_start` (`driver/frame.rs:97-112`), which then publishes
+  (`pulsar_script_runtime/src/runtime/dispatch.rs`) from `frame_start` (`driver/frame.rs:97-112`), which then publishes
   `BeginPlay`. `has_begun` (`:1240`) decides whether `stop` publishes `EndPlay`.
   The deferral is deliberate: begin_play must see a fully initialized world
   (`tick.rs:504-511`).

@@ -327,9 +327,7 @@ mod tests {
         let handle = cfg
             .register("plugin", "t", server_settings_schema("T", ""))
             .unwrap();
-        assert!(handle
-            .set("initialization_options", "{ not json")
-            .is_err());
+        assert!(handle.set("initialization_options", "{ not json").is_err());
         assert!(handle.set("initialization_options", "[1]").is_err());
         assert!(handle.set("initialization_options", "{\"a\":1}").is_ok());
     }

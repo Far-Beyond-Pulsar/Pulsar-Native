@@ -95,7 +95,7 @@ fn save_allocation_sites(conn: &Connection, sites: &[AllocationSite]) -> rusqlit
 
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs() as i64;
 
     for site in sites {

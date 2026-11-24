@@ -1,4 +1,4 @@
-//! The trait proof (Pulsar-Native#1608, T5): a fixture plugin
+//! The trait proof (T5): a fixture plugin
 //! (`tests/fixtures/trait_plugin`, `pulsar.test_traits`) defines a trait and
 //! a role and implements the trait with a component; a Blueprint implements
 //! it too.

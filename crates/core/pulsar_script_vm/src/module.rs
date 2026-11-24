@@ -1,7 +1,7 @@
 //! The bytecode module format every scripting frontend compiles to.
 //!
-//! A [`Module`] is self-describing and serializable in two encodings
-//! (#852): JSON ([`Module::to_json`], what the editor writes, easy to
+//! A [`Module`] is self-describing and serializable in two encodings:
+//! JSON ([`Module::to_json`], what the editor writes, easy to
 //! read and diff) and a compact binary one ([`Module::to_binary`], what
 //! packaged games ship). [`Module::decode`] reads either, telling them
 //! apart by the binary header ([`BINARY_MAGIC`] plus the format version).
@@ -208,7 +208,7 @@ impl Module {
             .map(|(i, f)| (i as u32, f))
     }
 
-    /// Where in this module a link error comes from (#868): the function
+    /// Where in this module a link error comes from: the function
     /// and, with debug info, the source location of the first instruction
     /// or subscription involved. `None` for errors about the module as a
     /// whole.
@@ -491,7 +491,7 @@ pub struct Function {
     pub registers: Vec<Type>,
     pub code: Vec<Instr>,
     /// Optional debug info: which source location produced each range of
-    /// instructions (#854). Runtime errors and link errors resolve their
+    /// instructions. Runtime errors and link errors resolve their
     /// pc through it. Absent in modules built without it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug: Option<DebugInfo>,

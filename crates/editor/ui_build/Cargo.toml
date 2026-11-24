@@ -20,9 +20,6 @@ smol = { workspace = true }
 tracing = { workspace = true }
 # The pack step: the content packer seam and the `Content/` folder name.
 pulsar_content = { workspace = true }
-# The build dashboard: Mission Control's log view for the build's output,
-# and the process sampling for its process list and charts.
-ui_log_viewer = { workspace = true }
 sysinfo = "0.39"
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "mp3"] }
 

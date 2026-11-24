@@ -1,4 +1,4 @@
-//! Shared object-reference resolution for blueprint graphs (#654).
+//! Shared object-reference resolution for blueprint graphs.
 //!
 //! Public helpers for Rust code that carries graph values as JSON. Nothing
 //! in the workspace calls them now: Blueprint script modules, including the
@@ -12,7 +12,7 @@
 //! # JSON domain
 //!
 //! Graph values travel as JSON blobs (D1/D4), so this module is JSON in/out.
-//! Reference shapes are exactly the #642 marshalling rules:
+//! Reference shapes are exactly the marshalling rules:
 //!
 //! * `ActorRef` → packed-bits number (`Entity::bits()`);
 //! * `ComponentRef` → object with `entity` (bits), `class_name`,
@@ -21,7 +21,7 @@
 //! A parity test below pins these shapes against B4's registry serializers,
 //! so graph blobs and reflection-marshalled values stay interchangeable.
 //!
-//! # Failure contract (#641/#B3)
+//! # Failure contract
 //!
 //! Every function validates before it resolves and logs the TYPED error
 //! (`ScriptRefError` / `ResolveRefError`) under the calling node's context
@@ -55,7 +55,7 @@ pub fn component_ref_json(
 }
 
 /// Resolve an authored reference literal to its CURRENT entity and emit the
-/// ComponentRef JSON with live bits (#639 lazy resolution — literals stage
+/// ComponentRef JSON with live bits (lazy resolution — literals stage
 /// stable ids precisely so reloads/undo-redo keep them meaningful).
 pub fn object_literal_json(
     world: &World,
@@ -124,7 +124,7 @@ fn find_object(
 
 /// Turn a wired `component_ref` pin value into the `(entity,
 /// component_index)` a comp op should address, refusing references whose
-/// class does not match the op (#519 discipline: a Light ref can never land
+/// class does not match the op (a Light ref can never land
 /// a Door edit). `None` after logging — callers degrade to null/skip.
 pub fn resolve_pin_target(
     world: &World,
@@ -227,8 +227,8 @@ mod tests {
         (store, door, lamp)
     }
 
-    /// #654/#642 parity: graph-domain reference JSON is byte-identical to
-    /// what B4's registry serializers produce for the same values.
+    /// Parity: graph-domain reference JSON is byte-identical to
+    /// what the registry serializers produce for the same values.
     #[test]
     fn json_shapes_match_the_reflection_marshalling_rules() {
         let (mut store, door, _lamp) = scene();
@@ -297,7 +297,7 @@ mod tests {
             Some((lamp, 0))
         );
 
-        // #519 discipline: a ref of one class cannot feed another class's op.
+        // A ref of one class cannot feed another class's op.
         assert!(resolve_pin_target(world, &good, "Door", "set").is_none());
 
         // Stale reference (despawned actor) degrades without panicking.

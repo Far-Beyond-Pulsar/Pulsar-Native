@@ -5,7 +5,7 @@ use ui::notification::Notification;
 use ui::ContextModal;
 
 use crate::components::FileManagerDrawer;
-use crate::utils::{operations::FileOperations, tree::FolderNode};
+use crate::utils::operations::FileOperations;
 
 impl FileManagerDrawer {
     pub fn handle_drop_on_folder_new(
@@ -26,9 +26,7 @@ impl FileManagerDrawer {
         match self.operations.move_items(&s, &t) {
             Ok(_) => {
                 self.selected_items.clear();
-                if let Some(ref p) = self.project_path {
-                    self.set_folder_tree(FolderNode::from_path(p));
-                }
+                self.refresh_folder_tree(cx);
                 self.mark_directory_cache_dirty();
                 self.selected_folder = Some(t);
                 self.hovered_drop_folder = None;
@@ -214,9 +212,7 @@ impl FileManagerDrawer {
 
         if any_ok {
             self.selected_items.clear();
-            if let Some(ref p) = self.project_path {
-                self.set_folder_tree(FolderNode::from_path(p));
-            }
+            self.refresh_folder_tree(cx);
             self.mark_directory_cache_dirty();
             self.selected_folder = Some(t);
         }

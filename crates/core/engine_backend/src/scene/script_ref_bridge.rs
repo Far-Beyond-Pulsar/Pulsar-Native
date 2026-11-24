@@ -1,7 +1,7 @@
-//! World-level identity lookups for script references (#654).
+//! World-level identity lookups for script references.
 //!
-//! Script references resolve LAZILY against whatever world they land in
-//! (#639), and graph reference nodes run in contexts that hold only a plain
+//! Script references resolve LAZILY against whatever world they land in,
+//! and graph reference nodes run in contexts that hold only a plain
 //! `&World` -- VM trampolines mid-event and generated actors inside their
 //! tick callbacks. Both questions below are answerable from the world alone
 //! because `StableId`/`Name` ARE world components; these free functions are
@@ -26,7 +26,7 @@ pub fn entity_with_stable_id(world: &pulsar_scenedb::World, stable_id: &str) -> 
 ///
 /// First match in archetype iteration order -- name collisions are an authoring
 /// hazard, not a resolution ambiguity this function pretends to solve;
-/// callers needing disambiguation should prefer stable ids (#639 policy).
+/// callers needing disambiguation should prefer stable ids.
 pub fn first_entity_named(world: &pulsar_scenedb::World, name: &str) -> Option<Entity> {
     world
         .query::<&Name>()
@@ -39,7 +39,7 @@ mod tests {
     use super::*;
     use crate::scene::SpawnObject;
 
-    /// #654: the plain-world lookups find spawned objects by their StableId
+    /// The plain-world lookups find spawned objects by their StableId
     /// and Name components -- the exact queries the graph reference nodes
     /// resolve through at runtime.
     #[test]

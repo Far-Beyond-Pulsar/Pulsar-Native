@@ -1,3 +1,5 @@
+Status: in progress (as of 2026-11-20) - waves partly done (A7-A10 marked Done); V1, K2, B5-B7 still open
+
 # Backlog dispatch plan (draft, 2026-11-08)
 
 Scope: Pulsar-Native#1604 #1600 #1603 #1599 #1605 #1608, Plugin_SKM#13,

@@ -1,3 +1,6 @@
+//! The level editor toolbars: the global toolbar, mode and snap controls, playback and
+//! time scale, view modes and the menus.
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use rust_i18n::t;
@@ -159,7 +162,7 @@ impl ToolbarPanel {
                     return;
                 };
 
-                // Background save (#967); sets the level's path on success.
+                // Background save; sets the level's path on success.
                 crate::ui::save::save_level(
                     state_clone.clone(),
                     path,
@@ -247,7 +250,7 @@ impl ToolbarPanel {
                     }
                 }
 
-                // A copy in the background (#967): the level keeps its own
+                // A copy in the background: the level keeps its own
                 // path and unsaved state. Failures are notified by the saver.
                 let saved_to = path.clone();
                 crate::ui::save::save_in_background(

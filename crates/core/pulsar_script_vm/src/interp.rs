@@ -7,12 +7,15 @@
 
 use std::sync::Arc;
 
-use crate::compiled::{Cx, Exit};
+mod steps;
+
+use steps::{latent_suspend_requested, wait_seconds, CallSite};
+
 use crate::debugger::{
     DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot, RegisterSnapshot, StopReason,
 };
 use crate::error::{ScriptError, ScriptErrorKind};
-use crate::exec::{self, binary, binary_scalar, unary};
+
 use crate::link::{FuncId, Instance, Program};
 use crate::module::{Instr, Reg};
 use crate::native::Host;
@@ -93,7 +96,7 @@ impl Continuation {
     }
 
     /// Move this suspended call onto `module`, a new version of the module
-    /// it was running (a class reload, #862), if its code layout is
+    /// it was running (a class reload), if its code layout is
     /// compatible. For every suspended frame, the new module must have a
     /// function with the same name and the same parameter, return and
     /// register types and the same number of instructions; the innermost
@@ -176,8 +179,8 @@ pub struct Vm {
     pub max_depth: usize,
     /// Integer `Add`, `Sub`, `Mul`, `Div`, `Rem` and `Neg` that overflow,
     /// and `FloatToInt` of a value outside `int` (or NaN), raise
-    /// [`ScriptErrorKind::Overflow`] instead of wrapping or saturating
-    /// (#858). Off by default, like a Rust release build; the engine turns
+    /// [`ScriptErrorKind::Overflow`] instead of wrapping or saturating.
+    /// Off by default, like a Rust release build; the engine turns
     /// it on in the editor and Play-in-Editor and off in shipping builds.
     pub checked_arithmetic: bool,
     /// Optional language-neutral debugger attached to this VM. It stops in
@@ -427,117 +430,34 @@ impl Vm {
     ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
         loop {
-            // Generated code runs the active frame, unless a debugger is
-            // attached and the function kept its instructions: the
-            // interpreter runs those, where the debugger can stop. A
-            // function with no instructions (a module linked with
-            // generated code carries none) always runs its generated code:
-            // there is nothing to interpret, and indexing the empty stream
-            // would panic.
-            let generated = program.compiled.as_ref().filter(|_| {
-                let func = self.frames.last().expect("a frame is active").func;
-                self.debugger.is_none() || module.functions[func as usize].code.is_empty()
-            });
-            if let Some(code) = generated {
-                // Generated code runs the function until it must call,
-                // return, wait or fail; calls, returns and waits are handled
-                // here, as for interpreted code. It charges the budget
-                // itself, per instruction.
-                let frame = self.frames.last_mut().expect("a frame is active");
-                let func = frame.func;
-                let registers = program.registers[func as usize].len();
-                let mut cx = Cx {
-                    host: &mut *host,
-                    vars: &mut instance.vars,
-                    budget: &mut *budget,
-                    natives: &program.natives,
-                    constants: &program.constants,
-                    checked: self.checked_arithmetic,
-                    scratch: &mut self.args,
-                };
-                let regs = &mut self.regs[frame.base..frame.base + registers];
-                let exit = code.step(func, &mut frame.pc, regs, &mut cx);
-                match exit {
-                    Err(kind) => return Err(self.fail(program, frame_base, kind)),
-                    Ok(Exit::Call {
-                        func: callee,
-                        args,
-                        dst,
-                    }) => {
-                        if self.frames.len() - frame_base >= self.max_depth {
-                            return Err(self.fail(
-                                program,
-                                frame_base,
-                                ScriptErrorKind::StackOverflow,
-                            ));
-                        }
-                        self.push_frame(program, callee, args.into_iter(), dst);
-                    }
-                    Ok(Exit::Return(value)) => {
-                        if let Some(done) = self.finish_frame(value, frame_base) {
-                            return Ok(done);
-                        }
-                    }
-                    Ok(Exit::Wait(seconds)) => {
-                        return Ok(self.suspend(program, frame_base, seconds));
-                    }
+            if let Some(code) = self.generated_code(program, &module) {
+                let exit = self.step_generated(&**code, program, &mut instance.vars, host, budget);
+                if let Some(done) = self.after_generated_exit(program, frame_base, exit)? {
+                    return Ok(done);
                 }
                 continue;
             }
-            if budget.remaining == 0 {
-                return Err(self.fail(program, frame_base, ScriptErrorKind::BudgetExceeded));
+            self.charge(program, frame_base, budget)?;
+            let &Frame { func, pc, base, .. } = self.frames.last().expect("a frame is active");
+            if let Some(paused) = self.debugger_pause(program, instance, frame_base, func, pc) {
+                return Ok(paused);
             }
-            budget.remaining -= 1;
-
-            let frame = self.frames.last().expect("a frame is active");
-            let (func, pc, base) = (frame.func, frame.pc, frame.base);
-            let function = &module.functions[func as usize];
-            // Source locations are only looked up for the debugger; without
-            // one the interpreter pays nothing for them (#853).
-            if let Some(reason) = self.debugger.as_mut().and_then(|debugger| {
-                debugger.should_stop(
-                    &function.name,
-                    pc,
-                    self.frames.len() - frame_base,
-                    function.location(pc),
-                )
-            }) {
-                let snapshot = self.snapshot(program, instance, frame_base, reason);
-                let continuation = match self.suspend(program, frame_base, 0.0) {
-                    Completion::Waiting { continuation, .. } => continuation,
-                    Completion::Returned(_) => unreachable!("suspend always yields a continuation"),
-                    Completion::Paused { .. } => unreachable!("suspend does not pause"),
-                };
-                return Ok(Completion::Paused {
-                    snapshot,
-                    continuation,
-                });
-            }
-            let code = &module.functions[func as usize].code;
             let r = |reg: Reg| base + usize::from(reg);
             let mut next = pc + 1;
 
-            match &code[pc] {
+            match &module.functions[func as usize].code[pc] {
                 Instr::Const { dst, index } => {
                     self.regs[r(*dst)] = program.constants[*index as usize].clone();
                 }
                 Instr::Move { dst, src } => {
                     self.regs[r(*dst)] = self.regs[r(*src)].clone();
                 }
-                Instr::Unary { op, dst, src } => {
-                    let value = unary(*op, &self.regs[r(*src)], self.checked_arithmetic)
-                        .map_err(|kind| self.fail(program, frame_base, kind))?;
-                    self.regs[r(*dst)] = value;
-                }
-                Instr::Binary { op, dst, a, b } => {
-                    let (x, y) = (&self.regs[r(*a)], &self.regs[r(*b)]);
-                    let value = match binary_scalar(*op, x, y, self.checked_arithmetic) {
-                        Some(value) => value,
-                        None => binary(*op, x, y, self.checked_arithmetic)
-                            .map_err(|kind| self.fail(program, frame_base, kind))?,
-                    };
-                    self.regs[r(*dst)] = value;
-                }
+                Instr::Unary { op, dst, src } => self
+                    .unary_instr(*op, r(*dst), r(*src))
+                    .map_err(|kind| self.fail(program, frame_base, kind))?,
+                Instr::Binary { op, dst, a, b } => self
+                    .binary_instr(*op, r(*dst), (r(*a), r(*b)))
+                    .map_err(|kind| self.fail(program, frame_base, kind))?,
                 Instr::Jump { target } => next = *target as usize,
                 Instr::Branch {
                     cond,
@@ -552,48 +472,21 @@ impl Vm {
                     args,
                     dst,
                 } => {
-                    if self.frames.len() - frame_base >= self.max_depth {
-                        return Err(self.fail(program, frame_base, ScriptErrorKind::StackOverflow));
-                    }
-                    // The caller stays at the call site (for traces) and
-                    // advances when the callee returns.
-                    self.push_frame_from(program, *callee, base, args, *dst);
+                    let site = CallSite {
+                        callee: *callee,
+                        caller_base: base,
+                        args,
+                        dst: *dst,
+                    };
+                    self.enter_call(program, frame_base, site)?;
                     continue;
                 }
                 Instr::CallNative { import, args, dst } => {
                     let native = &program.natives[*import as usize];
-                    let mut values = std::mem::take(&mut self.args);
-                    values.clear();
-                    values.extend(args.iter().map(|a| self.regs[r(*a)].clone()));
-                    let result = exec::call_native(native, host, &mut values);
-                    let result = match result {
-                        Ok(value) => value,
-                        Err(kind) => {
-                            self.args = values;
-                            return Err(self.fail(program, frame_base, kind));
-                        }
-                    };
-                    for ((param, arg), value) in
-                        native.sig.params.iter().zip(args).zip(values.drain(..))
-                    {
-                        if param.inout && value.fits(&param.ty) {
-                            self.regs[r(*arg)] = value;
-                        }
-                    }
-                    self.args = values;
-                    if let Some(dst) = dst {
-                        self.regs[r(*dst)] = result;
-                    }
-                    // A latent native (`wait::frames`, ..) asked for the call to
-                    // suspend: park it right after the call; the runtime reads what
-                    // it is waiting for from the host's latent state.
-                    if host
-                        .latent
-                        .as_deref()
-                        .is_some_and(crate::latent::Latent::suspend_requested)
-                    {
-                        self.frames.last_mut().expect("active").pc = next;
-                        return Ok(self.suspend(program, frame_base, 0.0));
+                    self.call_native_instr(native, host, base, args, *dst)
+                        .map_err(|kind| self.fail(program, frame_base, kind))?;
+                    if latent_suspend_requested(host) {
+                        return Ok(self.park(program, frame_base, next, 0.0));
                     }
                 }
                 Instr::LoadVar { dst, var } => {
@@ -609,37 +502,19 @@ impl Vm {
                     self.regs[r(*dst)] = Value::Float(host.time);
                 }
                 Instr::Wait { seconds } => {
-                    let seconds = self.regs[r(*seconds)].as_float().unwrap_or(0.0);
-                    // NaN and negative waits resume on the next opportunity.
-                    let seconds = if seconds > 0.0 { seconds } else { 0.0 };
-                    self.frames.last_mut().expect("active").pc = next;
-                    return Ok(self.suspend(program, frame_base, seconds));
+                    let seconds = wait_seconds(&self.regs[r(*seconds)]);
+                    return Ok(self.park(program, frame_base, next, seconds));
                 }
                 Instr::Collection { op, dst, args } => {
-                    let mut values = std::mem::take(&mut self.args);
-                    values.clear();
-                    for (position, arg) in args.iter().enumerate() {
-                        // A result written back over its own first argument
-                        // is moved, not cloned, so the edit is in place.
-                        let moved = position == 0 && arg == dst && !args[1..].contains(arg);
-                        values.push(if moved {
-                            std::mem::replace(&mut self.regs[r(*arg)], Value::Unit)
-                        } else {
-                            self.regs[r(*arg)].clone()
-                        });
-                    }
-                    let result = exec::collection(*op, &mut values);
-                    values.clear();
-                    self.args = values;
-                    self.regs[r(*dst)] =
-                        result.map_err(|kind| self.fail(program, frame_base, kind))?;
+                    self.collection_instr(*op, base, *dst, args)
+                        .map_err(|kind| self.fail(program, frame_base, kind))?;
                 }
                 Instr::Return { value } => {
                     let value = value.map_or(Value::Unit, |v| self.regs[r(v)].clone());
-                    if let Some(done) = self.finish_frame(value, frame_base) {
-                        return Ok(done);
+                    match self.finish_frame(value, frame_base) {
+                        Some(done) => return Ok(done),
+                        None => continue,
                     }
-                    continue;
                 }
             }
             self.frames.last_mut().expect("active").pc = next;

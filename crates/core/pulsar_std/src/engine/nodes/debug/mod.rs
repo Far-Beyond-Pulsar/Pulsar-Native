@@ -72,6 +72,8 @@ fn sanitize_string(s: String) -> String {
 /// Prints a string to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_string(message: &str) {
+    // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] {}", message);
 }
 
@@ -98,6 +100,8 @@ pub fn print_string(message: &str) {
 /// Prints a number to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_number(value: f64) {
+    // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] Number: {}", value);
 }
 
@@ -128,6 +132,8 @@ pub fn print_number(value: f64) {
 /// Prints a boolean value to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_bool(value: bool) {
+    // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] Boolean: {}", value);
 }
 
@@ -155,6 +161,8 @@ pub fn print_bool(value: bool) {
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn println(message: String) {
     let message = sanitize_string(message);
+    // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("{}", message);
 }
 
@@ -195,6 +203,8 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
         .replace("{0}", &value0)
         .replace("{1}", &value1)
         .replace("{2}", &value2);
+    // The print is the feature: this node writes to stdout by design.
+    // style: allow println - a debug node whose job is to print
     println!("[DEBUG] {}", message);
 }
 
@@ -225,6 +235,8 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
 pub fn conditional_print(condition: bool, message: String) {
     let message = sanitize_string(message);
     if condition {
+        // The print is the feature: this node writes to stdout by design.
+        // style: allow println - a debug node whose job is to print
         println!("[CONDITIONAL] {}", message);
     }
 }
@@ -366,7 +378,7 @@ pub fn log_info(message: String) {
     let message = sanitize_string(message);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs();
     tracing::debug!("[INFO {}] {}", now, message);
 }
@@ -399,7 +411,7 @@ pub fn log_warn(message: String) {
     let message = sanitize_string(message);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs();
     tracing::warn!("[WARN {}] {}", now, message);
 }
@@ -432,7 +444,7 @@ pub fn log_error(message: String) {
     let message = sanitize_string(message);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs();
     tracing::error!("[ERROR {}] {}", now, message);
 }
@@ -532,7 +544,9 @@ pub fn breakpoint(message: String) {
     tracing::debug!("BREAKPOINT: {}", message);
     tracing::debug!("Press Enter to continue...");
     let mut input = String::new();
-    std::io::stdin().read_line(&mut input).unwrap();
+    if let Err(e) = std::io::stdin().read_line(&mut input) {
+        tracing::warn!("breakpoint could not read stdin: {}", e);
+    }
 }
 
 // =============================================================================

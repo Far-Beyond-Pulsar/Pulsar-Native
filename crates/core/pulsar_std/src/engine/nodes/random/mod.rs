@@ -23,9 +23,9 @@ use std::hash::{BuildHasher, Hash, Hasher};
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_int() -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    hasher.finish() as i64
+    
+    
+    state.hash_one(&std::time::SystemTime::now()) as i64
 }
 
 /// Generate a pseudo-random integer in a range.
@@ -45,10 +45,10 @@ pub fn random_int_range(min: i64, max: i64) -> i64 {
         return min;
     }
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
+    
+    
     let range = (max - min) as u64;
-    min + ((hasher.finish() % range) as i64)
+    min + ((state.hash_one(&std::time::SystemTime::now()) % range) as i64)
 }
 
 /// Generate a pseudo-random float between 0.0 and 1.0.
@@ -61,9 +61,9 @@ pub fn random_int_range(min: i64, max: i64) -> i64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_float() -> f64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    (hasher.finish() as f64) / (u64::MAX as f64)
+    
+    
+    (state.hash_one(&std::time::SystemTime::now()) as f64) / (u64::MAX as f64)
 }
 
 /// Generate a pseudo-random float in a range.
@@ -83,9 +83,9 @@ pub fn random_float_range(min: f64, max: f64) -> f64 {
         return min;
     }
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    let t = (hasher.finish() as f64) / (u64::MAX as f64);
+    
+    
+    let t = (state.hash_one(&std::time::SystemTime::now()) as f64) / (u64::MAX as f64);
     min + (max - min) * t
 }
 
@@ -99,9 +99,9 @@ pub fn random_float_range(min: f64, max: f64) -> f64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_bool() -> bool {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    (hasher.finish() & 1) == 1
+    
+    
+    (state.hash_one(&std::time::SystemTime::now()) & 1) == 1
 }
 
 /// Generate a pseudo-random boolean with custom probability.
@@ -117,9 +117,9 @@ pub fn random_bool() -> bool {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_bool_probability(probability: f64) -> bool {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    let t = (hasher.finish() as f64) / (u64::MAX as f64);
+    
+    
+    let t = (state.hash_one(&std::time::SystemTime::now()) as f64) / (u64::MAX as f64);
     t < probability.clamp(0.0, 1.0)
 }
 
@@ -133,9 +133,9 @@ pub fn random_bool_probability(probability: f64) -> bool {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_angle_degrees() -> f64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    ((hasher.finish() as f64) / (u64::MAX as f64)) * 360.0
+    
+    
+    ((state.hash_one(&std::time::SystemTime::now()) as f64) / (u64::MAX as f64)) * 360.0
 }
 
 /// Generate a random angle in radians (0-2π).
@@ -148,9 +148,9 @@ pub fn random_angle_degrees() -> f64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_angle_radians() -> f64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    ((hasher.finish() as f64) / (u64::MAX as f64)) * std::f64::consts::TAU
+    
+    
+    ((state.hash_one(&std::time::SystemTime::now()) as f64) / (u64::MAX as f64)) * std::f64::consts::TAU
 }
 
 /// Generate a random sign (-1 or 1).
@@ -163,9 +163,9 @@ pub fn random_angle_radians() -> f64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_sign() -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    if (hasher.finish() & 1) == 1 {
+    
+    
+    if (state.hash_one(&std::time::SystemTime::now()) & 1) == 1 {
         1
     } else {
         -1
@@ -211,9 +211,9 @@ pub fn random_normal(mean: f64, std_dev: f64) -> f64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn shuffle_seed(value: i64) -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    value.hash(&mut hasher);
-    hasher.finish() as i64
+    
+    
+    state.hash_one(&value) as i64
 }
 
 /// Generate a random color component (0-255).
@@ -226,9 +226,9 @@ pub fn shuffle_seed(value: i64) -> i64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_color_component() -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    (hasher.finish() % 256) as i64
+    
+    
+    (state.hash_one(&std::time::SystemTime::now()) % 256) as i64
 }
 
 /// Generate a random percentage (0-100).
@@ -241,9 +241,9 @@ pub fn random_color_component() -> i64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_percentage() -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    (hasher.finish() % 101) as i64
+    
+    
+    (state.hash_one(&std::time::SystemTime::now()) % 101) as i64
 }
 
 /// Generate a random dice roll (1-6).
@@ -256,9 +256,9 @@ pub fn random_percentage() -> i64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn random_dice() -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    ((hasher.finish() % 6) + 1) as i64
+    
+    
+    ((state.hash_one(&std::time::SystemTime::now()) % 6) + 1) as i64
 }
 
 /// Generate a random dice roll with custom sides.
@@ -277,9 +277,9 @@ pub fn random_dice_custom(sides: i64) -> i64 {
         return 1;
     }
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    ((hasher.finish() % (sides as u64)) + 1) as i64
+    
+    
+    ((state.hash_one(&std::time::SystemTime::now()) % (sides as u64)) + 1) as i64
 }
 
 /// Flip a coin (heads or tails).
@@ -292,9 +292,9 @@ pub fn random_dice_custom(sides: i64) -> i64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
 pub fn coin_flip() -> bool {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    (hasher.finish() & 1) == 1
+    
+    
+    (state.hash_one(&std::time::SystemTime::now()) & 1) == 1
 }
 
 // ── Seeded (deterministic) random ───────────────────────────────────────────

@@ -1,0 +1,15 @@
+[package]
+name = "sdk_roots"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The six shared libraries and the feature pin, as one package: `cargo build -p sdk_roots` builds exactly what a library release cuts its SDK from (cargo sdk pack)."
+
+[dependencies]
+wgpui_dylib = { workspace = true }
+ui_dylib = { workspace = true }
+profiling_dylib = { workspace = true }
+reflection_dylib = { workspace = true }
+scenedb_dylib = { workspace = true }
+helio_dylib = { workspace = true }
+pulsar_workspace_hack = { path = "../workspace_hack" }

@@ -228,19 +228,33 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     let hub = EventHub::new();
     driver.attach_events(hub.clone());
     driver.run_frame(&mut world, 0.0);
-    let send = |driver: &mut ScriptDriver, world: &mut World, action: &str, phase: &str, x: f64, y: f64| {
+    let send = |driver: &mut ScriptDriver,
+                world: &mut World,
+                action: &str,
+                phase: &str,
+                x: f64,
+                y: f64| {
         action_event(&hub, action, phase, pawn, x, y);
         hub.flush(FlushPoint::Manual);
         let frame = driver.run_frame(world, 0.0);
         assert!(frame.script_errors.is_empty(), "{:?}", frame.script_errors);
     };
-    assert_eq!(read(&world, pawn, "move_input"), serde_json::json!([0.0, 0.0]));
+    assert_eq!(
+        read(&world, pawn, "move_input"),
+        serde_json::json!([0.0, 0.0])
+    );
 
     // Move: held forward and to the right, then released.
     send(&mut driver, &mut world, "IA_Move", "triggered", 0.5, 1.0);
-    assert_eq!(read(&world, pawn, "move_input"), serde_json::json!([0.5, 1.0]));
+    assert_eq!(
+        read(&world, pawn, "move_input"),
+        serde_json::json!([0.5, 1.0])
+    );
     send(&mut driver, &mut world, "IA_Move", "completed", 0.0, 0.0);
-    assert_eq!(read(&world, pawn, "move_input"), serde_json::json!([0.0, 0.0]));
+    assert_eq!(
+        read(&world, pawn, "move_input"),
+        serde_json::json!([0.0, 0.0])
+    );
 
     // Jump: asks the character to jump.
     assert_eq!(read(&world, pawn, "jump"), serde_json::json!(false));
@@ -255,7 +269,12 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     assert_eq!(read(&world, pawn, "walk_speed"), serde_json::json!(4.0));
 
     // Look: the horizontal axis turns the object (yaw, in degrees).
-    let yaw = |world: &World| world.get::<engine_backend::scene::Transform>(pawn).unwrap().rotation[1];
+    let yaw = |world: &World| {
+        world
+            .get::<engine_backend::scene::Transform>(pawn)
+            .unwrap()
+            .rotation[1]
+    };
     let before = yaw(&world);
     send(&mut driver, &mut world, "IA_Look", "triggered", 10.0, 3.0);
     assert!(

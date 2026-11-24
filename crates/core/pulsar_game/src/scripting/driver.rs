@@ -1,4 +1,4 @@
-//! The script driver: the script runtime follows the world (#922).
+//! The script driver: the script runtime follows the world.
 //!
 //! A placed class is an entity carrying a [`ClassInstance`] component, and
 //! `ClassInstance` is a normal component of the component lifecycle
@@ -59,7 +59,7 @@
 //!   are removed. When something else despawns an entity (the editor
 //!   deleting it during Play-in-Editor), the journal only reports it after
 //!   the fact, so that `end_play` runs at the next frame with `self`
-//!   already dead: component access resolves to nothing (#888), it never
+//!   already dead: component access resolves to nothing, it never
 //!   panics.
 //!
 //! # Identity

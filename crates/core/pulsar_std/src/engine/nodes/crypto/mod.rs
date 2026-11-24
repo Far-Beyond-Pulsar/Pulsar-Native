@@ -29,9 +29,9 @@ use std::hash::{BuildHasher, Hash, Hasher};
 #[blueprint(type: crate::NodeTypes::pure, category: "Crypto", color: "#8E44AD")]
 pub fn hash_string(text: String) -> String {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    text.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    
+    
+    format!("{:x}", state.hash_one(&text))
 }
 
 /// Generate a simple hash of an integer.
@@ -47,9 +47,9 @@ pub fn hash_string(text: String) -> String {
 #[blueprint(type: crate::NodeTypes::pure, category: "Crypto", color: "#8E44AD")]
 pub fn hash_int(value: i64) -> String {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    value.hash(&mut hasher);
-    format!("{:x}", hasher.finish())
+    
+    
+    format!("{:x}", state.hash_one(&value))
 }
 
 /// Generate a hash with a seed.
@@ -113,9 +113,9 @@ pub fn generate_uuid() -> String {
 #[blueprint(type: crate::NodeTypes::pure, category: "Crypto", color: "#8E44AD")]
 pub fn generate_short_id() -> String {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    std::time::SystemTime::now().hash(&mut hasher);
-    format!("{:08x}", (hasher.finish() as u32))
+    
+    
+    format!("{:08x}", (state.hash_one(&std::time::SystemTime::now()) as u32))
 }
 
 /// Generate a numeric ID from timestamp.
@@ -253,9 +253,9 @@ pub fn checksum(text: String) -> i64 {
 #[blueprint(type: crate::NodeTypes::pure, category: "Crypto", color: "#8E44AD")]
 pub fn crc_checksum(text: String) -> i64 {
     let state = RandomState::new();
-    let mut hasher = state.build_hasher();
-    text.hash(&mut hasher);
-    (hasher.finish() & 0xFFFFFFFF) as i64
+    
+    
+    (state.hash_one(&text) & 0xFFFFFFFF) as i64
 }
 
 /// Verify a checksum.

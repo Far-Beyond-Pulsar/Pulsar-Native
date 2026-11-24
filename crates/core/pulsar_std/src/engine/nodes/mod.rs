@@ -1,3 +1,6 @@
+//! The built-in Blueprint nodes, one module per category (math, logic, flow, string, ...),
+//! each re-exported here.
+
 // Node modules
 pub mod core;
 pub use core::*;

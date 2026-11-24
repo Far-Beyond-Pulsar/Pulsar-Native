@@ -23,7 +23,8 @@ pub mod window;
 
 // Re-export main types
 pub use screen::ProblemsDrawer;
-pub use utils::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic};
+pub use pulsar_findings::{Action as FindingActionKind, Category as FindingCategory, Severity as FindingSeverity};
+pub use utils::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic, RunFindingAction};
 pub use window::ProblemsWindow;
 
 /// Get current locale

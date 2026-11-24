@@ -50,8 +50,8 @@ Window.Title.Documentation: "Documentation"
 # Menus
 Menu.App.AboutApp: About Pulsar Engine
 Menu.App.CheckUpdates: Check for Updates
-Menu.App.Preferences: Preferences
-Menu.App.Settings: Settings
+Menu.App.Preferences: Editor Settings
+Menu.App.Settings: Project Settings
 Menu.App.Hide: Hide Pulsar
 Menu.App.HideOthers: Hide Others
 Menu.App.ShowAll: Show All

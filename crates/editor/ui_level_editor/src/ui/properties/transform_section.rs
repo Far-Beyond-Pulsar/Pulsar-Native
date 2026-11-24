@@ -21,7 +21,7 @@ enum Axis {
 
 /// Builds an `NumberFieldBinding` for one axis (x/y/z) of one transform
 /// component (position/rotation/scale), routed through `SceneCommand::
-/// SetTransform`/`execute_command` (Pulsar-Native#561), not
+/// SetTransform`/`execute_command`, not
 /// `scene_edit::objects::update_object`.
 ///
 /// Previously every one of these 9 fields used `NumberFieldBinding::new`

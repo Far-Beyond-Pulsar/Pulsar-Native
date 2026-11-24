@@ -93,7 +93,7 @@ pub fn init(cx: &mut gpui::App) {
     ]);
 
     // Undo/Redo for whichever editor has focus, each on its own document's
-    // history (Pulsar-Native#931). Text fields keep their own, more
+    // history. Text fields keep their own, more
     // specific bindings.
     plugin_editor_api::bind_undo_keys(cx);
 
@@ -103,18 +103,22 @@ pub fn init(cx: &mut gpui::App) {
     // Parameterised windows (non-`()` Params) are not auto-registered by the
     // `#[register_window]` macro — register their name-openers so
     // `WindowRegistry::open("…")` keeps working for menus and embedders.
-    ui_settings::SettingsWindow::init(cx);
+    ui_settings::ProjectSettingsWindow::init(cx);
     // The optional tools the editor binary links (git, the flamegraph, ...):
     // their windows and background work (`ui_common::editor_tools`).
     ui_common::editor_tools::init_editor_tools(cx);
 
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");
-        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("ProjectSettingsWindow", cx)
+        });
     });
     cx.on_action(|_: &Preferences, cx| {
         tracing::debug!("[MENU] Preferences");
-        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("EditorSettingsWindow", cx)
+        });
     });
     cx.on_action(|_: &AboutApp, cx| {
         window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));

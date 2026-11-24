@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 
 pub fn generate_room_key(username_a: &str, username_b: &str) -> String {
-    let mut users = vec![username_a.to_lowercase(), username_b.to_lowercase()];
+    let mut users = [username_a.to_lowercase(), username_b.to_lowercase()];
     users.sort();
     let combined = users.join("_");
     let mut hasher = Sha256::new();

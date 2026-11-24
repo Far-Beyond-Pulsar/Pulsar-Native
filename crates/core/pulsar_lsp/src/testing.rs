@@ -59,9 +59,7 @@ pub struct ScriptedServer {
 /// Start a server that runs `script` on every message the client sends. The
 /// server ends (and the client's reader sees the end of the stream) when the
 /// client's writer is dropped.
-pub fn scripted_server(
-    mut script: impl FnMut(&Value, &Reply) + Send + 'static,
-) -> ScriptedServer {
+pub fn scripted_server(mut script: impl FnMut(&Value, &Reply) + Send + 'static) -> ScriptedServer {
     let (server_stdin, client_writer) = std::io::pipe().expect("a pipe");
     let (client_reader, server_stdout) = std::io::pipe().expect("a pipe");
     let (received_tx, received) = flume::unbounded();

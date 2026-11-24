@@ -83,7 +83,12 @@ pub struct DiagnosticsData {
 impl DiagnosticsData {
     /// Replace `source`'s diagnostics for `path` (empty clears). Returns
     /// whether anything changed.
-    pub fn set(&mut self, source: DiagnosticSource, path: &Path, diagnostics: Vec<Diagnostic>) -> bool {
+    pub fn set(
+        &mut self,
+        source: DiagnosticSource,
+        path: &Path,
+        diagnostics: Vec<Diagnostic>,
+    ) -> bool {
         let key = path_key(path);
         if diagnostics.is_empty() {
             let Some(entry) = self.files.get_mut(&key) else {
@@ -101,7 +106,11 @@ impl DiagnosticsData {
             path: path.to_path_buf(),
             by_source: Vec::new(),
         });
-        match entry.by_source.iter_mut().find(|(existing, _)| *existing == source) {
+        match entry
+            .by_source
+            .iter_mut()
+            .find(|(existing, _)| *existing == source)
+        {
             Some((_, current)) => *current = diagnostics,
             None => entry.by_source.push((source, diagnostics)),
         }
@@ -109,7 +118,10 @@ impl DiagnosticsData {
     }
 
     /// Remove everything `matches` selects; returns the files that changed.
-    fn clear_where(&mut self, matches: impl Fn(&DiagnosticSource) -> bool) -> Vec<(PathBuf, DiagnosticSource)> {
+    fn clear_where(
+        &mut self,
+        matches: impl Fn(&DiagnosticSource) -> bool,
+    ) -> Vec<(PathBuf, DiagnosticSource)> {
         let mut changed = Vec::new();
         for entry in self.files.values_mut() {
             for (source, _) in entry.by_source.iter().filter(|(source, _)| matches(source)) {
@@ -126,12 +138,16 @@ impl DiagnosticsData {
     }
 
     pub fn clear_server(&mut self, server: &ServerId) -> Vec<(PathBuf, DiagnosticSource)> {
-        self.clear_where(|existing| matches!(existing, DiagnosticSource::Server(id) if id == server))
+        self.clear_where(
+            |existing| matches!(existing, DiagnosticSource::Server(id) if id == server),
+        )
     }
 
     /// Every server of spec `spec` (any root).
     pub fn clear_spec(&mut self, spec: &str) -> Vec<(PathBuf, DiagnosticSource)> {
-        self.clear_where(|existing| matches!(existing, DiagnosticSource::Server(id) if id.server == spec))
+        self.clear_where(
+            |existing| matches!(existing, DiagnosticSource::Server(id) if id.server == spec),
+        )
     }
 
     pub fn for_file(&self, path: &Path) -> Vec<(DiagnosticSource, Diagnostic)> {
@@ -279,7 +295,11 @@ impl DiagnosticsStore {
 /// the file and its complete diagnostic set. The path is decoded from the
 /// URI properly (a percent-encoded drive letter, a Unix path's leading
 /// slash).
-pub fn parse_publish(params: &Value, server_id: &str, hooks: &ServerHooks) -> Option<(PathBuf, Vec<Diagnostic>)> {
+pub fn parse_publish(
+    params: &Value,
+    server_id: &str,
+    hooks: &ServerHooks,
+) -> Option<(PathBuf, Vec<Diagnostic>)> {
     let uri = params.get("uri")?.as_str()?;
     let list = params.get("diagnostics")?.as_array()?;
     let path = uri_to_path(uri);
@@ -290,8 +310,10 @@ pub fn parse_publish(params: &Value, server_id: &str, hooks: &ServerHooks) -> Op
             let mut diagnostic = parse_diagnostic(raw, &file, server_id)?;
             let fixes = (hooks.quick_fixes)(raw, &file);
             if !fixes.is_empty() {
-                diagnostic.code_actions =
-                    fixes.into_iter().map(code_actions::code_action_of).collect();
+                diagnostic.code_actions = fixes
+                    .into_iter()
+                    .map(code_actions::code_action_of)
+                    .collect();
             }
             Some(diagnostic)
         })
@@ -309,8 +331,12 @@ pub fn parse_diagnostic(raw: &Value, file_path: &str, server_id: &str) -> Option
     let column = start.get("character")?.as_u64()? as usize + 1;
     let (end_line, end_column) = range.get("end").map_or((None, None), |end| {
         (
-            end.get("line").and_then(Value::as_u64).map(|l| l as usize + 1),
-            end.get("character").and_then(Value::as_u64).map(|c| c as usize + 1),
+            end.get("line")
+                .and_then(Value::as_u64)
+                .map(|l| l as usize + 1),
+            end.get("character")
+                .and_then(Value::as_u64)
+                .map(|c| c as usize + 1),
         )
     });
     let severity = match raw.get("severity").and_then(Value::as_u64).unwrap_or(1) {
@@ -377,60 +403,126 @@ mod tests {
     fn an_empty_set_clears_the_file() {
         let mut data = DiagnosticsData::default();
         let path = Path::new("/p/a.rs");
-        assert!(data.set(server("ra"), path, vec![diag(DiagnosticSeverity::Error, "x")]));
+        assert!(data.set(
+            server("ra"),
+            path,
+            vec![diag(DiagnosticSeverity::Error, "x")]
+        ));
         assert_eq!(data.for_file(path).len(), 1);
-        assert!(data.set(server("ra"), path, Vec::new()), "clearing is a change");
+        assert!(
+            data.set(server("ra"), path, Vec::new()),
+            "clearing is a change"
+        );
         assert!(data.for_file(path).is_empty());
         assert_eq!(data.file_count(), 0);
-        assert!(!data.set(server("ra"), path, Vec::new()), "clearing nothing is not");
+        assert!(
+            !data.set(server("ra"), path, Vec::new()),
+            "clearing nothing is not"
+        );
     }
 
     #[test]
     fn two_files_are_held_at_once_and_a_fixed_one_goes_alone() {
         // The Problems drawer showed only the last file published (finding 3).
         let mut data = DiagnosticsData::default();
-        data.set(server("ra"), Path::new("/p/a.rs"), vec![diag(DiagnosticSeverity::Error, "a")]);
-        data.set(server("ra"), Path::new("/p/b.rs"), vec![diag(DiagnosticSeverity::Warning, "b")]);
+        data.set(
+            server("ra"),
+            Path::new("/p/a.rs"),
+            vec![diag(DiagnosticSeverity::Error, "a")],
+        );
+        data.set(
+            server("ra"),
+            Path::new("/p/b.rs"),
+            vec![diag(DiagnosticSeverity::Warning, "b")],
+        );
         assert_eq!(data.all().len(), 2);
         data.set(server("ra"), Path::new("/p/a.rs"), Vec::new());
         let all = data.all();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].2.message, "b");
-        assert_eq!(data.counts(), Counts { errors: 0, warnings: 1, infos: 0, hints: 0 });
+        assert_eq!(
+            data.counts(),
+            Counts {
+                errors: 0,
+                warnings: 1,
+                infos: 0,
+                hints: 0
+            }
+        );
     }
 
     #[test]
     fn sources_of_one_file_merge_and_replace_independently() {
         let mut data = DiagnosticsData::default();
         let path = Path::new("/p/a.ts");
-        data.set(server("tsls"), path, vec![diag(DiagnosticSeverity::Error, "ts")]);
-        data.set(DiagnosticSource::Compiler("typescript"), path, vec![diag(DiagnosticSeverity::Error, "pulsar")]);
+        data.set(
+            server("tsls"),
+            path,
+            vec![diag(DiagnosticSeverity::Error, "ts")],
+        );
+        data.set(
+            DiagnosticSource::Compiler("typescript"),
+            path,
+            vec![diag(DiagnosticSeverity::Error, "pulsar")],
+        );
         let merged = data.for_file(path);
         assert_eq!(merged.len(), 2);
-        data.set(DiagnosticSource::Compiler("typescript"), path, vec![diag(DiagnosticSeverity::Warning, "pulsar2")]);
+        data.set(
+            DiagnosticSource::Compiler("typescript"),
+            path,
+            vec![diag(DiagnosticSeverity::Warning, "pulsar2")],
+        );
         let merged = data.for_file(path);
         assert_eq!(merged.len(), 2, "replaced, not appended");
-        assert!(merged.iter().any(|(s, d)| matches!(s, DiagnosticSource::Compiler(_)) && d.message == "pulsar2"));
-        assert!(merged.iter().any(|(s, d)| *s == server("tsls") && d.message == "ts"));
+        assert!(merged
+            .iter()
+            .any(|(s, d)| matches!(s, DiagnosticSource::Compiler(_)) && d.message == "pulsar2"));
+        assert!(merged
+            .iter()
+            .any(|(s, d)| *s == server("tsls") && d.message == "ts"));
     }
 
     #[test]
     fn a_stopped_server_takes_its_entries_and_only_its_own() {
         let mut data = DiagnosticsData::default();
-        data.set(server("ra"), Path::new("/p/a.rs"), vec![diag(DiagnosticSeverity::Error, "a")]);
-        data.set(server("ra"), Path::new("/p/b.rs"), vec![diag(DiagnosticSeverity::Error, "b")]);
-        data.set(DiagnosticSource::Compiler("typescript"), Path::new("/p/b.rs"), vec![diag(DiagnosticSeverity::Error, "c")]);
-        let changed = data.clear_server(&ServerId { server: "ra", root: PathBuf::from("/p") });
+        data.set(
+            server("ra"),
+            Path::new("/p/a.rs"),
+            vec![diag(DiagnosticSeverity::Error, "a")],
+        );
+        data.set(
+            server("ra"),
+            Path::new("/p/b.rs"),
+            vec![diag(DiagnosticSeverity::Error, "b")],
+        );
+        data.set(
+            DiagnosticSource::Compiler("typescript"),
+            Path::new("/p/b.rs"),
+            vec![diag(DiagnosticSeverity::Error, "c")],
+        );
+        let changed = data.clear_server(&ServerId {
+            server: "ra",
+            root: PathBuf::from("/p"),
+        });
         assert_eq!(changed.len(), 2, "every file it had is announced");
         assert_eq!(data.all().len(), 1);
-        assert!(matches!(data.all()[0].1, DiagnosticSource::Compiler("typescript")));
+        assert!(matches!(
+            data.all()[0].1,
+            DiagnosticSource::Compiler("typescript")
+        ));
         // Another root of the same server is another server.
         data.set(
-            DiagnosticSource::Server(ServerId { server: "ra", root: PathBuf::from("/q") }),
+            DiagnosticSource::Server(ServerId {
+                server: "ra",
+                root: PathBuf::from("/q"),
+            }),
             Path::new("/q/x.rs"),
             vec![diag(DiagnosticSeverity::Hint, "q")],
         );
-        data.clear_server(&ServerId { server: "ra", root: PathBuf::from("/p") });
+        data.clear_server(&ServerId {
+            server: "ra",
+            root: PathBuf::from("/p"),
+        });
         assert_eq!(data.all().len(), 2);
         assert_eq!(data.clear_spec("ra").len(), 1);
     }
@@ -449,7 +541,11 @@ mod tests {
         assert_eq!(path, PathBuf::from("c:/My Project/src/a.rs"));
         assert_eq!(list[0].file_path, path.to_string_lossy());
         assert_eq!((list[0].line, list[0].column), (3, 5));
-        assert_eq!(list[0].severity, DiagnosticSeverity::Error, "missing severity is an error");
+        assert_eq!(
+            list[0].severity,
+            DiagnosticSeverity::Error,
+            "missing severity is an error"
+        );
         assert_eq!(list[0].source.as_deref(), Some("a-server"));
         let unix = json!({ "uri": "file:///home/u/a.rs", "diagnostics": [] });
         assert_eq!(

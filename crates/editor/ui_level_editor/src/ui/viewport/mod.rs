@@ -10,6 +10,7 @@
 
 mod build;
 mod build_handlers;
+mod build_mouse;
 pub mod components;
 pub mod cursor;
 pub mod game_viewport;
@@ -239,9 +240,6 @@ pub struct ViewportPanel {
     /// Join handle for the input thread
     input_thread_handle: Option<editor_task_queue::ServiceHandle<()>>,
 
-    /// Viewport hover state
-    viewport_hovered: Arc<AtomicBool>,
-
     /// Mouse tracking (all atomic for lock-free access)
     last_mouse_x: Arc<AtomicI32>,
     last_mouse_y: Arc<AtomicI32>,
@@ -312,7 +310,6 @@ impl ViewportPanel {
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
             input_thread_stop: Arc::new(AtomicBool::new(false)),
             input_thread_handle: None,
-            viewport_hovered: Arc::new(AtomicBool::new(false)),
             last_mouse_x: Arc::new(AtomicI32::new(0)),
             last_mouse_y: Arc::new(AtomicI32::new(0)),
             mouse_right_captured: Arc::new(AtomicBool::new(false)),

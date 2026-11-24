@@ -1,4 +1,4 @@
-//! Script problems on the host bus (Pulsar-Native#854, #868).
+//! Script problems on the host bus.
 //!
 //! Script errors raised while a game runs (a VM runtime error, a class
 //! whose module does not link, a waiting call a class reload had to drop)
@@ -101,6 +101,9 @@ impl ScriptProblem {
 }
 
 /// What travels on the bus.
+// One event at a time, serialized to JSON for the bus: never held in bulk, so
+// the size difference between the variants costs nothing worth a `Box`.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ScriptProblemsEvent {
     /// A new problem.
@@ -181,6 +184,7 @@ mod tests {
     #[test]
     fn problems_round_trip_the_bus_and_through_a_plugin_view() {
         let host = HostBus::local();
+        // SAFETY: the table was just exported by `host`, which outlives `plugin`.
         let plugin = unsafe { HostBus::foreign(host.export_raw().unwrap()) }.unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let s = Arc::clone(&seen);

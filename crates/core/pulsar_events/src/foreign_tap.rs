@@ -1,4 +1,4 @@
-//! A tapped export of a hub's bus (Pulsar-Native#942).
+//! A tapped export of a hub's bus.
 //!
 //! [`EventHub::export_raw`](crate::EventHub::export_raw) hands plugins a
 //! Gamma [`RawBus`] whose functions forward to the hub's real bus, except
@@ -164,9 +164,11 @@ unsafe fn pending(tap: &TapCtx, event: *const RawEventRef, origin: &str) -> Opti
         .as_ref()
         .map_or_else(|| format!("#{:016x}", event.id), |d| d.name.clone());
     let decoded = (event.kind == EVENT_DYN && !event.data.is_null())
-        // SAFETY: an EVENT_DYN payload is `len` encoded bytes.
         .then(|| {
-            DynEvent::decode(unsafe { std::slice::from_raw_parts(event.data, event.len) }).ok()
+            // SAFETY: an EVENT_DYN payload is `len` encoded bytes, valid for
+            // the call, and `data` was checked non-null above.
+            let bytes = unsafe { std::slice::from_raw_parts(event.data, event.len) };
+            DynEvent::decode(bytes).ok()
         })
         .flatten();
     let mut summary = summarize(descriptor.as_deref(), decoded.as_ref());

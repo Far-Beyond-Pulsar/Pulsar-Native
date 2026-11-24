@@ -29,6 +29,7 @@ pub(super) fn label(cmd: &SceneCommand) -> Option<&'static str> {
         SceneCommand::SetTransform { .. } => "LevelEditor.Undo.Move",
         SceneCommand::SetName { .. } => "LevelEditor.Undo.Rename",
         SceneCommand::SetVisibility { .. } => "LevelEditor.Undo.Visibility",
+        SceneCommand::SetPivots { .. } => "LevelEditor.Undo.SetOrigin",
         SceneCommand::UpdateObject { .. } => "LevelEditor.Undo.Edit",
         _ => return None,
     })
@@ -52,6 +53,7 @@ pub(super) fn scope(cmd: &SceneCommand) -> Option<Vec<String>> {
         | SceneCommand::SetName { id, .. }
         | SceneCommand::SetVisibility { id, .. } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
+        SceneCommand::SetPivots { entries } => entries.iter().map(|(id, _)| id.clone()).collect(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         _ => return None,
     })
@@ -91,6 +93,7 @@ pub(super) fn apply(
             visible,
             locked,
         } => set_visibility(state, &id, visible, locked),
+        SceneCommand::SetPivots { entries } => set_pivots(state, &entries),
         other => return Err(other),
     })
 }
@@ -247,8 +250,8 @@ fn set_transform(
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> CommandResult {
-    // `scene_edit::objects::set_transform`, NOT `get_object`+`update_object`
-    // (Pulsar-Native#561): the old whole-object round trip triggered
+    // `scene_edit::objects::set_transform`, NOT `get_object`+`update_object`:
+    // the old whole-object round trip triggered
     // `sync_registered_component_props_to_scene_db` -- a full
     // re-serialize/re-hydrate of every component on the object --
     // on every keystroke of a position/rotation/scale field, for a
@@ -297,5 +300,27 @@ fn set_visibility(
         CommandResult::ok(vec![id.clone()])
     } else {
         CommandResult::noop("Object not found or no visibility fields changed")
+    }
+}
+
+fn set_pivots(state: &mut LevelEditorState, entries: &[(String, [f32; 3])]) -> CommandResult {
+    use engine_backend::scene::pivots::set_pivot_offset;
+    use engine_backend::scene::SceneWorldExt;
+    let mut changed = Vec::new();
+    {
+        let mut world = state.scene.world_mut();
+        for (id, offset) in entries {
+            if let Some(entity) = world.entity_for(id) {
+                if set_pivot_offset(&mut world, entity, *offset) {
+                    changed.push(id.clone());
+                }
+            }
+        }
+    }
+    if changed.is_empty() {
+        CommandResult::noop("No object's origin changed")
+    } else {
+        state.scene.bump_revision(true);
+        CommandResult::ok(changed)
     }
 }

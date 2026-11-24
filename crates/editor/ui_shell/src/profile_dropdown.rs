@@ -335,7 +335,7 @@ impl ProfileDropdown {
             )
             .child(div().w_full().h(px(1.)).bg(border))
             // ── The tools' entries (`editor_tools::AccountMenuItemRegistration`) ──
-            .children(tool_sections(muted, border, true, cx))
+            .children(tool_sections(self.menu_items, muted, border, true, cx))
             // ── Collaboration section ─────────────────────────────
             .child(
                 v_flex()
@@ -425,7 +425,7 @@ impl ProfileDropdown {
             )
             .child(div().w_full().h(px(1.)).bg(border))
             // ── The tools' entries (`editor_tools::AccountMenuItemRegistration`) ──
-            .children(tool_sections(muted, border, false, cx))
+            .children(tool_sections(self.menu_items, muted, border, false, cx))
             // ── Sign In button ────────────────────────────────────
             .child(
                 Button::new("profile-sign-in")
@@ -479,13 +479,16 @@ impl Render for ProfileDropdown {
 /// The tools' account-menu entries, one section per heading, each followed
 /// by a divider. `padded` matches the signed-in card's sections.
 fn tool_sections(
+    menu_items: fn() -> Vec<AccountMenuItem>,
     muted: gpui::Hsla,
     border: gpui::Hsla,
     padded: bool,
     cx: &mut Context<ProfileDropdown>,
 ) -> Vec<AnyElement> {
     let mut sections: Vec<(String, Vec<AccountMenuItem>)> = Vec::new();
-    for item in (cx.entity().read(cx).menu_items)() {
+    // The items come in as a value: reading the entity here, during its own
+    // render, panics (it is already being updated; #1754).
+    for item in menu_items() {
         match sections.iter_mut().find(|(name, _)| *name == item.section) {
             Some((_, items)) => items.push(item),
             None => sections.push((item.section.clone(), vec![item])),

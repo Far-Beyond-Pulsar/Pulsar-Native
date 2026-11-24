@@ -1,3 +1,6 @@
+//! Project settings: the graphics, rendering and streaming groups. `register_all` adds them
+//! to a `ConfigManager`.
+
 pub mod graphics;
 pub mod rendering;
 pub mod streaming;
@@ -35,6 +38,39 @@ pub fn register_all(cfg: &'static ConfigManager) {
     rendering::register(cfg);
     streaming::register(cfg);
     for registration in pulsar_plugins::registered::<ProjectSettingsRegistration>() {
+        let before = owners(cfg);
         (registration.register)(cfg);
+        for owner in owners(cfg).difference(&before) {
+            record_origin(owner, registration.origin);
+        }
     }
+}
+
+fn owners(cfg: &ConfigManager) -> std::collections::BTreeSet<String> {
+    cfg.list_owners(NS)
+        .into_iter()
+        .map(|owner| owner.join("/"))
+        .collect()
+}
+
+/// The namespace of every project setting.
+pub const NS: &str = "project";
+
+static ORIGINS: std::sync::LazyLock<
+    std::sync::RwLock<std::collections::BTreeMap<String, &'static str>>,
+> = std::sync::LazyLock::new(Default::default);
+
+/// Remember that a plugin's registration added project owner `owner`.
+pub(crate) fn record_origin(owner: &str, origin: &'static str) {
+    if let Ok(mut origins) = ORIGINS.write() {
+        origins.insert(owner.to_string(), origin);
+    }
+}
+
+/// The package whose registration added the project settings owner `owner`
+/// (`pulsar_plugins::origin!()` of a plugin), or `None` for the engine's own
+/// project settings. The Project Settings window files a plugin's owners
+/// under that plugin.
+pub fn owner_origin(owner: &str) -> Option<&'static str> {
+    ORIGINS.read().ok()?.get(owner).copied()
 }

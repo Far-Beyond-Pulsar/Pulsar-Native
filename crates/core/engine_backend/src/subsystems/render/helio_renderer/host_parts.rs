@@ -11,7 +11,7 @@
 //! engine names no kind.
 //!
 //! How others do it: Unreal's `FSceneViewExtension`s and per-scene
-//! subsystems (Nanite's streaming manager is renderer state the engine
+//! subsystems (its geometry streaming manager is renderer state the engine
 //! module owns); Bevy's render-world resources that plugins insert and
 //! update in the extract and prepare stages. Ours is Bevy's line through a
 //! registration: the part is the plugin's, the renderer only drives it.

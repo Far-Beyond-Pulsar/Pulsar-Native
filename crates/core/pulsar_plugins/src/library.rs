@@ -153,6 +153,23 @@ pub type ExportFn = unsafe extern "C" fn(*mut FfiLibrary) -> bool;
 #[macro_export]
 macro_rules! export_library {
     () => {
+        /// Answer this library's copy of `pulsar_plugins` from the host's
+        /// view of the plugins (every plugin's registrations, the installed
+        /// and enabled sets), called before the library runs any code of its
+        /// own ([`pulsar_plugins::shared`]).
+        ///
+        /// # Safety
+        ///
+        /// `host` is the host's `HostPlugins`, alive for the process.
+        #[no_mangle]
+        pub unsafe extern "C" fn _plugin_attach_plugins(host: *const ::std::ffi::c_void) -> bool {
+            ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // SAFETY: the caller's contract.
+                unsafe { $crate::shared::attach_exported(host) }
+            }))
+            .unwrap_or(false)
+        }
+
         /// What this library's plugins register ([`pulsar_plugins::library`]).
         ///
         /// # Safety
@@ -172,6 +189,15 @@ macro_rules! export_library {
             }
         }
     };
+}
+
+/// The descriptor of the plugin root linked into this copy: a plugin built as a
+/// library of its own links exactly one (`export_library_plugin!` names the
+/// library's editor plugin after it). The first, when a bundle links several.
+pub fn linked_descriptor() -> Option<PluginDescriptor> {
+    inventory::iter::<crate::InstalledPlugin>
+        .into_iter()
+        .find_map(|linked| PluginDescriptor::parse(linked.descriptor).ok())
 }
 
 /// This copy's linked plugin roots, built, as a library exports them. The

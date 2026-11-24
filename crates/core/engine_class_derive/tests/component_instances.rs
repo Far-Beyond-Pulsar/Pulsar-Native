@@ -1,4 +1,4 @@
-//! Phase 1 exit (Pulsar-Native#1035, D1): a registered component created by
+//! A registered component created by
 //! its generic factory and attached through erased APIs behaves exactly like
 //! a direct typed insert -- value, write hooks, mutation, removal and GPU
 //! row -- with no render-specific call; several and disabled instances of

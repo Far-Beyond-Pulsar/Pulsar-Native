@@ -226,7 +226,11 @@ fn scene_of(placements: Vec<([f64; 3], f32)>) -> LevelEditorState {
         .expect("AddObject creates an object");
         let mut world = state.scene.world_mut();
         let object = world.entity_for(&id).expect("object exists");
-        pulsar_world_registry::attach_value(&mut world, object, crowd_mesh()).expect("attach mesh");
+        let mesh = StaticMeshComponent {
+            virtual_geometry: true,
+            ..crowd_mesh()
+        };
+        pulsar_world_registry::attach_value(&mut world, object, mesh).expect("attach mesh");
         pulsar_world_registry::attach_value(
             &mut world,
             object,
@@ -434,27 +438,32 @@ impl Harness {
         }
     }
 
-    /// Renders until `done(stats)` holds, at most `timeout`.
-    fn until(
-        &self,
-        renderer: &mut HelioRenderer,
-        timeout: Duration,
-        what: &str,
-        done: impl Fn(u64) -> bool,
-    ) {
+    /// Renders batches of frames until one batch was drawn entirely by a
+    /// complete ray-traced Tier 3 (proxies resident, the TLAS covering every
+    /// dense instance): the ray tracer ran, and no frame of the batch fell
+    /// back to the peel or was counted incomplete. At most `timeout`.
+    fn until_rt_complete(&self, renderer: &mut HelioRenderer, timeout: Duration) {
+        let stats = |renderer: &HelioRenderer| {
+            installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(
+                renderer,
+            )
+            .expect("the viewport renderer is built")
+            .tier3_stats()
+        };
         let start = Instant::now();
         loop {
+            let from = stats(renderer);
             let _ = self.frames(renderer, 6);
-            let stats =
-                installed_plugins::meshes_plugin::meshes_component::host_part::virtual_geometry_runtime(&renderer)
-                    .expect("the viewport renderer is built")
-                    .tier3_stats();
-            if done(stats.frames_rt) {
+            let to = stats(renderer);
+            if to.frames_rt > from.frames_rt
+                && to.frames_nonrt == from.frames_nonrt
+                && to.rt_incomplete_frames == from.rt_incomplete_frames
+            {
                 return;
             }
             assert!(
                 start.elapsed() < timeout,
-                "timed out waiting for {what}: {stats:?}"
+                "timed out waiting for complete ray-traced frames: {from:?} -> {to:?}"
             );
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -609,15 +618,11 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
         return;
     }
 
+    // Capture only once the ray tracer draws complete frames: a frame of the
+    // warm-up may still be the peel's, or ray-traced with an instance missing.
     validated(&harness, "Auto (RT warm-up)", || {
-        harness.until(
-            &mut renderer,
-            Duration::from_secs(240),
-            "the first ray-traced frame",
-            |frames_rt| frames_rt > 0,
-        );
+        harness.until_rt_complete(&mut renderer, Duration::from_secs(240));
     });
-    // Settle: proxies resident, TLAS stable.
     let rt_frame = validated(&harness, "Auto (RT)", || harness.frames(&mut renderer, 16));
     rt_frame.dump("rt");
     let before = runtime.tier3_stats();
@@ -628,6 +633,13 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
     assert!(
         after.frames_rt > before.frames_rt,
         "RT did not keep running while the scene was static: {before:?} -> {after:?}"
+    );
+    // The compared frame is a ray-traced one: no frame of the window fell back
+    // to the peel or was incomplete.
+    assert_eq!(
+        (after.frames_nonrt, after.rt_incomplete_frames),
+        (before.frames_nonrt, before.rt_incomplete_frames),
+        "a frame of the RT capture window was not a complete ray-traced frame: {before:?} -> {after:?}"
     );
     assert!(
         after.proxy_assets >= 1 && after.proxy_bytes > 0,
@@ -680,9 +692,10 @@ fn dense_crowd_resolves_with_both_tier3_backends() {
         .filter(|p| p[0] > 200 && p[1] < 80 && p[2] > 180)
         .count();
     println!("tier view: {magenta} ray-traced (magenta) pixels");
-    // Informational: the resolve merges the RT key with Tier 1/2 by depth (hardware
-    // wins ties), so on a crowd the coarse proxy rarely wins a pixel outright;
-    // that RT ran is asserted through the counters above.
+    // The ray tracer replaces Tier 1/2 inside the dense tiles it resolved, so
+    // the crowd's pixels there are its own (issue #1667: none were, because the
+    // resolve could not read the dense keys).
+    assert!(magenta > 0, "no pixel came from the ray tracer: {after:?}");
     assert!(after.dense_tiles_processed > 0, "{after:?}");
 
     // ── ForceNonRtFallback after RT: the RT machinery goes quiet ─────────

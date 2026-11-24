@@ -1,3 +1,6 @@
+//! Render functions of the multiplayer window: connection form and the session tabs (chat,
+//! file sync, presence, session info).
+
 mod chat_tab;
 mod connection_form;
 mod file_sync_tab;

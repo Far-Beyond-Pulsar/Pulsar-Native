@@ -1,4 +1,4 @@
-//! Unified left sidebar (Pulsar-Native#1000, prototype).
+//! Unified left sidebar (prototype).
 //!
 //! With `editor.navigation.unified_sidebar` on, the centre tab strip is hidden
 //! and a sidebar on the left lists the open editors and the project's content:
@@ -19,7 +19,7 @@
 //!   one click. Rows drag like tabs: onto the editor to split it, or onto a
 //!   group's header to move the tab there.
 //! - **Content.** The project's `Content` folder tree (or the project folder),
-//!   with the files in each expanded folder (#1139). Double-clicking a file,
+//!   with the files in each expanded folder. Double-clicking a file,
 //!   or a folder-based asset such as a blueprint class, opens it in its
 //!   editor; double-clicking any other folder lists it in the bottom file
 //!   drawer. The icon at a hovered row's end does the same for one click:

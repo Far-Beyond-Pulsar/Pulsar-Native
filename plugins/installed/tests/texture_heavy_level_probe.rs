@@ -1,6 +1,10 @@
 //! TEMPORARY diagnostic probe (not for commit): loads a real project's level
-//! headless through the editor's renderer and reports what its graph
-//! materials resolve to. Run with PROBE_PROJECT and PROBE_LEVEL set.
+//! headless through the editor's renderer, streaming its assets in as frames
+//! run (the level is applied without waiting for assets, like the game and
+//! editor do), and reports what its graph materials resolve to plus the frame
+//! times while it streams: the worst frame, p99 and the assets still pending.
+//! Run with PROBE_PROJECT and PROBE_LEVEL set; `PROBE_FRAME_BUDGET_MS` fails the
+//! test when the worst frame past warm-up exceeds it.
 
 use installed_plugins as _;
 use std::path::Path;
@@ -55,9 +59,12 @@ fn probe_texture_heavy_level() {
 
     engine_state::EngineContext::new().set_global();
     engine_state::set_project_path(project.clone());
-    let loaded = RuntimeLevel::load(Path::new(&level)).expect("level loads");
-    let camera = loaded.editor_camera();
-    let scene = loaded.scene();
+    // Apply without waiting for assets: they stream in through the frame pump.
+    let prepared = RuntimeLevel::prepare_for_project(Path::new(&level)).expect("level prepares");
+    let camera = prepared.editor_camera();
+    let scene: engine_backend::scene::SharedScene =
+        Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
+    RuntimeLevel::apply_prepared(prepared, &mut scene.write().world).expect("level applies");
 
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("probe-target"),
@@ -104,10 +111,17 @@ fn probe_texture_heavy_level() {
     let start = Instant::now();
     let mut last_report = Instant::now() - Duration::from_secs(100);
     let mut frames = 0u64;
+    let mut times: Vec<f32> = Vec::new();
+    let mut settled_at: Option<Duration> = None;
     while start.elapsed() < Duration::from_secs(seconds) {
+        let frame_start = Instant::now();
         renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
         renderer.render_frame(&device, &queue, &view, SIZE, SIZE, FORMAT);
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        times.push(frame_start.elapsed().as_secs_f32() * 1000.0);
+        if settled_at.is_none() && !scene.read().world.asset_work_pending() {
+            settled_at = Some(start.elapsed());
+        }
         frames += 1;
         if last_report.elapsed() > Duration::from_secs(10) {
             last_report = Instant::now();
@@ -117,6 +131,29 @@ fn probe_texture_heavy_level() {
     report(&scene, frames, start.elapsed());
     if let Ok(out) = std::env::var("PROBE_IMAGE") {
         save(&device, &queue, &texture, &out);
+    }
+
+    // Frame times while the level streamed in. The first frames build the
+    // renderer's pipelines, which is not asset streaming, so skip them.
+    let warm = times.len().min(30);
+    let mut steady: Vec<f32> = times[warm..].to_vec();
+    steady.sort_by(f32::total_cmp);
+    if let (Some(worst), Some(median)) = (steady.last(), steady.get(steady.len() / 2)) {
+        let p99 = steady[(steady.len() * 99 / 100).min(steady.len() - 1)];
+        eprintln!(
+            "PROBE frame ms: median={median:.2} p99={p99:.2} worst={worst:.2} over {} frames; assets settled at {:?}",
+            steady.len(),
+            settled_at.map(|t| format!("{:.1}s", t.as_secs_f32()))
+        );
+        if let Some(limit) = std::env::var("PROBE_FRAME_BUDGET_MS")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+        {
+            assert!(
+                *worst <= limit,
+                "worst frame {worst:.2} ms over the {limit} ms budget"
+            );
+        }
     }
 }
 

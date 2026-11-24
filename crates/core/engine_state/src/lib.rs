@@ -86,9 +86,9 @@ pub mod resource;
 pub mod store;
 
 // Settings system — backed by PulsarConfig
+pub mod plugin_settings;
 pub mod settings;
 pub mod settings_defaults;
-pub mod plugin_settings;
 
 pub use discord::DiscordPresence;
 pub use pulsar_auth::AuthProfile;

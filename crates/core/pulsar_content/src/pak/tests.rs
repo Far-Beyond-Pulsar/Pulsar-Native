@@ -44,9 +44,21 @@ fn files() -> BTreeMap<String, Vec<u8>> {
     files
 }
 
-fn pack(dir: &Path, files: &BTreeMap<String, Vec<u8>>, settings: PackSettings) -> (PackReport, Vec<PackEvent>) {
+fn pack(
+    dir: &Path,
+    files: &BTreeMap<String, Vec<u8>>,
+    settings: PackSettings,
+) -> (PackReport, Vec<PackEvent>) {
     let mut events = Vec::new();
-    let report = write_pak_set(dir, files, key(), settings, &mut |e| events.push(e), &|| false).unwrap();
+    let report = write_pak_set(
+        dir,
+        files,
+        key(),
+        settings,
+        &mut |e| events.push(e),
+        &|| false,
+    )
+    .unwrap();
     (report, events)
 }
 
@@ -93,7 +105,10 @@ fn a_set_round_trips_split_into_bounded_containers() {
     // Each container stays within the bound unless one entry alone is bigger.
     for name in &report.containers {
         let len = std::fs::metadata(dir.path().join(name)).unwrap().len();
-        assert!(len <= small().container_size || len > 100_000 / 4, "{name}: {len}");
+        assert!(
+            len <= small().container_size || len > 100_000 / 4,
+            "{name}: {len}"
+        );
     }
 }
 
@@ -101,11 +116,19 @@ fn a_set_round_trips_split_into_bounded_containers() {
 fn nothing_is_stored_in_plaintext() {
     let dir = tempfile::tempdir().unwrap();
     let mut files = files();
-    files.insert("secret/plain.txt".into(), b"THE-PLAINTEXT-MARKER the-plaintext-marker".to_vec());
+    files.insert(
+        "secret/plain.txt".into(),
+        b"THE-PLAINTEXT-MARKER the-plaintext-marker".to_vec(),
+    );
     pack(dir.path(), &files, small());
     for name in dir_files(dir.path()) {
         let bytes = std::fs::read(dir.path().join(&name)).unwrap();
-        for needle in [&b"secret/plain"[..], b"THE-PLAINTEXT-MARKER", b"default.level", b"big.mesh"] {
+        for needle in [
+            &b"secret/plain"[..],
+            b"THE-PLAINTEXT-MARKER",
+            b"default.level",
+            b"big.mesh",
+        ] {
             assert!(
                 !bytes.windows(needle.len()).any(|w| w == needle),
                 "{name} holds {}",
@@ -122,8 +145,13 @@ fn an_unchanged_set_writes_nothing_and_a_change_writes_only_itself() {
     let (first, _) = pack(dir.path(), &files, small());
 
     let (same, events) = pack(dir.path(), &files, small());
-    assert_eq!((same.written, same.reused, same.rewritten), (0, files.len(), false));
-    assert!(!events.iter().any(|e| matches!(e, PackEvent::ContainerWritten { .. })));
+    assert_eq!(
+        (same.written, same.reused, same.rewritten),
+        (0, files.len(), false)
+    );
+    assert!(!events
+        .iter()
+        .any(|e| matches!(e, PackEvent::ContainerWritten { .. })));
     assert_eq!(same.containers, first.containers);
 
     files.insert("scene/default.level".into(), payload(9, 20_000));
@@ -131,8 +159,17 @@ fn an_unchanged_set_writes_nothing_and_a_change_writes_only_itself() {
     let (patched, _) = pack(dir.path(), &files, small());
     assert_eq!((patched.written, patched.rewritten), (2, false));
     assert_eq!(patched.reused, files.len() - 2);
-    let new: Vec<_> = patched.containers.iter().filter(|c| !first.containers.contains(c)).collect();
-    assert_eq!(new.len(), 1, "the changes went to one new container: {:?}", patched.containers);
+    let new: Vec<_> = patched
+        .containers
+        .iter()
+        .filter(|c| !first.containers.contains(c))
+        .collect();
+    assert_eq!(
+        new.len(),
+        1,
+        "the changes went to one new container: {:?}",
+        patched.containers
+    );
     assert_eq!(read_all(dir.path()), files);
 }
 
@@ -147,8 +184,14 @@ fn removing_entries_drops_containers_nothing_uses() {
     let (report, _) = pack(dir.path(), &files, settings);
     assert!(!report.rewritten);
     assert_eq!(read_all(dir.path()), files);
-    let on_disk: Vec<String> = dir_files(dir.path()).into_iter().filter(|n| n.ends_with(".pak")).collect();
-    assert_eq!(on_disk, report.containers, "no container nobody reads is left");
+    let on_disk: Vec<String> = dir_files(dir.path())
+        .into_iter()
+        .filter(|n| n.ends_with(".pak"))
+        .collect();
+    assert_eq!(
+        on_disk, report.containers,
+        "no container nobody reads is left"
+    );
 }
 
 #[test]
@@ -162,7 +205,10 @@ fn too_much_dead_content_rewrites_the_whole_set() {
     files.insert("assets/meshes/big.mesh".into(), payload(77, 100_000));
     let (report, events) = pack(dir.path(), &files, settings);
     assert!(report.rewritten, "{events:?}");
-    assert!(report.containers.iter().all(|c| !first.containers.contains(c)));
+    assert!(report
+        .containers
+        .iter()
+        .all(|c| !first.containers.contains(c)));
     assert_eq!(report.removed.len(), first.containers.len());
     assert_eq!(read_all(dir.path()), files);
 }
@@ -172,8 +218,19 @@ fn another_key_is_refused_and_rewritten_over() {
     let dir = tempfile::tempdir().unwrap();
     let files = files();
     pack(dir.path(), &files, small());
-    assert!(matches!(PakSet::open(dir.path(), ContentKey([1u8; 32])), Err(PakError::WrongKey)));
-    let report = write_pak_set(dir.path(), &files, ContentKey([1u8; 32]), small(), &mut |_| {}, &|| false).unwrap();
+    assert!(matches!(
+        PakSet::open(dir.path(), ContentKey([1u8; 32])),
+        Err(PakError::WrongKey)
+    ));
+    let report = write_pak_set(
+        dir.path(),
+        &files,
+        ContentKey([1u8; 32]),
+        small(),
+        &mut |_| {},
+        &|| false,
+    )
+    .unwrap();
     assert!(report.rewritten, "a set under another key is not built on");
 }
 
@@ -208,7 +265,10 @@ fn a_cancelled_write_leaves_the_previous_set() {
     assert!(result.is_err());
     let set = PakSet::open(dir.path(), key()).unwrap();
     assert_eq!(set.read("scene/default.level").unwrap(), payload(3, 20_000));
-    let paks: Vec<String> = dir_files(dir.path()).into_iter().filter(|n| n.ends_with(".pak")).collect();
+    let paks: Vec<String> = dir_files(dir.path())
+        .into_iter()
+        .filter(|n| n.ends_with(".pak"))
+        .collect();
     assert_eq!(paks, first.containers);
 }
 

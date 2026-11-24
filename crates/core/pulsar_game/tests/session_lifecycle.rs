@@ -1,4 +1,4 @@
-//! The session scope of the component lifecycle (P2): the kind each host path
+//! The session scope of the component lifecycle: the kind each host path
 //! reports, and the end guarantee (`end_play` for every live instance before
 //! the host gets control back).
 

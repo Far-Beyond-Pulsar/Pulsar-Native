@@ -1,417 +1,17 @@
-use std::sync::Arc;
+//! The details of an open code diagnostic: its quick fixes as side-by-side
+//! diffs and a few lines of its file around the problem.
 
 use gpui::{prelude::*, *};
 use rust_i18n::t;
-use ui::Sizable as _;
-use ui::StyledExt as _;
 use ui::{
     h_flex,
-    indicator::Indicator,
     input::{InputState, TextInput},
-    scroll::ScrollbarAxis,
     v_flex, ActiveTheme as _, IconName,
 };
 
 use crate::screen::ProblemsDrawer;
 use crate::utils::filter::compute_aligned_diff;
-use crate::utils::types::{Diagnostic, DiagnosticSeverity, DiffLineType, Hint};
-
-pub fn render_flat_view(
-    drawer: &mut ProblemsDrawer,
-    filtered_diagnostics: Vec<Diagnostic>,
-    selected_index: Option<usize>,
-    window: &mut Window,
-    cx: &mut Context<ProblemsDrawer>,
-) -> impl IntoElement {
-    let drawer_entity = cx.entity().clone();
-
-    let items: Vec<Div> = filtered_diagnostics
-        .into_iter()
-        .enumerate()
-        .map(|(index, diagnostic)| {
-            let is_selected = selected_index == Some(index);
-            let entity = drawer_entity.clone();
-            let diag = diagnostic.clone();
-
-            render_diagnostic_item(
-                drawer,
-                index,
-                diagnostic,
-                is_selected,
-                move |_window, cx| {
-                    entity.update(cx, |d, cx| {
-                        d.select_diagnostic(index, cx);
-                        d.navigate_to_diagnostic(&diag, cx);
-                    });
-                },
-                window,
-                cx,
-            )
-        })
-        .collect();
-
-    div()
-        .id("problems-scroll-container")
-        .size_full()
-        .scrollable(ScrollbarAxis::Vertical)
-        .child(v_flex().w_full().p_2().gap_2().children(items))
-}
-
-pub fn render_grouped_view(
-    drawer: &mut ProblemsDrawer,
-    selected_index: Option<usize>,
-    window: &mut Window,
-    cx: &mut Context<ProblemsDrawer>,
-) -> impl IntoElement {
-    let grouped = drawer.get_grouped_diagnostics();
-    let mut files: Vec<_> = grouped.keys().cloned().collect();
-    files.sort();
-
-    let drawer_entity = cx.entity().clone();
-    let mut global_index = 0;
-    let mut file_groups: Vec<Div> = Vec::new();
-
-    for file_path in files {
-        let Some(diagnostics) = grouped.get(&file_path) else {
-            continue;
-        };
-        let file_error_count = diagnostics
-            .iter()
-            .filter(|d| matches!(d.severity, DiagnosticSeverity::Error))
-            .count();
-        let file_warning_count = diagnostics
-            .iter()
-            .filter(|d| matches!(d.severity, DiagnosticSeverity::Warning))
-            .count();
-
-        let display_path = drawer.get_display_path(&file_path);
-
-        let items: Vec<Div> = diagnostics
-            .iter()
-            .map(|diagnostic| {
-                let is_selected = selected_index == Some(global_index);
-                let entity = drawer_entity.clone();
-                let diag = diagnostic.clone();
-                let idx = global_index;
-                global_index += 1;
-
-                render_diagnostic_item(
-                    drawer,
-                    idx,
-                    diag.clone(),
-                    is_selected,
-                    move |_window, cx| {
-                        entity.update(cx, |d, cx| {
-                            d.select_diagnostic(idx, cx);
-                            d.navigate_to_diagnostic(&diag, cx);
-                        });
-                    },
-                    window,
-                    cx,
-                )
-            })
-            .collect();
-
-        let file_group = v_flex()
-            .w_full()
-            .px_3()
-            .child(
-                div()
-                    .w_full()
-                    .px_3()
-                    .py_2()
-                    .mb_2()
-                    .rounded_md()
-                    .bg(cx.theme().secondary.opacity(0.3))
-                    .border_1()
-                    .border_color(cx.theme().border.opacity(0.3))
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .gap_3()
-                            .items_center()
-                            .child(ui::Icon::new(IconName::Folder).size_4())
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().foreground)
-                                    .child(display_path.clone()),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .when(file_error_count > 0, |this| {
-                                        this.child(
-                                            h_flex()
-                                                .gap_1()
-                                                .items_center()
-                                                .px_2()
-                                                .py_0p5()
-                                                .rounded_sm()
-                                                .bg(DiagnosticSeverity::Error
-                                                    .color(cx)
-                                                    .opacity(0.15))
-                                                .child(
-                                                    ui::Icon::new(IconName::Close)
-                                                        .size_3()
-                                                        .text_color(
-                                                            DiagnosticSeverity::Error.color(cx),
-                                                        ),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                        .text_color(
-                                                            DiagnosticSeverity::Error.color(cx),
-                                                        )
-                                                        .child(file_error_count.to_string()),
-                                                ),
-                                        )
-                                    })
-                                    .when(file_warning_count > 0, |this| {
-                                        this.child(
-                                            h_flex()
-                                                .gap_1()
-                                                .items_center()
-                                                .px_2()
-                                                .py_0p5()
-                                                .rounded_sm()
-                                                .bg(DiagnosticSeverity::Warning
-                                                    .color(cx)
-                                                    .opacity(0.15))
-                                                .child(
-                                                    ui::Icon::new(IconName::TriangleAlert)
-                                                        .size_3()
-                                                        .text_color(
-                                                            DiagnosticSeverity::Warning.color(cx),
-                                                        ),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                        .text_color(
-                                                            DiagnosticSeverity::Warning.color(cx),
-                                                        )
-                                                        .child(file_warning_count.to_string()),
-                                                ),
-                                        )
-                                    }),
-                            ),
-                    ),
-            )
-            .children(items);
-
-        file_groups.push(file_group);
-    }
-
-    div()
-        .id("problems-scroll-container-grouped")
-        .size_full()
-        .scrollable(ScrollbarAxis::Vertical)
-        .child(v_flex().w_full().p_2().gap_2().children(file_groups))
-}
-
-pub fn render_diagnostic_item<F>(
-    drawer: &mut ProblemsDrawer,
-    diagnostic_index: usize,
-    diagnostic: Diagnostic,
-    is_selected: bool,
-    on_click: F,
-    window: &mut Window,
-    cx: &mut Context<ProblemsDrawer>,
-) -> Div
-where
-    F: Fn(&mut Window, &mut App) + 'static,
-{
-    let on_click = Arc::new(on_click);
-
-    let mut main = v_flex()
-        .gap_2()
-        .w_full()
-        .min_w_0()
-        .child(
-            h_flex()
-                .gap_3()
-                .items_center()
-                .w_full()
-                .min_w_0()
-                .child(
-                    h_flex()
-                        .gap_1p5()
-                        .items_center()
-                        .child(
-                            ui::Icon::new(diagnostic.severity.icon())
-                                .size_4()
-                                .text_color(diagnostic.severity.color(cx)),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(diagnostic.severity.color(cx))
-                                .child(diagnostic.severity.label()),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .text_xs()
-                        .font_family("monospace")
-                        .text_color(cx.theme().muted_foreground)
-                        .child(format!("{}:{}", diagnostic.line, diagnostic.column)),
-                )
-                .when_some(diagnostic.source.as_ref(), |this, source| {
-                    this.child(
-                        div()
-                            .px_1p5()
-                            .py_0p5()
-                            .rounded_sm()
-                            .bg(cx.theme().border)
-                            .text_xs()
-                            .font_family("monospace")
-                            .text_color(cx.theme().muted_foreground)
-                            .child(source.clone()),
-                    )
-                }),
-        )
-        .child(
-            div()
-                .w_full()
-                .min_w_0()
-                .overflow_hidden()
-                .text_sm()
-                .text_color(cx.theme().foreground)
-                .line_height(rems(1.4))
-                .child(diagnostic.message.clone()),
-        );
-
-    if diagnostic.loading_actions {
-        main = main.child(
-            h_flex()
-                .gap_2()
-                .items_center()
-                .mt_2()
-                .p_2()
-                .rounded_md()
-                .bg(cx.theme().secondary)
-                .child(
-                    Indicator::new()
-                        .with_size(ui::Size::Small)
-                        .color(cx.theme().muted_foreground),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(t!("Problems.Loading").to_string()),
-                ),
-        );
-    }
-
-    tracing::debug!(
-        "🎨 Rendering diagnostic {}: hints={}, loading={}",
-        diagnostic_index,
-        diagnostic.hints.len(),
-        diagnostic.loading_actions
-    );
-
-    if !diagnostic.hints.is_empty() && !diagnostic.loading_actions {
-        let mut hints_container = v_flex().gap_2().w_full().mt_2().child(
-            div()
-                .text_xs()
-                .font_weight(gpui::FontWeight::BOLD)
-                .text_color(cx.theme().muted_foreground)
-                .child(t!("Problems.SuggestedFixes").to_string()),
-        );
-
-        for (hint_index, hint) in diagnostic.hints.iter().enumerate() {
-            let hint_el = render_hint_diff(drawer, diagnostic_index, hint_index, hint, window, cx);
-            hints_container = hints_container.child(hint_el);
-        }
-        main = main.child(hints_container);
-    }
-
-    if !diagnostic.subitems.is_empty() {
-        let mut subitems_container = v_flex().gap_1().w_full().child(
-            div()
-                .text_xs()
-                .font_weight(gpui::FontWeight::BOLD)
-                .text_color(cx.theme().muted_foreground)
-                .child(t!("Problems.Related").to_string()),
-        );
-
-        for sub in &diagnostic.subitems {
-            subitems_container = subitems_container.child(
-                div().pl_4().py_1().child(
-                    v_flex()
-                        .gap_1()
-                        .child(
-                            h_flex()
-                                .gap_2()
-                                .items_center()
-                                .child(
-                                    ui::Icon::new(sub.severity.icon())
-                                        .size_3()
-                                        .text_color(sub.severity.color(cx)),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .font_family("monospace")
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(format!("{}:{}", sub.line, sub.column)),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().foreground)
-                                .child(sub.message.clone()),
-                        ),
-                ),
-            );
-        }
-        main = main.child(subitems_container);
-    }
-
-    div().w_full().px_3().py_2().child(
-        div()
-            .w_full()
-            .px_4()
-            .py_3()
-            .rounded_lg()
-            .border_1()
-            .border_color(if is_selected {
-                cx.theme().accent
-            } else {
-                cx.theme().border.opacity(0.5)
-            })
-            .bg(if is_selected {
-                cx.theme().accent.opacity(0.08)
-            } else {
-                cx.theme().sidebar.opacity(0.5)
-            })
-            .shadow_sm()
-            .when(is_selected, |this| {
-                this.border_l_3().border_color(cx.theme().accent)
-            })
-            .hover(|this| {
-                this.bg(cx.theme().secondary.opacity(0.7))
-                    .border_color(cx.theme().accent.opacity(0.5))
-            })
-            .cursor_pointer()
-            .on_mouse_down(gpui::MouseButton::Left, move |_, _window, cx| {
-                on_click(_window, cx);
-            })
-            .child(main),
-    )
-}
+use crate::utils::types::{Diagnostic, DiffLineType, Hint};
 
 pub fn render_hint_diff(
     _drawer: &mut ProblemsDrawer,
@@ -713,27 +313,25 @@ pub fn render_file_preview(
     window: &mut Window,
     cx: &mut Context<ProblemsDrawer>,
 ) -> Div {
-    let context_lines = 2;
-
-    if let Ok(content) =
-        engine_fs::virtual_fs::read_to_string(std::path::Path::new(&diagnostic.file_path))
-    {
-        let lines: Vec<&str> = content.lines().collect();
-        let error_line = diagnostic.line.saturating_sub(1);
-
-        if error_line < lines.len() {
-            let start_line = error_line.saturating_sub(context_lines);
-            let end_line = (error_line + context_lines + 1).min(lines.len());
-            let preview_content: String = lines[start_line..end_line].join("\n");
-
-            let key = (diagnostic.file_path.clone(), diagnostic.line);
-            let input_state = if let Some(existing) = drawer.preview_inputs.get(&key) {
-                existing.clone()
-            } else {
-                let num_lines = end_line - start_line;
+    const CONTEXT_LINES: usize = 2;
+    let key = (diagnostic.file_path.clone(), diagnostic.line);
+    // Read the file once per (file, line), not on every frame.
+    if !drawer.preview_inputs.contains_key(&key) {
+        let path = std::path::Path::new(&diagnostic.file_path);
+        let preview = engine_fs::virtual_fs::read_to_string(path)
+            .ok()
+            .and_then(|content| {
+                let lines: Vec<&str> = content.lines().collect();
+                let error_line = diagnostic.line.saturating_sub(1);
+                (error_line < lines.len()).then(|| {
+                    let start = error_line.saturating_sub(CONTEXT_LINES);
+                    let end = (error_line + CONTEXT_LINES + 1).min(lines.len());
+                    (lines[start..end].join("\n"), end - start)
+                })
+            })
+            .map(|(text, rows)| {
                 // A language's own grammar (its registration names it); the
                 // languages with no plugin keep a small table.
-                let path = std::path::Path::new(&diagnostic.file_path);
                 let language = pulsar_language::LanguageRegistry::current()
                     .for_path(path)
                     .map(|language| language.highlight_id)
@@ -750,38 +348,34 @@ pub fn render_file_preview(
                             _ => "text",
                         }
                     });
-
-                let new_state = cx.new(|cx| {
+                let state = cx.new(|cx| {
                     let mut state = InputState::new(window, cx)
                         .code_editor(language)
                         .soft_wrap(false)
-                        .rows(num_lines);
-                    state.set_value(&preview_content, window, cx);
+                        .rows(rows);
+                    state.set_value(&text, window, cx);
                     state
                 });
-                drawer.preview_inputs.insert(key, new_state.clone());
-                new_state
-            };
-
-            let calculated_height = (end_line - start_line) as f32 * 20.0 + 16.0;
-
-            return div()
-                .w_full()
-                .mt_2()
-                .rounded_md()
-                .border_1()
-                .border_color(cx.theme().border)
-                .bg(cx.theme().sidebar)
-                .overflow_hidden()
-                .child(
-                    TextInput::new(&input_state)
-                        .w_full()
-                        .h(px(calculated_height))
-                        .font_family("JetBrains Mono")
-                        .text_size(px(12.0))
-                        .border_0(),
-                );
-        }
+                (state, rows)
+            });
+        drawer.preview_inputs.insert(key.clone(), preview);
     }
+    let Some(Some((state, rows))) = drawer.preview_inputs.get(&key).cloned() else {
+        return div();
+    };
     div()
+        .w_full()
+        .rounded_md()
+        .border_1()
+        .border_color(cx.theme().border)
+        .bg(cx.theme().sidebar)
+        .overflow_hidden()
+        .child(
+            TextInput::new(&state)
+                .w_full()
+                .h(px(rows as f32 * 20.0 + 16.0))
+                .font_family("JetBrains Mono")
+                .text_size(px(12.0))
+                .border_0(),
+        )
 }

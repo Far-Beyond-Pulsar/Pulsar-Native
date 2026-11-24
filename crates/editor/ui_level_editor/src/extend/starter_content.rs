@@ -140,11 +140,11 @@ impl InstallJob {
     }
 
     pub fn phase(&self) -> Phase {
-        self.phase.lock().unwrap().clone()
+        self.phase.lock().expect("no panic under the lock").clone()
     }
 
     fn set(&self, phase: Phase) {
-        *self.phase.lock().unwrap() = phase;
+        *self.phase.lock().expect("no panic under the lock") = phase;
     }
 
     pub fn cancel(&self) {
@@ -278,7 +278,7 @@ fn jobs() -> &'static Mutex<HashMap<&'static str, Arc<InstallJob>>> {
 
 /// The latest install of pack `id` in this session, if any.
 pub fn job(id: &str) -> Option<Arc<InstallJob>> {
-    jobs().lock().unwrap().get(id).cloned()
+    jobs().lock().expect("not poisoned").get(id).cloned()
 }
 
 /// Starts installing pack `id` into the open project on a worker thread.
@@ -292,7 +292,7 @@ pub fn start(id: &str) -> Result<Arc<InstallJob>, String> {
         .ok_or("Open a project first: the content is added to its assets")?;
     let job = Arc::new(InstallJob::new());
     {
-        let mut jobs = jobs().lock().unwrap();
+        let mut jobs = jobs().lock().expect("not poisoned");
         if jobs.get(pack.id).is_some_and(|job| job.phase().running()) {
             return Err(format!("{} is already being added", pack.title));
         }

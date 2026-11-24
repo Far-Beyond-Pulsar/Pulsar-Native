@@ -1,0 +1,15 @@
+[package]
+name = "plugin_builder"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Builds every installed plugin as a library of its own and installs it where the editor loads it (plugins/editor beside the editor executable, with its integrity manifest). Run: cargo run -p plugin_builder"
+
+[dependencies]
+engine_fs = { workspace = true }
+pulsar_install_layout = { path = "../../crates/core/pulsar_install_layout" }
+serde_json = { workspace = true }
+toml = { workspace = true }
+
+[lints]
+workspace = true

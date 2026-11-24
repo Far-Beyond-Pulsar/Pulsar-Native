@@ -48,15 +48,15 @@ fn main() {
     };
     // SAFETY: see above; the named export is an `extern "C" fn() -> bool`.
     let call_bool =
-        |name: &str| unsafe { std::mem::transmute::<_, extern "C" fn() -> bool>(symbol(name))() };
+        |name: &str| unsafe { std::mem::transmute::<*const (), extern "C" fn() -> bool>(symbol(name))() };
     // SAFETY: see above; the named export is an `extern "C" fn() -> u64`.
     let call_u64 =
-        |name: &str| unsafe { std::mem::transmute::<_, extern "C" fn() -> u64>(symbol(name))() };
+        |name: &str| unsafe { std::mem::transmute::<*const (), extern "C" fn() -> u64>(symbol(name))() };
     // The plugin manager's call: the library's exported attach entry point.
     // SAFETY: the export is `AttachFn`; the runtime passed is the host's own
     // (or a leaked copy with a flipped ABI field), which lives for the process.
     let attach = |runtime: *const pulsar_world_registry::runtime::WorldRuntimes| unsafe {
-        std::mem::transmute::<_, pulsar_world_registry::runtime::AttachFn>(symbol(
+        std::mem::transmute::<*const (), pulsar_world_registry::runtime::AttachFn>(symbol(
             pulsar_world_registry::runtime::ATTACH_SYMBOL,
         ))(runtime.cast())
     };
@@ -82,7 +82,7 @@ fn main() {
             );
             // SAFETY: the export is `pulsar_plugins::library::ExportFn`.
             let export = unsafe {
-                std::mem::transmute::<_, pulsar_plugins::library::ExportFn>(symbol(
+                std::mem::transmute::<*const (), pulsar_plugins::library::ExportFn>(symbol(
                     pulsar_plugins::library::EXPORT_SYMBOL,
                 ))
             };

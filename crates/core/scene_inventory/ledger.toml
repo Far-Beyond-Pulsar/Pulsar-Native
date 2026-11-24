@@ -358,12 +358,22 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/core/pulsar_world_registry/src/component_lifecycle.rs"
+file = "crates/core/pulsar_world_registry/src/component_lifecycle/construct.rs"
+count = 1
+owner = "core::pulsar_world_registry::component_lifecycle"
+disposition = "keep: each game session's own construct cursor per class with a construct, reading the writes that queue instances to construct and falling back to a full scan when the journal overflowed"
+target_contract = "Phase 6; 04-state-notifications.md"
+test = "crates/core/pulsar_world_registry/src/component_lifecycle/tests.rs (a_hundred_writes_in_one_frame_are_one_construct, a_restore_is_one_rescan_not_n_constructs)"
+status = "verified"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/core/pulsar_world_registry/src/component_lifecycle/tick.rs"
 count = 1
 owner = "core::pulsar_world_registry::component_lifecycle"
 disposition = "keep: each game session's own removal cursor per registered native component type (Phase 6), replacing a drain of the change tracker's removal list that the renderer's end_change_window also drained"
 target_contract = "Phase 6; 04-state-notifications.md"
-test = "crates/core/pulsar_world_registry/src/component_lifecycle.rs (a_removal_drained_by_another_reader_still_ends_the_instance)"
+test = "crates/core/pulsar_world_registry/src/component_lifecycle/tests.rs (a_removal_drained_by_another_reader_still_ends_the_instance)"
 status = "verified"
 
 

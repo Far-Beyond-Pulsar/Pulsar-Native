@@ -1,3 +1,6 @@
+//! Types shared by the type-editing UI: asset kinds and payloads, code generation, drag and
+//! text-edit events, errors, the type index, validation and window types.
+
 pub mod asset_kind;
 pub mod asset_payload;
 pub mod codegen;

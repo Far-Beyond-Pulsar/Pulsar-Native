@@ -183,9 +183,18 @@ mod tests {
     #[test]
     fn a_path_goes_to_the_language_with_the_longest_extension() {
         let registry = registry();
-        assert_eq!(registry.for_path(Path::new("/p/a.ts")).map(|l| l.id), Some("ts"));
-        assert_eq!(registry.for_path(Path::new("/p/a.MTS")).map(|l| l.id), Some("ts"));
-        assert_eq!(registry.for_path(Path::new("/p/a.d.ts")).map(|l| l.id), Some("dts"));
+        assert_eq!(
+            registry.for_path(Path::new("/p/a.ts")).map(|l| l.id),
+            Some("ts")
+        );
+        assert_eq!(
+            registry.for_path(Path::new("/p/a.MTS")).map(|l| l.id),
+            Some("ts")
+        );
+        assert_eq!(
+            registry.for_path(Path::new("/p/a.d.ts")).map(|l| l.id),
+            Some("dts")
+        );
         assert!(registry.for_path(Path::new("/p/ts")).is_none());
         assert!(registry.for_path(Path::new("/p/.ts")).is_none());
         assert!(registry.for_path(Path::new("/p/readme.md")).is_none());
@@ -215,7 +224,11 @@ mod tests {
         assert!(registry.is_class_dir(&dir));
         assert_eq!(registry.class_languages(&dir).len(), 1);
         std::fs::write(dir.join("graph.json"), "").unwrap();
-        let ids: Vec<_> = registry.class_languages(&dir).iter().map(|l| l.id).collect();
+        let ids: Vec<_> = registry
+            .class_languages(&dir)
+            .iter()
+            .map(|l| l.id)
+            .collect();
         assert_eq!(ids, ["graph", "ts"]);
         assert_eq!(
             registry.language_of_marker("graph.json").map(|l| l.id),

@@ -1,3 +1,5 @@
+//! Widgets of the loading screen: progress bar, splash artwork and task list.
+
 mod progress_bar;
 mod splash;
 mod task_list;

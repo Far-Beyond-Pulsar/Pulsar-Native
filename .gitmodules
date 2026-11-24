@@ -126,3 +126,9 @@
 [submodule "plugins/vendor/rust"]
 	path = plugins/vendor/rust
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Rust
+[submodule "plugins/vendor/gameplay"]
+	path = plugins/vendor/gameplay
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Gameplay
+[submodule "plugins/vendor/mocap"]
+	path = plugins/vendor/mocap
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Mocap

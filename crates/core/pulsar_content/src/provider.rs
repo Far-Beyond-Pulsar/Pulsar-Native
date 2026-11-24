@@ -161,8 +161,15 @@ mod tests {
         let root = tmp.path().join("Content");
         std::fs::create_dir_all(&root).unwrap();
         let files = [("src/classes/A/prefab.json".to_string(), b"{}".to_vec())].into();
-        write_pak_set(&root, &files, ContentKey([3; 32]), PackSettings::DEV, &mut |_| {}, &|| false)
-            .unwrap();
+        write_pak_set(
+            &root,
+            &files,
+            ContentKey([3; 32]),
+            PackSettings::DEV,
+            &mut |_| {},
+            &|| false,
+        )
+        .unwrap();
         std::fs::write(root.join("loose.txt"), b"loose").unwrap();
         let outside = tmp.path().join("outside.txt");
         std::fs::write(&outside, b"out").unwrap();

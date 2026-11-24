@@ -397,7 +397,7 @@ fn default_level_loads_the_cathedral() {
 }
 
 /// A `StaticMeshComponent` data payload carrying every texture slot the
-/// current class requires (Helio#237), for the HLFS demo scene builder.
+/// current class requires, for the HLFS demo scene builder.
 /// Empty paths mean "slot unassigned".
 fn static_mesh_component_json(mesh_asset: &str) -> Value {
     serde_json::json!({

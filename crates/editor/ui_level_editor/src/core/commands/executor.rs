@@ -74,7 +74,7 @@ fn apply_command(state: &mut LevelEditorState, cmd: SceneCommand) -> CommandResu
 /// GPUI-thread callers (panel action handlers) should additionally call
 /// `cx.notify()` after this returns.
 ///
-/// Also the sole write path onto the undo stack (Pulsar-Native#554): for
+/// Also the sole write path onto the undo stack: for
 /// every variant except `SelectObject` (selection isn't undo-worthy), the
 /// scene's pre-command state is captured before running `cmd` and committed
 /// to `state.scene`'s undo history only if the command actually changed
@@ -95,9 +95,14 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     if result.changed {
         let mut world = state.scene.world_mut();
         if engine_backend::scene::sublevel_display::needs_level_instance_sync(&world) {
-            engine_backend::scene::sublevel_display::sync_level_instances(&mut world);
+            // Never reads a file here (this is the UI thread): a level that is
+            // not read yet comes from a worker, applied by the viewport's frame.
+            let changed =
+                engine_backend::scene::sublevel_display::sync_level_instances_deferred(&mut world);
             drop(world);
-            state.scene.bump_revision(false);
+            if changed {
+                state.scene.bump_revision(false);
+            }
         }
     }
 

@@ -1,3 +1,6 @@
+//! The component types of this crate: camera, ground materials, movability, sublevel
+//! display and reflected lists.
+
 mod camera_component;
 mod ground_materials;
 mod movability;

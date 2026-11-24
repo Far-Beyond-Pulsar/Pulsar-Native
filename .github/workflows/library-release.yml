@@ -1,0 +1,218 @@
+name: Shared library release
+
+# Reusable. Each shared-library repository (WGPUI, WGPUI-Component, Pulsar-Profiling, Pulsar-Reflection, SceneDB, Helio)
+# calls this from its own `sdk-release.yml`, so the release is written once:
+#
+#   on:
+#     push:
+#       branches: [main]
+#       paths: ["<crate_dir>/Cargo.toml"]
+#     workflow_dispatch:
+#   jobs:
+#     release:
+#       uses: Far-Beyond-Pulsar/Pulsar-Native/.github/workflows/library-release.yml@main
+#       with:
+#         package: <name>_dylib
+#         crate_dir: <where the dylib crate is in this repository>
+#         mono_path: <where Pulsar-Native vendors this repository; empty when it is pinned by git rev>
+#       permissions:
+#         contents: write
+#
+# A push to `main` that raises the dylib crate's version (or a manual run) tags `shared-v<version>` and attaches,
+# per platform:
+#
+#   - the library (`<package>-<platform>.<ext>`) and, on Windows, its import library (`.dll.lib`);
+#   - `<package>-<platform>-sdk.tar.gz`: the crates inside the library, already compiled (a Cargo SDK: `cargo sdk`,
+#     https://github.com/Far-Beyond-Pulsar/Cargo-SDK), which plugin and engine builds use instead of compiling them;
+#   - `<package>-<platform>-manifest.json`: toolchain, target, source and the hash of Cargo.lock it was built with.
+#
+# The library is built inside Pulsar-Native's workspace with this repository's commit placed where the workspace
+# vendors it: the editor and every plugin compile against that workspace's `Cargo.lock`, `[patch]` entries and
+# pinned feature set (`tools/workspace_hack`), and a crate is only reused when its hash matches. The SDK is cut from
+# `sdk_roots`, the package that depends on all six libraries, so the library, its SDK and every consumer's build see
+# one feature set.
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: "The dylib package, e.g. wgpui_dylib"
+        required: true
+        type: string
+      crate_dir:
+        description: "Directory of the dylib crate in the calling repository, e.g. dylib"
+        required: true
+        type: string
+      mono_path:
+        description: "Where Pulsar-Native vendors the calling repository (empty: pinned by git revision)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  RUSTUP_MAX_RETRIES: "10"
+  PACKAGE: ${{ inputs.package }}
+  CRATE_DIR: ${{ inputs.crate_dir }}
+  MONO_PATH: ${{ inputs.mono_path }}
+  CARGO_SDK_VERSION: v0.1.1
+
+jobs:
+  gate:
+    name: version gate
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.info.outputs.release }}
+      version: ${{ steps.info.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: info
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          version() { sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' | head -1; }
+          current=$(version < "$CRATE_DIR/Cargo.toml")
+          previous=$(git show "HEAD^1:$CRATE_DIR/Cargo.toml" 2>/dev/null | version)
+          release=false
+          if [ "$current" != "$previous" ] || [ "$EVENT" = "workflow_dispatch" ]; then release=true; fi
+          echo "version=$current" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "version=$current previous=$previous release=$release"
+
+  build:
+    name: ${{ matrix.platform }}
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        # No windows-i686: wgpu's DX12 shader compiler (mach-dxcompiler-rs) has no 32-bit Windows binaries.
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  platform: linux-x86_64,   prefix: lib, ext: so }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,    platform: windows-x86_64, prefix: "",  ext: dll }
+          - { os: windows-latest, target: aarch64-pc-windows-msvc,   platform: windows-arm64,  prefix: "",  ext: dll }
+          - { os: macos-latest,   target: x86_64-apple-darwin,       platform: macos-x86_64,   prefix: lib, ext: dylib }
+          - { os: macos-latest,   target: aarch64-apple-darwin,      platform: macos-arm64,    prefix: lib, ext: dylib }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: Far-Beyond-Pulsar/Pulsar-Native
+          ref: main
+          submodules: recursive
+          persist-credentials: false
+          path: pulsar
+
+      - name: Place this commit where Pulsar-Native vendors the repository
+        if: env.MONO_PATH != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          path: pulsar/${{ env.MONO_PATH }}
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          target: ${{ matrix.target }}
+          cache-workspaces: pulsar
+          # No `-D warnings`: it is a lint, it is part of every crate's hash (the engine release does not set it), and one
+          # warning in one crate on one platform would fail a release. The SDK and its consumers build with the same flags.
+          rustflags: ""
+
+      # The repository pins its toolchain (rust-toolchain.toml in the checkout), which is not the one the step above
+      # set up: the target (a cross build, or i686 / arm64 on an x86_64 runner) must be installed for the pinned one.
+      - name: Install the target for the pinned toolchain
+        working-directory: pulsar
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
+            libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev libudev-dev \
+            clang libclang-dev cmake
+
+      - name: Install macOS system dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake pkg-config
+
+      # The released binaries of the tool: nothing is compiled here.
+      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.1
+
+      # Build every shared library (`sdk_roots`) and cut the SDK of this one: its crates, and everything under
+      # them, already compiled. A later build of a plugin serves them from it instead of compiling them again.
+      - name: Build the library and cut its SDK
+        working-directory: pulsar
+        shell: bash
+        run: |
+          cargo sdk pack --out "$RUNNER_TEMP/sdk" --archive "$RUNNER_TEMP/sdk.tar.gz" \
+            --package "$PACKAGE" -- --release --target "${{ matrix.target }}" -p sdk_roots
+
+      - name: Package
+        working-directory: pulsar
+        shell: bash
+        run: |
+          out="$GITHUB_WORKSPACE/out"
+          mkdir -p "$out"
+          release="target/${{ matrix.target }}/release"
+          asset="${PACKAGE}-${{ matrix.platform }}"
+          cp "$release/${{ matrix.prefix }}${PACKAGE}.${{ matrix.ext }}" "$out/$asset.${{ matrix.ext }}"
+          if [ "${{ matrix.ext }}" = "dll" ]; then cp "$release/${PACKAGE}.dll.lib" "$out/$asset.dll.lib"; fi
+          cp "$RUNNER_TEMP/sdk.tar.gz" "$out/$asset-sdk.tar.gz"
+          size=$(wc -c < "$out/$asset-sdk.tar.gz")
+          echo "SDK archive: $size bytes"
+          # A release asset can be at most 2 GiB.
+          if [ "$size" -ge 2147483648 ]; then echo "::error::the SDK archive is over GitHub's 2 GiB asset limit"; exit 1; fi
+          sha() { if command -v sha256sum > /dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+          {
+            echo "{"
+            echo "  \"package\": \"$PACKAGE\","
+            echo "  \"version\": \"${{ needs.gate.outputs.version }}\","
+            echo "  \"target\": \"${{ matrix.target }}\","
+            echo "  \"source\": \"${GITHUB_REPOSITORY}@${GITHUB_SHA}\","
+            echo "  \"cargo_lock_sha256\": \"$(sha Cargo.lock)\","
+            echo "  \"rustc\": \"$(rustc -vV | tr '\n' ' ')\""
+            echo "}"
+          } > "$out/$asset-manifest.json"
+          (cd "$out" && for f in *; do echo "$(sha "$f")  $f"; done) > "$asset.sha256"
+          mv "$asset.sha256" "$out/"
+          ls -l "$out"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: out
+          merge-multiple: true
+      # A tag of its own (`shared-v<version>`), so a consumer finds the newest one by that prefix and the
+      # repository's own releases (Helio v0.20.0 and so on) are never mistaken for it.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: shared-v${{ needs.gate.outputs.version }}
+          name: ${{ env.PACKAGE }} v${{ needs.gate.outputs.version }}
+          make_latest: "false"
+          files: out/*
+          fail_on_unmatched_files: true

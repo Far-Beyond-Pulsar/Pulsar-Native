@@ -135,7 +135,7 @@ mod actors {
     fn lifecycle_order() {
         let log = Arc::new(Mutex::new(Vec::new()));
         let mut tick_loop = TickLoop::new(TickMode::default(), 0);
-        // #634: actors register into the loop's SHARED scene store (the one
+        // Actors register into the loop's SHARED scene store (the one
         // renderers read), not a private world.
         tick_loop.register_native_actor(Counter(log.clone()));
         assert!(
@@ -174,7 +174,7 @@ mod actors {
         assert_eq!(log.lock().unwrap().clone(), vec!["begin", "tick", "end"]);
     }
 
-    /// #634: a mutation an actor/system makes through the shared store is
+    /// A mutation an actor/system makes through the shared store is
     /// visible to any other holder of the same handle (e.g. the renderer)
     /// -- there is exactly one world, and the tick loop mutates it.
     #[test]
@@ -282,7 +282,7 @@ mod script_runtime_bindings {
         assert!(runtime.natives().get("world::find_by_name").is_some());
     }
 
-    /// #921: binding a script instance to a placed class fills each hidden
+    /// Binding a script instance to a placed class fills each hidden
     /// `__slot:<uuid>` variable once with a handle to that instance's real
     /// component (here the second LightComponent, on a generated child).
     /// A slot the instance does not have stays `none`, reported; there is
@@ -371,7 +371,7 @@ mod script_runtime_bindings {
     }
 }
 
-/// #922: the script section of the generated `engine_main::setup()`
+/// The script section of the generated `engine_main::setup()`
 /// (`engine_backend::services::core_project_builder`), compiled in-tree.
 #[cfg(test)]
 mod generated_setup_script_section {

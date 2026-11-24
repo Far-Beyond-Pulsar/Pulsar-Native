@@ -233,8 +233,6 @@ pub fn string_substring(text: String, start: i64, end: i64) -> String {
 ///
 /// # Notes
 /// If count is negative, it is treated as zero. Use this function for string multiplication or pattern generation.
-/// # String Repeat
-/// Repeats a string a specified number of times.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_repeat(text: String, count: i64) -> String {
     text.repeat(count.max(0) as usize)
@@ -277,8 +275,6 @@ pub fn string_trim(text: String) -> String {
 ///
 /// # Notes
 /// Non-alphabetic characters are not affected.
-/// # String Uppercase
-/// Converts a string to uppercase.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_uppercase(text: String) -> String {
     text.to_uppercase()
@@ -297,8 +293,6 @@ pub fn string_uppercase(text: String) -> String {
 ///
 /// # Notes
 /// The conversion uses Unicode-aware lowercasing. Non-alphabetic characters are unaffected.
-/// # String Lowercase
-/// Converts a string to lowercase.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_lowercase(text: String) -> String {
     text.to_lowercase()
@@ -345,8 +339,6 @@ pub fn string_split(text: String, delimiter: String) -> Vec<String> {
 ///
 /// # Notes
 /// If the vector is empty, the output will be an empty string. If the separator is empty, the strings are concatenated directly.
-/// # String Join
-/// Joins a vector of strings with a separator.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_join(strings: Vec<String>, separator: String) -> String {
     strings.join(&separator)
@@ -375,7 +367,7 @@ pub fn string_join(strings: Vec<String>, separator: String) -> String {
 /// Formats a string by replacing placeholders with values.
 #[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
 pub fn string_format(template: String, value: String) -> String {
-    format!("{}", template.replacen("{}", &value, 1))
+    template.replacen("{}", &value, 1)
 }
 
 // =============================================================================
@@ -475,8 +467,6 @@ pub fn string_to_bool(text: String) -> Result<bool, String> {
 ///
 /// # Notes
 /// The output uses the default formatting for the numeric type.
-/// # Number to String
-/// Converts a number to its string representation.
 #[blueprint(type: NodeTypes::pure, category: "String/Conversion", color: "#7ED321")]
 pub fn number_to_string(number: f64) -> String {
     number.to_string()

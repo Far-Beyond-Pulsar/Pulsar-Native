@@ -9,14 +9,14 @@ pub fn register(cfg: &'static ConfigManager) {
             "bloom_enabled",
             SchemaEntry::new("Enable bloom glow effect on bright areas", true)
                 .label("Bloom")
-                .page("Graphics")
+                .page("Bloom")
                 .field_type(FieldType::Checkbox),
         )
         .setting(
             "bloom_intensity",
             SchemaEntry::new("Intensity of the bloom effect", 1.0_f64)
                 .label("Bloom Intensity")
-                .page("Graphics")
+                .page("Bloom")
                 .field_type(FieldType::Slider {
                     min: 0.0,
                     max: 5.0,

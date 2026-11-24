@@ -138,8 +138,6 @@ pub fn modulo(a: i64, b: i64) -> i64 {
 ///
 /// # Example
 /// If `value` is -5, the output will be 5.
-/// # Abs
-/// Returns the absolute value of a number.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn abs(value: f64) -> f64 {
     value.abs()
@@ -227,8 +225,6 @@ pub fn floor(value: f64) -> f64 {
 ///
 /// # Notes
 /// The output is a float, not an integer type. Rounds half-way cases away from zero (e.g., 2.5 -> 3.0, -2.5 -> -3.0).
-/// # Round
-/// Rounds a number to the nearest integer.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn round(value: f64) -> f64 {
     value.round()
@@ -275,8 +271,6 @@ pub fn power(base: f64, exponent: f64) -> f64 {
 /// # Notes
 /// The input must be non-negative. Negative inputs will return NaN (not a number).
 /// Use this node for root calculations, distance formulas, or normalization.
-/// # Square Root
-/// Calculates the square root of a number.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn sqrt(value: f64) -> f64 {
     value.sqrt()
@@ -300,8 +294,6 @@ pub fn sqrt(value: f64) -> f64 {
 ///
 /// # Notes
 /// The input should be in radians. For degrees, convert to radians before using this node.
-/// # Sin
-/// Calculates the sine of an angle in radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn sin(angle: f64) -> f64 {
     angle.sin()
@@ -320,8 +312,6 @@ pub fn sin(angle: f64) -> f64 {
 ///
 /// # Notes
 /// The input should be in radians. For degrees, convert to radians before using this node.
-/// # Cos
-/// Calculates the cosine of an angle in radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn cos(angle: f64) -> f64 {
     angle.cos()
@@ -341,8 +331,6 @@ pub fn cos(angle: f64) -> f64 {
 ///
 /// # Notes
 /// The tangent function has asymptotes at odd multiples of π/2. Inputting such values will result in very large outputs or `NaN`.
-/// # Tan
-/// Calculates the tangent of an angle in radians.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn tan(angle: f64) -> f64 {
     angle.tan()
@@ -385,8 +373,6 @@ pub fn degrees_to_radians(degrees: f64) -> f64 {
 ///
 /// # Notes
 /// Use this node when you need to convert angles for display, user input, or APIs that expect degrees.
-/// # Radians to Degrees
-/// Converts an angle from radians to degrees.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn radians_to_degrees(radians: f64) -> f64 {
     radians.to_degrees()
@@ -407,8 +393,6 @@ pub fn radians_to_degrees(radians: f64) -> f64 {
 ///
 /// # Notes
 /// The result is always the minimal difference, taking wrap-around into account.
-/// # Angle Difference
-/// Calculates the shortest angular difference between two angles.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn angle_difference(angle1: f64, angle2: f64) -> f64 {
     let diff = angle2 - angle1;
@@ -437,8 +421,6 @@ pub fn angle_difference(angle1: f64, angle2: f64) -> f64 {
 ///
 /// # Notes
 /// Uses the standard min function for the numeric type.
-/// # Min
-/// Returns the minimum of two numbers.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn min(a: f64, b: f64) -> f64 {
     a.min(b)
@@ -459,8 +441,6 @@ pub fn min(a: f64, b: f64) -> f64 {
 ///
 /// # Notes
 /// Uses the standard max function for the numeric type.
-/// # Max
-/// Returns the maximum of two numbers.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn max(a: f64, b: f64) -> f64 {
     a.max(b)
@@ -485,8 +465,6 @@ pub fn max(a: f64, b: f64) -> f64 {
 ///
 /// # Notes
 /// Useful for enforcing numeric constraints and preventing out-of-range values.
-/// # Clamp
-/// Clamps a value between a minimum and maximum.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn clamp(value: f64, min: f64, max: f64) -> f64 {
     value.clamp(min, max)
@@ -660,8 +638,6 @@ pub fn distance2d(a: (f32, f32), b: (f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Useful for geometry, physics, and spatial calculations.
-/// # Distance 3D
-/// Calculates the Euclidean distance between two 3D points.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn distance3d(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
     let (x1, y1, z1) = a;
@@ -691,8 +667,6 @@ pub fn distance3d(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
 ///
 /// # Notes
 /// Useful for animations, effects, or periodic triggers.
-/// # Bounce Value
-/// Creates a bouncing value that oscillates between 0 and 1.
 #[blueprint(type: NodeTypes::pure, category: "Math", color: "#4A90E2")]
 pub fn bounce_value(time: f32, frequency: f32) -> f32 {
     (time * frequency).sin().abs()

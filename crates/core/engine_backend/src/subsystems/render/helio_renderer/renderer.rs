@@ -14,8 +14,8 @@ use super::interaction::SceneInteraction;
 #[cfg(test)]
 use super::scene_renderer::ortho_camera;
 use super::scene_renderer::{
-    ortho_depth_range, DeviceOwner, FrameCrop, FrameProjection, FrameView, SceneRenderer,
-    SceneRendererOptions,
+    ortho_depth_range, DeviceOwner, FrameCrop, FrameProjection, FrameView, PreparedFrame,
+    SceneRenderer, SceneRendererOptions,
 };
 type GizmoMode = GizmoType;
 
@@ -90,6 +90,132 @@ impl FramePhases {
             .join(" ")
     }
 }
+
+/// Opens a WGPUI flamegraph span for the rest of the enclosing block when the
+/// editor UI is built in.
+macro_rules! frame_span {
+    ($name:literal) => {
+        #[cfg(feature = "editor-ui")]
+        gpui::flamegraph_span!($name);
+    };
+}
+
+/// Marks the render frame in the WGPUI timeline when the editor UI is built in.
+macro_rules! frame_profile_bridge {
+    () => {
+        #[cfg(feature = "editor-ui")]
+        let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
+    };
+}
+
+/// Opens the pointer-event span while `$active` is true, when the editor UI
+/// is built in.
+macro_rules! pointer_events_span {
+    ($active:expr) => {
+        #[cfg(feature = "editor-ui")]
+        let _pointer_events_profile = ($active).then(|| {
+            gpui::enter_span(
+                gpui::SpanName::Static("pulsar: HelioRenderer::pointer_events"),
+                gpui::SpanCategory::UserDefined,
+                None,
+            )
+        });
+    };
+}
+
+/// Keeps a frame's identifying values in a local for crash dumps and debuggers.
+macro_rules! frame_diagnostic {
+    ($value:expr) => {
+        let _frame_diagnostic = $value;
+    };
+}
+
+/// The size and format of the surface a frame is drawn to.
+#[derive(Clone, Copy)]
+struct SurfaceSpec {
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+}
+
+/// What one editor frame draws into.
+struct FrameRequest<'a> {
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    view: &'a wgpu::TextureView,
+    surface: SurfaceSpec,
+    /// The tile of a larger output being drawn, if any.
+    crop: Option<FrameCrop>,
+}
+
+/// When a frame started and how long since the previous one.
+struct FrameClock {
+    start: Instant,
+    now: Instant,
+    /// Seconds since the previous frame; zero for a capture tile.
+    dt: f32,
+}
+
+/// One frame's camera move: where it started and ended, the per-axis steps
+/// and the pan.
+struct FlyMove {
+    before: DVec3,
+    end: DVec3,
+    steps: [DVec3; 3],
+    pan: DVec3,
+}
+
+/// What camera updating changed this frame.
+struct CameraUpdate {
+    view_kind_changed: bool,
+    camera_synced: bool,
+}
+
+/// Editor state sampled before idle detection.
+struct EditorFrameState {
+    postprocess_changed: bool,
+    debug_view_changed: bool,
+    ortho_half_height: f32,
+    view_payloads: Vec<(&'static str, Option<ViewPayload>)>,
+}
+
+/// Which inputs changed since the last frame; any of them wakes an idle viewport.
+#[derive(Clone, Copy)]
+struct FrameChanges {
+    needs_resize: bool,
+    view_kind: bool,
+    camera_synced: bool,
+    postprocess: bool,
+    debug_view: bool,
+    view_payloads: bool,
+    measured_deferred_light: bool,
+}
+
+/// The outcome of idle detection for one frame.
+struct FrameActivity {
+    viewport_resized: bool,
+    realtime: bool,
+    scene_revision: u64,
+    has_pending_scene: bool,
+    temporal_activity: bool,
+    is_idle: bool,
+    camera_stopped: bool,
+}
+
+/// Timings of one drawn frame, in milliseconds.
+#[derive(Clone, Copy)]
+struct FrameTimes {
+    frame_ms: f32,
+    sync_ms: f64,
+    prepare_ms: f64,
+    render_ms: f64,
+}
+
+mod camera_move;
+mod frame;
+mod frame_report;
+mod frame_steps;
+mod prepare;
 
 // ── Compatibility types retained for existing UI wiring ───────────────────────
 
@@ -380,7 +506,7 @@ pub struct ViewportDebugView {
 }
 
 /// A gizmo drag that moved its objects, reported when the mouse is released
-/// so the editor can record it as one undo step (#931).
+/// so the editor can record it as one undo step.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompletedDrag {
     /// Each object the drag moved, with the (parent-relative) transform it
@@ -389,7 +515,7 @@ pub struct CompletedDrag {
 }
 
 /// A gizmo drag started on an object whose authored movability promises a
-/// fixed transform (Pulsar-Native#837). Moving it anyway leaves
+/// fixed transform. Moving it anyway leaves
 /// cached data (the static shadow atlas) describing its old place.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StaticDragWarning {
@@ -708,6 +834,17 @@ struct HelioInner {
 
 use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
 
+impl HelioInner {
+    /// Hand the queued per-view payloads to the scene; true when there were any.
+    fn apply_view_payloads(&mut self, payloads: Vec<(&'static str, Option<ViewPayload>)>) -> bool {
+        let changed = !payloads.is_empty();
+        for (key, payload) in payloads {
+            self.scene.set_view_payload(key, payload);
+        }
+        changed
+    }
+}
+
 impl HelioRenderer {
     /// Publishes the debug views the current pipeline's passes advertise, for
     /// the viewport's view menu. A pipeline swap changes them.
@@ -943,6 +1080,12 @@ impl HelioRenderer {
             .map_or_else(Vec::new, |inner| inner.scene.diagnostics())
     }
 
+    /// The pipeline's state and the last rejected shader edit (see
+    /// `SceneRenderer::health`); `None` before the renderer is built.
+    pub fn health(&self) -> Option<(helio::PipelineStatus, Option<String>)> {
+        self.inner.as_ref().map(|inner| inner.scene.health())
+    }
+
     /// The camera's view direction in world space.
     pub fn camera_forward(&self) -> Vec3 {
         self.camera_basis().0
@@ -972,949 +1115,6 @@ impl HelioRenderer {
 
     pub fn spike_log_config(&self) -> RenderSpikeLogConfig {
         self.spike_log_config
-    }
-
-    /// Prepare or rebuild Helio's graph without holding WGPUI's submit guard.
-    ///
-    /// Graph construction can compile many pipelines. The editor calls this
-    /// before taking the surface submit guard so a resize/reconfigure of the
-    /// editor window is never held up by first-frame initialization.
-    pub fn prepare_for_render(
-        &mut self,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-    ) -> bool {
-        // Level loading runs on the UI thread while rendering can hold the
-        // engine mutex. Consume the camera mailbox before camera input and
-        // idle detection so the saved pose cannot be silently skipped.
-        let pending_camera = self
-            .pending_camera_state
-            .lock()
-            .ok()
-            .and_then(|mut pending| pending.take());
-        if let Some(camera) = pending_camera {
-            self.set_editor_camera_state(camera);
-            self.reset_taa_next_frame = true;
-        }
-
-        // Graph-affecting project settings rebuild at a frame boundary. This
-        // keeps pass topology and its GPU allocations in sync with the UI.
-        let graph_settings = self.graph_settings_cache.load();
-        if self.inner.is_some()
-            && self.applied_graph_settings.as_ref().is_some_and(|applied| {
-                !Arc::ptr_eq(applied, &graph_settings) && !applied.same_graph(&graph_settings)
-            })
-        {
-            tracing::info!(
-                "Rebuilding Helio renderer because graph-affecting project settings changed"
-            );
-            self.inner = None;
-            self.applied_graph_settings = None;
-            self.reset_taa_next_frame = true;
-        }
-
-        // A different level pipeline, or the same asset saved again, is a
-        // different pass topology: the renderer swaps its pipeline at this frame
-        // boundary (the scene, its GPU mirror and the device stay). Compared as
-        // states, so a pipeline registering after it was requested (a project
-        // graph loading) replaces the status screen of "not found".
-        let wanted_pipeline =
-            super::pipelines::pipeline_state(self.requested_pipeline.get().as_deref());
-        if self.applied_pipeline.as_ref() != Some(&wanted_pipeline) {
-            if let Some(inner) = self.inner.as_mut() {
-                tracing::info!(
-                    previous_pipeline = ?self.applied_pipeline,
-                    wanted_pipeline = ?wanted_pipeline,
-                    "Swapping the Helio renderer's pipeline"
-                );
-                inner.scene.set_pipeline_state(wanted_pipeline.clone());
-                self.applied_pipeline = Some(wanted_pipeline);
-                self.reset_taa_next_frame = true;
-                self.publish_debug_views();
-            }
-        }
-
-        // A frame for another device (the old one was lost and a new one
-        // made) rebuilds the renderer there; `ensure_gpu_mirror` moves the
-        // scene's GPU copy along. On a lost device nothing is drawn: every
-        // call would fail.
-        if self
-            .inner
-            .as_ref()
-            .is_some_and(|inner| inner.device != *_device)
-        {
-            tracing::warn!("Viewport device changed; rebuilding the Helio renderer on it");
-            self.inner = None;
-            self.applied_graph_settings = None;
-            self.reset_taa_next_frame = true;
-            self.reported_device_loss = false;
-        } else if self
-            .device_loss
-            .as_ref()
-            .is_some_and(crate::services::device_loss::DeviceLoss::is_lost)
-        {
-            if !self.reported_device_loss {
-                self.reported_device_loss = true;
-                tracing::error!(
-                    "GPU device lost; the viewport stops drawing until it has a new one"
-                );
-            }
-            return false;
-        }
-
-        // ── Lazy init (first frame only) ────────────────────────────────────────
-        // The scene renderer, graph and pipelines are built inline on the render thread,
-        // so the task system tracks and logs them: a hang here is visible in the
-        // Tasks window with this phase, instead of a silently blank viewport.
-        if self.inner.is_none() {
-            editor_task_queue::scope(
-                editor_task_queue::TaskDescription::foreground(
-                    "Initialize Helio renderer",
-                    "render",
-                ),
-                |task| {
-                    task.set_phase("Creating the scene renderer and render graph");
-                    #[cfg(feature = "editor-ui")]
-                    gpui::flamegraph_span!("pulsar: HelioRenderer::lazy_init");
-                    tracing::info!("Initializing Helio renderer...");
-
-                    self.device_loss =
-                        Some(crate::services::device_loss::DeviceLoss::watch(_device));
-                    // The scene's renderer as the game builds it; the editor adds its
-                    // background, overlays and debug views.
-                    let mut scene = SceneRenderer::new(
-                        Arc::new(_device.clone()),
-                        Arc::new(_queue.clone()),
-                        &self.scene_store,
-                        width,
-                        height,
-                        format,
-                        SceneRendererOptions {
-                            editor_mode: true,
-                            device: DeviceOwner::Host,
-                            pipeline: self.requested_pipeline.get(),
-                            construct_pump: self.construct_pump.clone(),
-                            host_part_setups: self.host_part_setups.clone(),
-                        },
-                    );
-                    scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);
-                    self.applied_pipeline = Some(scene.pipeline().clone());
-
-                    let inner = HelioInner {
-                        scene,
-                        device: _device.clone(),
-                        queue: Arc::new(_queue.clone()),
-                        interaction: SceneInteraction::default(),
-                        last_scene_revision: 0,
-                        has_rendered_frame: false,
-                        applied_postprocess: None,
-                        applied_debug_mode: 0,
-                        editor_lines: None,
-                    };
-                    self.inner = Some(inner);
-                    self.publish_debug_views();
-                    self.applied_graph_settings = Some(graph_settings.clone());
-                    self.viewport_size = (width, height);
-
-                    let (yaw, pitch) = self.cam.local_yaw_pitch();
-                    tracing::info!(
-                        width,
-                        height,
-                        "[HELIO] Renderer initialized - camera at {:?}, yaw={yaw}, pitch={pitch}",
-                        self.cam.position,
-                    );
-                    task.set_phase("Renderer ready");
-                },
-            );
-        }
-
-        true
-    }
-
-    /// Called each GPUI frame from the viewport.
-    pub fn render_frame(
-        &mut self,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-        view: &wgpu::TextureView,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-    ) -> Option<wgpu::SubmissionIndex> {
-        self.render_frame_internal(_device, _queue, view, width, height, format, None)
-    }
-
-    /// Draw one crop of a larger output while keeping scene time fixed.
-    pub fn render_capture_tile(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        view: &wgpu::TextureView,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-        crop: FrameCrop,
-    ) -> Option<wgpu::SubmissionIndex> {
-        self.render_frame_internal(device, queue, view, width, height, format, Some(crop))
-    }
-
-    fn render_frame_internal(
-        &mut self,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-        view: &wgpu::TextureView,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-        crop: Option<FrameCrop>,
-    ) -> Option<wgpu::SubmissionIndex> {
-        // When the Inspector capture is active, put the engine-side render
-        // phases into the same bounded WGPUI timeline as Window::draw. The
-        // cfg keeps the renderer usable without the optional editor UI, and
-        // the macro is a single relaxed capture check when idle.
-        #[cfg(feature = "editor-ui")]
-        let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
-        #[cfg(feature = "editor-ui")]
-        gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
-        profiling::profile_scope!("helio_frame");
-        let frame_start = Instant::now();
-        let mut phases = FramePhases::new(frame_start);
-        let now = Instant::now();
-        let dt = if crop.is_some() {
-            0.0
-        } else {
-            now.duration_since(self.last_frame).as_secs_f32().min(0.1)
-        };
-        self.last_frame = now;
-        self.frame_count += 1;
-        self.profiler_frame_counter += 1;
-
-        if !self.prepare_for_render(_device, _queue, width, height, format) {
-            return None;
-        }
-        let previous_viewport_size = self.viewport_size;
-        self.viewport_size = (width, height);
-        self.configure_gizmo_view();
-
-        if let Some(inner) = &mut self.inner {
-            // Every frame: a rebuilt scene renderer starts without it.
-            inner.scene.renderer.set_frame_budget(self.frame_budget);
-            if let Ok(mut pending) = self.pending_gizmo_mode.lock() {
-                if let Some(mode) = pending.take() {
-                    inner.interaction.set_mode(mode);
-                    self.gizmo_dirty = true;
-                }
-            }
-        }
-
-        // ── Pending pointer events (queued by the UI thread, see
-        // `PendingPointerEvent`'s doc) ──────────────────────────────────────────
-        // Drained unconditionally, before `self.inner` is borrowed below and
-        // before the idle/pending-scene checks that follow -- `handle_left_click`/
-        // `handle_left_release` already set `self.gizmo_dirty = true`
-        // internally, so processing them here needs no extra plumbing to keep
-        // this frame from idling out on a drag-release commit.
-        let mut pending_pointer_events = if crop.is_some() {
-            Vec::new()
-        } else {
-            profiling::profile_scope!("helio_take_pending_pointer_events");
-            let mut batch = std::mem::take(&mut self.pointer_events_scratch);
-            if let Ok(mut events) = self.pending_pointer_events.lock() {
-                std::mem::swap(&mut batch, &mut *events);
-            }
-            batch
-        };
-        #[cfg(feature = "editor-ui")]
-        let _pointer_events_profile = (!pending_pointer_events.is_empty()).then(|| {
-            gpui::enter_span(
-                gpui::SpanName::Static("pulsar: HelioRenderer::pointer_events"),
-                gpui::SpanCategory::UserDefined,
-                None,
-            )
-        });
-        if !pending_pointer_events.is_empty() {
-            profiling::profile_scope!("helio_pointer_events");
-            for event in pending_pointer_events.drain(..) {
-                match event {
-                    PendingPointerEvent::MouseMove { norm_x, norm_y } => {
-                        profiling::profile_scope!("helio_handle_mouse_move");
-                        self.handle_mouse_move(norm_x, norm_y);
-                    }
-                    PendingPointerEvent::LeftClick { norm_x, norm_y } => {
-                        profiling::profile_scope!("helio_handle_left_click");
-                        self.handle_left_click(norm_x, norm_y);
-                    }
-                    PendingPointerEvent::LeftRelease => {
-                        profiling::profile_scope!("helio_handle_left_release");
-                        self.handle_left_release();
-                    }
-                    PendingPointerEvent::BoxSelect { from, to } => {
-                        profiling::profile_scope!("helio_handle_box_select");
-                        self.handle_box_select(from, to);
-                    }
-                    PendingPointerEvent::ToolRay {
-                        norm_x,
-                        norm_y,
-                        start,
-                        tool,
-                    } => {
-                        profiling::profile_scope!("helio_tool_ray");
-                        let (origin, direction) = self.pointer_ray(norm_x, norm_y);
-                        if direction != DVec3::ZERO {
-                            (tool.0)(
-                                &mut self.scene_store.write().world,
-                                origin,
-                                direction,
-                                start,
-                            );
-                            self.gizmo_dirty = true;
-                        }
-                    }
-                }
-            }
-        }
-        self.pointer_events_scratch = pending_pointer_events;
-        phases.mark("pointer");
-
-        // ── Detect input activity BEFORE consuming ──────────────────────────────
-        let (had_input, needs_resize) = if crop.is_some() {
-            (false, false)
-        } else {
-            profiling::profile_scope!("helio_read_camera_input");
-            let Ok(input) = self.camera_input.lock() else {
-                return None;
-            };
-            (
-                input.forward != 0.0
-                    || input.right != 0.0
-                    || input.up != 0.0
-                    || input.mouse_delta_x != 0.0
-                    || input.mouse_delta_y != 0.0
-                    || input.pan_delta_x != 0.0
-                    || input.pan_delta_y != 0.0
-                    || input.zoom_delta != 0.0,
-                input.needs_resize,
-            )
-        };
-
-        if had_input {
-            self.had_camera_input = true;
-        }
-
-        #[cfg(feature = "editor-ui")]
-        let _engine_frame_diagnostic = (self.frame_count, width, height);
-
-        let view_kind_changed = self.apply_view_kind();
-        let follow = self.follow_space_transitions.load(Ordering::Acquire)
-            && self
-                .inner
-                .as_ref()
-                .is_some_and(|inner| inner.scene.camera_traversal_enabled());
-        if self.active_space_traversal != follow {
-            self.active_space_traversal = follow;
-            self.reset_taa_next_frame = true;
-        }
-        if crop.is_none() {
-            profiling::profile_scope!("helio_camera_input");
-            self.apply_camera_input(dt);
-        }
-        let camera_synced = self.sync_camera();
-        phases.mark("camera");
-        self.configure_gizmo_view();
-        self.viewport_size = previous_viewport_size;
-
-        // Before idle detection: a changed baseline renders this frame.
-        let postprocess_changed = {
-            profiling::profile_scope!("helio_apply_postprocess_baseline");
-            self.apply_postprocess_baseline()
-        };
-        let debug_view_changed = self.apply_viewport_debug_mode();
-        let ortho_half_height = self.ortho_half_height();
-
-        let view_payloads = self
-            .pending_view_payloads
-            .lock()
-            .map(|mut pending| std::mem::take(&mut *pending))
-            .unwrap_or_default();
-
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => return None,
-        };
-
-        let view_payloads_changed = !view_payloads.is_empty();
-        for (key, payload) in view_payloads {
-            inner.scene.set_view_payload(key, payload);
-        }
-        // Passes whose output shows their own cost (the lighting's cost view)
-        // get their measured GPU time.
-        let measured_deferred_light_changed = inner.scene.renderer.feed_measured_gpu_times();
-
-        // ── Idle detection ───────────────────────────────────────────────────────
-        // If the camera is fully stopped, no scene changes are pending, and no
-        // editor state changed, we can skip the GPU render entirely.  The render
-        // thread keeps pacing itself but returns `None`, which causes the
-        // background loop to skip present/publish — the compositor holds the last
-        // frame on screen.
-        let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let realtime = crop.is_none() && self.viewport_realtime.load(Ordering::Acquire);
-        let (scene_revision, animated) = {
-            profiling::profile_scope!("helio_scene_store_read (revision)");
-            let store = self.scene_store.read();
-            // Re-checked only when the revision changed.
-            let animated = realtime && self.animated_content.live(&store.world);
-            (store.world.revision(), animated)
-        };
-        // A newly-created/loaded SceneDB can have revision 0. The first
-        // renderer frame still steps the database so its GPU mirror is current
-        // before Helio reads it.
-
-        let needs_initial_scene_sync = !inner.has_rendered_frame;
-        // Every scene change -- edits, undo/redo, opening a level -- goes
-        // through the World's normal write path and advances its revision,
-        // so the revision alone wakes the renderer; there is no resync.
-        let has_pending_scene =
-            needs_initial_scene_sync || scene_revision != inner.last_scene_revision;
-        let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
-            || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some());
-        let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
-            && !self.had_camera_input;
-        // The settling budget itself is not activity: it must eventually drain.
-        let temporal_activity = !camera_stopped
-            || has_pending_scene
-            || has_pending_editor
-            // Content streaming in, building, or waiting on the renderer
-            // (a sculpt stroke's picks: idling mid-drag stalled the stroke).
-            || inner.scene.needs_frame()
-            || self.gizmo_dirty
-            || viewport_resized
-            || postprocess_changed
-            || debug_view_changed
-            || view_payloads_changed
-            || (self.viewport_debug_mode.load(Ordering::Acquire) == 34
-                && measured_deferred_light_changed)
-            || view_kind_changed
-            || camera_synced
-            || crop.is_some()
-            // Realtime animation: wind, particles, shader-graph `time`.
-            || animated
-            || self.reset_taa_next_frame;
-        if self.activity_log
-            && temporal_activity
-            && now.duration_since(self.last_activity_log).as_secs_f64() >= 1.0
-        {
-            // Why the viewport keeps rendering (PULSAR_VOXEL_ACTIVITY=1).
-            self.last_activity_log = now;
-            tracing::info!(
-                camera_moving = !camera_stopped,
-                scene = has_pending_scene,
-                scene_revision,
-                editor = has_pending_editor,
-                content = inner.scene.needs_frame(),
-                gizmo = self.gizmo_dirty,
-                resized = viewport_resized,
-                postprocess = postprocess_changed,
-                animated,
-                reset_taa = self.reset_taa_next_frame,
-                "VOXEL_ACTIVITY"
-            );
-        }
-        self.temporal_settling.observe_activity(
-            inner
-                .scene
-                .renderer
-                .find_pass::<helio_pass_tsr::TsrPass>()
-                .is_some(),
-            temporal_activity,
-        );
-        let is_idle = !temporal_activity && !self.temporal_settling.needs_frame();
-
-        // Clear the sticky input flag when camera actually stopped.
-        if camera_stopped {
-            self.had_camera_input = false;
-        }
-
-        // ── Resize ──────────────────────────────────────────────────────────────
-        if viewport_resized {
-            #[cfg(feature = "editor-ui")]
-            gpui::flamegraph_span!("pulsar: HelioRenderer::resize");
-            #[cfg(feature = "editor-ui")]
-            let _engine_resize_diagnostic = (width, height, scene_revision, self.frame_count);
-            profiling::profile_scope!("helio_resize");
-            tracing::debug!(
-                from = ?self.viewport_size,
-                to = ?(width, height),
-                "Resizing Helio renderer in place"
-            );
-            inner.scene.renderer.set_render_size(width, height);
-            self.viewport_size = (width, height);
-        }
-
-        // ── Pending editor commands ─────────────────────────────────────────────
-        if self.pending_deselect.swap(false, Ordering::AcqRel) {
-            self.scene_store.write().world.select(None);
-            inner.interaction.cancel_drag();
-            self.gizmo_dirty = true;
-        }
-        if let Ok(mut pending) = self.pending_gizmo_mode.lock() {
-            if let Some(mode) = pending.take() {
-                inner.interaction.set_mode(mode);
-                self.gizmo_dirty = true;
-            }
-        }
-
-        // ── Early out when idle ─────────────────────────────────────────────────
-        // No GPU work, no gizmo rebuild, no profiler reads.
-        if is_idle {
-            // Idle frames must still serve inspector requests.
-            {
-                profiling::profile_scope!("helio_idle_publish_inspector_snapshot");
-                self.scene_store.read().world.publish_inspector_snapshot();
-            }
-            if let Ok(mut m) = self.metrics.lock() {
-                m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-                m.frame_time_ms = dt * 1000.0;
-                m.frames_rendered = self.frame_count;
-            }
-            return None;
-        }
-
-        // SceneDB owns all world state and performs its own GPU-mirror flush.
-        // The renderer only advances that authoritative database at the frame
-        // boundary; it never builds a CPU projection or submits per-object data.
-        let mut sync_ms = 0.0;
-        // Content still settling steps too: its scene subsystems take what
-        // finished off the thread (a voxel world built, a pick answered).
-        if crop.is_none() && (has_pending_scene || inner.scene.content_settling()) {
-            #[cfg(feature = "editor-ui")]
-            gpui::flamegraph_span!("pulsar: HelioRenderer::scene_db_step");
-            profiling::profile_scope!("helio_scene_db_step");
-            let t_sync = Instant::now();
-            // Exclusive lock: contends with the UI thread (inspector, property
-            // edits, hierarchy) for as long as either side holds the scene.
-            let mut scene_store = {
-                profiling::profile_scope!("helio_scene_store_write_lock_wait");
-                self.scene_store.write()
-            };
-            {
-                // The plugins' editor line sets (a spline's curve) are drawn
-                // by Helio's editor debug pass in world space, so they follow
-                // the camera like the grid; each rebuilds only when what it
-                // shows changed.
-                profiling::profile_scope!("helio_sync_editor_lines");
-                let editor_lines = inner.editor_lines.get_or_insert_with(|| {
-                    super::render_features::editor_lines(&scene_store.world)
-                });
-                for (name, lines) in editor_lines.iter_mut() {
-                    if let Some(lines) = lines.poll(&scene_store.world) {
-                        inner.scene.renderer.debug_set_editor_lines(name, lines);
-                    }
-                }
-            }
-            // SceneDB steps, with the subsystems plugins add to scenes
-            // (voxel worlds build and follow their journals).
-            inner.scene.step_scene(&mut scene_store);
-            sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
-            inner.last_scene_revision = scene_store.world.revision();
-        }
-        phases.mark("scene");
-
-        // SceneDB Inspector bridge: throttled inside SceneDB, and a no-op unless
-        // an inspector launched this process. After the GPU flush above.
-        {
-            profiling::profile_scope!("helio_publish_inspector_snapshot");
-            self.scene_store.read().world.publish_inspector_snapshot();
-        }
-        phases.mark("inspector");
-
-        // ── Camera / gizmo / render ─────────────────────────────────────────────
-        // The camera's frame follows the ground's local vertical, and its
-        // speed the height above it.
-        let ground = inner.scene.camera_ground(self.cam.position);
-        self.camera_ground = ground;
-        phases.mark("ground");
-        if ground.up.is_some() || !self.active_space_traversal {
-            self.cam.follow_ground(ground.up);
-        }
-        let t_prepare = Instant::now();
-        let (forward, frame_up) = match self.active_view.axis_basis() {
-            Some((forward, _, up)) => (forward, up),
-            None => (self.cam.forward(), self.cam.frame_up()),
-        };
-        let frame = {
-            #[cfg(feature = "editor-ui")]
-            gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
-            inner.scene.prepare_frame(
-                &FrameView {
-                    eye: self.cam.position,
-                    coordinate_space: (!self.active_view.is_orthographic()
-                        && self.active_space_traversal)
-                        .then_some(self.camera_space),
-                    forward,
-                    up: frame_up,
-                    aspect: crop.map_or(width as f32 / height.max(1) as f32, |crop| {
-                        crop.full_size[0] as f32 / crop.full_size[1].max(1) as f32
-                    }),
-                    projection: if self.active_view.is_orthographic() {
-                        FrameProjection::Orthographic {
-                            half_height: ortho_half_height,
-                        }
-                    } else {
-                        FrameProjection::Perspective {
-                            fov_y: std::f32::consts::FRAC_PI_4,
-                            near: 0.1,
-                            far: 10_000.0,
-                        }
-                    },
-                    crop,
-                },
-                [width, height],
-            )
-        };
-        let camera = frame.camera;
-        if let Some(errors) = frame.new_errors {
-            if let Ok(mut pending) = self.pending_errors.lock() {
-                pending.extend(errors);
-            }
-        }
-        phases.mark("publish");
-        {
-            // Debug geometry is transient GPU execution state. World content is
-            // read by Helio passes directly from the SceneDB GPU mirror.
-            {
-                profiling::profile_scope!("helio_debug_clear");
-                inner.scene.renderer.debug_clear();
-            }
-            let store = {
-                profiling::profile_scope!("helio_scene_store_read_lock_wait (gizmo)");
-                self.scene_store.read()
-            };
-            profiling::profile_scope!("helio_draw_gizmo");
-            inner
-                .interaction
-                .draw_gizmo(&mut inner.scene.renderer, &store.world);
-        }
-
-        if crop.is_some() {
-            self.reset_taa_next_frame = true;
-        }
-        if self.reset_taa_next_frame {
-            if let Some(pass) = inner
-                .scene
-                .renderer
-                .find_pass_mut::<helio_pass_tsr::TsrPass>()
-            {
-                pass.reset_history();
-            }
-            self.reset_taa_next_frame = false;
-        }
-
-        let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
-        if self.stats_log && self.last_stats_log.elapsed().as_secs_f32() >= 0.5 {
-            let fps = self.stats_frames.0 as f32 / self.last_stats_log.elapsed().as_secs_f32();
-            let slowest = self.stats_frames.1;
-            self.stats_frames = (0, 0.0);
-            self.last_stats_log = Instant::now();
-            let (forward, _, up) = self.cam.basis();
-            for line in inner.scene.diagnostics() {
-                tracing::info!(
-                    "VOXEL_STATS fps={fps:.1} slowest_frame_ms={slowest:.1} altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} graph_gpu_ms={:?}",
-                    self.camera_ground.altitude.unwrap_or(f64::NAN),
-                    altitude_speed_scale(&self.camera_ground),
-                    self.cam.position.to_array(),
-                    forward.to_array(),
-                    up.to_array(),
-                    width,
-                    height,
-                    inner.scene.renderer.render_scale(),
-                    inner.scene.renderer.gpu_frame_ms(),
-                );
-            }
-        }
-        phases.mark("prepare");
-        let t_render = Instant::now();
-        let mut render_succeeded = false;
-        let submission_index = {
-            #[cfg(feature = "editor-ui")]
-            gpui::flamegraph_span!("pulsar: HelioRenderer::render_submit");
-            profiling::profile_scope!("helio_render_submit");
-            {
-                profiling::profile_scope!("helio_upload");
-                inner.scene.upload();
-            }
-            // Separates a wait on the scene lock (the UI thread editing)
-            // from the graph's own work in VOXEL_FRAME_PHASES.
-            phases.mark("flush");
-            {
-                profiling::profile_scope!("helio_renderer_render");
-                let renderer = &mut inner.scene.renderer;
-                // Keep temporal-filter weights deterministic across tiles.
-                // Animation time is frozen independently through the frame
-                // clock override below; Helio requires a positive delta for
-                // temporal filters even while that clock is paused.
-                renderer.set_frame_delta_override(if crop.is_some() {
-                    Some(1.0 / 60.0)
-                } else {
-                    self.frame_delta_override
-                });
-                renderer.set_camera_jitter_override(if crop.is_some() {
-                    Some([0.0, 0.0])
-                } else {
-                    self.camera_jitter_override
-                });
-                renderer.set_frame_clock_delta(if realtime { None } else { Some(0.0) });
-                match renderer.render(&camera, &view) {
-                    Ok(()) => render_succeeded = true,
-                    Err(e) => tracing::error!("Helio render error: {:?}", e),
-                }
-            }
-            // The graph's own submission carries the frame. Only when Helio
-            // submitted nothing (an error) fall back to an empty submit, which
-            // takes the queue lock and can drain pending work.
-            inner.scene.renderer.last_submission().or_else(|| {
-                profiling::profile_scope!("helio_queue_submit (fence)");
-                Some(
-                    inner
-                        .queue
-                        .submit(std::iter::empty::<wgpu::CommandBuffer>()),
-                )
-            })
-        };
-        self.gizmo_dirty = false;
-        inner.has_rendered_frame = true;
-        let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
-        phases.mark("render");
-        let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
-        self.stats_frames = (self.stats_frames.0 + 1, self.stats_frames.1.max(frame_ms));
-        if frame_ms >= 50.0 {
-            tracing::warn!(
-                "VOXEL_FRAME_PHASES frame_ms={frame_ms:.1} {}",
-                phases.describe()
-            );
-            tracing::warn!(
-                target: "flamegraph.workload",
-                frame_ms,
-                render_ms,
-                frame_index = self.profiler_frame_counter,
-                profiling_enabled = profiling::is_profiling_enabled(),
-                producer_queue = profiling::init_profiler().pending_event_count(),
-                retained_events = profiling::init_profiler().retained_event_count(),
-                dropped_events = profiling::init_profiler().dropped_event_count(),
-                "slow Helio frame"
-            );
-        }
-        // Emit the boundary from the render thread. The profiler collector
-        // must not inspect the renderer registry or GPU mutex from a second
-        // thread just to obtain this value.
-        profiling::record_frame_time(frame_ms);
-        self.last_phases = phases.list;
-
-        // ── GPU profiler ───────────────────────────────────────────────────────
-        // Continuous flamegraph capture needs every completed asynchronous
-        // readback. Keep the old 30-frame cadence only for the cheap
-        // always-on diagnostic cache when no instrumentation capture owns the
-        // profiler.
-        let profiler_id = inner.scene.renderer.profiling_instance_id();
-        if profiling::is_profiling_enabled()
-            || self.profiler_frame_counter >= 30
-            || self.gpu_profiler_instance != profiler_id
-        {
-            profiling::profile_scope!("helio_gpu_profiler_update");
-            self.profiler_frame_counter = 0;
-            self.gpu_profiler
-                .update_from_snapshot(inner.scene.renderer.timing_snapshot());
-            self.gpu_profiler_instance = profiler_id;
-        }
-
-        let gpu_frame = self.gpu_profiler.gpu_frame_count;
-        let gpu_sample = gpu_frame.map(|frame| (profiler_id, frame));
-        let new_gpu_result = gpu_sample.is_some() && gpu_sample != self.last_reported_gpu_frame;
-        if new_gpu_result {
-            profiling::profile_scope!("helio_emit_gpu_passes");
-            emit_helio_gpu_passes(&self.gpu_profiler, profiler_id);
-        }
-        let gpu_spike = new_gpu_result
-            && self
-                .gpu_profiler
-                .total_gpu_ms
-                .is_some_and(|time| time > self.spike_log_config.gpu_threshold_ms);
-        let cpu_spike = frame_ms > self.spike_log_config.cpu_threshold_ms;
-        let warning_due = self.spike_log_config.enabled
-            && self
-                .last_spike_warning
-                .is_none_or(|last| last.elapsed() >= self.spike_log_config.min_interval);
-
-        if warning_due && (cpu_spike || gpu_spike) {
-            let (cpu_pass, cpu_pass_ms) = self
-                .gpu_profiler
-                .slowest_cpu_pass()
-                .unwrap_or(("unavailable", 0.0));
-            let (gpu_pass, gpu_pass_ms) = self
-                .gpu_profiler
-                .slowest_gpu_pass()
-                .unwrap_or(("pending", 0.0));
-            tracing::warn!(
-                "[HELIO FRAME SPIKE] frame={:.1}ms (sync {:.1}, prepare {:.1}, submit {:.1}); \
-                 slowest CPU pass={} {:.1}ms; GPU frame={:?} total={:?}ms lag={:?} \
-                 slowest pass={} {:.1}ms drops={} overflows={}",
-                frame_ms,
-                sync_ms,
-                prepare_ms,
-                render_ms,
-                cpu_pass,
-                cpu_pass_ms,
-                gpu_frame,
-                self.gpu_profiler.total_gpu_ms,
-                self.gpu_profiler.gpu_lag_frames,
-                gpu_pass,
-                gpu_pass_ms,
-                self.gpu_profiler.readback_drops,
-                self.gpu_profiler.query_overflows
-            );
-            self.last_spike_warning = Some(Instant::now());
-        }
-        if new_gpu_result {
-            self.last_reported_gpu_frame = gpu_sample;
-        }
-
-        {
-            profiling::profile_scope!("helio_update_metrics");
-            if let Ok(mut m) = self.metrics.lock() {
-                m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-                m.frame_time_ms = dt * 1000.0;
-                m.frames_rendered = self.frame_count;
-            }
-        }
-
-        self.temporal_settling.complete_frame(
-            inner
-                .scene
-                .renderer
-                .find_pass::<helio_pass_tsr::TsrPass>()
-                .is_some(),
-            temporal_activity,
-            render_succeeded && submission_index.is_some(),
-        );
-        submission_index
-    }
-
-    fn apply_camera_input(&mut self, dt: f32) {
-        const LOOK: f32 = 0.0025;
-
-        let input = match self.camera_input.lock() {
-            Ok(mut lock) => {
-                let snap = lock.clone();
-                lock.clear_transient_deltas();
-                snap
-            }
-            Err(_) => return,
-        };
-
-        if self.active_view.is_orthographic() {
-            if input.zoom_delta != 0.0 {
-                // Scrolling lengthens or shortens the boom arm.
-                self.ortho_boom = (self.ortho_boom * (-input.zoom_delta * 0.1).exp())
-                    .clamp(ORTHO_MIN_BOOM, ORTHO_MAX_BOOM);
-            }
-            if self.active_view.is_axis_aligned() {
-                self.apply_axis_view_input(&input, dt);
-                return;
-            }
-        }
-
-        self.cam
-            .look(input.mouse_delta_x * LOOK, -input.mouse_delta_y * LOOK);
-
-        // Ordinary flight stays level. While traversing, aim W/S through
-        // the aperture even when it is above or below the eye.
-        let (level_forward, right, frame_up) = self.cam.level_axes();
-        let fwd = if self.active_space_traversal && !self.active_view.is_orthographic() {
-            self.cam.forward()
-        } else {
-            level_forward
-        };
-        // Over ground the scene reports, speed grows with height above it.
-        let altitude = altitude_speed_scale(&self.camera_ground) as f32;
-        let speed = altitude
-            * if input.boost {
-                input.move_speed * 3.0
-            } else {
-                input.move_speed
-            };
-
-        // Target local velocity from input (units/sec).
-        let target_velocity =
-            Vec3::new(input.right * speed, input.up * speed, input.forward * speed);
-
-        // Keyboard velocity applies instantly — matching the crisp, zero-latency
-        // behavior of mouse look. The previous exponential ease-in/out
-        // (ACCEL_RATE 10 / DECEL_RATE 14) took ~230ms to reach 90% of target
-        // speed, which is what made WASD feel "mushy" next to the mouse.
-        // Camera position stays continuous (velocity * dt integration), so an
-        // instant velocity step produces no visible jump.
-        self.cam_local_velocity = target_velocity;
-
-        let before = self.cam.position;
-        let steps = [
-            (right * self.cam_local_velocity.x * dt).as_dvec3(),
-            (frame_up * self.cam_local_velocity.y * dt).as_dvec3(),
-            (fwd * self.cam_local_velocity.z * dt).as_dvec3(),
-        ];
-        self.cam.position += steps[0] + steps[1] + steps[2];
-        // Middle-mouse (or Shift + right-click) pans in the view plane.
-        let pan = if input.pan_delta_x != 0.0 || input.pan_delta_y != 0.0 {
-            const PAN: f32 = 0.01;
-            let (_, _, screen_up) = self.camera_basis();
-            let pan_speed = PAN * input.move_speed.max(1.0);
-            (right * (-input.pan_delta_x) * pan_speed).as_dvec3()
-                + (screen_up * input.pan_delta_y * pan_speed).as_dvec3()
-        } else {
-            DVec3::ZERO
-        };
-        let end = self.cam.position + pan;
-        if before != end && !self.active_view.is_orthographic() && self.active_space_traversal {
-            // The aperture can be inset into terrain. Sweep before the source
-            // ground's endpoint check can clamp the eye back to its own side.
-            if let Some((position, rotation, space)) = self
-                .inner
-                .as_ref()
-                .and_then(|inner| inner.scene.traverse_camera(before, end, self.camera_space))
-            {
-                self.cam.transport(position, rotation);
-                self.camera_space = space;
-                self.reset_taa_next_frame = true;
-                return;
-            }
-        }
-        // The editor camera never enters solid ground. From air (a
-        // cave, a dig, above ground) it slides along what it touches: each
-        // axis of the move is kept only if it stays in air. Lifting to the
-        // surface is only for a camera already buried (spawned or teleported
-        // into rock): lifting on contact threw it out of caves.
-        let lift = |renderer: &mut Self, eye: DVec3| {
-            renderer
-                .inner
-                .as_mut()
-                .and_then(|inner| inner.scene.lift_out_of_ground(eye))
-        };
-        if lift(self, self.cam.position).is_some() {
-            if lift(self, before).is_none() {
-                let mut pos = before;
-                for step in steps {
-                    if lift(self, pos + step).is_none() {
-                        pos += step;
-                    }
-                }
-                self.cam.position = pos;
-            } else if let Some(lifted) = lift(self, self.cam.position) {
-                self.cam.position = lifted;
-            }
-        }
-
-        self.cam.position += pan;
     }
 
     /// Half the height of the orthographic view: what a 45 degree perspective
@@ -2163,7 +1363,7 @@ impl HelioRenderer {
     /// Helio's scene depth buffer (`Depth32Float`, `COPY_SRC`) as of the last
     /// encoded frame; `None` before the first. Read-only diagnostics: lets a
     /// test tell geometry that rasterized but shaded black from geometry
-    /// that was never drawn (the SceneDB Phase 0 render baseline).
+    /// that was never drawn.
     pub fn debug_depth_texture(&self) -> Option<&wgpu::Texture> {
         self.inner
             .as_ref()

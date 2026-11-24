@@ -13,6 +13,9 @@ window_manager.workspace = true
 # Engine
 engine_state.workspace = true
 pulsar_settings.workspace = true
+pulsar_plugins.workspace = true
+# Appearance settings apply live (`ui_common::appearance`).
+ui_common.workspace = true
 # Logging
 tracing.workspace = true
 

@@ -1,3 +1,6 @@
+//! Chat provider for Docker Model Runner's OpenAI-style endpoint on `localhost:12434`
+//! (streaming and tool calls). The model can be set with `PULSAR_DOCKER_MODEL`.
+
 use agent_chat_core::{
     ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ModelDescriptor, ToolCall,
 };

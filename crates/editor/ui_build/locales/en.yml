@@ -238,6 +238,7 @@ Build.Game.CrashedWithReport: "The game crashed.\nReport saved to %{path}\n\n%{o
 Build.Dashboard.Title: "Build Dashboard"
 Build.Dashboard.TitleFor: "Build Dashboard — %{name}"
 Build.Dashboard.NoBuild: "No build has run yet. Start one from the Build button."
+Build.Dashboard.NoLogView: "No log view is installed to show the build's output (Mission Control provides one)."
 Build.Dashboard.Running: "Building"
 Build.Dashboard.Succeeded: "Succeeded"
 Build.Dashboard.Failed: "Failed"

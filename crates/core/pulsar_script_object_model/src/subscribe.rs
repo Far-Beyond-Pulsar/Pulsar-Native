@@ -1,5 +1,4 @@
-//! Change notification for scripts, over SceneDB's change journals
-//! (Pulsar-Native#1035, Phase 5).
+//! Change notification for scripts, over SceneDB's change journals.
 //!
 //! A script keeps a [`ComponentRefWatch`], watches the [`ComponentRef`]s it
 //! cares about, and polls once per tick. Each watch reads through its own
@@ -30,7 +29,7 @@ impl ComponentRefWatch {
 
     /// Watch one referenced component. `false` when the actor is already
     /// dead, has no such instance, or the class isn't registered for live
-    /// World residency -- never panics (#641).
+    /// World residency -- never panics.
     pub fn watch(&mut self, world: &World, r: &ComponentRef) -> bool {
         let Some(instance) = r.instance(world) else {
             return false;
@@ -61,7 +60,7 @@ mod tests {
     use crate::errors::ScriptRefError;
     use crate::test_support::TestGizmo;
 
-    /// #640 acceptance: set_property through a ref invalidates exactly that
+    /// Set_property through a ref invalidates exactly that
     /// ref -- not a sibling entity's component of the same class.
     #[test]
     fn setting_through_a_ref_reports_that_target_only() {
@@ -110,7 +109,7 @@ mod tests {
     }
 
     /// A despawned target reports changed once; re-reading it is a typed
-    /// error, not a panic (#641).
+    /// error, not a panic.
     #[test]
     fn despawn_reports_changed_and_later_writes_are_typed_errors() {
         let mut world = World::new();

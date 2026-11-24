@@ -1,4 +1,4 @@
-//! Shared C-ABI contract for **Play In Editor** (PiE, issue #243).
+//! Shared C-ABI contract for **Play In Editor** (PiE).
 //!
 //! The editor (`engine_backend`, the *host*) compiles a user's game project as a
 //! platform dynamic library (`cdylib`) and drives it from its own render loop —
@@ -40,7 +40,7 @@
 //! 4. Host forwards input via [`SYM_INPUT`] and size changes via [`SYM_RESIZE`].
 //! 5. On stop the host calls [`SYM_SHUTDOWN`] and then unloads the library.
 //!
-//! ## The shared-world contract (ABI v2, issue #635)
+//! ## The shared-world contract (ABI v2)
 //!
 //! `EngineContext::shared_world` is a `*const c_void` that both sides
 //! reinterpret as `*const RwLock<SceneDb>` (the concrete types live in
@@ -51,7 +51,7 @@
 //! LOCKING POLICY owned by the host and lets the host assert the protocol is
 //! being followed.
 //!
-//! Protocol (the full statement of issue #635's locking rules):
+//! Protocol (the full statement of locking rules):
 //!
 //! 1. **Guest tick slice**: during [`SYM_TICK`] the guest calls
 //!    `lock_shared_world(userdata)` once, receives an exclusive
@@ -61,7 +61,7 @@
 //!    never cached across slices, never freed.
 //! 2. **Host discipline**: the host never holds its own lock across a frame
 //!    boundary; every host-side touch of the world is a short scope (this is
-//!    already true of the post-#634/#637 render sync passes). While the guest
+//!    already true of the render sync passes). While the guest
 //!    holds its slice the host simply doesn't contend.
 //! 3. **Non-reentrancy as witness**: a second `lock_shared_world` call while
 //!    one slice is open returns null. This makes the callback pair a dynamic
@@ -71,7 +71,7 @@
 //!
 //! ### FFI safety story for `&mut SceneDb` (decision)
 //!
-//! Two designs were weighed (issue #635's last checklist item):
+//! Two designs were weighed (issue last checklist item):
 //!
 //! * *Command queue* -- the guest submits serialized world commands; the host
 //!   applies them between frames. Maximally safe, but every property/method
@@ -82,7 +82,7 @@
 //!   `&mut SceneDb` per tick slice. Soundness rests on three
 //!   invariants, all enforced mechanically: (a) the guest runs its slice on
 //!   the single thread that owns the embedded game (`thread_local!` GAME,
-//!   unchanged since #243); (b) exclusivity is guaranteed by the host's own
+//!   unchanged); (b) exclusivity is guaranteed by the host's own
 //!   RwLock, which the host itself only touches in short scopes; (c)
 //!   non-reentrancy is checked, not assumed (null on violation). A command
 //!   queue remains the escape hatch if a future multi-threaded guest ever
@@ -100,10 +100,10 @@ use core::ffi::c_void;
 /// on mismatch.
 ///
 /// History: v1 handed the game a rendered-copy contract (guest-owned world,
-/// one-way texture out, explicitly no writeback). v2 (#635) adds the
+/// one-way texture out, explicitly no writeback). v2 adds the
 /// shared-world token + lock callbacks below and changes ownership of scene
 /// state to the host; the wire structs changed shape, hence the bump.
-/// v3 (#653) appends [`EngineContext::session_flags`] so the host can tell a
+/// v3 appends [`EngineContext::session_flags`] so the host can tell a
 /// hot-reload session (same world, actors re-bound to their existing entities)
 /// apart from a fresh play session.
 /// v4 appends [`EngineContext::view`]: the editor camera at Play, with an f64
@@ -121,7 +121,7 @@ pub const PIE_ABI_VERSION: u64 = 5;
 /// Kept in one module so future additions read as a single list; unknown bits
 /// must be ignored by the guest (forward compatibility within v3).
 pub mod session_flags {
-    /// The loaded session is a NATIVE HOT RELOAD (#653): the shared world
+    /// The loaded session is a NATIVE HOT RELOAD: the shared world
     /// already holds this game's entities/components from the previous
     /// session. Project setup must re-bind script/actor registrations to
     /// their existing entities (`TickLoop::register_native_actor` does the matching)
@@ -142,7 +142,7 @@ pub const LOG_TRACE: u32 = 4;
 //
 // PiE v1 followed Unreal's model: the game received the *initial* scene state
 // and then ran independently — the editor only displayed its frames. ABI v2
-// (#635) inverts the ownership: the game operates on the EDITOR's world, so
+// inverts the ownership: the game operates on the EDITOR's world, so
 // besides logging it receives the phase-boundary lock callbacks below.
 
 /// Route a game-side log line into the editor's tracing/log viewer.
@@ -214,7 +214,7 @@ pub struct EngineContext {
     /// the same `wgpu::Device`, no cross-device import is needed.
     pub out_texture: *const c_void,
 
-    // ── ABI v2 additions (#635): the shared-world token ────────────────────
+    // ── ABI v2 additions: the shared-world token ────────────────────
     /// The host's authoritative world: `*const RwLock<SceneDb>` (the
     /// allocation behind the host's `Arc`, which outlives the whole PIE
     /// session). Under v2 this is non-null and OWNERSHIP OF SCENE STATE stays
@@ -230,7 +230,7 @@ pub struct EngineContext {
     /// Release the slice. See [`UnlockWorldFn`].
     pub unlock_shared_world: UnlockWorldFn,
 
-    // ── ABI v3 additions (#653): session kind ──────────────────────────────
+    // ── ABI v3 additions: session kind ──────────────────────────────
     /// Bit set of [`session_flags`] describing what kind of session this is.
     /// Zero = a fresh play session (the shared world starts empty or with
     /// whatever the host hydrated). `session_flags::RELOAD` = native
@@ -321,7 +321,7 @@ pub type FnInput = unsafe extern "C" fn(*const InputEvent);
 /// `extern "C" fn()` — tear down world + renderer before the lib is unloaded.
 pub type FnShutdown = unsafe extern "C" fn();
 /// `extern "C" fn(kind, kind_len, id, id_len, path, path_len)` — an asset was
-/// updated in the editor (#921). `kind` is the JSON form of
+/// updated in the editor. `kind` is the JSON form of
 /// `ui_types_common::AssetKind` (e.g. `"Blueprint"`); `id`/`path` are UTF-8
 /// and may be null/empty. OPTIONAL: hosts resolve it with a fallback, so
 /// games built before it existed still load (no ABI version bump).
@@ -335,7 +335,7 @@ pub type FnAssetUpdated =
 /// game is running). Call with capacity 0 to size the buffer.
 pub type FnEventsSnapshot = unsafe extern "C" fn(*mut u8, usize) -> usize;
 
-/// Optional (#925): `extern "C" fn(cmd, arg) -> u64` — simulation control
+/// Optional: `extern "C" fn(cmd, arg) -> u64` — simulation control
 /// for the editor's pause / step buttons. `cmd` is one of the [`control`]
 /// constants; unknown commands return 0.
 pub type FnControl = unsafe extern "C" fn(u32, u64) -> u64;
@@ -355,7 +355,7 @@ pub mod control {
     pub const FRAME: u32 = 5;
 }
 
-/// Optional (#854, #925): `extern "C" fn(out, capacity) -> len` — the script
+/// Optional: `extern "C" fn(out, capacity) -> len` — the script
 /// problems (errors, link errors, dropped waiting calls) the game raised
 /// since the last successful call, as a UTF-8 JSON array of
 /// `pulsar_events::ScriptProblem`. Returns the length; the problems are
@@ -363,7 +363,7 @@ pub mod control {
 /// capacity 0 to size the buffer). 0 means no problems.
 pub type FnTakeProblems = unsafe extern "C" fn(*mut u8, usize) -> usize;
 
-/// Optional (#942): `extern "C" fn(out, out_size) -> u32` — write a Gamma
+/// Optional: `extern "C" fn(out, out_size) -> u32` — write a Gamma
 /// `gamma::ffi::RawBus` exporting the session's event hub to `out`, which
 /// points to `out_size` bytes (must be `size_of::<RawBus>()`). Returns 1 on
 /// success; the caller then owns one strong reference (wrap it in a

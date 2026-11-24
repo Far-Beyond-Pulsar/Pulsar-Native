@@ -1,3 +1,6 @@
+//! Multiplayer session core: authentication, wire protocol messages, replication, session
+//! types and the transport channel. `prelude` re-exports the commonly used items.
+
 pub mod auth;
 pub mod protocol;
 pub mod replication;

@@ -12,11 +12,11 @@
 //! | [`components`] | attach/remove/enable/reorder component instances, live property edits |
 //! | [`level_io`] | `.level` file save/load |
 //! | [`history`] | undo/redo snapshots (editor-owned; SceneDB has no undo) |
-//! | [`classes`] | placed class instances: placement, rebuild, overrides, revert (#921) |
-//! | [`sky`] | the level's one sky (its `AtmosphereComponent`), for World Settings (#1057) |
+//! | [`classes`] | placed class instances: placement, rebuild, overrides, revert |
+//! | [`sky`] | the level's one sky (its `AtmosphereComponent`), for World Settings |
 //!
-//! Every attached component is its own entity holding its typed value
-//! (Pulsar-Native#1035, D1). JSON is used only at boundaries: persistence,
+//! Every attached component is its own entity holding its typed value.
+//! JSON is used only at boundaries: persistence,
 //! history, tools, and the payload of a class this build does not register.
 
 use crate::world_settings_data::WorldSettingsData;
@@ -31,6 +31,7 @@ pub mod create;
 pub mod history;
 pub mod level_io;
 pub mod objects;
+pub mod origin;
 
 #[cfg(test)]
 mod default_level;
@@ -125,9 +126,9 @@ pub struct LevelFile {
     /// Reflection component instances keyed by object id.
     #[serde(default)]
     pub components: HashMap<ObjectId, Vec<ComponentInstance>>,
-    /// Legacy per-object Blueprint class bindings keyed by StableId (#650).
+    /// Legacy per-object Blueprint class bindings keyed by StableId.
     ///
-    /// Retired by `ClassInstance` (#921): loading migrates each entry to a
+    /// Retired by `ClassInstance`: loading migrates each entry to a
     /// `ClassInstance` on the bound object (overrides become
     /// `variable_overrides`) and saving no longer writes migrated entries.
     /// Only entries one `ClassInstance` per object cannot express (a second

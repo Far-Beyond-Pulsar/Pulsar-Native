@@ -193,7 +193,7 @@ macro_rules! init_task {
                 vec![$($dep),*],
                 Box::new($executor),
             ))
-            .unwrap()
+            .expect("an init task id is registered once; a duplicate is a bug in the startup wiring")
     };
 }
 
@@ -249,11 +249,13 @@ impl InitGraph {
             }
 
             // Increment in-degree for this task (one per dependency)
-            *in_degree.get_mut(id).unwrap() += task.dependencies.len();
+            *in_degree
+                .get_mut(id)
+                .expect("in_degree has an entry for every task id") += task.dependencies.len();
 
             // Add edges from each dependency to this task
             for dep in &task.dependencies {
-                adjacency.get_mut(dep).unwrap().push(*id);
+                adjacency.get_mut(dep).expect("adjacency has an entry for every task, and the dependency was checked above").push(*id);
             }
         }
 
@@ -273,7 +275,9 @@ impl InitGraph {
             if let Some(dependents) = adjacency.get(&id) {
                 for &dependent in dependents {
                     // Decrease in-degree
-                    let degree = in_degree.get_mut(&dependent).unwrap();
+                    let degree = in_degree
+                        .get_mut(&dependent)
+                        .expect("every dependent is a task id, so in_degree has its entry");
                     *degree -= 1;
 
                     // If in-degree becomes 0, add to queue
@@ -311,7 +315,10 @@ impl InitGraph {
 
         // Execute tasks in order
         for id in order {
-            let task = self.tasks.remove(&id).unwrap();
+            let task = self
+                .tasks
+                .remove(&id)
+                .expect("build_order returns each registered task id exactly once");
 
             tracing::debug!("▶ Executing init task: {}", task.name);
 

@@ -1,4 +1,4 @@
-//! Component-record migrations at level load (Pulsar-Native#1035, Phase 3).
+//! Component-record migrations at level load.
 //!
 //! Older levels store component data in shapes the current classes do not
 //! decode, or carry copies of component values in an object's `props`.

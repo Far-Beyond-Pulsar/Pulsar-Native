@@ -4,9 +4,10 @@ Pulsar has two kinds of plugin, which meet at one identity and one catalog:
 
 - **Project plugins**: every plugin under `plugins/vendor/<dir>` with a
   `pulsar-plugin.toml` (every object kind, animation, physics, input, the editor tools).
-  They link statically into the editor (`plugins/installed`) and, except editor tools, into
-  games; a project enables some of them in its `Pulsar.toml`. This is how every
-  first-party plugin ships today.
+  Games link them statically (`plugins/installed`, except editor tools). The editor loads each
+  one except `render_bps` from a library of its own (`tools/plugin_builder`, "Plugin libraries"
+  below), and links `render_bps` (`plugins/linked`); a project enables some of them in its
+  `Pulsar.toml`.
 - **Dynamic editor plugins**: native `cdylib`s loaded at startup and never unloaded (the
   permanent library pattern below). A library that exports its plugins' builds
   (`pulsar_plugins::export_library!`) joins the installed set and the catalog like a linked
@@ -386,7 +387,7 @@ A class's lifecycle is a registration of its own, never reflected methods:
 `ClassSpec::actor` makes `Components::class` add an `ActorRegistration`
 (category `component.lifecycle`, origin the plugin root), gated with the class
 (`class_enabled`: a disabled plugin's table is not handed out or driven) and
-carried across plugin libraries by the world runtime (`ABI_VERSION` 6, the
+carried across plugin libraries by the world runtime (`ABI_VERSION` 7, the
 fingerprint covers `ActorRegistration` and `ActorTable`). A class that uses
 `#[register_component_runtime]` gets its table from the macro instead
 (`EngineActor`, link-time, still gated by the class name; the raw `inventory`
@@ -414,10 +415,94 @@ refused by name. Proof: `plugin_manager/tests/world_component_plugins.rs`
 Known limits: libraries are never unloaded; host and library must come from the same
 compiler (the rustc hash check); the fingerprint sees size, alignment and name, so a change
 keeping all three (fields of one size reordered) must bump the type's `VERSION`; a library
-links its own copy of every crate, and only the world crates share their process-wide state
-(their runtimes): a renderer feature in a library would use its own copy of Helio's state,
-so the first-party render plugins stay linked (bundling them into libraries waits on a Helio
-runtime attach, `PLUGIN_API_REFACTOR_PLAN.md` section 14).
+links its own copy of every crate, and only the world crates and Helio share their process-wide
+state with the host (their runtimes, `helio_core::runtime`: see below).
+
+### Shared libraries: one copy of each framework per process
+
+The editor and every plugin library link the frameworks as **shared Rust dylibs** instead of
+embedding a copy each (`-C prefer-dynamic`, `.cargo/config.toml`; `std` is shared too, so
+`std-<hash>.dll` ships beside the executable). Each library lives in, and builds and releases
+from, the repository that owns what it contains, in dependency order:
+
+| Library | Repository (path) | Contains |
+|---|---|---|
+| `wgpui_dylib` | WGPUI (`crates/ui/wgpui/dylib`) | `gpui-ce`, wgpu, zlib |
+| `ui_dylib` | WGPUI-Component (`crates/ui/wgpui-component/crates/ui_dylib`) | `ui`, tree-sitter |
+| `profiling_dylib` | Pulsar-Profiling (`crates/external/pulsar-profiling/crates/profiling_dylib`) | `profiling`, SQLite |
+| `reflection_dylib` | Pulsar-Reflection (`crates/external/pulsar-reflection/crates/reflection_dylib`) | `pulsar_reflection` |
+| `scenedb_dylib` | SceneDB (`crates/scenedb_dylib`; the `shared-dylib` branch until pushed) | `pulsar_scenedb` |
+| `helio_dylib` | Helio (`crates/renderer/helio/crates/helio_dylib`) | Helio's kernel crates |
+
+A library depends on the ones below it (git dependencies; this workspace patches them to the local
+checkouts) and links them in code (`use x as _;`), so a crate is in exactly one library. Rules:
+a library pins the feature set every consumer builds with (features are additive: a consumer that
+needs one more builds a different crate); the editor and the plugin libraries are built in one
+cargo invocation (`tools/plugin_builder`); a native C library inside a library has its API exported
+with `/EXPORT` directives (`build.rs`, `native_exports/*.txt`), because callers outside the library
+cannot otherwise link it (`unresolved external symbol`); a crate that links a shared library must
+not be a `cdylib` unless it is a plugin root built with `--features dll`. `plugin_editor_api`'s
+`shared-dylibs` feature links them for a plugin library. A library's list of exported native
+symbols is generated from the native crate's bindings: remove a name the linker reports as
+undefined (a compile-time feature that is off), and regenerate when the crate's version changes.
+
+### One library per plugin: the `dll` feature and `tools/plugin_builder`
+
+The editor loads every first-party plugin but `render_bps` from a library of its own, so a
+plugin's memory (and its leaks) is its library's. The library is the plugin's **root crate**
+built with its `dll` feature, so each plugin's own repository builds and releases it:
+
+```toml
+[lib]
+crate-type = ["cdylib", "rlib"]
+[features]
+dll = ["editor", "dep:plugin_editor_api", "plugin_editor_api/editor"]
+```
+
+```rust
+#[cfg(feature = "dll")]
+plugin_editor_api::export_library_plugin!();   // or export_plugin_build!() beside the root's own export_plugin!
+```
+
+`cargo build -p <root> --release --features dll` writes the library. Without `dll` (a game, the
+installed set) the root exports no symbol, so many roots link into one binary. The macro exports
+the root's descriptor and registrations (`pulsar_plugins::export_library!`), an empty editor
+plugin named after the descriptor (the loader requires an entry point), and the attach entry
+points below.
+
+`cargo run -p plugin_builder` (flags `--release`, `--only <id>,..`, `--out <dir>`, `--no-host`,
+`--check`) builds the editor and every plugin root with `--features <root>/dll` in one cargo
+invocation (one feature resolution, which the loader's layout checks need), copies each library
+to `<install>/plugins/editor/<root>.<ext>`, registers it in `plugin_integrity.json` and
+`plugins.lock.json` (`pulsar_install_layout`, records `local:<plugin id>`) and re-checks each
+against the manifest. `<install>` is `--out`, else `PULSAR_INSTALL_DIR` (which the engine
+honors first), else the folder of the editor executable. `plugins/linked` is what the editor
+links (`render_bps`); `plugins/installed` still links every plugin for games and tests.
+
+**State a library shares with the host.** A library links its own copy of every crate, so each
+`static` exists once per copy. What must be one per process is attached to the host's before
+the library runs any code (the loader calls each `_plugin_attach_*` entry point first):
+
+- the **parking lot** (`parking_lot_core`, vendored in `crates/third-party/parking_lot_core`
+  and patched): a thread parked in a library's table was never woken by the host's unlock of a
+  lock they share (the settings database, the world registries), which hung the editor when
+  the Extensions window opened. The parked-thread table and thread count are the host's
+  (`_plugin_attach_parking_lot`; a library of other sources is refused, `ParkingLotRefused`);
+- **Helio** (`helio_core::runtime::Shared`: shader hot-reload registry and watcher, driver
+  pipeline caches, compile and upload counters) and the host's task host, so the library's
+  threads and jobs are tasks, not raw threads (`_plugin_attach_helio`, `HelioRuntimeRefused`;
+  `helio-core/tests/runtime_statics.rs` fails on a Helio `static` not in
+  `runtime_statics_allowed.txt`);
+- the settings database (`engine_state::settings::global_config()` resolves to the host's
+  manager once bound), the world crates, the profiler and the event bus (as before);
+- WGPUI's id sequences (images, surfaces, invalid entities) in its shared runtime: a
+  per-copy counter handed the host and a library the same image id, and the renderer showed
+  one the other's picture.
+
+Known per-copy state not yet shared: `engine_state`'s `GLOBAL_CONTEXT`, `PLAYBACK_HOST`
+and plugin-settings `STATE`, and the settings file write lock. Audit a library's reads of
+`engine_state` before relying on them.
+
 
 ## Dynamic editor plugins
 
@@ -714,13 +799,23 @@ it is. `plugin_editor_api::import_companion` defines `ImportCompanion`:
 when the plugin has something to say about the sources) and
 `run(&ImportCompanionContext)` (after the native asset exists). The data both
 ways is neutral: the host passes `SourceSurface`s (a mesh slot, its name and
-the image files found for it, by role); the plugin returns `CompanionOutput`s
-(files written, optionally "default for slot N").
+the image files found for it, by role, each `SourceImage` with the UV set and
+the UV transform its source slot reads it through: `SourceUvTransform`, glTF's
+`KHR_texture_transform` convention, identity for an image found beside the
+model); the plugin returns `CompanionOutput`s (files written, optionally
+"default for slot N"). The meshes fill the transform from the converted
+material (`helio_asset_compat::MaterialImage`); the materials' companion
+samples a transformed image through a `texture_transform` graph node holding
+it (one node per distinct transform), so the `.material` tiles as the source
+does and the tiling is editable in the graph. A material graph reads UV set 0
+only (`MaterialInput::tex_coords`): an image on another set is read from set 0
+with a warning.
 
 `asset_import::register_companion` is the host-owned registry (a plugin links
 its own copy of the SDK, so a registry there would be private). Built-in
-providers register at startup in `ui_core`; the shader plugin registers
-`shader_editor_plugin::material_import_companion()`, which writes one
+providers register at startup in `ui_core`; the materials plugin registers
+`materials_graph_editor::material_import_companion()` (from its editor
+provider's startup, `materials_editor`), which writes one
 `.material` graph per surface with images. Accepted companion ids are stored in
 `ImportRecord::companions`, so a re-import runs them again. Rules: a companion
 never overwrites a file that exists, and its outputs only fill mesh slots that
@@ -753,6 +848,13 @@ writes against the registrar API (`plugin_editor_api::registrar`: `Plugin`,
 the traits above. Roadmap: `PLUGIN_API_REFACTOR_PLAN.md` (phase 4 brings dynamic plugins
 onto the root and the catalog).
 
+### Plugin icon
+
+A plugin shows an image beside its name in the Extensions window by adding a
+`pulsar_plugins::PluginIcon { origin, format, bytes }` from its root `build`
+(`bytes: include_bytes!("../icon.png")`; PNG, JPEG, WebP or SVG, square, shown
+at 44 and 64 px). Without one it gets a generic glyph.
+
 ### Plugin settings
 
 A plugin (or an engine crate standing in for one) lets people configure it by
@@ -767,14 +869,16 @@ plugin reads and observes its values through `PluginSettingsHandle`
 (`pulsar_settings::plugin::handle(origin, id)`: `get_*`, `on_change`); the database
 is the host's, a plugin never creates a second `ConfigManager`.
 
-Each value has two scopes (`engine_state::plugin_settings`): the person's
-(`<editor config dir>/plugin/<owner>.toml`) and the project's
-(`<project>/.pulsar/plugin/<owner>.toml`), sparse files holding only what was
-overridden. The effective value is the user override, else the project
-override, else the default; `read_project_layer` reads the project scope
-headlessly. The Settings window shows one `Plugin: <name>` page per plugin with
-settings, grouped by the schema's `page`, searchable, with a scope selector and
-a reset (setting a value back to its default removes the override).
+Plugins are project relative, so their settings are project settings
+(`engine_state::plugin_settings`): the project's overrides live in
+`<project>/.pulsar/plugin/<owner>.toml`, a sparse file holding only what was
+overridden, and the effective value is the override, else the default;
+`read_project_layer` reads it headlessly. The Project Settings window's Plugins
+folder has one page per plugin with settings, sections from the schema's `page`,
+searchable, with a reset (setting a value back to its default removes the
+override). A plugin adds project settings the same way (`ProjectSettingsRegistration`,
+or a renderer group with `SettingsGroupRegistration`); it can never add an editor
+setting. See `SETTINGS.md`.
 `pulsar_language::server_settings_schema` is the standard group every
 language server gets (`enabled`, `path`, `args`, `initialization_options`,
 `trace`, `start`, `idle_stop_minutes`); it is registered under the plugin that
@@ -786,7 +890,7 @@ footer runs only when the person chooses it.
 
 A plugin that takes over a group an engine crate (or an earlier plugin) used to
 register adds a `pulsar_settings::plugin::SettingsMove { origin, id, from }` from
-its `build`: `engine_state::plugin_settings::activate` renames the saved user and
-project file from the old owner path to the new one when the old exists and the
+its `build`: `engine_state::plugin_settings::activate` renames the project's saved
+file from the old owner path to the new one when the old exists and the
 new does not, so no value is lost (`pulsar.rust` does it for
 `engine.pulsar_lsp/rust-analyzer`).

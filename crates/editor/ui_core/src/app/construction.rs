@@ -279,6 +279,44 @@ pub(super) fn subscribe_drawer_events(
         event_handlers::on_navigate_to_diagnostic,
     )
     .detach();
+    cx.subscribe(problems_drawer, run_finding_action).detach();
+}
+
+/// Carry out a finding's button (the drawer opens files itself): open a
+/// settings window, on a page when the finding names one, or another window.
+fn run_finding_action(
+    app: &mut PulsarApp,
+    _: Entity<ProblemsDrawer>,
+    event: &ui_problems::RunFindingAction,
+    cx: &mut Context<PulsarApp>,
+) {
+    use gpui::UpdateGlobal as _;
+    use pulsar_findings::{Action, SettingsWindow};
+    match &event.0 {
+        Action::OpenSettings {
+            window: SettingsWindow::Project,
+            page,
+        } => {
+            let project = app.state.project_path.clone();
+            match page {
+                Some(page) => ui_settings::ProjectSettingsWindow::open_page(project, page.clone(), cx),
+                None => ui_settings::ProjectSettingsWindow::open_scoped(project, cx),
+            }
+        }
+        Action::OpenSettings {
+            window: SettingsWindow::Editor,
+            ..
+        } => {
+            window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                reg.open("EditorSettingsWindow", cx)
+            });
+        }
+        Action::OpenWindow { name } => {
+            let name = *name;
+            window_manager::WindowRegistry::update_global(cx, move |reg, cx| reg.open(name, cx));
+        }
+        Action::OpenFile { .. } => {}
+    }
 }
 
 /// Creates the language servers service, opens the project in it (the
@@ -323,7 +361,7 @@ pub(super) fn create_plugin_manager(
     let mut plugin_manager = staged_manager.unwrap_or_else(PluginManager::new);
     // Every editor -- built-in or a plugin library -- is created with a handle
     // to the engine's language servers and its one set of undo
-    // histories (one per document, Pulsar-Native#931).
+    // histories (one per document).
     plugin_manager.set_editor_services(plugin_editor_api::EditorServices {
         language_servers: Some(language_servers.clone()),
         undo: plugin_editor_api::UndoService::new(),

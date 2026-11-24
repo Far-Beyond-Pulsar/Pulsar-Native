@@ -1,4 +1,4 @@
-//! The unified reflection dispatcher (#643): invoke any registered reflected
+//! The unified reflection dispatcher: invoke any registered reflected
 //! method -- or read/write any reflected property -- against the live-typed
 //! component value in a [`World`], knowing nothing but
 //! `(world, entity, class_name, component_index, names, values)`.
@@ -19,7 +19,7 @@
 //!   panic on argument-count/type mismatches, so the dispatcher validates
 //!   arity and exact `TypeId` match BEFORE handing args to a closure and
 //!   reports [`ScriptRefError::ArgumentCount`]/[`ArgumentType`] instead.
-//! - **Instance identity** (Pulsar-Native#1035, D1). Every attached
+//! - **Instance identity**. Every attached
 //!   instance is its own entity holding its own typed value, so an address
 //!   resolves to exactly one instance: `entity` is either that instance
 //!   entity, or its owner object with `component_index` as the class-local
@@ -109,7 +109,7 @@ pub fn get_component_property(
 }
 
 /// Read one reflected property as a typed `Box<dyn Any>` -- the no-JSON hot
-/// path (#644/#D4); what the VM's comp_* opcodes should prefer.
+/// path; what the VM's comp_* opcodes should prefer.
 pub fn get_component_property_boxed(
     world: &World,
     entity: Entity,
@@ -146,7 +146,7 @@ pub fn set_component_property(
 }
 
 /// Write one reflected property from an already-typed `Box<dyn Any>` -- the
-/// no-JSON hot path (#644/#D4). The value's concrete type must equal the
+/// no-JSON hot path. The value's concrete type must equal the
 /// property's reflected type exactly (the same match the setter's own
 /// downcast demands); anything else is refused, never silently ignored.
 pub fn set_component_property_boxed(
@@ -296,7 +296,7 @@ fn live_instance_mut<'w>(
 
 /// Liveness gate mirroring the object-model crate's `ensure_live_entity`:
 /// a plain typed error in every build. `Entity::DANGLING` is scripts'
-/// `entity::none()`, so it is ordinary "not live" too (#888).
+/// `entity::none()`, so it is ordinary "not live" too.
 fn ensure_live_entity(world: &World, entity: Entity) -> Result<(), ScriptRefError> {
     if entity == Entity::DANGLING || !world.is_alive(entity) {
         return Err(ScriptRefError::despawned(entity));

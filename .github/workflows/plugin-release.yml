@@ -1,0 +1,264 @@
+name: Plugin release
+
+# Reusable. Every plugin repository's `release.yml` calls this one, so the build is written once:
+#
+#   jobs:
+#     release:
+#       uses: Far-Beyond-Pulsar/Pulsar-Native/.github/workflows/plugin-release.yml@main
+#       with:
+#         plugin_dir: plugins/vendor/<dir>
+#       permissions:
+#         contents: write
+#
+# A push to `main` that raises the version in the plugin root's Cargo.toml tags `v<version>` and
+# attaches one library per platform: the plugin root built with `--features dll` (the library the
+# editor loads from `plugins/editor`). The shared UI, reflection, profiling, SceneDB and Helio
+# libraries are NOT released here: each is released from its own repository, and the editor links
+# them. The versions of those libraries this build used are recorded in `sdk-versions.json`.
+#
+# The plugin is built inside Pulsar-Native's workspace (its crates use `workspace = true`
+# dependencies), exactly as the plugin's ci.yml checks it.
+
+on:
+  workflow_call:
+    inputs:
+      plugin_dir:
+        description: "Where Pulsar-Native vendors the plugin, e.g. plugins/vendor/fog"
+        required: true
+        type: string
+      optional_platforms:
+        description: "Platforms (space separated, e.g. macos-x86_64) whose build may fail without failing the release: a plugin whose dependency has no build for them, such as ONNX Runtime on Intel macOS"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  RUSTUP_MAX_RETRIES: "10"
+  # The repositories whose releases hold the shared libraries (see .agents/PLUGIN_SYSTEM.md).
+  SDK_REPOS: "Pulsar-Profiling WGPUI WGPUI-Component Pulsar-Reflection SceneDB Helio"
+
+jobs:
+  gate:
+    name: version gate
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.info.outputs.release }}
+      version: ${{ steps.info.outputs.version }}
+      root: ${{ steps.info.outputs.root }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Read the plugin root and its version
+        id: info
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          root=$(sed -n 's/^root = "\(.*\)"/\1/p' pulsar-plugin.toml | head -1)
+          version() { sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' "$1" | head -1; }
+          current=$(version Cargo.toml)
+          previous=""
+          if git rev-parse HEAD^1 > /dev/null 2>&1; then
+            previous=$(git show HEAD^1:Cargo.toml 2>/dev/null | sed -n '/^\[package\]/,/^\[/{s/^version *= *"\(.*\)"/\1/p}' | head -1)
+          fi
+          test -n "$root" && test -n "$current"
+          release=false
+          # A version bump releases; a manual run releases the current version.
+          if [ "$current" != "$previous" ] || [ "$EVENT" = "workflow_dispatch" ]; then release=true; fi
+          echo "root=$root" >> "$GITHUB_OUTPUT"
+          echo "version=$current" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "root=$root version=$current previous=$previous release=$release"
+
+  # Each shared library must have a release (with its SDK) before a plugin builds. The SDK carries the hash of the
+  # Cargo.lock it was built with; a plugin built from another lock still builds correctly (the wrapper serves a
+  # crate only when its hash matches), only slower, so a different lock is a warning, a missing release an error.
+  libraries:
+    name: shared libraries released
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: Far-Beyond-Pulsar/Pulsar-Native
+          ref: main
+          persist-credentials: false
+      - name: Check each library has a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          want=$(sha256sum Cargo.lock | cut -d' ' -f1)
+          echo "Cargo.lock sha256: $want"
+          failed=0
+          for pair in Pulsar-Profiling:profiling_dylib WGPUI:wgpui_dylib WGPUI-Component:ui_dylib Pulsar-Reflection:reflection_dylib SceneDB:scenedb_dylib Helio:helio_dylib; do
+            repo=${pair%%:*}; pkg=${pair##*:}
+            # The newest release of the library's own series (`shared-v<version>`, see library-release.yml).
+            tag=$(gh release list --repo "Far-Beyond-Pulsar/$repo" --limit 50 --json tagName --jq '[.[]|select(.tagName|startswith("shared-v"))][0].tagName')
+            if [ -z "$tag" ]; then echo "MISSING $repo ($pkg): no shared-v release"; failed=1; continue; fi
+            have=$(gh release download "$tag" --repo "Far-Beyond-Pulsar/$repo" --pattern "${pkg}-linux-x86_64-manifest.json" --output - 2>/dev/null | sed -n 's/.*"cargo_lock_sha256": "\(.*\)".*/\1/p')
+            if [ "$have" = "$want" ]; then echo "ok      $repo ($pkg) $tag"; else echo "::warning::$repo ($pkg) $tag was built for another Cargo.lock ('${have:-unknown}'): the SDK may serve fewer crates"; fi
+          done
+          if [ $failed -ne 0 ]; then
+            echo "::error::A shared library has no release: release the libraries first (their sdk-release workflows), then re-run this."
+            exit 1
+          fi
+
+  build:
+    name: ${{ matrix.platform }}
+    needs: [gate, libraries]
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ contains(inputs.optional_platforms, matrix.platform) }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  platform: linux-x86_64,   prefix: lib, ext: so }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,    platform: windows-x86_64, prefix: "",  ext: dll }
+          - { os: windows-latest, target: aarch64-pc-windows-msvc,   platform: windows-arm64,  prefix: "",  ext: dll }
+          - { os: macos-latest,   target: x86_64-apple-darwin,       platform: macos-x86_64,   prefix: lib, ext: dylib }
+          - { os: macos-latest,   target: aarch64-apple-darwin,      platform: macos-arm64,    prefix: lib, ext: dylib }
+    env:
+      ROOT: ${{ needs.gate.outputs.root }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: Far-Beyond-Pulsar/Pulsar-Native
+          ref: main
+          submodules: recursive
+          persist-credentials: false
+          path: pulsar
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          path: pulsar/${{ inputs.plugin_dir }}
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          target: ${{ matrix.target }}
+          cache-workspaces: pulsar
+          # No `-D warnings`: it is a lint, it is part of every crate's hash (the engine release does not set it), and one
+          # warning in one crate on one platform would fail a release. The SDK and its consumers build with the same flags.
+          rustflags: ""
+
+      # The repository pins its toolchain (rust-toolchain.toml in the checkout), which is not the one the step above
+      # set up: the target (a cross build, or i686 / arm64 on an x86_64 runner) must be installed for the pinned one.
+      - name: Install the target for the pinned toolchain
+        working-directory: pulsar
+        shell: bash
+        run: rustup target add "${{ matrix.target }}"
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
+            libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev libudev-dev \
+            clang libclang-dev cmake
+
+      - name: Install macOS system dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake pkg-config
+
+      # The released binaries of the tool: nothing is compiled here.
+      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.1
+
+      # Every crate inside the shared libraries, already compiled by the library release (Helio's SDK covers the
+      # whole chain: Helio, SceneDB, Reflection, UI, WGPUI and Profiling). The build below serves them from it
+      # instead of compiling them, which is most of a plugin build.
+      - name: Fetch the shared libraries' SDK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag=$(gh release list --repo Far-Beyond-Pulsar/Helio --limit 50 --json tagName --jq '[.[]|select(.tagName|startswith("shared-v"))][0].tagName')
+          test -n "$tag" || { echo "::error::Helio has no shared-v release yet: release the shared libraries first"; exit 1; }
+          cargo sdk fetch --repo Far-Beyond-Pulsar/Helio --tag "$tag" \
+            --asset "helio_dylib-${{ matrix.platform }}-sdk.tar.gz" --out "$RUNNER_TEMP/sdk"
+
+      # The plugin library: the root crate with its `dll` feature, a cdylib that exports the
+      # plugin's descriptor and registrations (plugin_editor_api::export_library_plugin!). The feature pin
+      # (`pulsar_workspace_hack`) is part of every build, so the crates' hashes match the SDK's.
+      - name: Build the plugin library
+        working-directory: pulsar
+        shell: bash
+        run: |
+          cargo sdk exec --sdk "$RUNNER_TEMP/sdk" --verbose -- \
+            cargo build -p "$ROOT" --release --target "${{ matrix.target }}" --features "$ROOT/dll" -p pulsar_workspace_hack \
+            2>&1 | tee "$RUNNER_TEMP/build.log"
+          served=$(grep -c 'sdk-rustc: served' "$RUNNER_TEMP/build.log" || true)
+          echo "served from the SDK: $served"
+          # A build the SDK does not match still succeeds, only slowly: say so.
+          if [ "$served" -lt 100 ]; then echo "::warning::the SDK served only $served crates: the build and the SDK differ (Cargo.lock, toolchain, flags or features)"; fi
+
+      - name: Package
+        id: package
+        working-directory: pulsar
+        shell: bash
+        run: |
+          built="target/${{ matrix.target }}/release/${{ matrix.prefix }}${ROOT}.${{ matrix.ext }}"
+          test -f "$built" || { echo "no library at $built"; find target -name "*${ROOT}*" -maxdepth 4 | sort; exit 1; }
+          asset="${ROOT}-${{ matrix.platform }}.${{ matrix.ext }}"
+          mkdir -p ../out
+          cp "$built" "../out/$asset"
+          (cd ../out && if command -v sha256sum > /dev/null; then sha256sum "$asset"; else shasum -a 256 "$asset"; fi) > "../out/$asset.sha256"
+          ls -l ../out
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: out
+          merge-multiple: true
+
+      # What the build linked against: the latest release of each shared library. The editor refuses
+      # a plugin built against another layout; this file says which libraries it was.
+      - name: Record the shared library versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "{"
+            first=1
+            for repo in $SDK_REPOS; do
+              tag=$(gh release list --repo "Far-Beyond-Pulsar/$repo" --limit 50 --json tagName --jq '[.[]|select(.tagName|startswith("shared-v"))][0].tagName' 2>/dev/null || true)
+              tag=${tag:-none}
+              [ $first -eq 0 ] && echo ","
+              printf '  "%s": "%s"' "$repo" "$tag"
+              first=0
+            done
+            echo
+            echo "}"
+          } > out/sdk-versions.json
+          cat out/sdk-versions.json
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
+        with:
+          tag_name: v${{ needs.gate.outputs.version }}
+          name: ${{ needs.gate.outputs.root }} v${{ needs.gate.outputs.version }}
+          files: out/*
+          fail_on_unmatched_files: true

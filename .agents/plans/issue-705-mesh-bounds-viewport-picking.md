@@ -1,3 +1,5 @@
+Status: as built (as of 2026-11-20) - PMSH v5 bounds and BVH picking implemented per its own 'Implementation status'
+
 # PMSH bounds and precise viewport picking (issue #705)
 
 ## Goal

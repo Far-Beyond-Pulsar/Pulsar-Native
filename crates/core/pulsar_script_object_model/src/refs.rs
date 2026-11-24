@@ -7,8 +7,8 @@
 //! before a despawn simply fails validation afterwards instead of
 //! misaddressing whoever inherited the recycled slot.
 //!
-//! `ComponentRef`'s identity fields are the properties panel's convention
-//! (Pulsar-Native#519/#575): `(class_name, component_index)` addresses one
+//! `ComponentRef`'s identity fields are the properties panel's convention:
+//! `(class_name, component_index)` addresses one
 //! specific instance even when an object carries several instances of the
 //! same class. Index 0 (or, with an instance store supplied, that store's
 //! first-enabled index) is the *live-typed* instance whose value lives in
@@ -65,7 +65,7 @@ impl ActorRef {
     }
 
     /// Despawn the referenced actor (recursively, per `World::despawn`).
-    /// Returns `false` if already gone -- never panics (#641). Note: any
+    /// Returns `false` if already gone -- never panics. Note: any
     /// `ActorRef`/`ComponentRef` to this entity (or its descendants)
     /// validates as `ReferenceDespawned` afterwards.
     pub fn despawn(self, world: &mut World) -> bool {
@@ -83,12 +83,12 @@ impl From<Entity> for ActorRef {
 }
 
 /// A handle to ONE component instance on one actor: the properties panel's
-/// `(class_name, component_index)` identity (Pulsar-Native#519), usable from
+/// `(class_name, component_index)` identity, usable from
 /// scripts, generated code, and graph pins alike.
 ///
 /// The pair resolves to one component-instance entity: the actor's
-/// `component_index`-th attached instance of `class_name` (Pulsar-Native#1035,
-/// D1). Every instance is live and typed; accessors refuse a missing one
+/// `component_index`-th attached instance of `class_name`.
+/// Every instance is live and typed; accessors refuse a missing one
 /// (`ComponentMissing`/`InstanceMissing`) rather than letting an edit land
 /// elsewhere.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -133,13 +133,13 @@ impl ComponentRef {
     }
 }
 
-/// Shared liveness gate behind every accessor (#641): typed errors always,
+/// Shared liveness gate behind every accessor: typed errors always,
 /// in every build -- ordinary staleness (despawned, recycled generation,
 /// out-of-range slot after a world rebuild) NEVER panics or asserts.
 ///
 /// [`Entity::DANGLING`] is scripts' `entity::none()` (what an unmatched
 /// `world::find_by_*` or an unbound instance's `self` is), so it is an
-/// ordinary "not live" result here too (#888), never an assert.
+/// ordinary "not live" result here too, never an assert.
 pub(crate) fn ensure_live_entity(world: &World, entity: Entity) -> Result<(), ScriptRefError> {
     if entity == Entity::DANGLING || !world.is_alive(entity) {
         return Err(ScriptRefError::despawned(entity));
@@ -157,7 +157,7 @@ mod tests {
         (world, ActorRef::new(entity))
     }
 
-    /// #640: a fresh handle to a spawned entity validates; after despawn the
+    /// A fresh handle to a spawned entity validates; after despawn the
     /// SAME handle must report staleness instead of success.
     #[test]
     fn handles_validate_alive_and_report_despawned() {
@@ -171,7 +171,7 @@ mod tests {
         assert!(!actor.is_alive(&world));
     }
 
-    /// #640: despawning twice is a clean no-op (`false`), not a panic --
+    /// Despawning twice is a clean no-op (`false`), not a panic --
     /// the stale-handle contract applies to lifecycle calls too.
     #[test]
     fn double_despawn_is_a_clean_no_op() {
@@ -180,7 +180,7 @@ mod tests {
         assert!(!actor.despawn(&mut world));
     }
 
-    /// #641/#888: `Entity::DANGLING` (`entity::none()`) and fabricated ids
+    /// `Entity::DANGLING` (`entity::none()`) and fabricated ids
     /// are rejected with the same typed error as ordinary staleness, in
     /// every build: no panic, no debug assert.
     #[test]
@@ -201,7 +201,7 @@ mod tests {
         );
     }
 
-    /// #640: `component()` composes the full panel identity; `live()` is the
+    /// `component()` composes the full panel identity; `live()` is the
     /// index-0 shorthand; `actor()` round-trips.
     #[test]
     fn component_ref_composes_and_round_trips() {
@@ -216,7 +216,7 @@ mod tests {
         );
     }
 
-    /// #640: an unregistered class fails validation up front -- there is no
+    /// An unregistered class fails validation up front -- there is no
     /// live World representation a script path could address.
     #[test]
     fn unregistered_class_fails_validation() {
@@ -228,7 +228,7 @@ mod tests {
         );
     }
 
-    /// #640: slots are recycled with generation bumps -- a stale handle to a
+    /// Slots are recycled with generation bumps -- a stale handle to a
     /// REUSED slot must still fail validation (generation mismatch), which
     /// is exactly what keeps recycled-slot writes impossible.
     #[test]

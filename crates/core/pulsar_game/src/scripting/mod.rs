@@ -5,7 +5,7 @@
 //! [`ScriptRuntime`] runs it. The runtime is language-neutral: any
 //! scripting plugin that writes a module for a class is loaded the same way.
 //!
-//! What runs is decided by the world, not by side tables (#922): the
+//! What runs is decided by the world, not by side tables: the
 //! [`ScriptDriver`] gives every placed class instance (an entity carrying a
 //! `pulsar_class::ClassInstance`) one script instance bound to that entity,
 //! and follows the world as instances are placed, spawned and destroyed. The
@@ -92,7 +92,7 @@ pub fn new_driver(project_root: impl Into<PathBuf>) -> ScriptDriver {
 }
 
 /// The script runtime limits `settings` ask for in their own profile
-/// (#857, #858): budgets, call depth, checked arithmetic, per-class budgets.
+/// (budgets, call depth, checked arithmetic, per-class budgets).
 pub fn script_limits(
     settings: &pulsar_content::ProjectSettings,
 ) -> pulsar_script_runtime::ScriptLimits {
@@ -110,7 +110,7 @@ pub fn script_limits(
     }
 }
 
-/// The native capability allowlist `settings` ask for (#869).
+/// The native capability allowlist `settings` ask for.
 pub fn capability_policy(
     settings: &pulsar_content::ProjectSettings,
 ) -> pulsar_script_vm::CapabilityPolicy {
@@ -139,7 +139,7 @@ pub fn new_content_driver(content: &pulsar_content::ContentRoot) -> ScriptDriver
     ScriptDriver::new(runtime, content.root())
 }
 
-// ---- class component slots (#921) ------------------------------------------
+// ---- class component slots ------------------------------------------
 
 /// Fill hidden component handles of instance `instance_id`: prefab slots
 /// (`__slot:<uuid>`) resolve through the class placement, while implicit

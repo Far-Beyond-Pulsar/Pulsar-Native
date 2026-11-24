@@ -30,6 +30,11 @@ members = [
     "crates/agent-providers/*",
     "crates/ui/wgpui-base",
     "plugins/vendor/asset_viewer",
+    # Motion capture (`pulsar.mocap`): in-tree plugin, its crates named one by one.
+    "plugins/vendor/mocap",
+    "plugins/vendor/mocap/format",
+    "plugins/vendor/mocap/capture",
+    "plugins/vendor/mocap/editor",
     # Skeletal animation editor; built-in plugin of the editor.
     "plugins/vendor/skm_editor",
     # The skeletal asset formats, shared by that plugin and the asset importer.
@@ -200,6 +205,7 @@ members = [
     "plugins/vendor/lights/feature/hlfs",
     "plugins/vendor/lights/feature/sampler",
     "plugins/vendor/lights/feature/shadows",
+    "plugins/vendor/lights/feature/sampler",
     "plugins/vendor/lights/host",
     "plugins/vendor/lights/component",
     "plugins/vendor/lights/editor",
@@ -209,6 +215,14 @@ members = [
     # descriptors. The editor links it; a project enables its plugins
     # (`pulsar_plugins`); a game links only its project's.
     "plugins/installed",
+    # The plugins the editor links (render_bps only). Every other plugin root builds as its
+    # own library (feature `dll`, tools/plugin_builder).
+    "plugins/linked",
+    "tools/plugin_builder",
+    # The feature-pinning crate for the shared libraries, and the generator that writes it (cargo run -p hack_gen).
+    "tools/hack_gen",
+    "tools/workspace_hack",
+    "tools/sdk_roots",
     # The plugin catalog's fixture plugin (plugins/installed/tests/catalog.rs).
     "plugins/installed/tests/fixtures/catalog_plugin",
     "plugins/installed/tests/fixtures/catalog_plugin/component",
@@ -433,6 +447,17 @@ ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
 # Every installed plugin's modules (runtime; `editor` adds the editor
 # plugins). Hosts link the set, never a plugin by name.
 installed_plugins                  = { path = "plugins/installed", default-features = false }
+# What the editor links (render_bps); every other plugin is a library built by tools/plugin_builder.
+linked_plugins = { path = "plugins/linked" }
+# The shared UI, reflection, profiling, SceneDB and renderer libraries: each lives in, and builds and
+# releases from, the repository that owns what it contains. The editor and every plugin library link
+# them dynamically. (SceneDB: its shared-dylib worktree until that branch is pushed and re-pinned.)
+wgpui_dylib = { path = "crates/ui/wgpui/dylib" }
+ui_dylib = { path = "crates/ui/wgpui-component/crates/ui_dylib" }
+profiling_dylib = { path = "crates/external/pulsar-profiling/crates/profiling_dylib" }
+reflection_dylib = { path = "crates/external/pulsar-reflection/crates/reflection_dylib" }
+scenedb_dylib = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
+helio_dylib = { path = "crates/renderer/helio/crates/helio_dylib" }
 engine_state                       = { path = "crates/core/engine_state" }
 pulsar_auth                        = { path = "crates/core/pulsar_auth" }
 pulsar_settings                    = { path = "crates/core/pulsar_settings" }
@@ -443,11 +468,12 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
+pulsar_findings                    = { path = "crates/core/pulsar_findings" }
 # Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
 # hub. Pinned to the merged v0.2.0 on Gamma `main`.
 gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b" }
@@ -457,7 +483,7 @@ pulsar_component_lifecycle         = { path = "crates/core/pulsar_component_life
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_class                       = { path = "crates/core/pulsar_class" }
 pulsar_content                     = { path = "crates/core/pulsar_content" }
-pulsar_package                     = { path = "crates/core/pulsar_package" }
+pulsar_package                     = { path = "crates/core/pulsar_package", default-features = false }
 pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 
@@ -565,6 +591,7 @@ helio-pass-forward-lit = { path = "plugins/vendor/meshes/feature/forward" }
 helio-pass-gbuffer = { path = "plugins/vendor/meshes/feature/gbuffer" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
 helio-pass-buffer-view = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view" }
+helio-pass-reference = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-reference" }
 helio-core = { path = "crates/renderer/helio/crates/helio-core" }
 helio-mesh-api = { path = "plugins/vendor/meshes/api" }
 helio-scene-join = { path = "crates/renderer/helio/crates/helio-scene-join" }
@@ -610,7 +637,6 @@ helio-mesh-host = { path = "plugins/vendor/meshes/host" }
 helio-web-demos = { path = "plugins/vendor/meshes/web-demos" }
 helio-controls = { path = "crates/renderer/helio/crates/helio-controls" }
 helio-pass-fxaa = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-fxaa" }
-helio-pass-reference = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-reference" }
 helio-pass-hlfs = { path = "plugins/vendor/lights/feature/hlfs" }
 helio-wasm = { path = "crates/renderer/helio/crates/helio-wasm" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
@@ -717,6 +743,7 @@ pulsar_script_ts = { path = "plugins/vendor/typescript/compiler" }
 plugin_typescript = { path = "plugins/vendor/typescript" }
 rust_plugin = { path = "plugins/vendor/rust" }
 trait_editor_plugin = { path = "plugins/vendor/trait_editor" }
+mocap_plugin = { path = "plugins/vendor/mocap" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"
@@ -771,6 +798,7 @@ files.extend-exclude = ["**/fixtures/*"]
 
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
 gpui-ce = { path = "crates/ui/wgpui" }
+wgpui_dylib = { path = "crates/ui/wgpui/dylib" }
 
 # Helio's wgpu: the upstream v30.0.1 tag plus Helio's patches, on our fork's
 # helio/v30.0.1 branch (acceleration-structure refit and safe compaction;
@@ -780,6 +808,8 @@ gpui-ce = { path = "crates/ui/wgpui" }
 # `[patch.crates-io]`; patching the whole wgpu workspace keeps naga and
 # wgpu-types a single version. Change it together with Helio's.
 [patch.crates-io]
+# Pulsar's parking_lot_core: one parked-thread table for the host and every plugin library.
+parking_lot_core = { path = "crates/third-party/parking_lot_core" }
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
 wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
 wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
@@ -796,6 +826,7 @@ wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "heli
 # would go to a profiler nobody drains.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling"]
 profiling = { path = "crates/external/pulsar-profiling/crates/profiling" }
+profiling_dylib = { path = "crates/external/pulsar-profiling/crates/profiling_dylib" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Graphy"]
 graphy = { path = "crates/third-party/graphy" }
@@ -806,6 +837,7 @@ pulsar-config = { path = "crates/third-party/pulsar-config" }
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI-Component"]
 ui = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros = { path = "crates/ui/wgpui-component/crates/ui-macros" }
+ui_dylib = { path = "crates/ui/wgpui-component/crates/ui_dylib" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/ToolbeltRS"]
 tool_registry = { path = "crates/third-party/toolbelt/crates/tool_registry" }
@@ -825,10 +857,12 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
+reflection_dylib = { path = "crates/external/pulsar-reflection/crates/reflection_dylib" }
 # SceneDB: Pulsar, Helio and the plugins pin it by git rev; every copy in the
 # graph resolves to the one rev Pulsar names (the `//` URL spelling lets a
 # patch point at a different rev of the same repository), so SceneDB's types
 # are one set of types for all of them.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f6769f61518e1e68475bb9b6191fa26a29cc09f6" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
+scenedb_dylib = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }

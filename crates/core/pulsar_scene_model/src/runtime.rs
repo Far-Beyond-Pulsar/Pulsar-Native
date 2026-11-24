@@ -1,5 +1,5 @@
-//! This crate's process-wide state, shared by every statically linked copy
-//! (Pulsar-Native#1083): the ordinal source behind generated object ids and
+//! This crate's process-wide state, shared by every statically linked copy:
+//! the ordinal source behind generated object ids and
 //! sibling order, and the registered motion gates. A plugin library's copy
 //! is attached to the editor's when the library loads; see
 //! `pulsar_scenedb::runtime` for the model.

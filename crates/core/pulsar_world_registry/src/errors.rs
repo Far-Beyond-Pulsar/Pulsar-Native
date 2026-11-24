@@ -1,5 +1,5 @@
 //! Typed error taxonomy for every script-facing accessor over live
-//! `World` components (#641, extended by #643).
+//! `World` components.
 //!
 //! The contract: **accessors never panic and never silently misaddress.**
 //! Every failure mode a script can hit is a variant here, `Display`-formatted
@@ -17,7 +17,7 @@
 //!   is an expected runtime outcome -- handles outlive their targets by
 //!   design. These are plain `Err` returns in every build.
 //! - [`pulsar_scenedb::Entity::DANGLING`] (scripts' `entity::none()`)
-//!   returns the same `ReferenceDespawned` error in every build (#888).
+//!   returns the same `ReferenceDespawned` error in every build.
 
 use pulsar_scenedb::Entity;
 
@@ -42,7 +42,7 @@ pub enum ScriptRefError {
 
     /// The instance record at `component_index` belongs to a different
     /// class than the ref claims. Same discipline as the properties panel's
-    /// "index IS the identity" refusal (#519): a stale/mismatched index
+    /// "index IS the identity" refusal: a stale/mismatched index
     /// must never land an edit into some OTHER instance's storage.
     #[error("component index {component_index} on {entity} holds '{found}', not '{expected}'")]
     ClassMismatch {
@@ -86,7 +86,7 @@ pub enum ScriptRefError {
     #[error("'{class_name}' has no callable method '{method}'")]
     UnknownMethod { class_name: String, method: String },
 
-    /// #643: the argument vector has the wrong length for the reflected
+    /// The argument vector has the wrong length for the reflected
     /// method. Checked BEFORE dispatch because generated caller closures
     /// panic on missing arguments -- the dispatcher refuses first.
     #[error("'{class_name}.{method}' expects {expected} argument(s), got {got}")]
@@ -97,7 +97,7 @@ pub enum ScriptRefError {
         got: usize,
     },
 
-    /// #643: argument `index` holds a different concrete type than the
+    /// Argument `index` holds a different concrete type than the
     /// reflected parameter. Checked via `TypeId` equality -- exactly the
     /// match the generated downcast would demand -- so a mismatch here is a
     /// mismatch there, reported as an `Err` instead of a panic.
@@ -136,7 +136,7 @@ impl ScriptRefError {
 mod tests {
     use super::*;
 
-    /// #641: error Display strings are human-readable for editor surfaces
+    /// Error Display strings are human-readable for editor surfaces
     /// and problem panels -- no `Debug`-dump leakage.
     #[test]
     fn display_strings_name_the_target_and_cause() {
@@ -168,7 +168,7 @@ mod tests {
         );
     }
 
-    /// #641: errors are plain data -- cloneable and comparable so scripts
+    /// Errors are plain data -- cloneable and comparable so scripts
     /// can match on them without formatting gymnastics.
     #[test]
     fn errors_are_clone_and_eq() {
@@ -176,7 +176,7 @@ mod tests {
         assert_eq!(err.clone(), err);
     }
 
-    /// #643: the argument-mismatch variants render complete diagnostics --
+    /// The argument-mismatch variants render complete diagnostics --
     /// arity names the counts, type names both sides of the mismatch.
     #[test]
     fn argument_mismatch_display_is_actionable() {

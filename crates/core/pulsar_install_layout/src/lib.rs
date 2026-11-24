@@ -22,6 +22,10 @@
 //! Themes are shared by all installs; plugins belong to one install, because a
 //! plugin library only loads into the engine build it was compiled against.
 
+// The install layout is real disk outside any project: engine installs and
+// the per-user app data the Hub writes (architecture/std-fs-allowed.txt).
+#![allow(clippy::disallowed_methods)]
+
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -86,10 +90,12 @@ impl InstallLayout {
         Self { root: root.into() }
     }
 
-    /// The install the running engine belongs to: `PULSAR_INSTALL_DIR` if set,
-    /// else the directory of the executable. A development build (run from
-    /// `target/`, with `plugins/editor` in the working directory instead)
-    /// falls back to the working directory so a checkout keeps working.
+    /// The install the running engine belongs to: `PULSAR_INSTALL_DIR` if set;
+    /// else, for a development build (an executable under a cargo `target/`
+    /// directory) run from a checkout whose root has `plugins/editor`, the
+    /// working directory, which is where `just plugins` installs them; else the
+    /// directory of the executable (the Hub's layout), falling back to the working
+    /// directory when only that has `plugins/editor`.
     pub fn of_running_engine() -> Self {
         if let Some(dir) = std::env::var_os("PULSAR_INSTALL_DIR").filter(|d| !d.is_empty()) {
             return Self::new(dir);
@@ -98,6 +104,16 @@ impl InstallLayout {
             .ok()
             .and_then(|exe| exe.parent().map(Path::to_path_buf));
         let cwd = std::env::current_dir().ok();
+        // A cargo-built editor looks in the checkout's own `plugins/editor` first, whatever an
+        // earlier build left beside the executable under `target/`.
+        let developing = exe_dir
+            .as_ref()
+            .is_some_and(|dir| dir.components().any(|part| part.as_os_str() == "target"));
+        if developing {
+            if let Some(cwd) = cwd.as_ref().filter(|cwd| Self::new(cwd).plugins_dir().is_dir()) {
+                return Self::new(cwd);
+            }
+        }
         match (exe_dir, cwd) {
             (Some(exe), Some(cwd))
                 if !Self::new(&exe).plugins_dir().is_dir()

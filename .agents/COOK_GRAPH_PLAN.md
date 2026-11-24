@@ -1,3 +1,5 @@
+Status: proposed (as of 2026-11-20) - Phase 0 design; no ReferenceExtractor or cook graph in the code
+
 # The cook reference graph: plan
 
 **Status: Phase 0 — design. No code changes.** Read against `main` at

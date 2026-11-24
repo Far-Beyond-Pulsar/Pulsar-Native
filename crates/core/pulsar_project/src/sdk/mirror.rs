@@ -15,6 +15,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use super::error::SdkError;
 use super::fs;
 use super::index::SdkIndex;
 use super::normalize;
@@ -72,7 +73,7 @@ pub fn mirror(
     index_key: Option<String>,
     dest: &Path,
     force: bool,
-) -> Result<MirrorReport, String> {
+) -> Result<MirrorReport, SdkError> {
     let previous = MirrorRecord::read(dest).filter(|_| !force);
     let fingerprint = index.fingerprint();
     let index_changed = previous
@@ -87,9 +88,9 @@ pub fn mirror(
         for found in fs::walk_package(&package_dir)? {
             let rel = format!("{}/{}", package.dir, found.rel);
             if rel == RECORD_FILE {
-                return Err(format!(
+                return Err(SdkError::Message(format!(
                     "the SDK has a file named {RECORD_FILE} at its root"
-                ));
+                )));
             }
             let is_manifest = rel == manifest_rel;
             let (source_size, source_modified_ns) = fs::stamp(&found.path)?;
@@ -134,11 +135,11 @@ pub fn mirror(
             );
         }
         if !files.contains_key(&manifest_rel) {
-            return Err(format!(
+            return Err(SdkError::Message(format!(
                 "{}: the SDK's package `{}` has no Cargo.toml",
                 package_dir.display(),
                 package.name
-            ));
+            )));
         }
     }
 

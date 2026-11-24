@@ -5,7 +5,7 @@
 //! [`world_ext::SceneWorldExt`] gives stateless helpers (identity lookup,
 //! hierarchy, selection) that are derived from those components on demand, and
 //! [`attachments`] holds every attached component instance as its own entity
-//! linked to its owner (Pulsar-Native#1035, D1).
+//! linked to its owner.
 
 #![warn(clippy::undocumented_unsafe_blocks)]
 
@@ -18,6 +18,7 @@ pub mod level_instances;
 pub mod motion;
 pub mod partitions;
 pub mod payload_catalog;
+pub mod pivots;
 pub mod runtime;
 pub mod sublevels;
 mod transform_script;

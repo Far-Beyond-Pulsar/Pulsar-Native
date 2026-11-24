@@ -4,56 +4,31 @@
 use serde_json::Value;
 use ui::diagnostics::{CodeAction, TextEdit};
 
-use crate::path_utils::uri_to_path;
+/// A parsed edit ([`pulsar_language::lsp_edits`], the one parser) as the UI's
+/// [`TextEdit`].
+fn text_edit_of(edit: pulsar_language::QuickFixEdit) -> TextEdit {
+    TextEdit {
+        file_path: edit.file_path,
+        start_line: edit.start_line,
+        start_column: edit.start_column,
+        end_line: edit.end_line,
+        end_column: edit.end_column,
+        new_text: edit.new_text,
+    }
+}
 
 /// One LSP `TextEdit` as a [`TextEdit`] of `file_path`.
 pub fn parse_text_edit(text_edit: &Value, file_path: &str) -> Option<TextEdit> {
-    let range = text_edit.get("range")?;
-    let new_text = text_edit.get("newText")?.as_str()?;
-    let start = range.get("start")?;
-    let end = range.get("end")?;
-    Some(TextEdit {
-        file_path: file_path.to_string(),
-        start_line: start.get("line")?.as_u64()? as usize + 1,
-        start_column: start.get("character")?.as_u64()? as usize + 1,
-        end_line: end.get("line")?.as_u64()? as usize + 1,
-        end_column: end.get("character")?.as_u64()? as usize + 1,
-        new_text: new_text.to_string(),
-    })
-}
-
-fn path_string(uri: &str) -> String {
-    uri_to_path(uri).to_string_lossy().into_owned()
+    pulsar_language::lsp_edits::parse_text_edit(text_edit, file_path).map(text_edit_of)
 }
 
 /// Every text edit in a `WorkspaceEdit` (`changes` and the text-document
 /// edits of `documentChanges`; resource operations carry none).
 pub fn edits_in_workspace_edit(edit: &Value) -> Vec<TextEdit> {
-    let mut edits = Vec::new();
-    if let Some(changes) = edit.get("changes").and_then(Value::as_object) {
-        for (uri, list) in changes {
-            let file = path_string(uri);
-            for text_edit in list.as_array().into_iter().flatten() {
-                edits.extend(parse_text_edit(text_edit, &file));
-            }
-        }
-    }
-    if let Some(changes) = edit.get("documentChanges").and_then(Value::as_array) {
-        for change in changes {
-            let Some(uri) = change
-                .get("textDocument")
-                .and_then(|document| document.get("uri"))
-                .and_then(Value::as_str)
-            else {
-                continue;
-            };
-            let file = path_string(uri);
-            for text_edit in change.get("edits").and_then(Value::as_array).into_iter().flatten() {
-                edits.extend(parse_text_edit(text_edit, &file));
-            }
-        }
-    }
-    edits
+    pulsar_language::lsp_edits::edits_in_workspace_edit(edit)
+        .into_iter()
+        .map(text_edit_of)
+        .collect()
 }
 
 /// A code action with its edits (`None`: it carries none, so it is either
@@ -129,7 +104,10 @@ mod tests {
             { "title": "c", "data": 2, "edit": { "changes": {} } }
         ]);
         assert_eq!(get_unresolved_actions(&result).len(), 1);
-        assert!(parse_code_actions(&result).is_empty(), "no edits in any of them");
+        assert!(
+            parse_code_actions(&result).is_empty(),
+            "no edits in any of them"
+        );
     }
 }
 
@@ -149,17 +127,5 @@ pub fn code_action_of(fix: pulsar_language::QuickFix) -> CodeAction {
                 new_text: edit.new_text,
             })
             .collect(),
-    }
-}
-
-/// A [`TextEdit`] as a quick fix's edit.
-pub fn quick_edit_of(edit: TextEdit) -> pulsar_language::QuickFixEdit {
-    pulsar_language::QuickFixEdit {
-        file_path: edit.file_path,
-        start_line: edit.start_line,
-        start_column: edit.start_column,
-        end_line: edit.end_line,
-        end_column: edit.end_column,
-        new_text: edit.new_text,
     }
 }

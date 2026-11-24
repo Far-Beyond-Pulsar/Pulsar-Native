@@ -89,7 +89,15 @@ impl Graph {
             .push((from.into(), pin.into(), to.into(), to_pin.into(), false));
     }
 
-    fn comment(&mut self, id: &str, text: &str, at: (f64, f64), size: (f64, f64), color: [f64; 4], contained: &[&str]) {
+    fn comment(
+        &mut self,
+        id: &str,
+        text: &str,
+        at: (f64, f64),
+        size: (f64, f64),
+        color: [f64; 4],
+        contained: &[&str],
+    ) {
         self.comments.push(json!({
             "id": id,
             "text": text,
@@ -201,7 +209,14 @@ const PHASES: [(&str, &str); 5] = [
 
 /// An "On <action>" node of the Player Input component's mapping: every phase an
 /// exec output, the action's typed value, and the shared timing pins.
-fn on_action(g: &mut Graph, id: &str, action: &str, action_id: &str, value: (&str, &str, &str), at: (f64, f64)) {
+fn on_action(
+    g: &mut Graph,
+    id: &str,
+    action: &str,
+    action_id: &str,
+    value: (&str, &str, &str),
+    at: (f64, f64),
+) {
     let (pin_name, pin_type, lowering) = value;
     let events = PHASES
         .iter()
@@ -237,7 +252,15 @@ fn pin_exec(id: &str) -> PinSpec {
 }
 
 /// A call of a method of the character component on this object: exec in and out.
-fn character_call(g: &mut Graph, id: &str, class: &str, method: &str, at: (f64, f64), params: Vec<PinSpec>, props: Value) {
+fn character_call(
+    g: &mut Graph,
+    id: &str,
+    class: &str,
+    method: &str,
+    at: (f64, f64),
+    params: Vec<PinSpec>,
+    props: Value,
+) {
     let mut inputs = vec![pin_exec("exec"), pin("component_ref", data(class))];
     inputs.extend(params);
     g.node(
@@ -251,7 +274,15 @@ fn character_call(g: &mut Graph, id: &str, class: &str, method: &str, at: (f64, 
 }
 
 /// A pure value-type operation: `native::Type::op`.
-fn pure_native(g: &mut Graph, id: &str, name: &str, at: (f64, f64), params: Vec<PinSpec>, ret: &str, props: Value) {
+fn pure_native(
+    g: &mut Graph,
+    id: &str,
+    name: &str,
+    at: (f64, f64),
+    params: Vec<PinSpec>,
+    ret: &str,
+    props: Value,
+) {
     g.node(
         id,
         &format!("native::{name}"),
@@ -288,13 +319,42 @@ fn build() -> Value {
 
     // ── 1. The Player Character trait ──────────────────────────────────────────
     trait_event(&mut g, "spawned", "on_spawned", (0.0, 40.0), None);
-    trait_event(&mut g, "possessed", "on_possessed", (0.0, 200.0), Some(("controller_id", "i64")));
+    trait_event(
+        &mut g,
+        "possessed",
+        "on_possessed",
+        (0.0, 200.0),
+        Some(("controller_id", "i64")),
+    );
     trait_event(&mut g, "unpossessed", "on_unpossessed", (0.0, 400.0), None);
 
     // ── 2. Move: IA_Move ───────────────────────────────────────────────────────────
-    on_action(&mut g, "mv", "IA_Move", "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b01", ("Value", "Vec2", "vec2:x,y"), (0.0, 780.0));
-    pure_native(&mut g, "mv_x", "Vec2::x", (640.0, 1100.0), vec![pin("v", data("Vec2"))], "f64", json!({}));
-    pure_native(&mut g, "mv_y", "Vec2::y", (640.0, 1220.0), vec![pin("v", data("Vec2"))], "f64", json!({}));
+    on_action(
+        &mut g,
+        "mv",
+        "IA_Move",
+        "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b01",
+        ("Value", "Vec2", "vec2:x,y"),
+        (0.0, 780.0),
+    );
+    pure_native(
+        &mut g,
+        "mv_x",
+        "Vec2::x",
+        (640.0, 1100.0),
+        vec![pin("v", data("Vec2"))],
+        "f64",
+        json!({}),
+    );
+    pure_native(
+        &mut g,
+        "mv_y",
+        "Vec2::y",
+        (640.0, 1220.0),
+        vec![pin("v", data("Vec2"))],
+        "f64",
+        json!({}),
+    );
     character_call(
         &mut g,
         "mv_set",
@@ -325,21 +385,50 @@ fn build() -> Value {
     g.wire("mv_y", "result", "mv_set", "y");
 
     // ── 3. Jump: IA_Jump ───────────────────────────────────────────────────────────
-    on_action(&mut g, "jp", "IA_Jump", "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b03", ("Pressed", "bool", "bool:value"), (0.0, 1720.0));
-    character_call(&mut g, "jp_do", "CharacterComponent", "request_jump", (640.0, 1720.0), vec![], json!({}));
+    on_action(
+        &mut g,
+        "jp",
+        "IA_Jump",
+        "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b03",
+        ("Pressed", "bool", "bool:value"),
+        (0.0, 1720.0),
+    );
+    character_call(
+        &mut g,
+        "jp_do",
+        "CharacterComponent",
+        "request_jump",
+        (640.0, 1720.0),
+        vec![],
+        json!({}),
+    );
     g.exec("jp", "Triggered", "jp_do");
 
     // ── 4. Sprint: IA_Sprint ─────────────────────────────────────────────────────────
-    on_action(&mut g, "sp", "IA_Sprint", "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b04", ("Pressed", "bool", "bool:value"), (0.0, 2300.0));
+    on_action(
+        &mut g,
+        "sp",
+        "IA_Sprint",
+        "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b04",
+        ("Pressed", "bool", "bool:value"),
+        (0.0, 2300.0),
+    );
     getter(&mut g, "sp_fast_speed", "sprint_speed", (640.0, 2300.0));
     getter(&mut g, "sp_slow_speed", "walk_speed", (640.0, 2560.0));
-    for (id, at, source) in [("sp_fast", (1180.0, 2300.0), "sp_fast_speed"), ("sp_slow", (1180.0, 2560.0), "sp_slow_speed")] {
+    for (id, at, source) in [
+        ("sp_fast", (1180.0, 2300.0), "sp_fast_speed"),
+        ("sp_slow", (1180.0, 2560.0), "sp_slow_speed"),
+    ] {
         g.node(
             id,
             "comp_set_prop::CharacterComponent::walk_speed",
             at,
             json!({}),
-            vec![pin_exec("exec"), pin("component_ref", data("CharacterComponent")), pin("value", data("f32"))],
+            vec![
+                pin_exec("exec"),
+                pin("component_ref", data("CharacterComponent")),
+                pin("value", data("f32")),
+            ],
             vec![pin_exec("exec_out")],
         );
         g.wire(source, "value", id, "value");
@@ -352,7 +441,14 @@ fn build() -> Value {
     }
 
     // ── 5. Look: IA_Look ───────────────────────────────────────────────────────────
-    on_action(&mut g, "lk", "IA_Look", "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b02", ("Value", "Vec2", "vec2:x,y"), (0.0, 3120.0));
+    on_action(
+        &mut g,
+        "lk",
+        "IA_Look",
+        "6c0d3e4a-1b52-4a8f-9d21-0e7f5a3c6b02",
+        ("Value", "Vec2", "vec2:x,y"),
+        (0.0, 3120.0),
+    );
     getter(&mut g, "lk_rate", "turn_rate", (640.0, 3120.0));
     pure_native(
         &mut g,
@@ -363,13 +459,25 @@ fn build() -> Value {
         "Vec2",
         json!({}),
     );
-    pure_native(&mut g, "lk_yaw", "Vec2::x", (1520.0, 3120.0), vec![pin("v", data("Vec2"))], "f64", json!({}));
+    pure_native(
+        &mut g,
+        "lk_yaw",
+        "Vec2::x",
+        (1520.0, 3120.0),
+        vec![pin("v", data("Vec2"))],
+        "f64",
+        json!({}),
+    );
     pure_native(
         &mut g,
         "lk_delta",
         "Vec3::new",
         (1960.0, 3120.0),
-        vec![pin("x", data("f64")), pin("y", data("f64")), pin("z", data("f64"))],
+        vec![
+            pin("x", data("f64")),
+            pin("y", data("f64")),
+            pin("z", data("f64")),
+        ],
         "Vec3",
         json!({ "x": 0.0, "z": 0.0 }),
     );
@@ -395,7 +503,11 @@ fn build() -> Value {
         "comp_call::Transform::set_rotation_degrees",
         (2400.0, 3480.0),
         json!({}),
-        vec![pin_exec("exec"), pin("component_ref", data("Transform")), pin("rotation", data("Vec3"))],
+        vec![
+            pin_exec("exec"),
+            pin("component_ref", data("Transform")),
+            pin("rotation", data("Vec3")),
+        ],
         vec![pin_exec("exec_out")],
     );
     for phase in ["Started", "Ongoing", "Triggered"] {
@@ -521,7 +633,10 @@ fn regenerate_player_character_graph() {
 // A level selects it in World Settings > Player Character. The file is read-only\n\
 // (a plugin folder); copy the .class folder into your project to edit it. It is\n\
 // written by plugins/installed/tests/regenerate_player_character_graph.rs.\n";
-    let text = format!("{header}{}\n", serde_json::to_string_pretty(&build()).unwrap());
+    let text = format!(
+        "{header}{}\n",
+        serde_json::to_string_pretty(&build()).unwrap()
+    );
     if std::env::var("REGENERATE_PLAYER_CHARACTER").is_ok() {
         std::fs::write(&path, text).unwrap();
         return;

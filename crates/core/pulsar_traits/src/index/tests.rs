@@ -174,7 +174,7 @@ fn legacy_path_references_resolve_and_traits_get_ids() {
     let index = TraitIndex::rebuild(dir.path()).unwrap();
     let id = id_in_file(dir.path(), "types/traits/movable.trait.json");
     let entry = index.entry("classes/Player/player.impl.json").unwrap();
-    assert_eq!(entry.implemented_trait_ids, [id.clone()]);
+    assert_eq!(entry.implemented_trait_ids, std::slice::from_ref(&id));
     assert_eq!(entry.kind, "test.impl");
     assert!(entry.path_only);
     assert_eq!(index.implementers_of(&id).len(), 1);

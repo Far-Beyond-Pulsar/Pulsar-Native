@@ -2,23 +2,94 @@
 
 use gpui::UpdateGlobal as _;
 use gpui::{
-    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, AnyView, App,
-    Context, FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, Render, StyleRefinement, Window,
+    div, prelude::*, px, rgb, Animation, AnimationExt as _, AnyView, App, Context, Div,
+    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render,
+    Stateful, StyleRefinement, Window,
 };
-use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
-use std::path::PathBuf;
 use std::time::Duration;
 use ui::notification::Notification;
-use ui::{
-    button::{Button, ButtonVariants as _},
-    dock::DockPlacement,
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
-};
-use ui_multiuser_status::render_status_bar_indicator;
+use ui::{v_flex, ActiveTheme as _, ContextModal as _};
 
 use super::PulsarApp;
+
+/// Open the window registered as `window_name` when the action `A` fires.
+fn open_window_on<A: gpui::Action>(
+    el: Div,
+    window_name: &'static str,
+    cx: &mut Context<PulsarApp>,
+) -> Div {
+    el.on_action(cx.listener(move |_, _: &A, _, cx| {
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open(window_name, cx));
+    }))
+}
+
+/// Follow the pointer while the file drawer is being resized, until release.
+fn track_drawer_resize<E: InteractiveElement>(el: E, cx: &mut Context<PulsarApp>) -> E {
+    el.on_mouse_move(cx.listener(|app, event: &MouseMoveEvent, _window, cx| {
+        let mouse_y: f32 = event.position.y.into();
+        let drag_delta = mouse_y - app.state.chrome.drawer_resize_start_y;
+        let new_height = app.state.chrome.drawer_resize_start_height - drag_delta;
+        app.state.chrome.drawer_height = super::chrome::ChromeState::clamp_height(new_height);
+        app.chrome_changed(cx);
+        cx.notify();
+    }))
+    .on_mouse_up(
+        MouseButton::Left,
+        cx.listener(|app, _event, _window, cx| {
+            app.state.chrome.drawer_resizing = false;
+            cx.notify();
+        }),
+    )
+}
+
+/// The file drawer's top-edge resize handle. `group` names its hover group;
+/// `flex_shrink` keeps it from shrinking inside a column that can overflow.
+fn drawer_resize_handle(
+    id: &'static str,
+    group: &'static str,
+    flex_shrink: bool,
+    resizing: bool,
+    cx: &mut Context<PulsarApp>,
+) -> Stateful<Div> {
+    let resize_handle_blue = Hsla::from(rgb(0x1684ff));
+    let resize_handle_black = Hsla::from(rgb(0x000000));
+    div()
+        .id(id)
+        .group(group)
+        .relative()
+        .w_full()
+        .h(px(6.))
+        .when(flex_shrink, |this| this.flex_shrink_0())
+        .cursor_ns_resize()
+        .child(
+            div()
+                .absolute()
+                .top(px(1.5))
+                .left_0()
+                .right_0()
+                .h(px(3.))
+                .rounded_tl(px(8.))
+                .rounded_tr(px(8.))
+                .bg(if resizing {
+                    resize_handle_blue
+                } else {
+                    resize_handle_black
+                })
+                .when(!resizing, |this| {
+                    this.group_hover(group, |style| style.bg(resize_handle_blue.opacity(0.45)))
+                }),
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                this.state.chrome.drawer_resize_start_y = event.position.y.into();
+                this.state.chrome.drawer_resize_start_height = this.state.chrome.drawer_height;
+                this.state.chrome.drawer_resizing = true;
+                cx.notify();
+            }),
+        )
+}
 
 impl PulsarApp {
     /// Repaint the footer after something only it shows changed.
@@ -26,522 +97,8 @@ impl PulsarApp {
         self.state.status_bar.update(cx, |_, cx| cx.notify());
     }
 
-    pub(super) fn render_footer(
-        &self,
-        drawer_open: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let server_entries =
-            super::language_server_footer::entries(self.state.language_servers.read(cx), cx);
-        let server_progress = super::language_server_footer::progress_of(&server_entries);
-
-        let error_count = self
-            .state
-            .problems_drawer
-            .read(cx)
-            .count_by_severity(ui_problems::DiagnosticSeverity::Error);
-        let warning_count = self
-            .state
-            .problems_drawer
-            .read(cx)
-            .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
-
-        let type_count = self.state.type_debugger_drawer.read(cx).total_count();
-        let active_task_count = editor_task_queue::global()
-            .snapshots()
-            .iter()
-            .filter(|task| {
-                matches!(
-                    task.status,
-                    editor_task_queue::TaskStatus::Queued | editor_task_queue::TaskStatus::Running
-                )
-            })
-            .count();
-        let is_agent_chat_open = self
-            .state
-            .dock_area
-            .read(cx)
-            .is_dock_open(DockPlacement::Left, cx);
-
-        div()
-            .w_full()
-            .relative()
-            .when(server_progress > 0.0, |this| {
-                this.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .h(px(2.))
-                        .w(relative(server_progress))
-                        .bg(cx.theme().primary)
-                        .shadow_md(),
-                )
-            })
-            .child(
-                h_flex()
-                    .w_full()
-                    .h(px(28.))
-                    .items_center()
-                    .px_3()
-                    .gap_2()
-                    .bg(cx.theme().background)
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .items_center()
-                            .child(
-                                Button::new("toggle-files")
-                                    .ghost()
-                                    .label("Files")
-                                    .icon(Icon::new(IconName::Folder).size(px(16.)).text_color(
-                                        if drawer_open {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        },
-                                    ))
-                                    .px_3()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .when(drawer_open, |s| s.bg(cx.theme().primary.opacity(0.15)))
-                                    .tooltip("Toggle Files (Ctrl+Space)")
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_drawer(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("open-editor-tasks")
-                                    .ghost()
-                                    .label(if active_task_count > 0 {
-                                        format!("Tasks {active_task_count}")
-                                    } else {
-                                        "Tasks".to_string()
-                                    })
-                                    .icon(
-                                        Icon::new(IconName::TaskList)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .tooltip("Open editor tasks")
-                                    .on_click(|_, _, cx| {
-                                        window_manager::WindowRegistry::update_global(
-                                            cx,
-                                            |reg, cx| reg.open("EditorTasksWindow", cx),
-                                        );
-                                    }),
-                            )
-                            .child(
-                                Button::new("toggle-problems")
-                                    .ghost()
-                                    .icon(
-                                        Icon::new(if error_count > 0 {
-                                            IconName::Close
-                                        } else if warning_count > 0 {
-                                            IconName::TriangleAlert
-                                        } else {
-                                            IconName::CheckCircle
-                                        })
-                                        .size(px(16.))
-                                        .text_color(
-                                            if error_count > 0 {
-                                                cx.theme().danger
-                                            } else if warning_count > 0 {
-                                                cx.theme().warning
-                                            } else {
-                                                cx.theme().success
-                                            },
-                                        ),
-                                    )
-                                    .relative()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .when(error_count + warning_count > 0, |this| {
-                                        this.child(
-                                            div()
-                                                .absolute()
-                                                .top(px(-4.))
-                                                .right(px(-4.))
-                                                .min_w(px(16.))
-                                                .h(px(16.))
-                                                .px_1()
-                                                .rounded(px(8.))
-                                                .bg(if error_count > 0 {
-                                                    cx.theme().danger
-                                                } else {
-                                                    cx.theme().warning
-                                                })
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_bold()
-                                                        .text_color(rgb(0xFFFFFF))
-                                                        .child(format!(
-                                                            "{}",
-                                                            error_count + warning_count
-                                                        )),
-                                                ),
-                                        )
-                                    })
-                                    .tooltip(format!(
-                                        "{} Errors, {} Warnings",
-                                        error_count, warning_count
-                                    ))
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_problems(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("toggle-type-debugger")
-                                    .ghost()
-                                    .icon(Icon::new(IconName::Database).size(px(16.)))
-                                    .relative()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .when(type_count > 0, |this| {
-                                        this.child(
-                                            div()
-                                                .absolute()
-                                                .top(px(-4.))
-                                                .right(px(-4.))
-                                                .min_w(px(16.))
-                                                .h(px(16.))
-                                                .px_1()
-                                                .rounded(px(8.))
-                                                .bg(cx.theme().accent)
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .child(
-                                                    div()
-                                                        .text_xs()
-                                                        .font_bold()
-                                                        .text_color(rgb(0xFFFFFF))
-                                                        .child(format!("{}", type_count)),
-                                                ),
-                                        )
-                                    })
-                                    .tooltip(format!("{} Types", type_count))
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_type_debugger(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("toggle-multiplayer")
-                                    .ghost()
-                                    .icon(
-                                        Icon::new(IconName::User)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .tooltip(t!("StatusBar.Multiplayer").to_string())
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_multiplayer(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("toggle-agent-chat")
-                                    .ghost()
-                                    .icon(Icon::new(IconName::PanelRight).size(px(16.)).text_color(
-                                        if is_agent_chat_open {
-                                            cx.theme().primary
-                                        } else {
-                                            cx.theme().muted_foreground
-                                        },
-                                    ))
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .when(is_agent_chat_open, |s| {
-                                        s.bg(cx.theme().primary.opacity(0.15))
-                                    })
-                                    .tooltip("Toggle Agent Chat")
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_agent_chat(window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("toggle-plugin-manager")
-                                    .ghost()
-                                    .icon(
-                                        Icon::new(IconName::Puzzle)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .tooltip(t!("StatusBar.PluginManager").to_string())
-                                    .on_click(cx.listener(|app, _, window, cx| {
-                                        app.toggle_plugin_manager(window, cx);
-                                    })),
-                            )
-                            // The editor tools' buttons (`ui_common::editor_tools`).
-                            .children(self.render_editor_tool_buttons(cx))
-                            // Render plugin statusbar buttons for left position
-                            .children(
-                                self.render_plugin_statusbar_buttons(StatusbarPosition::Left, cx),
-                            )
-                            .child(div().w(px(1.)).h(px(18.)).bg(cx.theme().border)),
-                    )
-                    .child(
-                        h_flex()
-                            .flex_1()
-                            .items_center()
-                            .gap_2()
-                            // One "LSP Servers" entry: aggregate state and
-                            // progress; a click lists every server.
-                            .children(self.render_language_server_entries(&server_entries, cx)),
-                    )
-                    .child(div().w(px(1.)).h(px(18.)).bg(cx.theme().border))
-                    // Render plugin statusbar buttons for right position
-                    .children(
-                        self.render_plugin_statusbar_buttons(StatusbarPosition::Right, cx)
-                            .into_iter()
-                            .map(|btn| btn.into_any_element()),
-                    )
-                    .child(render_status_bar_indicator(cx))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1p5()
-                            .px_2()
-                            .py_1()
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|app, _, window, cx| {
-                                    app.toggle_project_switcher(window, cx);
-                                }),
-                            )
-                            .child(
-                                Icon::new(IconName::Folder)
-                                    .size(px(14.))
-                                    .text_color(cx.theme().muted_foreground),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_medium()
-                                    .text_color(cx.theme().foreground)
-                                    .children(
-                                        self.state
-                                            .project_path
-                                            .as_ref()
-                                            .and_then(|path| path.file_name())
-                                            .map(|name| name.to_string_lossy().to_string())
-                                            .or(Some("No Project".to_string())),
-                                    ),
-                            ),
-                    ),
-            )
-    }
-
-    /// The editor tools' status-bar buttons
-    /// (`ui_common::editor_tools::EditorToolRegistration`), lit while their
-    /// window was opened from here.
-    fn render_editor_tool_buttons(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        ui_common::editor_tools::editor_tools()
-            .into_iter()
-            .map(|tool| {
-                let lit = self.state.chrome.open_tools.contains(tool.id)
-                    || tool.is_open.is_some_and(|is_open| is_open(cx));
-                let id = tool.id;
-                Button::new(gpui::SharedString::from(format!("editor-tool-{id}")))
-                    .ghost()
-                    .icon(
-                        Icon::new(tool.icon.clone())
-                            .size(px(16.))
-                            .text_color(if lit {
-                                cx.theme().primary
-                            } else {
-                                cx.theme().muted_foreground
-                            }),
-                    )
-                    .px_2()
-                    .py_1()
-                    .rounded(px(4.))
-                    .when(lit, |s| s.bg(cx.theme().primary.opacity(0.15)))
-                    .tooltip((tool.label)())
-                    .on_click(cx.listener(move |app, _, window, cx| {
-                        app.toggle_editor_tool(id, window, cx);
-                    }))
-                    .into_any_element()
-            })
-            .collect()
-    }
-
-    /// Render statusbar buttons registered by plugins
-    fn render_plugin_statusbar_buttons(
-        &self,
-        position: StatusbarPosition,
-        cx: &mut Context<Self>,
-    ) -> Vec<AnyElement> {
-        let buttons = if let Some(pm_lock) = plugin_manager::global() {
-            pm_lock
-                .read()
-                .get_statusbar_buttons_for_position(position)
-                .into_iter()
-                .cloned()
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        buttons
-            .into_iter()
-            .enumerate()
-            .map(|(idx, btn_def)| {
-                let mut button = Button::new(("plugin-statusbar", idx))
-                    .ghost()
-                    .icon(
-                        Icon::new(btn_def.icon.clone()).size(px(16.)).text_color(
-                            btn_def
-                                .icon_color
-                                .unwrap_or_else(|| cx.theme().muted_foreground),
-                        ),
-                    )
-                    .relative()
-                    .px_2()
-                    .py_1()
-                    .rounded(px(4.));
-
-                // Add active styling if specified
-                if btn_def.active {
-                    button = button.bg(cx.theme().primary.opacity(0.15));
-                }
-
-                // Add badge if specified
-                if let Some(count) = btn_def.badge_count {
-                    if count > 0 {
-                        button = button.child(
-                            div()
-                                .absolute()
-                                .top(px(-4.))
-                                .right(px(-4.))
-                                .min_w(px(16.))
-                                .h(px(16.))
-                                .px_1()
-                                .rounded(px(8.))
-                                .bg(btn_def.badge_color.unwrap_or_else(|| cx.theme().accent))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .font_bold()
-                                        .text_color(rgb(0xFFFFFF))
-                                        .child(count.to_string()),
-                                ),
-                        );
-                    }
-                }
-
-                // Add tooltip
-                button = button.tooltip(btn_def.tooltip.clone());
-
-                // Clone what we need for the closure
-                let action = btn_def.action.clone();
-                let callback = btn_def.custom_callback;
-
-                // Add click handler based on action type
-                button = match action {
-                    StatusbarAction::OpenEditor {
-                        editor_id,
-                        file_path,
-                    } => {
-                        button.on_click(cx.listener(move |app, _, window, cx| {
-                            tracing::info!("Opening editor {:?}", editor_id);
-
-                            let path = file_path.clone().unwrap_or_else(PathBuf::new);
-
-                            // Find which plugin owns this editor
-                            if let Some(pm_lock) = plugin_manager::global() {
-                                let plugin_id: Option<plugin_editor_api::PluginId> = pm_lock
-                                    .read()
-                                    .editor_registry()
-                                    .get_plugin_for_editor(&editor_id)
-                                    .cloned();
-
-                                if let Some(plugin_id) = plugin_id {
-                                    let mut pm = pm_lock.write();
-                                    super::refresh_plugin_editor_settings(&mut pm);
-                                    match pm.create_editor(&plugin_id, &editor_id, path, window, cx)
-                                    {
-                                        Ok(panel) => {
-                                            app.state.center_tabs.update(cx, |tabs, cx| {
-                                                tabs.add_panel(panel, window, cx);
-                                            });
-                                            tracing::info!(
-                                                "Successfully opened editor {:?}",
-                                                editor_id
-                                            );
-                                        }
-                                        Err(e) => {
-                                            tracing::error!(
-                                                "Failed to open editor {:?}: {:?}",
-                                                editor_id,
-                                                e
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    tracing::error!("No plugin found for editor {:?}", editor_id);
-                                }
-                            }
-                        }))
-                    }
-                    StatusbarAction::ToggleDrawer { drawer_id } => {
-                        button.on_click(cx.listener(move |_app, _, _window, _cx| {
-                            tracing::info!(
-                                "Plugin statusbar button clicked: toggle drawer {}",
-                                drawer_id
-                            );
-                        }))
-                    }
-                    StatusbarAction::Custom => {
-                        if let Some(cb) = callback {
-                            button.on_click(move |_, window, cx| {
-                                cb(window, cx);
-                            })
-                        } else {
-                            button
-                        }
-                    }
-                };
-
-                button.into_any_element()
-            })
-            .collect()
-    }
-}
-
-impl Focusable for PulsarApp {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.state.focus_handle.clone()
-    }
-}
-
-impl Render for PulsarApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Show welcome notification on first render if project was loaded
+    /// Show the welcome notification on first render if a project was loaded.
+    fn show_welcome_notification(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.shown_welcome_notification && self.state.project_path.is_some() {
             self.state.shown_welcome_notification = true;
             if let Some(ref path) = self.state.project_path {
@@ -561,30 +118,13 @@ impl Render for PulsarApp {
                 );
             }
         }
+    }
 
-        self.sync_sidebar_mode(window, cx);
-
-        let command_palette = if self.state.command_palette_open {
-            self.state.command_palette_view.clone()
-        } else {
-            None
-        };
-
-        let project_switcher = if self.state.project_switcher_open {
-            self.state.project_switcher_view.clone()
-        } else {
-            None
-        };
-
-        let drawer_open = self.state.chrome.drawer_open;
-        let drawer_docked = self.state.chrome.drawer_docked;
-        let resize_handle_blue = Hsla::from(rgb(0x1684ff));
-        let resize_handle_black = Hsla::from(rgb(0x000000));
-
-        v_flex()
-            .size_full()
-            .track_focus(&self.state.focus_handle)
-            .map(|el| Self::with_menu_actions(el, cx))
+    /// Bind the app-level actions: panel toggles, file and editor opening,
+    /// history navigation (including the mouse's side buttons) and the
+    /// windows the menu opens.
+    fn bind_app_actions(el: Div, cx: &mut Context<Self>) -> Div {
+        let el = el
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
@@ -610,269 +150,160 @@ impl Render for PulsarApp {
                 cx.listener(|this, _: &MouseDownEvent, window, cx| {
                     this.on_go_forward(&ui_common::menu::GoForward {}, window, cx);
                 }),
+            );
+        let el = open_window_on::<ui::OpenSettings>(el, "EditorSettingsWindow", cx);
+        let el = open_window_on::<ui_common::menu::Settings>(el, "ProjectSettingsWindow", cx);
+        let el = open_window_on::<ui_common::menu::Preferences>(el, "EditorSettingsWindow", cx);
+        let el = open_window_on::<ui_common::menu::AboutApp>(el, "AboutWindow", cx);
+        open_window_on::<ui_common::menu::ShowDocumentation>(el, "DocumentationWindow", cx)
+    }
+
+    /// The file manager drawer's content, cached like the dock: the footer
+    /// and the app's own state change far more often than the drawer does.
+    fn drawer_body(&self) -> Div {
+        div().flex_1().min_h_0().child(
+            AnyView::from(self.state.file_manager_drawer.clone())
+                .cached(StyleRefinement::default().size_full()),
+        )
+    }
+
+    /// The editor area: the cached dock, with the file drawer floating over
+    /// it when it is open and not docked.
+    fn editor_area(&self, floating_drawer: bool, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex_1()
+            .relative()
+            // Cached, like the file drawer below: the footer and
+            // the app's own state change far more often than the
+            // editors do.
+            .child(
+                AnyView::from(self.state.dock_area.clone())
+                    .cached(StyleRefinement::default().size_full()),
             )
-            .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
-                use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                    reg.open("SettingsWindow", cx)
-                });
-            }))
-            .on_action(cx.listener(|_, _: &ui_common::menu::Settings, _, cx| {
-                use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                    reg.open("SettingsWindow", cx)
-                });
-            }))
-            .on_action(cx.listener(|_, _: &ui_common::menu::Preferences, _, cx| {
-                use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                    reg.open("SettingsWindow", cx)
-                });
-            }))
-            .on_action(cx.listener(|_, _: &ui_common::menu::AboutApp, _, cx| {
-                use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                    reg.open("AboutWindow", cx)
-                });
-            }))
-            .on_action(
-                cx.listener(|_, _: &ui_common::menu::ShowDocumentation, _, cx| {
-                    use gpui::UpdateGlobal as _;
-                    window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                        reg.open("DocumentationWindow", cx)
-                    });
-                }),
-            )
-            .child(self.with_nav_sidebar(
-                div()
-                    .flex_1()
-                    .relative()
-                    // Cached, like the file drawer below: the footer and
-                    // the app's own state change far more often than the
-                    // editors do.
-                    .child(
-                        AnyView::from(self.state.dock_area.clone())
-                            .cached(StyleRefinement::default().size_full()),
-                    )
-                    .when(drawer_open && !drawer_docked, |this| {
-                        this.child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .size_full()
-                                .bg(Hsla::black().opacity(0.3))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|app, _, _window, cx| {
-                                        app.state.chrome.drawer_open = false;
-                                        cx.notify();
-                                    }),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left_4()
-                                .right_4()
-                                .h(px(self.state.chrome.drawer_height))
-                                .bg(Hsla::black())
-                                .rounded_tl(px(8.))
-                                .rounded_tr(px(8.))
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .shadow_xl()
-                                .overflow_hidden()
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
-                                .child(
-                                    v_flex()
-                                        .size_full()
-                                        .child(
-                                            // Resize handle at top
-                                            div()
-                                                .id("drawer-resize-handle")
-                                                .group("file-drawer-resize-handle")
-                                                .relative()
-                                                .w_full()
-                                                .h(px(6.))
-                                                .cursor_ns_resize()
-                                                .child(
-                                                    div()
-                                                        .absolute()
-                                                        .top(px(1.5))
-                                                        .left_0()
-                                                        .right_0()
-                                                        .h(px(3.))
-                                                        .rounded_tl(px(8.))
-                                                        .rounded_tr(px(8.))
-                                                        .bg(if self.state.chrome.drawer_resizing {
-                                                            resize_handle_blue
-                                                        } else {
-                                                            resize_handle_black
-                                                        })
-                                                        .when(!self.state.chrome.drawer_resizing, |this| {
-                                                            this.group_hover(
-                                                                "file-drawer-resize-handle",
-                                                                |style| {
-                                                                    style.bg(
-                                                                        resize_handle_blue
-                                                                            .opacity(0.45),
-                                                                    )
-                                                                },
-                                                            )
-                                                        }),
-                                                )
-                                                .on_mouse_down(
-                                                    MouseButton::Left,
-                                                    cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                                                        this.state.chrome.drawer_resize_start_y = event.position.y.into();
-                                                        this.state.chrome.drawer_resize_start_height = this.state.chrome.drawer_height;
-                                                        this.state.chrome.drawer_resizing = true;
-                                                        cx.notify();
-                                                    }),
-                                                ),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .min_h_0()
-                                                .child(
-                                                    AnyView::from(
-                                                        self.state.file_manager_drawer.clone(),
-                                                    )
-                                                    .cached(
-                                                        StyleRefinement::default().size_full(),
-                                                    ),
-                                                ),
-                                        ),
-                                )
-                                .with_animation(
-                                    "slide-up",
-                                    Animation::new(Duration::from_secs_f64(0.2)),
-                                    {
-                                        let height = self.state.chrome.drawer_height;
-                                        move |this, delta| {
-                                            this.bottom(px(-height) + delta * px(height))
-                                        }
-                                    },
-                                ),
-                        )
-                        .when(self.state.chrome.drawer_resizing, |this| {
-                            this.on_mouse_move(cx.listener(
-                                |app, event: &MouseMoveEvent, _window, cx| {
-                                    let mouse_y: f32 = event.position.y.into();
-                                    let drag_delta = mouse_y - app.state.chrome.drawer_resize_start_y;
-                                    let new_height = app.state.chrome.drawer_resize_start_height - drag_delta;
-                                    app.state.chrome.drawer_height = super::chrome::ChromeState::clamp_height(new_height);
-                                    app.chrome_changed(cx);
-                                    cx.notify();
-                                },
-                            ))
-                            .on_mouse_up(
-                                MouseButton::Left,
-                                cx.listener(|app, _event, _window, cx| {
-                                    app.state.chrome.drawer_resizing = false;
-                                    cx.notify();
-                                }),
-                            )
-                        })
+            .when(floating_drawer, |this| self.with_floating_drawer(this, cx))
+    }
+
+    /// Add the floating file drawer, its backdrop and its resize tracking to
+    /// the editor area.
+    fn with_floating_drawer(&self, area: Div, cx: &mut Context<Self>) -> Div {
+        let resizing = self.state.chrome.drawer_resizing;
+        area.child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .bg(Hsla::black().opacity(0.3))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|app, _, _window, cx| {
+                        app.state.chrome.drawer_open = false;
+                        cx.notify();
                     }),
-            ))
-            .when(drawer_docked, |this| {
-                this.child(
-                    div()
-                        .id("file-manager-docked-panel")
-                        .w_full()
-                        .h(px(self.state.chrome.drawer_height))
-                        .flex_shrink_0()
-                        .bg(Hsla::black())
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                ),
+        )
+        .child(
+            div()
+                .absolute()
+                .bottom_0()
+                .left_4()
+                .right_4()
+                .h(px(self.state.chrome.drawer_height))
+                .bg(Hsla::black())
+                .rounded_tl(px(8.))
+                .rounded_tr(px(8.))
+                .border_1()
+                .border_color(cx.theme().border)
+                .shadow_xl()
+                .overflow_hidden()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                .child(
+                    v_flex()
+                        .size_full()
                         .child(
-                            v_flex()
-                                .size_full()
-                                .child(
-                                    div()
-                                        .id("docked-drawer-resize-handle")
-                                        .group("docked-file-drawer-resize-handle")
-                                        .relative()
-                                        .w_full()
-                                        .h(px(6.))
-                                        .flex_shrink_0()
-                                        .cursor_ns_resize()
-                                        .child(
-                                            div()
-                                                .absolute()
-                                                .top(px(1.5))
-                                                .left_0()
-                                                .right_0()
-                                                .h(px(3.))
-                                                .rounded_tl(px(8.))
-                                                .rounded_tr(px(8.))
-                                                .bg(if self.state.chrome.drawer_resizing {
-                                                    resize_handle_blue
-                                                } else {
-                                                    resize_handle_black
-                                                })
-                                                .when(!self.state.chrome.drawer_resizing, |this| {
-                                                    this.group_hover(
-                                                        "docked-file-drawer-resize-handle",
-                                                        |style| {
-                                                            style.bg(
-                                                                resize_handle_blue.opacity(0.45),
-                                                            )
-                                                        },
-                                                    )
-                                                }),
-                                        )
-                                        .on_mouse_down(
-                                            MouseButton::Left,
-                                            cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                                                this.state.chrome.drawer_resize_start_y = event.position.y.into();
-                                                this.state.chrome.drawer_resize_start_height = this.state.chrome.drawer_height;
-                                                this.state.chrome.drawer_resizing = true;
-                                                cx.notify();
-                                            }),
-                                        ),
-                                )
-                                .child(
-                                    div()
-                                        .flex_1()
-                                        .min_h_0()
-                                        .child(
-                                                    AnyView::from(
-                                                        self.state.file_manager_drawer.clone(),
-                                                    )
-                                                    .cached(
-                                                        StyleRefinement::default().size_full(),
-                                                    ),
-                                                ),
-                                ),
+                            // Resize handle at top
+                            drawer_resize_handle(
+                                "drawer-resize-handle",
+                                "file-drawer-resize-handle",
+                                false,
+                                resizing,
+                                cx,
+                            ),
                         )
-                        .when(self.state.chrome.drawer_resizing, |this| {
-                            this.on_mouse_move(cx.listener(
-                                |app, event: &MouseMoveEvent, _window, cx| {
-                                    let mouse_y: f32 = event.position.y.into();
-                                    let drag_delta = mouse_y - app.state.chrome.drawer_resize_start_y;
-                                    let new_height = app.state.chrome.drawer_resize_start_height - drag_delta;
-                                    app.state.chrome.drawer_height = super::chrome::ChromeState::clamp_height(new_height);
-                                    app.chrome_changed(cx);
-                                    cx.notify();
-                                },
-                            ))
-                            .on_mouse_up(
-                                MouseButton::Left,
-                                cx.listener(|app, _event, _window, cx| {
-                                    app.state.chrome.drawer_resizing = false;
-                                    cx.notify();
-                                }),
-                            )
-                        }),
+                        .child(self.drawer_body()),
                 )
+                .with_animation("slide-up", Animation::new(Duration::from_secs_f64(0.2)), {
+                    let height = self.state.chrome.drawer_height;
+                    move |this, delta| this.bottom(px(-height) + delta * px(height))
+                }),
+        )
+        .when(resizing, |this| track_drawer_resize(this, cx))
+    }
+
+    /// The file drawer docked under the editor area.
+    fn docked_file_drawer(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let resizing = self.state.chrome.drawer_resizing;
+        div()
+            .id("file-manager-docked-panel")
+            .w_full()
+            .h(px(self.state.chrome.drawer_height))
+            .flex_shrink_0()
+            .bg(Hsla::black())
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .child(
+                v_flex()
+                    .size_full()
+                    .child(drawer_resize_handle(
+                        "docked-drawer-resize-handle",
+                        "docked-file-drawer-resize-handle",
+                        true,
+                        resizing,
+                        cx,
+                    ))
+                    .child(self.drawer_body()),
+            )
+            .when(resizing, |this| track_drawer_resize(this, cx))
+    }
+}
+
+impl Focusable for PulsarApp {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.state.focus_handle.clone()
+    }
+}
+
+impl Render for PulsarApp {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.show_welcome_notification(window, cx);
+        self.sync_sidebar_mode(window, cx);
+
+        let command_palette = if self.state.command_palette_open {
+            self.state.command_palette_view.clone()
+        } else {
+            None
+        };
+
+        let project_switcher = if self.state.project_switcher_open {
+            self.state.project_switcher_view.clone()
+        } else {
+            None
+        };
+
+        let drawer_open = self.state.chrome.drawer_open;
+        let drawer_docked = self.state.chrome.drawer_docked;
+
+        let root = v_flex()
+            .size_full()
+            .track_focus(&self.state.focus_handle)
+            .map(|el| Self::with_menu_actions(el, cx));
+        Self::bind_app_actions(root, cx)
+            .child(self.with_nav_sidebar(self.editor_area(drawer_open && !drawer_docked, cx)))
+            .when(drawer_docked, |this| {
+                this.child(self.docked_file_drawer(cx))
             })
             .child(
                 AnyView::from(self.state.status_bar.clone()).cached(

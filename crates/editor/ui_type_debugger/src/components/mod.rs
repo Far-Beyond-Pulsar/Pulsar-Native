@@ -1,3 +1,6 @@
+//! Render functions of the type debugger drawer: header, type badges, and the flat and
+//! grouped views.
+
 pub use crate::screen::TypeDebuggerDrawer;
 
 pub use content::{kind_color, kind_icon, kind_label, render_flat_view, render_grouped_view};

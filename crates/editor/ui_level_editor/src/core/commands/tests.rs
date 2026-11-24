@@ -172,7 +172,7 @@ mod undo_redo_tests {
 
     // ── SetComponentProperty: end-to-end through the command layer ─────────
     //
-    // Pulsar-Native#561: proves the whole live-edit call graph a real
+    // Proves the whole live-edit call graph a real
     // properties-panel color/intensity edit takes -- widget produces a typed
     // `Box<dyn Any + Send>`, `SceneCommand::SetComponentProperty` carries it
     // unchanged, `execute_command` applies it -- actually reaches the live
@@ -267,6 +267,106 @@ mod undo_redo_tests {
         }
         .expect("intensity must still be live-readable after undo");
         assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
+    }
+
+    fn add_light_object(state: &mut LevelEditorState, name: &str, light: bool) -> String {
+        let id = execute_command(
+            state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: crate::scene_edit::ObjectType::Empty,
+                    transform: crate::scene_edit::Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        if light {
+            let json = serde_json::to_value(
+                installed_plugins::lights_plugin::lights_component::LightComponent::default(),
+            )
+            .unwrap();
+            crate::scene_edit::components::add_component(
+                &mut state.scene.world_mut(),
+                &id,
+                "LightComponent".to_string(),
+                json,
+            );
+        }
+        id
+    }
+
+    fn intensity(state: &LevelEditorState, id: &str) -> f32 {
+        let world = state.scene.world();
+        *crate::scene_edit::components::read_live_component_property(
+            &world,
+            id,
+            "LightComponent",
+            0,
+            "intensity",
+        )
+        .expect("live intensity")
+        .downcast_ref::<f32>()
+        .unwrap()
+    }
+
+    // Mass edit: one value reaches every target, each its own copy, and a
+    // single undo puts them all back.
+    #[test]
+    fn set_component_property_on_many_edits_every_target_as_one_undo_step() {
+        let mut state = LevelEditorState::new();
+        let ids: Vec<String> = (0..3)
+            .map(|i| add_light_object(&mut state, &format!("Lamp {i}"), true))
+            .collect();
+        let result = execute_command(
+            &mut state,
+            SceneCommand::SetComponentPropertyOnMany {
+                targets: ids.iter().map(|id| (id.clone(), 0)).collect(),
+                class_name: "LightComponent".to_string(),
+                prop_name: "intensity".to_string(),
+                value: Box::new(77.0_f32),
+            },
+        );
+        assert!(result.changed);
+        for id in &ids {
+            assert_eq!(intensity(&state, id), 77.0, "{id}");
+        }
+        assert!(state.scene.undo());
+        for id in &ids {
+            assert_eq!(intensity(&state, id), 1000.0, "{id} reverted by one undo");
+        }
+    }
+
+    // The properties panel mass-edits only a selection that shares one
+    // archetype (object type and component classes).
+    #[test]
+    fn mass_edit_needs_one_archetype_across_the_selection() {
+        use crate::ui::selection::{mass_edit, MassEdit};
+        let mut state = LevelEditorState::new();
+        let a = add_light_object(&mut state, "Lamp A", true);
+        let b = add_light_object(&mut state, "Lamp B", true);
+        let plain = add_light_object(&mut state, "Empty", false);
+
+        state.scene.select_objects(std::slice::from_ref(&a));
+        assert_eq!(mass_edit(&state, &a), MassEdit::Single);
+
+        state.scene.select_objects(&[b.clone(), a.clone()]);
+        assert_eq!(mass_edit(&state, &a), MassEdit::All(vec![b.clone()]));
+
+        state
+            .scene
+            .select_objects(&[b.clone(), plain.clone(), a.clone()]);
+        assert_eq!(mass_edit(&state, &a), MassEdit::PrimaryOnly(3));
     }
 
     // Bool twin of the f32 test above: proves a widget toggling a `bool`
@@ -433,7 +533,7 @@ mod undo_redo_tests {
         );
     }
 
-    // Pulsar-Native#837: "Mark selection Static" sets every mesh/light on
+    // "Mark selection Static" sets every mesh/light on
     // every selected object in one undo step, skips objects with neither,
     // and is a no-op when everything already matches.
     #[test]
@@ -496,7 +596,7 @@ mod undo_redo_tests {
         assert_eq!(read(&state), Some(ObjectMovability::Movable));
     }
 
-    // Pulsar-Native#1035, Phase 3: undo restores typed snapshots in place.
+    // Undo restores typed snapshots in place.
     // Surviving instances keep their entity and id (nothing is respawned or
     // decoded), a removed one comes back with its id, and an unresolved
     // payload is kept as it was.
@@ -588,7 +688,7 @@ mod undo_redo_tests {
         assert_ne!(after[1].0, unresolved, "re-attached as a new entity");
     }
 
-    // Pulsar-Native#1035, Phase 3: component commands carry typed values
+    // Component commands carry typed values
     // and report a change only when one happened.
     #[test]
     fn typed_component_commands_are_undoable_and_report_no_ops() {
@@ -896,7 +996,7 @@ mod undo_redo_tests {
     }
 
     /// A gizmo drag moves the object in the renderer, outside any command;
-    /// the editor records it when the mouse is released (#931).
+    /// the editor records it when the mouse is released.
     #[test]
     fn a_gizmo_drag_is_one_undo_step_named_move() {
         use engine_backend::scene::SceneWorldExt;

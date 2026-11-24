@@ -140,14 +140,32 @@ impl Built {
 #[derive(Default)]
 struct Store {
     by_type: HashMap<TypeId, Vec<&'static (dyn Any + Send + Sync)>>,
+    /// The same registrations by category and layout fingerprint, as raw
+    /// addresses: what a plugin library's copy reads through
+    /// [`crate::shared`] (its `TypeId`s are not ours to trust).
+    by_key: HashMap<(&'static str, u64), Vec<Raw>>,
     /// Plugin roots whose build ran, in the order they ran.
     built: Vec<&'static str>,
     problems: Vec<String>,
 }
 
+/// A registration's address, for the by-key index.
+#[derive(Clone, Copy)]
+struct Raw(*const ());
+
+// SAFETY: it is the address of a `Send + Sync` value that lives for the
+// process.
+unsafe impl Send for Raw {}
+// SAFETY: as above.
+unsafe impl Sync for Raw {}
+
 impl Store {
     fn absorb(&mut self, builder: PluginBuilder) {
         for built in builder.added {
+            self.by_key
+                .entry((built.category, built.fingerprint))
+                .or_default()
+                .push(Raw(built.raw));
             self.by_type
                 .entry(built.type_id)
                 .or_default()
@@ -187,7 +205,7 @@ fn build_order() -> Vec<(&'static str, fn(&mut PluginBuilder))> {
     > = BTreeMap::new();
     for linked in inventory::iter::<crate::InstalledPlugin> {
         let Some(build) = linked.build else { continue };
-        if let Some(descriptor) = crate::installed()
+        if let Some(descriptor) = crate::local_installed()
             .iter()
             .find(|descriptor| descriptor.owns(linked.root))
         {
@@ -238,6 +256,21 @@ pub fn built<T: 'static>() -> Vec<&'static T> {
         .flatten()
         .filter_map(|value| value.downcast_ref::<T>())
         .collect()
+}
+
+/// This copy's built registrations of a category and layout fingerprint, each
+/// handed to `sink` as an address ([`crate::shared`]).
+pub(crate) fn built_raw(category: &str, fingerprint: u64, sink: &mut dyn FnMut(*const ())) {
+    let store = store().read().unwrap_or_else(|poison| poison.into_inner());
+    if let Some((_, entries)) = store
+        .by_key
+        .iter()
+        .find(|((c, f), _)| *c == category && *f == fingerprint)
+    {
+        for raw in entries {
+            sink(raw.0);
+        }
+    }
 }
 
 /// The plugin roots whose build ran (linked ones, then libraries), and what

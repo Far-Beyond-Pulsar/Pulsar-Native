@@ -15,14 +15,13 @@ pub(crate) const TOP_BAR_HEIGHT: f32 = 40.0;
 
 fn source_build_root() -> Option<std::path::PathBuf> {
     engine_state::EngineContext::global()
-        .map(|ctx| {
+        .and_then(|ctx| {
             let dev = ctx.store.get_or_init::<engine_state::DevContext>();
             let dev = dev.read();
             dev.is_source_build
                 .then(|| dev.source_path.clone())
                 .flatten()
         })
-        .flatten()
 }
 
 pub(crate) fn render_top_bar(

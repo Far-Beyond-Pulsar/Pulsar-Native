@@ -1,7 +1,7 @@
-//! Phase 6 architecture checks: removed mechanisms stay removed, JSON record
+//! Architecture checks: removed mechanisms stay removed, JSON record
 //! decodes stay at the boundary, and renderers neither scan nor subscribe to
 //! the CPU scene; and the world crates keep their process-wide state in
-//! their runtimes (#1083). See `scene_inventory::architecture`.
+//! their runtimes. See `scene_inventory::architecture`.
 
 use scene_inventory::{architecture, repo_root, source};
 

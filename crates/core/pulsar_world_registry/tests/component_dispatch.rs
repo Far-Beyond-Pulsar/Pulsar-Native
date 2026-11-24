@@ -1,4 +1,4 @@
-//! #643 acceptance: a caller holding only `(world, entity ids, strings)`
+//! A caller holding only `(world, entity ids, strings)`
 //! can execute any registered reflected method against authoritative state
 //! -- no concrete component type named anywhere in the call chain -- and
 //! every failure mode arrives as a typed [`ScriptRefError`], never a panic
@@ -101,7 +101,7 @@ impl EngineClass for DispatchGizmo {
                 type_info: info,
             }],
             return_type: Some(MethodReturnType { type_info: info }),
-            // Deliberately NOT Pure: mutates state (#645's purity policy).
+            // Deliberately NOT Pure: mutates state.
             flags: MethodFlags::NONE,
             caller: Box::new(
                 |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
@@ -206,7 +206,7 @@ fn hydrated_world(charges: i32) -> (World, Entity) {
     (world, entity)
 }
 
-// ── #643 acceptance ────────────────────────────────────────────────────────
+// ── acceptance ────────────────────────────────────────────────────────
 
 /// A string-and-ids caller executes a real reflected method against the live
 /// World value; args marshal in, the return value marshals out.
@@ -291,7 +291,7 @@ fn wrong_argument_type_is_typed_not_a_panic() {
     assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 3);
 }
 
-/// Despawned targets are ordinary typed staleness (#641 contract holds at
+/// Despawned targets are ordinary typed staleness (the contract holds at
 /// the dispatcher boundary).
 #[test]
 fn despawned_entity_is_reference_despawned() {
@@ -581,7 +581,7 @@ mod script_vm {
     }
 }
 
-/// #888: `Entity::DANGLING` is scripts' `entity::none()` (an unmatched
+/// `Entity::DANGLING` is scripts' `entity::none()` (an unmatched
 /// lookup, an unbound instance's `self`), so method and property access on
 /// it is an ordinary "not live" error in every build, debug included: no
 /// assert, no panic.
@@ -662,7 +662,7 @@ fn baseline_property_reads() {
     );
 }
 
-/// #886: reading and writing a property any number of times builds the
+/// Reading and writing a property any number of times builds the
 /// class's property table at most once, not once per access.
 #[test]
 fn property_access_builds_descriptors_once() {
@@ -679,7 +679,7 @@ fn property_access_builds_descriptors_once() {
             "DispatchGizmo",
             0,
             "charges",
-            Box::new(i as i32),
+            Box::new(i),
         )
         .unwrap();
         set_component_property(
@@ -708,7 +708,7 @@ fn property_access_builds_descriptors_once() {
 
 /// The shape `pulsar_script_codegen` generates for a prefab component:
 /// a function-local `DefaultCache`, so every actor of the class clones one
-/// decoded default (Pulsar-Native#1035, Phase 3).
+/// decoded default.
 fn attach_generated_default(world: &mut World, entity: Entity) -> Result<Entity, String> {
     static __DEFAULT: pulsar_world_registry::instances::DefaultCache =
         pulsar_world_registry::instances::DefaultCache::new();

@@ -21,6 +21,11 @@ ui_types_common.workspace = true
 ui_level_editor.workspace = true
 ui_multiplayer.workspace = true
 ui_problems.workspace = true
+# The actions of findings in the Problems panel.
+pulsar_findings.workspace = true
+# Collectors read the texture detail bias and the asset cache.
+helio_component.workspace = true
+pulsar_scenedb.workspace = true
 ui_type_debugger.workspace = true
 ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
@@ -35,6 +40,8 @@ ui_friends.workspace = true
 # Engine
 engine_state.workspace = true
 engine_fs = { workspace = true }
+# The receiver type of `engine_fs::events` (class problems rescan on file changes).
+tokio = { workspace = true, features = ["sync"] }
 pulsar_settings.workspace = true
 engine_backend.workspace = true
 pulsar_lsp.workspace = true

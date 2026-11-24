@@ -1,4 +1,4 @@
-//! Link the C++ runtime for `intel_tex_2`'s prebuilt ASTC encoder (#1604).
+//! Link the C++ runtime for `intel_tex_2`'s prebuilt ASTC encoder.
 //!
 //! `intel_tex_2` (the BC7/ASTC texture compressor used by cooked textures)
 //! ships `libispc_texcomp_astc<target>.a`, a precompiled C++ archive that

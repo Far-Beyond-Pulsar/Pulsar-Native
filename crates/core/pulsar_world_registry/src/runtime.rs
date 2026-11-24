@@ -1,5 +1,5 @@
 //! The world crates' process-wide state, shared by every statically linked
-//! copy (Pulsar-Native#1083).
+//! copy.
 //!
 //! The editor links `pulsar_reflection`, `pulsar_scenedb`,
 //! `pulsar_scene_model` and this crate statically, and so does every plugin library it loads. Each crate's
@@ -22,15 +22,21 @@ use pulsar_scenedb::runtime::{AppendList, AttachError};
 
 use crate::systems::SystemRegistration;
 use crate::unfinished::UnfinishedComponentRegistration;
-use crate::{ComponentEventRegistration, WorldComponentRegistration};
+use crate::{
+    ComponentEventRegistration, ComponentEventSourceRegistration, WorldComponentRegistration,
+};
 
 /// Version of [`WorldRuntimes`]' and [`Runtime`]'s ABI. Bump it on any
 /// change to their fields or to a type passed through them.
-pub const ABI_VERSION: u64 = 6;
+pub const ABI_VERSION: u64 = 7;
 
 /// The layouts the fingerprint covers, by name: every type passed through
 /// [`WorldRuntimes`] and [`Runtime`].
-const LAYOUTS: [(&str, usize); 15] = [
+const LAYOUTS: [(&str, usize); 16] = [
+    (
+        "ComponentEventSourceRegistration",
+        size_of::<ComponentEventSourceRegistration>(),
+    ),
     ("WorldRuntimes", size_of::<WorldRuntimes>()),
     ("Runtime", size_of::<Runtime>()),
     ("Registrations", size_of::<Registrations>()),
@@ -107,6 +113,7 @@ pub struct Runtime {
     pub abi: u64,
     world_components: fn() -> &'static [&'static WorldComponentRegistration],
     events: fn() -> &'static [&'static ComponentEventRegistration],
+    event_sources: fn() -> &'static [&'static ComponentEventSourceRegistration],
     unfinished: fn() -> &'static [&'static UnfinishedComponentRegistration],
     systems: fn() -> &'static [&'static SystemRegistration],
     actors: fn() -> &'static [&'static ActorRegistration],
@@ -117,6 +124,7 @@ pub struct Runtime {
 pub struct Registrations {
     world_components: Vec<&'static WorldComponentRegistration>,
     events: Vec<&'static ComponentEventRegistration>,
+    event_sources: Vec<&'static ComponentEventSourceRegistration>,
     unfinished: Vec<&'static UnfinishedComponentRegistration>,
     systems: Vec<&'static SystemRegistration>,
     actors: Vec<&'static ActorRegistration>,
@@ -127,6 +135,9 @@ impl Registrations {
         Self {
             world_components: world_component_registrations(),
             events: inventory::iter::<ComponentEventRegistration>
+                .into_iter()
+                .collect(),
+            event_sources: inventory::iter::<ComponentEventSourceRegistration>
                 .into_iter()
                 .collect(),
             unfinished: inventory::iter::<UnfinishedComponentRegistration>
@@ -166,6 +177,11 @@ static EVENTS: AppendList<ComponentEventRegistration> = AppendList::new(|| {
         .into_iter()
         .collect()
 });
+static EVENT_SOURCES: AppendList<ComponentEventSourceRegistration> = AppendList::new(|| {
+    inventory::iter::<ComponentEventSourceRegistration>
+        .into_iter()
+        .collect()
+});
 static UNFINISHED: AppendList<UnfinishedComponentRegistration> = AppendList::new(|| {
     inventory::iter::<UnfinishedComponentRegistration>
         .into_iter()
@@ -189,6 +205,10 @@ static OWN: Runtime = Runtime {
         static GATED: Gated<ComponentEventRegistration> = Gated::new();
         GATED.get(EVENTS.get(), |r| class_enabled(r.class_name))
     },
+    event_sources: || {
+        static GATED: Gated<ComponentEventSourceRegistration> = Gated::new();
+        GATED.get(EVENT_SOURCES.get(), |r| class_enabled(r.class_name))
+    },
     unfinished: || {
         static GATED: Gated<UnfinishedComponentRegistration> = Gated::new();
         GATED.get(UNFINISHED.get(), |r| class_enabled(r.class_name))
@@ -201,14 +221,73 @@ static OWN: Runtime = Runtime {
         static GATED: Gated<ActorRegistration> = Gated::new();
         GATED.get(ACTORS.get(), |r| class_enabled(r.class_name))
     },
-    add_registrations: |r| {
-        SYSTEMS.extend(&r.systems);
-        ACTORS.extend(&r.actors);
-        WORLD_COMPONENTS.extend(&r.world_components);
-        EVENTS.extend(&r.events);
-        UNFINISHED.extend(&r.unfinished);
-    },
+    add_registrations,
 };
+
+/// What `known` holds under the keys `incoming` repeats: a registration is
+/// the same one when its identity (`key`) is, not its address. Every copy of
+/// a crate that is linked statically into the editor and into a plugin
+/// library submits its own `inventory` entries, so a library hands the host
+/// the engine's registrations again (and its own, which its build also
+/// exports and `import_builds` takes): a second entry under a key the host
+/// already has is the same registration, not another. Duplicates inside
+/// `incoming` itself are kept, so a registration that really repeats is
+/// still reported.
+fn unseen<T: 'static, K: Eq + std::hash::Hash>(
+    known: &[&'static T],
+    incoming: &[&'static T],
+    key: impl Fn(&T) -> K,
+) -> Vec<&'static T> {
+    let known: std::collections::HashSet<K> = known.iter().map(|r| key(r)).collect();
+    incoming
+        .iter()
+        .copied()
+        .filter(|r| !known.contains(&key(r)))
+        .collect()
+}
+
+fn world_component_key(r: &WorldComponentRegistration) -> (&'static str, &'static str) {
+    (r.origin, r.class_name)
+}
+
+fn system_key(r: &SystemRegistration) -> (&'static str, &'static str, &'static str) {
+    (r.origin, r.class_name, r.system.label)
+}
+
+fn actor_key(r: &ActorRegistration) -> (&'static str, &'static str) {
+    (r.origin, r.class_name)
+}
+
+fn event_key(r: &ComponentEventRegistration) -> (&'static str, String) {
+    (r.class_name, (r.descriptor)().name.to_string())
+}
+
+fn event_source_key(r: &ComponentEventSourceRegistration) -> &'static str {
+    r.class_name
+}
+
+fn unfinished_key(r: &UnfinishedComponentRegistration) -> &'static str {
+    r.class_name
+}
+
+/// [`Runtime::add_registrations`] of this copy: append what an attached
+/// copy collected that this copy does not have yet.
+fn add_registrations(r: &Registrations) {
+    SYSTEMS.extend(&unseen(SYSTEMS.get(), &r.systems, system_key));
+    ACTORS.extend(&unseen(ACTORS.get(), &r.actors, actor_key));
+    WORLD_COMPONENTS.extend(&unseen(
+        WORLD_COMPONENTS.get(),
+        &r.world_components,
+        world_component_key,
+    ));
+    EVENTS.extend(&unseen(EVENTS.get(), &r.events, event_key));
+    EVENT_SOURCES.extend(&unseen(
+        EVENT_SOURCES.get(),
+        &r.event_sources,
+        event_source_key,
+    ));
+    UNFINISHED.extend(&unseen(UNFINISHED.get(), &r.unfinished, unfinished_key));
+}
 
 /// Whether world component class `class_name` is not a disabled plugin's.
 fn class_enabled(class_name: &str) -> bool {
@@ -293,6 +372,12 @@ pub(crate) fn events() -> &'static [&'static ComponentEventRegistration] {
     (runtime().events)()
 }
 
+/// The value-dependent event sources of every registered class, this copy's
+/// and every attached copy's.
+pub(crate) fn event_sources() -> &'static [&'static ComponentEventSourceRegistration] {
+    (runtime().event_sources)()
+}
+
 pub(crate) fn unfinished() -> &'static [&'static UnfinishedComponentRegistration] {
     (runtime().unfinished)()
 }
@@ -301,28 +386,23 @@ pub(crate) fn unfinished() -> &'static [&'static UnfinishedComponentRegistration
 /// (`pulsar_plugins::library::import`): the plugin loader calls it after
 /// importing a library, in the copy that owns the registries.
 pub fn import_builds() {
-    let new_classes: Vec<&'static WorldComponentRegistration> =
-        pulsar_plugins::built::<WorldComponentRegistration>()
-            .into_iter()
-            .filter(|built| {
-                !WORLD_COMPONENTS
-                    .get()
-                    .iter()
-                    .any(|r| std::ptr::eq(*r, *built))
-            })
-            .collect();
-    WORLD_COMPONENTS.extend(&new_classes);
-    let new_systems: Vec<&'static SystemRegistration> =
-        pulsar_plugins::built::<SystemRegistration>()
-            .into_iter()
-            .filter(|built| !SYSTEMS.get().iter().any(|r| std::ptr::eq(*r, *built)))
-            .collect();
-    SYSTEMS.extend(&new_systems);
-    let new_actors: Vec<&'static ActorRegistration> = pulsar_plugins::built::<ActorRegistration>()
-        .into_iter()
-        .filter(|built| !ACTORS.get().iter().any(|r| std::ptr::eq(*r, *built)))
-        .collect();
-    ACTORS.extend(&new_actors);
+    // By identity, not address: a library's attach already handed over the
+    // classes its own copy built, and its export carries the same ones again.
+    WORLD_COMPONENTS.extend(&unseen(
+        WORLD_COMPONENTS.get(),
+        &pulsar_plugins::built::<WorldComponentRegistration>(),
+        world_component_key,
+    ));
+    SYSTEMS.extend(&unseen(
+        SYSTEMS.get(),
+        &pulsar_plugins::built::<SystemRegistration>(),
+        system_key,
+    ));
+    ACTORS.extend(&unseen(
+        ACTORS.get(),
+        &pulsar_plugins::built::<ActorRegistration>(),
+        actor_key,
+    ));
 }
 
 /// Register a lifecycle table in this test binary, as a plugin build would.
@@ -399,7 +479,7 @@ pub unsafe fn attach(owner: *const WorldRuntimes) -> Result<(), WorldAttachError
     }
     // Check every runtime before attaching any: a refusal after the first
     // attach would leave this copy half on its own state and half on the
-    // host's (#1083). Each crate's `shared()` is still this copy's own
+    // host's. Each crate's `shared()` is still this copy's own
     // runtime here, or the host's if it is already attached, which then
     // matches.
     let checks = [
@@ -499,8 +579,8 @@ pub unsafe fn attach_exported(host: *const std::ffi::c_void) -> bool {
 #[macro_export]
 macro_rules! export_world_runtime_attach {
     () => {
-        /// Attach this library's world crates to the host's world runtimes
-        /// (Pulsar-Native#1083). Called by the plugin manager before
+        /// Attach this library's world crates to the host's world runtimes.
+        /// Called by the plugin manager before
         /// `_plugin_create`.
         ///
         /// # Safety
@@ -540,12 +620,68 @@ mod tests {
             Some(size_of::<ActorRegistration>())
         );
         assert_eq!(layout("ActorTable"), Some(size_of::<ActorTable>()));
-        // P2: the session handed to systems and callbacks is covered too.
+        // The session handed to systems and callbacks is covered too.
         assert_eq!(layout("Session"), Some(size_of::<crate::Session>()));
         assert!(layout("SessionScope").is_some() && layout("ActorCx").is_some());
         // `Runtime` carries the table accessor, `Registrations` the list.
-        assert!(size_of::<Runtime>() >= 8 * 7);
-        assert_eq!(ABI_VERSION, 6);
+        assert!(size_of::<Runtime>() >= 8 * 8);
+        assert_eq!(ABI_VERSION, 7);
+    }
+
+    /// A plugin library statically links the crates the engine links too
+    /// (`helio_component`), so its copy's `inventory` holds the engine's
+    /// registrations again, and its attach hands them to the host. The host
+    /// counts each registration once: the Extensions window reported
+    /// "registers two `component.class` contributions" for every class.
+    #[test]
+    fn an_attached_copys_repeat_of_a_registration_is_not_a_second_one() {
+        struct Marker;
+        impl pulsar_component_lifecycle::Actor for Marker {
+            fn end_play(_: &mut pulsar_component_lifecycle::ActorCx<'_>) {}
+        }
+        let actor = |origin: &'static str, class_name: &'static str| -> &'static ActorRegistration {
+            Box::leak(Box::new(ActorRegistration {
+                origin,
+                class_name,
+                table: pulsar_component_lifecycle::ActorTable::of::<Marker>(),
+            }))
+        };
+        let count = |origin: &str, class: &str| {
+            all_actors()
+                .iter()
+                .filter(|r| r.origin == origin && r.class_name == class)
+                .count()
+        };
+        register_actor_for_test(actor("engine:copy_probe", "CopyProbe"));
+        assert_eq!(count("engine:copy_probe", "CopyProbe"), 1);
+
+        // The library's copy of the same registration (another address), and
+        // one only the library has.
+        add_registrations(&Registrations {
+            world_components: Vec::new(),
+            events: Vec::new(),
+            event_sources: Vec::new(),
+            unfinished: Vec::new(),
+            systems: Vec::new(),
+            actors: vec![
+                actor("engine:copy_probe", "CopyProbe"),
+                actor("library_probe", "LibraryProbe"),
+            ],
+        });
+        // A second library carrying the same ones changes nothing either.
+        add_registrations(&Registrations {
+            world_components: Vec::new(),
+            events: Vec::new(),
+            event_sources: Vec::new(),
+            unfinished: Vec::new(),
+            systems: Vec::new(),
+            actors: vec![
+                actor("engine:copy_probe", "CopyProbe"),
+                actor("library_probe", "LibraryProbe"),
+            ],
+        });
+        assert_eq!(count("engine:copy_probe", "CopyProbe"), 1);
+        assert_eq!(count("library_probe", "LibraryProbe"), 1);
     }
 
     #[test]

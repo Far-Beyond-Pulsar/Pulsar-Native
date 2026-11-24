@@ -1,5 +1,5 @@
 //! A plugin compiled as a separate library shares the host's buses through
-//! Gamma's FFI (Pulsar-Native#930, #924).
+//! Gamma's FFI.
 //!
 //! `tests/fixtures/plugin` is built here with its own cargo invocation and
 //! target directory, so it contains its own copy of `pulsar_events` and

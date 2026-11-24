@@ -284,9 +284,14 @@ pub fn owner_of(origin: &'static str) -> Owner {
 }
 
 mod builder;
+mod handled;
 pub mod library;
+pub mod shared;
+pub use handled::Handled;
 pub use builder::{add_foreign, builds, built, import_library, PluginBuilder};
 
+mod icon;
+pub use icon::{icon_of, IconFormat, PluginIcon};
 mod contracts;
 pub use contracts::{AbsentOptional, ContractKind, Problem, ProvidedContract, RequiredContract};
 
@@ -341,9 +346,10 @@ macro_rules! registration {
 /// `inventory::submit!`) and every plugin build's ([`PluginBuilder`]),
 /// whatever its plugin's state.
 pub fn all_registered<T: Registration>() -> impl Iterator<Item = &'static T> {
-    inventory::iter::<T>
-        .into_iter()
-        .chain(builder::built::<T>())
+    // In a plugin library, the host's store: every plugin's, not only this
+    // copy's own (`shared`).
+    let built = shared::host_built::<T>().unwrap_or_else(builder::built::<T>);
+    inventory::iter::<T>.into_iter().chain(built)
 }
 
 /// The registrations of type `T` that count: those whose origin's plugin is
@@ -357,6 +363,15 @@ pub fn registered<T: Registration>() -> impl Iterator<Item = &'static T> {
 /// libraries brought ([`library::import`]). A malformed descriptor is
 /// logged and skipped (a test of each plugin parses its own).
 pub fn installed() -> &'static [PluginDescriptor] {
+    match shared::attached() {
+        Some(host) => (host.installed)(),
+        None => local_installed(),
+    }
+}
+
+/// This copy's own installed set (the host's, in a library, is
+/// [`installed`]): what this copy's own build order reads.
+pub(crate) fn local_installed() -> &'static [PluginDescriptor] {
     *installed_set()
         .read()
         .unwrap_or_else(|poison| poison.into_inner())
@@ -395,6 +410,8 @@ pub(crate) fn add_installed(descriptor: PluginDescriptor) {
     plugins.push(descriptor);
     plugins.sort_by(|a, b| a.id.cmp(&b.id));
     *set = Box::leak(plugins.into_boxed_slice());
+    drop(set);
+    reactivate_for_installed();
 }
 
 /// A project's `[plugins]` list: the plugins it names, enabled or not.
@@ -656,6 +673,10 @@ struct Active {
     resolution: Resolution,
     /// Every installed plugin's root crate, to its id.
     root_plugin: HashMap<String, String>,
+    /// The project's list the resolution came from, when it came from one
+    /// ([`activate_project`]): resolved again when a plugin library is
+    /// imported after the project was opened.
+    project: Option<ProjectPlugins>,
 }
 
 static ACTIVE: RwLock<Option<Active>> = RwLock::new(None);
@@ -668,6 +689,10 @@ fn normalized(package: &str) -> String {
 /// Make `resolution` the process's plugin set: from now on the registries
 /// skip the registrations of every installed plugin it does not enable.
 pub fn activate(resolution: &Resolution) {
+    activate_with(resolution, None);
+}
+
+fn activate_with(resolution: &Resolution, project: Option<ProjectPlugins>) {
     let root_plugin = installed()
         .iter()
         .map(|plugin| (normalized(&plugin.root), plugin.id.clone()))
@@ -675,8 +700,26 @@ pub fn activate(resolution: &Resolution) {
     *ACTIVE.write().unwrap_or_else(|poison| poison.into_inner()) = Some(Active {
         resolution: resolution.clone(),
         root_plugin,
+        project,
     });
     GENERATION.fetch_add(1, Ordering::AcqRel);
+}
+
+/// A plugin library joined the installed set after a project's plugins were
+/// activated: resolve the project's list again over the larger set, so the
+/// library's plugin is enabled, disabled and gated as the project says
+/// (resolved without it, it was neither enabled nor known by its root, and
+/// the plugins requiring its contracts were dropped).
+fn reactivate_for_installed() {
+    let project = ACTIVE
+        .read()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .as_ref()
+        .and_then(|active| active.project.clone());
+    if let Some(project) = project {
+        let resolution = resolve(local_installed(), &project);
+        activate_with(&resolution, Some(project));
+    }
 }
 
 /// The activated resolution (its problems and absent optional contracts),
@@ -726,7 +769,7 @@ pub fn activate_project(
             "registrations from `{origin}` ({categories:?}) name no installed plugin's root and              are not the engine's (`pulsar_plugins::engine_origin!()`); the plugin gate cannot              skip them"
         );
     }
-    activate(&resolution);
+    activate_with(&resolution, Some(project));
     resolution
 }
 
@@ -746,16 +789,30 @@ pub fn unknown_origins() -> BTreeMap<&'static str, BTreeSet<&'static str>> {
 /// Changes on every [`activate`]/[`deactivate`]: a registry caching what
 /// passes the gate rebuilds when it changes.
 pub fn generation() -> u64 {
+    match shared::attached() {
+        Some(host) => (host.generation)(),
+        None => local_generation(),
+    }
+}
+
+pub(crate) fn local_generation() -> u64 {
     GENERATION.load(Ordering::Acquire)
 }
 
 /// Whether plugin `id` is enabled: installed and in the activated set (or
 /// installed, with nothing activated).
 pub fn is_enabled(id: &str) -> bool {
+    match shared::attached() {
+        Some(host) => (host.is_enabled)(id),
+        None => local_is_enabled(id),
+    }
+}
+
+pub(crate) fn local_is_enabled(id: &str) -> bool {
     let active = ACTIVE.read().unwrap_or_else(|poison| poison.into_inner());
     match active.as_ref() {
         Some(active) => active.resolution.is_enabled(id),
-        None => installed().iter().any(|plugin| plugin.id == id),
+        None => local_installed().iter().any(|plugin| plugin.id == id),
     }
 }
 
@@ -766,6 +823,13 @@ pub fn is_enabled(id: &str) -> bool {
 /// editor logs when it opens a project ([`unknown_origins`]) and the
 /// installed set's tests fail on.
 pub fn origin_enabled(origin: &str) -> bool {
+    match shared::attached() {
+        Some(host) => (host.origin_enabled)(origin),
+        None => local_origin_enabled(origin),
+    }
+}
+
+pub(crate) fn local_origin_enabled(origin: &str) -> bool {
     let active = ACTIVE.read().unwrap_or_else(|poison| poison.into_inner());
     let Some(active) = active.as_ref() else {
         return true;

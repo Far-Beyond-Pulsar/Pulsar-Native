@@ -1,3 +1,6 @@
+//! Handlers of the multiplayer window: create, join and disconnect from a session, chat, and
+//! file sync approval.
+
 use gpui::*;
 
 use crate::screen::MultiplayerWindow;

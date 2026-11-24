@@ -1,4 +1,4 @@
-//! Demo: object references through `DYN_METHOD_REGISTRY` (#642).
+//! Demo: object references through `DYN_METHOD_REGISTRY`.
 //!
 //! One end-to-end wiring proving a Blueprint-style call can pass an object
 //! reference IN and get one BACK through the dynamic (non-`EngineClass`)
@@ -8,7 +8,7 @@
 //! without any wrapper); args/returns are `Box<dyn Any>` holding the
 //! concrete ref types from [`crate::reflect`].
 //!
-//! Per the #641 contract, these closures NEVER panic on invalid input:
+//! Per the contract, these closures NEVER panic on invalid input:
 //! downcast misses and stale handles return `None` (the dyn-registry's
 //! "no value" result) with a warning logged. Callers that need richer
 //! errors use the typed accessor API instead of raw dyn dispatch.
@@ -104,7 +104,7 @@ mod tests {
     use crate::test_support::TestGizmo;
     use pulsar_reflection::DYN_METHOD_REGISTRY;
 
-    /// #642 acceptance shape: a graph passes an object reference INTO a
+    /// acceptance shape: a graph passes an object reference INTO a
     /// reflected method and RECEIVES one back, via the real global registry.
     #[test]
     fn component_refs_round_trip_through_dyn_dispatch() {

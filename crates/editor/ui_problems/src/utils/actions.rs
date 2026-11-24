@@ -2,7 +2,13 @@ use gpui::*;
 
 actions!(
     problems_drawer,
-    [FilterAll, FilterErrors, FilterWarnings, FilterInfo, ClearSourceFilter]
+    [
+        FilterAll,
+        FilterErrors,
+        FilterWarnings,
+        FilterInfo,
+        ClearSourceFilter
+    ]
 );
 
 /// Show only the diagnostics one source published (a language server, a

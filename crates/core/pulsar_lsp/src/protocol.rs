@@ -60,7 +60,10 @@ impl Connection {
         match self.trace_level() {
             TraceLevel::Off => {}
             TraceLevel::Messages => {
-                let method = message.get("method").and_then(Value::as_str).unwrap_or("(response)");
+                let method = message
+                    .get("method")
+                    .and_then(Value::as_str)
+                    .unwrap_or("(response)");
                 let id = message.get("id").map(Value::to_string).unwrap_or_default();
                 tracing::info!("[{}] {direction} {method} {id}", self.label);
             }
@@ -87,7 +90,10 @@ impl Connection {
 
     fn write(&self, message: &Value) -> io::Result<()> {
         if self.is_closed() {
-            return Err(io::Error::new(io::ErrorKind::BrokenPipe, "the language server is not running"));
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "the language server is not running",
+            ));
         }
         self.trace("->", message);
         let body = serde_json::to_string(message)?;
@@ -159,7 +165,11 @@ impl Connection {
         else {
             return false;
         };
-        let callback = self.pending.lock().ok().and_then(|mut pending| pending.remove(&id));
+        let callback = self
+            .pending
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.remove(&id));
         match callback {
             Some(callback) => {
                 callback(response);
@@ -171,7 +181,10 @@ impl Connection {
 
     /// How many requests are waiting for an answer.
     pub fn pending_len(&self) -> usize {
-        self.pending.lock().map(|pending| pending.len()).unwrap_or(0)
+        self.pending
+            .lock()
+            .map(|pending| pending.len())
+            .unwrap_or(0)
     }
 }
 
@@ -226,7 +239,9 @@ pub fn read_message(reader: &mut impl BufRead) -> io::Result<Option<Value>> {
         reader.read_exact(&mut body)?;
         match serde_json::from_slice::<Value>(&body) {
             Ok(message) => return Ok(Some(message)),
-            Err(error) => tracing::warn!("a language server sent a message that is not JSON: {error}"),
+            Err(error) => {
+                tracing::warn!("a language server sent a message that is not JSON: {error}")
+            }
         }
     }
 }
@@ -245,7 +260,10 @@ pub fn run_reader(mut reader: impl BufRead, connection: &Connection, handler: &m
             }
         };
         connection.trace("<-", &message);
-        let method = message.get("method").and_then(Value::as_str).map(str::to_owned);
+        let method = message
+            .get("method")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         let id = message.get("id").cloned();
         match (method, id) {
             // A request: the id is the server's, never matched against ours.
@@ -269,10 +287,16 @@ pub fn run_reader(mut reader: impl BufRead, connection: &Connection, handler: &m
             // A response to one of our requests.
             (None, Some(id)) => {
                 if !connection.deliver(&id, message) {
-                    tracing::debug!("[{}] a response nobody waits for (id {id})", connection.label);
+                    tracing::debug!(
+                        "[{}] a response nobody waits for (id {id})",
+                        connection.label
+                    );
                 }
             }
-            (None, None) => tracing::debug!("[{}] a message with neither method nor id", connection.label),
+            (None, None) => tracing::debug!(
+                "[{}] a message with neither method nor id",
+                connection.label
+            ),
         }
     }
     connection.close();
@@ -310,7 +334,11 @@ pub(crate) mod fake {
 
     impl PipeReader {
         pub fn new(rx: flume::Receiver<Vec<u8>>) -> Self {
-            Self { rx, buffer: Vec::new(), at: 0 }
+            Self {
+                rx,
+                buffer: Vec::new(),
+                at: 0,
+            }
         }
     }
 
@@ -380,8 +408,11 @@ mod tests {
 
     impl Handler for Recorder {
         fn request(&mut self, id: &Value, method: &str, params: &Value) -> RequestOutcome {
-            self.requests.push((id.clone(), method.to_string(), params.clone()));
-            self.outcome.clone().unwrap_or(RequestOutcome::Reply(Value::Null))
+            self.requests
+                .push((id.clone(), method.to_string(), params.clone()));
+            self.outcome
+                .clone()
+                .unwrap_or(RequestOutcome::Reply(Value::Null))
         }
 
         fn notification(&mut self, method: &str, params: Value) {
@@ -405,14 +436,20 @@ mod tests {
     fn a_server_request_with_a_pending_clients_id_is_not_taken_for_its_response() {
         let mut wire = wire();
         let reader = run(&mut wire, Recorder::default());
-        let answer = wire.connection.request("textDocument/hover", json!({})).unwrap();
+        let answer = wire
+            .connection
+            .request("textDocument/hover", json!({}))
+            .unwrap();
         // Our request got id 1. The server now sends ITS request id 1.
         let sent = read_message(&mut wire.from_client).unwrap().unwrap();
         assert_eq!(sent["id"], 1);
-        send(&wire.to_client, json!({
-            "jsonrpc": "2.0", "id": 1, "method": "workspace/configuration",
-            "params": { "items": [{ "section": "x" }] }
-        }));
+        send(
+            &wire.to_client,
+            json!({
+                "jsonrpc": "2.0", "id": 1, "method": "workspace/configuration",
+                "params": { "items": [{ "section": "x" }] }
+            }),
+        );
         // The client answers the server's request id 1 ...
         let reply = read_message(&mut wire.from_client).unwrap().unwrap();
         assert_eq!(reply["id"], 1);
@@ -422,7 +459,10 @@ mod tests {
         assert!(answer.try_recv().is_err());
         assert_eq!(wire.connection.pending_len(), 1);
         // The real response arrives and is delivered.
-        send(&wire.to_client, json!({ "jsonrpc": "2.0", "id": 1, "result": { "contents": "hi" } }));
+        send(
+            &wire.to_client,
+            json!({ "jsonrpc": "2.0", "id": 1, "result": { "contents": "hi" } }),
+        );
         let response = answer.recv_timeout(Duration::from_secs(5)).unwrap();
         assert_eq!(response["result"]["contents"], "hi");
         drop(wire.to_client);
@@ -439,7 +479,10 @@ mod tests {
             ..Recorder::default()
         };
         let reader = run(&mut wire, handler);
-        send(&wire.to_client, json!({ "jsonrpc": "2.0", "id": "abc-1", "method": "x/unknown" }));
+        send(
+            &wire.to_client,
+            json!({ "jsonrpc": "2.0", "id": "abc-1", "method": "x/unknown" }),
+        );
         let reply = read_message(&mut wire.from_client).unwrap().unwrap();
         assert_eq!(reply["id"], "abc-1");
         assert_eq!(reply["error"]["code"], METHOD_NOT_FOUND);
@@ -455,8 +498,14 @@ mod tests {
             ..Recorder::default()
         };
         let reader = run(&mut wire, handler);
-        send(&wire.to_client, json!({ "jsonrpc": "2.0", "method": "$/progress", "params": { "token": 1 } }));
-        send(&wire.to_client, json!({ "jsonrpc": "2.0", "id": 9, "method": "workspace/applyEdit", "params": {} }));
+        send(
+            &wire.to_client,
+            json!({ "jsonrpc": "2.0", "method": "$/progress", "params": { "token": 1 } }),
+        );
+        send(
+            &wire.to_client,
+            json!({ "jsonrpc": "2.0", "id": 9, "method": "workspace/applyEdit", "params": {} }),
+        );
         drop(wire.to_client);
         let handler = reader.join().unwrap();
         assert_eq!(handler.notifications.len(), 1);

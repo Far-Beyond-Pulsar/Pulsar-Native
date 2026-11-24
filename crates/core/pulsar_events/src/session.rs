@@ -1,5 +1,4 @@
-//! The running Play-in-Editor session's event hub, for editor plugins
-//! (Pulsar-Native#942).
+//! The running Play-in-Editor session's event hub, for editor plugins.
 //!
 //! A PIE game runs in its own dynamic library with its own
 //! [`EventHub`](crate::EventHub). The editor's PIE host gets the hub's bus
@@ -120,7 +119,11 @@ fn subscribe_on(
                     );
                     return;
                 }
+                // SAFETY: the ABI version and struct size match, so `retain`
+                // is the announcer's own function for its live `ctx`.
                 unsafe { (raw.retain)(raw.ctx) };
+                // SAFETY: `raw` is a checked copy of a live bus and the
+                // reference taken above is the one `ForeignBus` releases.
                 match unsafe { ForeignBus::from_raw(raw) } {
                     Ok(bus) => callback(PieSessionEvent::Started(bus)),
                     Err(error) => tracing::warn!("session bus: {error:?}"),
@@ -145,6 +148,7 @@ mod tests {
     #[test]
     fn plugins_attach_to_the_session_hub_and_detach_on_stop() {
         let host = HostBus::local();
+        // SAFETY: the table was just exported by `host`, which outlives `plugin_view`.
         let plugin_view = unsafe { HostBus::foreign(host.export_raw().unwrap()) }.unwrap();
         let hub = EventHub::new();
         hub.set_tap(true, 16);
@@ -168,6 +172,7 @@ mod tests {
             PieSessionEvent::Stopping => *h.lock().unwrap() = (None, None),
         });
 
+        // SAFETY: the table was just exported by `hub`, which outlives `game`.
         let game = unsafe { ForeignBus::from_raw(hub.export_raw()) }.unwrap();
         announce_started_on(&host, &game);
         assert!(held.lock().unwrap().0.is_some(), "attached");

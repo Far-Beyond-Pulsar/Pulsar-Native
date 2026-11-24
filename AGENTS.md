@@ -7,8 +7,10 @@ runtime is the editor. For the full context, see `.agents/`.
 
 | File | What |
 |---|---|
+| `ARCHITECTURE.md` | Human-oriented tour: layers, plugin model, startup, scene data, one traced editor action |
 | `.agents/ROADMAP.md` | Project philosophy, core insights, architecture overview |
 | `.agents/CI.md` | CI workflows, cost rules, how to trigger the full cross-platform run |
+| `.agents/BUILD_LESSONS.md` | Why these builds went wrong and what not to do: per-image statics, feature unification and the workspace hack, build-script environment leaks, floating git dependencies, hash-named libraries, per-platform linking; the diagnostics that worked. Read before changing linking, features or a CI build |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend (no subsystem registry), EngineContext |
 | `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
@@ -17,8 +19,11 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/COMPONENT_LIFECYCLE_PLAN.md` | The component lifecycle plan: audit of SceneDB `Actor`/`ActorRegistry`, `ComponentTickRegistration` and the script driver, the target (capability registry, `construct`, session scope, physics, Blueprint class instances), decisions, phases P1-P6, risks |
 | `.agents/LANGUAGE_PLUGINS_PLAN.md` | The language plugins plan: one `Language` registration (metadata, script compiler, language server), `LanguageServers` + `DiagnosticsStore`, rust-analyzer and typescript-language-server as plugins; audit of `pulsar_lsp`, its consumers and the `class.ts`/`graph_save.json` hardcoding, decisions, phases P1-P6, risks, issues log |
 | `.agents/COMPONENT_EVENT_SOURCES_PLAN.md` | The component event sources plan: asset kinds (and reflected properties) declare the Blueprint events a component offers, generic for any plugin; parametric event families, the `On Input Action` node, cache/invalidation and performance budgets, migration of animation and input, phases P0-P6, unverified list |
+| `.agents/LEVEL_LOADING.md` | Level loading audit: the prepare (worker) / apply (frame thread) split, which paths block, what remains. Read before adding any level, sublevel or asset load |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/TRAITS.md` | Trait system: ids, `TraitDb`/index, engine role traits, conformance, trait event nodes, plugin API, level roles at runtime |
+| `.agents/SETTINGS.md` | Settings: the editor, project and plugin namespaces and who may register each, the Project Settings and Editor Settings windows (three-level tree, measured pages, search), appearance applied live, reading a setting |
+| `.agents/PROBLEMS.md` | The Problems panel (tabs, grouped one-line rows, dismiss) and findings: the `pulsar_findings` model and store, who publishes what, how a plugin or render pass reports a finding |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
 | `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |
@@ -39,6 +44,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/INSPECTOR.md` | Properties panels: one virtualized list, search/collapse, `VirtualRows` for huge values (arrays, lists, layer stacks) |
 | `.agents/EDITOR_TASKS.md` | Editor tasks and threads: every async/background job is a task, every thread is registered (services with heartbeats, rayon/tokio pools engine-owned), each with span-scoped logs and stall diagnosis; the Tasks window has Tasks/Threads/Services views; a raw-thread ratchet. Every async/background editor job is a task with its own span-scoped log, stall diagnosis and a Tasks-window audit view; tab creation and Helio init are enforced. Read before adding any spawn, background job or editor/renderer init |
 | `.agents/KEYBINDINGS.md` | Keyboard Shortcuts window, `.pulsar/keybindings.json` overrides, how unbinding reaches the keymap |
+| `.agents/MOCAP.md` | Motion capture plugin (`pulsar.mocap`): the `.mocap` take format, capture sources (camera, VMC, synthetic), recorder, the editor workspace and camera viewport, phases |
 | `.agents/ANIMATION.md` | Animation assets (`.animseq` v5, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
 
 ## Skills (`.claude/commands/`)
@@ -60,6 +66,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.pulsar/import_db.json` | Linked source imports: source, hash, native asset, importer, and for a rigged model the other files it made (`asset_import`) |
 | `.pulsar/cache/posedb/` | Derived Pose Search indexes, keyed by settings and source-content hash (never written beside the source); gitignored |
 | `.pulsar/keybindings.json` | The project's keybinding overrides over the defaults (`ui_keybindings`, see `.agents/KEYBINDINGS.md`) |
+| `.pulsar/dismissed_findings.txt` | Findings the project dismissed in the Problems panel, one item id per line (`ui_problems::utils::dismissed`, see `.agents/PROBLEMS.md`) |
 | `.pulsar/layout.json` | Per-user editor layout: dock tree, zoom, drawers, window geometry, pop-outs, one slot per project window (`ui_core::app::layout`, see `.agents/LAYOUT.md`); gitignored |
 | `.pulsar/import_options.json` | Legacy import options; linked entries migrate into `.pulsar/import_db.json`, while convert-in-place entries remain a fallback |
 | `.pulsar/trash/` | Sources replaced by a convert-in-place import, recoverable |
@@ -99,6 +106,7 @@ just test         cargo test --workspace
 just clippy       cargo clippy --workspace -- -D warnings
 just arch         the layer gate: core and editor depend on no plugin or tool, name no kind
 just submodule-init   git submodule update --init --recursive
+cargo run -p plugin_builder   build every plugin except render_bps as its own DLL (its root crate, feature `dll`) and install it
 just check-submodule-pins   every submodule pinned to a commit on its upstream main
 ```
 

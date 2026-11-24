@@ -1,4 +1,4 @@
-//! Persistence compatibility (Pulsar-Native#1035 acceptance, #1081): a level
+//! Persistence compatibility: a level
 //! cooked for packaging loads, through the runtime loader, the same typed
 //! components as the level it was cooked from: an old flat light record
 //! migrated, a nested one, a disabled one, several instances of one class,

@@ -1,20 +1,26 @@
-use crate::screen::ModernSettingsScreen;
-use gpui::{prelude::FluentBuilder as _, *};
+//! The two settings windows: Project Settings and Editor Settings. Each
+//! wraps a [`SettingsScreen`] of its kind under a title bar.
+
 use std::path::PathBuf;
+
+use gpui::{
+    div, App, AppContext as _, Context, Entity, Global, IntoElement, ParentElement as _, Render,
+    Styled, WeakEntity, Window,
+};
 use ui::{v_flex, TitleBar};
 
-/// Parameters for opening a [`SettingsWindow`].
+use crate::components::SettingsScreen;
+use crate::utils::model::WindowKind;
+
+/// Parameters for opening a [`ProjectSettingsWindow`].
 ///
-/// - `project_path: Some(path)` scopes the window to that project's
-///   `.pulsar` TOML settings database (the "Project" page edits it).
-/// - `None` falls back to the globally-loaded project from `EngineContext`
-///   (matching the historical zero-param behaviour); if no project is loaded
-///   globally either, only global editor settings are editable.
+/// - `project_path: Some(path)` edits that project's settings.
+/// - `None` falls back to the project loaded in `EngineContext`.
 #[derive(Debug, Clone, Default)]
 pub struct SettingsParams {
     pub project_path: Option<PathBuf>,
-    /// The page to open on (a plugin's, by its title: `plugin_page`); the
-    /// first page when `None` or not found.
+    /// The page to open on, by title (a plugin's name); the first page when
+    /// `None` or not found.
     pub page: Option<String>,
 }
 
@@ -27,13 +33,33 @@ impl SettingsParams {
     }
 }
 
-pub struct SettingsWindow {
-    settings_screen: Option<Entity<ModernSettingsScreen>>,
+/// The open Project Settings screen, so a request for a page reaches a
+/// window that is already open.
+#[derive(Default)]
+struct OpenProjectScreen(Option<WeakEntity<SettingsScreen>>);
+
+impl Global for OpenProjectScreen {}
+
+fn title_bar(title: String) -> impl IntoElement {
+    TitleBar::new().child(
+        div()
+            .flex()
+            .items_center()
+            .px_2()
+            .text_sm()
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .child(title),
+    )
 }
 
-impl SettingsWindow {
-    /// Resolve which project the window is scoped to: explicit params win,
-    /// then the global EngineContext project.
+// ── Project Settings ─────────────────────────────────────────────────────────
+
+pub struct ProjectSettingsWindow {
+    screen: Entity<SettingsScreen>,
+}
+
+impl ProjectSettingsWindow {
+    /// The project the window edits: the params' or the loaded one.
     fn resolve_project_path(params: &SettingsParams) -> Option<PathBuf> {
         if params.project_path.is_some() {
             return params.project_path.clone();
@@ -48,32 +74,31 @@ impl SettingsWindow {
     }
 
     pub fn new(params: SettingsParams, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Initialize default settings in the registry if not already done
         engine_state::register_default_settings();
-
         let project_path = Self::resolve_project_path(&params);
-        let settings_screen =
-            cx.new(|cx| ModernSettingsScreen::new(project_path.clone(), params.page.clone(), window, cx));
-
-        Self {
-            settings_screen: Some(settings_screen),
-        }
+        let screen = cx.new(|cx| {
+            SettingsScreen::new(
+                WindowKind::Project,
+                project_path,
+                params.page.clone(),
+                window,
+                cx,
+            )
+        });
+        cx.set_global(OpenProjectScreen(Some(screen.downgrade())));
+        Self { screen }
     }
 
-    /// Register the `"SettingsWindow"` opener in the global
-    /// [`window_manager::WindowRegistry`] so menu entries using
-    /// `reg.open("SettingsWindow", cx)` keep working.
-    ///
-    /// Call once during app startup (parameterised windows are not
-    /// auto-registered by `#[register_window]`).
+    /// Register the `"ProjectSettingsWindow"` opener in the
+    /// [`window_manager::WindowRegistry`] (parameterised windows are not
+    /// registered by `#[register_window]`). Call once at startup.
     pub fn init(cx: &mut App) {
         use ui_shell::PulsarWindowExt;
         <Self as PulsarWindowExt>::register(cx);
+        EditorSettingsWindow::init(cx);
     }
 
-    /// Open a settings window, optionally pointed at a specific project.
-    ///
-    /// Focuses the existing settings window if one is already open.
+    /// Open the window for `project_path` (focusing it when it is open).
     pub fn open_scoped(project_path: Option<PathBuf>, cx: &mut App) {
         use ui_shell::PulsarWindowExt;
         Self::open(
@@ -85,11 +110,17 @@ impl SettingsWindow {
         );
     }
 
-    /// Open the settings window on a plugin's page (`plugin_page`'s title),
-    /// for the footer's "settings" link. An open window is focused and keeps
-    /// its page.
+    /// Open the window on the page titled `page` (a plugin's name). An open
+    /// window is focused and turns to that page.
     pub fn open_page(project_path: Option<PathBuf>, page: String, cx: &mut App) {
         use ui_shell::PulsarWindowExt;
+        let open = cx
+            .try_global::<OpenProjectScreen>()
+            .and_then(|open| open.0.as_ref())
+            .and_then(WeakEntity::upgrade);
+        if let Some(screen) = open {
+            screen.update(cx, |screen, cx| screen.show_page(&page, cx));
+        }
         Self::open(
             SettingsParams {
                 project_path,
@@ -98,61 +129,86 @@ impl SettingsWindow {
             cx,
         );
     }
-
-    fn title(&self, cx: &App) -> String {
-        let project = self.settings_screen.as_ref().and_then(|screen| {
-            screen
-                .read(cx)
-                .project_path()
-                .map(std::path::Path::to_path_buf)
-        });
-        match project.and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())) {
-            Some(name) => format!("Project Settings \u{b7} {}", name),
-            None => "Settings".to_string(),
-        }
-    }
 }
 
-impl Render for SettingsWindow {
+impl Render for ProjectSettingsWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let title = self.title(cx);
+        let title = match self
+            .screen
+            .read(cx)
+            .project_path()
+            .and_then(|p| p.file_name())
+            .map(|name| name.to_string_lossy().to_string())
+        {
+            Some(name) => format!("Project Settings \u{b7} {name}"),
+            None => "Project Settings".to_string(),
+        };
         v_flex()
             .size_full()
-            .child(
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .px_2()
-                        .text_sm()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .child(title),
-                ),
-            )
-            .when_some(
-                self.settings_screen.as_ref(),
-                |this: gpui::Div, screen: &Entity<ModernSettingsScreen>| this.child(screen.clone()),
-            )
+            .child(title_bar(title))
+            .child(div().flex_1().min_h_0().child(self.screen.clone()))
     }
 }
 
 #[window_manager::register_window]
-impl window_manager::PulsarWindow for SettingsWindow {
+impl window_manager::PulsarWindow for ProjectSettingsWindow {
     type Params = SettingsParams;
 
     fn window_name() -> &'static str {
-        "SettingsWindow"
+        "ProjectSettingsWindow"
     }
 
     fn window_options(_: &SettingsParams) -> gpui::WindowOptions {
-        window_manager::default_window_options(1200.0, 700.0) // Wider for sidebar layout
+        window_manager::default_window_options(1200.0, 760.0)
     }
 
-    fn build(
-        params: SettingsParams,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) -> gpui::Entity<Self> {
-        cx.new(|cx| SettingsWindow::new(params, window, cx))
+    fn build(params: SettingsParams, window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| ProjectSettingsWindow::new(params, window, cx))
+    }
+}
+
+// ── Editor Settings ──────────────────────────────────────────────────────────
+
+pub struct EditorSettingsWindow {
+    screen: Entity<SettingsScreen>,
+}
+
+impl EditorSettingsWindow {
+    /// Register the `"EditorSettingsWindow"` opener in the
+    /// [`window_manager::WindowRegistry`]. Call once at startup.
+    pub fn init(cx: &mut App) {
+        use ui_shell::PulsarWindowExt;
+        <Self as PulsarWindowExt>::register(cx);
+    }
+
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        engine_state::register_default_settings();
+        let screen = cx.new(|cx| SettingsScreen::new(WindowKind::Editor, None, None, window, cx));
+        Self { screen }
+    }
+}
+
+impl Render for EditorSettingsWindow {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .child(title_bar("Editor Settings".to_string()))
+            .child(div().flex_1().min_h_0().child(self.screen.clone()))
+    }
+}
+
+impl window_manager::PulsarWindow for EditorSettingsWindow {
+    type Params = ();
+
+    fn window_name() -> &'static str {
+        "EditorSettingsWindow"
+    }
+
+    fn window_options(_: &()) -> gpui::WindowOptions {
+        window_manager::default_window_options(1100.0, 720.0)
+    }
+
+    fn build(_: (), window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| EditorSettingsWindow::new(window, cx))
     }
 }

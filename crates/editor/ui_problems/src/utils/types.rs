@@ -95,3 +95,9 @@ impl DiagnosticSeverity {
         }
     }
 }
+
+/// A finding's button was pressed: the host carries the action out (it
+/// knows the settings windows and the editor's other windows). Opening a
+/// file is reported as [`NavigateToDiagnostic`] instead.
+#[derive(Clone, Debug)]
+pub struct RunFindingAction(pub pulsar_findings::Action);

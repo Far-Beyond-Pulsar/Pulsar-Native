@@ -181,10 +181,7 @@ pub fn complete_from_siblings(
         if (named_for_surface || named_for_model)
             && !surface.images.iter().any(|image| image.role == role)
         {
-            surface.images.push(SourceImage {
-                role,
-                path: path.clone(),
-            });
+            surface.images.push(SourceImage::new(role, path.clone()));
         }
     }
 }
@@ -258,10 +255,10 @@ mod tests {
             PathBuf::from("t/Moss_Normal.png"),
         ];
         let mut rock = surface("Rock");
-        rock.images.push(SourceImage {
-            role: SourceImageRole::Normal,
-            path: PathBuf::from("declared_normal.png"),
-        });
+        rock.images.push(SourceImage::new(
+            SourceImageRole::Normal,
+            PathBuf::from("declared_normal.png"),
+        ));
         complete_from_siblings(&mut rock, "scene", false, &nearby);
         assert_eq!(rock.images.len(), 2);
         assert!(rock

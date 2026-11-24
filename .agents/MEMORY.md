@@ -77,7 +77,7 @@ read. Rebuilding from Cold costs a decode, a resize, a mip chain and an encode.
 
 ## Finding where memory is (Mission Control, tab "Memory Explorer")
 
-Three sources, because no single tool covers a process whose "RAM" is half VRAM:
+Four views, because no single tool covers a process whose "RAM" is half VRAM:
 
 - **Heap**: live allocations at or above a threshold (4/16/64/256 MiB), grouped
   by call stack with up to 48 frames, attributed to the first non-plumbing frame.
@@ -88,11 +88,18 @@ Three sources, because no single tool covers a process whose "RAM" is half VRAM:
   joined) and the derived-data cache (hits, cooks, bytes).
 - **GPU**: wgpu's allocator report for every engine device (`device_loss::watched_devices`),
   by allocation name and by memory block fill. VRAM is invisible to the heap tracker.
+- **Owners**: what each plugin says it owns, item by item, in columns of bytes it
+  names (`engine_backend::services::memory_owners`: a plugin submits a
+  `MemoryOwnerRegistration` from its root; the engine names no kind). The
+  meshes report every virtual-geometry asset of every renderer: its full classic
+  geometry on the GPU (zero once only its fallback is resident), its fallback,
+  and its resident cluster pages (`meshes_component::virtual_geometry_host::memory_rows`,
+  from `VgRuntime::asset_memory`; see `.agents/plans/virtual-geometry.md` 2.3).
 - **Process**: `VirtualQuery` over the address space. `PAGE_WRITECOMBINE` regions
   are GPU-visible memory (VRAM windows, upload heaps), never ordinary heap. A
   256 MB write-combined block is a `gpu-allocator` device block; 64 MB is a host block.
 
-"Export report" writes all of it to
+"Export report" writes all of it (the owners' tables included) to
 `<project>/.pulsar/profiling/memory/memory_report_<unix>.md`.
 
 Timings for your own images: `real_texture_cook.rs` (ignored test, see its header).
@@ -111,6 +118,7 @@ Timings for your own images: `real_texture_cook.rs` (ignored test, see its heade
   `streaming.texture_vram_budget_mb` (default 3072, 0 = unlimited). Applied when a
   material is bound; a slot at a stale bias is uploaded again. It is not
   per-texture or per-frame streaming (no distance/screen-size selection).
+- **Textures load coarse first** (`streaming.coarse_texture_size`, default 128), the full cook following nearest-first; both are cooked, cached and budgeted like any texture (the coarse cook is keyed by its size). Binding is budgeted per frame (`streaming.asset_bind_budget_ms`, `asset_bind_max_per_frame`). See `LEVEL_LOADING.md`, "Asset streaming".
 - **Prefetch** reaches `bind_mesh_material` through `warm`.
 - **Parallel `gpu_assets` hang**: concurrent device creation in tests; every GPU
   test helper takes a `DEVICE_CREATION` mutex.
@@ -120,3 +128,9 @@ Timings for your own images: `real_texture_cook.rs` (ignored test, see its heade
   growth notification to every bound scene.
 - **Editor memory with the cook in place is unmeasured**; export a Memory
   Explorer report on the new build.
+- **Virtual-geometry meshes keep only a fallback on the GPU** (#2048): once a
+  renderer draws a mesh's clusters, its full classic geometry leaves the mesh
+  pools and an error-bounded cut of its cluster DAG stands in for it (shadows,
+  rays, and the instance until its pages are resident). The bound is the mesh
+  asset's (mesh viewer) or `project.virtual_geometry.fallback_relative_error`.
+  The Owners view shows each asset's classic, fallback and page bytes.

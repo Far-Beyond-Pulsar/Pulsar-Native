@@ -1,3 +1,6 @@
+//! Handlers of the documentation window: refreshing a category, activating a row, the
+//! new-file dialog and saving the current file.
+
 use std::path::PathBuf;
 
 use gpui::*;

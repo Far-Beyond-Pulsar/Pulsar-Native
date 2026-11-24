@@ -65,9 +65,9 @@ impl ClassProblem {
     /// The file the problem is about, for the Problems drawer.
     pub fn file(&self) -> PathBuf {
         match self {
-            Self::MultipleLanguages { dir, markers, .. } => {
-                markers.first().map_or_else(|| dir.clone(), |marker| dir.join(marker))
-            }
+            Self::MultipleLanguages { dir, markers, .. } => markers
+                .first()
+                .map_or_else(|| dir.clone(), |marker| dir.join(marker)),
             Self::ModuleFromOtherLanguage { dir, .. } => dir.clone(),
         }
     }
@@ -109,10 +109,14 @@ impl std::fmt::Display for ClassProblem {
 /// The one language `dir` is a class of, or why it is not one: `Ok(None)` for
 /// a directory that is no language's class (a prefab-only class, a plain
 /// folder).
+// A class problem is rare and read once per scan; boxing it would only move
+// the cost to every caller.
+#[allow(clippy::result_large_err)]
 pub fn language_of(dir: &Path) -> Result<Option<&'static Language>, ClassProblem> {
     language_in(&LanguageRegistry::current(), dir)
 }
 
+#[allow(clippy::result_large_err)] // as `language_of`
 fn language_in(
     registry: &LanguageRegistry,
     dir: &Path,
@@ -224,7 +228,12 @@ mod tests {
         let problems = class_problems(root.path());
         assert_eq!(problems.len(), 1, "{problems:?}");
         match &problems[0] {
-            ClassProblem::MultipleLanguages { class, dir, languages, .. } => {
+            ClassProblem::MultipleLanguages {
+                class,
+                dir,
+                languages,
+                ..
+            } => {
                 assert_eq!(class, "Both");
                 assert_eq!(dir, &both);
                 assert_eq!(languages, &["test.blueprint", "test.text"]);

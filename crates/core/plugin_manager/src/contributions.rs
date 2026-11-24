@@ -8,7 +8,6 @@
 use crate::{BuiltinEditorRegistry, PluginManager};
 use plugin_editor_api::*;
 
-
 impl PluginManager {
     /// Get a mutable reference to the built-in editor registry.
     ///
@@ -49,7 +48,7 @@ impl PluginManager {
     }
 
     // ========================================================================
-    // Component Registration (#269)
+    // Component Registration
     // ========================================================================
 
     /// Run every scripting language's pre-Play validation on `project_root`

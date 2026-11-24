@@ -682,7 +682,7 @@ fn continuations_only_resume_in_their_program() {
     assert!(matches!(err.kind, ScriptErrorKind::BadEntryCall(_)));
 }
 
-/// #854: debug info maps each frame of a trace to its source location, and
+/// Debug info maps each frame of a trace to its source location, and
 /// the verifier rejects a table that does not fit the code.
 #[test]
 fn traces_resolve_source_locations() {
@@ -753,7 +753,7 @@ fn traces_resolve_source_locations() {
     assert!(pulsar_script_vm::verify(&bad).is_err());
 }
 
-/// #862: a continuation moves onto a reloaded module whose waiting
+/// A continuation moves onto a reloaded module whose waiting
 /// functions keep their layout, through nested calls, and is refused when
 /// a waiting function changed shape.
 #[test]
@@ -854,7 +854,7 @@ fn continuations_rebase_onto_compatible_modules() {
         .contains("no longer waits"));
 }
 
-// ---- checked arithmetic (#858) ------------------------------------------
+// ---- checked arithmetic ------------------------------------------
 
 fn overflow_program() -> pulsar_script_vm::Program {
     let mut asm = Asm::new();

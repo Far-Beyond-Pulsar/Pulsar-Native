@@ -1,5 +1,5 @@
 //! What an optional editor tool adds to the editor shell, so the shell names
-//! no tool (Pulsar-Native#1605): a status-bar button and a Tools menu entry
+//! no tool: a status-bar button and a Tools menu entry
 //! that open its window, an item in the title bar, an entry in the account
 //! menu, and work when a project opens. The tool's crate
 //! submits the registrations; the editor binary links the tools it ships
@@ -61,6 +61,43 @@ pub fn editor_tools() -> Vec<&'static EditorToolRegistration> {
     let mut tools: Vec<_> = pulsar_plugins::registered::<EditorToolRegistration>().collect();
     tools.sort_by_key(|tool| (tool.order, tool.id));
     tools
+}
+
+/// A view of one editor task's log, for a window that shows a task's output
+/// (the build dashboard) without naming the tool that draws it. Mission
+/// Control (`ui_log_viewer`) submits one; without it there is no log view.
+pub struct TaskLogViewRegistration {
+    /// The submitting package.
+    pub origin: &'static str,
+    /// Stable id (`tool.mission_control.task_log`).
+    pub id: &'static str,
+    /// A live view of `log` (it follows the task's new lines).
+    pub view: fn(std::sync::Arc<editor_task_queue::TaskLog>, &mut App) -> AnyView,
+}
+
+impl pulsar_plugins::Contribution for TaskLogViewRegistration {
+    const CATEGORY: &'static str = "editor.task_log_view";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.id.to_string()
+    }
+}
+
+pulsar_plugins::registration!(TaskLogViewRegistration);
+
+/// A live view of `log` from the first enabled task log view (by id), or
+/// `None` when no tool provides one.
+pub fn task_log_view(
+    log: std::sync::Arc<editor_task_queue::TaskLog>,
+    cx: &mut App,
+) -> Option<AnyView> {
+    let registration = pulsar_plugins::registered::<TaskLogViewRegistration>()
+        .min_by_key(|registration| registration.id)?;
+    Some((registration.view)(log, cx))
 }
 
 /// Initialize every enabled tool (once, when the editor starts).

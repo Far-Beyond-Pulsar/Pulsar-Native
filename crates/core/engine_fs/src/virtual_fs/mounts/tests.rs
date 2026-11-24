@@ -1,5 +1,7 @@
 use super::*;
+use crate::providers::FsProvider;
 use crate::virtual_fs;
+use std::sync::OnceLock;
 
 // A fixture plugin whose root is this test crate, so `origin!()` here is
 // its origin.

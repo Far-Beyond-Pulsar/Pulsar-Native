@@ -144,3 +144,18 @@ editor reloads every static mesh naming that file through the same write.
 Do not introduce another scene owner, snapshot cache, lock wrapper, write
 queue or async facade. If an API cannot be built without one, stop and
 record the specific boundary in the plan.
+
+## Object pivots
+
+An object's origin (what the gizmo sits on, and what it turns and scales
+about) is its stored `Transform` position plus a pivot offset in its local
+space (`pulsar_scene_model::pivots`, prop `pivot_offset`, zero by default).
+The stored transform still places the geometry, so moving a pivot never moves
+what is drawn and the renderer knows nothing of it. The gizmo
+(`helio_renderer::interaction`) puts its handles on the pivot, holds the pivot
+fixed through a rotate or scale, and moves a group of objects about their
+average pivot. The viewport's right-click "Set Origin" (`scene_edit::origin`,
+the `SetPivots` command) computes offsets from content bounds
+(`ContentGeometryRegistration` triangles, else positions): per object (bounds
+center/bottom/top, world origin, reset) or, with several selected, one shared
+point (median, group bounds, primary, world origin).

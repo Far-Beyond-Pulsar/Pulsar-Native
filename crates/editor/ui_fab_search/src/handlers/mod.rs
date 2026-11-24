@@ -1,3 +1,5 @@
+//! Handlers of the Fab search window: access token, search, item detail, likes and downloads.
+
 use gpui::{prelude::*, *};
 
 use crate::FabSearchWindow;

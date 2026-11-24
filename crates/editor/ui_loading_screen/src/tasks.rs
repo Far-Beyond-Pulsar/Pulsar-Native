@@ -103,10 +103,14 @@ pub(crate) fn tasks() -> Vec<LoadingTask> {
     );
     // One check per language that has a server: whether its executable is
     // there (the first start installs it when it is not).
-    tasks.extend(pulsar_lsp::active_servers().into_iter().map(|(language, spec)| LoadingTask {
-        label: format!("Checking {}", spec.display_name),
-        run: TaskRun::Server(language, spec),
-    }));
+    tasks.extend(
+        pulsar_lsp::active_servers()
+            .into_iter()
+            .map(|(language, spec)| LoadingTask {
+                label: format!("Checking {}", spec.display_name),
+                run: TaskRun::Server(language, spec),
+            }),
+    );
     tasks.push(engine(last));
     tasks
 }
@@ -382,7 +386,9 @@ fn task_prepare_plugins(_project: &Path) -> TaskResult {
             detail: Some("already loaded".to_string()),
         };
     }
-    let count = plugin_manager::prewarm_plugins("plugins/editor");
+    let count = plugin_manager::prewarm_plugins(
+        pulsar_install_layout::InstallLayout::of_running_engine().plugins_dir(),
+    );
     TaskResult {
         elapsed: t.elapsed(),
         detail: Some(format!("{count} plugin librar(ies)")),

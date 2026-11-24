@@ -132,7 +132,7 @@ fn control_flow_nodes_become_selector_natives() {
     assert_eq!(fired, Value::Int(1), "branch(false) fires False");
 }
 
-/// #869: natives of file, process, network and environment nodes are
+/// Natives of file, process, network and environment nodes are
 /// capability-gated; everything else is not.
 #[test]
 fn sensitive_natives_carry_a_capability() {

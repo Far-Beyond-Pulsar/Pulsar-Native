@@ -488,7 +488,7 @@ fn logical_lines(text: &str) -> Vec<String> {
         let code = code_of(line);
         let trimmed = code.trim_start();
         if open {
-            let last = out.last_mut().unwrap();
+            let last = out.last_mut().expect("open implies a pushed line");
             last.push(' ');
             last.push_str(trimmed);
             open = !code.contains(';');
@@ -563,7 +563,7 @@ pub fn rust_copies(sources: &[Source]) -> Vec<Copy> {
                 if owners.iter().any(|(o, _)| *o == owner) {
                     continue;
                 }
-                let (_, path) = owners.iter().next().unwrap();
+                let (_, path) = owners.iter().next().expect("a key has an owner");
                 copies.push(Copy {
                     path: source.path.clone(),
                     symbol: format!("\"{lit}\""),

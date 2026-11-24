@@ -1,11 +1,24 @@
-use std::collections::{BTreeMap, HashMap};
+//! The Problems drawer's state: every source's code diagnostics, the
+//! published findings, and what the person is looking at (the tab, the
+//! filters, the open row, the collapsed groups, the dismissed findings).
+//! `components` renders it.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use gpui::{prelude::*, *};
-use ui::{input::InputState, v_flex, ActiveTheme as _};
+use pulsar_findings::{Category, Severity};
+use ui::{input::InputState, scroll::ScrollbarState};
 
-use crate::utils::types::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic};
+use crate::utils::items::{self, Item, Row, View};
+use crate::utils::types::{
+    Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagnostic, RunFindingAction,
+};
+
+/// How often the drawer looks for newly published findings (an atomic read).
+const FINDINGS_POLL: Duration = Duration::from_millis(500);
 
 /// Lock policy: recover from poisoning. The diagnostics list is always replaced or
 /// mutated element-wise, so a panicking holder cannot leave it inconsistent.
@@ -30,54 +43,105 @@ pub(crate) struct SourceSlot {
 
 pub struct ProblemsDrawer {
     pub(crate) focus_handle: FocusHandle,
-    /// Every source's diagnostics, in source-name order: what the drawer shows
-    /// (the severity and source filters and the search apply to it).
+    /// Every source's diagnostics, in source-name order.
     pub(crate) diagnostics: Arc<Mutex<Vec<Diagnostic>>>,
     /// Each source's own slot. A source publishes its complete set (an empty
     /// set removes its slot), so several files from several sources are shown
     /// at once and a fixed one goes.
     pub(crate) sources: BTreeMap<String, SourceSlot>,
     pub(crate) filtered_severity: Option<DiagnosticSeverity>,
-    /// Show only this source's diagnostics.
+    /// Show only this source's items.
     pub(crate) filtered_source: Option<String>,
-    pub(crate) selected_index: Option<usize>,
     pub(crate) search_query: String,
-    pub(crate) group_by_file: bool,
-    pub(crate) preview_inputs: HashMap<(String, usize), Entity<InputState>>,
+    /// The open diagnostic's file preview, by (file, line): the editor and its
+    /// line count, or `None` when the file has no such line (read once).
+    pub(crate) preview_inputs: HashMap<(String, usize), Option<(Entity<InputState>, usize)>>,
     pub(crate) diff_editors: HashMap<(usize, usize), (Entity<InputState>, Entity<InputState>)>,
     pub(crate) search_input: Entity<InputState>,
     pub(crate) project_root: Option<PathBuf>,
+
+    /// The tab shown.
+    pub(crate) tab: Category,
+    /// Every code diagnostic and finding, as listed.
+    pub(crate) items: Vec<Item>,
+    /// The current tab's rows (group headings and items).
+    pub(crate) rows: Vec<Row>,
+    pub(crate) list: ListState,
+    pub(crate) scrollbar: ScrollbarState,
+    /// The open row, by item id: only it shows its details.
+    pub(crate) expanded: Option<String>,
+    /// Collapsed groups, by `<category>/<group>`.
+    pub(crate) collapsed: BTreeSet<String>,
+    /// Findings the project dismissed (`utils::dismissed`).
+    pub(crate) dismissed: BTreeSet<String>,
+    /// List the dismissed findings instead (to restore them).
+    pub(crate) dismissed_only: bool,
+    /// The findings store generation the items were built from.
+    findings_generation: u64,
+    _poll: Task<()>,
 }
 
 impl EventEmitter<NavigateToDiagnostic> for ProblemsDrawer {}
+impl EventEmitter<RunFindingAction> for ProblemsDrawer {}
 
 impl ProblemsDrawer {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let focus_handle = cx.focus_handle();
-        let diagnostics = Arc::new(Mutex::new(Vec::new()));
         let search_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Search problems..."));
-        Self {
-            focus_handle,
-            diagnostics,
+        cx.subscribe(&search_input, |this, input, event: &ui::input::InputEvent, cx| {
+            if matches!(event, ui::input::InputEvent::Change) {
+                let query = input.read(cx).value().to_string();
+                if query != this.search_query {
+                    this.search_query = query;
+                    this.refresh_rows();
+                    cx.notify();
+                }
+            }
+        })
+        .detach();
+        let poll = cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(FINDINGS_POLL).await;
+            let alive = this.update(cx, |drawer, cx| {
+                if pulsar_findings::generation() != drawer.findings_generation {
+                    drawer.refresh_items();
+                    cx.notify();
+                }
+            });
+            if alive.is_err() {
+                break;
+            }
+        });
+        let mut this = Self {
+            focus_handle: cx.focus_handle(),
+            diagnostics: Arc::new(Mutex::new(Vec::new())),
             sources: BTreeMap::new(),
             filtered_severity: None,
             filtered_source: None,
-            selected_index: None,
             search_query: String::new(),
-            group_by_file: true,
             preview_inputs: HashMap::new(),
             diff_editors: HashMap::new(),
             search_input,
             project_root: None,
-        }
+            tab: Category::Code,
+            items: Vec::new(),
+            rows: Vec::new(),
+            list: ListState::new(0, ListAlignment::Top, px(400.0)),
+            scrollbar: ScrollbarState::default(),
+            expanded: None,
+            collapsed: BTreeSet::new(),
+            dismissed: BTreeSet::new(),
+            dismissed_only: false,
+            findings_generation: 0,
+            _poll: poll,
+        };
+        this.refresh_items();
+        this
     }
 
     pub fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
         self.sources.clear();
         self.filtered_source = None;
         self.rebuild();
-        self.selected_index = None;
         self.preview_inputs.clear();
         self.diff_editors.clear();
         cx.notify();
@@ -91,16 +155,55 @@ impl ProblemsDrawer {
             .flat_map(|slot| slot.current.iter().cloned())
             .collect();
         *lock_diagnostics(&self.diagnostics) = all;
+        self.refresh_items();
+    }
+
+    /// Every item again from the code slots and the findings store.
+    pub(crate) fn refresh_items(&mut self) {
+        self.findings_generation = pulsar_findings::generation();
+        let code: BTreeMap<String, Vec<Diagnostic>> = self
+            .sources
+            .iter()
+            .map(|(name, slot)| (name.clone(), slot.current.clone()))
+            .collect();
+        self.items = items::build_items(
+            &code,
+            &pulsar_findings::snapshot(),
+            self.project_root.as_deref(),
+        );
+        if self
+            .expanded
+            .as_ref()
+            .is_some_and(|id| !self.items.iter().any(|item| &item.id == id))
+        {
+            self.expanded = None;
+        }
+        self.refresh_rows();
+    }
+
+    /// The current tab's rows again. The list keeps its scroll position
+    /// (rows are spliced, not reset), so a republish does not jump.
+    pub(crate) fn refresh_rows(&mut self) {
+        let view = View {
+            severity: self.filtered_severity.as_ref().map(items::severity_of),
+            query: self.search_query.trim().to_lowercase(),
+            dismissed_only: self.dismissed_only,
+            source: self.filtered_source.clone(),
+        };
+        let rows = items::rows(&self.items, self.tab, &view, &self.dismissed, &self.collapsed);
+        let old = self.list.item_count();
+        self.rows = rows;
+        self.list.splice(0..old, self.rows.len());
     }
 
     /// Replace everything `source` publishes (empty removes it). Returns
     /// whether anything changed.
     ///
     /// A server republishes the same set repeatedly. Treating each publish as
-    /// a change reset the selection and caches and notified the drawer (and,
-    /// through the caller, the whole app) several times a second with
-    /// nothing new to show -- each notify turning a ~0.5 ms display-only
-    /// frame into a multi-millisecond full draw.
+    /// a change reset the caches and notified the drawer (and, through the
+    /// caller, the whole app) several times a second with nothing new to
+    /// show -- each notify turning a ~0.5 ms display-only frame into a
+    /// multi-millisecond full draw.
     pub fn set_source_diagnostics(
         &mut self,
         source: &str,
@@ -129,7 +232,6 @@ impl ProblemsDrawer {
             );
         }
         self.rebuild();
-        self.selected_index = None;
         self.preview_inputs.clear();
         self.diff_editors.clear();
         cx.notify();
@@ -169,7 +271,7 @@ impl ProblemsDrawer {
         cx.notify();
     }
 
-    /// The sources that currently have something to show.
+    /// The sources that currently have code diagnostics.
     pub fn source_names(&self) -> Vec<String> {
         self.sources.keys().cloned().collect()
     }
@@ -179,6 +281,22 @@ impl ProblemsDrawer {
         self.sources
             .get(source)
             .map_or(0, |slot| slot.current.len())
+    }
+
+    /// The code diagnostic an item stands for.
+    pub(crate) fn code_diagnostic(&self, item: &Item) -> Option<&Diagnostic> {
+        let (source, index) = item.code.as_ref()?;
+        self.sources.get(source)?.current.get(*index)
+    }
+
+    /// How many items, of every tab and source, have `severity` (dismissed
+    /// findings not counted): the footer's counts.
+    pub fn count_all(&self, severity: Severity) -> usize {
+        self.items
+            .iter()
+            .filter(|item| item.severity == severity)
+            .filter(|item| !(item.dismissible() && self.dismissed.contains(&item.id)))
+            .count()
     }
 
     pub fn get_diagnostic_info(
@@ -196,31 +314,96 @@ impl ProblemsDrawer {
         })
     }
 
+    /// The project the drawer is for: its paths are shown relative to it and
+    /// its dismissed findings are loaded.
     pub fn set_project_root(&mut self, project_root: Option<PathBuf>, cx: &mut Context<Self>) {
+        self.dismissed = project_root
+            .as_deref()
+            .map(crate::utils::dismissed::load)
+            .unwrap_or_default();
         self.project_root = project_root;
+        self.refresh_items();
         cx.notify();
     }
 
-    pub(crate) fn navigate_to_diagnostic(
-        &mut self,
-        diagnostic: &Diagnostic,
-        cx: &mut Context<Self>,
-    ) {
-        cx.emit(NavigateToDiagnostic {
-            file_path: PathBuf::from(&diagnostic.file_path),
-            line: diagnostic.line,
-            column: diagnostic.column,
-        });
-    }
-
-    pub(crate) fn select_diagnostic(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.selected_index = Some(index);
+    /// Show `tab`.
+    pub fn show_tab(&mut self, tab: Category, cx: &mut Context<Self>) {
+        if self.tab != tab {
+            self.tab = tab;
+            self.dismissed_only = false;
+            self.refresh_rows();
+            self.list.scroll_to(ListOffset::default());
+        }
         cx.notify();
     }
 
-    pub(crate) fn toggle_grouping(&mut self, cx: &mut Context<Self>) {
-        self.group_by_file = !self.group_by_file;
+    /// Open the row of `id` (closing the open one), or close it when open.
+    pub(crate) fn toggle_expanded(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.expanded = match &self.expanded {
+            Some(open) if open == id => None,
+            _ => Some(id.to_string()),
+        };
         cx.notify();
+    }
+
+    pub(crate) fn toggle_group(&mut self, key: &str, cx: &mut Context<Self>) {
+        if !self.collapsed.remove(key) {
+            self.collapsed.insert(key.to_string());
+        }
+        self.refresh_rows();
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_dismissed_view(&mut self, cx: &mut Context<Self>) {
+        self.dismissed_only = !self.dismissed_only;
+        self.refresh_rows();
+        cx.notify();
+    }
+
+    /// Dismiss the finding `id`, or restore it when dismissed; saved with
+    /// the project.
+    pub(crate) fn toggle_dismissed(&mut self, id: &str, cx: &mut Context<Self>) {
+        if !self.dismissed.remove(id) {
+            self.dismissed.insert(id.to_string());
+        }
+        if let Some(project) = self.project_root.as_deref() {
+            // Ids no source publishes any more are dropped as the file is written.
+            let live: BTreeSet<&str> = self.items.iter().map(|item| item.id.as_str()).collect();
+            let kept: BTreeSet<String> = self
+                .dismissed
+                .iter()
+                .filter(|id| live.contains(id.as_str()))
+                .cloned()
+                .collect();
+            if let Err(error) = crate::utils::dismissed::save(project, &kept) {
+                tracing::warn!("could not save the dismissed findings: {error}");
+            }
+        }
+        if self.dismissed_only
+            && !self
+                .items
+                .iter()
+                .any(|item| item.category == self.tab && self.dismissed.contains(&item.id))
+        {
+            self.dismissed_only = false;
+        }
+        self.refresh_rows();
+        cx.notify();
+    }
+
+    /// Carry out a finding's action: a file opens through the navigation
+    /// event, the rest goes to the host.
+    pub(crate) fn run_action(&mut self, action: &pulsar_findings::Action, cx: &mut Context<Self>) {
+        match action {
+            pulsar_findings::Action::OpenFile { path, line, column } => {
+                cx.emit(NavigateToDiagnostic {
+                    file_path: path.clone(),
+                    line: *line,
+                    column: *column,
+                });
+            }
+            other => cx.emit(RunFindingAction(other.clone())),
+        }
     }
 }
 
@@ -232,53 +415,7 @@ impl Focusable for ProblemsDrawer {
 
 impl Render for ProblemsDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let current_input_value = self.search_input.read(cx).value().to_string();
-        if current_input_value != self.search_query {
-            self.search_query = current_input_value;
-        }
-
-        let error_count = self.count_by_severity(DiagnosticSeverity::Error);
-        let warning_count = self.count_by_severity(DiagnosticSeverity::Warning);
-        let info_count = self.count_by_severity(DiagnosticSeverity::Information);
-        let total_count = self.total_count();
-        let filtered_diagnostics = self.get_filtered_diagnostics();
-        let selected_index = self.selected_index;
-        let group_by_file = self.group_by_file;
-
-        let content: AnyElement = if filtered_diagnostics.is_empty() {
-            crate::components::render_empty_state(self, cx).into_any_element()
-        } else if group_by_file {
-            crate::components::render_grouped_view(self, selected_index, window, cx)
-                .into_any_element()
-        } else {
-            crate::components::render_flat_view(
-                self,
-                filtered_diagnostics,
-                selected_index,
-                window,
-                cx,
-            )
-            .into_any_element()
-        };
-
-        v_flex()
-            .size_full()
-            .bg(cx.theme().background)
-            .on_action(cx.listener(crate::handlers::on_filter_all))
-            .on_action(cx.listener(crate::handlers::on_filter_errors))
-            .on_action(cx.listener(crate::handlers::on_filter_warnings))
-            .on_action(cx.listener(crate::handlers::on_filter_info))
-            .on_action(cx.listener(crate::handlers::on_filter_source))
-            .on_action(cx.listener(crate::handlers::on_clear_source_filter))
-            .child(crate::components::render_header(
-                self,
-                error_count,
-                warning_count,
-                info_count,
-                total_count,
-                cx,
-            ))
-            .child(div().flex_1().overflow_hidden().child(content))
+        crate::components::render_drawer(self, window, cx)
     }
 }
 
@@ -318,10 +455,38 @@ mod tests {
         }
     }
 
+    /// The code diagnostics the Code tab lists now.
+    fn shown(drawer: &ProblemsDrawer) -> Vec<Diagnostic> {
+        drawer
+            .rows
+            .iter()
+            .filter_map(|row| match row {
+                crate::utils::items::Row::Item(ix) => drawer.code_diagnostic(&drawer.items[*ix]).cloned(),
+                crate::utils::items::Row::Group { .. } => None,
+            })
+            .collect()
+    }
+
+    /// The Code tab's groups (one per file).
+    fn groups(drawer: &ProblemsDrawer) -> Vec<String> {
+        drawer
+            .rows
+            .iter()
+            .filter_map(|row| match row {
+                crate::utils::items::Row::Group { title, .. } => Some(title.clone()),
+                crate::utils::items::Row::Item(_) => None,
+            })
+            .collect()
+    }
+
     struct Host;
 
     impl gpui::Render for Host {
-        fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
             gpui::div()
         }
     }
@@ -344,7 +509,7 @@ mod tests {
                 cx
             ));
             assert_eq!(drawer.total_count(), 2);
-            let files = drawer.get_grouped_diagnostics();
+            let files = groups(drawer);
             assert_eq!(files.len(), 2, "both files are listed");
 
             // The same set again is not a change.
@@ -355,9 +520,13 @@ mod tests {
             ));
 
             // a.rs was fixed: the server's next complete set no longer has it.
-            assert!(drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/b.rs", "in b")], cx));
+            assert!(drawer.set_source_diagnostics(
+                "rust-analyzer",
+                vec![problem("/p/b.rs", "in b")],
+                cx
+            ));
             assert_eq!(drawer.total_count(), 1);
-            assert_eq!(drawer.get_grouped_diagnostics().len(), 1);
+            assert_eq!(groups(drawer).len(), 1);
 
             // All fixed: the source disappears.
             assert!(drawer.set_source_diagnostics("rust-analyzer", Vec::new(), cx));
@@ -376,8 +545,15 @@ mod tests {
         });
         drawer.update(cx, |drawer, cx| {
             drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/a.rs", "ra")], cx);
-            drawer.set_source_diagnostics("typescript compiler", vec![problem("/p/c.ts", "ts")], cx);
-            assert_eq!(drawer.source_names(), ["rust-analyzer", "typescript compiler"]);
+            drawer.set_source_diagnostics(
+                "typescript compiler",
+                vec![problem("/p/c.ts", "ts")],
+                cx,
+            );
+            assert_eq!(
+                drawer.source_names(),
+                ["rust-analyzer", "typescript compiler"]
+            );
             assert_eq!(drawer.total_count(), 2);
 
             // One source's republish does not touch the other's.
@@ -386,16 +562,16 @@ mod tests {
 
             drawer.set_source_diagnostics("rust-analyzer", vec![problem("/p/a.rs", "ra")], cx);
             drawer.set_source_filter(Some("typescript compiler".into()), cx);
-            let shown = drawer.get_filtered_diagnostics();
-            assert_eq!(shown.len(), 1);
-            assert_eq!(shown[0].message, "ts");
+            let only_ts = shown(drawer);
+            assert_eq!(only_ts.len(), 1);
+            assert_eq!(only_ts[0].message, "ts");
             drawer.set_source_filter(None, cx);
-            assert_eq!(drawer.get_filtered_diagnostics().len(), 2);
+            assert_eq!(shown(drawer).len(), 2);
 
             // A source that empties while it is the filter drops the filter.
             drawer.set_source_filter(Some("rust-analyzer".into()), cx);
             drawer.set_source_diagnostics("rust-analyzer", Vec::new(), cx);
-            assert_eq!(drawer.get_filtered_diagnostics().len(), 1);
+            assert_eq!(shown(drawer).len(), 1);
         });
     }
 
@@ -427,8 +603,8 @@ mod tests {
                 cx,
             );
             drawer.set_source_diagnostics("play", vec![problem("Class", "boom")], cx);
-            let shown = drawer.get_filtered_diagnostics();
-            let ra = shown.iter().find(|d| d.message == "ra").unwrap();
+            let listed = shown(drawer);
+            let ra = listed.iter().find(|d| d.message == "ra").unwrap();
             assert_eq!(ra.hints.len(), 1);
             assert!(!ra.loading_actions);
         });

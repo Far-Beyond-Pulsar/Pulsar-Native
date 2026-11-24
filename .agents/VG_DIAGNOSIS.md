@@ -1,3 +1,5 @@
+Status: proposed (as of 2026-11-20) - read-only diagnosis; the VG rework (BACKLOG_DISPATCH_PLAN V1) waits on an owner decision
+
 # VG diagnosis: #1599 / #1598 / #1417
 
 Read-only investigation (worker C2, 2026-11-08). No source was changed. All paths are
@@ -185,7 +187,7 @@ These are independent axes; a final design picks one per axis.
   project can set budget and sensitivity, and change the dense scene to one that is dense *within
   the budget* (many overlapping instances, not sub-pixel detail). Cost: dense tier only
   engages on overlap, not on detail.
-- A2. Per-instance or per-cluster screen-error only (Nanite-style): no global multiplier, error
+- A2. Per-instance or per-cluster screen-error only (the cluster-LOD convention): no global multiplier, error
   threshold is the only LOD driver; density follows from geometry. Removes global pops (#1417 item 1) and
   the test conflict, but loses the hard triangle-per-pixel bound that VG-BUG-10 introduced for
   scans and foliage.
@@ -232,11 +234,11 @@ These are independent axes; a final design picks one per axis.
 - **Design:** none built. This is a diagnosis only; the proposed axes above sit in the owners
   that already exist (`vg/build`, `vg/stream`, `feature/vg-cull`, `feature/vg-raster`,
   `feature/vg-dense`, `component/vg_settings`).
-- **AAA comparison:** UE5 Nanite selects by per-cluster screen-space error against a fixed pixel
+- **AAA comparison:** Published cluster-LOD renderers select by per-cluster screen-space error against a fixed pixel
   threshold with no global density multiplier, and relies on hierarchical culling and a software
   raster for sub-pixel triangles; dense overlap is handled by its visibility buffer, not a
   separate tier. Our global multiplier (A1) has no equivalent there; option A2 is closest.
-  Cross-fading in Nanite-class systems is mostly left to TAA; Unity/others use dithered LOD
+  Cross-fading in cluster-LOD systems is mostly left to TAA; Unity/others use dithered LOD
   cross-fade for discrete LODs (C2).
 - **Deleted:** nothing (read-only).
 - **Verified:** read the code paths above and the plan doc. Not verified: the acceptance test

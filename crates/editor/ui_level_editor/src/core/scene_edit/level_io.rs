@@ -50,7 +50,7 @@ pub fn save_to_file_with_settings<P: AsRef<Path>>(
 
 /// The objects and component lists a save writes.
 ///
-/// Placed classes are saved by reference (#921): a class root keeps its
+/// Placed classes are saved by reference: a class root keeps its
 /// `ClassInstance` with overrides recomputed against the current class
 /// defaults (only the differences), plus any component the user added;
 /// the components built from class slots and the generated child objects
@@ -217,7 +217,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
     }
     let now = chrono::Utc::now().to_rfc3339();
     // Read the existing file once: its editor camera is preserved when no fresh
-    // camera state was supplied, and its #650 blueprint-binding section always
+    // camera state was supplied, and its blueprint-binding section always
     // rides along (the editor cannot author it yet, but a re-save must never
     // destroy it).
     let existing_file = virtual_fs::read_file(path)
@@ -422,7 +422,9 @@ fn load_with_classes_and_editor_state_progress<P: AsRef<Path>>(
         progress(0.05 + 0.78 * completed_work as f32 / total_work as f32);
     }
     progress(0.86);
-    finish_prepared_hydration_with_registry(world, &prepared, registry);
+    // This path waits (it is for tools and tests); the interactive loader
+    // finishes with `finish_prepared_hydration` and never does.
+    finish_prepared_hydration_with_registry(world, &prepared, registry, false);
     engine_backend::scene::resolve_level_assets(world);
     progress(0.98);
     tracing::info!(
@@ -562,20 +564,27 @@ pub(crate) fn finish_prepared_hydration(world: &mut World, prepared: &PreparedLe
     // The interactive loader calls this with the shared scene write-locked.
     // Never wait for asset workers here: every UI reader would wait with us.
     // Its caller pumps completed assets between unlocked async waits instead.
-    finish_prepared_hydration_with_registry(world, prepared, &prepared.registry);
+    finish_prepared_hydration_with_registry(world, prepared, &prepared.registry, true);
 }
 
+/// `deferred`: the levels that objects show are read by a worker and arrive
+/// through a later frame's sync, instead of being read here on the spot.
 fn finish_prepared_hydration_with_registry(
     world: &mut World,
     prepared: &PreparedLevel,
     registry: &ClassRegistry,
+    deferred: bool,
 ) {
     report_invalid_known_data(world, &prepared.path);
     // Everything that defines a space (rigid frames, sublevel placements) gets its
     // slot (`.agents/FRAMES.md`).
     engine_backend::scene::frames::sync_spaces(world);
     // Objects that show another level get its contents.
-    engine_backend::scene::sublevel_display::sync_level_instances(world);
+    if deferred {
+        engine_backend::scene::sublevel_display::sync_level_instances_deferred(world);
+    } else {
+        engine_backend::scene::sublevel_display::sync_level_instances(world);
+    }
 
     let unresolved = classes::rebuild_all_instances(world, registry);
     if !unresolved.is_empty() {
@@ -638,6 +647,7 @@ mod interactive_hydration_tests {
                     &mut store.world,
                     &prepared,
                     &ClassRegistry::default(),
+                    true,
                 );
             }
             finished.send(()).unwrap();

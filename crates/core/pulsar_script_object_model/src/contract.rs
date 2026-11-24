@@ -1,4 +1,4 @@
-//! Handle semantics for script authors and engine contributors (#641).
+//! Handle semantics for script authors and engine contributors.
 //!
 //! This module is documentation; it compiles to nothing. It is THE one page
 //! defining how `ActorRef`/`ComponentRef` behave at language boundaries,
@@ -40,7 +40,7 @@
 //! [`pulsar_scenedb::Entity::DANGLING`] is no exception: it is scripts'
 //! `entity::none()` (an unmatched lookup, an unbound instance's `self`), so
 //! reaching an accessor is ordinary "not live" and returns the same typed
-//! error in every build (#888).
+//! error in every build.
 //!
 //! # Identity rules
 //!
@@ -48,7 +48,7 @@
 //!   (slot + generation). Across save/load, undo/redo, or editor sessions
 //!   it is its `StableId` string -- see [`crate::resolution`].
 //! - A component instance's identity is `(class_name, component_index)` --
-//!   the same convention as the properties panel (Pulsar-Native#519).
+//!   the same convention as the properties panel.
 //!   Index 0 (or the instance store's first enabled index) is the
 //!   live-typed value living in the World; other indexes are that
 //!   instance's own serialized record.

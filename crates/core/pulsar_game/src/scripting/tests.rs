@@ -1,4 +1,4 @@
-//! The script runtime follows the world (#922): instances from
+//! The script runtime follows the world: instances from
 //! `ClassInstance`, runtime spawn/destroy, lifecycle order, identity, global
 //! scripts and class reload, through the standalone and the PIE-style
 //! shared-world paths.
@@ -489,14 +489,14 @@ fn placing_a_class_instance_during_play_starts_it_next_tick() {
     assert_eq!(instances(&game), [minion("placed")]);
 
     // Deleted by the editor: end_play at the next reconcile, with `self`
-    // already gone (#888: no panic).
+    // already gone (no panic).
     game.scene_store.write().world.despawn_tree(placed);
     game.tick_once();
     assert_eq!(events(&log), [ev("begin", "placed"), ev("end", "")]);
     assert!(instances(&game).is_empty());
 }
 
-/// Instance lifecycle (Pulsar-Native#1035 acceptance, #1081): disabling a
+/// Instance lifecycle: disabling a
 /// placed class's `ClassInstance` ends its script at the next tick, like a
 /// removal; enabling it again starts a new one.
 #[test]
@@ -546,7 +546,7 @@ fn disabling_a_class_instance_stops_its_script_and_enabling_restarts_it() {
     assert_eq!(instances(&game), [minion("placed")]);
 }
 
-/// Phase 5 (Pulsar-Native#1035): the driver's `ClassInstance` cursor
+/// The driver's `ClassInstance` cursor
 /// overflowing must not lose an instance placed before the flood -- the
 /// driver rescans the world instead.
 #[test]
@@ -582,7 +582,7 @@ fn an_overflowed_class_instance_journal_rescans() {
     assert_eq!(instances(&game), [minion("placed")]);
 }
 
-/// Phase 5 (Pulsar-Native#1035): a level replacing the shared world
+/// A level replacing the shared world
 /// mid-play is followed from the next tick: the driver's cursor notices it
 /// belongs to the old world and rescans the new one.
 #[test]
@@ -969,7 +969,7 @@ fn a_rebuilt_instance_keeps_its_script_and_rebinds_next_frame() {
     assert_eq!(events(&log), [ev("begin", "m"), ev("end", "m")]);
 }
 
-/// #888: an unbound script calling component natives on `entity::none()`
+/// An unbound script calling component natives on `entity::none()`
 /// gets an ordinary script error, not a panic, in debug builds too.
 #[test]
 fn component_natives_on_none_are_errors_not_panics() {
@@ -1052,7 +1052,7 @@ fn component_natives_on_none_are_errors_not_panics() {
     );
 }
 
-// ---- script events on the engine hub (#924) --------------------------------
+// ---- script events on the engine hub --------------------------------
 
 mod script_events {
     use super::*;
@@ -1592,7 +1592,7 @@ mod script_events {
     }
 }
 
-// ---- Play-in-Editor sessions (#925) ------------------------------------------
+// ---- Play-in-Editor sessions ------------------------------------------
 
 mod pie_session {
     use super::*;
@@ -1733,7 +1733,7 @@ mod pie_session {
         instance_id_for(stable, &COUNTER.into())
     }
 
-    /// Done-when (#925): two placed instances each run bound to their own
+    /// Done-when: two placed instances each run bound to their own
     /// entity, and a third placed during Play starts on the next tick.
     #[test]
     fn placed_instances_run_bound_and_a_drop_during_play_starts() {
@@ -1800,7 +1800,7 @@ mod pie_session {
         session.shutdown();
     }
 
-    /// #928 / #833: a class compiled during Play (a new module.json and an
+    /// A class compiled during Play (a new module.json and an
     /// `AssetUpdated`, as the Blueprint editor publishes) changes behaviour
     /// at the next tick with no rebuild: variables keep their values and a
     /// waiting call whose code keeps its layout finishes in the new code.
@@ -1921,7 +1921,7 @@ mod pie_session {
         session.shutdown();
     }
 
-    /// #854 / #868: script errors and link errors come back as problems
+    /// Script errors and link errors come back as problems
     /// naming the class, function and graph node.
     #[test]
     fn script_errors_report_class_function_and_node() {
@@ -2153,7 +2153,7 @@ fn a_shared_frame_reports_its_lock_times_and_releases_the_scene() {
 }
 
 /// Level JSON names a component reference by the object's stable id and the
-/// component type (#866).
+/// component type.
 #[test]
 fn json_component_references_resolve_by_stable_id() {
     use pulsar_script_runtime::value_from_json_with;

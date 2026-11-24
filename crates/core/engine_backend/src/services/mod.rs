@@ -9,11 +9,14 @@ pub mod core_project_builder;
 pub mod device_loss;
 #[cfg(feature = "render")]
 pub mod gpu_renderer;
+pub mod memory_owners;
 pub mod native_scripts;
 #[cfg(feature = "pie")]
 pub mod pie_blit;
 #[cfg(feature = "pie")]
 pub mod pie_host;
+// What a renderer reports to the Problems panel (`pulsar_findings`).
+pub mod renderer_findings;
 #[cfg(feature = "render")]
 pub mod render_runtimes;
 

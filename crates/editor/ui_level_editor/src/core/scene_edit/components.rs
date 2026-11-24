@@ -2,7 +2,7 @@
 //! parent, live property edits, and the world subscriptions the properties
 //! panel uses.
 //!
-//! Every attached component is its own entity (Pulsar-Native#1035, D1),
+//! Every attached component is its own entity,
 //! linked to its object and holding its typed value whether enabled or not;
 //! the object keeps the ordered list (see
 //! [`engine_backend::scene::attachments`]). The editor addresses an instance
@@ -454,8 +454,7 @@ pub fn set_unresolved_property(
 }
 
 /// Edit a single property on ONE specific component instance, correctly handling
-/// `#[sub_props]` nesting (Pulsar-Native#561) and per-instance field values
-/// (Pulsar-Native#519).
+/// `#[sub_props]` nesting and per-instance field values.
 ///
 /// `component_index` addresses the exact instance in the object's component
 /// list; every instance holds its own typed value, so the setter (and the

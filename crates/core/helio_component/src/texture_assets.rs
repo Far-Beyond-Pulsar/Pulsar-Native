@@ -14,7 +14,7 @@
 //! the source its asset was declared under, for
 //! `World::asset_source_changed`, which rebinds every component showing it.
 
-use pulsar_scenedb::{AssetId, AssetPayload, AssetView};
+use pulsar_scenedb::{AssetId, AssetView, TierLoad};
 use std::sync::Arc;
 
 use crate::cooked_texture::{COOK_VERSION, CookFormat, CookedTexture, TextureUse, cook_as};
@@ -283,12 +283,16 @@ pulsar_plugins::registration!(TextureBindingRegistration);
 
 /// Registers the texture asset kind with SceneDB: its loader and payload
 /// size, and how the registered components take in a loaded image
-/// ([`TextureBindingRegistration`]). Idempotent; done on the first
-/// [`texture_asset_id`].
+/// ([`TextureBindingRegistration`]). Idempotent, and incremental: each
+/// binding runs once, also one a plugin library brings after an earlier call
+/// (`pulsar_plugins::Handled`). Done on each [`texture_asset_id`].
 pub fn register_texture_assets() {
-    static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(|| {
-        pulsar_scenedb::register_loader(TEXTURE_ASSET_KIND, load_texture_asset);
+    static LOADER: std::sync::Once = std::sync::Once::new();
+    static HANDLED: pulsar_plugins::Handled = pulsar_plugins::Handled::new();
+    // The loader and size are this crate's own and need no registration
+    // from anywhere else: once per copy is right (SceneDB replaces).
+    LOADER.call_once(|| {
+        pulsar_scenedb::register_tiered_loader(TEXTURE_ASSET_KIND, load_texture_tier);
         pulsar_scenedb::register_payload_size(TEXTURE_ASSET_KIND, |payload| {
             // The texels are budgeted by SceneDB's residency cache; the
             // payload itself is a handle.
@@ -296,10 +300,10 @@ pub fn register_texture_assets() {
                 .downcast_ref::<LoadedTexture>()
                 .map_or(0, |_| std::mem::size_of::<LoadedTexture>())
         });
-        for registration in pulsar_plugins::registered::<TextureBindingRegistration>() {
-            (registration.register)();
-        }
     });
+    for registration in HANDLED.take_new::<TextureBindingRegistration>() {
+        (registration.register)();
+    }
 }
 
 /// The source string of the image at `path` (project-relative, or
@@ -372,9 +376,46 @@ pub fn texture_asset_id(path: &str) -> AssetId {
     id
 }
 
-/// The texture kind's loader: runs on a SceneDB worker thread.
-fn load_texture_asset(source: &str) -> Result<AssetPayload, String> {
-    Ok(Arc::new(decode_image_file(std::path::Path::new(source))?))
+/// The largest side, in texels, of the first tier of a texture that loads
+/// coarse first: project setting `streaming.coarse_texture_size`. An image no
+/// larger than this loads in one step; `0` turns progressive loading off.
+pub const DEFAULT_COARSE_TEXTURE_SIZE: u32 = 128;
+
+pub fn coarse_texture_size() -> u32 {
+    match engine_state::settings::global_config().get(
+        engine_state::settings::NS_PROJECT,
+        "streaming",
+        "coarse_texture_size",
+    ) {
+        Ok(engine_state::settings::ConfigValue::Int(size)) => size.clamp(0, 4096) as u32,
+        _ => DEFAULT_COARSE_TEXTURE_SIZE,
+    }
+}
+
+/// The texture kind's loader, a tiered one: tier 0 is a small cooked image
+/// (cheap to decode, upload and hold, so the level is textured within moments
+/// of its first load), tier 1 the full-size one the world then upgrades to,
+/// nearest first. An image already within the coarse size, or with progressive
+/// loading off, is complete at tier 0.
+fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
+    let path = std::path::Path::new(source);
+    let full_cap = max_texture_size();
+    let coarse = coarse_texture_size();
+    if tier == 0 && coarse > 0 {
+        let (width, height) = image_dimensions(path)?;
+        let (full_w, full_h) = capped_dimensions(width, height, full_cap);
+        if full_w.max(full_h) > coarse {
+            let image = decode_image_file_at(path, coarse)?;
+            return Ok(TierLoad {
+                payload: Arc::new(image),
+                last: false,
+            });
+        }
+    }
+    Ok(TierLoad {
+        payload: Arc::new(decode_image_file_at(path, full_cap)?),
+        last: true,
+    })
 }
 
 /// Load the image file at `path`: read its size, and cook it now, on this
@@ -382,17 +423,27 @@ fn load_texture_asset(source: &str) -> Result<AssetPayload, String> {
 /// decoded fails the load here, and the derived-data cache is warm before any
 /// scene asks for the texture.
 pub fn decode_image_file(path: &std::path::Path) -> Result<LoadedTexture, String> {
+    decode_image_file_at(path, max_texture_size())
+}
+
+/// The source size of the image at `path`, read from its header.
+fn image_dimensions(path: &std::path::Path) -> Result<(u32, u32), String> {
     let shown = path.display();
-    let cap = max_texture_size();
-    let (source_width, source_height) = image::ImageReader::open(path)
+    let (width, height) = image::ImageReader::open(path)
         .map_err(|error| format!("could not read '{shown}': {error}"))?
         .with_guessed_format()
         .map_err(|error| format!("could not read '{shown}': {error}"))?
         .into_dimensions()
         .map_err(|error| format!("could not decode '{shown}': {error}"))?;
-    if source_width == 0 || source_height == 0 {
+    if width == 0 || height == 0 {
         return Err(format!("'{shown}' has empty dimensions"));
     }
+    Ok((width, height))
+}
+
+/// [`decode_image_file`] with the larger side capped at `cap` (0 = no cap).
+fn decode_image_file_at(path: &std::path::Path, cap: u32) -> Result<LoadedTexture, String> {
+    let (source_width, source_height) = image_dimensions(path)?;
     let (width, height) = capped_dimensions(source_width, source_height, cap);
     let texture = LoadedTexture {
         width,
@@ -772,6 +823,37 @@ mod residency_tests {
         path
     }
 
+    #[test]
+    fn a_large_image_loads_coarse_first_and_a_small_one_in_one_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let big = write_png(dir.path(), "big.png", 512, 256);
+        let small = write_png(dir.path(), "small.png", 64, 64);
+        let (big, small) = (big.to_str().unwrap(), small.to_str().unwrap());
+        let coarse = coarse_texture_size();
+        assert!(coarse > 0 && coarse < 512, "the default is progressive");
+
+        let first = load_texture_tier(big, 0).unwrap();
+        assert!(!first.last, "a finer tier follows");
+        let first = first.payload.downcast::<LoadedTexture>().unwrap();
+        assert_eq!(first.width.max(first.height), coarse);
+        assert_eq!(
+            (first.width, first.height),
+            (coarse, coarse / 2),
+            "aspect kept"
+        );
+        // The coarse tier is cooked with its full mip chain, at its own size.
+        assert_eq!(first.cooked(CookFormat::Rgba8).unwrap().width, coarse);
+
+        let second = load_texture_tier(big, 1).unwrap();
+        assert!(second.last);
+        let second = second.payload.downcast::<LoadedTexture>().unwrap();
+        assert_eq!((second.width, second.height), (512, 256));
+
+        let only = load_texture_tier(small, 0).unwrap();
+        assert!(only.last, "within the coarse size: nothing to upgrade");
+        let only = only.payload.downcast::<LoadedTexture>().unwrap();
+        assert_eq!((only.width, only.height), (64, 64));
+    }
     #[test]
     fn dimensions_fit_the_cap_and_keep_their_aspect() {
         assert_eq!(capped_dimensions(4096, 4096, 2048), (2048, 2048));

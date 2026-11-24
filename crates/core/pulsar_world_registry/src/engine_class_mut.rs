@@ -1,5 +1,4 @@
-//! The write guard behind `WorldComponentRegistration::get_as_engine_class_mut`
-//! (#841).
+//! The write guard behind `WorldComponentRegistration::get_as_engine_class_mut`.
 //!
 //! A bare `&mut dyn EngineClass` taken from `Mut::into_inner` reports the
 //! write *when it is borrowed*: every SceneDB hook (GPU mirror upload, change

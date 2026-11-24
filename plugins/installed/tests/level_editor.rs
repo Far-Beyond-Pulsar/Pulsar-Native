@@ -23,7 +23,7 @@ use ui_level_editor::extend;
 use ui_level_editor::scene_edit::{components, level_io, objects, LevelEditorCameraState};
 use ui_level_editor::LevelEditorState;
 
-/// The Create menu (#1012): each kind adds one selected object with the
+/// The Create menu: each kind adds one selected object with the
 /// components its name promises, as one undo step.
 #[test]
 fn every_create_kind_adds_one_selected_object_with_its_components() {
@@ -82,7 +82,7 @@ fn every_create_kind_adds_one_selected_object_with_its_components() {
     }
 }
 
-/// Content packs are their own seam, not Create entries (#1629): the sky's
+/// Content packs are their own seam, not Create entries: the sky's
 /// panoramas register as `StarterContent`, which the plugin catalog lists, and
 /// the Create menu holds only entries that add an object.
 #[test]

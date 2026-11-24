@@ -1,4 +1,4 @@
-//! Hold Tab for the radial quick-action menu (Pulsar-Native#387).
+//! Hold Tab for the radial quick-action menu.
 //!
 //! The flow, all on the UI thread:
 //!

@@ -1,4 +1,4 @@
-//! One undo/redo system for every editor (Pulsar-Native#931).
+//! One undo/redo system for every editor.
 //!
 //! History is **per document**: a level, a Blueprint, a script, a texture,
 //! not per panel or per editor kind. The editor of a document registers its
