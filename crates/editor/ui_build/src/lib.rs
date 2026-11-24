@@ -17,6 +17,8 @@ rust_i18n::i18n!("locales", fallback = "en");
 pub mod button;
 pub mod configurator;
 pub mod dashboard;
+mod findings;
+mod mcp;
 pub mod picker;
 pub mod runner;
 mod text;
@@ -24,7 +26,7 @@ mod text;
 pub use button::build_button;
 pub use configurator::BuildConfiguratorWindow;
 pub use picker::BuildPicker;
-pub use runner::{cancel_build, run_configuration};
+pub use runner::{cancel_build, run_configuration, stop_game};
 
 /// Load the project's build configurations. Call before showing the Build
 /// button; safe to repeat.

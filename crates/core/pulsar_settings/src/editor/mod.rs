@@ -8,6 +8,7 @@ pub mod build_notifications;
 pub mod code_editor;
 pub mod debugger;
 pub mod file_manager;
+pub mod mcp;
 pub mod navigation;
 pub mod radial_menu;
 pub mod renderer;
@@ -28,4 +29,5 @@ pub fn register_all(cfg: &'static ConfigManager) {
     advanced::register(cfg);
     radial_menu::register(cfg);
     debugger::register(cfg);
+    mcp::register(cfg);
 }

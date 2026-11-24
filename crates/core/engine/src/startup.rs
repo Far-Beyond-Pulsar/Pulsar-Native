@@ -131,6 +131,10 @@ pub(crate) fn init_ui_stack(cx: &mut gpui::App) {
     ui_core::init(cx);
     tracing::info!("[GPUI startup] ui_core::init {}ms", t.elapsed().as_millis());
 
+    // The MCP server host: the UI-thread bridge, the existing AI tools as MCP tools, and the
+    // settings watcher that starts the server when Editor Settings turn it on.
+    ui_mcp::init(cx);
+
     // Runs every inventory::submit! registrant from all linked crates automatically.
     let t = std::time::Instant::now();
     window_manager::register_all_windows(cx);

@@ -54,6 +54,8 @@ impl PulsarApp {
 
         let center_dock_item = build_center_dock(create_level_editor, &weak_dock, window, cx);
         let center_tabs = persistent_center_tabs(&center_dock_item, cx);
+        // The tab area an MCP client's `editor_open_file` opens editors into.
+        super::mcp_tools::set_open_target(center_tabs.clone(), window.window_handle(), cx);
         install_docks(&dock_area, center_dock_item, &center_tabs, window, cx);
 
         // Store project_path before moving it

@@ -13318,6 +13318,7 @@ dependencies = [
  "ui_git_manager",
  "ui_loading_screen",
  "ui_log_viewer",
+ "ui_mcp",
  "urlencoding",
  "wgpu",
  "wgpui_dylib",
@@ -13471,6 +13472,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "pulsar_mcp"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "editor_task_queue",
+ "engine_fs",
+ "parking_lot",
+ "pulsar_install_layout",
+ "pulsar_plugins",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -19268,6 +19286,9 @@ dependencies = [
  "parking_lot",
  "profiling 0.1.0",
  "pulsar_content",
+ "pulsar_findings",
+ "pulsar_mcp",
+ "pulsar_plugins",
  "rodio",
  "rust-i18n",
  "serde_json",
@@ -19342,6 +19363,7 @@ dependencies = [
  "pulsar_install_layout",
  "pulsar_language",
  "pulsar_lsp",
+ "pulsar_mcp",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -19706,11 +19728,13 @@ dependencies = [
  "notify 8.2.0",
  "once_cell",
  "parking_lot",
+ "pulsar_mcp",
  "pulsar_plugins",
  "pulsar_scenedb",
  "rand 0.10.2",
  "rusqlite",
  "rust-i18n",
+ "serde_json",
  "smol",
  "sysinfo",
  "tempfile",
@@ -19722,6 +19746,26 @@ dependencies = [
  "window_manager",
  "windows 0.62.2",
  "winreg 0.56.0",
+]
+
+[[package]]
+name = "ui_mcp"
+version = "0.1.0"
+dependencies = [
+ "editor_task_queue",
+ "engine_state",
+ "gpui-ce",
+ "parking_lot",
+ "plugin_editor_api",
+ "plugin_manager",
+ "pulsar_findings",
+ "pulsar_install_layout",
+ "pulsar_mcp",
+ "pulsar_plugins",
+ "pulsar_settings",
+ "serde_json",
+ "tracing",
+ "ui_common",
 ]
 
 [[package]]

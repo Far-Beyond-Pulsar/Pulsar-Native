@@ -5,6 +5,7 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
 mod components;
+mod mcp;
 mod screen;
 mod utils;
 
@@ -18,7 +19,7 @@ pub use utils::atomic_memory_tracking::{AllocationEntry, SizeBucket, ATOMIC_MEMO
 pub use utils::large_allocs::{
     build_snapshot as large_allocation_snapshot, LargeGroup, LargeSnapshot,
 };
-pub use utils::live_logs::{publish_live_log, subscribe_live_logs};
+pub use utils::live_logs::{publish_live_log, publish_live_log_in_task, subscribe_live_logs};
 pub use utils::memory_tracking::{
     create_memory_tracker, MemoryCategory, MemoryStatsSnapshot, MemoryTracker, SharedMemoryTracker,
 };

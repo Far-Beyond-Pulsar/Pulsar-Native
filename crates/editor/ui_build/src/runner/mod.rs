@@ -49,6 +49,21 @@ pub fn cancel_build() {
     build_cancel().read().0.store(true, Ordering::Release);
 }
 
+/// Stop the game a run launched: every instance, with the processes it started
+/// (`cargo run`'s child is the game itself). The Stop button and the MCP
+/// `build_stop` tool call this. Returns how many instances it stopped.
+pub fn stop_game() -> usize {
+    let game = engine_state::playback::game_process();
+    let children = std::mem::take(&mut *game.read().0.lock());
+    let stopped = children.len();
+    for mut child in children {
+        process_tree::kill_tree(&mut child);
+        let _ = child.wait();
+    }
+    playback().update(|s| s.game_running = false);
+    stopped
+}
+
 /// The text of the progress notification.
 fn progress_message(title: &str, detail: &str, pct: u32) -> String {
     if detail.is_empty() {
@@ -139,6 +154,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
     }
     build_cancel().read().0.store(false, Ordering::Release);
     state.update(|s| s.build_running = true);
+    crate::findings::clear_build();
 
     let pct = Arc::new(AtomicU32::new(0));
     let detail = Arc::new(Mutex::new(String::new()));
@@ -320,6 +336,7 @@ async fn report_build_result(
         }
         Some(Err(StepError::Failed(message))) => {
             audio::play_build_error();
+            crate::findings::build_failed(&name, &message);
             let _ = async_app.update_window(window_handle, |_, window, cx| {
                 window.push_notification(
                     Notification::error(t!("Build.Notification.Failed").to_string())

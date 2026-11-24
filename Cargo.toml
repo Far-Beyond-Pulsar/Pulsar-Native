@@ -474,6 +474,7 @@ pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_re
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 pulsar_findings                    = { path = "crates/core/pulsar_findings" }
+pulsar_mcp                         = { path = "crates/core/pulsar_mcp" }
 # Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
 # hub. Pinned to the merged v0.2.0 on Gamma `main`.
 gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "c8c52864aa7b3e129ab8be4b2d2d5e6af03c255b" }
@@ -525,6 +526,7 @@ ui_common             = { path = "crates/editor/ui_common" }
 ui_loading_screen     = { path = "crates/editor/ui_loading_screen" }
 ui_about              = { path = "crates/editor/ui_about" }
 ui_build              = { path = "crates/editor/ui_build" }
+ui_mcp                = { path = "crates/editor/ui_mcp" }
 ui_documentation      = { path = "crates/editor/ui_documentation" }
 ui_keybindings        = { path = "crates/editor/ui_keybindings" }
 ui_types_common       = { path = "crates/editor/ui_types_common" }

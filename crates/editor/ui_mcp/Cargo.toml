@@ -1,0 +1,25 @@
+[package]
+name = "ui_mcp"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The editor's MCP server host: starts and stops pulsar_mcp's server from the Editor Settings, bridges the UI thread, offers the editor's existing AI tools (plugin and level-editor tools) through the protocol, and registers the tools that describe the editor itself (tasks, threads, problems, plugins)."
+
+[dependencies]
+gpui-ce.workspace = true
+pulsar_mcp = { workspace = true }
+pulsar_plugins = { workspace = true }
+pulsar_findings = { workspace = true }
+pulsar_install_layout = { workspace = true }
+plugin_manager = { workspace = true }
+plugin_editor_api = { workspace = true }
+editor_task_queue = { workspace = true }
+engine_state = { workspace = true }
+pulsar_settings = { workspace = true }
+ui_common = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true
