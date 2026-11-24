@@ -112,6 +112,26 @@ loads; launched directly, Windows error 126 (module not found) for all 34 plugin
   export (a hash/layout mismatch). `dumpbin /dependents plugin.dll` lists the exact file names it needs (under Git
   Bash set `MSYS2_ARG_CONV_EXCL="*"` or the `/dependents` flag is rewritten into a path).
 
+### What actually breaks a plugin when a library is rebuilt (measured)
+
+A plugin imports a shared library by file name and its symbols by mangled name. Tested on Windows with the six
+libraries: rebuilding the five workspace-member libraries (source changed, versions unchanged) leaves every
+already-built plugin loadable. What breaks them is a change of the **dependency graph**, which Cargo hashes into
+the file name of a git-dependency library: bumping `ui_dylib` from 0.1.1 to 0.1.2 changed `scenedb_dylib`'s
+hash (the workspace hack puts every library in every other's closure), and every plugin then asked for a file no
+build produced. The symbols inside were the same: byte-patching only the import name in a copy of each plugin
+(same length, 16 hex digits) loaded all 34 and rendered the scene. Two consequences:
+
+- A version bump of any shared library renames `scenedb_dylib-<hash>.dll`. Bump them together and rebuild plugins,
+  or make SceneDB a workspace member so its file name is stable.
+- The engine carries a fuzzy renamer for the meantime (`plugin_manager::imports::compat_copy`): it reads a
+  plugin's import table, and for a hash-named library it does not have, loads a copy whose import names the one
+  it linked itself (Windows; cached under the app-data `plugin_compat`; the integrity manifest still checks the
+  original). Same symbols is assumed; a layout change under unchanged symbol names would still misbehave, and the
+  plugin API version is the gate for that.
+- Two file names for one library are two copies in the process (split statics). Never make both names exist beside
+  the engine; rename the plugin's import, not the library.
+
 ## 6. Prebuilt crates (Cargo SDK): what an SDK must contain
 
 Cargo recompiles the crates inside a shared library for every consumer, because rustc needs their metadata. The
@@ -148,6 +168,23 @@ None of these showed on Windows x86_64:
 - **The pinned toolchain** (`rust-toolchain.toml` in the checkout) is not the one a setup action installs in
   another directory: `rustup target add <triple>` must run inside the checkout, or `std` for a cross target is
   missing.
+- **Per-image statics hide in plain sight.** `helio_mats::graph_registry` kept compiled material-graph shaders in
+  a `static`; the materials library registered them and the mesh library's G-buffer pass read its own empty copy,
+  so every graph material drew as the default. A registry two libraries both touch lives in the host's engine
+  state store (`EngineContext::global().store`), reached from a library through the attached host context.
+- **A load is gated before the version gate.** Missing hash-named imports, a stale shared library beside the
+  engine, a non-listed manifest entry and the layout fingerprints all refuse a plugin before or beside the API
+  version. `plugin_manager::imports::explain` now says which import is missing and what to run.
+- **Splash and editor must resolve the plugin directory the same way.** The splash prewarmed `plugins/editor`
+  (relative); an editor started outside the install folder loaded none. Use `InstallLayout::of_running_engine()`.
+- **A derived-data cache smaller than one scene thrashes.** The 4 GiB cooked-texture default was below the 11 GiB
+  a large scene cooks, so each launch evicted, then recompressed on the CPU (minutes, UI blocked). Default is now
+  32 GiB.
+- **ONNX Runtime has no Intel macOS build**, so a plugin using it (`mocap`) lists `macos-x86_64` in the release
+  workflow's `optional_platforms` input. `code_editor` lists both macOS targets until `mockaco_language` can link
+  the tree-sitter grammar entry point (`_tree_sitter_rust`) on macOS: exporting `_tree_sitter_*` from `ui_dylib`
+  (0.1.2) did not make it resolve; the cause is unconfirmed and needs a macOS machine (`nm -gU` on the released
+  dylib will show whether the symbol is exported at all).
 
 Build and run each platform's real pipeline early, on one library, before launching all of them; each failure
 cost one cycle (about 45 minutes) and the pipelines are identical per library.
