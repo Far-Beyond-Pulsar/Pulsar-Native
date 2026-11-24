@@ -28,7 +28,7 @@ use crate::freecam::FreeCam;
 use crate::window::RenderCamera;
 use engine_backend::scene::{hierarchy_transform::world_matrix_of, SceneWorldExt};
 use helio_component::components::{
-    camera_on_object, highest_priority_camera, ResolvedProjection, SelectedCamera,
+    camera_on_object, highest_priority_camera, CameraRig, ResolvedProjection, SelectedCamera,
 };
 use pulsar_scenedb::{Entity, World};
 
@@ -42,10 +42,23 @@ fn render_camera(
     world: &World,
     owner: Entity,
     lens: Option<ResolvedProjection>,
+    rig: Option<CameraRig>,
 ) -> Option<RenderCamera> {
     let matrix = world_matrix_of(world, owner)?;
     let (_, rotation, position) = matrix.to_scale_rotation_translation();
-    let rotation = rotation.as_quat();
+    let owner_rotation = rotation.as_quat();
+    // The camera's own rig: its eye in the owner's space, its pitch about the
+    // owner's right axis (positive looks up), and an arm that stands it back
+    // along the view direction. Without one the camera is the owner's pose.
+    let (rotation, position) = match rig {
+        Some(rig) => {
+            let pitched = owner_rotation * glam::Quat::from_rotation_x(rig.pitch);
+            let eye = position + (owner_rotation * glam::Vec3::from(rig.eye_offset)).as_dvec3();
+            let back = (pitched * glam::Vec3::NEG_Z).as_dvec3() * f64::from(rig.arm_length);
+            (pitched, eye - back)
+        }
+        None => (owner_rotation, position),
+    };
     let free = FreeCam::default();
     let space = engine_backend::scene::frames::space_of(world, owner);
     let mut camera = RenderCamera {
@@ -84,6 +97,7 @@ fn component_camera(world: &World, selected: Option<SelectedCamera>) -> Option<R
         world,
         selected.owner,
         Some(selected.camera.resolved_projection()),
+        Some(selected.camera.rig()),
     )
 }
 
@@ -132,7 +146,7 @@ pub fn select_world_camera(
     world
         .camera_entities()
         .into_iter()
-        .find_map(|entity| render_camera(world, entity, None))
+        .find_map(|entity| render_camera(world, entity, None, None))
 }
 
 #[cfg(test)]

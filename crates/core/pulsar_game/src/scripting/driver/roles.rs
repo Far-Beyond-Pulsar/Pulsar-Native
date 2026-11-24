@@ -83,6 +83,25 @@ pub(super) struct PossessionAttachment;
 /// The id of the one local player the session starts.
 pub(super) const LOCAL_PLAYER: i64 = crate::view_target::LOCAL_PLAYER;
 
+/// Where a role's entity spawns: the player's character at the level's
+/// `player_start` (`world_settings.player_start`, `[x, y, z]` in metres), every
+/// other role at the origin (they are not in the world's space). A level that sets
+/// none spawns the character at the origin. The key is a plain level setting, so a
+/// level file carries it untouched; the editor has no field for it yet.
+fn player_start(roles: &pulsar_traits::WorldRoles, role: &str) -> [f64; 3] {
+    if role != PLAYER_CHARACTER_ROLE {
+        return [0.0; 3];
+    }
+    let Some(values) = roles.setting("player_start").and_then(|v| v.as_array()) else {
+        return [0.0; 3];
+    };
+    let mut at = [0.0; 3];
+    for (slot, value) in at.iter_mut().zip(values) {
+        *slot = value.as_f64().filter(|v| v.is_finite()).unwrap_or(0.0);
+    }
+    at
+}
+
 impl ScriptDriver {
     /// The implementers the level assigned to the roles. Takes effect when
     /// the session's first script phase runs.
@@ -277,12 +296,8 @@ impl ScriptDriver {
             }
             return None;
         };
-        let Some(class_ref) = binding.class_name() else {
-            tracing::warn!("{label} '{}' has no class name", binding.asset);
-            return None;
-        };
-        let Some(entry) = self.resolve_class_ref(class_ref) else {
-            let message = format!("{label} class '{class_ref}' is not in this project");
+        let Some(entry) = self.resolve_role_class(binding) else {
+            let message = format!("{label} class '{}' is not in this project", binding.asset);
             tracing::warn!("{message}");
             report.failures.push(message);
             return None;
@@ -299,7 +314,7 @@ impl ScriptDriver {
                     entity,
                     class: entry.id.as_str().to_owned(),
                     parent: None,
-                    position: [0.0; 3],
+                    position: player_start(roles, role),
                 };
                 self.role_entities.push(SessionRole { role, entity });
                 if now {
@@ -334,6 +349,27 @@ impl ScriptDriver {
         Some(entity)
     }
 
+    /// The class a role's binding names, by where its asset is: the class whose
+    /// folder holds the asset, found through the class registry (the content's
+    /// class index when shipped). The registry, not a guess from the file name, says
+    /// which class an asset path is: a shipped game links no language and so cannot
+    /// tell which file names are class markers. A binding whose asset is no class
+    /// path (a class named directly) resolves by name or id.
+    pub(super) fn resolve_role_class(
+        &mut self,
+        binding: &pulsar_traits::RoleBinding,
+    ) -> Option<pulsar_class::ClassEntry> {
+        if let Some(entry) = self.registry.by_asset(&self.project_root, &binding.asset) {
+            return Some(entry.clone());
+        }
+        self.refresh_registry();
+        if let Some(entry) = self.registry.by_asset(&self.project_root, &binding.asset) {
+            return Some(entry.clone());
+        }
+        let name = binding.class_name()?.to_owned();
+        self.resolve_class_ref(&name)
+    }
+
     /// Role entities a previous session left in a world this one adopted
     /// (a hot reload that did not stop it cleanly). One the level still
     /// assigns, of the same class, is kept and re-bound; any other is
@@ -358,8 +394,7 @@ impl ScriptDriver {
             }
             let wanted = roles
                 .usable(role)
-                .and_then(|binding| binding.class_name().map(str::to_owned))
-                .and_then(|class_ref| self.resolve_class_ref(&class_ref));
+                .and_then(|binding| self.resolve_role_class(binding));
             let present = pulsar_class::world::class_instance_of(world, entity)
                 .and_then(|instance| self.resolve(&instance));
             let same_class = matches!((&wanted, &present), (Some(w), Some(p)) if w.id == p.id);

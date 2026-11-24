@@ -396,8 +396,14 @@ fn install_hashed_twins(file: &Path, destination_dir: &Path) -> Result<()> {
 
 /// Copies each built library into the install's plugin directory and
 /// registers it; unregisters libraries this tool installed for plugins that
-/// are gone.
-fn install(layout: &InstallLayout, plugins: &[&Plugin], built: &[Built]) -> Result<()> {
+/// are gone (not in `buildable`: a plugin that is merely not rebuilt this time,
+/// `--only`, stays installed).
+fn install(
+    layout: &InstallLayout,
+    plugins: &[&Plugin],
+    buildable: &BTreeSet<String>,
+    built: &[Built],
+) -> Result<()> {
     virtual_fs::create_dir_all(&layout.plugins_dir())?;
     let installed_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -426,9 +432,9 @@ fn install(layout: &InstallLayout, plugins: &[&Plugin], built: &[Built]) -> Resu
 
     // A library this tool installed whose plugin is no longer built (removed,
     // or now linked): take it out of the install.
-    let current: BTreeSet<String> = plugins
+    let current: BTreeSet<String> = buildable
         .iter()
-        .map(|plugin| format!("{RECORD_PREFIX}{}", plugin.id))
+        .map(|id| format!("{RECORD_PREFIX}{id}"))
         .collect();
     for record in layout.load_plugin_lock().plugins {
         if record.repo_url.starts_with(RECORD_PREFIX) && !current.contains(&record.repo_url) {
@@ -486,6 +492,10 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
+    // Every plugin that can be built here: what an install may keep. `--only` builds a
+    // subset, and must not take the rest out of the install (it once did: an editor with
+    // four plugins of thirty-four after a one-plugin rebuild).
+    let buildable: BTreeSet<String> = selected.iter().map(|plugin| plugin.id.clone()).collect();
     let to_build: Vec<&Plugin> = match &options.only {
         None => selected,
         Some(only) => {
@@ -518,7 +528,7 @@ fn run() -> Result<()> {
         .or(output.editor_dir)
         .ok_or("no install directory: build the editor, or pass --out <dir>")?;
     let layout = InstallLayout::new(install_root);
-    install(&layout, &to_build, &output.libraries)?;
+    install(&layout, &to_build, &buildable, &output.libraries)?;
     // The shared libraries go beside the editor executable (the loader looks in the application
     // directory), which is not the install folder when `--out` or `PULSAR_INSTALL_DIR` points
     // elsewhere (a checkout whose libraries live in the repository root).

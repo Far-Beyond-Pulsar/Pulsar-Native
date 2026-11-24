@@ -5,6 +5,7 @@
 //!   draw every one of them
 
 pub mod core_project_builder;
+mod git_pins;
 #[cfg(feature = "render")]
 pub mod device_loss;
 #[cfg(feature = "render")]

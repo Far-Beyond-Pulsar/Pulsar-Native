@@ -1,5 +1,9 @@
 use std::{env, fs, path::Path, path::PathBuf};
 
+// The engine's git pins (shared with the generator, which aligns a game's lockfile).
+#[path = "src/services/git_pins.rs"]
+mod git_pins;
+
 const HELIO_DEPENDENCIES: [&str; 4] = [
     "helio",
     "helio-asset-compat",
@@ -87,9 +91,25 @@ fn main() {
     // table is carried over (paths absolutized) so the whole Pulsar ecosystem
     // (graphy, gpui, …) unifies to single local copies instead of being
     // re-fetched at mismatched git commits.
-    let manifest_deps = build_game_manifest_deps(&manifest, dependencies, &workspace_root);
+    // The commits the engine's own lockfile pins for its git packages: a game's baked
+    // branch-named git entries (the wgpu fork) are written with them, and a game's
+    // lockfile is aligned to them (`git_pins`).
+    let lock_path = workspace_root.join("Cargo.lock");
+    println!("cargo:rerun-if-changed={}", lock_path.display());
+    let pins = fs::read_to_string(&lock_path)
+        .map(|lock| git_pins::parse_lock(&lock))
+        .unwrap_or_default();
+    assert!(
+        !pins.is_empty(),
+        "the engine's Cargo.lock ({}) pins no git package: games would float",
+        lock_path.display()
+    );
+    let manifest_deps = build_game_manifest_deps(&manifest, dependencies, &workspace_root, &pins);
     let out_dir =
         PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR for every build script"));
+    let pins_path = out_dir.join("game_git_pins.txt");
+    fs::write(&pins_path, git_pins::render(&pins))
+        .unwrap_or_else(|e| panic!("failed to write {}: {e}", pins_path.display()));
     let deps_path = out_dir.join("game_manifest_deps.toml");
     fs::write(&deps_path, manifest_deps)
         .unwrap_or_else(|e| panic!("failed to write {}: {e}", deps_path.display()));
@@ -179,6 +199,7 @@ fn build_game_manifest_deps(
     manifest: &toml::Value,
     dependencies: &toml::Table,
     workspace_root: &Path,
+    pins: &[git_pins::GitPin],
 ) -> String {
     let mut out = String::new();
     out.push_str(
@@ -213,7 +234,7 @@ fn build_game_manifest_deps(
         // `main.rs` calls `.with_env_filter`). Ensure the extras the templates
         // rely on without dropping the workspace's version pin.
         let value = with_features(
-            rewrite_paths(value, workspace_root),
+            git_pins::pin_spec(&rewrite_paths(value, workspace_root), dep, pins),
             required_extra_features(dep),
         );
         out.push_str(&format!("{dep} = {}\n", format_toml_inline(&value)));
@@ -241,7 +262,11 @@ fn build_game_manifest_deps(
                     out.push_str(&format!("{crate_name} = {spec}\n"));
                     continue;
                 }
-                let rewritten = rewrite_paths(spec, workspace_root);
+                let rewritten = git_pins::pin_spec(
+                    &rewrite_paths(spec, workspace_root),
+                    crate_name,
+                    pins,
+                );
                 out.push_str(&format!(
                     "{crate_name} = {}\n",
                     format_toml_inline(&rewritten)
