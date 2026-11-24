@@ -109,11 +109,29 @@ pawn's Blueprint, and that no role entity outlives the session. The probes are w
 - **Move / jump / sprint**: `IA_Move`, `IA_Jump`, `IA_Sprint` drive `CharacterComponent` (`set_move`,
   `request_jump`, `walk_speed`); its `pulsar.character.move` system turns them into the controller's
   desired velocity and vertical speed.
-- **Look**: `IA_Look` X turns the object (yaw, `turn_rate`); `IA_Look` Y calls
-  `CameraComponent.add_pitch` scaled by the graph variable `pitch_rate`. The camera holds its limits
-  (`pitch_min_deg`, `pitch_max_deg`, default -80 and 80). It did not work before: the Y axis was
-  never read. Test: `gameplay_defaults::a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system`
-  (pitch up, down, and both limits).
+- **Look and the control rotation**: `IA_Look` feeds the character's **control rotation** and nothing else
+  (`CharacterComponent.add_control_yaw` / `add_control_pitch`; the Blueprint has no axis maths). The control
+  rotation (`control_yaw`, `control_pitch`, `control_roll`, pitch limits `view_pitch_min` / `view_pitch_max`) is
+  what the camera and the body read. It lives on `CharacterComponent` (the character plugin), not on a
+  separate controller object: the Player Controller role is a Blueprint entity at the origin, so a
+  rotation owned by it would need a pawn-to-controller link the roles system does not have yet.
+- **Movement is relative to the control yaw**: `set_move(x, y)` (right, forward) is walked along the yaw-only
+  right and forward of the control rotation (`movement_direction`: yaw 0 looks along -Z, +X is right, a
+  positive yaw turns left), so looking up or down never tilts the walk. `add_movement_input(x, y, z, scale)`
+  adds a world direction for one frame.
+- **Rotation options** (reflected, in the Properties panel and on the Blueprint node): `use_controller_rotation_yaw`
+  / `_pitch` / `_roll` (the body takes the control rotation on that axis), `orient_rotation_to_movement` with
+  `rotation_rate` (degrees per second; the body turns the short way to face its walk, the camera keeps the
+  control rotation). Demo defaults, third-person style: orient on, controller yaw off. First-person / strafing
+  preset: `use_controller_rotation_yaw` on, `orient_rotation_to_movement` off. The character writes a changed rotation
+  only (a transform write makes the physics step take the body's position from it).
+- **Camera follows the control rotation**: `CameraComponent.use_pawn_control_rotation` (on in the shipped character's
+  prefab) takes the view's yaw from `control_yaw_deg` (written by the character each frame) and its pitch from
+  `pitch_deg` (the control pitch), ignoring the owner's own rotation. Off: the owner's rotation and the camera's
+  own pitch, as before. There is no separate spring-arm component: `arm_length` on the camera is the boom, and
+  inherits nothing from the body (so no inherit pitch/yaw/roll options yet).
+- Not built: Blueprint helper nodes (Get Control Rotation, Get Actor Forward/Right Vector, make rotation from yaw
+  only): the properties are readable and settable from a graph, but there are no dedicated nodes.
 - **The camera rig** (`helio_component::CameraComponent`): `eye_offset` (owner space; the character's
   is 0.7 m above its capsule centre), `arm_length` (0: first person, more: third person behind the eye),
   `pitch_deg` and its limits, all reflected properties. The host builds the frame's camera from
@@ -129,6 +147,28 @@ the Bistro level had **no colliders at all**, and the plugin's mesh collider sha
 top is at y = 0, where the Bistro's street lamps stand) and `player_start` `[0, 1.2, 0]`.
 This is a flat floor, not the street's real surface: steps and kerbs are not walked on. The proper fix is
 mesh collision in the physics plugin (a trimesh from the `.mesh` asset, per static mesh), listed below.
+
+### Input latency
+
+A probe is always on (`pulsar_game::latency`, target `pulsar_game::latency`, at most four log lines a second): one
+sample follows the oldest unshown input through four stamps, the OS event in the window's handler, the end of the
+first tick that began after it (input drained, scripts, movement, physics, the scene written), the start of the next
+frame, and that frame's `present` returning. The log line carries `input_to_tick_ms`, `tick_to_frame_ms`, `frame_ms`
+and `input_to_present_ms`; `latency::summary()` is the mean and worst of the last 240. Read it from the game's
+log (`logs_query` text "input latency").
+
+Measured in the packaged release game (Bistro level, 1705 objects, 60 Hz tick, window frames about 14 ms):
+input to tick 1 to 10 ms, tick to frame 5 to 9 ms, frame 14 ms, **input to present 23 to 29 ms**. So the engine's
+own path is not a quarter of a second. What was: the shipped `IA_Look` had a `smooth` modifier (speed 18, a 55 ms
+time constant: 95 percent of a movement took about 165 ms to arrive), an exponent 1.6 response curve and an
+actuation threshold of 0.5 on a value that is already scaled to degrees, which dropped any movement slower than
+about 4 pixels per frame (it looked like the camera not answering). The action now has no modifiers and a
+threshold of 0.0001. The game's present queue (`desired_maximum_frame_latency`) defaulted to 2 and now to 1
+(Editor Settings > Renderer > Maximum Frame Latency, restart to apply; a deeper queue adds that many frames on top of
+the figure above). Test: `gameplay_defaults::the_look_action_adds_no_delay_and_drops_no_slow_movement`.
+Not measured: the display's own scan-out and the monitor, play-in-editor (the probe is wired in the packaged game's window loop
+only), and a before figure for the look path in milliseconds from the engine (the figures above for the old
+chain are computed from its time constant, not logged).
 
 ## Issues found and not fixed
 

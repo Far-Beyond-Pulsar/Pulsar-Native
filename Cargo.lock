@@ -13514,6 +13514,7 @@ dependencies = [
  "pulsar_script_runtime",
  "pulsar_script_vm",
  "pulsar_settings",
+ "pulsar_traits",
  "pulsar_world_registry",
  "serde",
  "serde_json",

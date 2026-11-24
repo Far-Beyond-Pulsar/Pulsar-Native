@@ -98,6 +98,13 @@ pub fn compile_project(
             event: (registration.declaration)(),
         })
         .collect();
+    // A Blueprint's trait event nodes (`event::on::<Class>.<method>`) compile against the
+    // project's trait index. Opening a project in the editor writes it; a headless package
+    // (this tool, CI) has to make it before any language compiles, or every class that
+    // implements a trait fails with "no event ... is declared in this project".
+    if let Err(error) = pulsar_traits::TraitIndex::rebuild(project) {
+        tracing::warn!("could not index the project's traits before compiling: {error:#}");
+    }
     #[cfg(feature = "scripting")]
     run_languages(
         project,

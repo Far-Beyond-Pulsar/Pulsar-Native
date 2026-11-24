@@ -52,8 +52,14 @@ fn render_camera(
     // along the view direction. Without one the camera is the owner's pose.
     let (rotation, position) = match rig {
         Some(rig) => {
-            let pitched = owner_rotation * glam::Quat::from_rotation_x(rig.pitch);
-            let eye = position + (owner_rotation * glam::Vec3::from(rig.eye_offset)).as_dvec3();
+            // Following the control rotation, the view's yaw is the controller's
+            // (about the world's up) and the owner's own rotation is not the view's.
+            let base = match rig.control_yaw {
+                Some(yaw) => glam::Quat::from_rotation_y(yaw),
+                None => owner_rotation,
+            };
+            let pitched = base * glam::Quat::from_rotation_x(rig.pitch);
+            let eye = position + (base * glam::Vec3::from(rig.eye_offset)).as_dvec3();
             let back = (pitched * glam::Vec3::NEG_Z).as_dvec3() * f64::from(rig.arm_length);
             (pitched, eye - back)
         }

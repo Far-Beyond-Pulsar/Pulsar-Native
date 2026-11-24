@@ -63,7 +63,7 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "max_frame_latency",
-        SchemaEntry::new("Maximum frames queued for presentation", 2_i64)
+        SchemaEntry::new("Maximum frames queued for presentation", 1_i64)
             .label("Maximum Frame Latency")
             .page("Renderer / Device")
             .requires_restart()

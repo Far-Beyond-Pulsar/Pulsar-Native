@@ -420,6 +420,7 @@ impl TickLoop {
 
     fn run_tick(&mut self, time: GameTime) -> GameTime {
         self.last_time = time;
+        let latency_stamp = crate::latency::tick_started();
         profiling::profile_scope!("TickLoop::tick");
         self.ensure_static_move_watch();
 
@@ -453,6 +454,7 @@ impl TickLoop {
         self.pump_assets();
         self.close_change_window();
 
+        crate::latency::tick_done(latency_stamp);
         time
     }
 

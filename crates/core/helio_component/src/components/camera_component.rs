@@ -113,6 +113,19 @@ pub struct CameraComponent {
     /// Highest pitch, degrees (looking up).
     #[property(min = 0.0, max = 89.0, step = 0.5, category = "Rig")]
     pub pitch_max_deg: f32,
+    /// Look where the controller looks: the camera takes its yaw from the
+    /// owner's control rotation (`control_yaw_deg`, written by the controller:
+    /// the character's movement system) instead of the owner's own rotation,
+    /// so the camera orbits with the view direction while the body turns on its
+    /// own (to face its movement, say). Off: the camera keeps the owner's
+    /// rotation and its own `pitch_deg`.
+    #[property(category = "Rig")]
+    pub use_pawn_control_rotation: bool,
+    /// The control rotation's yaw, degrees (counter-clockwise from above),
+    /// written by the controller each frame; read when
+    /// `use_pawn_control_rotation` is on.
+    #[property(category = "Rig")]
+    pub control_yaw_deg: f32,
 }
 
 impl Default for CameraComponent {
@@ -130,6 +143,8 @@ impl Default for CameraComponent {
             pitch_deg: 0.0,
             pitch_min_deg: -80.0,
             pitch_max_deg: 80.0,
+            use_pawn_control_rotation: false,
+            control_yaw_deg: 0.0,
         }
     }
 }
@@ -181,6 +196,10 @@ pub struct CameraRig {
     pub pitch: f32,
     /// Distance behind the eye, metres.
     pub arm_length: f32,
+    /// The yaw the camera looks along, radians, when it follows the control
+    /// rotation (the owner's own rotation is then ignored); `None` keeps the
+    /// owner's rotation.
+    pub control_yaw: Option<f32>,
 }
 
 impl CameraComponent {
@@ -203,6 +222,8 @@ impl CameraComponent {
             eye_offset: self.eye_offset.map(eye),
             pitch: pitch.clamp(low, high).to_radians(),
             arm_length: if self.arm_length.is_finite() { self.arm_length.max(0.0) } else { 0.0 },
+            control_yaw: (self.use_pawn_control_rotation && self.control_yaw_deg.is_finite())
+                .then(|| self.control_yaw_deg.to_radians()),
         }
     }
 }
@@ -519,5 +540,21 @@ mod tests {
         attach(&mut world, low, with_priority(1));
         attach(&mut world, high, with_priority(4));
         assert_eq!(camera_on_object(&world, pawn).unwrap().owner, high);
+    }
+}
+
+#[cfg(test)]
+mod control_rotation_tests {
+    use super::*;
+
+    #[test]
+    fn the_rig_follows_the_control_yaw_only_when_asked() {
+        let mut camera = CameraComponent { control_yaw_deg: 90.0, ..CameraComponent::default() };
+        assert_eq!(camera.rig().control_yaw, None, "off by default: the owner's rotation is the view's");
+        camera.use_pawn_control_rotation = true;
+        let yaw = camera.rig().control_yaw.unwrap();
+        assert!((yaw - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        camera.control_yaw_deg = f32::NAN;
+        assert_eq!(camera.rig().control_yaw, None, "a bad value is not a view direction");
     }
 }

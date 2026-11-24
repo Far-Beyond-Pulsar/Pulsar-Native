@@ -302,25 +302,26 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     send(&mut driver, &mut world, "IA_Sprint", "completed", 0.0, 0.0);
     assert_eq!(read(&world, pawn, "walk_speed"), serde_json::json!(4.0));
 
-    // Look: the horizontal axis turns the object (yaw, in degrees).
-    let yaw = |world: &World| {
-        world
-            .get::<engine_backend::scene::Transform>(pawn)
+    // Look: the horizontal axis turns the CONTROL rotation (the view), not the
+    // body: the body follows by the character's rotation options.
+    let control_yaw = |world: &World| {
+        pulsar_world_registry::get_component_property(world, pawn, "CharacterComponent", 0, "control_yaw")
             .unwrap()
-            .rotation[1]
+            .as_f64()
+            .unwrap()
     };
-    let before = yaw(&world);
+    let before = control_yaw(&world);
     send(&mut driver, &mut world, "IA_Look", "triggered", 10.0, 3.0);
     assert!(
-        (yaw(&world) - (before - 10.0)).abs() < 1e-3,
+        (control_yaw(&world) - (before - 10.0)).abs() < 1e-3,
         "turned by the axis times turn_rate: {before} -> {}",
-        yaw(&world)
+        control_yaw(&world)
     );
 
     // Look up and down: the vertical axis pitches the camera (positive looks up),
     // and the camera holds its limits however far the stick is pushed.
     let pitch = |world: &World| {
-        pulsar_world_registry::get_component_property(world, pawn, "CameraComponent", 0, "pitch_deg")
+        pulsar_world_registry::get_component_property(world, pawn, "CharacterComponent", 0, "control_pitch")
             .unwrap()
             .as_f64()
             .unwrap()
@@ -366,4 +367,20 @@ fn a_level_that_selects_nothing_spawns_no_character() {
     assert!(driver.role_entity(PLAYER_CHARACTER_ROLE).is_none());
     assert!(driver.role_entities().is_empty());
     engine_fs::virtual_fs::unmount_project(root);
+}
+
+/// Look is immediate: the shipped IA_Look adds no smoothing (a time constant
+/// delays every mouse movement by a fraction of a second) and no response
+/// curve or threshold that drops slow movements.
+#[test]
+fn the_look_action_adds_no_delay_and_drops_no_slow_movement() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../vendor/gameplay/assets/input/actions/IA_Look.inputaction");
+    let action: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(action["modifiers"], serde_json::json!([]), "no smooth, no curve");
+    assert!(
+        action["actuation_threshold"].as_f64().unwrap() <= 0.001,
+        "one pixel of mouse movement is an input"
+    );
 }

@@ -106,7 +106,7 @@ impl GameWindow {
                 )
                 .ok()
                 .and_then(|value| value.as_int().ok())
-                .unwrap_or(2)
+                .unwrap_or(1)
                 .clamp(1, 4) as u32,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
@@ -190,6 +190,7 @@ impl GameWindow {
         let Some(_frame) = self.runtime.begin_frame() else {
             return;
         };
+        let latency_frame = crate::latency::frame_started();
         let _span = self.runtime.task().span().entered();
         let cam = ecs_camera.unwrap_or_else(|| {
             // The freecam stands on the ground's local vertical and
@@ -261,6 +262,7 @@ impl GameWindow {
         }
 
         self.queue.present(output);
+        crate::latency::frame_presented(latency_frame);
     }
 }
 
@@ -888,6 +890,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         // when the cursor is captured.
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if self.cursor_captured {
+                crate::latency::note_input();
                 let (x, y) = self.last_cursor.unwrap_or((0.0, 0.0));
                 self.events.publish(
                     pulsar_events::gamma::Channel::Global,
@@ -954,6 +957,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             } => {
                 let pressed = key_event.state == ElementState::Pressed;
                 if !key_event.repeat {
+                    crate::latency::note_input();
                     if let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
                         let key = code as i64;
                         let channel = pulsar_events::gamma::Channel::Global;
