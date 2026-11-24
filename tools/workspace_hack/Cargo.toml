@@ -198,7 +198,7 @@ gpui_sum_tree = { version = "=0.2.2", default-features = false, features = [] }
 gpui_util = { version = "=0.2.2", default-features = false, features = [] }
 gpui_util_macros = { version = "=0.2.2", default-features = false, features = [] }
 granit-parser = { version = "=0.0.7", default-features = false, features = [] }
-grid = { version = "=0.18.0", default-features = false, features = ["std"] }
+grid = { version = "=1.0.1", default-features = false, features = ["std"] }
 h2 = { version = "=0.4.19", default-features = false, features = [] }
 half = { version = "=2.7.1", default-features = false, features = ["alloc", "bytemuck", "default", "num-traits", "std"] }
 harfrust = { version = "=0.5.2", default-features = false, features = ["std"] }
@@ -1286,7 +1286,7 @@ gpui_sum_tree = { version = "=0.2.2", default-features = false, features = [] }
 gpui_util = { version = "=0.2.2", default-features = false, features = [] }
 gpui_util_macros = { version = "=0.2.2", default-features = false, features = [] }
 granit-parser = { version = "=0.0.7", default-features = false, features = [] }
-grid = { version = "=0.18.0", default-features = false, features = ["std"] }
+grid = { version = "=1.0.1", default-features = false, features = ["std"] }
 h2 = { version = "=0.4.19", default-features = false, features = [] }
 half = { version = "=2.7.1", default-features = false, features = ["alloc", "bytemuck", "default", "num-traits", "std"] }
 harfrust = { version = "=0.5.2", default-features = false, features = ["std"] }
