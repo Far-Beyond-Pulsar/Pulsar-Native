@@ -19394,7 +19394,7 @@ dependencies = [
 
 [[package]]
 name = "ui_dylib"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ui",
  "wgpui_dylib",
