@@ -347,11 +347,15 @@ pub fn ensure_gpu_mirror(
     install_derived_cache();
 
     // The scene's textures are the texture table every reader binds: as many
-    // as each can address on this device.
+    // as each can address on this device. The table's first slots hold no
+    // texture: readers bind a white view there and read it for "no texture".
     let texture_table_capacity =
         helio_core::texture_table_capacity(device.features(), &device.limits());
     let texture_store = Arc::new(std::sync::RwLock::new(
-        pulsar_scenedb::gpu::TextureStore::new(texture_table_capacity as u32),
+        pulsar_scenedb::gpu::TextureStore::with_reserved_slots(
+            texture_table_capacity as u32,
+            helio_core::TEXTURE_TABLE_RESERVED_SLOTS,
+        ),
     ));
     let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue)
         .with_texture_store(texture_store)
