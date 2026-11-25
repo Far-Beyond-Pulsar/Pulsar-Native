@@ -486,8 +486,8 @@ fn typed_mesh() -> StaticMeshComponent {
         // geometry itself.
         geometry_key: MeshGeometryKey::for_path(&MeshAssetPath::new(mesh_asset())),
         material_slots: StaticMeshMaterialSlots { slots },
-        vertices: upload.geometry.vertices,
-        indices: upload.geometry.indices,
+        vertices: upload.geometry.vertices.into(),
+        indices: upload.geometry.indices.into(),
         mesh_sections: upload.sections,
         bounds_local: [0.0, 0.0, 0.0, radius],
         ..Default::default()

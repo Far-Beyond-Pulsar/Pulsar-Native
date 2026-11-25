@@ -176,8 +176,8 @@ fn dense_mesh() -> StaticMeshComponent {
             index_count: indices.len() as u32,
             material_slot: 0,
         }],
-        vertices,
-        indices,
+        vertices: vertices.into(),
+        indices: indices.into(),
         bounds_local: [0.0, 0.0, 0.0, RADIUS],
         ..Default::default()
     }
@@ -1625,8 +1625,8 @@ fn sphere_mesh(content: u128, radius: f32, vg: bool) -> StaticMeshComponent {
             index_count: indices.len() as u32,
             material_slot: 0,
         }],
-        vertices,
-        indices,
+        vertices: vertices.into(),
+        indices: indices.into(),
         bounds_local: [0.0, 0.0, 0.0, radius],
         ..Default::default()
     }
@@ -1745,8 +1745,8 @@ fn add_filler(state: &mut LevelEditorState, index: usize) {
             index_count: indices.len() as u32,
             material_slot: 0,
         }],
-        vertices,
-        indices,
+        vertices: vertices.into(),
+        indices: indices.into(),
         bounds_local: [0.0, 0.0, 0.0, 1.0],
         ..Default::default()
     };

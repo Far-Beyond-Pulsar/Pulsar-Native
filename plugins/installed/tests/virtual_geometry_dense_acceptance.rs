@@ -146,8 +146,8 @@ fn crowd_mesh() -> StaticMeshComponent {
             index_count: indices.len() as u32,
             material_slot: 0,
         }],
-        vertices,
-        indices,
+        vertices: vertices.into(),
+        indices: indices.into(),
         bounds_local: [0.0, 0.0, 0.0, RADIUS * 1.25],
         ..Default::default()
     }

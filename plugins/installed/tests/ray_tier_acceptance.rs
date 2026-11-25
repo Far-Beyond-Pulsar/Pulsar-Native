@@ -238,8 +238,8 @@ fn mesh_box(
             index_count: indices.len() as u32,
             material_slot: 0,
         }],
-        vertices,
-        indices,
+        vertices: vertices.into(),
+        indices: indices.into(),
         bounds_local: [0.0, 0.0, 0.0, radius],
         ..Default::default()
     }
@@ -723,9 +723,11 @@ fn a_deforming_static_mesh_is_refit_when_its_vertices_change_in_place() {
     {
         let mut world = state.scene.world_mut();
         let mut mesh = world.get_mut::<StaticMeshComponent>(cloth).unwrap();
-        for vertex in &mut mesh.vertices {
+        let mut moved = mesh.vertices.to_vec();
+        for vertex in &mut moved {
             vertex.position[1] += 0.25;
         }
+        mesh.vertices = moved.into();
     }
     frames.render(&mut renderer, 2);
     let (moved, instances) = counters(&renderer);
@@ -743,7 +745,9 @@ fn a_deforming_static_mesh_is_refit_when_its_vertices_change_in_place() {
     {
         let mut world = state.scene.world_mut();
         let mut mesh = world.get_mut::<StaticMeshComponent>(cloth).unwrap();
-        mesh.indices.swap(0, 1);
+        let mut swapped = mesh.indices.to_vec();
+        swapped.swap(0, 1);
+        mesh.indices = swapped.into();
     }
     frames.render(&mut renderer, 2);
     let (rebuilt, instances) = counters(&renderer);

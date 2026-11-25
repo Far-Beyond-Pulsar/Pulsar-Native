@@ -121,8 +121,8 @@ fn boxes(key: u128, parts: &[(Vec3, Vec3)], color: [f32; 3]) -> StaticMeshCompon
             index_count: indices.len() as u32,
             material_slot: 0,
         }],
-        vertices,
-        indices,
+        vertices: vertices.into(),
+        indices: indices.into(),
         bounds_local: [0.0, 0.0, 0.0, radius],
         ..Default::default()
     }
@@ -178,9 +178,9 @@ fn tube(mesh: &mut SkeletalMeshComponent) {
         index_count: indices.len() as u32,
         material_slot: 0,
     }];
-    mesh.vertices = vertices;
+    mesh.vertices = vertices.into();
     mesh.skin_vertices = skin;
-    mesh.indices = indices;
+    mesh.indices = indices.into();
     mesh.bounds_local = [0.0, 1.5, 0.0, 2.5];
     mesh.geometry_key = MeshGeometryKey(0x5ce1_0001);
 }

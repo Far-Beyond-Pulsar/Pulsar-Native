@@ -549,16 +549,28 @@ pub(crate) fn struct_has_gpu_vec_field(fields: &syn::Fields) -> bool {
     })
 }
 
+/// `Vec<T>`, or `Arc<[T]>` (the same variable-length field held shared:
+/// SceneDB's derive takes both, `as_vec_elem_type`).
 pub(crate) fn is_vec_type(ty: &syn::Type) -> bool {
     let syn::Type::Path(type_path) = ty else {
         return false;
     };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|s| s.ident == "Vec")
-        .unwrap_or(false)
+    let Some(last) = type_path.path.segments.last() else {
+        return false;
+    };
+    if last.ident == "Vec" {
+        return true;
+    }
+    if last.ident != "Arc" {
+        return false;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else {
+        return false;
+    };
+    matches!(
+        args.args.first(),
+        Some(syn::GenericArgument::Type(syn::Type::Slice(_)))
+    )
 }
 
 /// Syntactic-only check that `ty` is `pulsar_world_registry::GpuHeavy<T>` --
