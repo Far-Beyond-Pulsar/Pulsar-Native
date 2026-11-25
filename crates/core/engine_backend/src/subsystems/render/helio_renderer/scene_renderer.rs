@@ -148,6 +148,10 @@ pub struct SceneRenderer {
     view_payloads: Vec<(&'static str, super::ViewPayload)>,
     /// The editor's construct pump ([`SceneRendererOptions::construct_pump`]).
     construct_pump: Option<crate::scene::EditorConstructPump>,
+    /// The last GPU timings read, and the (renderer, GPU frame) already
+    /// published to the profiler (`Self::report_gpu_passes`).
+    gpu_profile: super::core::GpuProfilerData,
+    gpu_reported: Option<(u64, u64)>,
 }
 
 impl SceneRenderer {
@@ -262,6 +266,8 @@ impl SceneRenderer {
             pipeline: super::pipelines::PipelineState::Unassigned,
             view_payloads: Vec::new(),
             construct_pump: options.construct_pump.clone(),
+            gpu_profile: super::core::GpuProfilerData::default(),
+            gpu_reported: None,
         };
         this.set_pipeline_state(super::pipelines::pipeline_state(
             options.pipeline.as_deref(),
@@ -557,8 +563,31 @@ impl SceneRenderer {
     /// Upload the scene and draw `camera`'s frame into `target`.
     pub fn render(&mut self, camera: &Camera, target: &wgpu::TextureView) -> helio::Result<()> {
         self.upload();
-        profiling::profile_scope!("helio_renderer_render");
-        self.renderer.render(camera, target)
+        let rendered = {
+            profiling::profile_scope!("helio_renderer_render");
+            self.renderer.render(camera, target)
+        };
+        self.report_gpu_passes();
+        rendered
+    }
+
+    /// While a profiler records, publish the GPU pass timings the renderer
+    /// read back (timestamp queries, a frame or two late) as events on the
+    /// `GPU` track, once per GPU frame, as the editor viewport does
+    /// (`gpu_trace`). Nothing runs while nobody records.
+    fn report_gpu_passes(&mut self) {
+        if !profiling::is_profiling_enabled() {
+            return;
+        }
+        profiling::profile_scope!("helio_emit_gpu_passes");
+        let renderer_id = self.renderer.profiling_instance_id();
+        self.gpu_profile
+            .update_from_snapshot(self.renderer.timing_snapshot());
+        let sample = self.gpu_profile.gpu_frame_count.map(|frame| (renderer_id, frame));
+        if sample.is_some() && sample != self.gpu_reported {
+            super::gpu_trace::emit_helio_gpu_passes(&self.gpu_profile, renderer_id);
+            self.gpu_reported = sample;
+        }
     }
 }
 
