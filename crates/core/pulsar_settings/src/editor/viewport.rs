@@ -62,6 +62,36 @@ pub fn register(cfg: &'static ConfigManager) {
                     step: Some(0.01),
                 })
                 .validator(Validator::float_range(0.01, 10.0)),
+        )
+        .setting(
+            "unfocused_fps",
+            SchemaEntry::new(
+                "Frames a second a visible viewport draws while its window is not focused (0 pauses it until the window is focused again). A minimized window or a hidden tab draws nothing",
+                8.0_f64,
+            )
+            .label("Unfocused Viewport FPS")
+            .page("Viewport")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(240.0),
+                step: Some(1.0),
+            })
+            .validator(Validator::float_range(0.0, 240.0)),
+        )
+        .setting(
+            "ambient_fps",
+            SchemaEntry::new(
+                "Frames a second a focused viewport draws when only content that moves on its own changes (wind, water, particles); a camera move, an edit or streaming content always draws at the display's rate. 0 keeps the display's rate: the viewport free-runs",
+                15.0_f64,
+            )
+            .label("Idle Animation FPS")
+            .page("Viewport")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(240.0),
+                step: Some(1.0),
+            })
+            .validator(Validator::float_range(0.0, 240.0)),
         );
     let _ = cfg.register(NS, OWNER, schema);
 }

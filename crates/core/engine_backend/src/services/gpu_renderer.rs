@@ -377,6 +377,15 @@ impl GpuRenderer {
             .is_some_and(|renderer| renderer.needs_build())
     }
 
+    /// What the last frame was for: drawn for the user or the scene, drawn
+    /// for content that moves on its own, or skipped because nothing changed
+    /// (the service's frame policy, `render_runtimes::PacingPolicy`).
+    pub fn frame_kind(&self) -> super::render_runtimes::FrameKind {
+        self.helio_renderer
+            .as_ref()
+            .map_or(super::render_runtimes::FrameKind::Interactive, |r| r.frame_kind())
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.helio_renderer
             .as_ref()

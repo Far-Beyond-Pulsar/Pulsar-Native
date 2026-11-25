@@ -71,6 +71,8 @@ fn tasks_list(arguments: &str) -> ToolResult {
                 "log_lines": task.log_lines,
                 "idle_seconds": task.idle_for.as_secs_f64(),
                 "stalled": task.stall.as_ref().map(|stall| stall.message.clone()),
+                // What the task publishes about itself (a render runtime's size, state, window, frames).
+                "details": task.details.iter().map(|(key, value)| json!([key, value])).collect::<Vec<_>>(),
                 "submitted_ms": millis(task.submitted_at),
                 "finished_ms": task.finished_at.map(millis),
             })

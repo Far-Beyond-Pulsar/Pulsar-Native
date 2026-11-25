@@ -1,5 +1,6 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
+use crate::services::render_runtimes::FrameKind;
 use glam::{DVec3, Vec2, Vec3};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
@@ -190,6 +191,10 @@ struct FrameChanges {
     view_payloads: bool,
     measured_deferred_light: bool,
 }
+
+/// How long after something drove a frame the temporal resolve is still
+/// converging on it: those frames are the user's (full pace), not ambient.
+const DRIVEN_CONVERGENCE: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// The outcome of idle detection for one frame.
 struct FrameActivity {
@@ -723,6 +728,10 @@ pub struct HelioRenderer {
     /// Whether the scene holds content that animates on its own, per world
     /// revision (it keeps a realtime viewport rendering).
     animated_content: super::animated_content::AnimatedContent,
+    /// What the last frame was for (the frame policy's input).
+    frame_kind: FrameKind,
+    /// When something the user or the scene did last drove a frame.
+    last_driven: Option<Instant>,
     /// Written by the render thread when a gizmo drag starts on a fixed-
     /// movability object; taken by the UI (`HelioEditorMailbox`).
     pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
@@ -806,6 +815,10 @@ pub struct HelioRenderer {
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
+    /// Frames, and in how many of them each cause of activity held, since the
+    /// last `VOXEL_ACTIVITY` line.
+    activity_frames: u32,
+    activity_counts: [u32; 15],
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
     stats_log: bool,
     /// The last rendered frame's phases (`FramePhases`), for harnesses.
@@ -840,9 +853,9 @@ use super::project_settings::{ProjectGraphSettings, ProjectGraphSettingsCache};
 impl HelioInner {
     /// Hand the queued per-view payloads to the scene; true when there were any.
     fn apply_view_payloads(&mut self, payloads: Vec<(&'static str, Option<ViewPayload>)>) -> bool {
-        let changed = !payloads.is_empty();
+        let mut changed = false;
         for (key, payload) in payloads {
-            self.scene.set_view_payload(key, payload);
+            changed |= self.scene.set_view_payload(key, payload);
         }
         changed
     }
@@ -953,6 +966,8 @@ impl HelioRenderer {
             frame_delta_override: None,
             camera_jitter_override: None,
             animated_content: Default::default(),
+            frame_kind: FrameKind::Interactive,
+            last_driven: None,
             static_drag_warning: Arc::new(Mutex::new(None)),
             completed_drags: Arc::new(Mutex::new(Vec::new())),
             host_part_setups: Vec::new(),
@@ -988,6 +1003,8 @@ impl HelioRenderer {
             camera_ground: CameraGround::default(),
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
+            activity_frames: 0,
+            activity_counts: [0; 15],
             stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_phases: Vec::new(),
             last_stats_log: Instant::now(),
@@ -1332,6 +1349,12 @@ impl HelioRenderer {
     /// one built, or graph-affecting project settings that changed. A build
     /// compiles pipelines (seconds on a cold driver), so a scheduler runs it off
     /// its frame loop.
+    /// What the last frame was for: drawn for the user or the scene, for
+    /// content that moves on its own, or skipped because nothing changed.
+    pub fn frame_kind(&self) -> FrameKind {
+        self.frame_kind
+    }
+
     pub fn needs_build(&mut self) -> bool {
         let Some(applied) = self.applied_pipeline.as_ref() else {
             return true;

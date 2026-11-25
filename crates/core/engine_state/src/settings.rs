@@ -84,6 +84,7 @@ pub fn renderer_backends() -> wgpu::Backends {
             });
             let vulkan =
                 futures::executor::block_on(instance.enumerate_adapters(wgpu::Backends::VULKAN));
+            tracing::info!("graphics backend: {} Vulkan adapter(s) found: {}", vulkan.len(), if vulkan.is_empty() { "every backend is available" } else { "Vulkan" });
             if vulkan.is_empty() {
                 wgpu::Backends::all()
             } else {

@@ -198,8 +198,28 @@ impl RenderRuntimes {
             runtime.set_quiet(true);
             return Step::Idle;
         }
+        // The one frame policy (`pacing`): a visible viewport of a minimized
+        // window sleeps, of a background window draws slowly, of a window in
+        // use draws as fast as it has something new to show.
+        let base = output.frame_interval();
+        let windowed = runtime
+            .description
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode
+            == UpdateMode::WhenVisible;
+        let interval = if windowed {
+            match super::pacing::current().pace(base, runtime.presence(), runtime.frame_kind()) {
+                super::Pace::Asleep => {
+                    runtime.set_quiet(true);
+                    return Step::Idle;
+                }
+                super::Pace::Every(interval) => interval,
+            }
+        } else {
+            base
+        };
         runtime.set_quiet(false);
-        let interval = output.frame_interval();
         if let Err(at) = runtime.due(now, interval) {
             return Step::DueAt(at);
         }
@@ -210,7 +230,15 @@ impl RenderRuntimes {
             return Step::DueAt(now + interval / 4);
         }
         self.draw(runtime, &output, now);
-        // Next due one frame on, at its output's pace.
+        // Next due one frame on, at the pace the frame just drawn decided.
+        let interval = if windowed {
+            match super::pacing::current().pace(base, runtime.presence(), runtime.frame_kind()) {
+                super::Pace::Asleep => IDLE_WAIT,
+                super::Pace::Every(interval) => interval,
+            }
+        } else {
+            base
+        };
         Step::Drew(now + interval)
     }
 
@@ -329,6 +357,10 @@ impl RenderRuntimes {
             submitted
         });
         tracing::trace!(target: "render_runtimes", runtime = runtime.id, published, "draw: done");
+        // What the frame was for decides the next one's pace.
+        runtime
+            .kind
+            .store(renderer.frame_kind().to_bits(), Ordering::Release);
         drop(renderer);
         let took = started.elapsed();
         runtime

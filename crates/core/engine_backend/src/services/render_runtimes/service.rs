@@ -92,6 +92,8 @@ impl RenderRuntimes {
             state: Mutex::new(RuntimeState::Starting),
             held: Mutex::new(None),
             visible: AtomicBool::new(true),
+            presence: std::sync::atomic::AtomicU8::new(super::Presence::default().to_bits()),
+            kind: std::sync::atomic::AtomicU8::new(super::FrameKind::Interactive.to_bits()),
             demanded: AtomicU32::new(demanded),
             before_frame: Mutex::new(None),
             reset_history: AtomicBool::new(false),

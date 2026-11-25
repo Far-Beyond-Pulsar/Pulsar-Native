@@ -46,6 +46,7 @@
 mod device;
 mod driven;
 mod offscreen;
+mod pacing;
 mod runtime;
 mod scheduler;
 mod service;
@@ -56,6 +57,7 @@ mod types;
 pub use device::request_engine_device;
 pub use driven::{DrivenFrame, DrivenRuntime};
 pub use offscreen::OffscreenTarget;
+pub use pacing::{FrameKind, Pace, PacingPolicy, Presence};
 pub use runtime::RuntimeHandle;
 pub use service::{global, RenderRuntimes};
 pub use types::{FrameTarget, RuntimeDescription, RuntimeState, SharedRenderer, UpdateMode};

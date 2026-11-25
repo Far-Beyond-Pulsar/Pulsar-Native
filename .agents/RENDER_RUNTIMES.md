@@ -140,3 +140,30 @@ lights' world poses, and supplies the existing Helio debug pass with range
 spheres, spot cones, direction markers, and authored source dimensions.
 Property, transform, and selection edits refresh the layer when its geometry
 changes. Clearing selection removes the layer.
+
+## Frame policy: who draws how often
+
+One module decides it for every runtime (`render_runtimes/pacing.rs`, `PacingPolicy::pace`), so no
+viewport carries a timer or a rate of its own. An `UpdateMode::WhenVisible` runtime's pace is a function
+of three facts: whether its output is shown (`RuntimeHandle::set_visible`: the tab in front), where its
+window stands (`RuntimeHandle::set_presence(Presence { focused, minimized })`) and what its last frame
+was for (`GpuRenderer::frame_kind`, `FrameKind`).
+
+| State | Draws |
+|---|---|
+| hidden tab, panel collapsed | nothing: the runtime is quiet, its task idle, no timer |
+| window minimized | nothing (the same) |
+| window not focused | at `editor.viewport.unfocused_fps` (default 8; 0 pauses) |
+| focused, `Interactive` (the camera moved, the scene's revision changed, an editor command is pending, content is streaming in, the temporal resolve is settling, a resize) | at the output's pace |
+| focused, `Ambient` (only content that moves on its own: wind, water, particles) | at `editor.viewport.ambient_fps` (default 15; 0: the output's pace, free-run) |
+| focused, `Idle` (the renderer found nothing to draw and skipped the frame) | a 60 Hz poll for the next change; no GPU work, no published frame |
+
+The renderer already knew whether it had anything new to draw (`detect_activity`: the SceneDB
+`World::revision`, the camera's velocity, the pending editor commands, the temporal resolve's budget,
+the registered animated content); it now says which kind of frame it drew, and the scheduler reads it
+after each draw. Owners tell the service about the window with `ui_helio_viewport::follow_window` (the
+level viewport, the render graph preview): it sets the presence now and on every activation change,
+and a change wakes the scheduler, so a window that is focused again draws on the next pass with its
+renderer and pipelines exactly as they were (nothing rebuilds, no first-frame hitch). Modes other than
+`WhenVisible` (`Always`, `OnDemand`) and the driven game runtimes are the owner's pace, not the policy's.
+`PacingPolicy` is a pure function with tests (`pacing::tests`); the settings are in `.agents/SETTINGS.md`.

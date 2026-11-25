@@ -154,6 +154,14 @@ fn configure_pipeline_cache_path() {
             "PULSAR_PIPELINE_CACHE",
             target_dir.join("pulsar").join("pipeline_cache.bin"),
         );
+    } else if let Some(dirs) = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine") {
+        // An installed editor has no build directory: the driver's cache
+        // (Vulkan's; Direct3D 12 has none to keep) lives with the engine's
+        // other per-user caches, where the next run of any project finds it.
+        std::env::set_var(
+            "PULSAR_PIPELINE_CACHE",
+            dirs.cache_dir().join("pipeline_cache.bin"),
+        );
     }
 }
 

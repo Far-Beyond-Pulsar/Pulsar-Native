@@ -520,6 +520,7 @@ impl LevelEditorPanel {
             extra_viewports,
             _class_updates: class_updates,
             _asset_reloads: asset_reloads,
+            decoration: parking_lot::Mutex::new(TabDecoration::default()),
             shared_state,
             workspace: None,
             viewport_panel: None,

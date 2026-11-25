@@ -54,6 +54,8 @@ pub struct HelioViewport {
     debug_replace_with_yellow: bool,
     /// The engine runtime that draws `gpu_engine` into `surface`.
     runtime: engine_backend::services::render_runtimes::RuntimeHandle,
+    /// Keeps the runtime told where this window stands (focus, minimize).
+    window_presence: Option<gpui::Subscription>,
     /// The loading overlay's token while the runtime builds its renderer.
     initial_load: Option<crate::state::EditorLoadingTask>,
     /// Whether the level editor's tab and this view's dock tab are in front.
@@ -145,6 +147,7 @@ impl HelioViewport {
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
             runtime,
+            window_presence: None,
             initial_load: None,
             editor_tab_active: true,
             dock_tab_active: true,

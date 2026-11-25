@@ -203,3 +203,14 @@ Tests: `ui_flamegraph/src/profile_db.rs` (every query over a recording written w
 - `ui_log_viewer`: log filters, cursors, `logs_wait` (returns on arrival, times out empty).
 - `editor_task_queue`: a multi-line message is one log row per line.
 - Plugin-registered tool: see `plugins/installed/tests` (the fixture plugin).
+
+## Notes added with the editor-open work
+
+- `tasks_list` rows carry `details` (key and value pairs a task publishes about itself): a render runtime's
+  size, state, window (focused, in the background, minimized), the kind of its last frame and its frame
+  count. Two reads a few seconds apart give a viewport's published frames a second
+  (`title: "Helio runtime"`).
+- A recording keeps at most `DEFAULT_RETAINED_EVENT_CAPACITY` (1,000,000) events, the latest: a 60 s editor
+  recording of a viewport at 146 fps no longer holds the first seconds (where an open's long scopes are).
+  Record the open in a window of about 20 s, or read the log lines `helio::pipeline: graph ... node(s) built`
+  and `node ... built N pass(es) in X ms: ...` (the build's own account of where its time went).

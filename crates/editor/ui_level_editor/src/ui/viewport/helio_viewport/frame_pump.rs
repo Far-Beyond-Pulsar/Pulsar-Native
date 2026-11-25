@@ -19,6 +19,8 @@ impl HelioViewport {
 
         crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, window, cx| {
             this.poll_display_refresh(window, cx);
+            this.runtime
+                .set_presence(ui_helio_viewport::presence_of(window));
 
             // The loading overlay shows while the runtime builds its renderer
             // (the first build, the level's pipeline, a swap): a build compiles

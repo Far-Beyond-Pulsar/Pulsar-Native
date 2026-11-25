@@ -764,11 +764,15 @@ impl PulsarApp {
 
     /// The open editors as the sidebar lists them.
     pub(crate) fn sidebar_tabs(&self, cx: &gpui::App) -> Vec<SidebarTab> {
+        profiling::profile_scope!("NavSidebar::sidebar_tabs");
         self.center_tab_list(cx)
             .into_iter()
             .enumerate()
             .map(|(index, open)| {
                 let panel = &open.panel;
+                // A panel answers these from its own state: the scope is
+                // what a stall in a panel's lock is named by.
+                profiling::profile_scope!("NavSidebar: a panel's tab decoration (file, icon, unsaved)");
                 let kind = panel.panel_name(cx).to_string();
                 let file = panel.panel_file_path(cx);
                 let title = file

@@ -28,6 +28,16 @@ impl HelioViewport {
         cx: &mut Context<Self>,
         format: wgpu::TextureFormat,
     ) {
+        if self.window_presence.is_none() {
+            // The window's focus and minimize state reach the runtime, which
+            // draws a background window's viewport slowly and a minimized
+            // one not at all.
+            self.window_presence = Some(ui_helio_viewport::follow_window(
+                self.runtime.clone(),
+                window,
+                cx,
+            ));
+        }
         if self.surface.is_some() {
             return;
         }

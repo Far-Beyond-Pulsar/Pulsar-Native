@@ -374,11 +374,27 @@ impl SceneRenderer {
     /// contract key, every frame until replaced (`None` withdraws it):
     /// editor-only data a plugin's overlay draws, beside what the scene
     /// publishes.
-    pub fn set_view_payload(&mut self, key: &'static str, payload: Option<super::ViewPayload>) {
+    ///
+    /// Whether the viewport's content changed: withdrawing what was never
+    /// published, or publishing the very payload already shown, changes
+    /// nothing and must not wake the frame policy (an overlay that is hidden
+    /// withdraws its payloads on every UI frame).
+    pub fn set_view_payload(&mut self, key: &'static str, payload: Option<super::ViewPayload>) -> bool {
+        let shown = self
+            .view_payloads
+            .iter()
+            .find(|(existing, _)| *existing == key)
+            .map(|(_, payload)| payload.clone());
+        let changed = match (&shown, &payload) {
+            (None, None) => false,
+            (Some(shown), Some(payload)) => !std::sync::Arc::ptr_eq(shown, payload),
+            _ => true,
+        };
         self.view_payloads.retain(|(existing, _)| *existing != key);
         if let Some(payload) = payload {
             self.view_payloads.push((key, payload));
         }
+        changed
     }
 
     /// What the renderer was told to run; [`PipelineState::reason`] says why

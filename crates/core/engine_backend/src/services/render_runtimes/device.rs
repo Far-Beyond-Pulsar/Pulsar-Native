@@ -34,6 +34,19 @@ pub fn request_engine_device(
 ) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
     let ray_query = wgpu::Features::EXPERIMENTAL_RAY_QUERY;
     let adapter_features = helio::usable_adapter_features(adapter);
+    let info = adapter.get_info();
+    tracing::info!(
+        "Engine device: {} through {:?} (driver {} {}), pipeline cache {}",
+        info.name,
+        info.backend,
+        info.driver,
+        info.driver_info,
+        if adapter_features.contains(wgpu::Features::PIPELINE_CACHE) {
+            "available"
+        } else {
+            "not available on this backend"
+        }
+    );
     let wanted = engine_state::settings::hardware_ray_queries();
     let helio_features = if wanted {
         helio::required_wgpu_features(adapter_features)

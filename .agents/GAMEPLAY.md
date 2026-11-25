@@ -452,7 +452,7 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
     walking character, which is not in the BVH. The CPU sees one counter per buffer, so the honest fix is in the join or in
     SceneDB: a per-table change bit computed on the GPU and used as the sky now uses its plan (indirect arguments of zero),
     or the mirror's dirty-row journal handed to the join. Not done: it changes the join's contract for every consumer.
-19. **Open: pipeline build throughput in the editor** (11 to 13 s for the Deferred pipeline against under a second in the game,
+19. **Pipeline build throughput in the editor: answered by issue 22** (11 to 13 s for the Deferred pipeline against under a second in the game,
     and the voxel pipelines' 14 to 17 s), a one-off hitch of 150 to 650 ms in about one run in two (the frame has no scope
     longer than 30 ms inside it; before and after), the deferred lighting cost at native resolution, and `encoder.finish`
     (2.6 ms a frame in four threads).
@@ -526,6 +526,57 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
     decoration would remove the class and was not needed once the build left the frame. *Time to the first voxel chunk* was not
     measured here (the Earth-sized project is the voxel agent's); the parts that moved are the pools and the compile helper above:
     on this project the voxel bundles that took 14 to 17 s each now take 2 to 6 s, concurrently with the 12 s build.
+
+22. **Editor open (round 5): why the editor's pipeline build took 12 s and the game's 1.5 s, and what changed** (the Earth voxel
+    project `D:\tb_voxel_proj` and the Bistro project; release editor, RTX 4090, 32 threads; seconds from "Opening project" unless
+    said; two runs each, the original editor and this one interleaved).
+    *The cause of 8x (issue 19 and 21 (a))*: the editor ran on **Direct3D 12**, the game on **Vulkan**. `renderer.toml` of this user holds
+    `backend_preference = "dx12"` (the editor's compatibility notice offers it: `known_issues.json` says Vulkan may lose render-target
+    writes intermittently and not on D3D12), the game reads no editor settings and takes `auto`, which is Vulkan. On D3D12 every pipeline
+    goes through DXC and the driver on the calling thread, one after another, and wgpu has no pipeline cache there
+    (`Features::PIPELINE_CACHE` is Vulkan's, `device.features()` of the editor's device lacks it: the "driver pipeline cache" persistence
+    and the `PULSAR_PIPELINE_CACHE` file never applied in the editor; a second build in the same process cost the same as the first,
+    node for node). Not the instance flags, shader hot reload, a debug helio or the validation layers. The engine now logs the adapter
+    and backend (`Engine device: ... through Dx12 ..., pipeline cache not available on this backend`) and, per node of a build, how many
+    shader modules and pipelines it created and the time in each (`helio::pipeline: node ... built N pass(es) in X ms: M shader module(s),
+    P pipeline(s) T ms`, and `graph ...: N node(s) built in X ms, locked in Y ms; slowest: ...`).
+    *What changed*: (1) **a build whose inputs changed is abandoned, not finished** (`Renderer::supersede_build`, `IntoGraph::duplicate`,
+    a cancel token the build loop reads per node): the TSR preset the scene's content picks arrives about 50 ms after the first build
+    starts, and the old behaviour finished the whole stale 11 s build and then built again (13 s). Now the stale build stops at its next
+    node and the new one starts at once; no configuration change waits behind a build any more. (2) **Pipelines compile side by side**
+    (`helio_core::shader::create_*_pipeline_deferred`, `batched`, `Deferred<T>`): inside a build the descriptor is queued and answers a
+    handle that derefs to the pipeline; three workers compile while the nodes are still being named, every lane of the host's compute
+    pool (`helio_tasks::parallel`, up to 24) takes what is left when the build ends, and `batched` returns when all are built (a rejected
+    pipeline is the build's failure with the backend's reason; an abandoned build compiles nothing more). Outside a build it compiles on
+    the spot. Migrated: the nodes that held the build (virtual geometry's cull, lens, water, atmosphere and clouds, foliage, deferred light,
+    shadows, fog, GI, object batch, lights' cull/sampler/HLFS, the VG raster/shade/BVH...); the other `create_*_pipeline` sites still
+    compile in line, and a pass that uses a pipeline while it builds (`get_bind_group_layout` in its constructor) makes the build wait for
+    it (`pipeline X was used at build time and waited N ms` names it: the lights' remapped tiles pass is one, and stays immediate).
+    (3) **The voxel world's pipelines compile while the graph builds** (`helio_core::BuildHints`: the renderer's published payloads and
+    whether this is its first build, as a build setting; `ChunkPass::precompile` adds the volumes at node construction, so the draw,
+    generation and ray bundles start in the first half second instead of when the first frame meets the volume). (4) The UI thread no
+    longer waits on the level editor's state for a tab: `LevelEditorPanel::tab_decoration` reads it with `try_read` and draws the last
+    copy when a writer holds it (the sidebar, the dock and the title read file, icon and unsaved through it), the sidebar's render has
+    scopes (`NavSidebar::sidebar_tabs`, "a panel's tab decoration") so a stall names its lock, and the Panel methods name theirs.
+    (5) `PULSAR_PIPELINE_CACHE` defaults to the per-user cache directory when the editor has no build directory (Vulkan only).
+    (6) **Viewport frame policy** (see `.agents/RENDER_RUNTIMES.md`, "Frame policy"): the table below.
+    *Measured, Earth voxel project* (original editor, then this one; two or three runs): first render pipeline installed 14.5 and 15.7 s
+    then 4.5, 6.5, 7.7, 7.8, 8.2 s (the build 11.2 to 11.4 s then 3.3 to 4.7 s); the rebuild the TSR preset caused finished at 27.5 and
+    29.3 s and no longer exists; first voxel chunk drawn 21.4 and 22.4 s then 10.8, 11.3, 11.5 s (12.7 and 16.1 s in two earlier
+    builds of this work, before the voxel compiles overlapped); settled view 23.4 and 24.9 s then 13.3 to 13.5 s. Bistro project
+    (`default.level` opened over MCP, seconds after the call): pipeline installed 11.8 s then 4.3 s, rebuild 14 s then none, first chunk
+    30.6 and 30.8 s then 20.1 and 20.2 s (that project's startup, not the open, holds the first 10 s of those). Longest `Slow UI work`
+    in the open: 206 to 414 ms before, 179 to 333 ms after, all of them the first `WindowEvent::Resized` and the first
+    `effects (observers, subscriptions, notifications)`, none during the build; the old 3.1 s `NavSidebar` stall is not reproduced on
+    either (it needed the blocking build). *Second open*: unchanged by design on D3D12 (no pipeline cache exists there; the driver's own
+    cache did not shorten a second build in the same process: 5.0 s and 4.5 s for the same graph); on Vulkan the persistent cache
+    now saves under the user cache directory. *What is left*: 3.3 to 4.7 s of build is node construction in line (about 3 s; the
+    biggest are virtual geometry 0.5 s, GI 0.5, sprites 0.2) plus the tail of the compile; the voxel generation bundle's longest kernel
+    (`feature_block_candidates_main`, 6 s of DXC on its own) now bounds the first chunk: splitting it is the voxel feature's change.
+    The Vulkan intermittent render-target-write loss that makes this user's editor run on D3D12 applies to the game too, which runs on
+    Vulkan. A window restored from minimized, driven by `ShowWindow` from another process, stopped consuming the viewport's frames after
+    a few frames in the original editor as in this one (frames 0 GPU 0 percent in both); not reproduced by hand, left open.
+
 
 ### Round 4: measurement and the profile it began from
 

@@ -71,3 +71,14 @@ in the window. The title bars' light/dark toggles persist the theme through
 - A `plugin` group: `pulsar_settings::plugin::handle(origin, id)` (`get_*`, `on_change`).
 - Editors a plugin provides get the `editor.code_editor` values in the
   `EditorSettingsSnapshot` of their `EditorContext`.
+
+## Viewport frame policy (`editor.viewport`, live)
+
+Two settings of the Viewport page decide how often a visible viewport draws (the policy itself is
+`engine_backend::services::render_runtimes::PacingPolicy`, see `.agents/RENDER_RUNTIMES.md`,
+"Frame policy"); both apply within a quarter of a second, with no restart:
+
+| Key | Default | What |
+|---|---|---|
+| `unfocused_fps` | 8 | Frames a second a visible viewport draws while its window is not focused. 0 pauses it until the window is focused again. A minimized window and a hidden tab always draw nothing |
+| `ambient_fps` | 15 | Frames a second a focused viewport draws when only content that moves on its own changes (wind, water, particles). 0 keeps the display's rate: the viewport free-runs. A camera move, an edit or streaming content always draws at the display's rate |

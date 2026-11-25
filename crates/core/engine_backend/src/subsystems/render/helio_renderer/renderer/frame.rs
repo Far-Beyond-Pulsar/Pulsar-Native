@@ -426,7 +426,7 @@ impl HelioRenderer {
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
         // The settling budget itself is not activity: it must eventually drain.
-        let temporal_activity = !camera_stopped
+        let driven = !camera_stopped
             || has_pending_scene
             || has_pending_editor
             // Content streaming in, building, or waiting on the renderer
@@ -442,34 +442,67 @@ impl HelioRenderer {
             || changes.view_kind
             || changes.camera_synced
             || crop.is_some()
-            // Realtime animation: wind, particles, shader-graph `time`.
-            || animated
             || self.reset_taa_next_frame;
-        if self.activity_log
-            && temporal_activity
-            && clock
+        // Realtime animation (wind, particles, shader-graph `time`) is
+        // activity too, but not the user's or the scene's: the frame policy
+        // (`render_runtimes::PacingPolicy`) draws it at its own, lower rate.
+        let temporal_activity = driven || animated;
+        if self.activity_log {
+            // Why the viewport keeps rendering (PULSAR_VOXEL_ACTIVITY=1): how
+            // many of the last second's frames each cause was true in.
+            let causes = [
+                !camera_stopped,
+                has_pending_scene,
+                has_pending_editor,
+                inner.scene.needs_frame(),
+                self.gizmo_dirty,
+                viewport_resized,
+                changes.postprocess,
+                changes.debug_view,
+                changes.view_payloads,
+                changes.camera_synced,
+                changes.view_kind,
+                crop.is_some(),
+                self.reset_taa_next_frame,
+                animated,
+                driven,
+            ];
+            self.activity_frames += 1;
+            for (count, cause) in self.activity_counts.iter_mut().zip(causes) {
+                *count += u32::from(cause);
+            }
+            if clock
                 .now
                 .duration_since(self.last_activity_log)
                 .as_secs_f64()
                 >= 1.0
-        {
-            // Why the viewport keeps rendering (PULSAR_VOXEL_ACTIVITY=1).
-            self.last_activity_log = clock.now;
-            tracing::info!(
-                camera_moving = !camera_stopped,
-                scene = has_pending_scene,
-                scene_revision,
-                editor = has_pending_editor,
-                content = inner.scene.needs_frame(),
-                gizmo = self.gizmo_dirty,
-                resized = viewport_resized,
-                postprocess = changes.postprocess,
-                animated,
-                reset_taa = self.reset_taa_next_frame,
-                "VOXEL_ACTIVITY"
-            );
-        }
-        self.temporal_settling.observe_activity(
+            {
+                self.last_activity_log = clock.now;
+                let c = self.activity_counts;
+                tracing::info!(
+                    frames = self.activity_frames,
+                    camera_moving = c[0],
+                    scene = c[1],
+                    editor = c[2],
+                    content = c[3],
+                    gizmo = c[4],
+                    resized = c[5],
+                    postprocess = c[6],
+                    debug_view = c[7],
+                    view_payloads = c[8],
+                    camera_synced = c[9],
+                    view_kind = c[10],
+                    crop = c[11],
+                    reset_taa = c[12],
+                    animated = c[13],
+                    driven = c[14],
+                    scene_revision,
+                    "VOXEL_ACTIVITY"
+                );
+                self.activity_frames = 0;
+                self.activity_counts = [0; 15];
+            }
+        }        self.temporal_settling.observe_activity(
             inner
                 .scene
                 .renderer
@@ -477,7 +510,26 @@ impl HelioRenderer {
                 .is_some(),
             temporal_activity,
         );
-        let is_idle = !temporal_activity && !self.temporal_settling.needs_frame();
+        let settling = self.temporal_settling.needs_frame();
+        let is_idle = !temporal_activity && !settling;
+        // The temporal resolve keeps settling for as long as anything animates,
+        // so it says nothing of its own: a frame is the user's while something
+        // they did or the scene did drives it, and for a moment after (the
+        // resolve converging on the new picture).
+        let now = Instant::now();
+        if driven {
+            self.last_driven = Some(now);
+        }
+        let converging = self
+            .last_driven
+            .is_some_and(|at| now.duration_since(at) < DRIVEN_CONVERGENCE);
+        self.frame_kind = if is_idle {
+            FrameKind::Idle
+        } else if driven || converging {
+            FrameKind::Interactive
+        } else {
+            FrameKind::Ambient
+        };
         FrameActivity {
             viewport_resized,
             realtime,

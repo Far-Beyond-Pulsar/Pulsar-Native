@@ -1,5 +1,5 @@
 //! One runtime's shared state and the handle its owner controls it with.
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,10 @@ pub(super) struct Runtime {
     /// The owner asked to pause or stop it (cleared by resume).
     pub(super) held: Mutex<Option<RuntimeState>>,
     pub(super) visible: AtomicBool,
+    /// Where its window stands ([`super::Presence`] bits): focused, minimized.
+    pub(super) presence: AtomicU8,
+    /// What its last frame was for ([`super::FrameKind`] bits).
+    pub(super) kind: AtomicU8,
     /// Frames still owed in [`UpdateMode::OnDemand`].
     pub(super) demanded: AtomicU32,
     /// Called right before each frame (the owner samples its input late).
@@ -90,6 +94,17 @@ impl Runtime {
                 "Visible".into(),
                 self.visible.load(Ordering::Relaxed).to_string(),
             ),
+            ("Window".into(), {
+                let presence = self.presence();
+                if presence.minimized {
+                    "minimized".to_string()
+                } else if presence.focused {
+                    "focused".to_string()
+                } else {
+                    "in the background".to_string()
+                }
+            }),
+            ("Last frame".into(), format!("{:?}", self.frame_kind())),
             ("Frame (CPU)".into(), format!("{frame_ms:.2} ms")),
             ("Graph textures".into(), graph_mb),
             (
@@ -106,6 +121,14 @@ impl Runtime {
             Some(last) if now < last + interval => Err(last + interval),
             _ => Ok(()),
         }
+    }
+
+    pub(super) fn presence(&self) -> super::Presence {
+        super::Presence::from_bits(self.presence.load(Ordering::Acquire))
+    }
+
+    pub(super) fn frame_kind(&self) -> super::FrameKind {
+        super::FrameKind::from_bits(self.kind.load(Ordering::Acquire))
     }
 
     pub(super) fn wants_frames(&self) -> bool {
@@ -244,6 +267,23 @@ impl RuntimeHandle {
     /// and the camera moved meanwhile).
     pub fn reset_history(&self) {
         self.runtime.reset_history.store(true, Ordering::Release);
+    }
+
+    /// Where the window showing its output stands (focused, minimized): the
+    /// service's frame policy ([`super::PacingPolicy`]) draws a visible
+    /// viewport of a background window at a low rate and a minimized one
+    /// not at all. A change wakes the scheduler, so a window that is focused
+    /// again draws on its next pass with nothing rebuilt.
+    pub fn set_presence(&self, presence: super::Presence) {
+        if self
+            .runtime
+            .presence
+            .swap(presence.to_bits(), Ordering::AcqRel)
+            != presence.to_bits()
+        {
+            self.runtime.publish_details();
+            global().wake();
+        }
     }
 
     /// Whether its output is shown (a tab in front); a

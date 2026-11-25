@@ -28,3 +28,17 @@ What a host should know (2026-11-25, details and numbers in the README):
   line with `drawn_chunks` and the first with `settled=true`, and the
   `Slow UI work` tasks for UI-thread holds.
 - The packaged game's load-in has not been measured.
+
+Update (2026-11-25, editor open round 5, `.agents/GAMEPLAY.md` issue 22):
+
+- The voxel node reads `helio_core::BuildHints` (the renderer's published payloads, and whether this is its
+  first build) and calls `ChunkPass::precompile`, so the world exists and holds the scene's volumes while the
+  graph builds: the draw, generation and ray bundles compile in the build's first half second, beside the
+  graph's own pipelines, not when the first frame finds the volume. A rebuild's pass inherits the running
+  world and starts nothing.
+- Measured in the editor (Direct3D 12, this machine, the Earth project): first chunk 21.4 and 22.4 s before,
+  10.8 to 11.5 s after; settled 23.4 and 24.9 s, then 13.3 to 13.5 s. What bounds it now is the generation
+  bundle's longest kernel (`feature_block_candidates_main`, 6 s of DXC by itself; `tile_caves_main` 4.3,
+  `tile_columns_main` 3.8, `tile_slope_heights_main` 3.2): splitting them is the next lever.
+- A viewport whose only activity is ambient (terrain foliage wind, water) draws at `editor.viewport.ambient_fps`
+  (default 15), not at the display's rate: `.agents/RENDER_RUNTIMES.md`, "Frame policy".

@@ -111,10 +111,57 @@ pub struct LevelEditorPanel {
     /// not one per drag.
     warned_static_drags: std::collections::HashSet<String>,
 
+    /// What the editor's tab shows of the shared state (its file, whether it
+    /// has unsaved changes, the file type's icon), as last read. The sidebar and
+    /// the dock draw a tab on every render and read it through the `Panel`
+    /// methods; a writer of the state (a level load applying objects, a save)
+    /// would hold the UI thread for as long as it writes, so a tab is drawn
+    /// from this copy whenever the state is not free at that instant.
+    decoration: parking_lot::Mutex<TabDecoration>,
+
     /// Rebuilds placed class instances when a class asset is updated.
     _class_updates: plugin_editor_api::AssetSubscription,
     /// Updated meshes, images and materials reload in place.
     _asset_reloads: plugin_editor_api::AssetSubscription,
+}
+
+/// The shared state's answers a tab is drawn from ([`LevelEditorPanel::decoration`]).
+#[derive(Clone, Default)]
+pub(crate) struct TabDecoration {
+    file: Option<std::path::PathBuf>,
+    unsaved: bool,
+    icon: Option<ui::IconName>,
+}
+
+impl LevelEditorPanel {
+    /// The tab decoration now: read from the state when it is free, else the
+    /// last one read. Never waits for the state's writer: the UI thread
+    /// draws tabs, and no lock it waits for may be held by a worker.
+    fn tab_decoration(&self) -> TabDecoration {
+        profiling::profile_scope!("LevelEditorPanel::tab_decoration");
+        let Some(state) = self.shared_state.try_read() else {
+            profiling::profile_scope!("LevelEditorPanel::tab_decoration (state busy: last copy)");
+            return self.decoration.lock().clone();
+        };
+        let file = state.scene.current_scene.clone();
+        let unsaved = state.scene.has_unsaved_changes;
+        drop(state);
+        let mut cached = self.decoration.lock();
+        if cached.file != file || cached.icon.is_none() {
+            // The file type's icon from the plugin manager's registry
+            // (`try_read`: tabs are drawn while a layout restore or file open
+            // holds the manager's write lock on this same thread).
+            cached.icon = file.as_ref().and_then(|path| {
+                plugin_manager::global()?
+                    .try_read()
+                    .and_then(|manager| manager.get_file_type_for_path(path).cloned())
+                    .map(|file_type| file_type.icon.clone())
+            });
+        }
+        cached.file = file;
+        cached.unsaved = unsaved;
+        cached.clone()
+    }
 }
 
 impl Drop for LevelEditorPanel {
@@ -129,16 +176,16 @@ impl Panel for LevelEditorPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        let state = self.shared_state.read();
+        let state = self.tab_decoration();
         div()
-            .child(if let Some(ref scene) = state.scene.current_scene {
+            .child(if let Some(ref scene) = state.file {
                 format!(
                     "Level Editor - {}{}",
                     scene
                         .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Untitled"),
-                    if state.scene.has_unsaved_changes {
+                    if state.unsaved {
                         " *"
                     } else {
                         ""
@@ -158,30 +205,15 @@ impl Panel for LevelEditorPanel {
     }
 
     fn panel_file_path(&self, _cx: &App) -> Option<std::path::PathBuf> {
-        self.shared_state.read().scene.current_scene.clone()
+        self.tab_decoration().file
     }
 
     fn tab_icon(&self, _cx: &App) -> Option<ui::IconName> {
-        let state = self.shared_state.read();
-        let file_path = state.scene.current_scene.as_ref()?;
-
-        // Get the file type icon from the plugin manager registry
-        if let Some(plugin_mgr) = plugin_manager::global() {
-            // `try_read`: tabs are drawn while a layout restore or file open
-            // holds the manager's write lock on this same thread.
-            if let Some(file_type_def) = plugin_mgr
-                .try_read()
-                .and_then(|mgr| mgr.get_file_type_for_path(file_path).cloned())
-            {
-                return Some(file_type_def.icon.clone());
-            }
-        }
-
-        None
+        self.tab_decoration().icon
     }
 
     fn tab_unsaved(&self, _cx: &App) -> bool {
-        self.shared_state.read().scene.has_unsaved_changes
+        self.tab_decoration().unsaved
     }
 
     fn set_active(&mut self, active: bool, _window: &mut Window, cx: &mut App) {
