@@ -66,7 +66,7 @@ impl<'a> SourceCx<'a> {
         let reference = reference.trim();
         if reference.contains(['/', '\\', '.']) {
             let path = self.root.join(reference.replace('\\', "/"));
-            return path.is_file().then_some(path);
+            return engine_fs::virtual_fs::is_file(&path).then_some(path);
         }
         self.path_of(kind, reference)
     }

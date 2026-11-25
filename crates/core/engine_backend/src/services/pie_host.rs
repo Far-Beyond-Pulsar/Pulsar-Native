@@ -236,7 +236,7 @@ impl PieHost {
         reload: bool,
         view: Option<crate::subsystems::render::EditorCameraState>,
     ) -> Result<Self, String> {
-        if !dylib_path.exists() {
+        if !engine_fs::virtual_fs::exists(dylib_path).unwrap_or(false) {
             return Err(format!("Game library not found: {}", dylib_path.display()));
         }
 
