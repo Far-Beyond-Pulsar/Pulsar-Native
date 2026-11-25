@@ -312,12 +312,7 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
    the capacity). `RenderGraph: encoder.finish (segment)` in the 20 s walk/turn/jump script: 14.8 s over 13741 calls
    (1.08 ms each) to 6.7 s over 15356 calls (0.44 ms) in the first A/B capture, 8.2 s / 12861 (0.63 ms) in the next on a
    busier machine; `wait for encoder-finish threads` 1.74 to 0.80 ms (1.03 in the busier one). A device without the feature
-   binds the whole table as before. **Open hazard:** a graph material's generated WGSL indexes
-   `scene_textures[material.tex_*]` without a guard, and an unassigned slot is `u32::MAX`, which the shader's bounds
-   handling clamps to the last element of the array; that element used to be a bound white fallback and is now unbound.
-   The bistro level showed nothing wrong, but a graph material sampling before its texture resolves reads an unbound
-   descriptor. The proper fix is a guaranteed white element inside the prefix (slot 0 of the texture store reserved) and a
-   graph lowering that maps `MATERIAL_NO_TEXTURE` to it (the WebGPU lowering already does: `default: return fallback`).
+   binds the whole table as before. **The unassigned-texture hazard is closed:** a graph material's generated WGSL indexes `scene_textures[material.tex_*]` without a guard, and an unassigned field is `u32::MAX`, which the shader's bounds handling clamps to the last element of the array, unbound in a partially bound table. Slot 0 of the scene's texture table is reserved now: the host creates the store with `TextureStore::with_reserved_slots(capacity, helio_core::TEXTURE_TABLE_RESERVED_SLOTS)` (SceneDB hands no texture slot 0 out and never recycles it, `helio_bridge`), the materials table binds its white fallback view there and refuses a texture in a reserved slot (`MaterialTextureTable::set`), and a graph material's caller maps each unassigned field to it (`material_graph_texture_slot` in `material_row.wgsl`, applied where `pulsar_material_graph` is called, `GpuMaterial::FALLBACK_TEXTURE_SLOT`). Tests: the lowering (`an_unassigned_texture_field_reads_the_white_slot`), the Rust and WGSL constants agreeing, the store (`reserved_slots_are_never_handed_out_or_recycled`).
 2. **First use of a pass compiled its pipeline on the frame thread.** Material variants of the G-buffer, forward and
    transparent drawers (63 to 140 ms hitches) are fixed: they compile on the task system
    (`helio_core::compile::Variants`) and draw with the default material of the same raster state until ready.
@@ -369,6 +364,54 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
 6. `Game::window_event` took 15 to 19 ms in earlier captures. In this round the first click costs 0.1 ms (`Game::capture_cursor` has its own scope now) and the slow events are the window's three `Resized` events at start-up (7 to 12 ms each: surface reconfigure and render-target rebuild); a size equal to the current one is ignored now. The hitch of the first click was not reproduced.
 7. A recording of the busy game keeps only the last 1,000,000 events of a remote process (about 9 s of the game before the
    hot `World::get` scope was removed; the full 20 s fits now).
+
+11. **The "walking regression" was a change of scenario, not of code** (six packaged games, two scripted runs each, one
+    machine, project copy `tb_perf_project_r3`, `drive.ps1`: 2 s idle, walk and turn, jumps, strafe, flicks). The builds
+    from before the late-look commits and the one after differ in what the game does: the early ones (base, a) log
+    `No roles are set for this level; nothing was instantiated`, so the walk drives a free camera; the later ones (r2b,
+    c, no-partial-table, and every build since) log `Player Character spawned class=PlayerCharacter` and the walk is the
+    character's, through physics, from a different spawn view (a street instead of a terrace; screenshots at idle, and
+    a build's exe, not its Content, decides it: an exe of one with the Content of the other shows its own view).
+    Frame period over the 20 s run: 6.06 to 6.11 ms (119 to 141 fps 1% low) without a character; 6.40 to 6.61 (93 to 97)
+    with one, in all four builds that have it, so no commit between them moved it. The GPU frame follows the view, not
+    the code: 3.4 to 3.5 ms (Atmosphere 0.70 flat, ObjectBatch and VgBvh 0.02) without the character against 4.6 to 4.8
+    (Atmosphere 1.3 at idle and up to 2.3 looking at the sky, ObjectBatch 0.2, VgBvh 0.03 to 0.4) with it, already in the
+    first two idle seconds, before any walking; `partial_table` on or off made no difference. The numbers the 6.9 ms /
+    92 fps walking figures were compared to were taken in a game with no character; the character's walk and turn is
+    6.7 to 7.0 ms (91 to 93 fps 1% low) in every build that has it. A comparison must run the same level role setup.
+12. **Atmosphere (GPU 1.2 to 1.7 ms of a 4.8 ms frame) in the character scenario.** Skipping parts of the pass on the
+    game (idle, same camera): the cloud work (planet weather slice and shadow map) 0.3 ms, the sky-view, aerial and
+    irradiance kernels 0.1 ms, the params-only LUTs 0.18 ms amortised, the rest (a dozen dispatches and their
+    barriers, about 0.8 ms) was not separated; the LUT rebuild runs every frame while the level streams in (the
+    atmosphere buffer's content generation moves with every mirror flush) and never after. Refreshing the cloud shadow
+    map a quarter of its texels a frame (2x2 interleave, a whole refresh when a cascade's lattice or the sun moved) lowered
+    Atmosphere 1.66 to 1.69 to 1.61 to 1.66 ms, inside the run to run spread, so it was not kept. Next: GPU timestamps per
+    dispatch, to see what the 0.8 ms is.
+
+### Final measurement of the performance rounds
+
+Editor and all 34 plugin libraries rebuilt into their own install (`plugin_builder --release`); Build & Run on a private copy
+of the voxel project packed, built and launched the game through the MCP tools (34 libraries found, 34 loaded, none failed);
+the game it built then ran the scripted scenario twice (165 Hz display, vsync, the character spawned). Frames are
+`Game::Frame` periods; the scenario's windows are approximate (the recording starts about a second before the script).
+
+| window | run | frames | period mean ms | p95 | 1% low fps | worst ms |
+|---|---|---|---|---|---|---|
+| first 14 s of the process | 1 | 1851 | 7.00 | 12.40 | 44 | 119.5 |
+| first 14 s of the process | 2 | 1909 | 6.85 | 12.52 | 49 | 91.1 |
+| idle (0 to 3 s) | 1 / 2 | 496 / 496 | 6.06 / 6.06 | 8.05 / 8.16 | 113 / 110 | 9.1 / 10.4 |
+| walk and turn (3 to 9 s) | 1 / 2 | 875 / 871 | 6.84 / 6.88 | 10.3 / 10.3 | 93 / 92 | 11.8 / 12.1 |
+| jumps while walking (9 to 12 s) | 1 / 2 | 489 / 493 | 6.13 / 6.08 | 8.47 / 8.47 | 104 / 106 | 11.0 / 10.8 |
+| strafe and turn (12 to 15 s) | 1 / 2 | 402 / 404 | 7.47 / 7.43 | 9.10 / 9.51 | 99 / 96 | 11.0 / 11.6 |
+| fast flicks (15 to 18 s) | 1 / 2 | 494 / 429 | 6.07 / 6.99 | 8.43 / 8.40 | 106 / 112 | 10.6 / 413 (one stall) |
+| whole 20 s play run | 1 / 2 | 3228 / 3157 | 6.46 / 6.59 | 9.21 / 9.39 | 96 / 94 | 11.8 / 413 |
+
+GPU frame 4.84 / 4.79 ms mean (p95 7.0): Atmosphere 1.69 / 1.66, Shadow 0.64 / 0.61, DeferredLight with the atmosphere composite
+0.43 / 0.34, ObjectBatch 0.24, VgBvh 0.18 / 0.17, GBuffer 0.14 / 0.11. Input to present 10.2 / 10.6 ms mean (p95 15.9 / 16.0;
+wait for the tick 3.1, wait for the frame 3.4 to 3.7, render submit 3.2), mouse look to present 5.1 ms mean (p95 7.9, 233 looks). World age
+at the frame's read 2.5 / 2.0 ms mean. Frames over the 6.06 ms refresh are the ones whose GPU work does not fit (the walking and
+turning windows: Atmosphere to 2.5 ms and the sun's shadow cascades redrawn, a GPU frame p95 of 7.0 ms), not the frame thread (CPU 3.2 ms a
+frame: `acquire_surface` waits the rest). Not comparable with the earlier tables of this section: those games had no player character.
 
 ### Input and physics: what stalled (measured)
 
