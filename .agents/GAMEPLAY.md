@@ -222,6 +222,28 @@ the first frame). Derived cache: `install_derived_cache` (`helio_bridge`) points
 with the `streaming.derived_cache_mb` budget (default 32768); a packaged game's project path is its extracted
 asset cache (`%TEMP%/pulsar-asset-cache/<hash>`), which persists between launches.
 
+### Performance issues log (open, with the evidence)
+
+Each was seen in a recording of the packaged game on the Bistro level (`profile_*` tools, `.agents/MCP.md`):
+
+1. **The Shadow pass costs 3.3 ms of CPU in `CommandEncoder::finish`** (GPU 0.5 ms). It records ~9 commands per face and
+   layer for up to 192 faces every frame, because which faces are dirty is only known on the GPU
+   (`meshes/feature/shadow/src/lib.rs`, `execute`). Design: one GPU-driven multi-draw over the faces `ShadowDirty` marks (a
+   layered target or viewport array instead of a viewport per face), as virtual shadow maps and Frostbite do; expected
+   frame 7.5 ms to about 4.5 ms CPU.
+2. **First use of a pass compiles its pipeline on the frame thread**: `GBufferPortalOccurrences` 63 to 120 ms at the first
+   frames, `Helio: apply pipeline` 360 ms twice, `create_window_renderer` 0.9 s before the first frame is presented. They
+   belong on `helio_core::compile` with a placeholder until ready.
+3. **A texture uploads in one `write_texture` per mip** (`TextureStore::register_mips`), 0.8 ms mean and 4 ms max on the frame
+   thread while streaming; no per-frame byte budget. Design in `LEVEL_LOADING.md`.
+4. **`level_hydration::step` takes up to 37 ms against a 4 ms budget**: one object's hydrate is not divisible.
+5. **Input is read when the event loop runs** (between frames): an event that arrives during a 7 ms frame waits for
+   it, which the latency chain does not see (its first stamp is the handler). A raw-input thread, or late-latching the look
+   rotation at frame start, removes it and `wait_for_frame`.
+6. `Game::window_event` takes 15 to 19 ms when the cursor is captured (`capture_cursor`): a hitch on the first click.
+7. A recording of the busy game keeps only the last 1,000,000 events of a remote process (about 9 s of the game before the
+   hot `World::get` scope was removed; the full 20 s fits now).
+
 ### Input and physics: what stalled (measured)
 
 Physics already runs on its own registered thread (`Pulsar-Physics`, `physics_plugin/src/runtime.rs`): the game thread
