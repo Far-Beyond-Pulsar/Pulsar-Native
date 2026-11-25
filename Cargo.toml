@@ -456,7 +456,7 @@ wgpui_dylib = { path = "crates/ui/wgpui/dylib" }
 ui_dylib = { path = "crates/ui/wgpui-component/crates/ui_dylib" }
 profiling_dylib = { path = "crates/external/pulsar-profiling/crates/profiling_dylib" }
 reflection_dylib = { path = "crates/external/pulsar-reflection/crates/reflection_dylib" }
-scenedb_dylib = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
+scenedb_dylib = { path = "crates/external/scenedb/crates/scenedb_dylib" }
 helio_dylib = { path = "crates/renderer/helio/crates/helio_dylib" }
 engine_state                       = { path = "crates/core/engine_state" }
 pulsar_auth                        = { path = "crates/core/pulsar_auth" }
@@ -468,8 +468,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
+pulsar_scenedb = { path = "crates/external/scenedb/crates/pulsar_scenedb", features = ["gpu"] }
+pulsar_scenedb_derive = { path = "crates/external/scenedb/crates/pulsar_scenedb_derive" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -865,6 +865,6 @@ reflection_dylib = { path = "crates/external/pulsar-reflection/crates/reflection
 # patch point at a different rev of the same repository), so SceneDB's types
 # are one set of types for all of them.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
-scenedb_dylib = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f" }
+pulsar_scenedb = { path = "crates/external/scenedb/crates/pulsar_scenedb" }
+pulsar_scenedb_derive = { path = "crates/external/scenedb/crates/pulsar_scenedb_derive" }
+scenedb_dylib = { path = "crates/external/scenedb/crates/scenedb_dylib" }

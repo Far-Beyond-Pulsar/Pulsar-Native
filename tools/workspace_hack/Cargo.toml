@@ -382,8 +382,8 @@ pulp-wasm-simd-flag = { version = "=0.1.1", default-features = false, features =
 pulsar_reflection = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection", default-features = false, features = ["default", "prims-core", "prims-glam", "prims-gpui", "prims-std"] }
 pulsar_reflection_codegen = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen", default-features = false, features = [] }
 pulsar_reflection_derive = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive", default-features = false, features = [] }
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = ["default", "gpu", "telemetry"] }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = [] }
+pulsar_scenedb = { path = "../../crates/external/scenedb/crates/pulsar_scenedb", default-features = false, features = ["default", "gpu", "telemetry"] }
+pulsar_scenedb_derive = { path = "../../crates/external/scenedb/crates/pulsar_scenedb_derive", default-features = false, features = [] }
 pxfm = { version = "=0.1.30", default-features = false, features = [] }
 quark = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-features = false, features = [] }
 quark-macros = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-features = false, features = [] }
@@ -1470,8 +1470,8 @@ pulp-wasm-simd-flag = { version = "=0.1.1", default-features = false, features =
 pulsar_reflection = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection", default-features = false, features = ["default", "prims-core", "prims-glam", "prims-gpui", "prims-std"] }
 pulsar_reflection_codegen = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen", default-features = false, features = [] }
 pulsar_reflection_derive = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive", default-features = false, features = [] }
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = ["default", "gpu", "telemetry"] }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = [] }
+pulsar_scenedb = { path = "../../crates/external/scenedb/crates/pulsar_scenedb", default-features = false, features = ["default", "gpu", "telemetry"] }
+pulsar_scenedb_derive = { path = "../../crates/external/scenedb/crates/pulsar_scenedb_derive", default-features = false, features = [] }
 pxfm = { version = "=0.1.30", default-features = false, features = [] }
 quark = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-features = false, features = [] }
 quark-macros = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-features = false, features = [] }

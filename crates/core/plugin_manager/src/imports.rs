@@ -141,6 +141,13 @@ pub fn hashed_stem(name: &str) -> Option<&str> {
         .then_some(stem)
 }
 
+/// The stem of a library file name, hashed or not (`scenedb_dylib` of `scenedb_dylib.dll` and of
+/// `scenedb_dylib-0123456789abcdef.dll`), so a plugin built against a hash-named library meets the
+/// stable name the library has now.
+fn library_stem(name: &str) -> Option<&str> {
+    hashed_stem(name).or_else(|| name.strip_suffix(".dll").or_else(|| name.strip_suffix(".DLL")))
+}
+
 /// One rename the renamer made.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rename {
@@ -162,7 +169,7 @@ pub fn rename_hashed_imports(bytes: &[u8], available: &[String]) -> Option<(Vec<
         }
         let Some(to) = available
             .iter()
-            .find(|have| hashed_stem(have).is_some_and(|s| s == stem))
+            .find(|have| library_stem(have) == Some(stem))
         else {
             continue;
         };
@@ -265,5 +272,12 @@ mod renamer_tests {
         assert_eq!(hashed_stem("helio_dylib.dll"), None);
         assert_eq!(hashed_stem("a-b-0123456789abcdef.dll"), Some("a-b"));
         assert_eq!(hashed_stem("x-0123456789abcdeg.dll"), None);
+    }
+
+    #[test]
+    fn an_old_hashed_import_meets_the_stable_name() {
+        assert_eq!(library_stem("scenedb_dylib.dll"), Some("scenedb_dylib"));
+        assert_eq!(library_stem("scenedb_dylib-286559dd0edfd722.dll"), Some("scenedb_dylib"));
+        assert_ne!(library_stem("helio_dylib.dll"), Some("scenedb_dylib"));
     }
 }

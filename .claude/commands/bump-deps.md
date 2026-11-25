@@ -44,21 +44,29 @@ inside this workspace. No manifest may take Pulsar-Native as a git source
 
 ## Bumping SceneDB
 
-SceneDB (`pulsar_scenedb`, `pulsar_scenedb_derive`) is a git dependency pinned by `rev =`, and the
-same rev lives in **three** manifests:
+SceneDB (`pulsar_scenedb`, `pulsar_scenedb_derive`, `scenedb_dylib`) is the submodule
+`crates/external/scenedb`, and the workspace uses it by **path** (root `Cargo.toml`
+`[workspace.dependencies]`, `[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]` and
+`tools/workspace_hack/Cargo.toml`), as it does Profiling and Reflection. So the pin is the submodule's
+commit. Two places still name a git rev, because **Helio** (a submodule with its own manifest) depends on
+SceneDB by git: `crates/renderer/helio/Cargo.toml` (both crates) and
+`crates/renderer/helio/crates/helio_dylib/Cargo.toml` (`scenedb_dylib`). The root patch redirects
+that git source to the path, so those revs must equal the submodule's commit (Helio is a submodule, so
+**commit it first**: Helio PR merged to Helio main, then re-pin the submodule, then the Pulsar-Native PR).
 
-1. root `Cargo.toml`, `[workspace.dependencies]` (both crates);
-2. root `Cargo.toml`, `[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]` (both crates; the
-   patch forces one rev for every copy in the graph, so the two root places must match);
-3. `crates/renderer/helio/Cargo.toml` (both crates). Helio is a submodule, so **commit it
-   first**: Helio PR merged to Helio main, then re-pin the submodule, then the Pulsar-Native PR.
+A generated game gets the same SceneDB: `engine_backend/build.rs` bakes the workspace dependency
+(absolute path) and the whole `[patch]` table into every game manifest, so a game resolves SceneDB
+from the engine checkout and not from a git checkout of its own. Nothing in the game tooling names a
+SceneDB rev.
 
-The old and new revs cannot coexist, so a SceneDB bump and the code it needs go in one
-Pulsar-Native PR. Plugins carry no SceneDB rev. Merge order: SceneDB PR to SceneDB main (take the
-sha after any squash) → Helio rev bump merged and re-pinned → Pulsar-Native PR.
+The old and new commits cannot coexist, so a SceneDB bump and the code it needs go in one
+Pulsar-Native PR. Plugins carry no SceneDB pin. Merge order: SceneDB PR to SceneDB main (take the sha
+after any squash) → Helio rev bump merged and re-pinned → move the `crates/external/scenedb`
+submodule → Pulsar-Native PR.
 
 ```bash
-grep -n 'pulsar_scenedb' Cargo.toml crates/renderer/helio/Cargo.toml   # every rev must be the same sha
+git -C crates/external/scenedb rev-parse HEAD
+grep -n 'rev = ' crates/renderer/helio/Cargo.toml crates/renderer/helio/crates/helio_dylib/Cargo.toml | grep -i scenedb   # same sha
 ```
 
 (`.agents/COMPONENT_LIFECYCLE_PLAN.md`, "As built (P5b)", is the worked example: SceneDB's
