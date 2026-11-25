@@ -151,19 +151,23 @@ mesh collision in the physics plugin (a trimesh from the `.mesh` asset, per stat
 ### Input latency
 
 A probe is always on (`pulsar_game::latency`; at most four log lines a second, target `pulsar_game::latency`): one
-sample follows the oldest unshown input through ten stamps and nine stages: the OS event in the window's handler,
+sample follows the oldest unshown input through ten stamps and nine stages: the OS event (stamped on the raw-input
+thread the moment the OS delivers it, see "Input is sampled at the OS" below),
 `wait_for_tick` (to the start of the next tick), `input_and_systems` (the schedule and component phase: input
 drained, the character, the physics hand-off), `scripts`, `scene_write` (the change window closes),
-`wait_for_frame` (to the next frame), `acquire` (the surface), `extract_upload` (scene flush and camera),
-`render_submit` (recording and submitting the graph) and `present`. While the profiler records, every sample is also
+`wait_for_frame` (to the frame's read of the world), `sample` (the scene step and the camera), `extract_upload`
+(scene flush and camera), `render_submit` (recording and submitting the graph) and `present`. While the profiler records, every sample is also
 published as scopes on the `Input latency` track (root `Latency::input_to_present`, one child per stage), so it is in
 the same recording as everything else: **`profile_latency`** returns each stage's mean, p50, p95, p99 and worst and
 its share (MCP.md, "Profiling"). `latency::summary()` is the mean and worst of the last 240.
 
 The stamp after `present` is the earliest the display can show the frame: the present queue (`max_frame_latency`,
-1) and the scan-out come after it. Not measured: the OS-to-handler time (the winit loop answers events between
-frames, so an event that arrives during a 7 ms frame waits for it; the stamp is taken when the handler runs) and the
-monitor.
+1) and the scan-out come after it. Not measured: the monitor. The OS-to-handler time (the winit loop answers events
+between frames, so an event that arrives during a 7 ms frame waits for it) used to be invisible, because the first
+stamp was taken when the handler ran; it is now inside `wait_for_tick`, and measured on its own as
+`Latency::os_to_handler` (the time raw input waited for the event loop: mean 3 to 9 ms in captures, 9 ms when the
+frame was 15 ms), so a chain's total is not comparable with one recorded before it existed (the new total contains a
+wait the old one did not).
 
 Measured in the packaged release game (RTX 4090, 144 Hz display, Bistro level, mouse turning, the same capture
 each time):
@@ -183,6 +187,37 @@ What remains of the 14.5 ms, in order: `render_submit` 6 ms (the Shadow pass's c
 it: see "Where a frame goes" below), `wait_for_frame` 3.5 ms and `wait_for_tick` 3.3 ms (the loops run at
 different phases; a late-latched look, applying the newest mouse delta to the view when the frame starts, would
 remove both for the camera), and the display.
+
+### Input is sampled at the OS (`pointer.rs`, `frame_pacer.rs`)
+
+- **A raw-input thread** (`pulsar-raw-input`, Windows; `pulsar_game::pointer`) owns this process's raw mouse and
+  keyboard registration (a message-only window, `RIDEV_INPUTSINK`; direct `user32` declarations so no `windows`
+  feature set, and with it no feature hash, changes). It adds mouse motion to a lock-free accumulator and stamps the
+  arrival on the latency probe's clock. Because a process has one raw registration per device, winit no longer sends
+  `DeviceEvent::MouseMotion` while it runs: the free camera takes the same motion from the sampler
+  (`take_view_motion`, drained in `about_to_wait`), where the wait of the event loop is measured too.
+- **The sample point.** The tick drains the accumulator where it reads input (`TickLoop::sample_pointer`, ahead of the
+  after-input flush) and publishes one `MouseMoved` with the sum: as fresh as the tick, one publish per tick however
+  fast the mouse reports. Non-Windows builds feed the same accumulator from the event loop's device events.
+- **The frame reads the world after it waits for the display.** `GameWindow::render` acquires the surface first
+  (with a present queue of one the acquire is the wait for the display), then steps the scene and takes the camera
+  (`Game::step_scene`, `Game::camera_for_frame`), right before `prepare_frame` uploads it. It used to read both
+  before the acquire, so the camera was as old as the vsync wait when it was drawn.
+- **The tick is placed just before that read.** Tick `k` is due at `start + k * step` and may run any time within one
+  step of it; `FramePacer::next_start` picks the moment that ends it just before the frame's predicted read
+  (last read plus the smoothed frame period, minus the tick's high-water cost, the prediction's own error and 0.2 ms).
+  The due times never drift (the simulation runs at its rate on average; before, each tick slept `step - elapsed` and
+  the game ran slower than real time by the tick's overhead), and a loop that fell four steps behind starts over. When
+  frames stop (hidden, occluded) or there is none yet, the tick keeps its timer.
+- **World age at the frame's read** (the time from the end of the last tick to `Game::camera_for_frame`, same machine,
+  8 ms frames): mean 3.3 ms before, 1.8 ms after (p50 3.3 to 1.3 ms); at 15 ms frames under GPU contention 3.3 to 2.7 ms.
+  The p95 stays near 6 ms (a mispredicted frame). Input to present, same capture: 16.3 ms mean before (its first stamp
+  at the handler), 14.4 ms after (its first stamp at the OS): `wait_for_frame` 4.9 to 2.5 ms.
+- **Not done: a late-latched look.** The character's view is whatever the tick wrote, so the mouse delta that arrives
+  between the last tick and the frame's read (up to a tick) is not in the picture. Applying it to the camera at render
+  time needs the look action's mapping (sensitivity, axis, inversion), which belongs to the input plugin, and
+  an interpolation of the character's pose between ticks; neither exists. `wait_for_tick` (3.3 to 4 ms mean) is
+  that wait.
 
 ### Where a frame goes (measured with the profiler MCP tools)
 
@@ -216,8 +251,8 @@ so one pump could cost 600 ms; (4) the tick thread pumped assets too, taking the
 windowed frame pumped twice. Now: the loader cooks for the use and pins the result until the upload
 (`LoadedTexture::pinned_for`); loads in flight count what has loaded and not bound; a pump binds as many assets
 per walk as the time budget holds at the cost seen so far; a render loop is the only pumper; loader threads are half
-the cores. Remaining on the frame thread while streaming: the GPU upload (`Texture::upload_cooked`, 0.8 ms mean, 4 ms
-max; one pass over a whole texture, not yet split into budgeted chunks) and the renderer's own first-use work (`Helio: apply pipeline` 360 ms once, `create_window_renderer` 0.9 s before
+the cores. The GPU upload is staged and budgeted now (`Texture::upload_cooked` was 0.8 ms mean, 4 to 27 ms max; see issue 3 of the
+log below). Remaining on the frame thread while streaming: the renderer's own first-use work (`Helio: apply pipeline` 360 ms once, `create_window_renderer` 0.9 s before
 the first frame). Derived cache: `install_derived_cache` (`helio_bridge`) points it at `<project>/.pulsar/cache/derived`
 with the `streaming.derived_cache_mb` budget (default 32768); a packaged game's project path is its extracted
 asset cache (`%TEMP%/pulsar-asset-cache/<hash>`), which persists between launches.
@@ -234,12 +269,32 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
 2. **First use of a pass compiles its pipeline on the frame thread**: `GBufferPortalOccurrences` 63 to 120 ms at the first
    frames, `Helio: apply pipeline` 360 ms twice, `create_window_renderer` 0.9 s before the first frame is presented. They
    belong on `helio_core::compile` with a placeholder until ready.
-3. **A texture uploads in one `write_texture` per mip** (`TextureStore::register_mips`), 0.8 ms mean and 4 ms max on the frame
-   thread while streaming; no per-frame byte budget. Design in `LEVEL_LOADING.md`.
-4. **`level_hydration::step` takes up to 37 ms against a 4 ms budget**: one object's hydrate is not divisible.
-5. **Input is read when the event loop runs** (between frames): an event that arrives during a 7 ms frame waits for
-   it, which the latency chain does not see (its first stamp is the handler). A raw-input thread, or late-latching the look
-   rotation at frame start, removes it and `wait_for_frame`.
+3. **Fixed (mostly): a texture's GPU copy is staged and written under a per-frame budget** (`TextureStore::register_mips_staged`
+   / `advance_uploads`, `streaming.texture_upload_budget_kb` 4096 and `_ms` 1, nearest first). `Texture::resident_slot`
+   in the first 14 s: 569 calls, 1145 ms, max 27.5 ms before; 90 ms and max 14 ms after (mean 2.0 to 0.16 ms), and the
+   upload itself is `Assets::advance_texture_uploads`, mean 0.53 ms, max 2.7 ms. Still open: ranking is by distance to the
+   viewer only (no frustum or screen-size visibility), and a bind still waits for its cook when the loader has not
+   pinned it (never seen in the captures: `Texture::cooked_for` had no calls).
+4. **Fixed (mostly): `level_hydration::step` takes up to 4.9 ms against a 4 ms budget** (27 to 40 ms before). Validation and the
+   property pass are one object / 128 objects a unit now, and the one object that took 29 ms was
+   `Cable Conn A & Config`: its `CableComponent` resolves its tile texture through the project file index, whose first
+   open scans the project, on the frame thread. The prepare worker opens the index now (`level-prepare: project file
+   index`), and any object whose components take over 8 ms is named in a warning. What stays indivisible is one
+   object's `attach_records`; a class whose hydrate does real work must move it to its prepare half. The legacy
+   world-space transform conversion (levels older than parent-relative transforms) is still one unit.
+5. **Fixed: input is read at the OS and consumed at the tick**, the frame reads the world after the display wait and
+   the tick is placed just before it ("Input is sampled at the OS" above). Open: a late-latched look rotation.
+8. **A static mesh component copies its geometry** (`bind_mesh_asset`: `component.vertices = mesh.upload.geometry.vertices.clone()`):
+   every instance of a mesh holds its own CPU copy of the vertices and indices (the GPU copy is interned), and binding
+   one mesh shared by thousands of entities costs a deep copy each: 49 ms and up to 160 ms in a single
+   `Assets::apply_bindings mesh`. The pump now binds one asset's dependents over several frames
+   (`partial_binds`), but each bind is still a copy and every instance is memory. The proper fix is geometry held once
+   (`Arc`) and the `#[gpu(content_id)]` columns reading it: a `SceneStore` derive change plus the meshes plugin
+   (not done: it spans SceneDB's derive and the shadow and cluster code another agent is changing).
+9. **First seconds of a launch still have mirror hitches**: `helio_flush_gpu_mirror` max 10 to 21 ms and `Game::step_scene`
+   max 33 to 41 ms (the scatter write of rows a hydration step or a bind just dirtied), and `TickLoop::tick` 58 to 65 ms
+   once, when the tick thread starts (physics and script start-up). `create_window_renderer` 1.0 s and `Helio: apply
+   pipeline` 0.8 s are the renderer's own (another agent).
 6. `Game::window_event` takes 15 to 19 ms when the cursor is captured (`capture_cursor`): a hitch on the first click.
 7. A recording of the busy game keeps only the last 1,000,000 events of a remote process (about 9 s of the game before the
    hot `World::get` scope was removed; the full 20 s fits now).

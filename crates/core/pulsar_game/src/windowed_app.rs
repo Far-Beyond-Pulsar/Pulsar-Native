@@ -708,6 +708,14 @@ impl PulsarApp {
             editor_task_queue::ThreadSpec::new("level-prepare", editor_task_queue::ThreadRole::Io)
                 .owner("pulsar_game"),
             move || {
+                // The project's file index is what components resolve an asset id
+                // through (a cable's tile texture) while they hydrate on the
+                // frame thread. Its first open scans the project (29 ms measured);
+                // opened here, the frame finds it ready.
+                if let Some(project) = engine_state::get_project_path() {
+                    profiling::profile_scope!("level-prepare: project file index");
+                    let _ = engine_fs::open_project_file_index(std::path::Path::new(&project));
+                }
                 let registry = pulsar_class::ClassRegistry::scan(&root);
                 let loaded = RuntimeLevel::prepare(&worker_path, &registry)
                     .map(|prepared| {

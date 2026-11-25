@@ -51,7 +51,26 @@ What the profiler showed on a real level (Bistro, 560 textures, `GAMEPLAY.md` "S
 - **The time budget is honoured inside a pump.** A bind chunk is sized from the measured cost per asset (`AssetTable::bind_cost`), not a fixed 16: one material bind can cost milliseconds.
 - **One pumper.** A render loop pumps once per frame (`SceneRenderer::upload`, nearest the camera); a tick leaves it alone (`TickLoop::render_loop_pumps_assets`), and the windowed frame no longer pumps before the renderer does.
 - **Loader threads are half the cores** (`asset_load_workers`), so cooking does not preempt the frame, the renderer's encoder threads and physics.
-- Still on the frame thread: the texture upload itself (`TextureStore::register_mips`, one `write_texture` per mip, no byte budget) and the renderer's first-use work. The design for the first: create the texture off to the side, write it in row bands under a per-frame byte budget, then swap it into the slot (the coarse tier stays bound until then).
+- **Texture uploads are staged.** `resident_slot_staged` (the materials plugin's bind) allocates the slot and creates the GPU
+  texture, but does not copy: `TextureStore::register_mips_staged` queues the cooked mips (`MipSource`, held until the upload
+  is whole) and `World::advance_texture_uploads` (called by `scene::pump_assets` after the binds) writes whole block rows
+  of the nearest waiting texture first, until `streaming.texture_upload_budget_kb` (4096) or `_ms` (1) is spent; a band is
+  sized from the time left and the rate measured so far, so the clock is not overrun by one big write. A fresh slot is
+  vacant (a material's fallback) until its texture is whole; a slot that already shows the coarse tier keeps it, and the
+  finer texture replaces it in one step when complete (`replace`). The device-wide shared entry is published on
+  completion, so another scene never samples half a texture. `resolve_assets_blocking` and `resident_slot` (the blocking
+  form) still finish everything inside the call.
+- **One asset's dependents are bound over several pumps.** An asset shared by thousands of entities was one indivisible bind
+  (49 to 160 ms for a mesh): `bind_dependents` checks the pump's deadline after each entity and keeps the rest in
+  `partial_binds`, which the next pump resumes first (`AssetPumpReport::pending` counts them; a new bind of the asset
+  supersedes them).
+- **Level hydration is incremental all the way.** `LevelHydration::step` spends its budget in units of one object (validate,
+  spawn, components), 128 objects (frame and content-space props) or 16 class roots; an object whose components take over
+  8 ms is named in a warning. Its prepare half also opens the project file index (components that resolve asset ids
+  through it find it ready).
+- Still on the frame thread: the renderer's first-use work (pipeline creation, owned by the renderer), the SceneDB mirror's
+  scatter writes for rows a step dirtied (10 to 21 ms at worst), and the per-instance copy of mesh geometry in a static
+  mesh component's bind (`GAMEPLAY.md`, issue 8).
 
 What to watch when running the app on a texture-heavy level: the level textures
 appear blurry within moments and sharpen nearest-first; frame time stays flat
@@ -64,9 +83,9 @@ was available here, and the workspace did not build `installed_plugins` while
 
 Not done: meshes have no coarse tier (their loaders produce one form;
 authored LODs are chosen per view by `LODComponent`, `.agents/LOD.md`, not by the
-loader); the final texture upload and the material rebind still happen in the
-mirror's derivation on the frame thread (one upload per bound texture, not
-batched by budget); a texture's GPU copy is replaced, not patched mip by mip.
+loader); a texture's GPU copy is replaced when its finer version is whole, not
+patched mip by mip (the coarse tier shows until then); the material rebind that follows a bind
+still runs on the frame thread.
 
 ## Still blocking or not yet done
 
