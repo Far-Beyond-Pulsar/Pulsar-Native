@@ -384,3 +384,51 @@ fn the_look_action_adds_no_delay_and_drops_no_slow_movement() {
         "one pixel of mouse movement is an input"
     );
 }
+
+/// The default character's graph calls methods of the character plugin
+/// (`add_control_yaw`, `add_control_pitch`, ...). The two plugins are separate
+/// libraries, so an older character library next to a newer gameplay library
+/// failed the pack step with "no native function ... is registered". The
+/// gameplay plugin pins the character contract's version, so the older library
+/// is refused by name when plugins resolve. Bump both when the graph needs a
+/// new method.
+#[test]
+fn gameplay_pins_the_character_contract_version_its_graph_needs() {
+    let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vendor");
+    let read = |name: &str| -> toml::Value {
+        toml::from_str(&std::fs::read_to_string(vendor.join(name).join("pulsar-plugin.toml")).unwrap())
+            .unwrap()
+    };
+    let provided = read("character")["provides"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"].as_str() == Some("pulsar.character.classes"))
+        .and_then(|c| c["version"].as_integer())
+        .unwrap();
+    let required = read("gameplay")["requires"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"].as_str() == Some("pulsar.character.classes"))
+        .and_then(|c| c.get("version").and_then(toml::Value::as_integer))
+        .expect("gameplay pins the character contract version");
+    assert_eq!(provided, required);
+
+    // Every character method the graph calls exists in the registry the pack
+    // step compiles against.
+    let graph = std::fs::read_to_string(
+        vendor.join("gameplay/assets/classes/PlayerCharacter.class/graph_save.json"),
+    )
+    .unwrap();
+    let natives = pulsar_script_vm::NativeRegistry::with_engine_natives();
+    let mut seen = 0;
+    for part in graph.split('"') {
+        if let Some(rest) = part.strip_prefix("comp_call::CharacterComponent::") {
+            let name = format!("CharacterComponent::{rest}");
+            assert!(natives.get(&name).is_some(), "`{name}` is not a registered native");
+            seen += 1;
+        }
+    }
+    assert!(seen >= 5, "the graph calls the character's methods ({seen})");
+}
