@@ -19,7 +19,9 @@ use winit::{
 };
 
 use engine_backend::scene::RuntimeLevel;
-use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
+use engine_backend::subsystems::render::{
+    DeviceOwner, PipelineBuildMode, SceneRenderer, SceneRendererOptions,
+};
 
 use crate::camera_selection::{camera_for_frame_turned, view_target_drives_camera};
 use crate::freecam::FreeCam;
@@ -154,6 +156,12 @@ impl GameWindow {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &surface_config);
+        tracing::info!(
+            present_mode = ?surface_config.present_mode,
+            offered = ?caps.present_modes,
+            frame_latency = surface_config.desired_maximum_frame_latency,
+            "Surface presentation"
+        );
 
         // The scene's renderer, built as the editor viewport's with the
         // project's settings. `pulsar_game` owns its device (unlike the
@@ -165,7 +173,12 @@ impl GameWindow {
             surface_config.width,
             surface_config.height,
             surface_format,
-            SceneRendererOptions::game(DeviceOwner::Renderer, editor_mode),
+            SceneRendererOptions {
+                // The loading phase draws frames while the pipeline builds: it
+                // must not present one frame of hundreds of milliseconds.
+                pipeline_build: PipelineBuildMode::Background,
+                ..SceneRendererOptions::game(DeviceOwner::Renderer, editor_mode)
+            },
         );
         // The game's device is the engine's: GPU work with no window of its own
         // (the render graph pin probe) uses it, not a second one.
