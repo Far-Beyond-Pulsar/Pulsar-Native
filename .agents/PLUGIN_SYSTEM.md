@@ -303,6 +303,8 @@ the render, scene and editor ones above, the kernel's seams for what used to be 
 
 | Seam | Owner | For |
 |---|---|---|
+| `ControlRotationRegistration` | `engine_backend::scene::game_hooks` | who owns a pawn's control rotation: the input action that turns it (`look_action`) and how far a value of that action turns the view and between which pitch limits (`turn` -> `ViewTurn`), from the same state the tick's own look path reads: the character plugin (`add_look`, `look_degrees_per_unit`, class contract 3). The frame's late look composes it with `LookSourceRegistration` (`game_hooks::pending_view_turn`) |
+| `LookSourceRegistration` | `engine_backend::scene::game_hooks` | what value a pawn's input action takes for pointer motion alone, when that is told ahead of the tick that evaluates it (linear modifiers, no trigger, no other device): the input plugin (`InputSystem::pointer_value`) |
 | `GameSessionRegistration` | `engine_backend::scene::game_hooks` | a plugin's part in a game session (`begin` before classes link, `end`) and in the local player's possession (`possess` returns the instance it attached; the driver detaches it): the input plugin's mapping |
 | `SceneRowsRegistration { derivation: None }` | `engine_backend::scene` | source rows another kind's join reads (physics' water hitboxes) |
 | `FileProvider` | `engine_fs` | the plugin provides files into every project at `plugins/<display name>/` (the engine's at `plugins/Pulsar/`; the plugin id still resolves as a legacy alias), from any source, and changes them at runtime through the `PluginFolder` capability it is given; nothing else writes there (`.agents/FILESYSTEM.md`, "Plugin folders") |

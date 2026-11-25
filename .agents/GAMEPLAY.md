@@ -213,11 +213,42 @@ remove both for the camera), and the display.
   8 ms frames): mean 3.3 ms before, 1.8 ms after (p50 3.3 to 1.3 ms); at 15 ms frames under GPU contention 3.3 to 2.7 ms.
   The p95 stays near 6 ms (a mispredicted frame). Input to present, same capture: 16.3 ms mean before (its first stamp
   at the handler), 14.4 ms after (its first stamp at the OS): `wait_for_frame` 4.9 to 2.5 ms.
-- **Not done: a late-latched look.** The character's view is whatever the tick wrote, so the mouse delta that arrives
-  between the last tick and the frame's read (up to a tick) is not in the picture. Applying it to the camera at render
-  time needs the look action's mapping (sensitivity, axis, inversion), which belongs to the input plugin, and
-  an interpolation of the character's pose between ticks; neither exists. `wait_for_tick` (3.3 to 4 ms mean) is
-  that wait.
+- **The late-latched look** (`late_look.rs`, `pointer.rs`, `camera_selection::turned_rig`). The view shows what the
+  last tick wrote plus the mouse motion no tick has consumed yet, applied when the frame reads the camera, right before
+  its uniforms. The frame never writes the world: it asks the plugins what the pending motion turns the view by and turns
+  the camera rig; the next tick drains the same motion and applies it through its own look path, so it is counted once.
+  - **Contract** (`engine_backend::scene::game_hooks`): `ControlRotationRegistration` (the character plugin: which
+    action turns the control rotation, `ViewTurn` = degrees of yaw and pitch for an action value and the pitch limits)
+    and `LookSourceRegistration` (the input plugin: the value an action takes for pointer motion alone). The kernel
+    names neither plugin. The handler calls `CharacterComponent::add_look(x, y)` (the shipped `IA_Look` Blueprint does);
+    the character owns `look_degrees_per_unit` and the limits, so the tick and the frame use one rule (`ViewTurn::pitched`).
+    A character is late-looked only after a graph drove it with `add_look` (`look_driven`): a project whose own class
+    maps the look another way keeps the tick's view. The input plugin tells a value ahead only when the mapping is linear
+    (scale, negate, swizzle on the entry and the action), no trigger or chord shapes it and no other device (a stick)
+    moves the action; otherwise the frame shows the tick's view. The rig is turned only when the camera follows the
+    control rotation (`use_pawn_control_rotation`); the body (`use_controller_rotation_yaw`, `orient_rotation_to_movement`)
+    is the tick's, as before.
+  - **Exactly once**: `PointerSampler` keeps monotonic totals; the tick takes the difference at its sample point and
+    brackets itself with a sequence number (`begin_tick` / `end_tick`, odd while it runs). What no finished tick has
+    applied is `total - applied`; the frame reads it with the world held and re-reads the world when the sequence changed
+    (`read_with_pending_motion`: waits at most 2 ms for a running tick, three attempts, then shows the tick's view). A motion
+    is never counted by both the frame and the world, and never by neither.
+  - **Tests**: the pending turn equals the tick's write in the same units (`character`: wrap, each pitch limit, inverted
+    pitch, a motion split across a tick; `camera_selection`: a turned pawn camera, with an arm, equals the camera the tick
+    writes), `InputSystem::pointer_value` equals the value the evaluation reports and is `None` for smoothing, a dead zone
+    or a pushed stick, and the sampler/tick protocol (`late_look::tests`).
+  - **Setting**: `Pulsar/project.json` `simulation.late_look` (default on). A packaged game reads no editor or project
+    settings files, only `Pulsar/project.json` (`pulsar_content::ProjectSettings`): `window.present_mode` lives there too.
+  - **Measured** (packaged game, 165 Hz display, same scenario each time): the mouse look reaches `present` in a mean of
+    6.1 ms (p95 9.0) from the OS, against 10.6 ms (p95 16.8) for the tick path of the same build and 13.7 ms (p95 18.7)
+    for the build before. `Latency::look_to_present` is its own root on the `Input latency` track. What remains of the 6.1:
+    about 2 ms until the frame reads the camera (the frame cadence), 3.8 ms `render_submit`, 0.4 ms extract and present; the
+    display's scan-out is not measured. Keys and the mouse buttons still go through the event loop (`os_to_handler` 3.7 ms
+    mean) and the tick (`wait_for_tick` 3.5 ms).
+  - **Not done**: interpolating the character's pose between ticks (the tick follows the display, so a frame sees a
+    new pose every frame; physics steps at 60 Hz and its pose changes every 2.75 frames at 165 Hz: interpolating it
+    renders it a step behind, which trades latency for smoothness and belongs to the physics plugin), and patching the camera
+    again after the frame is recorded (the 4 ms between the frame's read and its submit; that is a Helio camera late-update).
 
 ### Where a frame goes (measured with the profiler MCP tools)
 
@@ -289,8 +320,7 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
 3. **Fixed (mostly): a texture's GPU copy is staged and written under a per-frame budget** (`TextureStore::register_mips_staged`
    / `advance_uploads`, `streaming.texture_upload_budget_kb` 4096 and `_ms` 1, nearest first). `Texture::resident_slot`
    in the first 14 s: 569 calls, 1145 ms, max 27.5 ms before; 90 ms and max 14 ms after (mean 2.0 to 0.16 ms), and the
-   upload itself is `Assets::advance_texture_uploads`, mean 0.53 ms, max 2.7 ms. Still open: ranking is by distance to the
-   viewer only (no frustum or screen-size visibility), and a bind still waits for its cook when the loader has not
+   upload itself is `Assets::advance_texture_uploads`, mean 0.53 ms, max 2.7 ms. Ranking: a load's score is dropped when it completes, so every staged texture was unranked and written in the order it was staged, whatever "nearest first" said; `advance_texture_uploads` now scores the staged ones with the host's priority function each call (rescored every few pumps), and the function takes the view cone (`World::set_asset_viewer`, `scene::asset_priority`: distance, stretched up to 4x by how far outside the cone that holds the frustum a thing lies). Bounds are not known to the ranking, so screen size is the distance's. Not measured on a screen: the capture does not turn far enough to show the order. Still open: a bind still waits for its cook when the loader has not
    pinned it (never seen in the captures: `Texture::cooked_for` had no calls).
 4. **Fixed (mostly): `level_hydration::step` takes up to 4.9 ms against a 4 ms budget** (27 to 40 ms before). Validation and the
    property pass are one object / 128 objects a unit now, and the one object that took 29 ms was
@@ -300,7 +330,7 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
    object's `attach_records`; a class whose hydrate does real work must move it to its prepare half. The legacy
    world-space transform conversion (levels older than parent-relative transforms) is still one unit.
 5. **Fixed: input is read at the OS and consumed at the tick**, the frame reads the world after the display wait and
-   the tick is placed just before it ("Input is sampled at the OS" above). Open: a late-latched look rotation.
+   the tick is placed just before it ("Input is sampled at the OS" above), and the frame turns the view by the mouse motion no tick has applied yet (the late look, same section). Open: keys and mouse buttons still wait for the event loop (`os_to_handler` 3.7 ms mean) and the tick.
 8. **A static mesh component copies its geometry** (`bind_mesh_asset`: `component.vertices = mesh.upload.geometry.vertices.clone()`):
    every instance of a mesh holds its own CPU copy of the vertices and indices (the GPU copy is interned), and binding
    one mesh shared by thousands of entities costs a deep copy each: 49 ms and up to 160 ms in a single
@@ -308,11 +338,12 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
    (`partial_binds`), but each bind is still a copy and every instance is memory. The proper fix is geometry held once
    (`Arc`) and the `#[gpu(content_id)]` columns reading it: a `SceneStore` derive change plus the meshes plugin
    (not done: it spans SceneDB's derive and the shadow and cluster code another agent is changing).
+10. **Fixed: the first frame's input lookup read the whole project inside the tick** (`Input::scan_project`, 32 to 38 ms with the world write-locked; it held up `Game::step_scene` for 14 to 19 ms and was the "TickLoop::tick 41 to 54 ms once at start"). The session start's scan is taken by the first frame (`library::prescan`), and any other scan runs on a registered thread (`Assets::scan_in_background`; the mapping attaches the frame after it is in). `Input::Tick` max 38 ms to 0.3 ms, `Game::step_scene` max 14 to 19 ms to 2.4 to 3.8 ms. What is left in `TickLoop::tick` max (100 to 180 ms in some runs) is `TickLoop::before_systems` waiting for the scene's write lock while the frame pumps assets (`Assets::apply_bindings mesh` 20 ms to 116 ms, issue 8) or binds one material (`Texture::stage_cooked` 118 ms once at 2.7 s: a single `create_texture`, probably a driver allocation stall; creating textures on the loader threads would take it off the frame thread).
 9. **First seconds of a launch still have mirror hitches**: `helio_flush_gpu_mirror` max 10 to 21 ms and `Game::step_scene`
    max 33 to 41 ms (the scatter write of rows a hydration step or a bind just dirtied), and `TickLoop::tick` 58 to 65 ms
    once, when the tick thread starts (physics and script start-up). `create_window_renderer` 1.0 s and `Helio: apply
    pipeline` 0.8 s are the renderer's own (another agent).
-6. `Game::window_event` takes 15 to 19 ms when the cursor is captured (`capture_cursor`): a hitch on the first click.
+6. `Game::window_event` took 15 to 19 ms in earlier captures. In this round the first click costs 0.1 ms (`Game::capture_cursor` has its own scope now) and the slow events are the window's three `Resized` events at start-up (7 to 12 ms each: surface reconfigure and render-target rebuild); a size equal to the current one is ignored now. The hitch of the first click was not reproduced.
 7. A recording of the busy game keeps only the last 1,000,000 events of a remote process (about 9 s of the game before the
    hot `World::get` scope was removed; the full 20 s fits now).
 

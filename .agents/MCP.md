@@ -150,7 +150,8 @@ session_metadata(key TEXT PRIMARY KEY, value TEXT)   -- timestamp, version
 - **Input latency**: the game publishes each followed input as scopes on the `Input latency` track (root
   `Latency::input_to_present`, children `Latency::<stage>`; stages and stamps in `pulsar_game::latency`). The chain's first
   stamp is the OS (the raw-input thread), and the time raw input waited for the event loop is its own root,
-  `Latency::os_to_handler`.
+  `Latency::os_to_handler`. The mouse look the frame applies ahead of the tick (the late look) is its own root,
+  `Latency::look_to_present`: the OS to the `present` of the first frame that showed the motion (no tick stages).
 - Names containing wait, lock, fence, present, acquire, sleep, idle, park, block, recv or vsync are
   counted as waits by `profile_threads`.
 
