@@ -576,7 +576,24 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
     The Vulkan intermittent render-target-write loss that makes this user's editor run on D3D12 applies to the game too, which runs on
     Vulkan. A window restored from minimized, driven by `ShowWindow` from another process, stopped consuming the viewport's frames after
     a few frames in the original editor as in this one (frames 0 GPU 0 percent in both); not reproduced by hand, left open.
-
+    *Viewport frame policy, measured* (the Earth project, level tab open as the project restores it; GPU utilisation is nvidia-smi's over
+    10 s, frames are the runtime's published frames a second, the window state is the engine's own report): original editor: focused
+    146 fps 54 percent GPU, visible but unfocused 146 fps 54.5 percent, hidden tab 0.6 percent, minimized 0.7 percent (the OS held the
+    frames). This editor: focused and idle 15 fps (`Ambient`: only the foliage wind moves), 32 percent busy (the profiler: 21.4 ms of GPU
+    a frame at 15 fps against 3.7 ms at 146 fps, the GPU clocks down, so busy time falls by 40 percent where the frame rate falls by
+    90), visible but unfocused 9 fps 24 percent, hidden tab 0 frames 0.3 percent, minimized 0 frames 1.1 percent, a camera move or an edit
+    back at the display's rate (60 to 160 fps while it lasts, then ambient again 0.4 s later). `ambient_fps = 0` keeps the old free-run.
+    Found on the way: an overlay that was hidden withdrew its view payloads every UI frame and each withdrawal counted as a change, so
+    the viewport never went ambient (`SceneRenderer::set_view_payload` now says whether anything changed).
+    *The game* (Build & Run of the Bistro project, Vulkan, the build above): the Deferred graph's 68 nodes took 6.5 s on a cold driver
+    cache and 3.6 s with the cache file of the first run; the 1.5 s of the earlier measurement was not reproduced (that run held the
+    cache file and a graph that built each node once). While measuring it, `driver_cache_for_device` keyed the cache by the address of
+    the `&Device` it was asked with, so every clone of the handle (each compile worker's, the deferred jobs') loaded the 17 MB cache file
+    again: it is keyed by the device's identity now (fixed after this game run; the game was not measured again). The game starts, draws
+    and plays on this build.
+    *Not done*: the parallel `render_acceptance` run on a shared GPU (18 failing before) was not run against the base build here; the
+    Vulkan build of `helio` and the plugin passes' own GPU tests were not re-run beyond `helio-core`'s deferred tests (6 pass on this GPU)
+    and `engine_backend`'s `pacing` tests (8 pass); the other `create_*_pipeline` sites (about 120) still compile in line.
 
 ### Round 4: measurement and the profile it began from
 
