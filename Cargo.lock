@@ -20330,12 +20330,14 @@ name = "voxel_plugin"
 version = "0.1.1"
 dependencies = [
  "bytemuck",
+ "default_pipelines_plugin",
  "engine_backend",
  "engine_state",
  "fog_component",
  "fog_plugin",
  "foliage_component",
  "foliage_plugin",
+ "gi_plugin",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
