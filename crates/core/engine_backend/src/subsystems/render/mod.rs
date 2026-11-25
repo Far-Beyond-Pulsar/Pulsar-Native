@@ -10,7 +10,8 @@ pub use helio_renderer::{
     DeviceOwner, EditorCameraState, EditorLines, EditorLinesRegistration, FlyCamera, FrameCrop,
     FrameProjection, FrameView, GpuProfilerAvailability, GpuProfilerData, HelioEditorMailbox,
     HelioRenderer, PendingPointerEvent, PreparedFrame, RenderFeatureRegistration, RenderMetrics,
-    RenderSpikeLogConfig, SceneRenderer, SceneRendererOptions, StaticDragWarning, ToolRay,
+    PipelineBuildMode, RenderSpikeLogConfig, SceneRenderer, SceneRendererOptions, StaticDragWarning,
+    ToolRay,
     ViewKind, ViewOverscanRegistration, ViewPayload, ViewportDebugLegend, ViewportDebugView,
     CAMERA_PIVOT_DISTANCE,
 };

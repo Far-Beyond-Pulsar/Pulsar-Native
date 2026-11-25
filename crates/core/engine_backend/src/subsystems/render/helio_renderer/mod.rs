@@ -35,5 +35,5 @@ pub use renderer::{
 };
 pub use scene_renderer::{
     DeviceOwner, FrameCrop, FrameProjection, FrameView, HostPartSetup, PreparedFrame,
-    SceneRenderer, SceneRendererOptions,
+    PipelineBuildMode, SceneRenderer, SceneRendererOptions,
 };

@@ -283,8 +283,8 @@ windowed frame pumped twice. Now: the loader cooks for the use and pins the resu
 (`LoadedTexture::pinned_for`); loads in flight count what has loaded and not bound; a pump binds as many assets
 per walk as the time budget holds at the cost seen so far; a render loop is the only pumper; loader threads are half
 the cores. The GPU upload is staged and budgeted now (`Texture::upload_cooked` was 0.8 ms mean, 4 to 27 ms max; see issue 3 of the
-log below). Remaining on the frame thread while streaming: the renderer's own first-use work (`Helio: apply pipeline` 360 ms once, `create_window_renderer` 0.9 s before
-the first frame). Derived cache: `install_derived_cache` (`helio_bridge`) points it at `<project>/.pulsar/cache/derived`
+log below). The graph build is a worker's now (issue 2 of the log below); what remains on the frame thread while streaming is
+`create_window_renderer` before the first frame. Derived cache: `install_derived_cache` (`helio_bridge`) points it at `<project>/.pulsar/cache/derived`
 with the `streaming.derived_cache_mb` budget (default 32768); a packaged game's project path is its extracted
 asset cache (`%TEMP%/pulsar-asset-cache/<hash>`), which persists between launches.
 
@@ -304,19 +304,36 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
    (`retire.wgsl`). The sun's cascades were redrawn, both layers, every frame of an idle scene (matrix hash changed with
    the TAA jitter, an unquantised radius and a free eye along the light): they fit the unjittered frustum with a stepped
    radius and a snapped eye (`shadow_matrices.wgsl`), and are redrawn in about a third of idle frames (camera noise
-   crossing a texel). **Still open:** a frame that does service faces pays about 3 ms of finish (two passes binding the
-   4096-view table) and so do GBuffer, TransparentPass and MeshHitSurfaces (0.15 to 0.6 ms each). The structural fix is
-   one of: dedupe repeated views in wgpu-core's `TextureViewBindGroupState::insert_single` (the Pulsar fork), size the
-   table to the live textures (pipelines and layouts then depend on it), or give opaque and cut-out casters separate
-   lists so opaque shadow passes bind no textures. Measured with `HELIO_FINISH_BREAKDOWN=1` and a probe that encodes N
-   passes binding N-view arrays.
+   crossing a texel). **Fixed at the table, for every pass that binds it:** a device that binds arrays partially
+   (`PARTIALLY_BOUND_BINDING_ARRAY`, Vulkan and D3D12, requested with the texture arrays) binds only the table's live
+   prefix: `MaterialTextureTable::set_live_slots` is fed the texture store's slot high-water mark
+   (`TextureStore::slot_count`, which only grows), `bindings()` hands out that many views, and
+   `MaterialBindingConfig::append_bind_group_entries` takes a prefix of a binding array (the layout and the shaders keep
+   the capacity). `RenderGraph: encoder.finish (segment)` in the 20 s walk/turn/jump script: 14.8 s over 13741 calls
+   (1.08 ms each) to 6.7 s over 15356 calls (0.44 ms) in the first A/B capture, 8.2 s / 12861 (0.63 ms) in the next on a
+   busier machine; `wait for encoder-finish threads` 1.74 to 0.80 ms (1.03 in the busier one). A device without the feature
+   binds the whole table as before. **Open hazard:** a graph material's generated WGSL indexes
+   `scene_textures[material.tex_*]` without a guard, and an unassigned slot is `u32::MAX`, which the shader's bounds
+   handling clamps to the last element of the array; that element used to be a bound white fallback and is now unbound.
+   The bistro level showed nothing wrong, but a graph material sampling before its texture resolves reads an unbound
+   descriptor. The proper fix is a guaranteed white element inside the prefix (slot 0 of the texture store reserved) and a
+   graph lowering that maps `MATERIAL_NO_TEXTURE` to it (the WebGPU lowering already does: `default: return fallback`).
 2. **First use of a pass compiled its pipeline on the frame thread.** Material variants of the G-buffer, forward and
    transparent drawers (63 to 140 ms hitches) are fixed: they compile on the task system
    (`helio_core::compile::Variants`) and draw with the default material of the same raster state until ready.
-   **Still open:** the whole graph build (`Helio: apply pipeline`, 360 ms when the level assigns its pipeline, and
-   `create_window_renderer`, 0.9 s before the first frame) runs on the frame thread: it needs `IntoGraph: Send`
-   (six implementors), an owned build context, a `PipelineStatus::Building` for the status screen, and the host
-   (`scene_renderer::set_pipeline_state`) to follow its completion instead of reading the status at once.
+   **Fixed: the graph build is off the frame thread** (`helio::Renderer::set_pipeline`, `pipeline_control.rs`):
+   `IntoGraph: Send`, the build reads an owned `BuildInputs`, runs on a `helio_tasks::submit` worker under the same
+   panic and GPU-validation guard (`guard_build`; an error scope belongs to the thread that pushed it), and the frame
+   boundary (`advance_pipeline`, never waits) installs the graph when it has ended. While it builds, a renderer that
+   draws no pipeline shows the status screen "Building the render pipeline" (`PipelineStatus::Building`), and one that
+   renders a pipeline keeps drawing it (`pipeline_building()` says one is on its way). `apply_pending_pipeline()` is the
+   same path plus a wait, for a builder, a test or a tool. A resize during the build is applied to the new graph in place;
+   a configuration rebuild waits for the build. The host choice is `SceneRendererOptions::pipeline_build`: the windowed
+   game uses `PipelineBuildMode::Background` and follows the outcome in `SceneRenderer::follow_pipeline` (logged once,
+   when the renderer is done with it); the editor viewport, tools and tests keep `Blocking` (they read the first frame).
+   `Helio: apply pipeline` in the first 14 s of the game: 827 ms over 2 calls (max 820 ms) before, 16 ms (max 8.5 ms) after.
+   `create_window_renderer` still builds the renderer's device-side state on the frame thread; what it spent on the
+   pipeline is gone from it (see the measured table in the round report).
 3. **Fixed (mostly): a texture's GPU copy is staged and written under a per-frame budget** (`TextureStore::register_mips_staged`
    / `advance_uploads`, `streaming.texture_upload_budget_kb` 4096 and `_ms` 1, nearest first). `Texture::resident_slot`
    in the first 14 s: 569 calls, 1145 ms, max 27.5 ms before; 90 ms and max 14 ms after (mean 2.0 to 0.16 ms), and the
@@ -331,7 +348,13 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
    world-space transform conversion (levels older than parent-relative transforms) is still one unit.
 5. **Fixed: input is read at the OS and consumed at the tick**, the frame reads the world after the display wait and
    the tick is placed just before it ("Input is sampled at the OS" above), and the frame turns the view by the mouse motion no tick has applied yet (the late look, same section). Open: keys and mouse buttons still wait for the event loop (`os_to_handler` 3.7 ms mean) and the tick.
-8. **A static mesh component copies its geometry** (`bind_mesh_asset`: `component.vertices = mesh.upload.geometry.vertices.clone()`):
+8. **Fixed: a static mesh's geometry is held once per asset.** `LoadedMesh` holds `vertices`/`indices` as `Arc<[T]>` and
+   `StaticMeshComponent` fields of the same type: `bind_mesh_asset` clones two `Arc`s (SceneDB's `SceneStore` derive takes
+   `Arc<[T]>` as the variable-length field it takes `Vec<T>` for, `as_vec_elem_type`; the interned pool reads the elements
+   only when a content id first arrives; `engine_class_derive`'s own field check agrees). `Assets::apply_bindings mesh` in the
+   first 14 s: 404 ms total, max 57 ms before; 121 ms, max 5.8 ms after. The virtual-geometry fallback (`MeshGeometry`,
+   `FullGeometry`) shares the same way. What the entry said before the fix:
+   **A static mesh component copies its geometry** (`bind_mesh_asset`: `component.vertices = mesh.upload.geometry.vertices.clone()`):
    every instance of a mesh holds its own CPU copy of the vertices and indices (the GPU copy is interned), and binding
    one mesh shared by thousands of entities costs a deep copy each: 49 ms and up to 160 ms in a single
    `Assets::apply_bindings mesh`. The pump now binds one asset's dependents over several frames

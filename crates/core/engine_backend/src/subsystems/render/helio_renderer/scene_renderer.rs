@@ -61,6 +61,24 @@ pub struct SceneRendererOptions {
     /// The editor's `construct` pump, run each frame before the change
     /// window closes (`crate::scene::construct_pump`). `None` for a game.
     pub construct_pump: Option<crate::scene::EditorConstructPump>,
+    /// Where the render pipeline builds: see [`PipelineBuildMode`].
+    pub pipeline_build: PipelineBuildMode,
+}
+
+/// Where a renderer builds its render pipeline when it is assigned or
+/// swapped (the build is hundreds of milliseconds of pass construction).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PipelineBuildMode {
+    /// At the call that assigns it: the next frame draws the pipeline. For a
+    /// host with no loading state to show (an editor viewport, tools, tests that
+    /// read back the first frame).
+    #[default]
+    Blocking,
+    /// Off the frame thread: frames keep drawing meanwhile, the status screen
+    /// saying the pipeline is building, and the renderer swaps it in at the
+    /// first frame boundary after it is done. For a game, whose loading phase
+    /// must not present a long frame.
+    Background,
 }
 
 impl SceneRendererOptions {
@@ -73,6 +91,7 @@ impl SceneRendererOptions {
             pipeline: super::pipelines::level_pipeline(),
             host_part_setups: Vec::new(),
             construct_pump: None,
+            pipeline_build: PipelineBuildMode::Blocking,
         }
     }
 }
@@ -146,6 +165,9 @@ pub struct SceneRenderer {
     host_parts: Vec<Box<dyn RenderHostPart>>,
     /// What the graph was built from: a registered pipeline, or why none runs.
     pipeline: super::pipelines::PipelineState,
+    pipeline_build: PipelineBuildMode,
+    /// Whether the outcome of [`Self::pipeline`] was reported ([`Self::follow_pipeline`]).
+    pipeline_reported: bool,
     /// What the host publishes for this view's passes besides the scene's
     /// payloads ([`Self::set_view_payload`]).
     view_payloads: Vec<(&'static str, super::ViewPayload)>,
@@ -268,6 +290,8 @@ impl SceneRenderer {
             ground: GroundQueries::default(),
             host_parts,
             pipeline: super::pipelines::PipelineState::Unassigned,
+            pipeline_reported: true,
+            pipeline_build: options.pipeline_build,
             view_payloads: Vec::new(),
             construct_pump: options.construct_pump.clone(),
             gpu_profile: super::core::GpuProfilerData::default(),
@@ -279,10 +303,11 @@ impl SceneRenderer {
         this
     }
 
-    /// Runs the pipeline `state` names, at once (the caller is at a frame
-    /// boundary): the old graph and its GPU resources are dropped and the new
-    /// one built, or Helio's status screen shows why none runs. Nothing is
-    /// substituted for a pipeline that is missing or does not build.
+    /// Runs the pipeline `state` names: the renderer builds it off the frame
+    /// thread (the frame keeps drawing, the status screen saying it is
+    /// loading) and swaps it in at the first frame boundary after it is done,
+    /// or Helio's status screen shows why none runs. Nothing is substituted for
+    /// a pipeline that is missing or does not build.
     pub fn set_pipeline_state(&mut self, state: super::pipelines::PipelineState) {
         use super::pipelines;
         match &state {
@@ -306,19 +331,38 @@ impl SceneRenderer {
                 }
             }
         }
-        self.renderer.apply_pending_pipeline();
-        match (state.reason(), self.renderer.pipeline_status()) {
+        // The renderer builds the pipeline off the frame thread at its next frame
+        // boundary; [`Self::follow_pipeline`] reports how it went.
+        self.pipeline = state;
+        self.pipeline_reported = false;
+        if self.pipeline_build == PipelineBuildMode::Blocking {
+            self.renderer.apply_pending_pipeline();
+            self.follow_pipeline();
+        }
+    }
+
+    /// Reports how the pipeline change [`Self::set_pipeline_state`] asked for
+    /// went, once, when the renderer is done with it: the state could not run
+    /// (said as the reason), the pipeline did not build, or it did (its routing
+    /// findings, from the installed graph). Called each frame, it does nothing
+    /// while the pipeline builds.
+    fn follow_pipeline(&mut self) {
+        use super::pipelines;
+        if self.pipeline_reported || self.renderer.pipeline_change_pending() {
+            return;
+        }
+        self.pipeline_reported = true;
+        match (self.pipeline.reason(), self.renderer.pipeline_status()) {
             (Some(reason), _) => tracing::error!("{reason}; the renderer runs no pipeline"),
             (None, helio::PipelineStatus::Invalid { id, reason, .. }) => {
                 tracing::error!("Render pipeline `{id}` does not build: {reason}")
             }
             (None, _) => {
-                if let Some(id) = state.id() {
+                if let Some(id) = self.pipeline.id() {
                     pipelines::log_routing(id, &self.renderer.routing_issues());
                 }
             }
         }
-        self.pipeline = state;
     }
 
     /// Publish `payload` for this view's passes under a feature's payload
@@ -429,6 +473,7 @@ impl SceneRenderer {
     /// content publishes. `size` is the frame's in pixels.
     pub fn prepare_frame(&mut self, view: &FrameView, size: [u32; 2]) -> PreparedFrame {
         profiling::profile_scope!("helio_frame_prepare");
+        self.follow_pipeline();
         // The plugins' per-renderer state (the virtual-geometry assets the
         // scene asks for, built and streamed).
         for part in &mut self.host_parts {
