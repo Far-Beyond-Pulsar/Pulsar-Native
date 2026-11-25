@@ -46,6 +46,11 @@ pub struct LoadedTexture {
     /// other; and the same image can be a colour in one material and data in
     /// another, which are different bytes on the GPU.
     cooked: [[std::sync::OnceLock<pulsar_scenedb::Residency<CookedTexture>>; 3]; 2],
+    /// The cooked form the loader made, held until the frame thread has
+    /// uploaded it ([`Self::take_pinned`]): the residency cache is a budgeted
+    /// LRU and a bind that waits behind many others would find it evicted and
+    /// read it back from disk on the frame thread.
+    pinned: std::sync::Mutex<Option<(CookFormat, TextureUse, Arc<CookedTexture>)>>,
 }
 
 impl LoadedTexture {
@@ -89,6 +94,33 @@ impl LoadedTexture {
                 move || cook_from_source(&path, cap, format, usage),
             )
         })
+    }
+
+    /// Hold `cooked` (made on a loader thread) for the upload.
+    fn pin(&self, format: CookFormat, usage: TextureUse, cooked: Arc<CookedTexture>) {
+        if let Ok(mut pinned) = self.pinned.lock() {
+            *pinned = Some((self.effective_format(format), usage, cooked));
+        }
+    }
+
+    /// The pinned cooked form when it is the one asked for (`format` as
+    /// [`Self::cooked_for`] takes it), else `None`. Leaves it pinned: see
+    /// [`Self::unpin`].
+    pub fn pinned_for(&self, format: CookFormat, usage: TextureUse) -> Option<Arc<CookedTexture>> {
+        let format = self.effective_format(format);
+        let pinned = self.pinned.lock().ok()?;
+        pinned
+            .as_ref()
+            .filter(|(f, u, _)| *f == format && *u == usage)
+            .map(|(_, _, cooked)| Arc::clone(cooked))
+    }
+
+    /// Let go of the pinned cooked form (the GPU holds the texture now); the
+    /// residency cache and the derived-data cache still serve a rebuild.
+    pub fn unpin(&self) {
+        if let Ok(mut pinned) = self.pinned.lock() {
+            *pinned = None;
+        }
     }
 
     /// The cooked colour texture in `format` (or the closest this size
@@ -405,7 +437,7 @@ fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
         let (width, height) = image_dimensions(path)?;
         let (full_w, full_h) = capped_dimensions(width, height, full_cap);
         if full_w.max(full_h) > coarse {
-            let image = decode_image_file_at(path, coarse)?;
+            let image = decode_image_file_at(path, coarse, TextureUse::Color)?;
             return Ok(TierLoad {
                 payload: Arc::new(image),
                 last: false,
@@ -413,7 +445,7 @@ fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
         }
     }
     Ok(TierLoad {
-        payload: Arc::new(decode_image_file_at(path, full_cap)?),
+        payload: Arc::new(decode_image_file_at(path, full_cap, TextureUse::Color)?),
         last: true,
     })
 }
@@ -423,7 +455,18 @@ fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
 /// decoded fails the load here, and the derived-data cache is warm before any
 /// scene asks for the texture.
 pub fn decode_image_file(path: &std::path::Path) -> Result<LoadedTexture, String> {
-    decode_image_file_at(path, max_texture_size())
+    decode_image_file_at(path, max_texture_size(), TextureUse::Color)
+}
+
+/// [`decode_image_file`] cooked for `usage`: a roughness or normal map is
+/// cooked as data, not as colour, and is cooked that way here, on the loader
+/// thread, so the draw that binds it finds the cooked form ready instead of
+/// cooking it on the frame thread.
+pub fn decode_image_file_for(
+    path: &std::path::Path,
+    usage: TextureUse,
+) -> Result<LoadedTexture, String> {
+    decode_image_file_at(path, max_texture_size(), usage)
 }
 
 /// The source size of the image at `path`, read from its header.
@@ -442,7 +485,11 @@ fn image_dimensions(path: &std::path::Path) -> Result<(u32, u32), String> {
 }
 
 /// [`decode_image_file`] with the larger side capped at `cap` (0 = no cap).
-fn decode_image_file_at(path: &std::path::Path, cap: u32) -> Result<LoadedTexture, String> {
+fn decode_image_file_at(
+    path: &std::path::Path,
+    cap: u32,
+    usage: TextureUse,
+) -> Result<LoadedTexture, String> {
     let (source_width, source_height) = image_dimensions(path)?;
     let (width, height) = capped_dimensions(source_width, source_height, cap);
     let texture = LoadedTexture {
@@ -451,8 +498,10 @@ fn decode_image_file_at(path: &std::path::Path, cap: u32) -> Result<LoadedTextur
         source: path.to_path_buf(),
         cap,
         cooked: Default::default(),
+        pinned: Default::default(),
     };
-    texture.cooked(preferred_cook_format())?;
+    let cooked = texture.cooked_for(preferred_cook_format(), usage)?;
+    texture.pin(preferred_cook_format(), usage, cooked);
     Ok(texture)
 }
 
@@ -465,6 +514,7 @@ fn cook_from_source(
     format: CookFormat,
     usage: TextureUse,
 ) -> Result<CookedTexture, String> {
+    profiling::profile_scope!("Texture::cook_from_source");
     let settings = format!("cap={cap};format={};use={}", format.label(), usage.label());
     let request = pulsar_scenedb::DerivedRequest {
         kind: TEXTURE_ASSET_KIND,
@@ -473,7 +523,11 @@ fn cook_from_source(
         version: COOK_VERSION,
     };
     let cook_now = || -> Result<CookedTexture, String> {
-        let (width, height, rgba) = decode_rgba(path, cap)?;
+        let (width, height, rgba) = {
+            profiling::profile_scope!("Texture::decode");
+            decode_rgba(path, cap)?
+        };
+        profiling::profile_scope!("Texture::cook (mips and compression)");
         cook_as(&rgba, width, height, format, usage)
     };
     let bytes =
@@ -663,6 +717,7 @@ pub fn resident_slot(
     usage: TextureUse,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
 ) -> Result<u32, String> {
+    profiling::profile_scope!("Texture::resident_slot");
     let texture_store = mirror
         .texture_store()
         .ok_or_else(|| "SceneDB has no texture store".to_string())?;
@@ -675,6 +730,7 @@ pub fn resident_slot(
         resident.retain(|_, entry| entry.owner.strong_count() != 0);
         if let Some(entry) = resident.get(&key) {
             if entry.version == version && entry.bias == bias {
+                image.unpin();
                 return Ok(entry.slot);
             }
         }
@@ -688,10 +744,16 @@ pub fn resident_slot(
     let shared = shared_texture(device_key, version, bias, &texture_store);
     let cooked = match shared {
         Some(_) => None,
-        None => Some(image.cooked_for(
-            CookFormat::best_for(device.features(), image.width, image.height),
-            usage,
-        )?),
+        None => {
+            // A texture whose cook is not resident or in the derived cache is
+            // cooked here, on the caller's thread: this scope is that cost.
+            profiling::profile_scope!("Texture::cooked_for (cook, read or join)");
+            let format = CookFormat::best_for(device.features(), image.width, image.height);
+            match image.pinned_for(format, usage) {
+                Some(cooked) => Some(cooked),
+                None => Some(image.cooked_for(format, usage)?),
+            }
+        }
     };
 
     let mut resident = resident()
@@ -699,6 +761,7 @@ pub fn resident_slot(
         .map_err(|_| "texture residency lock poisoned".to_string())?;
     if let Some(entry) = resident.get(&key) {
         if entry.version == version && entry.bias == bias {
+            image.unpin();
             return Ok(entry.slot);
         }
     }
@@ -759,6 +822,7 @@ pub fn resident_slot(
         let native_total = shared.values().map(|entry| entry.native_bytes).sum();
         crate::texture_detail::rebalance(native_total);
     }
+    image.unpin();
     Ok(slot)
 }
 
@@ -773,6 +837,7 @@ pub fn prefetch_missing<'a>(
     version: u64,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
 ) {
+    profiling::profile_scope!("Texture::prefetch_missing");
     let Some(texture_store) = mirror.texture_store() else {
         return;
     };
@@ -854,6 +919,26 @@ mod residency_tests {
         let only = only.payload.downcast::<LoadedTexture>().unwrap();
         assert_eq!((only.width, only.height), (64, 64));
     }
+    /// A loader thread cooks the texture for the use that will bind it and
+    /// pins the result, so the frame thread that uploads it neither cooks nor
+    /// reads it back from disk; unpinning lets it go.
+    #[test]
+    fn a_loaded_texture_is_pinned_for_its_use_until_it_is_uploaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_png(dir.path(), "normal.png", 64, 64);
+        let image = decode_image_file_for(&path, TextureUse::Normal).unwrap();
+        let format = preferred_cook_format();
+        assert!(image.pinned_for(format, TextureUse::Normal).is_some());
+        assert!(
+            image.pinned_for(format, TextureUse::Color).is_none(),
+            "another use is a different cook"
+        );
+        image.unpin();
+        assert!(image.pinned_for(format, TextureUse::Normal).is_none());
+        // Unpinned, the form is still served (the residency cache or a rebuild).
+        assert!(image.cooked_for(format, TextureUse::Normal).is_ok());
+    }
+
     #[test]
     fn dimensions_fit_the_cap_and_keep_their_aspect() {
         assert_eq!(capped_dimensions(4096, 4096, 2048), (2048, 2048));
@@ -1169,6 +1254,7 @@ fn upload_cooked(
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
     cooked: &crate::cooked_texture::CookedTexture,
 ) -> Result<u32, String> {
+    profiling::profile_scope!("Texture::upload_cooked");
     let device = mirror.store().device_arc();
     let descriptor = wgpu::TextureDescriptor {
         label: Some("Scene Texture"),

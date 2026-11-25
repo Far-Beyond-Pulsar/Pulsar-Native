@@ -17,6 +17,8 @@ default = ["gpu"]
 gpu = []
 
 [dependencies]
+# CPU scopes of the texture path (residency, cooking, upload).
+profiling = { workspace = true }
 # The plugin gate (registrations name their origin; `pulsar_plugins::registered`).
 pulsar_plugins = { workspace = true }
 engine_class_derive = { workspace = true }
