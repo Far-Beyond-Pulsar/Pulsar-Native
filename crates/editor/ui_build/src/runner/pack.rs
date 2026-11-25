@@ -52,11 +52,101 @@ pub fn run(
         }
         Err(_) if cancelled() => Err(StepError::Cancelled),
         Err(error) => {
+            let error = with_library_hint(&error, &plugin_manager::load_report());
             tracing::error!(target: "pack", "{error}");
             Err(StepError::Failed(
                 t!("Build.Error.PackFailed", detail = error).to_string(),
             ))
         }
+    }
+}
+
+/// Whether a pack failure is the signature of plugin libraries that are not the same build: a
+/// class compiled against an event or a native function that no loaded library declared.
+fn is_missing_registration(error: &str) -> bool {
+    error.contains("is declared by the module or registered with the engine")
+        || error.contains("no native function")
+        || error.contains("is gone")
+        || error.contains("is not registered")
+}
+
+/// `error` with, when it looks like a missing registration, what the editor knows about the
+/// plugin libraries: where they were loaded from, which did not load and why, and how old
+/// each is, so the cause (a library older than the class that calls it, or one that never
+/// loaded) is named instead of left to be guessed.
+fn with_library_hint(error: &str, report: &plugin_manager::LoadReport) -> String {
+    if !is_missing_registration(error) {
+        return error.to_owned();
+    }
+    use plugin_manager::LibraryOutcome;
+    let mut hint = String::from(
+        "\n\nLikely cause: a plugin library the editor loaded does not register what this project's class uses. \
+         A class and the library that registers its events or functions are built separately, so a library \
+         older than the class (or one that failed to load) leaves the lookup empty. Rebuild every plugin \
+         with `cargo run -p plugin_builder -- --release`, then restart the editor.",
+    );
+    match &report.directory {
+        Some(directory) => hint.push_str(&format!("\nPlugin libraries were loaded from {}.", directory.display())),
+        None => hint.push_str("\nNo plugin library directory was read."),
+    }
+    let mut failed = Vec::new();
+    let mut newest: Option<std::time::SystemTime> = None;
+    for library in &report.libraries {
+        if let Ok(modified) = std::fs::metadata(&library.path).and_then(|m| m.modified()) {
+            newest = Some(newest.map_or(modified, |n| n.max(modified)));
+        }
+        if let LibraryOutcome::Failed { stage, reason } = &library.outcome {
+            failed.push(format!("  {} ({stage}): {reason}", library.file));
+        }
+    }
+    if !failed.is_empty() {
+        hint.push_str(&format!("\nLibraries that did not load ({}):\n{}", failed.len(), failed.join("\n")));
+    }
+    // A library much older than the newest is the likely stale one.
+    if let Some(newest) = newest {
+        let stale: Vec<String> = report
+            .libraries
+            .iter()
+            .filter_map(|l| {
+                let modified = std::fs::metadata(&l.path).and_then(|m| m.modified()).ok()?;
+                let age = newest.duration_since(modified).ok()?;
+                (age > std::time::Duration::from_secs(30 * 60)).then(|| {
+                    format!("  {} is {} h older than the newest library", l.file, age.as_secs() / 3600)
+                })
+            })
+            .collect();
+        if !stale.is_empty() {
+            hint.push_str(&format!("\nLibraries from an earlier build:\n{}", stale.join("\n")));
+        }
+    }
+    format!("{error}{hint}")
+}
+
+#[cfg(test)]
+mod hint_tests {
+    use super::*;
+    use plugin_manager::{LibraryOutcome, LibraryReport, LoadReport};
+
+    #[test]
+    fn a_missing_event_names_the_libraries() {
+        let report = LoadReport {
+            directory: Some("plugins/editor".into()),
+            directory_exists: true,
+            libraries: vec![LibraryReport {
+                file: "input_plugin.dll".into(),
+                path: "plugins/editor/input_plugin.dll".into(),
+                outcome: LibraryOutcome::Failed { stage: "prepare", reason: "built against other shared libraries".into() },
+                renamed_imports: vec![],
+            }],
+        };
+        let error = "script class `PlayerCharacter`: no event `input::IA_Jump.triggered` is declared by the module or registered with the engine";
+        let hinted = with_library_hint(error, &report);
+        assert!(hinted.starts_with(error));
+        assert!(hinted.contains("plugin_builder"));
+        assert!(hinted.contains("plugins/editor"));
+        assert!(hinted.contains("input_plugin.dll (prepare): built against other shared libraries"));
+        // Other failures are left alone.
+        assert_eq!(with_library_hint("disk full", &report), "disk full");
     }
 }
 

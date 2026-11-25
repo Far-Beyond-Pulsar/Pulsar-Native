@@ -170,7 +170,42 @@ Not measured: the display's own scan-out and the monitor, play-in-editor (the pr
 only), and a before figure for the look path in milliseconds from the engine (the figures above for the old
 chain are computed from its time constant, not logged).
 
+### Input and physics: what stalled (measured)
+
+Physics already runs on its own registered thread (`Pulsar-Physics`, `physics_plugin/src/runtime.rs`): the game thread
+sends it the journals' changes and elapsed time and never waits; it steps a fixed 1/60 s with an accumulator and the
+results come back a frame later. Mouse deltas are already coalesced per tick (the input plugin sums them,
+`raw::add_motion`). The stall was not a lock: it was **gameplay writing the character's rotation**. The physics
+driver treats any `Transform` change that is not its own write as "someone moved this object": it fences the object
+(the results of the runs already in flight are dropped as stale) and sends the capsule back to the position SceneDB
+still holds. The look path (the old Blueprint wrote the rotation on every look event; now `orient_rotation_to_movement`
+and `use_controller_rotation_yaw` write it every tick the view turns) did that every frame, so while the mouse moved,
+walking and falling were dropped as fast as they were computed. A key alone wrote nothing, which is why it only showed
+with the mouse. Measured with `installed tests character::walking_while_the_view_turns_is_not_stalled` (3 s at 60 Hz,
+the view turning 2 degrees a tick while walking at 4 m/s, path length): **0.07 m before** (stalled), **11.73 m after**
+(straight walk: 11.73 m), and 11.83 m with 300 synthetic mouse events a tick on top. The simulation thread's own cadence
+was never the problem (and does not show it: the runs went on, their results were discarded): in the packaged game
+with a key held, the mouse moving, both, and jumping, it ran 59 runs a second, longest gap 17.5 ms, longest run 0.1 to 0.2 ms
+(`physics cadence` log lines, target `physics_plugin::cadence`, once a second; the first seconds of a launch show gaps up
+to 1.7 s while the level loads). Fix: a rotation-only change of an object that has a character controller is no
+longer a move (`turned_character` in `runtime.rs`); the capsule is symmetric about Y and the simulation never rotates it.
+
+### Pack failures that name a missing event or native
+
+The pack step compiles the project's classes against what the **loaded plugin libraries** registered, so a class from
+one library and an event or native of another library of an older build gives "no event `input::IA_Jump.triggered` is
+declared" or "no native function ... is registered". The error now ends with the libraries' load report (directory, the
+libraries that did not load and why, the ones much older than the newest) and the command that fixes it
+(`ui_build::runner::pack::with_library_hint`). A pack right after launch (8 s) and a pack after a full
+`plugin_builder` run both succeed here; the failure needs libraries from different builds in the directory the engine
+loads (the checkout's `target/release/plugins/editor` held libraries from 22 Nov that no longer load against a current engine;
+`plugins/editor` held ones from 23 Nov).
+
 ## Issues found and not fixed
+
+- **A large static floor lets the capsule fall through** (`installed tests character`, a box collider of half extents
+  500 x 0.5 x 500 under a capsule falling from 1.5 m: it passed the floor and ended at y = -0.3; 50 and 400 stood at
+  y = 0.92; 150 rested 0.4 m low). Not understood and not fixed; the test floors use 50. The voxel project's floor is 400.
 
 - **Mesh colliders are not simulated** (`physics_plugin/src/components/collider.rs:268`, `builder()`
   returns `None` for `ConvexHull` and `TriangleMesh`). A level's static meshes cannot collide; the Bistro

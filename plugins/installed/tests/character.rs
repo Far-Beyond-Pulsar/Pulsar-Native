@@ -451,3 +451,112 @@ fn use_controller_rotation_yaw_makes_the_body_follow_the_look_direction() {
     tick(&mut world, &hub, &mut state, 1);
     assert_eq!(world.get::<Transform>(owner).unwrap().rotation[0], 25.0);
 }
+
+/// Walk for `seconds` of wall time on a floor, ticking at 60 Hz, turning the view by `turn`
+/// degrees every tick; the length of the path walked along the ground (a turning walk goes round
+/// in a circle, so the distance from the start would say nothing).
+fn walked_while_turning(turn: f32, seconds: f32, flood: u32) -> f32 {
+    // `seconds` of simulated time at 1/60 s a tick, paced at about that rate.
+    let hub = pulsar_events::EventHub::new();
+    let mut world = World::new();
+    let ground = world
+        .spawn_object(SpawnObject::new("Ground").with_id("ground"))
+        .unwrap();
+    world.get_mut::<Transform>(ground).unwrap().position = [0.0, -0.5, 0.0];
+    pulsar_world_registry::place_component(
+        &mut world,
+        ground,
+        NewInstance::new("ColliderComponent"),
+        ComponentPayload::Default,
+    )
+    .unwrap();
+    pulsar_world_registry::set_component_property(
+        &mut world,
+        ground,
+        "ColliderComponent",
+        0,
+        "half_extents",
+        serde_json::json!([50.0, 0.5, 50.0]),
+    )
+    .unwrap();
+    let (owner, instance) = character(&mut world);
+    world.get_mut::<Transform>(owner).unwrap().position = [0.0, 1.5, 0.0];
+    {
+        let mut c = world.get_mut::<CharacterComponent>(instance).unwrap();
+        c.move_input = [0.0, 1.0];
+        c.orient_rotation_to_movement = true;
+        c.rotation_rate = 720.0;
+    }
+    let mut state = ComponentRuntimeState::default();
+    // Fall onto the floor and settle first (walking is held back until then).
+    world.get_mut::<CharacterComponent>(instance).unwrap().move_input = [0.0, 0.0];
+    let settle = Instant::now();
+    while settle.elapsed().as_secs_f32() < 2.0 {
+        pulsar_world_registry::tick_live_components(&mut world, &hub, 1.0 / 60.0, 1, &mut state);
+        hub.flush(pulsar_events::FlushPoint::AfterSystems);
+        std::thread::sleep(Duration::from_micros(16_667));
+    }
+    eprintln!("settled at y = {:.3}", world.get::<Transform>(owner).unwrap().position[1]);
+    world.get_mut::<CharacterComponent>(instance).unwrap().move_input = [0.0, 1.0];
+    let start = world.get::<Transform>(owner).unwrap().position;
+    let begun = Instant::now();
+    let mut next = begun;
+    let mut path = 0.0_f64;
+    let mut last = start;
+    let ticks = (seconds * 60.0) as u32;
+    for _ in 0..ticks {
+        // Input arriving faster than the game ticks: raw mouse and key events by the hundred.
+        for i in 0..flood {
+            hub.publish(
+                pulsar_events::gamma::Channel::Global,
+                pulsar_events::builtin::MouseMoved { x: 0.0, y: 0.0, dx: 1.0, dy: -1.0 },
+            );
+            if i % 10 == 0 {
+                hub.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    pulsar_events::builtin::KeyDown { key: 26 },
+                );
+            }
+        }
+        {
+            let mut c = world.get_mut::<CharacterComponent>(instance).unwrap();
+            c.control_yaw = character_plugin::wrap_degrees(c.control_yaw + turn);
+        }
+        pulsar_world_registry::tick_live_components(&mut world, &hub, 1.0 / 60.0, 1, &mut state);
+        hub.flush(pulsar_events::FlushPoint::AfterSystems);
+        next += Duration::from_micros(16_667);
+        let at = world.get::<Transform>(owner).unwrap().position;
+        path += ((at[0] - last[0]).powi(2) + (at[2] - last[2]).powi(2)).sqrt();
+        last = at;
+        if let Some(wait) = next.checked_duration_since(Instant::now()) {
+            std::thread::sleep(wait);
+        }
+    }
+    path as f32
+}
+
+/// Turning the view does not stall the simulation: a character that walks while its view (and so
+/// its body) turns every tick covers about the distance of one that walks straight. A rotation
+/// written by gameplay used to count as "moved by someone else", the physics results for the
+/// object were dropped as stale and the capsule hardly advanced.
+#[test]
+fn walking_while_the_view_turns_is_not_stalled() {
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    pulsar_plugins::deactivate();
+    let straight = walked_while_turning(0.0, 3.0, 0);
+    let turning = walked_while_turning(2.0, 3.0, 0);
+    let flooded = walked_while_turning(2.0, 3.0, 300);
+    // 4 m/s for 3 s is 12 m.
+    eprintln!(
+        "walked straight {straight:.2} m, turning the view {turning:.2} m, turning under 300 mouse events a tick {flooded:.2} m, in 3 s"
+    );
+    assert!(
+        (flooded - straight).abs() < straight * 0.2,
+        "a flood of input events stalls the simulation: {flooded} m against {straight} m"
+    );
+    assert!(straight > 8.0, "the control walks ({straight} m)");
+    assert!(
+        (turning - straight).abs() < straight * 0.2,
+        "turning stalls walking: {turning} m against {straight} m"
+    );
+}

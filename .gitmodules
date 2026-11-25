@@ -132,3 +132,6 @@
 [submodule "plugins/vendor/mocap"]
 	path = plugins/vendor/mocap
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Mocap
+[submodule "crates/external/scenedb"]
+	path = crates/external/scenedb
+	url = https://github.com/Far-Beyond-Pulsar/SceneDB.git
