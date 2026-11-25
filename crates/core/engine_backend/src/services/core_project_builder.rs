@@ -769,7 +769,7 @@ mod plugins;
 
 fn main() {{
     tracing_subscriber::fmt()
-        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info,psgc=warn".into()))
         .init();
 
     tracing::info!("Starting {{}}", env!("CARGO_PKG_NAME"));

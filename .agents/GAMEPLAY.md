@@ -201,6 +201,31 @@ libraries that did not load and why, the ones much older than the newest) and th
 loads (the checkout's `target/release/plugins/editor` held libraries from 22 Nov that no longer load against a current engine;
 `plugins/editor` held ones from 23 Nov).
 
+### Generated games and SceneDB
+
+SceneDB is the submodule `crates/external/scenedb`, used by path. A game's manifest is baked by
+`engine_backend/build.rs` from the root `Cargo.toml` (the workspace dependency with its path made absolute, and
+the whole `[patch]` table), so a game resolves the engine checkout's SceneDB, and Helio's git SceneDB source is
+redirected to the same path by the baked patch. Nothing in the game tooling names a SceneDB rev. Build & Run failed
+with "multiple versions of crate `pulsar_scenedb`" only because the engine binary running it was built before the
+manifest change and still wrote a git SceneDB into every game; `build.rs` re-runs when the root manifest changes, so
+rebuilding the engine fixed it (verified: Build & Run packs, builds and launches, the game's manifest carries the
+path entries).
+
+### Packaged game versus the editor (measured, partly)
+
+Steady state in the packaged release game (Bistro level, editor and game sharing one GPU): frames 12 to 19 ms (the
+game presents with Fifo, present queue 1), input to present 22 to 38 ms, physics 59 runs a second. Not measured: the
+editor viewport's frame time (no tool reports it) and a fresh-process cold-cache comparison. What is clearly worse than
+the editor is the **start**: after launch the game logs about 9200 lines in 67 s, and its first frames take seconds (one
+frame 3756 ms, the next 407 ms) while materials compile (PSGC, 1750 log lines) and the level prepares; the log
+is 45 percent the physics task's own phase lines (`editor_task_queue::shared: phase: ...` twice per physics run),
+8 percent file-watcher lines and 19 percent PSGC. Changed: a generated game's default log filter is
+`info,psgc=warn` (`RUST_LOG` still wins). Not changed and not understood: where the first frames' seconds go
+(material graphs compile on a worker, so another first-frame cost: pipeline creation or texture upload), and whether
+the packaged game cooks textures (BC7) or decodes them at launch. This is rendering work and needs the helio
+architecture skill and the profiler tooling another agent is building; start from the first 30 s of a launch.
+
 ## Issues found and not fixed
 
 - **A large static floor lets the capsule fall through** (`installed tests character`, a box collider of half extents

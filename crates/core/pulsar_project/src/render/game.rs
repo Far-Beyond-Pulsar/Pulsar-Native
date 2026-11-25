@@ -139,7 +139,7 @@ fn main_rs(model: &ProjectModel) -> String {
 {modules}
 fn main() {{
     tracing_subscriber::fmt()
-        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()))
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info,psgc=warn".into()))
         .init();
     std::process::exit(pulsar_game::standalone::run(setup::setup));
 }}
