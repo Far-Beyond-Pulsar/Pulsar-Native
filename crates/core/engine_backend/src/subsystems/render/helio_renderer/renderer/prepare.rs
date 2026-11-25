@@ -185,7 +185,7 @@ impl HelioRenderer {
                 pipeline: self.requested_pipeline.get(),
                 construct_pump: self.construct_pump.clone(),
                 host_part_setups: self.host_part_setups.clone(),
-                pipeline_build: crate::subsystems::render::PipelineBuildMode::Blocking,
+                pipeline_build: crate::subsystems::render::PipelineBuildMode::Background,
             },
         );
         scene.renderer.set_clear_color([0.15, 0.18, 0.25, 1.0]);

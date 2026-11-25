@@ -39,6 +39,10 @@ struct GameWindow {
     queue: Arc<wgpu::Queue>,
     /// The scene's renderer, as the editor viewport builds it.
     renderer: SceneRenderer,
+    /// Where the scene is drawn: the swapchain image is acquired only after the
+    /// frame is recorded and submitted (see [`GameWindow::render`]), so the
+    /// scene goes to a texture of its own and is copied to the image.
+    scene_target: SceneTarget,
     /// The renderer as an engine runtime the window's event loop drives: listed
     /// with its frame time, and a paused one draws nothing.
     runtime: engine_backend::services::render_runtimes::DrivenRuntime,
@@ -52,6 +56,34 @@ struct GameWindow {
     next_redraw: Instant,
     /// Built with the editor's overlays (kept to rebuild it on a new device).
     editor_mode: bool,
+}
+
+/// The texture a frame is drawn into before the swapchain image is acquired,
+/// the size and format of the surface.
+struct SceneTarget {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+}
+
+impl SceneTarget {
+    fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Game scene target"),
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self { texture, view }
+    }
 }
 
 /// Frame interval of an unfocused window when several game copies are running.
@@ -136,7 +168,8 @@ impl GameWindow {
 
         let size = window.inner_size();
         let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            // The scene is copied into the image once the frame is recorded.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format: surface_format,
             width: size.width.max(1),
             height: size.height.max(1),
@@ -156,6 +189,7 @@ impl GameWindow {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &surface_config);
+        let scene_target = SceneTarget::new(&device, &surface_config);
         tracing::info!(
             present_mode = ?surface_config.present_mode,
             offered = ?caps.present_modes,
@@ -203,6 +237,7 @@ impl GameWindow {
             device,
             queue,
             renderer,
+            scene_target,
             runtime,
             freecam: FreeCam::default(),
             focused: true,
@@ -224,6 +259,7 @@ impl GameWindow {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(device, &self.surface_config);
+        self.scene_target = SceneTarget::new(device, &self.surface_config);
         self.renderer.renderer.set_render_size(width, height);
         self.runtime.set_size(width, height);
     }
@@ -243,13 +279,60 @@ impl GameWindow {
         }
     }
 
+    /// The next swapchain image, or when this frame cannot be shown (the reason
+    /// is logged) how long to hold the window back before trying again.
+    fn acquire_frame(&self) -> Result<wgpu::SurfaceTexture, Option<std::time::Duration>> {
+        // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
+        // `CurrentSurfaceTexture` enum (see wgpui's
+        // `platform/cross/renderer.rs` for the template this mirrors).
+        // `Suboptimal` is treated the same as `Success` — matching wgpui's
+        // choice — rather than forcing a reconfigure after every present;
+        // an actually-outdated surface will surface as `Outdated` on the
+        // next frame's acquire and get reconfigured then.
+        match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Ok(t),
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                // The surface no longer matches its last known configuration.
+                // Reconfigure once and retry rather than dropping every later
+                // frame after a resize or compositor transition.
+                self.surface.configure(&self.device, &self.surface_config);
+                self.acquire_after_surface_recovery().ok_or(None)
+            }
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                tracing::debug!(
+                    window = self.handle.id(),
+                    "Skipping frame after surface acquisition timeout"
+                );
+                Err(Some(BLOCKED_FRAME))
+            }
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                // Nothing can be shown: don't spin re-requesting frames (or
+                // log every one) until the window is visible again.
+                tracing::debug!(window = self.handle.id(), "Skipping frame: window occluded");
+                Err(Some(BLOCKED_FRAME))
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                tracing::warn!(
+                    window = self.handle.id(),
+                    "Skipping frame after surface validation error"
+                );
+                Err(None)
+            }
+        }
+    }
+
     /// Render one frame.
     ///
-    /// The surface is acquired first: with a present queue of one, the acquire
-    /// is where the frame waits for the display, and anything read from the
-    /// world before it is that much older when it is drawn. `sample` then steps
-    /// the scene and answers the camera, as late as the frame allows (right
-    /// before the uniform upload); `None` means the built-in freecam is used.
+    /// The frame is recorded and submitted before the swapchain image is
+    /// acquired. With a present queue of one the acquire is where a frame waits
+    /// for the display (and for the GPU to finish the one before), so a frame
+    /// that acquired first recorded nothing while that wait ran and the period
+    /// was the CPU's time plus the GPU's; the scene goes to a texture of its
+    /// own, the GPU starts on it at once, and only the copy into the image
+    /// waits for the acquire. `sample` steps the scene and answers the camera
+    /// as late as the frame allows (right before the uniform upload); `None`
+    /// means the built-in freecam is used.
     fn render(
         &mut self,
         pacer: &crate::frame_pacer::FramePacer,
@@ -261,58 +344,9 @@ impl GameWindow {
         };
         let _span = self.runtime.task().span().entered();
 
-        // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
-        // `CurrentSurfaceTexture` enum (see wgpui's
-        // `platform/cross/renderer.rs` for the template this mirrors).
-        // `Suboptimal` is treated the same as `Success` — matching wgpui's
-        // choice — rather than forcing a reconfigure after every present;
-        // an actually-outdated surface will surface as `Outdated` on the
-        // next frame's acquire and get reconfigured then.
-        let acquire_scope = profiling::ProfileScope::new_static("Game::acquire_surface");
-        let output = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                // The surface no longer matches its last known configuration.
-                // Reconfigure once and retry rather than dropping every later
-                // frame after a resize or compositor transition.
-                self.surface.configure(&self.device, &self.surface_config);
-                let Some(texture) = self.acquire_after_surface_recovery() else {
-                    return;
-                };
-                texture
-            }
-            wgpu::CurrentSurfaceTexture::Timeout => {
-                tracing::debug!(
-                    window = self.handle.id(),
-                    "Skipping frame after surface acquisition timeout"
-                );
-                self.next_redraw = Instant::now() + BLOCKED_FRAME;
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => {
-                // Nothing can be shown: don't spin re-requesting frames (or
-                // log every one) until the window is visible again.
-                tracing::debug!(window = self.handle.id(), "Skipping frame: window occluded");
-                self.next_redraw = Instant::now() + BLOCKED_FRAME;
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Validation => {
-                tracing::warn!(
-                    window = self.handle.id(),
-                    "Skipping frame after surface validation error"
-                );
-                return;
-            }
-        };
-        drop(acquire_scope);
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        // The world as late as possible: after the display wait, right before
-        // the camera goes into the frame's uniforms. The input chain's frame
-        // starts here: this is the moment it reads what the tick wrote.
+        // The world as late as possible: right before the camera goes into the
+        // frame's uniforms. The input chain's frame starts here: this is the
+        // moment it reads what the tick wrote.
         let latency_frame = crate::latency::frame_started();
         pacer.sampling();
         let cam = {
@@ -342,11 +376,46 @@ impl GameWindow {
         crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Prepared);
         {
             profiling::profile_scope!("Game::render");
-            if let Err(e) = self.renderer.render(&frame.camera, &view) {
+            if let Err(e) = self.renderer.render(&frame.camera, &self.scene_target.view) {
                 tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
             }
         }
         crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Rendered);
+
+        // The display wait: the GPU is already working on the frame.
+        let output = {
+            let _acquire = profiling::ProfileScope::new_static("Game::acquire_surface");
+            match self.acquire_frame() {
+                Ok(output) => output,
+                Err(hold) => {
+                    if let Some(hold) = hold {
+                        self.next_redraw = Instant::now() + hold;
+                    }
+                    return;
+                }
+            }
+        };
+        {
+            profiling::profile_scope!("Game::copy_to_surface");
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Game present copy"),
+                });
+            // The image can be a frame behind a resize that has not been
+            // applied yet: copy what both have.
+            let extent = wgpu::Extent3d {
+                width: self.scene_target.texture.width().min(output.texture.width()),
+                height: self.scene_target.texture.height().min(output.texture.height()),
+                depth_or_array_layers: 1,
+            };
+            encoder.copy_texture_to_texture(
+                self.scene_target.texture.as_image_copy(),
+                output.texture.as_image_copy(),
+                extent,
+            );
+            self.queue.submit([encoder.finish()]);
+        }
 
         {
             profiling::profile_scope!("Game::present");
@@ -699,9 +768,12 @@ impl PulsarApp {
         scene_path: Option<PathBuf>,
     ) {
         profiling::profile_scope!("Game::open_window");
-        let attrs = Window::default_attributes()
+        let mut attrs = Window::default_attributes()
             .with_title(&desc.title)
             .with_inner_size(winit::dpi::LogicalSize::new(desc.width, desc.height));
+        if desc.fullscreen {
+            attrs = attrs.with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+        }
 
         let window = match event_loop.create_window(attrs) {
             Ok(w) => Arc::new(w),

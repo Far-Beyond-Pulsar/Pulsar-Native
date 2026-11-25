@@ -70,14 +70,15 @@ pub struct SceneRendererOptions {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PipelineBuildMode {
     /// At the call that assigns it: the next frame draws the pipeline. For a
-    /// host with no loading state to show (an editor viewport, tools, tests that
-    /// read back the first frame).
+    /// host with no loading state to show (tools, tests that read back the
+    /// first frame).
     #[default]
     Blocking,
     /// Off the frame thread: frames keep drawing meanwhile, the status screen
     /// saying the pipeline is building, and the renderer swaps it in at the
     /// first frame boundary after it is done. For a game, whose loading phase
-    /// must not present a long frame.
+    /// must not present a long frame, and the editor viewport, whose first
+    /// pipeline of a session took 12 s on the UI thread.
     Background,
 }
 
@@ -270,13 +271,17 @@ impl SceneRenderer {
         // The renderer is built with no pipeline; the level's is assigned below.
         // There is no default: none, a missing or an invalid one shows Helio's
         // status screen with the reason.
-        let renderer = builder.with_status_hint(PIPELINE_HINT).build(
+        let mut renderer = builder.with_status_hint(PIPELINE_HINT).build(
             device,
             queue.clone(),
             width,
             height,
             format,
         );
+        // A host that shows a loading state for pipelines shows it for a
+        // rebuild from a changed configuration too, instead of holding the
+        // frame.
+        renderer.set_blocking_builds(options.pipeline_build == PipelineBuildMode::Blocking);
         let mut this = Self {
             renderer,
             project_settings: super::project_settings::ProjectGraphSettingsCache::new(),

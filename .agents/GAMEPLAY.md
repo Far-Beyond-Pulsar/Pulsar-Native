@@ -199,10 +199,13 @@ remove both for the camera), and the display.
 - **The sample point.** The tick drains the accumulator where it reads input (`TickLoop::sample_pointer`, ahead of the
   after-input flush) and publishes one `MouseMoved` with the sum: as fresh as the tick, one publish per tick however
   fast the mouse reports. Non-Windows builds feed the same accumulator from the event loop's device events.
-- **The frame reads the world after it waits for the display.** `GameWindow::render` acquires the surface first
-  (with a present queue of one the acquire is the wait for the display), then steps the scene and takes the camera
-  (`Game::step_scene`, `Game::camera_for_frame`), right before `prepare_frame` uploads it. It used to read both
-  before the acquire, so the camera was as old as the vsync wait when it was drawn.
+- **The frame reads the world after the previous frame's present, and records before it acquires.** Round 2 acquired the
+  surface first (the wait for the display) and then read the world; the frame was then recorded while the GPU idled, and the
+  period was the CPU's time plus the GPU's (issue 14). `GameWindow::render` now steps the scene and takes the camera
+  (`Game::step_scene`, `Game::camera_for_frame`) at the start of the frame, records and submits into its own
+  texture, and only then acquires (the display wait) and copies into the image. Input to present with vsync off improved
+  (13.2 to 9.8 ms mean); with vsync on, windowed, the mean is 10.4 before and 12.0 ms after (p95 17.4 to 14.6): the
+  camera is as old as the wait for the display again, which is the price of the CPU running ahead.
 - **The tick is placed just before that read.** Tick `k` is due at `start + k * step` and may run any time within one
   step of it; `FramePacer::next_start` picks the moment that ends it just before the frame's predicted read
   (last read plus the smoothed frame period, minus the tick's high-water cost, the prediction's own error and 0.2 ms).
@@ -385,10 +388,157 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
     barriers, about 0.8 ms) was not separated; the LUT rebuild runs every frame while the level streams in (the
     atmosphere buffer's content generation moves with every mirror flush) and never after. Refreshing the cloud shadow
     map a quarter of its texels a frame (2x2 interleave, a whole refresh when a cascade's lattice or the sun moved) lowered
-    Atmosphere 1.66 to 1.69 to 1.61 to 1.66 ms, inside the run to run spread, so it was not kept. Next: GPU timestamps per
-    dispatch, to see what the 0.8 ms is.
+    Atmosphere 1.66 to 1.69 to 1.61 to 1.66 ms, inside the run to run spread, so it was not kept.
+    **Fixed (round 4): Atmosphere 1.8 ms to 0.23 ms.** Per-dispatch GPU scopes (`sky/feature/src/steps.rs`: while the
+    profiler records GPU time each dispatch is its own compute pass inside a named scope; unprofiled they share one pass)
+    showed the unexplained 0.8 ms was not barriers: `Atmosphere: resolve`, a single-thread kernel, took 0.56 ms (it walked
+    the atmosphere row table one memory latency per row, and the table holds a row for every slot the component has used),
+    and `Clouds: planet weather` 0.74 ms was the whole planet weather map rebuilt on two thirds of frames, with the
+    multi-scattering LUT (0.19 ms) beside it. Both ran because the row join's output `content_generation` moves whenever any
+    transform moves (the join reruns when its `transforms` input changes, and the character moves), which the CPU-side
+    "rebuild when the rows changed" key took for a change of the atmosphere. Now the GPU plans the frame
+    (`SkyPlan`, `sky_layers.wgsl`): `resolve` is a 256-thread workgroup that finds the first enabled row together, hashes
+    the words of that row, compares with the last frame's hash and writes indirect dispatch arguments (zero groups unless the
+    row changed) for the transmittance, multi-scattering and sky-table kernels and for the weather bake, which reads
+    `rebuilt` to take its whole map or this frame's slice. Nothing is read back; the CPU-side generation key, the `params_only`
+    flag and `bake_whole` are gone, and so is the `HELIO_ATMOSPHERE_TRACE` diagnostic. What is left of Atmosphere: cloud
+    shadow map 0.077 ms, aerial perspective 0.046, irradiance 0.031, the rest under 0.02. The joined buffer's coarse
+    generation is still wrong for every other consumer of a `RowJoin` (open, issue 18).
+13. **The sun's cascades were redrawn on two thirds of frames, a still camera included (Shadow 0.6 ms GPU).** Not the
+    camera noise the first fix assumed: the cascade matrices differed in their last bits from frame to frame, and the
+    change detection hashes the bits. The texel snap rounded the centroid in a view centred on the centroid (a value that is
+    zero by construction, so it snapped nothing) and the light's basis came from `look_at` with the camera's position in it.
+    `shadow_matrices.wgsl` now takes the axes from the light's direction alone and moves the centre on a fixed lattice
+    (16 cells across the cascade, a whole number of texels each; the radius carries the half cell diagonal, 1.097). A first
+    attempt that only coarsened the lattice (kept centred on itself) changed nothing: Shadow 0.56 to 0.57 ms, reverted.
+    Shadow 0.62 to 0.17 / 0.28 ms, GPU frame 3.33 to 2.98 / 3.00 ms. Also: the static layer's pass (clear draw and per-face
+    draws, 1.1 ms of GPU time when it ran with nothing to draw) opens only when a serviced face rebuilds its static layer or
+    the readback shows its pending static bit (`pending_bits`); alone that changed nothing (3.33 to 3.33 ms) because the
+    cascades really were dirty, and it is kept for the visits a walking character causes.
+14. **The frame was recorded after the swapchain acquire, so the period was the CPU's time plus the GPU's.** With a present
+    queue of one, `acquire` waits for the GPU to finish the frame before, and everything after it was recorded while the GPU
+    idled (CPU frame 3.0 ms, GPU 3.0 ms, period 6.2 ms). `GameWindow::render` now records and submits into a texture of its
+    own (`SceneTarget`), acquires afterwards (the display wait) and copies the scene into the image (`Game::copy_to_surface`,
+    0.19 ms CPU at 1280x720); the world is sampled at the start of the frame, as before. Period 6.2 to 3.3 ms (vsync off),
+    input to present (profile_latency), vsync off: 13.2 ms before the round, 11.3 after the GPU work, 9.8 after this; vsync
+    on, windowed: 10.4 before and 12.0 after (p95 17.4 and 14.6), the mean 1.5 ms worse (the world is read before the display
+    wait again), the tail better.
+15. **`window.fullscreen` was never read.** `pulsar_content` has the setting and nothing used it, so every "fullscreen" run was a
+    1280x720 window. `WindowDescriptor::fullscreen` is filled from it and `open_window` asks for borderless fullscreen. At
+    the display's 3440x1440 the GPU frame is 2.4 times the windowed one (see the tables), and that is the real case.
+16. **The editor viewport's first pipeline of a session blocked its render thread for 12.3 s** (`Helio: rebuild graph`, a
+    configuration rebuild inside `render()`; `Helio::Renderer::render` max 12340 ms, the UI thread's redraw stalled 3156 ms).
+    A rebuild builds off the frame thread like an assigned pipeline now (`PipelineBuild` has a kind; `begin_rebuild`;
+    `Renderer::set_blocking_builds`, default true, off for `SceneRenderer` in background mode) and the editor viewport uses
+    `PipelineBuildMode::Background`. After: the render thread's longest frame 47 ms, the UI thread's longest redraw
+    258 ms, the viewport shows the status screen "Building the render pipeline" until the build ends. The build itself
+    still takes 11 to 13 s there against under a second in the game: the editor's device is shared with the UI and the
+    compile throughput is the open question (issue 19). Opening a level also starts a second renderer's build and a
+    configuration rebuild (three builds, about 38 s of worker time, none on a frame).
+17. **What is left in the frame, vsync off, windowed (after):** GPU 2.5 ms (DeferredLight+AtmosphereComposite 0.37, Shadow
+    0.28, ObjectBatch 0.24, Atmosphere 0.23, VgBvh 0.22, GBuffer 0.15, LightCull 0.13) and CPU about 3 ms in a frame
+    (`encoder.finish` 2.6 ms over four worker threads with the frame thread waiting 0.94 ms of it, `queue.submit` 0.44,
+    scene derivations 0.18, publish host parts 0.12, copy 0.19, present 0.26). Fullscreen (after): GPU 6.1 ms,
+    DeferredLight+AtmosphereComposite 2.1 (35 percent: it scales with the pixels, a fused chain that is timed as one
+    span; the shadow filter samples and the sky composite are not separated), GBuffer 0.54, HiZBuild 0.41, Shadow 0.31,
+    ObjectBatch 0.30, VgBvh 0.27, Atmosphere 0.26. At 3440x1440 the game is GPU bound at 145 fps against a 165 Hz display.
+18. **Open: a `RowJoin` reruns, and moves its output's `content_generation`, whenever any input buffer changed**
+    (`helio-scene-join/src/row_join.rs`, the `signature` of owners, generations, hidden, `transforms`...): an atmosphere row
+    placed by its owner's transform is rewritten whenever any transform in the world moves. Passes that key work on that
+    generation (the sky did; others may) rebuild for nothing. The fix is in the join: per-row dependency tracking, or a
+    GPU-side "did the output change" bit published with the handle.
+19. **Open: pipeline build throughput in the editor** (11 to 13 s for the Deferred pipeline against under a second in the game,
+    and the voxel pipelines' 14 to 17 s), a one-off hitch of 150 to 650 ms in about one run in two (the frame has no scope
+    longer than 30 ms inside it; before and after), the deferred lighting cost at native resolution, and `encoder.finish`
+    (2.6 ms a frame in four threads).
 
-### Final measurement of the performance rounds
+### Round 4: measurement and the profile it began from
+
+Rules: the existing recorder (`profile_start`, `profile_gpu`, `profile_query_sql`) on the packaged game, one fixed
+scenario (project copy `tb_perf_project_r3`, the character spawned, `drive.ps1`: 2 s idle, walk and turn, jumps, strafe,
+flicks; 40 s of settling after launch), `window.present_mode` `immediate` for "vsync off" (the profile tool's
+`uncap_frame_rate` does nothing to the game), 165 Hz display, two runs of every build, the GPU lock file held; a change counts only when it beats the spread of two runs of the same build. Two stale processes
+(`gpu_assets`, 500000 CPU seconds, and `render_acceptance`, 15000) were running throughout at about 5 cores between them
+and the GPU at 1 percent; not started by this work and not killed. The scenario's windows are the recording's, from the
+first frame.
+
+Where a frame went before (vsync off; GPU ms are means of the per-pass timestamps, CPU ms per frame on the frame thread):
+
+| | windowed 1280x720 | fullscreen 3440x1440 |
+|---|---|---|
+| GPU frame mean / p95 | 5.0 to 5.3 / 6.7 to 6.8 | 7.9 to 8.3 / 9.4 to 10.0 |
+| Atmosphere | 1.80 to 1.84 | 2.0 |
+| Shadow | 0.69 to 0.75 | 0.88 |
+| DeferredLight+AtmosphereComposite | 0.37 to 0.45 | 1.96 |
+| ObjectBatch, VgBvh | 0.30, 0.27 | 0.34, 0.36 |
+| HiZBuild, GBuffer, PostProcess | 0.09, 0.12, 0.10 | 0.44, 0.18, 0.23 |
+| CPU: `Game::acquire_surface` (waiting for the GPU) | 4.7 of 8.6 | 7.4 |
+| CPU: `encoder.finish` workers (x4 threads) / frame thread's wait | 2.6 / 1.0 | 2.6 / 1.0 |
+| CPU: submit, publish host parts, derivations, present | 0.40, 0.38, 0.30, 0.28 | 0.45, 0.48, 0.45, 0.33 |
+| editor: first viewport frame (`Helio: rebuild graph`) | 12.3 s on the render thread | |
+
+Experiments, each two runs against the build before it (GPU frame mean ms; windowed, vsync off, unless said):
+
+| change | before | after | kept |
+|---|---|---|---|
+| GPU scopes in the Atmosphere pass (measure only) | 5.03 / 5.32 | 5.06 (1.87 for Atmosphere, resolve 0.75) | yes (diagnostic, zero cost unprofiled) |
+| probe: resolve run twice | | 2.52 for Atmosphere: the second run still 0.56, so the cost is resolve's own | no (probe) |
+| the GPU plans the atmosphere (hash, indirect, parallel scan) | 5.0 to 5.3 | 3.35 / 3.29 (Atmosphere 0.23) | yes |
+| cascade lattice, coarse but centred on itself | 3.35 / 3.29 | 3.59 / 3.35 (Shadow 0.60 / 0.61) | no |
+| open the static pass only with static work | 3.35 | 3.34 / 3.33 | yes, with the next |
+| cascade axes from the light, fixed lattice | 3.34 | 2.98 / 3.00 (Shadow 0.17 / 0.28) | yes |
+| record before the acquire, copy at the end | period 6.2 to 6.5 | period 3.3 / 3.4 | yes |
+| editor viewport builds in the background | first frame 12.3 s | 47 ms | yes |
+
+Spread of two runs of the same build: 0.05 to 0.30 ms of GPU mean (the first baseline pair was 5.32 and 5.03), 2 to 4 fps of
+1% low.
+
+Final measurement of round 4, same scenario, GPU / frame figures as the table of the previous section (windowed is the project's
+default 1280x720 window, fullscreen is borderless at the display's 3440x1440; "before" is the build of the start of the round
+with only the fullscreen setting applied; two runs each):
+
+| configuration | GPU frame mean / p95 ms (runs 1 and 2) |
+|---|---|
+| windowed, vsync off, before / after | 5.33 / 5.05, p95 6.9 / 6.8  to  2.50 / 2.53, p95 3.6 / 4.1 |
+| windowed, vsync on, before / after | 4.57 / 4.92, p95 7.0 / 7.2  to  3.18 / 3.16, p95 4.9 / 4.9 |
+| fullscreen, vsync off, before / after | 7.86 / 8.28, p95 9.4 / 10.0  to  6.09 / 6.07, p95 7.7 / 7.7 |
+| fullscreen, vsync on, before / after | 7.95 / 7.97, p95 10.1 / 10.0  to  6.19 / 6.08, p95 7.7 / 7.7 |
+
+| configuration | window | frames (run 1 / 2) | period mean ms | p95 | 1% low fps | worst ms |
+|---|---|---|---|---|---|---|
+| windowed 1280x720, vsync off, before | idle | 379 / 388 | 7.91 / 7.72 | 9.71 / 9.87 | 94 / 92 | 11.31 / 12.56 |
+| windowed 1280x720, vsync off, before | walk and turn | 569 / 577 | 9.64 / 9.52 | 11.49 / 11.38 | 80 / 83 | 14.03 / 13.58 |
+| windowed 1280x720, vsync off, before | whole 20 s run | 2403 / 2448 | 8.79 / 8.52 | 11.16 / 11.09 | 82 / 84 | 62.92 / 157.58 |
+| windowed 1280x720, vsync off, after | idle | 1010 / 1031 | 2.97 / 2.91 | 4.31 / 4.31 | 195 / 207 | 6.49 / 6.64 |
+| windowed 1280x720, vsync off, after | walk and turn | 1473 / 1251 | 3.73 / 4.39 | 5.21 / 5.67 | 163 / 156 | 80.67 / 585.38 |
+| windowed 1280x720, vsync off, after | whole 20 s run | 3622 / 3583 | 3.36 / 3.62 | 4.88 / 5.22 | 168 / 159 | 80.67 / 585.38 |
+| windowed 1280x720, vsync on (165 Hz), before | idle | 493 / 495 | 6.07 / 6.06 | 8.58 / 8.39 | 98 / 104 | 11.71 / 10.94 |
+| windowed 1280x720, vsync on (165 Hz), before | walk and turn | 809 / 806 | 6.79 / 6.81 | 10.36 / 10.25 | 91 / 92 | 13.22 / 14.35 |
+| windowed 1280x720, vsync on (165 Hz), before | whole 20 s run | 3245 / 3264 | 6.42 / 6.42 | 9.66 / 9.73 | 94 / 92 | 13.22 / 14.35 |
+| windowed 1280x720, vsync on (165 Hz), after | idle | 494 / 494 | 6.06 / 6.06 | 6.82 / 6.83 | 125 / 137 | 9.29 / 9.92 |
+| windowed 1280x720, vsync on (165 Hz), after | walk and turn | 906 / 872 | 6.06 / 6.06 | 7.11 / 7.15 | 122 / 128 | 9.68 / 8.68 |
+| windowed 1280x720, vsync on (165 Hz), after | whole 20 s run | 3091 / 3084 | 6.21 / 6.33 | 7.02 / 7.02 | 123 / 129 | 251.49 / 646.67 |
+| fullscreen 3440x1440, vsync off, before | idle | 273 / 257 | 10.97 / 11.64 | 13.53 / 13.66 | 66 / 67 | 15.50 / 15.39 |
+| fullscreen 3440x1440, vsync off, before | walk and turn | 463 / 410 | 11.85 / 13.37 | 13.86 / 14.84 | 69 / 63 | 14.92 / 174.07 |
+| fullscreen 3440x1440, vsync off, before | whole 20 s run | 1810 / 1695 | 11.57 / 12.31 | 14.06 / 14.28 | 67 / 65 | 16.97 / 344.17 |
+| fullscreen 3440x1440, vsync off, after | idle | 493 / 489 | 6.08 / 6.13 | 8.02 / 7.84 | 114 / 115 | 9.35 / 9.55 |
+| fullscreen 3440x1440, vsync off, after | walk and turn | 743 / 739 | 7.39 / 7.43 | 9.78 / 9.62 | 94 / 96 | 15.37 / 157.40 |
+| fullscreen 3440x1440, vsync off, after | whole 20 s run | 3046 / 3033 | 6.85 / 6.92 | 9.26 / 9.27 | 98 / 98 | 15.37 / 157.40 |
+| fullscreen 3440x1440, vsync on (165 Hz), before | idle | 365 / 368 | 8.22 / 8.14 | 13.90 / 12.35 | 67 / 71 | 16.68 / 17.47 |
+| fullscreen 3440x1440, vsync on (165 Hz), before | walk and turn | 567 / 557 | 9.67 / 9.87 | 13.11 / 12.86 | 71 / 70 | 15.89 / 15.76 |
+| fullscreen 3440x1440, vsync on (165 Hz), before | whole 20 s run | 2351 / 2344 | 8.91 / 8.86 | 13.02 / 12.81 | 69 / 71 | 79.13 / 17.47 |
+| fullscreen 3440x1440, vsync on (165 Hz), after | idle | 476 / 478 | 6.30 / 6.27 | 8.20 / 8.42 | 102 / 105 | 11.32 / 11.30 |
+| fullscreen 3440x1440, vsync on (165 Hz), after | walk and turn | 750 / 755 | 7.32 / 7.28 | 9.60 / 9.29 | 97 / 98 | 12.02 / 11.91 |
+| fullscreen 3440x1440, vsync on (165 Hz), after | whole 20 s run | 2979 / 3002 | 6.97 / 6.93 | 9.18 / 9.23 | 98 / 97 | 12.02 / 11.91 |
+
+Windowed against fullscreen: at the same code the windowed game (0.92 megapixels) is CPU bound at about 3.3 ms and
+reaches the 165 Hz refresh with a 1% low of 123 to 129 fps (before: 92 to 94); the fullscreen game (4.95 megapixels) is
+GPU bound at 6.1 ms and holds 144 to 146 fps with vsync off or on and a 1% low of 97 to 98 (before: 65 to 71), so it does not
+reach the refresh and 165 fps needs the deferred lighting cost at native resolution (issue 17) cut by about a third.
+Vsync on and off differ little in fullscreen (the period is GPU bound either way), windowed vsync on is the 6.06 ms refresh
+with a p95 of 7.0 ms. The one-off stalls (157 to 646 ms, one in two runs, before and after) are in both modes.
+
+### Final measurement of the performance rounds (round 3, kept for the comparison)
 
 Editor and all 34 plugin libraries rebuilt into their own install (`plugin_builder --release`); Build & Run on a private copy
 of the voxel project packed, built and launched the game through the MCP tools (34 libraries found, 34 loaded, none failed);

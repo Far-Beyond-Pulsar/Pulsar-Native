@@ -62,6 +62,9 @@ pub struct WindowDescriptor {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    /// Borderless fullscreen on the window's monitor (`window.fullscreen` in
+    /// the project's settings), at the display's own size.
+    pub fullscreen: bool,
     /// Whether to start in editor mode (helio grid / gizmos enabled).
     pub editor_mode: bool,
 }
@@ -72,6 +75,7 @@ impl Default for WindowDescriptor {
             title: "Pulsar".into(),
             width: 1280,
             height: 720,
+            fullscreen: false,
             editor_mode: false,
         }
     }

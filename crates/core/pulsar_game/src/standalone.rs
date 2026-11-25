@@ -264,6 +264,7 @@ pub fn run_with(
         title: settings.window_title(&game_name()),
         width: settings.window.width,
         height: settings.window.height,
+        fullscreen: settings.window.fullscreen,
         editor_mode: false,
     };
     let event_loop = winit::event_loop::EventLoop::with_user_event()
