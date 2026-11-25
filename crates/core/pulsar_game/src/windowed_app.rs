@@ -65,24 +65,36 @@ fn running_beside_copies() -> bool {
         .is_some_and(|n| n > 1)
 }
 
+/// The profiler scope a window event of this kind runs under (the hot ones, cursor
+/// motion and redraws, have none).
+fn window_event_kind(event: &WindowEvent) -> Option<&'static str> {
+    Some(match event {
+        WindowEvent::Resized(_) => "Game::event::Resized",
+        WindowEvent::ScaleFactorChanged { .. } => "Game::event::ScaleFactorChanged",
+        WindowEvent::Moved(_) => "Game::event::Moved",
+        WindowEvent::Focused(_) => "Game::event::Focused",
+        WindowEvent::Occluded(_) => "Game::event::Occluded",
+        WindowEvent::MouseInput { .. } => "Game::event::MouseInput",
+        WindowEvent::KeyboardInput { .. } => "Game::event::KeyboardInput",
+        WindowEvent::CloseRequested => "Game::event::CloseRequested",
+        _ => return None,
+    })
+}
+
 /// The present mode the editor setting `renderer.present_mode` names, when the
 /// surface offers it; Fifo otherwise (every surface has it).
 fn present_mode(offered: &[wgpu::PresentMode]) -> wgpu::PresentMode {
-    let name = match engine_state::settings::global_config().get(
-        engine_state::settings::NS_EDITOR,
-        "renderer",
-        pulsar_settings::editor::renderer::PRESENT_MODE,
-    ) {
-        Ok(engine_state::settings::ConfigValue::String(name)) => name,
-        _ => pulsar_settings::editor::renderer::PRESENT_MODE_DEFAULT.to_string(),
-    };
-    let wanted = match name.as_str() {
-        "fifo_relaxed" => wgpu::PresentMode::FifoRelaxed,
-        "mailbox" => wgpu::PresentMode::Mailbox,
-        "immediate" => wgpu::PresentMode::Immediate,
-        "auto_vsync" => wgpu::PresentMode::AutoVsync,
-        "auto_no_vsync" => wgpu::PresentMode::AutoNoVsync,
-        _ => wgpu::PresentMode::Fifo,
+    use pulsar_content::PresentModeSetting as Setting;
+    let setting = pulsar_content::current()
+        .map(|content| content.settings().window.present_mode)
+        .unwrap_or_default();
+    let wanted = match setting {
+        Setting::Fifo => wgpu::PresentMode::Fifo,
+        Setting::FifoRelaxed => wgpu::PresentMode::FifoRelaxed,
+        Setting::Mailbox => wgpu::PresentMode::Mailbox,
+        Setting::Immediate => wgpu::PresentMode::Immediate,
+        Setting::AutoVsync => wgpu::PresentMode::AutoVsync,
+        Setting::AutoNoVsync => wgpu::PresentMode::AutoNoVsync,
     };
     let auto = matches!(
         wanted,
@@ -188,6 +200,12 @@ impl GameWindow {
 
     fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         if width == 0 || height == 0 {
+            return;
+        }
+        // A window reports its size again as it is shown and moved between
+        // displays; reconfiguring the surface and rebuilding the render targets
+        // costs about ten milliseconds, so only a size that differs is applied.
+        if (self.surface_config.width, self.surface_config.height) == (width, height) {
             return;
         }
         self.surface_config.width = width;
@@ -542,7 +560,7 @@ impl PulsarApp {
             possession,
             view_targets,
             pointer,
-            late_look: pulsar_settings::project::simulation::LATE_LOOK_DEFAULT,
+            late_look: pulsar_content::SimulationSettings::default().late_look,
             pacer,
             focused_window: None,
             cursor_captured: false,
@@ -557,6 +575,7 @@ impl PulsarApp {
     // ── Cursor capture ────────────────────────────────────────────────────────
 
     fn capture_cursor(&mut self, handle: WindowHandle) {
+        profiling::profile_scope!("Game::capture_cursor");
         let Some(gw) = self.windows.get(&handle) else {
             return;
         };
@@ -968,14 +987,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             tick_loop.set_tick_rate_hz(rate);
         }
         tracing::info!(tick_rate_hz = rate, "Simulation tick rate");
-        self.late_look = matches!(
-            engine_state::settings::global_config().get(
-                engine_state::settings::NS_PROJECT,
-                "simulation",
-                pulsar_settings::project::simulation::LATE_LOOK,
-            ),
-            Ok(engine_state::settings::ConfigValue::Bool(true)) | Err(_)
-        );
+        self.late_look = self.content.settings().simulation.late_look;
         tracing::info!(late_look = self.late_look, "Late look");
 
         // Mouse motion is taken where the OS delivers it and drained by the tick
@@ -1048,6 +1060,8 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             WindowEvent::RedrawRequested => None,
             _ => Some(profiling::ProfileScope::new_static("Game::window_event")),
         };
+        // Which kind of event it was, so a slow one is named in a recording.
+        let _kind_scope = window_event_kind(&event).map(profiling::ProfileScope::new_static);
 
         match event {
             // ── Window management ─────────────────────────────────────────────

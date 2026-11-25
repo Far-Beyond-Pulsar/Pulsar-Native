@@ -85,6 +85,7 @@ pub struct ProjectSettings {
     pub startup_level: Option<String>,
     pub profile: BuildProfile,
     pub window: WindowSettings,
+    pub simulation: SimulationSettings,
     pub scripting: ScriptSettings,
 }
 
@@ -124,6 +125,8 @@ pub struct WindowSettings {
     pub height: u32,
     pub fullscreen: bool,
     pub resizable: bool,
+    /// How the window's frames reach the display.
+    pub present_mode: PresentModeSetting,
 }
 
 impl Default for WindowSettings {
@@ -134,7 +137,48 @@ impl Default for WindowSettings {
             height: 720,
             fullscreen: false,
             resizable: true,
+            present_mode: PresentModeSetting::default(),
         }
+    }
+}
+
+/// How a window's frames reach the display. A mode the display does not offer
+/// uses `fifo`, which every display has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PresentModeSetting {
+    /// Wait for the display's refresh; no tearing.
+    #[default]
+    Fifo,
+    /// Like `fifo`, but a late frame is shown at once (it may tear).
+    FifoRelaxed,
+    /// The newest frame replaces the one waiting: no tearing, the least delay the
+    /// compositor allows, where offered.
+    Mailbox,
+    /// Show the frame at once; it may tear.
+    Immediate,
+    /// `fifo` or whatever vsynced mode the display offers.
+    AutoVsync,
+    /// The least delay the display offers.
+    AutoNoVsync,
+}
+
+/// How the simulation and the view meet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SimulationSettings {
+    /// The frame turns the player's view by the mouse motion that arrived after the
+    /// last tick, when it reads the camera, and the next tick applies the same
+    /// motion to the simulation (the late-latched look, `pulsar_game::late_look`):
+    /// the view shows the mouse as of the frame, a few milliseconds fresher. A pawn
+    /// whose look cannot be told ahead (a smoothed or bent look mapping, a stick)
+    /// shows the tick's view either way.
+    pub late_look: bool,
+}
+
+impl Default for SimulationSettings {
+    fn default() -> Self {
+        Self { late_look: true }
     }
 }
 
@@ -241,6 +285,22 @@ impl ScriptSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_presents_with_fifo_and_the_view_is_late_looked_unless_the_project_says_otherwise() {
+        let defaults = ProjectSettings::from_json(b"{}").unwrap();
+        assert_eq!(defaults.window.present_mode, PresentModeSetting::Fifo);
+        assert!(defaults.simulation.late_look);
+        let set = ProjectSettings::from_json(
+            br#"{ "window": { "present_mode": "mailbox" }, "simulation": { "late_look": false } }"#,
+        )
+        .unwrap();
+        assert_eq!(set.window.present_mode, PresentModeSetting::Mailbox);
+        assert!(!set.simulation.late_look);
+        assert_eq!(set.window.width, 1280, "the rest of the window keeps its defaults");
+        let back = ProjectSettings::from_json(set.to_json().as_bytes()).unwrap();
+        assert_eq!(back, set);
+    }
 
     #[test]
     fn missing_fields_take_defaults() {

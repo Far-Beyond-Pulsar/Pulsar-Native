@@ -54,7 +54,8 @@ pub use root::{
     PROJECT_ROOT_ENV,
 };
 pub use settings::{
-    BuildProfile, ProjectSettings, ScriptProfileLimits, ScriptSettings, WindowSettings,
+    BuildProfile, PresentModeSetting, ProjectSettings, ScriptProfileLimits, ScriptSettings,
+    SimulationSettings, WindowSettings,
     PROJECT_SETTINGS_FILE,
 };
 
