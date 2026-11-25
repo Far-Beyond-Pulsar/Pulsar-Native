@@ -23,6 +23,8 @@ bytemuck = "1"
 
 # Profiling - instrumentation-based (Unreal Insights style)
 profiling = { workspace = true }
+# The `profile_*` MCP tools (`mcp.rs`).
+pulsar_mcp = { workspace = true }
 crossbeam-queue = { workspace = true }
 arc-swap = { workspace = true }
 parking_lot = { workspace = true }
@@ -36,6 +38,7 @@ rust-i18n.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+tempfile = { workspace = true }
 rand = { workspace = true }
 gpui-ce = { workspace = true, features = ["test-support"] }
 

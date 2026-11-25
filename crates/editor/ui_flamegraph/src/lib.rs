@@ -6,6 +6,9 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
 mod analysis;
+pub mod mcp;
+mod profile_db;
+mod recorder;
 mod export;
 mod flamegraph_view;
 mod format;

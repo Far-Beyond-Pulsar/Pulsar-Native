@@ -1,7 +1,7 @@
-use crate::{FlamegraphView, InstrumentationCollector, TraceData};
+use crate::{FlamegraphView, TraceData};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use profiling::remote::{TargetConnection, TargetInfo};
+use profiling::remote::TargetInfo;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
@@ -17,11 +17,11 @@ use start_screen::{KindFilter, SessionFile};
 
 pub struct FlamegraphWindow {
     view: Entity<FlamegraphView>,
-    collector: Option<Arc<InstrumentationCollector>>,
+    /// The running recording records another process.
+    remote_recording: bool,
     trace_data: Arc<TraceData>,
     is_profiling: bool,
     current_db_path: Option<std::path::PathBuf>,
-    db_connection: Option<rusqlite::Connection>,
     /// The docked session layout, built when a session first has data.
     session_ui: Option<SessionUi>,
     /// Pending debounced save of the dock layout.
@@ -97,11 +97,10 @@ impl FlamegraphWindow {
 
             Self {
                 view,
-                collector: None,
+                remote_recording: false,
                 trace_data,
                 is_profiling: false,
                 current_db_path: None,
-                db_connection: None,
                 session_ui: None,
                 layout_save: None,
                 export_status: None,
@@ -127,7 +126,7 @@ impl FlamegraphWindow {
     fn apply_frame_rate_cap(&self) {
         // A remote target lifts its own cap (the option travels with the
         // recording request); this editor stays as it is.
-        let local = self.collector.as_ref().is_none_or(|c| !c.is_remote());
+        let local = !self.remote_recording;
         let uncapped = self.is_profiling && self.uncap_frame_rate && local;
         profiling::set_uncap_frame_rate(uncapped);
         gpui::render_stats::set_uncapped_presentation(uncapped);
@@ -138,6 +137,12 @@ impl FlamegraphWindow {
         (targets, sessions): (Vec<TargetInfo>, Vec<SessionFile>),
         cx: &mut Context<Self>,
     ) {
+        // A recording the MCP tools stopped (or that ended) is over here too.
+        if self.is_profiling && crate::recorder::running().is_none() {
+            self.is_profiling = false;
+            profiling::set_uncap_frame_rate(false);
+            gpui::render_stats::set_uncapped_presentation(false);
+        }
         self.recent_sessions = sessions;
         self.last_refresh = std::time::Instant::now();
         self.set_targets(targets, cx);
@@ -180,60 +185,25 @@ impl FlamegraphWindow {
             return;
         }
 
-        tracing::trace!("[PROFILER] Starting instrumentation collector");
         self.start_error = None;
-
         // This editor records in-process; any other target through its
-        // shared-memory ring.
-        let collector = match self.selected_target().cloned() {
-            None => InstrumentationCollector::new(Arc::clone(&self.trace_data), 100),
-            Some(target) => match TargetConnection::open(&target.path) {
-                Ok(connection) => InstrumentationCollector::remote(
-                    Arc::clone(&self.trace_data),
-                    100,
-                    connection,
-                    self.uncap_frame_rate,
-                ),
-                Err(error) => {
-                    self.start_error =
-                        Some(t!("Flamegraph.StartFailed", error => error.to_string()).to_string());
-                    _cx.notify();
-                    return;
-                }
-            },
-        };
-        if let Err(error) = collector.start() {
-            self.start_error = Some(t!("Flamegraph.StartFailed", error => error).to_string());
-            _cx.notify();
-            return;
-        }
-        self.recording_label = self.selected_label();
-
-        // Create database file in project directory
-        if let Some(project_path) = engine_state::get_project_path() {
-            match profiling::database::ensure_profiling_dir(&project_path) {
-                Ok(profiling_dir) => {
-                    let db_filename = profiling::database::generate_db_filename();
-                    let db_path = profiling_dir.join(&db_filename);
-
-                    match profiling::database::create_database(&db_path) {
-                        Ok(conn) => {
-                            tracing::trace!("[PROFILER] Created database: {}", db_path.display());
-                            self.current_db_path = Some(db_path);
-                            self.db_connection = Some(conn);
-                        }
-                        Err(e) => {
-                            tracing::error!("[PROFILER] Failed to create database: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("[PROFILER] Failed to create profiling directory: {}", e);
-                }
+        // shared-memory ring. The recorder is shared with the MCP tools.
+        let started = match crate::recorder::begin(
+            self.selected_target().cloned(),
+            self.uncap_frame_rate,
+            crate::recorder::Origin::Window,
+            Arc::clone(&self.trace_data),
+        ) {
+            Ok(started) => started,
+            Err(error) => {
+                self.start_error = Some(t!("Flamegraph.StartFailed", error => error).to_string());
+                _cx.notify();
+                return;
             }
-        }
-
-        self.collector = Some(Arc::new(collector));
+        };
+        self.recording_label = self.selected_label();
+        self.remote_recording = started.remote;
+        self.current_db_path = started.database;
         self.is_profiling = true;
         self.apply_frame_rate_cap();
         self.recording_session += 1;
@@ -261,32 +231,12 @@ impl FlamegraphWindow {
             return;
         }
 
-        if let Some(collector) = &self.collector {
-            collector.stop();
+        // Stops the collector, restores the frame-rate cap and saves the
+        // events to the project database (see `recorder::finish`).
+        if let Err(error) = crate::recorder::finish() {
+            tracing::debug!("[PROFILER] {error}");
         }
 
-        // Restore the normal frame-rate cap before anything slow (the save below)
-        // so the editor is not left running uncapped.
-        profiling::set_uncap_frame_rate(false);
-        gpui::render_stats::set_uncapped_presentation(false);
-
-        // Save all events to database before stopping
-        if let Some(db_conn) = &self.db_connection {
-            let events = match &self.collector {
-                Some(collector) if collector.is_remote() => collector.session_events(),
-                _ => profiling::get_all_events(),
-            };
-            if let Err(e) = profiling::database::save_events(db_conn, &events) {
-                tracing::error!("[PROFILER] Failed to save events to database: {}", e);
-            } else {
-                tracing::trace!("[PROFILER] Saved {} events to database", events.len());
-                if let Some(path) = &self.current_db_path {
-                    tracing::trace!("[PROFILER] Database saved to: {}", path.display());
-                }
-            }
-        }
-
-        self.collector = None;
         self.is_profiling = false;
 
         tracing::trace!("[PROFILER] Instrumentation profiling stopped");
