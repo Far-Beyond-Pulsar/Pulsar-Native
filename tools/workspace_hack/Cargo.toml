@@ -215,7 +215,9 @@ helio-frame-api = { path = "../../crates/renderer/helio/crates/helio-frame-api",
 helio-graph-asset = { path = "../../crates/renderer/helio/crates/helio-graph-asset", default-features = false, features = [] }
 helio-pass-buffer-view = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view", default-features = false, features = [] }
 helio-pass-debug-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay", default-features = false, features = [] }
+helio-pass-denoise = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-denoise", default-features = false, features = [] }
 helio-pass-fxaa = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-fxaa", default-features = false, features = [] }
+helio-pass-history = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-history", default-features = false, features = [] }
 helio-pass-hiz = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-hiz", default-features = false, features = [] }
 helio-pass-perf-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay", default-features = false, features = [] }
 helio-pass-planar-reflection = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-planar-reflection", default-features = false, features = [] }
@@ -1303,7 +1305,9 @@ helio-frame-api = { path = "../../crates/renderer/helio/crates/helio-frame-api",
 helio-graph-asset = { path = "../../crates/renderer/helio/crates/helio-graph-asset", default-features = false, features = [] }
 helio-pass-buffer-view = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view", default-features = false, features = [] }
 helio-pass-debug-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay", default-features = false, features = [] }
+helio-pass-denoise = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-denoise", default-features = false, features = [] }
 helio-pass-fxaa = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-fxaa", default-features = false, features = [] }
+helio-pass-history = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-history", default-features = false, features = [] }
 helio-pass-hiz = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-hiz", default-features = false, features = [] }
 helio-pass-perf-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay", default-features = false, features = [] }
 helio-pass-planar-reflection = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-planar-reflection", default-features = false, features = [] }

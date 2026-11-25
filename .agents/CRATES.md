@@ -274,7 +274,7 @@ cargo cannot load the workspace without them.
 | `meshes` | [Plugin_Meshes](https://github.com/Far-Beyond-Pulsar/Plugin_Meshes) | `pulsar.meshes`: static, skeletal and virtual-geometry meshes, their drawers, culling, import and LOD |
 | `lights` | [Plugin_Lights](https://github.com/Far-Beyond-Pulsar/Plugin_Lights) | `pulsar.lights`: lights and reflection captures, the light list, shadows, the lighting models |
 | `sky` | [Plugin_Sky](https://github.com/Far-Beyond-Pulsar/Plugin_Sky) | `pulsar.sky`: the atmosphere, clouds and the sky's lighting inputs (`.agents/SKY.md`) |
-| `gi` | [Plugin_GI](https://github.com/Far-Beyond-Pulsar/Plugin_GI) | `pulsar.gi`: the GI probe clipmap and its tracers' interface |
+| `gi` | [Plugin_GI](https://github.com/Far-Beyond-Pulsar/Plugin_GI) | `pulsar.gi`: the GI probe clipmap and the frame's radiance cache (the publisher of Helio's `rays::radiance_cache`), traced through the frame's ray streams |
 | `bake` | [Plugin_Bake](https://github.com/Far-Beyond-Pulsar/Plugin_Bake) | `pulsar.bake`: baked lighting (indirect lightmaps, reflection probes, PVS) through the frame's contracts; vendors the Nebula baker |
 | `fog` | [Plugin_Fog](https://github.com/Far-Beyond-Pulsar/Plugin_Fog) | `pulsar.fog`: global and local fog media, volumetric fog |
 | `post` | [Plugin_Post](https://github.com/Far-Beyond-Pulsar/Plugin_Post) | `pulsar.post`: post-process volumes and camera baselines |

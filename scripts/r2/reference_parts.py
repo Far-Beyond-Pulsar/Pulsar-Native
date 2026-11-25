@@ -43,8 +43,8 @@ def variant(source, part):
     # A miss at depth d: visible (0), sky (1), first (2), later.
     t = rep(
         t,
-        "add(&path, path.throughput * sky_radiance(ray.origin, ray.dir), depth);",
-        "add_part(&path, path.throughput * sky_radiance(ray.origin, ray.dir), depth, "
+        "add(&path, path.throughput * sky_radiance_at(ray.origin, ray.dir), depth);",
+        "add_part(&path, path.throughput * sky_radiance_at(ray.origin, ray.dir), depth, "
         "select(select(select(4u, 3u, depth == 2u), 2u, depth == 1u), 0u, depth == 0u));",
     )
     # An emitter met at depth d: visible (0), first (1), later.

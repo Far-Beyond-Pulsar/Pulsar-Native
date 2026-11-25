@@ -27,7 +27,9 @@
 # R0_CRAFT, R1_CRAFT (kept executables), FRAMES (the reference's frames; on
 # voxel_craft past CRAFT_WAIT, default 5000, which covers its kernels'
 # compile on a cold cache),
-# PART (cathedral, craft or all), NO_FOLIAGE (1: voxel_craft without its
+# CRAFT_BUILDS (the real-time builds compared on voxel_craft, `name=exe`
+# separated by spaces, `new` this build; default r0, r1 and this build as
+# r2), PART (cathedral, craft or all), NO_FOLIAGE (1: voxel_craft without its
 # procedural grass in every run; the reference does not trace grass, so with
 # it the real-time image has a meadow where the reference has bare turf).
 set -u
@@ -41,6 +43,7 @@ WHO=${WHO:-r2-reference}
 BASE_CATHEDRAL=${BASE_CATHEDRAL:-C:/t/int/indoor_cathedral_gi_r2.exe}
 R0_CRAFT=${R0_CRAFT:-C:/Users/thiag/rewrite-baselines/voxel_craft_r0.exe}
 R1_CRAFT=${R1_CRAFT:-C:/t/int/voxel_craft_r1_merged.exe}
+CRAFT_BUILDS=${CRAFT_BUILDS:-r0=$R0_CRAFT r1=$R1_CRAFT r2=new}
 COMPARE="python $ROOT/scripts/r2/reference_compare.py"
 mkdir -p "$OUT/cathedral" "$OUT/craft"
 
@@ -123,8 +126,10 @@ once() { # exe dir [env...]: one frame after REF_WAIT
 # debug mode no pass draws, 250: the post shows any debug view's scene
 # colour without exposure or tone curve, as it shows the reference's 62, so
 # the two compare) and its indirect diffuse (view 23, against 63).
-for build in r0 r1 r2; do
-    case $build in r0) exe=$R0_CRAFT;; r1) exe=$R1_CRAFT;; r2) exe=./voxel_craft_new.exe;; esac
+for spec in $CRAFT_BUILDS; do
+    build=${spec%%=*}
+    exe=${spec#*=}
+    [ "$exe" = new ] && exe=./voxel_craft_new.exe
     burst "$exe" "${build}_raw" VOXEL_CRAFT_DEBUG=250
     burst "$exe" "${build}_indirect" VOXEL_CRAFT_DEBUG=23
 done
@@ -162,15 +167,21 @@ mean = np.mean([np.array(Image.open(f).convert('RGB'), dtype=np.float64) for f i
 Image.fromarray((mean + 0.5).astype(np.uint8)).save(sys.argv[1] + '/mean.png')
 print(sys.argv[1], len(files), 'frames')" "$OUT/craft/$1"
 }
-for d in r0_raw r1_raw r2_raw r0_indirect r1_indirect r2_indirect reference reference_diffuse; do mean_burst "$d"; done
+for d in reference reference_diffuse; do mean_burst "$d"; done
+raw=""
+indirect=""
+for spec in $CRAFT_BUILDS; do
+    b=${spec%%=*}
+    mean_burst "${b}_raw"
+    mean_burst "${b}_indirect"
+    raw="$raw $b=$OUT/craft/${b}_raw/mean.png"
+    indirect="$indirect ${b}_indirect=$OUT/craft/${b}_indirect/mean.png"
+done
 grep -h "the sum restarts\|helio::compile" "$OUT"/craft/reference/log.txt | tail -6
 echo "== voxel_craft: the whole frame (raw, 250) against the reference's (62)"
-$COMPARE png "$OUT/craft/reference/mean.png" "$OUT/craft" \
-    r0="$OUT/craft/r0_raw/mean.png" r1="$OUT/craft/r1_raw/mean.png" r2="$OUT/craft/r2_raw/mean.png"
+$COMPARE png "$OUT/craft/reference/mean.png" "$OUT/craft" $raw
 echo "== voxel_craft: indirect diffuse (view 23) against the reference's (63)"
-$COMPARE png "$OUT/craft/reference_diffuse/mean.png" "$OUT/craft" \
-    r0_indirect="$OUT/craft/r0_indirect/mean.png" r1_indirect="$OUT/craft/r1_indirect/mean.png" \
-    r2_indirect="$OUT/craft/r2_indirect/mean.png"
+$COMPARE png "$OUT/craft/reference_diffuse/mean.png" "$OUT/craft" $indirect
 echo "== voxel_craft: linear, this build against the reference"
 $COMPARE dump "$OUT/craft/linear_0/dump_shot_00" "$OUT/craft/linear"
 echo "== voxel_craft: the reference's parts and the real-time views (linear mean luminance)"
