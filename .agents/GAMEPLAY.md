@@ -179,7 +179,7 @@ owned its device (the packaged game), so the CPU waited for the whole GPU frame 
 fixed 60 Hz tick made every input wait for the next tick (up to 16.7 ms on a 144 Hz display). Earlier work:
 the shipped `IA_Look` had a `smooth` modifier (a 55 ms time constant), an exponent 1.6 curve and an actuation
 threshold that dropped slow movement; it now has no modifiers (`gameplay_defaults::the_look_action_adds_no_delay_and_drops_no_slow_movement`).
-What remains of the 13.5 ms, in order: `render_submit` 6 ms (the Shadow pass's command-buffer finish, 3.3 ms of
+What remains of the 14.5 ms, in order: `render_submit` 6 ms (the Shadow pass's command-buffer finish, 3.3 ms of
 it: see "Where a frame goes" below), `wait_for_frame` 3.5 ms and `wait_for_tick` 3.3 ms (the loops run at
 different phases; a late-latched look, applying the newest mouse delta to the view when the frame starts, would
 remove both for the camera), and the display.
@@ -207,7 +207,7 @@ First 14 s of the packaged game, same machine, before and after (`profile_frame_
 | before | 77 | 169 ms | 592 ms | 1523 ms | 1713 ms |
 | after | 1382 | 9.3 ms | 20.8 ms | 39 ms | 76 ms |
 
-Main-thread time in `scene::pump_assets` over the 14 s: 9.7 s before, 0.57 s after (textures 0.43 s). The cause was not a missing worker: textures were already cooked on loader threads. The material bind on the frame
+Main-thread time in `scene::pump_assets` over the 14 s: 9.7 s before (9.0 s of it material binds), 1.2 s after (material binds 1.0 s, of which texture uploads 0.44 s). The cause was not a missing worker: textures were already cooked on loader threads. The material bind on the frame
 thread (`Assets::apply_bindings material`, 9.0 s of the 13.7 s) did the rest: (1) a graph's roughness and normal
 maps were cooked as colour on the loader and then again for their real use on the frame thread; (2) a cooked form the
 residency cache had since evicted was read from the derived cache on the frame thread (loads outran the frame; the
@@ -217,7 +217,7 @@ windowed frame pumped twice. Now: the loader cooks for the use and pins the resu
 (`LoadedTexture::pinned_for`); loads in flight count what has loaded and not bound; a pump binds as many assets
 per walk as the time budget holds at the cost seen so far; a render loop is the only pumper; loader threads are half
 the cores. Remaining on the frame thread while streaming: the GPU upload (`Texture::upload_cooked`, 0.8 ms mean, 4 ms
-max) and the renderer's own first-use work (`Helio: apply pipeline` 360 ms once, `create_window_renderer` 0.9 s before
+max; one pass over a whole texture, not yet split into budgeted chunks) and the renderer's own first-use work (`Helio: apply pipeline` 360 ms once, `create_window_renderer` 0.9 s before
 the first frame). Derived cache: `install_derived_cache` (`helio_bridge`) points it at `<project>/.pulsar/cache/derived`
 with the `streaming.derived_cache_mb` budget (default 32768); a packaged game's project path is its extracted
 asset cache (`%TEMP%/pulsar-asset-cache/<hash>`), which persists between launches.
