@@ -517,23 +517,34 @@ impl TickLoop {
             TickMode::Variable { max_delta } => max_delta,
         };
 
+        // Tick `k` is due at `first + k * target_dt` and runs within one step of
+        // it. Due times never drift: a tick that ran late or long does not push
+        // the ones after it (the simulation runs at its rate on average), and a
+        // loop that fell far behind (a stall) starts over instead of racing to
+        // catch up.
+        let mut due = std::time::Instant::now();
         while self.running.load(Ordering::Relaxed) {
+            // Inside its window, the moment the tick ends just before the next
+            // frame reads the world; when due without a prediction.
+            let now = std::time::Instant::now();
+            match self.pacer.as_ref().map(|pacer| pacer.next_start(due, target_dt, now)) {
+                // A frame is coming: sleep to just before it and spin the last
+                // stretch, since the point is the phase.
+                Some(Some(at)) => crate::frame_pacer::sleep_until(at),
+                _ => {
+                    if let Some(wait) = due.checked_duration_since(now) {
+                        std::thread::sleep(wait);
+                    }
+                }
+            }
             let start = std::time::Instant::now();
             self.tick_once();
-            let elapsed = start.elapsed();
-            let next = match &self.pacer {
-                Some(pacer) => {
-                    pacer.tick_finished(elapsed);
-                    // Ending just before the next frame samples the world; the
-                    // fixed period when the display's rate is not the tick's.
-                    pacer.next_tick(start, target_dt, std::time::Instant::now())
-                }
-                None => None,
-            };
-            match next {
-                Some(at) => crate::frame_pacer::sleep_until(at),
-                None if elapsed < target_dt => std::thread::sleep(target_dt - elapsed),
-                None => {}
+            if let Some(pacer) = &self.pacer {
+                pacer.tick_finished(start.elapsed());
+            }
+            due += target_dt;
+            if due + target_dt * 4 < std::time::Instant::now() {
+                due = std::time::Instant::now();
             }
         }
 

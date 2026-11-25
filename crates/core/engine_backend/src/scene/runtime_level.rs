@@ -115,6 +115,7 @@ enum HydrationStage {
     Validate,
     Objects,
     Frames,
+    Props,
     Components,
     Classes,
     Finish,
@@ -123,6 +124,10 @@ enum HydrationStage {
 
 /// How many class roots one expansion handles at once.
 const CLASS_ROOTS_PER_UNIT: usize = 16;
+/// One object whose components take this long to hydrate is reported.
+const SLOW_OBJECT: std::time::Duration = std::time::Duration::from_millis(8);
+/// How many objects one pass of the property stage covers.
+const PROPS_PER_UNIT: usize = 128;
 
 /// A level hydrated in bounded steps. Each [`step`](Self::step) does whole
 /// units of work (one object spawned, one object's components attached, a
@@ -141,6 +146,8 @@ pub struct LevelHydration {
     stage: HydrationStage,
     cursor: usize,
     spawned: Vec<Entity>,
+    /// Stable ids validated so far (the duplicate check spans the whole file).
+    seen: HashSet<String>,
     persisted: HashMap<String, Vec<ComponentRecord>>,
     roots: Vec<Entity>,
     extras: LevelExtras,
@@ -167,6 +174,7 @@ impl LevelHydration {
             stage: HydrationStage::Validate,
             cursor: 0,
             spawned: Vec::new(),
+            seen: HashSet::new(),
             roots: Vec::new(),
             extras,
         })
@@ -178,7 +186,7 @@ impl LevelHydration {
         match self.stage {
             HydrationStage::Validate => 0.0,
             HydrationStage::Objects => 0.3 * self.cursor as f32 / objects,
-            HydrationStage::Frames => 0.3,
+            HydrationStage::Frames | HydrationStage::Props => 0.3,
             HydrationStage::Components => 0.3 + 0.5 * self.cursor as f32 / objects,
             HydrationStage::Classes => 0.8 + 0.15 * self.cursor as f32 / objects,
             HydrationStage::Finish => 0.95,
@@ -201,16 +209,23 @@ impl LevelHydration {
                 HydrationStage::Validate => {
                     // Parent-before-child order is the format's own DFS
                     // guarantee (see `SceneFile::objects` doc), which is what
-                    // spawning requires.
-                    validate_objects(world, &self.file.objects)?;
-                    self.spawned.reserve(self.file.objects.len());
-                    self.advance(HydrationStage::Objects);
+                    // spawning requires. One object a unit: a level of tens of
+                    // thousands of objects is not one frame's work.
+                    let Some(obj) = self.file.objects.get(self.cursor) else {
+                        self.spawned.reserve(self.file.objects.len());
+                        self.seen = HashSet::new();
+                        self.advance(HydrationStage::Objects);
+                        continue;
+                    };
+                    validate_object(world, &mut self.seen, obj)?;
+                    self.cursor += 1;
                 }
                 HydrationStage::Objects => {
                     let Some(obj) = self.file.objects.get(self.cursor) else {
                         self.advance(HydrationStage::Frames);
                         continue;
                     };
+                    profiling::profile_scope!("level_hydration::spawn_object");
                     self.spawned.push(spawn_file_object(world, obj)?);
                     self.cursor += 1;
                 }
@@ -218,15 +233,31 @@ impl LevelHydration {
                     // A level saved before parent-relative transforms holds
                     // world-space values for parented objects: make them local,
                     // in place.
+                    // (A format version that predates parent-relative
+                    // transforms only; it converts parents and children
+                    // together, so it is one unit.)
                     if hierarchy_transform::file_has_world_space_transforms(&self.version) {
+                        profiling::profile_scope!("level_hydration::legacy_transforms");
                         hierarchy_transform::convert_legacy_world_transforms(world, &self.spawned);
                     }
-                    // Rigid frames (an object prop) become frame components.
-                    crate::scene::frames::sync_frames_from_props(world, &self.spawned);
-                    for &entity in &self.spawned {
+                    self.advance(HydrationStage::Props);
+                }
+                HydrationStage::Props => {
+                    // Rigid frames (an object prop) become frame components and
+                    // the content-space tag follows its prop: per object, a
+                    // chunk at a time. The frames' slots are allocated once, in
+                    // the finish stage.
+                    if self.cursor >= self.spawned.len() {
+                        self.advance(HydrationStage::Components);
+                        continue;
+                    }
+                    let end = (self.cursor + PROPS_PER_UNIT).min(self.spawned.len());
+                    let chunk = &self.spawned[self.cursor..end];
+                    crate::scene::frames::mark_frames_from_props(world, chunk);
+                    for &entity in chunk {
                         crate::scene::partitions::apply_space_prop(world, entity);
                     }
-                    self.advance(HydrationStage::Components);
+                    self.cursor = end;
                 }
                 HydrationStage::Components => {
                     let Some(obj) = self.file.objects.get(self.cursor) else {
@@ -262,7 +293,22 @@ impl LevelHydration {
                     };
                     // Legacy shapes were migrated with the file
                     // (`pulsar_class::records`).
+                    profiling::profile_scope!("level_hydration::components");
+                    let unit_started = std::time::Instant::now();
                     hydrate_components(world, entity, &obj.id, &instances)?;
+                    // One object's components are the smallest unit there is: one
+                    // that outlasts the frame's budget is named, so it can be fixed
+                    // where it is slow (its class's own hydration).
+                    let took = unit_started.elapsed();
+                    if took >= SLOW_OBJECT {
+                        tracing::warn!(
+                            object = %obj.id,
+                            name = %obj.name,
+                            classes = ?instances.iter().map(|record| record.class_name.as_str()).collect::<Vec<_>>(),
+                            took_ms = took.as_secs_f64() * 1000.0,
+                            "One object's components took longer than a frame's hydration budget"
+                        );
+                    }
                 }
                 HydrationStage::Classes => {
                     // Placed classes: rebuild each instance from the current
@@ -272,6 +318,7 @@ impl LevelHydration {
                         self.advance(HydrationStage::Finish);
                         continue;
                     }
+                    profiling::profile_scope!("level_hydration::classes");
                     let end = (self.cursor + CLASS_ROOTS_PER_UNIT).min(self.roots.len());
                     let report = pulsar_class::world::expand_roots(
                         world,
@@ -286,10 +333,16 @@ impl LevelHydration {
                 HydrationStage::Finish => {
                     // Plugin singleton rules are repaired on load; directional
                     // lights are unrestricted.
-                    crate::scene::level_rules::enforce_on_load(world);
+                    {
+                        profiling::profile_scope!("level_hydration::enforce_rules");
+                        crate::scene::level_rules::enforce_on_load(world);
+                    }
                     // Components are hydrated now: everything that defines a
                     // space (a sublevel placement is a component) gets its slot.
-                    crate::scene::frames::sync_spaces(world);
+                    {
+                        profiling::profile_scope!("level_hydration::sync_spaces");
+                        crate::scene::frames::sync_spaces(world);
+                    }
                     // What the migration could not turn into a ClassInstance (a
                     // second class bound to one object) has no script instance
                     // any more.
@@ -768,28 +821,26 @@ fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentReco
     out
 }
 
-fn validate_objects(
+fn validate_object(
     world: &World,
-    objects: &[pulsar_scene::format::SceneObject],
+    seen: &mut HashSet<String>,
+    obj: &pulsar_scene::format::SceneObject,
 ) -> Result<(), RuntimeLevelError> {
-    let mut seen = HashSet::with_capacity(objects.len());
-    for obj in objects {
-        if world.entity_for(&obj.id).is_some() || !seen.insert(obj.id.as_str()) {
+    if world.entity_for(&obj.id).is_some() || !seen.insert(obj.id.clone()) {
+        return Err(RuntimeLevelError::Parse {
+            path: String::new(),
+            message: format!("duplicate stable id '{}'", obj.id),
+        });
+    }
+    if let Some(parent) = &obj.parent {
+        if !seen.contains(parent.as_str()) && world.entity_for(parent).is_none() {
             return Err(RuntimeLevelError::Parse {
                 path: String::new(),
-                message: format!("duplicate stable id '{}'", obj.id),
+                message: format!(
+                    "object '{}' references parent '{}' before it is available",
+                    obj.id, parent
+                ),
             });
-        }
-        if let Some(parent) = &obj.parent {
-            if !seen.contains(parent.as_str()) && world.entity_for(parent).is_none() {
-                return Err(RuntimeLevelError::Parse {
-                    path: String::new(),
-                    message: format!(
-                        "object '{}' references parent '{}' before it is available",
-                        obj.id, parent
-                    ),
-                });
-            }
         }
     }
     Ok(())

@@ -11,8 +11,8 @@
 //! | `systems_done`   | the schedule and component phase (input drain, character, physics handoff) finished ([`tick_systems_done`]) | `input_and_systems` |
 //! | `scripts_done`   | the script phase finished ([`tick_scripts_done`])             | `scripts`         |
 //! | `tick_done`      | the tick finished, the change window closed ([`tick_done`])   | `scene_write`     |
-//! | `frame_start`    | the first frame that started after the tick ([`frame_started`]) | `wait_for_frame` |
-//! | `acquired`       | the surface texture was acquired ([`frame_stage`])            | `acquire`         |
+//! | `frame_start`    | the first frame that began to read the world after the tick ([`frame_started`]) | `wait_for_frame` |
+//! | `sampled`        | the world was read (scene stepped, camera taken) ([`frame_stage`]) | `sample`          |
 //! | `prepared`       | the scene is flushed to the GPU and the frame extracted       | `extract_upload`  |
 //! | `rendered`       | the frame was recorded and submitted                          | `render_submit`   |
 //! | `presented`      | `present` returned ([`frame_presented`])                      | `present`         |
@@ -49,7 +49,7 @@ pub const STAGES: [&str; 9] = [
     "scripts",
     "scene_write",
     "wait_for_frame",
-    "acquire",
+    "sample",
     "extract_upload",
     "render_submit",
     "present",
@@ -63,15 +63,15 @@ const SYSTEMS_DONE: usize = 2;
 const SCRIPTS_DONE: usize = 3;
 const TICK_DONE: usize = 4;
 const FRAME_START: usize = 5;
-const ACQUIRED: usize = 6;
+const SAMPLED: usize = 6;
 const PREPARED: usize = 7;
 const RENDERED: usize = 8;
 
 /// A frame stage reported through [`frame_stage`].
 #[derive(Clone, Copy, Debug)]
 pub enum FrameStage {
-    /// The surface texture was acquired.
-    Acquired,
+    /// The world was read: the scene stepped and the camera taken.
+    Sampled,
     /// The scene was flushed and the frame's camera and views extracted.
     Prepared,
     /// The frame was recorded and submitted.
@@ -189,7 +189,7 @@ pub fn frame_stage(frame_start: u64, stage: FrameStage) {
         return;
     }
     let slot = match stage {
-        FrameStage::Acquired => ACQUIRED,
+        FrameStage::Sampled => SAMPLED,
         FrameStage::Prepared => PREPARED,
         FrameStage::Rendered => RENDERED,
     };
@@ -250,7 +250,7 @@ pub fn frame_presented(frame_start: u64) {
             scripts_ms = sample.stage_ms[2],
             scene_write_ms = sample.stage_ms[3],
             wait_for_frame_ms = sample.stage_ms[4],
-            acquire_ms = sample.stage_ms[5],
+            sample_ms = sample.stage_ms[5],
             extract_upload_ms = sample.stage_ms[6],
             render_submit_ms = sample.stage_ms[7],
             present_ms = sample.stage_ms[8],
@@ -422,7 +422,7 @@ mod tests {
         tick_done(tick);
         std::thread::sleep(std::time::Duration::from_millis(2));
         let frame = frame_started();
-        frame_stage(frame, FrameStage::Acquired);
+        frame_stage(frame, FrameStage::Sampled);
         frame_stage(frame, FrameStage::Prepared);
         frame_stage(frame, FrameStage::Rendered);
         frame_presented(frame);

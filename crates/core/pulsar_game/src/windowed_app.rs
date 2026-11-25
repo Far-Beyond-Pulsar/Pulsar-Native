@@ -197,7 +197,6 @@ impl GameWindow {
         let Some(_frame) = self.runtime.begin_frame() else {
             return;
         };
-        let latency_frame = crate::latency::frame_started();
         let _span = self.runtime.task().span().entered();
 
         // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
@@ -245,14 +244,15 @@ impl GameWindow {
             }
         };
         drop(acquire_scope);
-        pacer.frame_acquired();
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Acquired);
 
         // The world as late as possible: after the display wait, right before
-        // the camera goes into the frame's uniforms.
+        // the camera goes into the frame's uniforms. The input chain's frame
+        // starts here: this is the moment it reads what the tick wrote.
+        let latency_frame = crate::latency::frame_started();
+        pacer.sampling();
         let cam = {
             let ecs_camera = sample(&mut self.renderer);
             ecs_camera.unwrap_or_else(|| {
@@ -266,6 +266,7 @@ impl GameWindow {
         // `Renderer::render` tracks its own frame delta internally (wind/TAA/
         // foliage clocks all advance from that), so there is nothing to push
         // in from here.
+        crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Sampled);
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;
 
@@ -425,7 +426,7 @@ pub struct PulsarApp {
     /// Mouse motion and key arrivals taken on the OS-side input thread; the
     /// tick drains the motion where it reads input ([`crate::pointer`]).
     pointer: Arc<crate::pointer::PointerSampler>,
-    /// Told when each frame acquires its surface, so the tick can end just
+    /// Told when each frame reads the world, so the tick can end just
     /// before the next one ([`crate::frame_pacer`]).
     pacer: Arc<crate::frame_pacer::FramePacer>,
 
@@ -535,6 +536,15 @@ impl PulsarApp {
             self.cursor_captured = true;
             self.focused_window = Some(handle);
             self.pointer.set_captured(true);
+        }
+    }
+
+    /// Mouse motion for the focused window's free camera.
+    fn drive_freecam(&mut self, dx: f64, dy: f64) {
+        if let Some(handle) = self.focused_window {
+            if let Some(gw) = self.windows.get_mut(&handle) {
+                gw.freecam.on_mouse_delta(dx, dy);
+            }
         }
     }
 
@@ -958,20 +968,15 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if self.cursor_captured {
                 profiling::profile_scope!("Game::mouse_motion");
-                if self.pointer.has_raw_feed() {
-                    // The raw-input thread already stamped this motion and
-                    // accumulated it for the tick; what is measured here is how
-                    // long the event loop made it wait.
-                    self.pointer.handled_motion();
-                } else {
-                    // No OS thread: this is the earliest the game sees it.
+                // With the OS-side thread the raw motion reaches the sampler
+                // (and, through it, the free camera in `about_to_wait`) and the
+                // process's raw mouse registration is that thread's: winit sends
+                // no motion at all. Without it this is the earliest the game
+                // sees the motion.
+                if !self.pointer.has_raw_feed() {
                     self.pointer
                         .add_motion(dx, dy, crate::latency::stamp());
-                }
-                if let Some(handle) = self.focused_window {
-                    if let Some(gw) = self.windows.get_mut(&handle) {
-                        gw.freecam.on_mouse_delta(dx, dy);
-                    }
+                    self.drive_freecam(dx, dy);
                 }
             }
         }
@@ -1173,6 +1178,14 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        // The event loop has pumped its queue: how long raw motion waited for
+        // it, and the free camera takes it.
+        if self.pointer.has_raw_feed() {
+            self.pointer.handled_motion();
+            if let Some((dx, dy)) = self.pointer.take_view_motion() {
+                self.drive_freecam(dx, dy);
+            }
+        }
         if self
             .gpu
             .device_loss

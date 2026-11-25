@@ -44,6 +44,10 @@ pub struct PointerSample {
 pub struct PointerSampler {
     dx: AtomicI64,
     dy: AtomicI64,
+    /// The same motion for the event loop's own consumers (the free camera),
+    /// drained by [`Self::take_view_motion`].
+    view_dx: AtomicI64,
+    view_dy: AtomicI64,
     /// Whole counts of motion added since the last drain; 0 means nothing.
     pending: AtomicU64,
     /// The cursor is captured by the game window: motion counts.
@@ -68,6 +72,8 @@ impl PointerSampler {
         Arc::new(Self {
             dx: AtomicI64::new(0),
             dy: AtomicI64::new(0),
+            view_dx: AtomicI64::new(0),
+            view_dy: AtomicI64::new(0),
             pending: AtomicU64::new(0),
             captured: AtomicBool::new(false),
             focused: AtomicBool::new(true),
@@ -91,6 +97,8 @@ impl PointerSampler {
             // Motion from before the release must not turn the view later.
             self.dx.store(0, Ordering::Release);
             self.dy.store(0, Ordering::Release);
+            self.view_dx.store(0, Ordering::Release);
+            self.view_dy.store(0, Ordering::Release);
             self.pending.store(0, Ordering::Release);
         }
     }
@@ -120,6 +128,8 @@ impl PointerSampler {
         self.dx.fetch_add((dx * SUBCOUNT).round() as i64, Ordering::AcqRel);
         self.dy.fetch_add((dy * SUBCOUNT).round() as i64, Ordering::AcqRel);
         self.pending.fetch_add(1, Ordering::AcqRel);
+        self.view_dx.fetch_add((dx * SUBCOUNT).round() as i64, Ordering::AcqRel);
+        self.view_dy.fetch_add((dy * SUBCOUNT).round() as i64, Ordering::AcqRel);
         crate::latency::note_input_at(at);
         let _ = self
             .unhandled_motion
@@ -138,7 +148,16 @@ impl PointerSampler {
             .compare_exchange(0, at, Ordering::AcqRel, Ordering::Relaxed);
     }
 
-    /// The event loop handed over a mouse motion: report how long the raw
+    /// The motion since the last call, for the event loop's own consumers (the
+    /// free camera), which no longer receive the OS's raw mouse events: this
+    /// process's raw-input registration belongs to the sampler's thread.
+    pub fn take_view_motion(&self) -> Option<(f64, f64)> {
+        let dx = self.view_dx.swap(0, Ordering::AcqRel);
+        let dy = self.view_dy.swap(0, Ordering::AcqRel);
+        (dx != 0 || dy != 0).then(|| (dx as f64 / SUBCOUNT, dy as f64 / SUBCOUNT))
+    }
+
+    /// The event loop got to a mouse motion: report how long the raw
     /// thread's copy of it had waited.
     pub fn handled_motion(&self) {
         let at = self.unhandled_motion.swap(0, Ordering::AcqRel);
@@ -459,6 +478,20 @@ mod tests {
         sampler.set_focused(false);
         sampler.add_motion(9.0, 9.0, crate::latency::stamp());
         assert!(sampler.drain().is_none(), "unfocused: ignored");
+    }
+
+    #[test]
+    fn the_view_takes_the_same_motion_the_tick_does_each_on_its_own_schedule() {
+        let sampler = PointerSampler::new();
+        sampler.set_captured(true);
+        sampler.add_motion(3.0, 1.0, crate::latency::stamp());
+        assert_eq!(sampler.take_view_motion(), Some((3.0, 1.0)));
+        sampler.add_motion(2.0, 0.0, crate::latency::stamp());
+        // The tick still has everything since its own last sample.
+        let sample = sampler.drain().expect("motion");
+        assert_eq!((sample.dx, sample.dy), (5.0, 1.0));
+        assert_eq!(sampler.take_view_motion(), Some((2.0, 0.0)));
+        assert_eq!(sampler.take_view_motion(), None);
     }
 
     #[test]

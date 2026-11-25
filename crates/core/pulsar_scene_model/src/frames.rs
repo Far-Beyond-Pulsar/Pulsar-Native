@@ -244,12 +244,19 @@ pub fn apply_frame_prop(world: &mut World, entity: Entity) {
 /// [`apply_frame_prop`] for each of `entities` (after a scene load), with one
 /// slot sync at the end.
 pub fn sync_frames_from_props(world: &mut World, entities: &[Entity]) {
+    mark_frames_from_props(world, entities);
+    sync_spaces(world);
+}
+
+/// The marking half of [`sync_frames_from_props`]: each of `entities` whose prop
+/// says it is a rigid frame gets the component. No slot is allocated; a loader
+/// that marks in chunks calls [`sync_spaces`] once at the end.
+pub fn mark_frames_from_props(world: &mut World, entities: &[Entity]) {
     for &entity in entities {
         if prop_marks_frame(world, entity) && world.get::<RigidFrame>(entity).is_none() {
             world.insert(entity, RigidFrame);
         }
     }
-    sync_spaces(world);
 }
 
 /// The matrices of the spaces objects define: slot 0 is the identity, and each
