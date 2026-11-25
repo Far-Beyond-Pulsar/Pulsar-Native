@@ -13,6 +13,7 @@ pub(crate) use layout::saved_window_bounds;
 mod class_problems;
 mod findings;
 mod manual_tool_panel;
+mod mcp_tools;
 mod menu_actions;
 mod nav_sidebar;
 mod navigation;

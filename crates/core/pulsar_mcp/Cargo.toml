@@ -1,0 +1,28 @@
+[package]
+name = "pulsar_mcp"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The engine's MCP (Model Context Protocol) server: the tool registration plugins and the engine contribute through, the JSON-RPC handler, and a localhost-only, token-authenticated Streamable HTTP transport that runs as editor services."
+
+[dependencies]
+# The registration category (`mcp.tools`): a plugin adds a tool with `p.add(McpToolRegistration {..})`.
+pulsar_plugins = { workspace = true }
+# The server runs as editor services with heartbeats (no raw threads).
+editor_task_queue = { workspace = true }
+# The endpoint file is written through the virtual file system.
+engine_fs = { workspace = true }
+# Where the endpoint file (url and token) is written.
+pulsar_install_layout = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+base64 = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

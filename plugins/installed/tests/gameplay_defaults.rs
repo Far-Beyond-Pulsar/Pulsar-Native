@@ -133,6 +133,40 @@ fn the_mounted_class_can_be_selected_for_the_player_character_role() {
     engine_fs::virtual_fs::unmount_project(root);
 }
 
+/// A process that did not open the project (a plugin library has its own copy of
+/// `engine_fs`, with none of the host's mounts) still finds and compiles the plugin's
+/// mounted class: listing classes and compiling a project mount it. Without that the
+/// packager's script step failed with "has graph_save.json source but no compiled
+/// module" for `plugins/Gameplay/classes/PlayerCharacter.class`.
+#[test]
+fn the_mounted_class_is_found_and_compiled_without_the_project_being_mounted_first() {
+    use pulsar_class::{find_class_dirs, ClassRegistry, ModuleStore};
+    use pulsar_language::LanguageRegistry;
+
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    everything_on();
+    let project = tempfile::tempdir().unwrap();
+    let root = project.path();
+    std::fs::create_dir_all(root.join("Pulsar")).unwrap();
+    // Not mounted: nothing in this process opened the project.
+    let dirs = find_class_dirs(root);
+    assert!(
+        dirs.iter().any(|dir| dir.ends_with("PlayerCharacter.class")),
+        "{dirs:?}"
+    );
+    engine_fs::virtual_fs::unmount_project(root);
+
+    let natives = pulsar_script_vm::NativeRegistry::with_engine_natives();
+    for (language, compiler) in LanguageRegistry::current().compilers() {
+        let problems = compiler.compile_project(root, &natives);
+        assert!(problems.is_empty(), "{}: {problems:?}", language.id);
+    }
+    let registry = ClassRegistry::scan(root);
+    let entry = registry.by_name("PlayerCharacter").cloned().unwrap();
+    assert!(ModuleStore::of_project(root).has_module(&entry.id));
+    engine_fs::virtual_fs::unmount_project(root);
+}
+
 fn action_event(hub: &EventHub, name: &str, phase: &str, pawn: Entity, x: f64, y: f64) {
     let id = hub
         .descriptor_by_name(&format!("input::{name}.{phase}"))
@@ -268,20 +302,37 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     send(&mut driver, &mut world, "IA_Sprint", "completed", 0.0, 0.0);
     assert_eq!(read(&world, pawn, "walk_speed"), serde_json::json!(4.0));
 
-    // Look: the horizontal axis turns the object (yaw, in degrees).
-    let yaw = |world: &World| {
-        world
-            .get::<engine_backend::scene::Transform>(pawn)
+    // Look: the horizontal axis turns the CONTROL rotation (the view), not the
+    // body: the body follows by the character's rotation options.
+    let control_yaw = |world: &World| {
+        pulsar_world_registry::get_component_property(world, pawn, "CharacterComponent", 0, "control_yaw")
             .unwrap()
-            .rotation[1]
+            .as_f64()
+            .unwrap()
     };
-    let before = yaw(&world);
+    let before = control_yaw(&world);
     send(&mut driver, &mut world, "IA_Look", "triggered", 10.0, 3.0);
     assert!(
-        (yaw(&world) - (before - 10.0)).abs() < 1e-3,
+        (control_yaw(&world) - (before - 10.0)).abs() < 1e-3,
         "turned by the axis times turn_rate: {before} -> {}",
-        yaw(&world)
+        control_yaw(&world)
     );
+
+    // Look up and down: the vertical axis pitches the camera (positive looks up),
+    // and the camera holds its limits however far the stick is pushed.
+    let pitch = |world: &World| {
+        pulsar_world_registry::get_component_property(world, pawn, "CharacterComponent", 0, "control_pitch")
+            .unwrap()
+            .as_f64()
+            .unwrap()
+    };
+    assert_eq!(pitch(&world), 3.0, "IA_Look y=3 looked up three degrees");
+    send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, -5.0);
+    assert_eq!(pitch(&world), -2.0, "a negative axis looks down");
+    send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, 500.0);
+    assert_eq!(pitch(&world), 80.0, "looking up stops at the camera's upper limit");
+    send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, -1000.0);
+    assert_eq!(pitch(&world), -80.0, "looking down stops at the lower limit");
 
     // Only a wired phase is listened to: IA_Jump.started has no chain, so it
     // changes nothing (jump is already set, so this only checks it does not fail).
@@ -316,4 +367,20 @@ fn a_level_that_selects_nothing_spawns_no_character() {
     assert!(driver.role_entity(PLAYER_CHARACTER_ROLE).is_none());
     assert!(driver.role_entities().is_empty());
     engine_fs::virtual_fs::unmount_project(root);
+}
+
+/// Look is immediate: the shipped IA_Look adds no smoothing (a time constant
+/// delays every mouse movement by a fraction of a second) and no response
+/// curve or threshold that drops slow movements.
+#[test]
+fn the_look_action_adds_no_delay_and_drops_no_slow_movement() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../vendor/gameplay/assets/input/actions/IA_Look.inputaction");
+    let action: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(action["modifiers"], serde_json::json!([]), "no smooth, no curve");
+    assert!(
+        action["actuation_threshold"].as_f64().unwrap() <= 0.001,
+        "one pixel of mouse movement is an input"
+    );
 }

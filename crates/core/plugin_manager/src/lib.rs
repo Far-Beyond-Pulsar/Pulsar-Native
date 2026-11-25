@@ -78,6 +78,8 @@ use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+mod load_report;
+pub use load_report::{load_report, LibraryOutcome, LibraryReport, LoadReport};
 mod ai_tools;
 mod attach;
 pub mod builtin;

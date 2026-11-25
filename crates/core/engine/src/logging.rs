@@ -19,7 +19,7 @@ use tracing_subscriber::fmt::{
 use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
-use ui_log_viewer::publish_live_log;
+use ui_log_viewer::publish_live_log_in_task;
 
 #[allow(dead_code)]
 pub struct LogGuard(tracing_appender::non_blocking::WorkerGuard);
@@ -120,7 +120,7 @@ impl<S> Layer<S> for LiveLogLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    fn on_event(&self, event: &tracing::Event<'_>, _ctx: LayerContext<'_, S>) {
+    fn on_event(&self, event: &tracing::Event<'_>, ctx: LayerContext<'_, S>) {
         struct MsgVisitor(String);
 
         impl tracing_subscriber::field::Visit for MsgVisitor {
@@ -146,13 +146,15 @@ where
 
         let mut visitor = MsgVisitor(String::new());
         event.record(&mut visitor);
+        // Which editor task logged it, so a reader can follow one task's lines.
+        let task = editor_task_queue::task_of_event(&ctx, event);
 
         let meta = event.metadata();
         let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let msg = visitor.0.trim();
 
         let line = format!("{} {} {}: {}", ts, meta.level(), meta.target(), msg);
-        publish_live_log(line);
+        publish_live_log_in_task(line, task);
     }
 }
 

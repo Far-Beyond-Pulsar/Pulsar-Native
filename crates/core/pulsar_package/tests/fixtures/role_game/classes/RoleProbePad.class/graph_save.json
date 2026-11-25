@@ -1,0 +1,1257 @@
+{
+  "format_version": 2,
+  "main_graph": {
+    "nodes": {
+      "ev0": {
+        "id": "ev0",
+        "node_type": "event::on::RoleProbePad.on_possess",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "properties": {
+          "scope": "self"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c3"
+            ]
+          },
+          {
+            "id": "pawn_id",
+            "name": "pawn_id",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "u64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "r0a1g": {
+        "id": "r0a1g",
+        "node_type": "get_hooks",
+        "position": {
+          "x": 340,
+          "y": 120
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "hooks",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c1"
+            ]
+          }
+        ]
+      },
+      "r0a1p": {
+        "id": "r0a1p",
+        "node_type": "add",
+        "position": {
+          "x": 490,
+          "y": 120
+        },
+        "properties": {
+          "b": 1
+        },
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c1"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c2"
+            ]
+          }
+        ]
+      },
+      "r0a1s": {
+        "id": "r0a1s",
+        "node_type": "set_hooks",
+        "position": {
+          "x": 640,
+          "y": 0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c3"
+            ]
+          },
+          {
+            "id": "value",
+            "name": "hooks",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c2"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c4"
+            ]
+          }
+        ]
+      },
+      "r0a2l": {
+        "id": "r0a2l",
+        "node_type": "log_info",
+        "position": {
+          "x": 740,
+          "y": 0
+        },
+        "properties": {
+          "message": "ROLEPROBE Controller on_possess"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c4"
+            ]
+          },
+          {
+            "id": "message",
+            "name": "message",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "ev1": {
+        "id": "ev1",
+        "node_type": "event::on::RoleProbePad.on_unpossess",
+        "position": {
+          "x": 0,
+          "y": 260
+        },
+        "properties": {
+          "scope": "self"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c7"
+            ]
+          }
+        ]
+      },
+      "r1a1g": {
+        "id": "r1a1g",
+        "node_type": "get_hooks",
+        "position": {
+          "x": 340,
+          "y": 380
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "hooks",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c5"
+            ]
+          }
+        ]
+      },
+      "r1a1p": {
+        "id": "r1a1p",
+        "node_type": "add",
+        "position": {
+          "x": 490,
+          "y": 380
+        },
+        "properties": {
+          "b": 1
+        },
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c5"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c6"
+            ]
+          }
+        ]
+      },
+      "r1a1s": {
+        "id": "r1a1s",
+        "node_type": "set_hooks",
+        "position": {
+          "x": 640,
+          "y": 260
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c7"
+            ]
+          },
+          {
+            "id": "value",
+            "name": "hooks",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c6"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c8"
+            ]
+          }
+        ]
+      },
+      "r1a2l": {
+        "id": "r1a2l",
+        "node_type": "log_info",
+        "position": {
+          "x": 740,
+          "y": 260
+        },
+        "properties": {
+          "message": "ROLEPROBE Controller on_unpossess"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c8"
+            ]
+          },
+          {
+            "id": "message",
+            "name": "message",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "ev2": {
+        "id": "ev2",
+        "node_type": "event::on::RoleProbePad.on_input",
+        "position": {
+          "x": 0,
+          "y": 520
+        },
+        "properties": {
+          "scope": "self"
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c11"
+            ]
+          },
+          {
+            "id": "delta_seconds",
+            "name": "delta_seconds",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "r2a1g": {
+        "id": "r2a1g",
+        "node_type": "get_hooks",
+        "position": {
+          "x": 340,
+          "y": 640
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "hooks",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c9"
+            ]
+          }
+        ]
+      },
+      "r2a1p": {
+        "id": "r2a1p",
+        "node_type": "add",
+        "position": {
+          "x": 490,
+          "y": 640
+        },
+        "properties": {
+          "b": 1
+        },
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c9"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c10"
+            ]
+          }
+        ]
+      },
+      "r2a1s": {
+        "id": "r2a1s",
+        "node_type": "set_hooks",
+        "position": {
+          "x": 640,
+          "y": 520
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c11"
+            ]
+          },
+          {
+            "id": "value",
+            "name": "hooks",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c10"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c12"
+            ]
+          }
+        ]
+      },
+      "r2a2l": {
+        "id": "r2a2l",
+        "node_type": "log_info",
+        "position": {
+          "x": 740,
+          "y": 520
+        },
+        "properties": {
+          "message": "ROLEPROBE Controller on_input"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c12"
+            ]
+          },
+          {
+            "id": "message",
+            "name": "message",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "ev3": {
+        "id": "ev3",
+        "node_type": "begin_play",
+        "position": {
+          "x": 0,
+          "y": 780
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c13"
+            ]
+          }
+        ]
+      },
+      "r3a1s": {
+        "id": "r3a1s",
+        "node_type": "set_began",
+        "position": {
+          "x": 340,
+          "y": 780
+        },
+        "properties": {
+          "value": true
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c13"
+            ]
+          },
+          {
+            "id": "value",
+            "name": "began",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c14"
+            ]
+          }
+        ]
+      },
+      "r3a2l": {
+        "id": "r3a2l",
+        "node_type": "log_info",
+        "position": {
+          "x": 640,
+          "y": 780
+        },
+        "properties": {
+          "message": "ROLEPROBE Controller begin_play"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c14"
+            ]
+          },
+          {
+            "id": "message",
+            "name": "message",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "ev4": {
+        "id": "ev4",
+        "node_type": "on_tick",
+        "position": {
+          "x": 0,
+          "y": 1040
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c17"
+            ]
+          },
+          {
+            "id": "delta_time",
+            "name": "delta_time",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ]
+      },
+      "r4a1g": {
+        "id": "r4a1g",
+        "node_type": "get_ticks",
+        "position": {
+          "x": 340,
+          "y": 1160
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "ticks",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c15"
+            ]
+          }
+        ]
+      },
+      "r4a1p": {
+        "id": "r4a1p",
+        "node_type": "add",
+        "position": {
+          "x": 490,
+          "y": 1160
+        },
+        "properties": {
+          "b": 1
+        },
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c15"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c16"
+            ]
+          }
+        ]
+      },
+      "r4a1s": {
+        "id": "r4a1s",
+        "node_type": "set_ticks",
+        "position": {
+          "x": 640,
+          "y": 1040
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c17"
+            ]
+          },
+          {
+            "id": "value",
+            "name": "ticks",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "c16"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "ev5": {
+        "id": "ev5",
+        "node_type": "on_end_play",
+        "position": {
+          "x": 0,
+          "y": 1300
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c18"
+            ]
+          }
+        ]
+      },
+      "r5a1s": {
+        "id": "r5a1s",
+        "node_type": "set_ended",
+        "position": {
+          "x": 340,
+          "y": 1300
+        },
+        "properties": {
+          "value": true
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c18"
+            ]
+          },
+          {
+            "id": "value",
+            "name": "ended",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "c19"
+            ]
+          }
+        ]
+      },
+      "r5a2l": {
+        "id": "r5a2l",
+        "node_type": "log_info",
+        "position": {
+          "x": 640,
+          "y": 1300
+        },
+        "properties": {
+          "message": "ROLEPROBE Controller end_play"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "c19"
+            ]
+          },
+          {
+            "id": "message",
+            "name": "message",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      }
+    },
+    "connections": [
+      {
+        "id": "c1",
+        "source_node": "r0a1g",
+        "source_pin": "value",
+        "target_node": "r0a1p",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c2",
+        "source_node": "r0a1p",
+        "source_pin": "result",
+        "target_node": "r0a1s",
+        "target_pin": "value",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c3",
+        "source_node": "ev0",
+        "source_pin": "Body",
+        "target_node": "r0a1s",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c4",
+        "source_node": "r0a1s",
+        "source_pin": "exec_out",
+        "target_node": "r0a2l",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c5",
+        "source_node": "r1a1g",
+        "source_pin": "value",
+        "target_node": "r1a1p",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c6",
+        "source_node": "r1a1p",
+        "source_pin": "result",
+        "target_node": "r1a1s",
+        "target_pin": "value",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c7",
+        "source_node": "ev1",
+        "source_pin": "Body",
+        "target_node": "r1a1s",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c8",
+        "source_node": "r1a1s",
+        "source_pin": "exec_out",
+        "target_node": "r1a2l",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c9",
+        "source_node": "r2a1g",
+        "source_pin": "value",
+        "target_node": "r2a1p",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c10",
+        "source_node": "r2a1p",
+        "source_pin": "result",
+        "target_node": "r2a1s",
+        "target_pin": "value",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c11",
+        "source_node": "ev2",
+        "source_pin": "Body",
+        "target_node": "r2a1s",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c12",
+        "source_node": "r2a1s",
+        "source_pin": "exec_out",
+        "target_node": "r2a2l",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c13",
+        "source_node": "ev3",
+        "source_pin": "Body",
+        "target_node": "r3a1s",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c14",
+        "source_node": "r3a1s",
+        "source_pin": "exec_out",
+        "target_node": "r3a2l",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c15",
+        "source_node": "r4a1g",
+        "source_pin": "value",
+        "target_node": "r4a1p",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c16",
+        "source_node": "r4a1p",
+        "source_pin": "result",
+        "target_node": "r4a1s",
+        "target_pin": "value",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c17",
+        "source_node": "ev4",
+        "source_pin": "Body",
+        "target_node": "r4a1s",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c18",
+        "source_node": "ev5",
+        "source_pin": "Body",
+        "target_node": "r5a1s",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c19",
+        "source_node": "r5a1s",
+        "source_pin": "exec_out",
+        "target_node": "r5a2l",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      }
+    ],
+    "metadata": {
+      "name": "EventGraph",
+      "description": "Role probe",
+      "version": "1.0.0",
+      "created_at": "2026-11-23T00:00:00Z",
+      "modified_at": "2026-11-23T00:00:00Z"
+    },
+    "comments": [],
+    "custom_event_defs": {}
+  },
+  "subgraphs": [],
+  "local_events": [],
+  "variables": [
+    {
+      "id": "var_hooks",
+      "name": "hooks",
+      "data_type": {
+        "Data": {
+          "base_type": "i64",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "0",
+      "description": "Role probe: hooks"
+    },
+    {
+      "id": "var_began",
+      "name": "began",
+      "data_type": {
+        "Data": {
+          "base_type": "bool",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "false",
+      "description": "Role probe: began"
+    },
+    {
+      "id": "var_ticks",
+      "name": "ticks",
+      "data_type": {
+        "Data": {
+          "base_type": "i64",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "0",
+      "description": "Role probe: ticks"
+    },
+    {
+      "id": "var_ended",
+      "name": "ended",
+      "data_type": {
+        "Data": {
+          "base_type": "bool",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "false",
+      "description": "Role probe: ended"
+    }
+  ],
+  "editor_state": {
+    "open_tab_ids": [
+      "main"
+    ],
+    "active_tab_index": 0,
+    "graph_view_states": {
+      "main": {
+        "pan_offset_x": 0,
+        "pan_offset_y": 0,
+        "zoom": 0.6
+      }
+    }
+  },
+  "blueprint_metadata": {
+    "blueprint_type": "Generic",
+    "parent_class": null,
+    "description": "Role probe for Controller: counts the events its script is told.",
+    "category": "Gameplay/Test",
+    "tags": [
+      "test",
+      "role"
+    ],
+    "implemented_trait_ids": [
+      "pulsar.PlayerController"
+    ]
+  }
+}

@@ -9,6 +9,8 @@ pulsar_install_layout = { workspace = true }
 profiling = { workspace = true }
 # The level editor provider names the engine as its origin.
 pulsar_plugins = { workspace = true }
+# `editor_open_file`, the shell's MCP tool.
+pulsar_mcp = { workspace = true }
 # The one-language-per-class rule's problems, shown in the Problems drawer.
 pulsar_class = { workspace = true }
 # UI framework

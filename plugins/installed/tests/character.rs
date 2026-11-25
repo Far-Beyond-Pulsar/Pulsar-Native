@@ -221,3 +221,233 @@ fn without_the_character_plugin_its_data_is_kept() {
     };
     assert_eq!(records(&resaved), records(&saved), "saved back unchanged");
 }
+
+/// The character's capsule falls onto a static collider and stands on it, and
+/// never goes below it: no clamp on Y anywhere, the physics plugin's
+/// character path rests on the box.
+#[test]
+fn a_character_capsule_rests_on_a_static_collider() {
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    pulsar_plugins::deactivate();
+    let hub = pulsar_events::EventHub::new();
+    let mut world = World::new();
+
+    // A 100 x 1 x 100 m static box whose top face is y = 0.
+    let ground = world
+        .spawn_object(SpawnObject::new("Ground").with_id("ground"))
+        .unwrap();
+    world.get_mut::<Transform>(ground).unwrap().position = [0.0, -0.5, 0.0];
+    pulsar_world_registry::place_component(
+        &mut world,
+        ground,
+        NewInstance::new("ColliderComponent"),
+        ComponentPayload::Default,
+    )
+    .unwrap();
+    pulsar_world_registry::set_component_property(
+        &mut world,
+        ground,
+        "ColliderComponent",
+        0,
+        "half_extents",
+        serde_json::json!([50.0, 0.5, 50.0]),
+    )
+    .unwrap();
+
+    let (owner, _instance) = character(&mut world);
+    world.get_mut::<Transform>(owner).unwrap().position = [0.0, 3.0, 0.0];
+
+    let mut state = ComponentRuntimeState::default();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut lowest = f64::MAX;
+    let mut last = 3.0;
+    let mut still = 0;
+    while Instant::now() < deadline && still < 120 {
+        pulsar_world_registry::tick_live_components(&mut world, &hub, 1.0 / 60.0, 1, &mut state);
+        hub.flush(pulsar_events::FlushPoint::AfterSystems);
+        let y = f64::from(world.get::<Transform>(owner).unwrap().position[1]);
+        lowest = lowest.min(y);
+        still = if (y - last).abs() < 1e-4 { still + 1 } else { 0 };
+        last = y;
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(last < 2.9, "the character fell from y = 3 (ended at {last})");
+    assert!(
+        lowest >= -0.01,
+        "the capsule's origin never went below the floor's top face (lowest {lowest})"
+    );
+    assert!(last >= 0.0, "it stands on the floor at y = {last}");
+}
+
+/// Run the movement system `ticks` times.
+fn tick(
+    world: &mut World,
+    hub: &pulsar_events::EventHub,
+    state: &mut ComponentRuntimeState,
+    ticks: u32,
+) {
+    for _ in 0..ticks {
+        pulsar_world_registry::tick_live_components(world, hub, 1.0 / 60.0, 1, state);
+        hub.flush(pulsar_events::FlushPoint::AfterSystems);
+    }
+}
+
+fn desired(world: &World, owner: Entity) -> Vec<f64> {
+    pulsar_world_registry::get_component_property(
+        world,
+        owner,
+        "CharacterControllerComponent",
+        0,
+        "desired_velocity",
+    )
+    .unwrap()
+    .as_array()
+    .unwrap()
+    .iter()
+    .map(|v| v.as_f64().unwrap())
+    .collect()
+}
+
+fn yaw(world: &World, owner: Entity) -> f32 {
+    world.get::<Transform>(owner).unwrap().rotation[1]
+}
+
+fn near(got: &[f64], want: [f64; 3]) {
+    for i in 0..3 {
+        assert!((got[i] - want[i]).abs() < 1e-4, "{got:?} vs {want:?}");
+    }
+}
+
+#[test]
+fn movement_is_relative_to_the_control_yaw_and_not_the_pitch() {
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    pulsar_plugins::deactivate();
+    let hub = pulsar_events::EventHub::new();
+    let mut world = World::new();
+    let (owner, instance) = character(&mut world);
+    let mut state = ComponentRuntimeState::default();
+    let set = |world: &mut World, yaw: f32, pitch: f32, input: [f32; 2]| {
+        let mut c = world.get_mut::<CharacterComponent>(instance).unwrap();
+        c.control_yaw = yaw;
+        c.control_pitch = pitch;
+        c.move_input = input;
+    };
+
+    // Forward is where the control yaw looks, at every pitch.
+    for pitch in [-80.0, 0.0, 45.0, 80.0] {
+        set(&mut world, 0.0, pitch, [0.0, 1.0]);
+        tick(&mut world, &hub, &mut state, 1);
+        near(&desired(&world, owner), [0.0, 0.0, -4.0]);
+        set(&mut world, 90.0, pitch, [0.0, 1.0]);
+        tick(&mut world, &hub, &mut state, 1);
+        near(&desired(&world, owner), [-4.0, 0.0, 0.0]);
+        set(&mut world, 180.0, pitch, [0.0, 1.0]);
+        tick(&mut world, &hub, &mut state, 1);
+        near(&desired(&world, owner), [0.0, 0.0, 4.0]);
+    }
+    // Strafing is beside it.
+    set(&mut world, 90.0, 30.0, [1.0, 0.0]);
+    tick(&mut world, &hub, &mut state, 1);
+    near(&desired(&world, owner), [0.0, 0.0, -4.0]);
+    set(&mut world, 0.0, 0.0, [-1.0, 0.0]);
+    tick(&mut world, &hub, &mut state, 1);
+    near(&desired(&world, owner), [-4.0, 0.0, 0.0]);
+    // A world direction asked of the character is not turned by the view, and
+    // is used once.
+    set(&mut world, 90.0, 0.0, [0.0, 0.0]);
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .world_input = [0.0, 0.0, 1.0];
+    tick(&mut world, &hub, &mut state, 1);
+    near(&desired(&world, owner), [0.0, 0.0, 4.0]);
+    tick(&mut world, &hub, &mut state, 1);
+    near(&desired(&world, owner), [0.0, 0.0, 0.0]);
+}
+
+#[test]
+fn the_body_turns_toward_its_movement_at_the_rotation_rate() {
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    pulsar_plugins::deactivate();
+    let hub = pulsar_events::EventHub::new();
+    let mut world = World::new();
+    let (owner, instance) = character(&mut world);
+    let mut state = ComponentRuntimeState::default();
+    {
+        let mut c = world.get_mut::<CharacterComponent>(instance).unwrap();
+        c.orient_rotation_to_movement = true;
+        c.rotation_rate = 360.0; // 6 degrees a tick at 60 Hz
+        c.move_input = [1.0, 0.0]; // walking right of a camera that stays at yaw 0
+    }
+    tick(&mut world, &hub, &mut state, 1);
+    let first = yaw(&world, owner);
+    assert!(
+        (first + 6.0).abs() < 1e-3,
+        "one tick turns one step toward -90 (right): {first}"
+    );
+    tick(&mut world, &hub, &mut state, 4);
+    assert!((yaw(&world, owner) + 30.0).abs() < 1e-3, "smooth, not a snap");
+    tick(&mut world, &hub, &mut state, 30);
+    assert!(
+        (yaw(&world, owner) + 90.0).abs() < 1e-3,
+        "faces the walk: {}",
+        yaw(&world, owner)
+    );
+    // The camera's control yaw did not move with the body.
+    assert_eq!(world.get::<CharacterComponent>(instance).unwrap().control_yaw, 0.0);
+    // Standing still keeps the facing.
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .move_input = [0.0, 0.0];
+    tick(&mut world, &hub, &mut state, 10);
+    assert!((yaw(&world, owner) + 90.0).abs() < 1e-3);
+    // A rate of zero never turns.
+    {
+        let mut c = world.get_mut::<CharacterComponent>(instance).unwrap();
+        c.rotation_rate = 0.0;
+        c.move_input = [0.0, 1.0];
+    }
+    tick(&mut world, &hub, &mut state, 5);
+    assert!((yaw(&world, owner) + 90.0).abs() < 1e-3);
+}
+
+#[test]
+fn use_controller_rotation_yaw_makes_the_body_follow_the_look_direction() {
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    pulsar_plugins::deactivate();
+    let hub = pulsar_events::EventHub::new();
+    let mut world = World::new();
+    let (owner, instance) = character(&mut world);
+    let mut state = ComponentRuntimeState::default();
+    {
+        let mut c = world.get_mut::<CharacterComponent>(instance).unwrap();
+        c.orient_rotation_to_movement = false;
+        c.control_yaw = 40.0;
+        c.control_pitch = 25.0;
+    }
+    tick(&mut world, &hub, &mut state, 1);
+    assert_eq!(yaw(&world, owner), 0.0, "with the option off the body keeps its own rotation");
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .use_controller_rotation_yaw = true;
+    tick(&mut world, &hub, &mut state, 1);
+    assert_eq!(yaw(&world, owner), 40.0, "the body faces where the camera looks");
+    assert_eq!(world.get::<Transform>(owner).unwrap().rotation[0], 0.0, "pitch stays off");
+    // Walking forward now goes where it faces and where the camera looks.
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .move_input = [0.0, 1.0];
+    tick(&mut world, &hub, &mut state, 1);
+    let want = character_plugin::movement_direction(40.0, [0.0, 1.0]).map(|v| f64::from(v) * 4.0);
+    near(&desired(&world, owner), want);
+    // The pitch axis follows when asked too.
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .use_controller_rotation_pitch = true;
+    tick(&mut world, &hub, &mut state, 1);
+    assert_eq!(world.get::<Transform>(owner).unwrap().rotation[0], 25.0);
+}

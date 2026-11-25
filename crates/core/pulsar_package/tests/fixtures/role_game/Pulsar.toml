@@ -1,0 +1,3 @@
+[project]
+name = "Role Game"
+engine_version = "nightly"

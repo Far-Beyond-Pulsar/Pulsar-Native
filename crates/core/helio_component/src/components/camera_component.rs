@@ -69,6 +69,7 @@ impl<'de> Deserialize<'de> for CameraProjectionKind {
 #[engine_class(category = "Rendering", clone, debug, serialize, deserialize)]
 #[category("Camera", category_color = "#3AA0FF")]
 #[category("Projection", category_color = "#E0B040")]
+#[category("Rig", category_color = "#40C080")]
 #[serde(default)]
 pub struct CameraComponent {
     /// A disabled camera is never the view.
@@ -94,6 +95,37 @@ pub struct CameraComponent {
     /// Far clip plane in metres (perspective).
     #[property(min = 1.0, max = 100000.0, step = 1.0, category = "Projection")]
     pub far: f32,
+    /// Where the eye is, in the owner's space (a character's eye height above its
+    /// capsule centre). Zero puts the eye at the owner's origin.
+    #[property(category = "Rig")]
+    pub eye_offset: [f32; 3],
+    /// How far behind the eye the camera stands, along its own view direction
+    /// (metres): 0 is first person, a few metres is a third-person arm.
+    #[property(min = 0.0, max = 100.0, step = 0.1, category = "Rig")]
+    pub arm_length: f32,
+    /// The camera's pitch about the owner's right axis, in degrees: positive looks
+    /// up. Gameplay drives it with `add_pitch`, which keeps it between the limits.
+    #[property(min = -89.0, max = 89.0, step = 0.5, category = "Rig")]
+    pub pitch_deg: f32,
+    /// Lowest pitch, degrees (looking down).
+    #[property(min = -89.0, max = 0.0, step = 0.5, category = "Rig")]
+    pub pitch_min_deg: f32,
+    /// Highest pitch, degrees (looking up).
+    #[property(min = 0.0, max = 89.0, step = 0.5, category = "Rig")]
+    pub pitch_max_deg: f32,
+    /// Look where the controller looks: the camera takes its yaw from the
+    /// owner's control rotation (`control_yaw_deg`, written by the controller:
+    /// the character's movement system) instead of the owner's own rotation,
+    /// so the camera orbits with the view direction while the body turns on its
+    /// own (to face its movement, say). Off: the camera keeps the owner's
+    /// rotation and its own `pitch_deg`.
+    #[property(category = "Rig")]
+    pub use_pawn_control_rotation: bool,
+    /// The control rotation's yaw, degrees (counter-clockwise from above),
+    /// written by the controller each frame; read when
+    /// `use_pawn_control_rotation` is on.
+    #[property(category = "Rig")]
+    pub control_yaw_deg: f32,
 }
 
 impl Default for CameraComponent {
@@ -106,6 +138,13 @@ impl Default for CameraComponent {
             orthographic_size: 5.0,
             near: 0.05,
             far: 2000.0,
+            eye_offset: [0.0; 3],
+            arm_length: 0.0,
+            pitch_deg: 0.0,
+            pitch_min_deg: -80.0,
+            pitch_max_deg: 80.0,
+            use_pawn_control_rotation: false,
+            control_yaw_deg: 0.0,
         }
     }
 }
@@ -143,6 +182,71 @@ impl CameraComponent {
             self.orthographic_size.max(1.0e-3)
         } else {
             5.0
+        }
+    }
+}
+
+/// How a camera stands relative to its owner: an eye offset, a pitch and an arm.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CameraRig {
+    /// The eye in the owner's space.
+    pub eye_offset: [f32; 3],
+    /// Pitch about the owner's right axis, radians (positive looks up), already
+    /// inside the limits.
+    pub pitch: f32,
+    /// Distance behind the eye, metres.
+    pub arm_length: f32,
+    /// The yaw the camera looks along, radians, when it follows the control
+    /// rotation (the owner's own rotation is then ignored); `None` keeps the
+    /// owner's rotation.
+    pub control_yaw: Option<f32>,
+}
+
+impl CameraComponent {
+    /// The pitch limits as a usable range: finite, inside `[-89, 89]` degrees, min
+    /// not above max.
+    pub fn pitch_limits_deg(&self) -> (f32, f32) {
+        let clean = |v: f32, fallback: f32| if v.is_finite() { v.clamp(-89.0, 89.0) } else { fallback };
+        let low = clean(self.pitch_min_deg, -80.0);
+        let high = clean(self.pitch_max_deg, 80.0);
+        (low.min(high), high.max(low))
+    }
+
+    /// The rig the host stands the camera with. The pitch is clamped here too, so
+    /// a limit tightened after the pitch was set still holds.
+    pub fn rig(&self) -> CameraRig {
+        let (low, high) = self.pitch_limits_deg();
+        let pitch = if self.pitch_deg.is_finite() { self.pitch_deg } else { 0.0 };
+        let eye = |v: f32| if v.is_finite() { v } else { 0.0 };
+        CameraRig {
+            eye_offset: self.eye_offset.map(eye),
+            pitch: pitch.clamp(low, high).to_radians(),
+            arm_length: if self.arm_length.is_finite() { self.arm_length.max(0.0) } else { 0.0 },
+            control_yaw: (self.use_pawn_control_rotation && self.control_yaw_deg.is_finite())
+                .then(|| self.control_yaw_deg.to_radians()),
+        }
+    }
+}
+
+/// The camera's script surface: what a look input drives.
+#[pulsar_scenedb::component_methods]
+impl CameraComponent {
+    /// Look up (positive) or down (negative) by `degrees`; the pitch stays between
+    /// `pitch_min_deg` and `pitch_max_deg`.
+    #[reflect_method(category = "Camera")]
+    fn add_pitch(&mut self, degrees: f32) {
+        if degrees.is_finite() {
+            let (low, high) = self.pitch_limits_deg();
+            self.pitch_deg = (self.pitch_deg + degrees).clamp(low, high);
+        }
+    }
+
+    /// Set the pitch to `degrees` (between the limits).
+    #[reflect_method(category = "Camera")]
+    fn set_pitch(&mut self, degrees: f32) {
+        if degrees.is_finite() {
+            let (low, high) = self.pitch_limits_deg();
+            self.pitch_deg = degrees.clamp(low, high);
         }
     }
 }
@@ -264,6 +368,31 @@ mod tests {
             priority,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn pitch_is_driven_by_add_pitch_and_held_between_the_limits() {
+        let mut camera = CameraComponent::default();
+        camera.add_pitch(30.0);
+        assert_eq!(camera.pitch_deg, 30.0);
+        camera.add_pitch(500.0);
+        assert_eq!(camera.pitch_deg, 80.0, "looking up stops at the upper limit");
+        camera.add_pitch(-1000.0);
+        assert_eq!(camera.pitch_deg, -80.0, "looking down stops at the lower limit");
+        camera.pitch_min_deg = -20.0;
+        camera.pitch_max_deg = 45.0;
+        camera.set_pitch(-60.0);
+        assert_eq!(camera.pitch_deg, -20.0, "a tightened limit holds");
+        camera.add_pitch(f32::NAN);
+        assert_eq!(camera.pitch_deg, -20.0, "a bad delta changes nothing");
+        // A limit tightened after the pitch was set still holds in the rig.
+        camera.pitch_deg = 80.0;
+        assert!((camera.rig().pitch - 45f32.to_radians()).abs() < 1e-6);
+        // Swapped limits are made a range.
+        camera.pitch_min_deg = 10.0;
+        camera.pitch_max_deg = -10.0;
+        let (low, high) = camera.pitch_limits_deg();
+        assert!(low <= high);
     }
 
     #[test]
@@ -411,5 +540,21 @@ mod tests {
         attach(&mut world, low, with_priority(1));
         attach(&mut world, high, with_priority(4));
         assert_eq!(camera_on_object(&world, pawn).unwrap().owner, high);
+    }
+}
+
+#[cfg(test)]
+mod control_rotation_tests {
+    use super::*;
+
+    #[test]
+    fn the_rig_follows_the_control_yaw_only_when_asked() {
+        let mut camera = CameraComponent { control_yaw_deg: 90.0, ..CameraComponent::default() };
+        assert_eq!(camera.rig().control_yaw, None, "off by default: the owner's rotation is the view's");
+        camera.use_pawn_control_rotation = true;
+        let yaw = camera.rig().control_yaw.unwrap();
+        assert!((yaw - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        camera.control_yaw_deg = f32::NAN;
+        assert_eq!(camera.rig().control_yaw, None, "a bad value is not a view direction");
     }
 }

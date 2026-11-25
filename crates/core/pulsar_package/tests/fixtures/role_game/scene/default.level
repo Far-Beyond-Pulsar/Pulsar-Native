@@ -1,0 +1,17 @@
+{
+  "version": "2.2",
+  "objects": [],
+  "metadata": { "created": "2026-11-23T00:00:00Z", "modified": "2026-11-23T00:00:00Z", "editor_version": "0.1.0" },
+  "world_settings": {
+    "time_scale": 1.0,
+    "fixed_timestep": 0.02,
+    "auto_simulation": true,
+    "gravity": [0, -9.81, 0],
+    "physics_enabled": true,
+    "game_mode_blueprint": "classes/RoleProbeMode.class/graph_save.json",
+    "game_state_blueprint": "classes/RoleProbeState.class/graph_save.json",
+    "player_controller_blueprint": "classes/RoleProbePad.class/graph_save.json",
+    "player_character_blueprint": "plugins/Gameplay/classes/PlayerCharacter.class/graph_save.json",
+    "player_input_mapping": "plugins/Gameplay/input/mappings/IMC_Default.inputmap"
+  }
+}

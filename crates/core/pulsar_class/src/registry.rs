@@ -242,6 +242,12 @@ fn skip_when_searching(name: &str) -> bool {
 /// build outputs are skipped; a class folder's own contents are not
 /// searched). Sorted, without duplicates.
 pub fn find_class_dirs(project_root: &Path) -> Vec<PathBuf> {
+    // The plugins' folders (`plugins/<name>/`: the Gameplay plugin's default player
+    // character) are part of the project only once it is mounted. A process that
+    // was not the one that opened the project (a plugin library has its own copy of
+    // `engine_fs`, with no mount of the host's) mounts it here, idempotently,
+    // before it lists anything, as `pulsar_traits`' index does.
+    virtual_fs::mount_project(project_root);
     let classes = classes_dir(project_root);
     let mut found: Vec<PathBuf> = virtual_fs::list_dir(&classes)
         .map(|entries| {
@@ -428,6 +434,36 @@ impl ClassRegistry {
         self.entries.iter().find(|e| &e.id == id)
     }
 
+    /// The class a project-relative `asset` path belongs to: the class whose
+    /// folder is the asset's folder (`classes/Hero.class/graph_save.json` is in
+    /// the folder of `Hero`), or the asset itself when it is the folder. Paths
+    /// compare as the project writes them (forward slashes, case-insensitive on
+    /// Windows), relative to `root`.
+    ///
+    /// This is how a level's role names its class. It does not guess a class name
+    /// from a marker file's name: a shipped game links no language, so it cannot
+    /// know which file names are markers, but it has the class index, which says
+    /// where every class is.
+    pub fn by_asset(&self, root: &Path, asset: &str) -> Option<&ClassEntry> {
+        let comparable = |path: &Path| {
+            let text = path.to_string_lossy().replace('\\', "/");
+            let text = text.trim_matches('/').to_owned();
+            if cfg!(windows) { text.to_ascii_lowercase() } else { text }
+        };
+        let asset = Path::new(asset);
+        let folders = [asset.parent(), Some(asset)];
+        self.entries.iter().find(|entry| {
+            let Ok(relative) = entry.dir.strip_prefix(root) else {
+                return false;
+            };
+            let relative = comparable(relative);
+            folders
+                .iter()
+                .flatten()
+                .any(|folder| !folder.as_os_str().is_empty() && comparable(folder) == relative)
+        })
+    }
+
     /// The class named `name`. A `.class` extension on `name` (a folder
     /// name, as older levels recorded it) is ignored.
     pub fn by_name(&self, name: &str) -> Option<&ClassEntry> {
@@ -565,6 +601,36 @@ impl ClassIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_asset_path_names_the_class_whose_folder_holds_it() {
+        let root = Path::new("/project");
+        let registry = ClassRegistry::from_entries(vec![
+            ClassEntry {
+                id: ClassId::from("a"),
+                name: "RoleProbeMode".into(),
+                dir: root.join("classes/RoleProbeMode.class"),
+            },
+            ClassEntry {
+                id: ClassId::from("b"),
+                name: "PlayerCharacter".into(),
+                dir: root.join("plugins/Gameplay/classes/PlayerCharacter.class"),
+            },
+        ]);
+        // No language is registered here (as in a shipped game): the folder decides.
+        let class = |asset: &str| registry.by_asset(root, asset).map(|e| e.name.as_str());
+        assert_eq!(
+            class("classes/RoleProbeMode.class/graph_save.json"),
+            Some("RoleProbeMode")
+        );
+        assert_eq!(
+            class("plugins/Gameplay/classes/PlayerCharacter.class/graph_save.json"),
+            Some("PlayerCharacter")
+        );
+        assert_eq!(class("classes/RoleProbeMode.class"), Some("RoleProbeMode"));
+        assert_eq!(class("classes/Other.class/graph_save.json"), None);
+        assert_eq!(class("graph_save.json"), None);
+    }
 
     #[test]
     fn a_class_index_replaces_the_scan() {

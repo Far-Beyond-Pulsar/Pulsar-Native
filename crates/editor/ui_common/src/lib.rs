@@ -35,6 +35,7 @@ pub mod composite_model;
 pub mod file_utils;
 pub mod generic_window;
 pub mod in_task;
+pub mod ui_call;
 pub mod inspector;
 pub mod inspector_model;
 pub mod locale_picker;

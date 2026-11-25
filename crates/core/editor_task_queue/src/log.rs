@@ -70,14 +70,19 @@ impl TaskLog {
         }
     }
 
+    /// Add a line. A message of several lines (a compiler error, a packer's list of
+    /// script errors) becomes that many log lines: a log row shows one line, so
+    /// the rest of a multi-line message would otherwise be cut off.
     pub(crate) fn push(&self, line: String) {
         let mut inner = self.inner.lock();
-        if inner.lines.len() >= MAX_LOG_LINES {
-            inner.lines.pop_front();
-            inner.first_seq += 1;
+        for part in line.trim_end_matches(['\n', '\r']).split('\n') {
+            if inner.lines.len() >= MAX_LOG_LINES {
+                inner.lines.pop_front();
+                inner.first_seq += 1;
+            }
+            inner.lines.push_back(part.trim_end_matches('\r').to_owned());
+            inner.next_seq += 1;
         }
-        inner.lines.push_back(line);
-        inner.next_seq += 1;
         drop(inner);
         self.last_line_ms.store(crate::now_ms(), Ordering::Release);
     }
@@ -110,6 +115,12 @@ type Registry = RwLock<HashMap<u64, Arc<TaskLog>>>;
 fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(Default::default)
+}
+
+/// The log of the task with this id (as `TaskId::get` and the `task_id` of a log
+/// line give it), while the task is kept.
+pub fn log_of_task(id: u64) -> Option<Arc<TaskLog>> {
+    registry().read().get(&id).cloned()
 }
 
 pub(crate) fn register(id: TaskId, log: Arc<TaskLog>) {
@@ -195,8 +206,22 @@ impl tracing::field::Visit for TaskIdVisitor {
     }
 }
 
-/// Span extension that ties a span to its task's log.
-struct TaskSpan(Arc<TaskLog>);
+/// Span extension that ties a span to its task's log (and id).
+struct TaskSpan(Arc<TaskLog>, u64);
+
+/// The task an event was emitted in, by id: the innermost enclosing task span.
+/// Another layer (the engine's live log) calls this to say which task a line
+/// belongs to, with the same rule [`TaskLogLayer`] files it under. `None` for an
+/// event outside any task.
+pub fn task_of_event<S>(ctx: &Context<'_, S>, event: &tracing::Event<'_>) -> Option<u64>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    ctx.event_scope(event)?.find_map(|span| {
+        let extensions = span.extensions();
+        extensions.get::<TaskSpan>().map(|task| task.1)
+    })
+}
 
 /// The tracing layer that gives every task its own log.
 ///
@@ -218,7 +243,7 @@ where
         let Some(task_id) = visitor.0 else { return };
         let Some(log) = lookup(task_id) else { return };
         if let Some(span) = ctx.span(id) {
-            span.extensions_mut().insert(TaskSpan(log));
+            span.extensions_mut().insert(TaskSpan(log, task_id));
         }
     }
 
@@ -242,5 +267,22 @@ where
                 .push(format_line(*meta.level(), meta.target(), &visitor.body()));
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod multi_line_tests {
+    use super::*;
+
+    #[test]
+    fn a_multi_line_message_is_one_log_row_per_line() {
+        let log = TaskLog::new();
+        log.push("head: script errors:\n  error [A] first\r\n  error [B] second\n".into());
+        let read = log.read_from(0);
+        assert_eq!(
+            read.lines,
+            ["head: script errors:", "  error [A] first", "  error [B] second"]
+        );
+        assert_eq!(read.next_cursor, 3);
     }
 }

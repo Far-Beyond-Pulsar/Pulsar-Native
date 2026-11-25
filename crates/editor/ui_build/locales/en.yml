@@ -229,10 +229,20 @@ Build.Failure.Close: "Close"
 
 # Running the game
 Build.Game.Title: "Run"
+Build.Game.TaskTitle: "Game: Run"
 Build.Game.LaunchFailed: "Could not launch the game: %{error}"
 Build.Game.NonZeroExit: "The game exited with a non-zero status code."
 Build.Game.Crashed: "The game crashed:\n%{output}"
 Build.Game.CrashedWithReport: "The game crashed.\nReport saved to %{path}\n\n%{output}"
+
+# Problems panel findings
+Build.Finding.BuildFailed: "Build failed: %{name}"
+Build.Finding.BuildSubject: "Build"
+Build.Finding.GameSubject: "Game"
+Build.Finding.LaunchFailed: "The game could not be started"
+Build.Finding.Crashed: "The game crashed"
+Build.Finding.OpenTasks: "Open the Tasks window"
+Build.Finding.OpenReport: "Open the crash report"
 
 # Build dashboard window
 Build.Dashboard.Title: "Build Dashboard"

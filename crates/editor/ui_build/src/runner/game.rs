@@ -1,7 +1,7 @@
 //! Launching the built game and watching it until it exits.
 
 use std::collections::HashMap;
-use std::io::{BufReader, Read as _};
+use std::io::{BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -13,22 +13,46 @@ use ui::notification::Notification;
 
 use super::plan::Invocation;
 
-/// Start `invocation` (a `cargo run`) once per player the multiplayer settings
-/// ask for, record the processes in the engine's playback state, and wait for
-/// all of them to end, reporting a crash if any did.
+/// The game run as an editor task (`Game: Run`): everything the game prints
+/// (stdout and stderr, every instance) lands in the task's log, so the Tasks
+/// window shows it, and a launch failure or crash is a finding of the Problems
+/// panel (`findings`).
 pub async fn launch_and_monitor(
     invocation: Invocation,
     project_root: PathBuf,
     window_handle: AnyWindowHandle,
     async_app: &mut AsyncApp,
 ) {
+    let description = editor_task_queue::TaskDescription::new(
+        t!("Build.Game.TaskTitle").to_string(),
+        "Game",
+        editor_task_queue::TaskDuration::Long,
+    );
+    editor_task_queue::tracked(
+        description,
+        launch_and_monitor_inner(invocation, project_root, window_handle, async_app),
+    )
+    .await;
+}
+
+/// Start `invocation` (a `cargo run`) once per player the multiplayer settings
+/// ask for, record the processes in the engine's playback state, and wait for
+/// all of them to end, reporting a crash if any did.
+async fn launch_and_monitor_inner(
+    invocation: Invocation,
+    project_root: PathBuf,
+    window_handle: AnyWindowHandle,
+    async_app: &mut AsyncApp,
+) {
+    crate::findings::clear_game();
+    tracing::info!("[run] {}", invocation.display());
     let playback = engine_state::playback::playback();
     let game = engine_state::playback::game_process();
     let count = usize::from(playback.get().multiplayer.instance_count());
 
-    // pid -> (instance index, stderr receiver). stderr is piped so a crash can
-    // be reported; stdout goes to the editor's own terminal so game logging
-    // stays visible.
+    // pid -> (instance index, stderr receiver). Both streams are piped: each
+    // line goes to this task's log as it is written, and stderr's tail is kept
+    // so a crash can be reported.
     let mut stderrs = HashMap::new();
     // Every copy shares one driver pipeline cache. The first copy compiles the
     // shaders and saves the cache; the rest start once it exists (or the first
@@ -74,7 +98,7 @@ pub async fn launch_and_monitor(
             .env("PULSAR_INSTANCE_COUNT", count.to_string())
             .env("PULSAR_PIPELINE_CACHE", &cache_file)
             .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         // Publish the game for the profiler (listed in its start screen;
         // nothing is recorded until a recording starts). Only the first copy:
@@ -86,6 +110,8 @@ pub async fn launch_and_monitor(
         let mut child = match spawned {
             Ok(child) => child,
             Err(error) => {
+                tracing::error!("[run] could not launch the game: {error}");
+                crate::findings::game_launch_failed(&project_root, &error.to_string());
                 let _ = async_app.update_window(window_handle, |_, window, cx| {
                     window.push_notification(
                         Notification::error(
@@ -99,18 +125,35 @@ pub async fn launch_and_monitor(
             }
         };
 
-        // Drain stderr off-thread so the pipe never blocks the game.
+        // Drain both pipes off-thread so they never block the game; the
+        // readers run in this task's span, so their lines are the task's log.
+        let span = tracing::Span::current();
+        let stdout_pipe = child.stdout.take();
+        let stdout_span = span.clone();
+        editor_task_queue::spawn_named(
+            editor_task_queue::ThreadSpec::new(
+                "ui build: game stdout",
+                editor_task_queue::ThreadRole::Io,
+            )
+            .owner("ui_build"),
+            move || {
+                let Some(pipe) = stdout_pipe else { return };
+                let _in_task = stdout_span.enter();
+                relay_lines(pipe, index, false);
+            },
+        );
         let stderr_pipe = child.stderr.take();
         let (stderr_tx, stderr_rx) = smol::channel::bounded::<String>(1);
         editor_task_queue::spawn_named(
             editor_task_queue::ThreadSpec::new(
-                "ui build: launch and monitor",
+                "ui build: game stderr",
                 editor_task_queue::ThreadRole::Io,
             )
             .owner("ui_build"),
             move || {
                 let Some(pipe) = stderr_pipe else { return };
-                let _ = smol::block_on(stderr_tx.send(read_tail(pipe)));
+                let _in_task = span.enter();
+                let _ = smol::block_on(stderr_tx.send(relay_lines(pipe, index, true)));
             },
         );
         stderrs.insert(child.id(), (index, stderr_rx));
@@ -180,6 +223,7 @@ pub async fn launch_and_monitor(
         tracing::info!("[run] game exited cleanly");
         return;
     }
+    crate::findings::game_crashed(&stderr, report.as_deref());
 
     let message = if stderr.trim().is_empty() {
         t!("Build.Game.NonZeroExit").to_string()
@@ -225,23 +269,37 @@ async fn drained_stderr(rx: &smol::channel::Receiver<String>, async_app: &AsyncA
     .await
 }
 
-/// Read `pipe` to the end, keeping only the last [`STDERR_KEEP`] bytes: a game
-/// that logs without end must not grow the editor's memory with it.
-fn read_tail(pipe: impl std::io::Read) -> String {
+/// Log every line of `pipe` to the current task (stdout at info, stderr at
+/// warn) until the game closes it, and return the last [`STDERR_KEEP`] bytes
+/// of stderr: a game that logs without end must not grow the editor's memory
+/// with it.
+fn relay_lines(pipe: impl std::io::Read, index: usize, is_stderr: bool) -> String {
     let mut reader = BufReader::new(pipe);
-    let mut kept: Vec<u8> = Vec::new();
-    let mut chunk = [0u8; 16 * 1024];
-    while let Ok(n) = reader.read(&mut chunk) {
+    let mut kept = String::new();
+    let mut line = Vec::new();
+    while let Ok(n) = reader.read_until(b'\n', &mut line) {
         if n == 0 {
             break;
         }
-        kept.extend_from_slice(&chunk[..n]);
-        if kept.len() > 2 * STDERR_KEEP {
-            kept.drain(..kept.len() - STDERR_KEEP);
+        let text = String::from_utf8_lossy(&line);
+        let text = text.trim_end_matches(['\r', '\n']);
+        if is_stderr {
+            tracing::warn!(target: "game", "[game #{index}] {text}");
+            kept.push_str(text);
+            kept.push('\n');
+            if kept.len() > 2 * STDERR_KEEP {
+                let mut cut = kept.len() - STDERR_KEEP;
+                while !kept.is_char_boundary(cut) {
+                    cut += 1;
+                }
+                kept.drain(..cut);
+            }
+        } else {
+            tracing::info!(target: "game", "[game #{index}] {text}");
         }
+        line.clear();
     }
-    let start = kept.len().saturating_sub(STDERR_KEEP);
-    String::from_utf8_lossy(&kept[start..]).into_owned()
+    kept
 }
 
 /// Write `stderr` to `<project>/.pulsar/crash-reports/crash_<time>.log`.

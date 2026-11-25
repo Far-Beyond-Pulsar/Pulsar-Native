@@ -109,6 +109,7 @@ impl PluginManager {
         dir: impl AsRef<Path>,
     ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
         let dir = dir.as_ref();
+        crate::load_report::begin(dir, dir.exists());
         if !dir.exists() {
             tracing::warn!("Plugin directory does not exist: {:?}", dir);
             return Vec::new();
@@ -142,6 +143,10 @@ impl PluginManager {
                             message: "plugin preparation panicked".to_string(),
                         })
                     });
+                    crate::load_report::prepared(
+                        &path,
+                        result.as_ref().err().map(ToString::to_string),
+                    );
                     (path, result)
                 })
                 .collect::<Vec<_>>()
@@ -172,6 +177,14 @@ impl PluginManager {
             &pulsar_install_layout::appdata_dir().join("plugin_compat"),
         );
         if let Some(compat) = &compat {
+            crate::load_report::renamed(
+                &path,
+                compat
+                    .renames
+                    .iter()
+                    .map(|rename| format!("{} -> {}", rename.from, rename.to))
+                    .collect(),
+            );
             for rename in &compat.renames {
                 tracing::warn!(
                     "{:?} imports {}, which this engine does not have; loading a copy that imports {} (the same library of another build)",
@@ -282,6 +295,23 @@ impl PluginManager {
     ///    provides into the manager's registries.
     /// 5. Store the plugin under its id.
     pub fn install_prepared_plugin(
+        &mut self,
+        prepared: PreparedPlugin,
+        cx: &gpui::App,
+    ) -> Result<PluginId, PluginManagerError> {
+        let path = prepared.path.clone();
+        let result = self.install_prepared_inner(prepared, cx);
+        crate::load_report::installed(
+            &path,
+            match &result {
+                Ok(id) => Ok(id.as_str()),
+                Err(error) => Err(error.to_string()),
+            },
+        );
+        result
+    }
+
+    fn install_prepared_inner(
         &mut self,
         prepared: PreparedPlugin,
         cx: &gpui::App,

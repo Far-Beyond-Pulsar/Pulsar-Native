@@ -468,59 +468,58 @@ fn build() -> Value {
         "f64",
         json!({}),
     );
-    pure_native(
+    character_call(
         &mut g,
-        "lk_delta",
-        "Vec3::new",
-        (1960.0, 3120.0),
-        vec![
-            pin("x", data("f64")),
-            pin("y", data("f64")),
-            pin("z", data("f64")),
-        ],
-        "Vec3",
-        json!({ "x": 0.0, "z": 0.0 }),
-    );
-    g.node(
-        "lk_get",
-        "comp_call::Transform::rotation_degrees",
-        (640.0, 3480.0),
-        json!({}),
-        vec![pin_exec("exec"), pin("component_ref", data("Transform"))],
-        vec![pin_exec("exec_out"), pin("return_value", data("Vec3"))],
-    );
-    pure_native(
-        &mut g,
-        "lk_add",
-        "Vec3::add",
-        (1960.0, 3480.0),
-        vec![pin("a", data("Vec3")), pin("b", data("Vec3"))],
-        "Vec3",
-        json!({}),
-    );
-    g.node(
-        "lk_set",
-        "comp_call::Transform::set_rotation_degrees",
+        "lk_turn",
+        "CharacterComponent",
+        "add_control_yaw",
         (2400.0, 3480.0),
+        vec![pin("degrees", data("f32"))],
         json!({}),
-        vec![
-            pin_exec("exec"),
-            pin("component_ref", data("Transform")),
-            pin("rotation", data("Vec3")),
-        ],
-        vec![pin_exec("exec_out")],
     );
     for phase in ["Started", "Ongoing", "Triggered"] {
-        g.exec("lk", phase, "lk_get");
+        g.exec("lk", phase, "lk_turn");
     }
-    g.exec("lk_get", "exec_out", "lk_set");
     g.wire("lk", "Value", "lk_scale", "v");
     g.wire("lk_rate", "value", "lk_scale", "k");
     g.wire("lk_scale", "result", "lk_yaw", "v");
-    g.wire("lk_yaw", "result", "lk_delta", "y");
-    g.wire("lk_get", "return_value", "lk_add", "a");
-    g.wire("lk_delta", "result", "lk_add", "b");
-    g.wire("lk_add", "result", "lk_set", "rotation");
+    g.wire("lk_yaw", "result", "lk_turn", "degrees");
+
+    // The vertical axis pitches the camera: scaled by pitch_rate and added to the camera's
+    // pitch, which the camera keeps between its limits.
+    getter(&mut g, "lk_pitch_rate", "pitch_rate", (640.0, 3840.0));
+    pure_native(
+        &mut g,
+        "lk_pitch_scale",
+        "Vec2::scale",
+        (1080.0, 3840.0),
+        vec![pin("v", data("Vec2")), pin("k", data("f64"))],
+        "Vec2",
+        json!({}),
+    );
+    pure_native(
+        &mut g,
+        "lk_pitch_y",
+        "Vec2::y",
+        (1520.0, 3840.0),
+        vec![pin("v", data("Vec2"))],
+        "f64",
+        json!({}),
+    );
+    character_call(
+        &mut g,
+        "lk_pitch",
+        "CharacterComponent",
+        "add_control_pitch",
+        (2400.0, 3840.0),
+        vec![pin("degrees", data("f32"))],
+        json!({}),
+    );
+    g.exec("lk_turn", "exec_out", "lk_pitch");
+    g.wire("lk", "Value", "lk_pitch_scale", "v");
+    g.wire("lk_pitch_rate", "value", "lk_pitch_scale", "k");
+    g.wire("lk_pitch_scale", "result", "lk_pitch_y", "v");
+    g.wire("lk_pitch_y", "result", "lk_pitch", "degrees");
 
     // ── Comments: the title, then one box per section ─────────────────────────────────
     g.comment(
@@ -565,11 +564,21 @@ fn build() -> Value {
     );
     g.comment(
         "sec_look",
-        "5. LOOK  (IA_Look: a 2D axis from the mouse or the right stick)\nThe horizontal turn is scaled by the turn_rate variable (negative: moving right turns right; flip its sign to invert)\nand added to this object's yaw. The character walks along the way it faces, so turning steers it. Looking up\nand down needs a camera rig on top of this, which the character does not have yet.",
+        "5. LOOK  (IA_Look: a 2D axis from the mouse or the right stick)\nBoth axes go to the Character component's CONTROL ROTATION (the controller's view direction), nothing else: the\nhorizontal turn is scaled by turn_rate (negative: moving right turns right) and added to the control yaw; the vertical\nturn is scaled by pitch_rate (negative inverts) and added to the control pitch, held between the character's\nview_pitch_min and view_pitch_max. The camera follows the control rotation and the move axes are walked relative to\nits yaw; whether the body turns with it (Use Controller Rotation Yaw) or toward its movement (Orient Rotation To\nMovement) are the Character component's own options.",
         (-40.0, 2980.0),
-        (3000.0, 1020.0),
+        (3000.0, 1500.0),
         teal,
-        &["lk", "lk_rate", "lk_scale", "lk_yaw", "lk_delta", "lk_get", "lk_add", "lk_set"],
+        &[
+            "lk",
+            "lk_rate",
+            "lk_scale",
+            "lk_yaw",
+            "lk_turn",
+            "lk_pitch_rate",
+            "lk_pitch_scale",
+            "lk_pitch_y",
+            "lk_pitch",
+        ],
     );
 
     json!({
@@ -607,6 +616,13 @@ fn build() -> Value {
                 "data_type": data("f64"),
                 "default_value": "-1.0",
                 "description": "Degrees of yaw per unit of IA_Look X. Negative turns right when the axis is positive."
+            },
+            {
+                "id": "v_pitch",
+                "name": "pitch_rate",
+                "data_type": data("f64"),
+                "default_value": "1.0",
+                "description": "Degrees of camera pitch per unit of IA_Look Y. Positive looks up when the axis is positive; negative inverts."
             }
         ],
         "editor_state": {

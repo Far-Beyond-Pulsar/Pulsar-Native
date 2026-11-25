@@ -12,6 +12,11 @@ window_manager = { workspace = true }
 engine_state = { workspace = true }
 engine_backend = { workspace = true }
 editor_task_queue = { workspace = true }
+# What a failed build or a crashed game tells the Problems panel.
+pulsar_findings = { workspace = true }
+# The build tools (`build_start`, `build_status`, ...) it registers, and the UI-thread bridge they use.
+pulsar_mcp = { workspace = true }
+pulsar_plugins = { workspace = true }
 parking_lot = { workspace = true }
 profiling = { workspace = true }
 rust-i18n.workspace = true

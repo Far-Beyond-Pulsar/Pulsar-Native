@@ -6,7 +6,7 @@
 //! runs there is a Stop button beside it.
 
 use engine_state::build_config::{BuildConfigurations, build_configurations};
-use engine_state::playback::{PlayPhase, PlaybackState, game_process, playback};
+use engine_state::playback::{PlayPhase, PlaybackState};
 use gpui::{
     App, Corner, Entity, IntoElement, ParentElement as _, Styled as _, prelude::FluentBuilder as _,
 };
@@ -100,14 +100,7 @@ pub fn build_button(
                     .label(t!("Build.Button.StopGame").to_string())
                     .tooltip(t!("Build.Button.StopGameTooltip").to_string())
                     .on_click(|_, _, _| {
-                        let game = game_process();
-                        let children = std::mem::take(&mut *game.read().0.lock());
-                        for mut child in children {
-                            // `cargo run`'s child is the game itself.
-                            crate::runner::process_tree::kill_tree(&mut child);
-                            let _ = child.wait();
-                        }
-                        playback().update(|s| s.game_running = false);
+                        crate::runner::stop_game();
                     }),
             )
         })

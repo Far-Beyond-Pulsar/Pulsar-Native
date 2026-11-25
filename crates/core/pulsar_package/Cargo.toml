@@ -32,6 +32,8 @@ engine_fs = { workspace = true }
 # it reaches plugins only through the installed set.
 installed_plugins = { workspace = true, optional = true }
 pulsar_class = { workspace = true }
+# The trait index a Blueprint's trait events compile against.
+pulsar_traits = { workspace = true }
 # The languages linked into this tool: compilers, class markers (messages).
 pulsar_language = { workspace = true }
 pulsar_script_vm = { workspace = true }
