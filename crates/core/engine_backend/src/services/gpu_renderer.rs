@@ -50,6 +50,8 @@ impl GpuRendererBuilder {
                 if let Some(pump) = self.construct_pump {
                     renderer.set_construct_pump(pump);
                 }
+                // The editor's viewport: the UI must not wait for a pipeline.
+                renderer.set_pipeline_build(crate::subsystems::render::PipelineBuildMode::Background);
                 renderer
             }),
             frame_count: 0,

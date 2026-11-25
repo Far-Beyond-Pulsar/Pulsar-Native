@@ -421,7 +421,10 @@ impl GameWindow {
             profiling::profile_scope!("Game::present");
             self.queue.present(output);
         }
-        crate::latency::frame_presented(latency_frame);
+        {
+            profiling::profile_scope!("Game::latency_publish");
+            crate::latency::frame_presented(latency_frame);
+        }
     }
 }
 

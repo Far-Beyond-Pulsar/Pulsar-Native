@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use crate::queue::{DEFAULT_DEDICATED_WORKERS, DEFAULT_ON_DEMAND_WORKERS, MAX_WORKERS_PER_POOL};
+use crate::queue::{default_worker_counts, MAX_WORKERS_PER_POOL};
 use crate::state::MAX_FINISHED_TASKS;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -262,13 +262,9 @@ fn long_jobs_do_not_wait_behind_a_blocked_short_pool() {
 #[test]
 fn worker_counts_default_and_are_clamped() {
     let queue = TaskQueue::new();
-    assert_eq!(
-        queue.worker_counts(),
-        WorkerCounts {
-            on_demand: DEFAULT_ON_DEMAND_WORKERS,
-            dedicated: DEFAULT_DEDICATED_WORKERS
-        }
-    );
+    assert_eq!(queue.worker_counts(), default_worker_counts());
+    let defaults = default_worker_counts();
+    assert!(defaults.dedicated >= 2 && defaults.on_demand >= 3);
     assert_eq!(
         queue.set_worker_counts(0, 1_000),
         WorkerCounts {

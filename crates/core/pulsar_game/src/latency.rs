@@ -17,8 +17,10 @@
 //! | `rendered`       | the frame was recorded and submitted                          | `render_submit`   |
 //! | `presented`      | `present` returned ([`frame_presented`])                      | `present`         |
 //!
-//! A sample is logged (target `pulsar_game::latency`) at most four times a
-//! second, the last 240 are kept for [`summary`], and while the profiler is
+//! A sample is logged at debug level (target `pulsar_game::latency`, off in
+//! a game's default filter: a log write on the frame thread is a stall waiting
+//! to happen, and a 276 ms one was caught inside `frame_presented`) at most
+//! four times a second, the last 240 are kept for [`summary`], and while the profiler is
 //! recording every sample is also published as scopes on the `Input latency`
 //! track (a root `Latency::input_to_present`, one child per stage), so the
 //! chain is in the same recording as everything else and the `profile_latency`
@@ -198,7 +200,10 @@ pub fn frame_stage(frame_start: u64, stage: FrameStage) {
 
 /// The frame's `present` returned: close the sample, if this frame carries one.
 pub fn frame_presented(frame_start: u64) {
-    look_presented();
+    {
+        profiling::profile_scope!("Game::latency_look");
+        look_presented();
+    }
     if load(OS_EVENT) == 0 || load(TICK_DONE) == 0 || load(FRAME_START) != frame_start {
         return;
     }
@@ -236,14 +241,18 @@ pub fn frame_presented(frame_start: u64) {
         }
         samples.push(sample);
     }
-    publish(&sample);
+    {
+        profiling::profile_scope!("Game::latency_submit");
+        publish(&sample);
+    }
     let last = LAST_LOG.load(Ordering::Relaxed);
     if end.saturating_sub(last) > 250_000_000
         && LAST_LOG
             .compare_exchange(last, end, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
     {
-        tracing::info!(
+        profiling::profile_scope!("Game::latency_log");
+        tracing::debug!(
             target: "pulsar_game::latency",
             input_to_present_ms = sample.total,
             wait_for_tick_ms = sample.stage_ms[0],

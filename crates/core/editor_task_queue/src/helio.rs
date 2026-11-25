@@ -94,6 +94,20 @@ impl helio_tasks::TaskHost for EditorTaskHost {
         Ok(helio_tasks::Service::new(Box::new(Join(handle))))
     }
 
+    fn parallelism(&self) -> usize {
+        rayon::current_num_threads()
+    }
+
+    fn parallel(&self, lanes: usize, work: &(dyn Fn(usize) + Sync)) {
+        // The engine's compute pool (`pools`), not threads of Helio's own.
+        rayon::scope(|scope| {
+            for lane in 1..lanes.max(1) {
+                scope.spawn(move |_| work(lane));
+            }
+            work(0);
+        });
+    }
+
     fn submit(&self, spec: helio_tasks::JobSpec, work: helio_tasks::JobWork) {
         global().submit(
             TaskDescription::new(spec.title, spec.category, TaskDuration::Long),

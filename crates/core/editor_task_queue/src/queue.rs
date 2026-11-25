@@ -19,9 +19,24 @@ use crate::types::{
 };
 use crate::workers::{ensure_worker_threads, spawn_watchdog};
 
-pub(crate) const DEFAULT_ON_DEMAND_WORKERS: usize = 3;
-pub(crate) const DEFAULT_DEDICATED_WORKERS: usize = 2;
+/// The smallest pools: what a machine of four cores or fewer gets.
+pub(crate) const MIN_ON_DEMAND_WORKERS: usize = 3;
+pub(crate) const MIN_DEDICATED_WORKERS: usize = 2;
 pub(crate) const MAX_WORKERS_PER_POOL: usize = 16;
+
+/// The pools' sizes at start, from the machine's parallelism: a long task
+/// (a render pipeline build of 12 s, a voxel bundle, a build) holds its worker
+/// for its whole run, and two dedicated workers made everything queued behind
+/// one pipeline build wait for it. A quarter of the cores for the long pool and an
+/// eighth for the short one (never fewer than the minimum, never more than
+/// eight and six), so a big machine does not queue long work it could run.
+pub(crate) fn default_worker_counts() -> WorkerCounts {
+    let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+    WorkerCounts {
+        on_demand: (cores / 8).clamp(MIN_ON_DEMAND_WORKERS, 6),
+        dedicated: (cores / 4).clamp(MIN_DEDICATED_WORKERS, 8),
+    }
+}
 static GLOBAL: OnceLock<TaskQueue> = OnceLock::new();
 
 /// Process-wide queue used only by the editor.
@@ -45,10 +60,11 @@ pub struct TaskQueue {
 impl TaskQueue {
     pub fn new() -> Self {
         let _ = now_ms();
+        let counts = default_worker_counts();
         let inner = Arc::new(QueueInner {
             state: Mutex::new(QueueState {
-                on_demand_workers: DEFAULT_ON_DEMAND_WORKERS,
-                dedicated_workers: DEFAULT_DEDICATED_WORKERS,
+                on_demand_workers: counts.on_demand,
+                dedicated_workers: counts.dedicated,
                 ..QueueState::default()
             }),
             ready: Condvar::new(),
@@ -56,8 +72,8 @@ impl TaskQueue {
             spawned_workers: Mutex::new((0, 0)),
             thresholds: Mutex::new(StallThresholds::default()),
         });
-        ensure_worker_threads(&inner, TaskDuration::Short, DEFAULT_ON_DEMAND_WORKERS);
-        ensure_worker_threads(&inner, TaskDuration::Long, DEFAULT_DEDICATED_WORKERS);
+        ensure_worker_threads(&inner, TaskDuration::Short, counts.on_demand);
+        ensure_worker_threads(&inner, TaskDuration::Long, counts.dedicated);
         spawn_watchdog(Arc::downgrade(&inner));
         Self { inner }
     }

@@ -150,7 +150,7 @@ mesh collision in the physics plugin (a trimesh from the `.mesh` asset, per stat
 
 ### Input latency
 
-A probe is always on (`pulsar_game::latency`; at most four log lines a second, target `pulsar_game::latency`): one
+A probe is always on (`pulsar_game::latency`; at most four debug-level log lines a second, target `pulsar_game::latency`, shown with `RUST_LOG=pulsar_game::latency=debug`): one
 sample follows the oldest unshown input through ten stamps and nine stages: the OS event (stamped on the raw-input
 thread the moment the OS delivers it, see "Input is sampled at the OS" below),
 `wait_for_tick` (to the start of the next tick), `input_and_systems` (the schedule and component phase: input
@@ -445,12 +445,87 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
 18. **Open: a `RowJoin` reruns, and moves its output's `content_generation`, whenever any input buffer changed**
     (`helio-scene-join/src/row_join.rs`, the `signature` of owners, generations, hidden, `transforms`...): an atmosphere row
     placed by its owner's transform is rewritten whenever any transform in the world moves. Passes that key work on that
-    generation (the sky did; others may) rebuild for nothing. The fix is in the join: per-row dependency tracking, or a
-    GPU-side "did the output change" bit published with the handle.
+    generation (the sky did) rebuild for nothing. Consumers found: the sky (fixed, issue 12); the lights' shadow pass (handles
+    it: it re-solves only); the light sampler, HLFS and light cull rebuild their grids and lists (LightSamples 0.06 ms,
+    LightCull 0.13 ms of GPU, and their finish costs) on every frame anything moves; VgBvh refits its six passes every frame
+    (0.2 to 0.27 ms of GPU, 0.38 ms of finish thread) because the virtual-geometry instance rows' generation moves with a
+    walking character, which is not in the BVH. The CPU sees one counter per buffer, so the honest fix is in the join or in
+    SceneDB: a per-table change bit computed on the GPU and used as the sky now uses its plan (indirect arguments of zero),
+    or the mirror's dirty-row journal handed to the join. Not done: it changes the join's contract for every consumer.
 19. **Open: pipeline build throughput in the editor** (11 to 13 s for the Deferred pipeline against under a second in the game,
     and the voxel pipelines' 14 to 17 s), a one-off hitch of 150 to 650 ms in about one run in two (the frame has no scope
     longer than 30 ms inside it; before and after), the deferred lighting cost at native resolution, and `encoder.finish`
     (2.6 ms a frame in four threads).
+20. **Round 4, second pass (deferred lighting, the stall, `encoder.finish`): measured, nothing kept for the GPU, one mitigation
+    for the stall.** Fullscreen 3440x1440, vsync off, GPU frame mean ms (two runs of the unchanged build: 5.76 and 6.02):
+    - *Deferred lighting, split.* `DeferredLight+AtmosphereComposite` is a fused chain timed as one span. Run with the chain
+      split (a temporary switch in the executor, removed): `DeferredLight` 2.00 ms, the composite under the top twelve
+      passes. The same pass with the composite's fragment returning at once measured 1.0 ms less, but the whole frame fell
+      2.1 ms and earlier passes too (GBuffer 0.43 to 0.12): a lighter frame lets the GPU clock up, so a pass's time moves with
+      the frame's load. Skipping the reflection draw (`fs_reflection`, a second draw in the same pass): 1.94 ms (nothing).
+      `ENABLE_LIGHTING` off: the GPU frame fell to 3.61 ms (direct lighting and its shadows are about 1.8 of the 1.96 ms).
+      Shadow factor forced to 1: the chain 1.31 ms (shadow sampling about 0.65 ms; the other 1.1 ms is the per-light loop, BSDF
+      and the G-buffer reads, not separated).
+    - *Candidates, each two runs against the unchanged build, reverted:* the cloud taps skipped for geometry nearer than the
+      layer's floor (`clouds_in_front`, exact): GPU 5.79 / 5.91 ms and the chain 1.94, against 5.76 / 6.02 and 1.96; the glass
+      transmittance lookup skipped when ObjectBatch counts no translucent shadow caster (`light_transmittance`, exact):
+      5.90 / 6.12 and 2.00 / 2.13. The GPU loop stops here (two candidates in a row inside the spread). What is left is the
+      light loop's ALU, about 17000 lane cycles a pixel at this resolution; the next design is clustered or tiled shading by
+      light class (the sun separately, local lights by tile with a shadow-face budget), which needs a GPU capture's
+      per-instruction profile.
+    - *The 150 to 650 ms stall* (once in 1 to 4 runs of 20 s, before and after): found with scopes. The hitch frame's own children
+      total 5 ms and the missing time is after `Game::present`: `Game::latency_publish`, the input-latency probe's
+      `frame_presented`, 276 ms in the frame caught (new scopes `Game::latency_look`, `latency_submit`, `latency_log`;
+      `DrivenFrame: task tick`, `publish details`). The profiler's submit is a lock-free push, so the suspect is the `tracing::info!`
+      line it wrote up to four times a second on the frame thread (a log layer's lock, held by a flood from another thread).
+      It is a debug-level log now (`RUST_LOG=pulsar_game::latency=debug`). Six further runs showed no hitch, which does not prove
+      an intermittent fault: the scopes stay, and a recording with a hitch names the scope.
+    - *`encoder.finish` per pass* (`HELIO_FINISH_BREAKDOWN=1`, the existing diagnostic; windowed, vsync off; ms a frame on the
+      finish threads): VgBvh 0.38 (a refit of six compute passes every frame, issue 18), Lens 0.15, MeshHitSurfaces gi_probe
+      0.14, ObjectBatch 0.14, Atmosphere 0.11, Shadow 0.11, LensFlare 0.10, PostProcess 0.09, GBuffer 0.07; about 2.2 in all.
+      Binding 64 views of the material table instead of the live prefix moved the sum 2.18 to 1.95 and the frame thread's wait
+      0.94 to 0.69, so the table's views are a tenth of it; the rest is per pass and per command validation (about 30 us a pass).
+      Fewer, fuller passes (the BVH's six, the lens and post chain's) are the lever; not done.
+    - *Checks run:* Helio's own tests from its own workspace (`cd crates/renderer/helio && cargo test -p helio --release`, its own
+      `target`): 23 unit tests, `pipeline_status` 9, `status_screen` 4, `scene_db_projection` 1; Pulsar's `installed_plugins`
+      `default_pipelines` 8, `pipeline_build_async` 4, `plugin_pass_lists` 1 (the pass lists are unchanged) and
+      `render_acceptance` 38 passed with `--test-threads=1` (including `the_sky_is_the_levels_atmosphere`, which runs the
+      sky's GPU plan); in parallel 18 of them fail on a shared GPU. A first run found a real regression of this round (the editor
+      renderer always built in the background, and the harness reads its first frame): the mode is the host's now
+      (`HelioRenderer::set_pipeline_build`, blocking by default, background for the editor's `GpuRenderer`).
+    - *Measurement hazards:* the editor restores the level tab it had open, and a level viewport at 146 fps takes 70 percent of the GPU
+      (delete `.pulsar/layout.json` before a capture); another agent's GPU tests hold `D:\perf_gpu.lock` for minutes and break the
+      voxel build in between (the capture scripts wait for the lock and retry a build that fails in voxel).
+21. **Editor open: where 12 to 15 s go, and what changed** (the editor viewport, `default.level` of the Bistro project, from the
+    `editor_open_file` call). *(a)* The renderer exists within a second of the open; the time is the render pipeline build, 11.7 to
+    12.6 s: the nodes build one after another on one worker, each creating its GPU pipelines as its passes are constructed
+    (`helio_graph_asset` logs a node that takes 150 ms or more, target `helio::pipeline`): virtual_geometry (12 passes) 2.5 to
+    3.4 s, hlfs 4.0, lens 1.4 to 1.8, water_sim 1.2 to 1.7, foliage_place 0.8 to 1.2, atmosphere 0.9 to 1.3, deferred_light 0.7 to
+    1.0, the other twenty-odd nodes 0.2 to 0.6 each. The game builds the same pipeline in 1.5 s (not the instance flags, empty in
+    both; not the voxel compiles, which start after the first build). A level also asks for a second build right after the
+    first (`Rebuild render pipeline`, 12.6 s): `prepare_frame` sets the TSR preset from the scene's content every frame
+    (`set_tsr_quality`), and the content that decides it arrives after the first build started, so a configuration the build did
+    not have rebuilds the whole pipeline to change a preset and a render scale. Not changed (it is the owner's choice of quality):
+    hold the first assignment until the content that picks the preset is known, or make the TSR switch local to its pass.
+    *(b)* Done: the pools are sized to the machine (`editor_task_queue::default_worker_counts`: dedicated a quarter of the cores,
+    2 to 8, short an eighth, 3 to 6; it was 2 and 3). A long task holds its worker for its whole run (a 12 s pipeline build, a voxel
+    bundle), and the bundles of the voxel world queued behind it: their compiles went from 14.3, 16.7 and 3.1 s (waited
+    0.0 s, built in) to 3.2, 6.1 and 1.8 s in the same editor, opened the same way. *(c)* Not done here (it is the voxel
+    feature's design): the compiles start when the pass first sees the volume, after the pipeline is installed (the first
+    build's end); started when the world is built (the component has the device through `render_runtimes`) they overlap the 12 s
+    build and the first chunk waits for the pipeline only. *(d)* Done: `helio_core::compile::SideBySide` and `Slot` (the voxel
+    feature's `Kernels` and `Kernel`, moved), on `helio_tasks::parallel` and `parallelism`, new methods of `TaskHost` (the
+    default is scoped std threads; the editor's host runs the lanes on its rayon pool, `EditorTaskHost::parallel`). The voxel
+    feature's `chunks/kernels.rs` is now a re-export of the two names under their old names and its two tests moved to
+    helio-core (`side_by_side_tests`, passing in Helio's own workspace). *(e)* The UI thread's 3.1 s and 0.75 s `NavSidebar`
+    render stalls: the sidebar's tab list reads each open panel's decoration (`panel_file_path`, `tab_icon`, `tab_unsaved`
+    of the level editor, each a `shared_state.read()`), and the level editor's `gpu_engine` mutex is what the render thread
+    held for the 12 s blocking build: the stalls coincided with it and are gone with it (editor recording from before the open:
+    longest main-thread scope 8 ms, longest Helio Runtimes frame 5 ms; before: 3156 and 12343 ms; first background change:
+    258 and 47). The lock itself was not isolated (the sidebar's render has no scopes inside); a `try_read` with the last
+    decoration would remove the class and was not needed once the build left the frame. *Time to the first voxel chunk* was not
+    measured here (the Earth-sized project is the voxel agent's); the parts that moved are the pools and the compile helper above:
+    on this project the voxel bundles that took 14 to 17 s each now take 2 to 6 s, concurrently with the 12 s build.
 
 ### Round 4: measurement and the profile it began from
 

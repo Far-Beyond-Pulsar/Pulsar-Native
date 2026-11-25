@@ -745,6 +745,9 @@ pub struct HelioRenderer {
     /// The pipeline the level asks for (World Settings); see
     /// [`HelioEditorMailbox::set_render_pipeline`].
     requested_pipeline: super::pipelines::RequestedPipeline,
+    /// Where the viewport's render pipeline builds ([`PipelineBuildMode`]):
+    /// blocking unless the host shows the status screen meanwhile.
+    pipeline_build: super::scene_renderer::PipelineBuildMode,
     /// The editor's `construct` pump, run by the scene renderer each frame.
     construct_pump: Option<crate::scene::EditorConstructPump>,
     /// What `inner` was built from: the pipeline, or why none runs.
@@ -913,6 +916,15 @@ impl HelioRenderer {
         self.construct_pump = Some(pump);
     }
 
+    /// Where this viewport's render pipeline builds. The default is blocking:
+    /// the frame after the renderer exists draws the pipeline (tools and tests
+    /// read it). The editor's viewport builds in the background and shows the
+    /// status screen "Building the render pipeline" meanwhile (its first build
+    /// of a session takes 10 to 14 s).
+    pub fn set_pipeline_build(&mut self, mode: super::scene_renderer::PipelineBuildMode) {
+        self.pipeline_build = mode;
+    }
+
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         Self {
@@ -951,6 +963,7 @@ impl HelioRenderer {
             applied_graph_settings: None,
             graph_settings_cache: ProjectGraphSettingsCache::new(),
             requested_pipeline: Default::default(),
+            pipeline_build: super::scene_renderer::PipelineBuildMode::Blocking,
             construct_pump: None,
             applied_pipeline: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),

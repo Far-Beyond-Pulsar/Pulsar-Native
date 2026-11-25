@@ -31,8 +31,12 @@ impl Drop for DrivenFrame<'_> {
     fn drop(&mut self) {
         let took = self.started.elapsed();
         let frames = self.runtime.frames.fetch_add(1, Ordering::AcqRel) + 1;
-        self.runtime.task.context().tick(took);
+        {
+            profiling::profile_scope!("DrivenFrame: task tick");
+            self.runtime.task.context().tick(took);
+        }
         if frames % 30 == 1 {
+            profiling::profile_scope!("DrivenFrame: publish details");
             self.runtime.publish_details(Some(took));
         }
     }
