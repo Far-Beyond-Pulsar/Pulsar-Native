@@ -144,8 +144,9 @@ session_metadata(key TEXT PRIMARY KEY, value TEXT)   -- timestamp, version
   `windowed_app`), else `helio_frame` (the editor viewport), else the marker; `TickLoop::tick` is the
   simulation tick. The frame's *cost* is its duration, its *period* the distance to the next frame's start.
 - **GPU**: rows with `thread_id = 0`, `thread_name`/`track_name` `GPU`: a root `helio_frame (estimated GPU
-  placement)` (depth 0) and one child per pass, from Helio's timestamp queries; `metadata` carries
-  `lag_frames`, `readback_drops`, `query_overflows`. Only a renderer that reports them publishes them.
+  placement)` (depth 0) and one child per pass, from Helio's timestamp queries (read back a frame or two late, never
+  waited for); `metadata` carries `lag_frames`, `readback_drops`, `query_overflows`. The editor viewport and the
+  packaged game (`SceneRenderer::render`) publish them while a recording runs.
 - **Input latency**: the game publishes each followed input as scopes on the `Input latency` track (root
   `Latency::input_to_present`, children `Latency::<stage>`; stages and stamps in `pulsar_game::latency`).
 - Names containing wait, lock, fence, present, acquire, sleep, idle, park, block, recv or vsync are
@@ -170,6 +171,10 @@ absolute path, and opens it with `SQLITE_OPEN_READ_ONLY` and `PRAGMA query_only`
 | `profile_gaps` | scopes that are mostly their own time: where to add inner scopes |
 | `profile_compare` `{a, b}` | per-scope own time per frame before and after, ranked by change |
 | `profile_export` | a Chrome trace of the recording under `<recordings>/exports/` |
+
+Per-scope detail: `HELIO_FINISH_BREAKDOWN=1` in the editor's environment makes the render graph finish its command
+buffers in line and name each one (`encoder.finish: <passes>` scopes): it shows which pass the CPU spends in wgpu's
+validation (it serialises the frame, so use it to attribute, not to time).
 
 Typical loop: `build_start {run: true}`, `profile_start {target: "game", duration_seconds: 20}`, drive the
 game (walk, turn, jump), `profile_top_scopes`, `profile_frame_times`, `profile_threads`,

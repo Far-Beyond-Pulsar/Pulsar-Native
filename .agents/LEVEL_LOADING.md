@@ -44,6 +44,15 @@ unbounded call, on every frame thread:
 | Priority | `new_scene` installs `asset_priority`: an asset ranks by the distance from `World::asset_focus` (the render camera's eye, set by `SceneRenderer::upload` through `scene::set_asset_focus`) to the nearest entity referencing it, using its `Transform` position (a parent-relative transform ranks by its local position). At most `2 x loader threads` loads run at once, nearest first; scores are rescored every 30 pumps while requests wait, and finished loads are applied nearest first. |
 | Quality tiers | A kind registered with `register_tiered_loader` loads coarse first: each tier is bound as it arrives (`AssetView::tier`/`complete`, version bumps) and the next tier is requested only after every first tier has been started and only while the asset is referenced. Textures: tier 0 is cooked at `streaming.coarse_texture_size` (128; 0 = off), tier 1 at `max_texture_size`; an image within the coarse size is complete at tier 0. The GPU copy is re-uploaded on the version change, within the existing residency and `texture_vram_budget_mb` rules. |
 
+What the profiler showed on a real level (Bistro, 560 textures, `GAMEPLAY.md` "Streaming a level in"), and what changed:
+
+- **Backpressure.** Loads in flight count what has loaded and is not bound yet (`start_pending_loads`): loaders used to outrun the frame, and the residency LRU evicted what they cooked before the frame bound it (the bind then re-read it from the derived cache on the frame thread).
+- **Pinned cooks.** A graph material's textures are cooked on the loader thread for their real use (colour or data) and pinned in the `LoadedTexture` until the upload (`pinned_for` / `unpin`).
+- **The time budget is honoured inside a pump.** A bind chunk is sized from the measured cost per asset (`AssetTable::bind_cost`), not a fixed 16: one material bind can cost milliseconds.
+- **One pumper.** A render loop pumps once per frame (`SceneRenderer::upload`, nearest the camera); a tick leaves it alone (`TickLoop::render_loop_pumps_assets`), and the windowed frame no longer pumps before the renderer does.
+- **Loader threads are half the cores** (`asset_load_workers`), so cooking does not preempt the frame, the renderer's encoder threads and physics.
+- Still on the frame thread: the texture upload itself (`TextureStore::register_mips`, one `write_texture` per mip, no byte budget) and the renderer's first-use work. The design for the first: create the texture off to the side, write it in row bands under a per-frame byte budget, then swap it into the slot (the coarse tier stays bound until then).
+
 What to watch when running the app on a texture-heavy level: the level textures
 appear blurry within moments and sharpen nearest-first; frame time stays flat
 while they do (Tasks window, `scene::pump_assets` scope).
