@@ -632,3 +632,14 @@ mod tests {
         assert!(CookedTexture::from_bytes(&old).is_err());
     }
 }
+
+impl pulsar_scenedb::gpu::MipSource for CookedTexture {
+    fn level_count(&self) -> u32 {
+        self.mip_count()
+    }
+
+    fn level(&self, level: u32) -> &[u8] {
+        self.mip(level)
+    }
+}
+

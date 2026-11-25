@@ -29,6 +29,8 @@ pub use pulsar_scenedb::{
 // The component lifecycle traits and the native script actors that run
 // through it (P5a of the component lifecycle plan).
 pub mod latency;
+pub mod frame_pacer;
+pub mod pointer;
 pub mod lifecycle;
 
 // Script classes on the engine script VM (module.json builds).

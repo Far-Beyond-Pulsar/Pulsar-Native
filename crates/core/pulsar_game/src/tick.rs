@@ -115,6 +115,12 @@ pub struct TickLoop {
     /// takes the scene's write lock and, for textures and meshes, touches the
     /// GPU, so two threads doing it stall each other and the frame.
     render_loop_pumps_assets: bool,
+    /// Mouse motion accumulated by the OS-side input thread, drained where the
+    /// tick reads input ([`crate::pointer`]).
+    pointer: Option<Arc<crate::pointer::PointerSampler>>,
+    /// When frames start, so the tick can end just before one does
+    /// ([`crate::frame_pacer`]).
+    pacer: Option<Arc<crate::frame_pacer::FramePacer>>,
     script_stats: ScriptStats,
     /// Reloads updated assets in a world this loop built (SceneDB#84). A
     /// loop over a host's world leaves that to the host, which keeps its
@@ -256,6 +262,8 @@ impl TickLoop {
             script_problems: Vec::new(),
             collect_problems: false,
             render_loop_pumps_assets: false,
+            pointer: None,
+            pacer: None,
             script_stats: ScriptStats::default(),
             _asset_reloads: Some(asset_reloads),
         }
@@ -309,6 +317,8 @@ impl TickLoop {
             script_problems: Vec::new(),
             collect_problems: false,
             render_loop_pumps_assets: false,
+            pointer: None,
+            pacer: None,
             script_stats: ScriptStats::default(),
             _asset_reloads: None,
         }
@@ -433,12 +443,25 @@ impl TickLoop {
         }
     }
 
+    /// Let the tick read mouse motion that an OS-side thread accumulated
+    /// ([`crate::pointer`]): it is drained, and published as one `MouseMoved`,
+    /// where the tick reads input.
+    pub fn set_pointer_sampler(&mut self, sampler: Arc<crate::pointer::PointerSampler>) {
+        self.pointer = Some(sampler);
+    }
+
+    /// Phase-lock the tick to the display ([`crate::frame_pacer`]).
+    pub fn set_frame_pacer(&mut self, pacer: Arc<crate::frame_pacer::FramePacer>) {
+        self.pacer = Some(pacer);
+    }
+
     fn run_tick(&mut self, time: GameTime) -> GameTime {
         self.last_time = time;
         let latency_stamp = crate::latency::tick_started();
         profiling::profile_scope!("TickLoop::tick");
         self.ensure_static_move_watch();
 
+        self.sample_pointer();
         self.flush_after_input();
         self.run_before_systems(time);
         self.run_schedule(to_scenedb_time(time));
@@ -498,8 +521,19 @@ impl TickLoop {
             let start = std::time::Instant::now();
             self.tick_once();
             let elapsed = start.elapsed();
-            if elapsed < target_dt {
-                std::thread::sleep(target_dt - elapsed);
+            let next = match &self.pacer {
+                Some(pacer) => {
+                    pacer.tick_finished(elapsed);
+                    // Ending just before the next frame samples the world; the
+                    // fixed period when the display's rate is not the tick's.
+                    pacer.next_tick(start, target_dt, std::time::Instant::now())
+                }
+                None => None,
+            };
+            match next {
+                Some(at) => crate::frame_pacer::sleep_until(at),
+                None if elapsed < target_dt => std::thread::sleep(target_dt - elapsed),
+                None => {}
             }
         }
 

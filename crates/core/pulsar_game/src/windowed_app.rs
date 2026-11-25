@@ -183,28 +183,22 @@ impl GameWindow {
 
     /// Render one frame.
     ///
-    /// `ecs_camera` is whatever the ECS thread last wrote via
-    /// `WindowManager::set_camera`.  If `None`, the built-in freecam is used.
-    fn render(&mut self, ecs_camera: Option<RenderCamera>) {
+    /// The surface is acquired first: with a present queue of one, the acquire
+    /// is where the frame waits for the display, and anything read from the
+    /// world before it is that much older when it is drawn. `sample` then steps
+    /// the scene and answers the camera, as late as the frame allows (right
+    /// before the uniform upload); `None` means the built-in freecam is used.
+    fn render(
+        &mut self,
+        pacer: &crate::frame_pacer::FramePacer,
+        sample: impl FnOnce(&mut SceneRenderer) -> Option<RenderCamera>,
+    ) {
         // A paused runtime draws nothing; the frame's logs are its task's.
         let Some(_frame) = self.runtime.begin_frame() else {
             return;
         };
         let latency_frame = crate::latency::frame_started();
         let _span = self.runtime.task().span().entered();
-        let cam = ecs_camera.unwrap_or_else(|| {
-            // The freecam stands on the ground's local vertical and
-            // flies faster the higher it is, as the editor camera does.
-            let ground = self.renderer.camera_ground(self.freecam.position());
-            self.freecam.follow_ground(ground);
-            self.freecam.to_render_camera()
-        });
-
-        // `Renderer::render` tracks its own frame delta internally (wind/TAA/
-        // foliage clocks all advance from that), so there is nothing to push
-        // in from here.
-        let size = self.window.inner_size();
-        let aspect = size.width as f32 / size.height.max(1) as f32;
 
         // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
         // `CurrentSurfaceTexture` enum (see wgpui's
@@ -251,10 +245,29 @@ impl GameWindow {
             }
         };
         drop(acquire_scope);
+        pacer.frame_acquired();
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
         crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Acquired);
+
+        // The world as late as possible: after the display wait, right before
+        // the camera goes into the frame's uniforms.
+        let cam = {
+            let ecs_camera = sample(&mut self.renderer);
+            ecs_camera.unwrap_or_else(|| {
+                // The freecam stands on the ground's local vertical and
+                // flies faster the higher it is, as the editor camera does.
+                let ground = self.renderer.camera_ground(self.freecam.position());
+                self.freecam.follow_ground(ground);
+                self.freecam.to_render_camera()
+            })
+        };
+        // `Renderer::render` tracks its own frame delta internally (wind/TAA/
+        // foliage clocks all advance from that), so there is nothing to push
+        // in from here.
+        let size = self.window.inner_size();
+        let aspect = size.width as f32 / size.height.max(1) as f32;
 
         let frame = {
             profiling::profile_scope!("Game::prepare_frame");
@@ -409,6 +422,12 @@ pub struct PulsarApp {
     /// The entity the local player's view follows (possession sets it to the
     /// pawn); read by the camera selection.
     view_targets: crate::view_target::ViewTargets,
+    /// Mouse motion and key arrivals taken on the OS-side input thread; the
+    /// tick drains the motion where it reads input ([`crate::pointer`]).
+    pointer: Arc<crate::pointer::PointerSampler>,
+    /// Told when each frame acquires its surface, so the tick can end just
+    /// before the next one ([`crate::frame_pacer`]).
+    pacer: Arc<crate::frame_pacer::FramePacer>,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -458,7 +477,7 @@ struct LoadedLevel {
 impl PulsarApp {
     pub fn new(
         bridge: Arc<WindowBridge>,
-        tick_loop: crate::tick::TickLoop,
+        mut tick_loop: crate::tick::TickLoop,
         initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
         content: pulsar_content::ContentRoot,
         default_scene: Option<PathBuf>,
@@ -470,6 +489,9 @@ impl PulsarApp {
         let events = tick_loop.events.clone();
         let possession = tick_loop.possession_gate();
         let view_targets = tick_loop.view_targets();
+        let pacer = crate::frame_pacer::FramePacer::new();
+        tick_loop.set_frame_pacer(pacer.clone());
+        let pointer = crate::pointer::PointerSampler::new();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -484,6 +506,8 @@ impl PulsarApp {
             events,
             possession,
             view_targets,
+            pointer,
+            pacer,
             focused_window: None,
             cursor_captured: false,
             last_cursor: None,
@@ -510,6 +534,7 @@ impl PulsarApp {
             gw.window.set_cursor_visible(false);
             self.cursor_captured = true;
             self.focused_window = Some(handle);
+            self.pointer.set_captured(true);
         }
     }
 
@@ -521,6 +546,7 @@ impl PulsarApp {
             }
         }
         self.cursor_captured = false;
+        self.pointer.set_captured(false);
     }
 
     // ── Device loss ───────────────────────────────────────────────────────────
@@ -890,6 +916,15 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         }
         tracing::info!(tick_rate_hz = rate, "Simulation tick rate");
 
+        // Mouse motion is taken where the OS delivers it and drained by the tick
+        // where it reads input; without the OS thread the event loop feeds the
+        // same accumulator.
+        let raw = self.pointer.start_raw_input();
+        if let Some(tick_loop) = self.tick_loop.as_mut() {
+            tick_loop.set_pointer_sampler(self.pointer.clone());
+        }
+        tracing::info!(raw_input_thread = raw, "Pointer sampling");
+
         // With a level on its way, the tick thread starts when it is applied
         // (`poll_pending_level`).
         if self.pending_level.is_none() {
@@ -923,12 +958,16 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if self.cursor_captured {
                 profiling::profile_scope!("Game::mouse_motion");
-                crate::latency::note_input();
-                let (x, y) = self.last_cursor.unwrap_or((0.0, 0.0));
-                self.events.publish(
-                    pulsar_events::gamma::Channel::Global,
-                    pulsar_events::builtin::MouseMoved { x, y, dx, dy },
-                );
+                if self.pointer.has_raw_feed() {
+                    // The raw-input thread already stamped this motion and
+                    // accumulated it for the tick; what is measured here is how
+                    // long the event loop made it wait.
+                    self.pointer.handled_motion();
+                } else {
+                    // No OS thread: this is the earliest the game sees it.
+                    self.pointer
+                        .add_motion(dx, dy, crate::latency::stamp());
+                }
                 if let Some(handle) = self.focused_window {
                     if let Some(gw) = self.windows.get_mut(&handle) {
                         gw.freecam.on_mouse_delta(dx, dy);
@@ -973,6 +1012,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
             // ── Focus ─────────────────────────────────────────────────────────
             WindowEvent::Focused(focused) => {
+                self.pointer.set_focused(focused);
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.focused = focused;
                     gw.next_redraw = Instant::now();
@@ -995,7 +1035,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             } => {
                 let pressed = key_event.state == ElementState::Pressed;
                 if !key_event.repeat {
-                    crate::latency::note_input();
+                    if self.pointer.has_raw_feed() {
+                        self.pointer.handled_key();
+                    } else {
+                        crate::latency::note_input();
+                    }
                     if let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
                         let key = code as i64;
                         let channel = pulsar_events::gamma::Channel::Global;
@@ -1033,6 +1077,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     .last_cursor
                     .map_or((0.0, 0.0), |(lx, ly)| (x - lx, y - ly));
                 self.last_cursor = Some((x, y));
+                self.pointer.set_cursor(x, y);
                 if !self.cursor_captured && (dx != 0.0 || dy != 0.0) {
                     self.events.publish(
                         pulsar_events::gamma::Channel::Global,
@@ -1089,33 +1134,34 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 if let Some(last) = self.last_redraw.replace(now) {
                     profiling::record_frame_time(now.duration_since(last).as_secs_f32() * 1000.0);
                 }
-                // Advance the shared world's authoritative SceneDB state and
-                // flush its GPU mirror. Helio's scene join reads the mirrored
-                // rows directly -- there is no renderer-owned frame projection
-                // or CPU object cache to rebuild here (same seam the editor
-                // viewport renderer uses). Bind the meshes that finished
-                // loading first, so they upload with this frame (SceneDB#84).
-                if let Some(gw) = self.windows.get_mut(&handle) {
-                    profiling::profile_scope!("Game::step_scene");
-                    gw.renderer.step_scene(&mut self.scene_store.write());
-                }
-
-                // Camera precedence: a gameplay-pushed bridge camera wins,
-                // then the SHARED world's (the view target's camera, the best
-                // CameraComponent, a Camera-typed entity; moving the
-                // camera's object moves the view next frame), then the
-                // freecam. See `camera_selection`.
-                let ecs_camera = {
-                    profiling::profile_scope!("Game::camera_for_frame");
-                    camera_for_frame(
-                        self.bridge.camera(handle),
-                        &self.scene_store.read(),
-                        self.view_targets.local(),
-                    )
-                };
+                // The frame acquires its surface first (the wait for the
+                // display), then `sample` runs: it advances the shared world's
+                // SceneDB state and flushes its GPU mirror (Helio's scene join
+                // reads the mirrored rows directly; same seam the editor
+                // viewport renderer uses, binding the meshes that finished
+                // loading so they upload with this frame, SceneDB#84), and
+                // answers the camera. Camera precedence: a gameplay-pushed
+                // bridge camera wins, then the SHARED world's (the view
+                // target's camera, the best CameraComponent, a Camera-typed
+                // entity), then the freecam. See `camera_selection`.
                 let background = self.throttle_background;
+                let scene_store = &self.scene_store;
+                let bridge = &self.bridge;
+                let view_targets = &self.view_targets;
+                let pacer = &self.pacer;
                 if let Some(gw) = self.windows.get_mut(&handle) {
-                    gw.render(ecs_camera);
+                    gw.render(pacer, |renderer| {
+                        {
+                            profiling::profile_scope!("Game::step_scene");
+                            renderer.step_scene(&mut scene_store.write());
+                        }
+                        profiling::profile_scope!("Game::camera_for_frame");
+                        camera_for_frame(
+                            bridge.camera(handle),
+                            &scene_store.read(),
+                            view_targets.local(),
+                        )
+                    });
                     if background && !gw.focused {
                         gw.next_redraw = gw.next_redraw.max(Instant::now() + BACKGROUND_FRAME);
                     }

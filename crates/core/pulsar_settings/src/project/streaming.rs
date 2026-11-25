@@ -63,6 +63,36 @@ pub fn register(cfg: &'static ConfigManager) {
             .validator(Validator::int_range(0, 1024)),
         )
         .setting(
+            "texture_upload_budget_kb",
+            SchemaEntry::new(
+                "Most texture data, in KB, a frame copies to the GPU; larger textures upload over several frames, nearest first, and keep showing their earlier quality meanwhile (0 = no limit)",
+                4096_i64,
+            )
+            .label("Texture Upload per Frame (KB)")
+            .page("Asset Loading")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(262144.0),
+                step: Some(256.0),
+            })
+            .validator(Validator::int_range(0, 262144)),
+        )
+        .setting(
+            "texture_upload_budget_ms",
+            SchemaEntry::new(
+                "Time a frame may spend copying textures to the GPU, in ms; the rest waits for the next frame (0 = no time limit)",
+                1_i64,
+            )
+            .label("Texture Upload Budget (ms)")
+            .page("Asset Loading")
+            .field_type(FieldType::NumberInput {
+                min: Some(0.0),
+                max: Some(50.0),
+                step: Some(1.0),
+            })
+            .validator(Validator::int_range(0, 50)),
+        )
+        .setting(
             "coarse_texture_size",
             SchemaEntry::new(
                 "Largest side, in texels, of the first version of a texture that streams in low resolution first; the full version follows, nearest first (0 = load textures in one step)",

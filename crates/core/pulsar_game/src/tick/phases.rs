@@ -16,6 +16,24 @@ impl TickLoop {
         }
     }
 
+    /// The input sample point: the mouse motion the OS thread accumulated
+    /// since the last tick becomes one `MouseMoved`, queued ahead of the
+    /// input flush that delivers it.
+    pub(super) fn sample_pointer(&self) {
+        let Some(sample) = self.pointer.as_ref().and_then(|p| p.drain()) else {
+            return;
+        };
+        self.events.publish(
+            pulsar_events::gamma::Channel::Global,
+            pulsar_events::builtin::MouseMoved {
+                x: sample.x,
+                y: sample.y,
+                dx: sample.dx,
+                dy: sample.dy,
+            },
+        );
+    }
+
     /// Flush 1 (after input): input published since the last tick
     /// (`publish_input`, PIE input forwarding) and anything else queued
     /// between ticks.

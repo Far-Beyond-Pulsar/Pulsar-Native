@@ -142,7 +142,36 @@ pub fn pump_assets(scene: &SharedScene) -> pulsar_scenedb::AssetPumpReport {
     }
     profiling::profile_scope!("scene::pump_assets");
     let budget = frame_asset_budget();
-    scene.write().world.pump_assets_within(budget)
+    let mut scene = scene.write();
+    let report = scene.world.pump_assets_within(budget);
+    // The copy of finished textures to the GPU, a few rows a frame
+    // (`streaming.texture_upload_budget_kb` / `_ms`), nearest the viewer first.
+    scene.world.advance_texture_uploads(frame_upload_budget());
+    report
+}
+
+/// What one frame may write of staged textures: project settings
+/// `streaming.texture_upload_budget_kb` (default 4096) and
+/// `streaming.texture_upload_budget_ms` (default 1); 0 lifts that limit. A
+/// block-compressed 4096 x 4096 texture is 21 MB: it takes a few frames, and
+/// the frame it would have stalled stays flat.
+pub fn frame_upload_budget() -> pulsar_scenedb::gpu::UploadBudget {
+    let setting = |key: &str, default: i64| match engine_state::settings::global_config().get(
+        engine_state::settings::NS_PROJECT,
+        "streaming",
+        key,
+    ) {
+        Ok(engine_state::settings::ConfigValue::Int(value)) => value.max(0),
+        _ => default,
+    };
+    let (kb, ms) = (
+        setting("texture_upload_budget_kb", 4096),
+        setting("texture_upload_budget_ms", 1),
+    );
+    pulsar_scenedb::gpu::UploadBudget {
+        bytes: if kb == 0 { usize::MAX } else { kb as usize * 1024 },
+        time: (ms > 0).then(|| std::time::Duration::from_millis(ms as u64)),
+    }
 }
 
 /// Tell the scene where the viewer is, so loads start nearest first

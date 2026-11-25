@@ -25,6 +25,14 @@
 //! MCP tool reads it. The probe is always on: an atomic and
 //! a clock read per stamp.
 //!
+//! `os_event` is the moment the OS delivered the input to this process, taken on the
+//! raw-input thread ([`crate::pointer`]) the instant it arrives, not when the event
+//! loop gets to it. The event loop is busy rendering most of the time, so what it
+//! would have added (the stage the chain used to hide) is measured on its own: each
+//! raw input the event loop later hands over reports its wait ([`note_handler_delay`]),
+//! published as `Latency::os_to_handler` on the same track and kept for
+//! [`handler_summary`].
+//!
 //! The stamp after `present` is the earliest the display can show the frame; a
 //! deep present queue (`desired_maximum_frame_latency`) or vsync adds to what
 //! the person sees, and is not visible here: add `depth x frame time`.
@@ -89,6 +97,12 @@ pub struct Sample {
     pub at_unix_ns: u64,
 }
 
+/// The probe's clock reading (nanoseconds since its epoch, never 0): the stamp a
+/// thread takes when an input arrives and passes to [`note_input_at`].
+pub fn stamp() -> u64 {
+    now()
+}
+
 fn now() -> u64 {
     // +1 so a stamp is never 0 (0 means "none").
     EPOCH.get_or_init(Instant::now).elapsed().as_nanos() as u64 + 1
@@ -104,7 +118,14 @@ fn load(slot: usize) -> u64 {
 
 /// An input event arrived. Only the oldest unshown input is followed.
 pub fn note_input() {
-    let _ = SLOTS[OS_EVENT].compare_exchange(0, now(), Ordering::AcqRel, Ordering::Relaxed);
+    note_input_at(now());
+}
+
+/// An input event arrived at `at` ([`stamp`]), possibly some time ago: the OS
+/// delivered it to a thread that took the stamp at once. Only the oldest
+/// unshown input is followed.
+pub fn note_input_at(at: u64) {
+    let _ = SLOTS[OS_EVENT].compare_exchange(0, at, Ordering::AcqRel, Ordering::Relaxed);
 }
 
 /// The clock reading to pass to the tick's stage calls; the tick has begun.
@@ -284,6 +305,56 @@ fn publish(sample: &Sample) {
         profiler.submit_event(event(id, Some(root), format!("Latency::{stage}"), at, ms, 1));
         at += (ms * 1.0e6) as u64;
     }
+}
+
+/// Waits of the event loop, in milliseconds (the last 240): how long raw input
+/// sat in the OS queue before the event loop handed it over.
+static HANDLER_WAITS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+/// The root scope of one event-loop wait on the `Input latency` track.
+pub const HANDLER_ROOT: &str = "Latency::os_to_handler";
+
+/// The event loop handed over an input the raw-input thread saw at `os_event`
+/// ([`stamp`]): the wait between the two is the stage a handler-stamped chain
+/// cannot see.
+pub fn note_handler_delay(os_event: u64) {
+    let end = now();
+    let wait = ms(os_event, end);
+    {
+        let mut waits = HANDLER_WAITS.lock().unwrap_or_else(|p| p.into_inner());
+        if waits.len() >= 240 {
+            waits.remove(0);
+        }
+        waits.push(wait);
+    }
+    let profiler = profiling::init_profiler();
+    if !profiler.is_enabled() {
+        return;
+    }
+    profiler.submit_event(profiling::ProfileEvent {
+        scope_id: profiling::allocate_scope_id(),
+        parent_scope_id: None,
+        parent_name: None,
+        name: HANDLER_ROOT.into(),
+        thread_id: TRACK_THREAD,
+        thread_name: Some(TRACK.into()),
+        process_id: profiler.get_process_id(),
+        start_ns: unix_ns().saturating_sub((wait * 1.0e6) as u64),
+        duration_ns: (wait * 1.0e6) as u64,
+        depth: 0,
+        location: None,
+        metadata: None,
+        track_name: Some(TRACK.into()),
+    });
+}
+
+/// The kept event-loop waits' mean and worst case, in milliseconds.
+pub fn handler_summary() -> Option<(f32, f32)> {
+    let waits = HANDLER_WAITS.lock().unwrap_or_else(|p| p.into_inner());
+    if waits.is_empty() {
+        return None;
+    }
+    let mean = waits.iter().sum::<f32>() / waits.len() as f32;
+    Some((mean, waits.iter().copied().fold(0.0, f32::max)))
 }
 
 /// The kept samples' mean and worst case per stage and in total.
