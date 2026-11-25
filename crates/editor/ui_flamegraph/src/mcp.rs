@@ -76,6 +76,7 @@ fn running_json() -> Value {
             "target": r.label,
             "started_from": if r.origin == Origin::Mcp { "mcp" } else { "flamegraph window" },
             "seconds": r.seconds,
+            "saving": r.saving,
             "pid": r.pid,
             "writes_to": r.database.map(|p| p.display().to_string()),
         }),

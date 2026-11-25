@@ -33,6 +33,9 @@ struct Active {
     origin: Origin,
     started: Instant,
     pid: Option<u32>,
+    /// Stopped, its events being written: still the running recording until
+    /// the file is complete, so nobody reads it half written.
+    saving: bool,
 }
 
 static ACTIVE: Mutex<Option<Active>> = Mutex::new(None);
@@ -70,6 +73,8 @@ pub struct Running {
     pub database: Option<PathBuf>,
     pub remote: bool,
     pub pid: Option<u32>,
+    /// Stopped and being written to its file.
+    pub saving: bool,
 }
 
 pub fn running() -> Option<Running> {
@@ -81,6 +86,7 @@ pub fn running() -> Option<Running> {
         database: a.database.as_ref().map(|(p, _)| p.clone()),
         remote: a.collector.is_remote(),
         pid: a.pid,
+        saving: a.saving,
     })
 }
 
@@ -151,6 +157,7 @@ pub fn begin(
         origin,
         started: Instant::now(),
         pid,
+        saving: false,
     });
     Ok(started)
 }
@@ -158,7 +165,7 @@ pub fn begin(
 /// [`finish`] the recording `id` if it is still the running one (a timer
 /// that outlived a manual stop must not stop the next recording).
 pub fn finish_if(id: u64) -> Option<Finished> {
-    if ACTIVE.lock().as_ref().is_none_or(|a| a.id != id) {
+    if ACTIVE.lock().as_ref().is_none_or(|a| a.id != id || a.saving) {
         return None;
     }
     finish().ok()
@@ -166,22 +173,32 @@ pub fn finish_if(id: u64) -> Option<Finished> {
 
 /// Stop the running recording and write its events to the project's database.
 pub fn finish() -> Result<Finished, String> {
-    let active = ACTIVE
-        .lock()
-        .take()
-        .ok_or_else(|| "nothing is recording".to_owned())?;
-    active.collector.stop();
+    let (collector, database, label, started) = {
+        let mut slot = ACTIVE.lock();
+        let active = slot
+            .as_mut()
+            .filter(|a| !a.saving)
+            .ok_or_else(|| "nothing is recording".to_owned())?;
+        active.saving = true;
+        (
+            Arc::clone(&active.collector),
+            active.database.take(),
+            active.label.clone(),
+            active.started,
+        )
+    };
+    collector.stop();
     // Restore the normal frame-rate cap before anything slow (the save below).
     profiling::set_uncap_frame_rate(false);
     gpui::render_stats::set_uncapped_presentation(false);
 
-    let seconds = active.started.elapsed().as_secs_f64();
+    let seconds = started.elapsed().as_secs_f64();
     let mut events = 0;
     let mut save_error = None;
     let mut path = None;
-    if let Some((db_path, conn)) = &active.database {
-        let recorded = if active.collector.is_remote() {
-            active.collector.session_events()
+    if let Some((db_path, conn)) = &database {
+        let recorded = if collector.is_remote() {
+            collector.session_events()
         } else {
             profiling::get_all_events()
         };
@@ -197,9 +214,11 @@ pub fn finish() -> Result<Finished, String> {
             }
         }
     }
+    // Only now is the recording over: its file is complete.
+    *ACTIVE.lock() = None;
     tracing::trace!("[PROFILER] Instrumentation profiling stopped");
     Ok(Finished {
-        label: active.label.clone(),
+        label,
         database: path,
         events,
         seconds,
