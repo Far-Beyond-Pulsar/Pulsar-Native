@@ -741,7 +741,10 @@ pub fn resident_slot(
     // takes a while. Either way, no lock is held while finding out.
     let device = mirror.store().device_arc();
     let device_key = (Arc::as_ptr(&device) as usize, id, usage);
-    let shared = shared_texture(device_key, version, bias, &texture_store);
+    let shared = {
+        profiling::profile_scope!("Texture::find_shared");
+        shared_texture(device_key, version, bias, &texture_store)
+    };
     let cooked = match shared {
         Some(_) => None,
         None => {
@@ -756,6 +759,7 @@ pub fn resident_slot(
         }
     };
 
+    let lock_scope = profiling::ProfileScope::new_static("Texture::lock_residency_and_store");
     let mut resident = resident()
         .lock()
         .map_err(|_| "texture residency lock poisoned".to_string())?;
@@ -768,7 +772,9 @@ pub fn resident_slot(
     let mut store = texture_store
         .write()
         .map_err(|_| "SceneDB texture store lock poisoned".to_string())?;
+    drop(lock_scope);
     if let Some(old) = resident.remove(&key) {
+        profiling::profile_scope!("Texture::unregister_replaced");
         let _ = store.unregister(old.slot);
     }
     let (slot, uploaded) = match (shared, cooked) {
@@ -806,6 +812,7 @@ pub fn resident_slot(
     );
     drop(store);
     drop(resident);
+    profiling::profile_scope!("Texture::publish_shared");
     if let (Some((texture, native_bytes)), Ok(mut shared)) = (uploaded, shared_textures().lock()) {
         shared.insert(
             device_key,
