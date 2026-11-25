@@ -1,0 +1,17 @@
+[package]
+name = "pulsar_profile_capture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Profiling captures as data an AI agent can read: a bounded capture buffer over the profiler's events and the analyses over it (top scopes, frame breakdown and critical path, frame times and hitches, thread utilisation, GPU passes, the input-latency chain, coverage gaps, Chrome-trace export). Pure: no UI, no process access."
+
+[dependencies]
+# The event type every instrumented process publishes.
+profiling = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
