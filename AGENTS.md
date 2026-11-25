@@ -47,6 +47,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/MOCAP.md` | Motion capture plugin (`pulsar.mocap`): the `.mocap` take format, capture sources (camera, VMC, synthetic), recorder, the editor workspace and camera viewport, phases |
 | `.agents/MCP.md` | The engine's MCP server: Streamable HTTP on loopback with a bearer token and Host/Origin checks, how a crate or plugin registers a tool (`pulsar_mcp::McpToolRegistration`), the tool catalogue (build, logs, tasks, threads, problems, plugins, open file, and the editor's existing AI tools), how to connect a client |
 | `.agents/GAMEPLAY.md` | Build & Run as built (regenerate, pack, build, run, findings, game output as a task log), how a level's gameplay roles become actors and what their scripts hear, the default player character (capsule, camera rig, look, move), what was broken and what is known to be missing |
+| `.agents/VOXEL.md` | Voxel worlds: a pointer to the plugin's own docs, what a level's voxel load-in costs in the editor (measured) and how to measure it again from `engine.log` |
 | `.agents/ANIMATION.md` | Animation assets (`.animseq` v5, `.blendspace`, `.montage`, `.animgraph` on Graphy, `.animretarget`, `.ikrig`, `.ikretarget`, `.posedb`): schema/ownership table, migrations, node catalogue, mesh-owned skeleton authority, dependency index and validators, runtime, notify/Montage event delivery, root motion, physics bone ownership, hot reload |
 
 ## Skills (`.claude/commands/`)
