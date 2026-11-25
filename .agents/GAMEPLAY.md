@@ -261,14 +261,31 @@ asset cache (`%TEMP%/pulsar-asset-cache/<hash>`), which persists between launche
 
 Each was seen in a recording of the packaged game on the Bistro level (`profile_*` tools, `.agents/MCP.md`):
 
-1. **The Shadow pass costs 3.3 ms of CPU in `CommandEncoder::finish`** (GPU 0.5 ms). It records ~9 commands per face and
-   layer for up to 192 faces every frame, because which faces are dirty is only known on the GPU
-   (`meshes/feature/shadow/src/lib.rs`, `execute`). Design: one GPU-driven multi-draw over the faces `ShadowDirty` marks (a
-   layered target or viewport array instead of a viewport per face), as virtual shadow maps and Frostbite do; expected
-   frame 7.5 ms to about 4.5 ms CPU.
-2. **First use of a pass compiles its pipeline on the frame thread**: `GBufferPortalOccurrences` 63 to 120 ms at the first
-   frames, `Helio: apply pipeline` 360 ms twice, `create_window_renderer` 0.9 s before the first frame is presented. They
-   belong on `helio_core::compile` with a placeholder until ready.
+1. **The Shadow pass cost 3.3 ms of CPU in `CommandEncoder::finish`** (GPU 0.5 ms): fixed to 0.7 ms while faces are
+   serviced and about nothing when none are. The cost was not the commands (cutting them to a third changed nothing): wgpu
+   validates every texture view of a bound group once per render pass that uses it (`TextureViewBindGroupState`, one merge
+   per entry, about 80 ns each), and the material texture table is 4096 views (the unused slots are one fallback view
+   repeated). The shadow pass opens two such passes (static and dynamic layer) every frame, whatever they draw. Now
+   (`meshes/feature/shadow`): the faces to visit come from the GPU's pending-dirty bits read back without waiting (they
+   persist until a face is serviced, so the two frames of lag lose nothing; `DIRTY_LINGER_FRAMES` keeps a face that keeps
+   being dirtied in the set) plus what the CPU knows (never drawn, light or static caster changed); a frame with none opens
+   no pass; one draw per layer clears every serviced face's pages (`depth_clear.wgsl`) and one dispatch retires them
+   (`retire.wgsl`). The sun's cascades were redrawn, both layers, every frame of an idle scene (matrix hash changed with
+   the TAA jitter, an unquantised radius and a free eye along the light): they fit the unjittered frustum with a stepped
+   radius and a snapped eye (`shadow_matrices.wgsl`), and are redrawn in about a third of idle frames (camera noise
+   crossing a texel). **Still open:** a frame that does service faces pays about 3 ms of finish (two passes binding the
+   4096-view table) and so do GBuffer, TransparentPass and MeshHitSurfaces (0.15 to 0.6 ms each). The structural fix is
+   one of: dedupe repeated views in wgpu-core's `TextureViewBindGroupState::insert_single` (the Pulsar fork), size the
+   table to the live textures (pipelines and layouts then depend on it), or give opaque and cut-out casters separate
+   lists so opaque shadow passes bind no textures. Measured with `HELIO_FINISH_BREAKDOWN=1` and a probe that encodes N
+   passes binding N-view arrays.
+2. **First use of a pass compiled its pipeline on the frame thread.** Material variants of the G-buffer, forward and
+   transparent drawers (63 to 140 ms hitches) are fixed: they compile on the task system
+   (`helio_core::compile::Variants`) and draw with the default material of the same raster state until ready.
+   **Still open:** the whole graph build (`Helio: apply pipeline`, 360 ms when the level assigns its pipeline, and
+   `create_window_renderer`, 0.9 s before the first frame) runs on the frame thread: it needs `IntoGraph: Send`
+   (six implementors), an owned build context, a `PipelineStatus::Building` for the status screen, and the host
+   (`scene_renderer::set_pipeline_state`) to follow its completion instead of reading the status at once.
 3. **Fixed (mostly): a texture's GPU copy is staged and written under a per-frame budget** (`TextureStore::register_mips_staged`
    / `advance_uploads`, `streaming.texture_upload_budget_kb` 4096 and `_ms` 1, nearest first). `Texture::resident_slot`
    in the first 14 s: 569 calls, 1145 ms, max 27.5 ms before; 90 ms and max 14 ms after (mean 2.0 to 0.16 ms), and the
