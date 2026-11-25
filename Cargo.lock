@@ -16262,7 +16262,7 @@ dependencies = [
 
 [[package]]
 name = "scenedb_dylib"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "profiling_dylib",
  "pulsar_scenedb",
