@@ -340,6 +340,7 @@ dependencies = [
  "engine_state",
  "glam 0.33.5",
  "helio_component",
+ "profiling 0.1.0",
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -5981,6 +5982,7 @@ dependencies = [
  "helio-pass-status-screen",
  "helio-pass-tsr",
  "helio-settings",
+ "helio-tasks",
  "helio-xr",
  "image",
  "log",
@@ -8123,6 +8125,7 @@ dependencies = [
 name = "input_plugin"
 version = "0.1.1"
 dependencies = [
+ "editor_task_queue",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
