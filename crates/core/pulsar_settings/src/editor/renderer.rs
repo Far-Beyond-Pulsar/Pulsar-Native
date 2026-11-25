@@ -13,6 +13,12 @@ pub const OWNER: &str = "renderer";
 pub const HARDWARE_RAY_QUERIES: &str = "hardware_ray_queries";
 pub const HARDWARE_RAY_QUERIES_DEFAULT: bool = true;
 
+/// How a game window's frames reach the display: `fifo` (vsync, the default),
+/// `fifo_relaxed`, `mailbox`, `immediate`, `auto_vsync` or `auto_no_vsync`. A mode
+/// the surface does not offer falls back to `fifo`, which every surface has.
+pub const PRESENT_MODE: &str = "present_mode";
+pub const PRESENT_MODE_DEFAULT: &str = "fifo";
+
 pub fn register(cfg: &'static ConfigManager) {
     let schema = NamespaceSchema::new(
         "Renderer Device",
@@ -60,6 +66,26 @@ pub fn register(cfg: &'static ConfigManager) {
         .page("Renderer / Device")
         .requires_restart()
         .field_type(FieldType::Checkbox),
+    )
+    .setting(
+        PRESENT_MODE,
+        SchemaEntry::new(
+            "How a game window's frames reach the display. Fifo waits for the display's refresh (no tearing); Mailbox replaces the queued frame with the newest (no tearing, the lowest latency a compositor allows, where offered); Immediate presents at once and may tear. A mode the display does not offer uses Fifo",
+            PRESENT_MODE_DEFAULT,
+        )
+        .label("Present Mode")
+        .page("Renderer / Device")
+        .requires_restart()
+        .field_type(FieldType::Dropdown {
+            options: vec![
+                DropdownOption::new("Fifo (vsync)", "fifo"),
+                DropdownOption::new("Fifo Relaxed", "fifo_relaxed"),
+                DropdownOption::new("Mailbox", "mailbox"),
+                DropdownOption::new("Immediate (may tear)", "immediate"),
+                DropdownOption::new("Automatic, vsync", "auto_vsync"),
+                DropdownOption::new("Automatic, no vsync", "auto_no_vsync"),
+            ],
+        }),
     )
     .setting(
         "max_frame_latency",

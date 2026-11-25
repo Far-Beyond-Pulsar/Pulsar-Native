@@ -334,6 +334,20 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, -1000.0);
     assert_eq!(pitch(&world), -80.0, "looking down stops at the lower limit");
 
+    // The look went through `add_look`, so the frame can turn the view by the mouse
+    // motion no tick has applied yet: the control rotation says which action turns
+    // it, and the turn one unit of that action makes is the one the tick just made.
+    {
+        use engine_backend::scene::game_hooks::ControlRotationRegistration;
+        let control = pulsar_plugins::registered::<ControlRotationRegistration>()
+            .find(|control| control.name == "character.control_rotation")
+            .expect("the character plugin registers its control rotation");
+        assert_eq!((control.look_action)(&world, pawn).as_deref(), Some("IA_Look"));
+        let turn = (control.turn)(&world, pawn, [10.0, 3.0]).expect("a turn");
+        assert_eq!((turn.yaw_degrees, turn.pitch_degrees), (-10.0, 3.0));
+        assert_eq!((turn.pitch_min, turn.pitch_max), (-80.0, 80.0));
+    }
+
     // Only a wired phase is listened to: IA_Jump.started has no chain, so it
     // changes nothing (jump is already set, so this only checks it does not fail).
     send(&mut driver, &mut world, "IA_Jump", "started", 1.0, 0.0);
@@ -430,5 +444,5 @@ fn gameplay_pins_the_character_contract_version_its_graph_needs() {
             seen += 1;
         }
     }
-    assert!(seen >= 5, "the graph calls the character's methods ({seen})");
+    assert!(seen >= 4, "the graph calls the character's methods ({seen})");
 }

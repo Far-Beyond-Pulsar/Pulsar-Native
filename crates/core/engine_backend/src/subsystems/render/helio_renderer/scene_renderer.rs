@@ -137,6 +137,9 @@ pub struct SceneRenderer {
     last_errors: Vec<String>,
     /// The camera of the frame [`Self::prepare_frame`] placed.
     camera: Option<Camera>,
+    /// Where that camera was and what it saw, for ranking loads and texture
+    /// uploads ([`crate::scene::set_asset_view`]).
+    asset_view: Option<pulsar_scenedb::AssetViewer>,
     /// The ground under cameras, as the scene's content reports it.
     ground: GroundQueries,
     /// The plugins' per-renderer state (`RenderHostPartRegistration`).
@@ -261,6 +264,7 @@ impl SceneRenderer {
             read: None,
             last_errors: Vec::new(),
             camera: None,
+            asset_view: None,
             ground: GroundQueries::default(),
             host_parts,
             pipeline: super::pipelines::PipelineState::Unassigned,
@@ -525,6 +529,19 @@ impl SceneRenderer {
             self.last_errors = errors.clone();
             errors
         });
+        self.asset_view = Some(pulsar_scenedb::AssetViewer {
+            eye: view.eye.to_array(),
+            forward: view.forward.normalize_or_zero().to_array(),
+            tan_half_fov: match view.projection {
+                FrameProjection::Perspective { fov_y, .. } => {
+                    let up = (fov_y * 0.5).tan();
+                    [up * view.aspect, up]
+                }
+                // An orthographic view sees a slab, not a cone: ranking by
+                // distance alone is right for it.
+                FrameProjection::Orthographic { .. } => [f32::INFINITY; 2],
+            },
+        });
         self.camera = Some(camera.clone());
         PreparedFrame { camera, new_errors }
     }
@@ -537,7 +554,9 @@ impl SceneRenderer {
         // this frame (a gizmo drag, a script, a tool) must reach the GPU
         // before the frame reads them.
         // Loads start nearest the viewer first (the previous frame's camera).
-        if let Some(camera) = &self.camera {
+        if let Some(view) = self.asset_view {
+            crate::scene::set_asset_view(&self.scene, view);
+        } else if let Some(camera) = &self.camera {
             crate::scene::set_asset_focus(&self.scene, camera.eye.to_array());
         }
         crate::scene::pump_assets(&self.scene);

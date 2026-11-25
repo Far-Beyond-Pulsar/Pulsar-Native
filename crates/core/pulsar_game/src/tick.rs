@@ -447,6 +447,7 @@ impl TickLoop {
     /// ([`crate::pointer`]): it is drained, and published as one `MouseMoved`,
     /// where the tick reads input.
     pub fn set_pointer_sampler(&mut self, sampler: Arc<crate::pointer::PointerSampler>) {
+        sampler.attach_tick_consumer();
         self.pointer = Some(sampler);
     }
 
@@ -461,6 +462,9 @@ impl TickLoop {
         profiling::profile_scope!("TickLoop::tick");
         self.ensure_static_move_watch();
 
+        if let Some(pointer) = &self.pointer {
+            pointer.begin_tick();
+        }
         self.sample_pointer();
         self.flush_after_input();
         self.run_before_systems(time);
@@ -494,6 +498,11 @@ impl TickLoop {
         self.pump_assets();
         self.close_change_window();
 
+        // What the sample took is in the world now: the frame's late look stops
+        // counting it.
+        if let Some(pointer) = &self.pointer {
+            pointer.end_tick();
+        }
         crate::latency::tick_done(latency_stamp);
         time
     }

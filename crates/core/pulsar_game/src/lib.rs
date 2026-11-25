@@ -31,6 +31,7 @@ pub use pulsar_scenedb::{
 pub mod latency;
 pub mod frame_pacer;
 pub mod pointer;
+pub mod late_look;
 pub mod lifecycle;
 
 // Script classes on the engine script VM (module.json builds).

@@ -187,3 +187,114 @@ pub fn game_sessions() -> Vec<&'static GameSessionRegistration> {
     hooks.sort_by_key(|hook| hook.name);
     hooks
 }
+
+// ── The look the frame applies late ─────────────────────────────────────────
+
+/// How far one look input turns a pawn's view: degrees of yaw (positive turns
+/// left) and of pitch (positive looks up) to add, and the pitch limits the
+/// view holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ViewTurn {
+    pub yaw_degrees: f32,
+    pub pitch_degrees: f32,
+    pub pitch_min: f32,
+    pub pitch_max: f32,
+}
+
+impl ViewTurn {
+    /// `pitch` (degrees) turned by this look, held between the limits: the one
+    /// rule the tick and the frame's late look share.
+    pub fn pitched(&self, pitch: f32) -> f32 {
+        (pitch + self.pitch_degrees).clamp(self.pitch_min, self.pitch_max)
+    }
+}
+
+/// Who owns the control rotation of a pawn, and how a look input turns it.
+///
+/// The frame applies the newest mouse motion to the view right before the
+/// camera goes into the frame's uniforms, as a rotation over what the last tick
+/// wrote, and the next tick applies the same motion to the simulation, so it is
+/// never counted twice. The frame knows no plugin: the plugin that owns the
+/// control rotation (the character's) says here which input action turns it and
+/// how far an action's value turns the view, from the same state the tick's own
+/// look path reads. A plugin whose pawn turns another way registers nothing and
+/// its view shows what the tick wrote.
+///
+/// How others do it: Unreal's `APlayerController::AddYawInput` /
+/// `ControlRotation` with the late `PlayerCameraManager` update, and the VR
+/// runtimes' late-latched head pose (the pose is read at the last moment before
+/// the GPU consumes it).
+pub struct ControlRotationRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    /// Its stable id in the plugin catalog (`<kind>.<what>`).
+    pub name: &'static str,
+    /// The name of the input action whose value turns `pawn`'s control
+    /// rotation, if it has one that is turned by that action alone.
+    pub look_action: fn(world: &World, pawn: Entity) -> Option<String>,
+    /// What `look` (the value that action takes) turns `pawn`'s view by.
+    pub turn: fn(world: &World, pawn: Entity, look: [f32; 2]) -> Option<ViewTurn>,
+}
+
+impl pulsar_plugins::Contribution for ControlRotationRegistration {
+    const CATEGORY: &'static str = "game.control_rotation";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(ControlRotationRegistration);
+
+/// Where a look input comes from: the plugin that maps devices to actions says
+/// what value an action takes for some raw pointer motion.
+pub struct LookSourceRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    /// Its stable id in the plugin catalog (`<kind>.<what>`).
+    pub name: &'static str,
+    /// The value the player's input action `action` takes on `pawn` for `motion`
+    /// (device counts, x right and y down) and nothing else: only when the
+    /// action's value is that motion through a mapping that keeps no state (no
+    /// smoothing, no trigger) and no other device is moving it. `None`
+    /// otherwise: the tick's value then cannot be told ahead.
+    pub look_value:
+        fn(world: &World, pawn: Entity, action: &str, motion: [f32; 2]) -> Option<[f32; 2]>,
+}
+
+impl pulsar_plugins::Contribution for LookSourceRegistration {
+    const CATEGORY: &'static str = "game.look_source";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(LookSourceRegistration);
+
+/// What `motion` (device counts of pointer motion not yet consumed by a tick,
+/// x right and y down) will turn `pawn`'s view by, once the next tick applies
+/// it: the control rotation's plugin and the input plugin's answers composed.
+/// `None` when no enabled plugin can tell (the frame then shows the tick's
+/// view).
+pub fn pending_view_turn(world: &World, pawn: Entity, motion: [f32; 2]) -> Option<ViewTurn> {
+    for control in pulsar_plugins::registered::<ControlRotationRegistration>() {
+        let Some(action) = (control.look_action)(world, pawn) else {
+            continue;
+        };
+        for source in pulsar_plugins::registered::<LookSourceRegistration>() {
+            if let Some(look) = (source.look_value)(world, pawn, &action, motion) {
+                return (control.turn)(world, pawn, look);
+            }
+        }
+    }
+    None
+}

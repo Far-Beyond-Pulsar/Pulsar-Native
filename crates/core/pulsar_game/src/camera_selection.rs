@@ -30,7 +30,25 @@ use engine_backend::scene::{hierarchy_transform::world_matrix_of, SceneWorldExt}
 use helio_component::components::{
     camera_on_object, highest_priority_camera, CameraRig, ResolvedProjection, SelectedCamera,
 };
+use engine_backend::scene::game_hooks::ViewTurn;
 use pulsar_scenedb::{Entity, World};
+
+/// `rig` turned by a look no tick has applied yet: the control yaw and pitch the
+/// camera follows, moved by the same amounts, under the same limits, as the tick
+/// that applies it will move the control rotation (`ViewTurn`, the character's
+/// own rule), so the next tick's view is this one. A rig that does not follow the
+/// control rotation is not turned.
+pub fn turned_rig(rig: CameraRig, camera: &helio_component::components::CameraComponent, turn: &ViewTurn) -> CameraRig {
+    let Some(yaw) = rig.control_yaw else {
+        return rig;
+    };
+    let (low, high) = camera.pitch_limits_deg();
+    CameraRig {
+        control_yaw: Some(yaw + turn.yaw_degrees.to_radians()),
+        pitch: turn.pitched(rig.pitch.to_degrees()).clamp(low, high).to_radians(),
+        ..rig
+    }
+}
 
 /// `owner`'s world pose as a [`RenderCamera`] with the lens `lens` describes.
 ///
@@ -97,20 +115,33 @@ fn render_camera(
     Some(camera)
 }
 
-fn component_camera(world: &World, selected: Option<SelectedCamera>) -> Option<RenderCamera> {
+fn component_camera(
+    world: &World,
+    selected: Option<SelectedCamera>,
+    turn: Option<&ViewTurn>,
+) -> Option<RenderCamera> {
     let selected = selected?;
+    let rig = selected.camera.rig();
+    let rig = match turn {
+        Some(turn) => turned_rig(rig, &selected.camera, turn),
+        None => rig,
+    };
     render_camera(
         world,
         selected.owner,
         Some(selected.camera.resolved_projection()),
-        Some(selected.camera.rig()),
+        Some(rig),
     )
 }
 
 /// The camera `view_target` looks through, if it (or an object beneath it)
-/// has an enabled camera that can be placed.
-fn view_target_camera(world: &World, view_target: Entity) -> Option<RenderCamera> {
-    component_camera(world, camera_on_object(world, view_target))
+/// has an enabled camera that can be placed, its view turned by `turn`.
+fn view_target_camera(
+    world: &World,
+    view_target: Entity,
+    turn: Option<&ViewTurn>,
+) -> Option<RenderCamera> {
+    component_camera(world, camera_on_object(world, view_target), turn)
 }
 
 /// Whether the view target's own camera is the frame's camera (the free camera
@@ -121,7 +152,7 @@ pub fn view_target_drives_camera(
     store: &pulsar_scenedb::SceneDb,
     view_target: Option<Entity>,
 ) -> bool {
-    view_target.is_some_and(|target| view_target_camera(&store.world, target).is_some())
+    view_target.is_some_and(|target| view_target_camera(&store.world, target, None).is_some())
 }
 
 /// The frame's camera from the top of the precedence: `pushed` (gameplay's
@@ -132,7 +163,20 @@ pub fn camera_for_frame(
     store: &pulsar_scenedb::SceneDb,
     view_target: Option<Entity>,
 ) -> Option<RenderCamera> {
-    pushed.or_else(|| select_world_camera(store, view_target))
+    camera_for_frame_turned(pushed, store, view_target, None)
+}
+
+/// [`camera_for_frame`] with the view target's view turned by `turn`: the look no
+/// tick has applied yet (`game_hooks::pending_view_turn`). Only the view target's
+/// camera is turned; a pushed camera and the world's other cameras are not the
+/// player's view.
+pub fn camera_for_frame_turned(
+    pushed: Option<RenderCamera>,
+    store: &pulsar_scenedb::SceneDb,
+    view_target: Option<Entity>,
+    turn: Option<&ViewTurn>,
+) -> Option<RenderCamera> {
+    pushed.or_else(|| select_world_camera_turned(store, view_target, turn))
 }
 
 /// Resolve the shared-world camera, if any, in the precedence above.
@@ -141,11 +185,19 @@ pub fn select_world_camera(
     store: &pulsar_scenedb::SceneDb,
     view_target: Option<Entity>,
 ) -> Option<RenderCamera> {
+    select_world_camera_turned(store, view_target, None)
+}
+
+fn select_world_camera_turned(
+    store: &pulsar_scenedb::SceneDb,
+    view_target: Option<Entity>,
+    turn: Option<&ViewTurn>,
+) -> Option<RenderCamera> {
     let world = &store.world;
-    if let Some(camera) = view_target.and_then(|target| view_target_camera(world, target)) {
+    if let Some(camera) = view_target.and_then(|target| view_target_camera(world, target, turn)) {
         return Some(camera);
     }
-    if let Some(camera) = component_camera(world, highest_priority_camera(world)) {
+    if let Some(camera) = component_camera(world, highest_priority_camera(world), None) {
         return Some(camera);
     }
     // The editor's camera object: only a transform, so the free camera's lens.
@@ -428,6 +480,82 @@ mod tests {
             "{:?}",
             eye.forward
         );
+    }
+
+    /// The view the frame shows ahead of a tick is the view the tick writes: a pawn
+    /// camera turned by the pending look equals the camera after the tick moved the
+    /// control yaw and pitch (the properties the character writes) by the same look,
+    /// and the pitch holds the same limits either way.
+    #[test]
+    fn a_turned_pawn_camera_looks_where_the_next_tick_will_write() {
+        let mut store = engine_backend::scene::new_scene();
+        let pawn = placed(&mut store, "Pawn", [3.0, 0.0, -2.0]);
+        let instance = attachments::spawn_instance(
+            &mut store.world,
+            pawn,
+            NewInstance::new(CAMERA_CLASS_NAME),
+        )
+        .unwrap();
+        store.world.insert(
+            instance,
+            CameraComponent {
+                use_pawn_control_rotation: true,
+                control_yaw_deg: 30.0,
+                pitch_deg: 10.0,
+                eye_offset: [0.0, 0.7, 0.0],
+                arm_length: 2.0,
+                ..Default::default()
+            },
+        );
+        for (yaw, pitch) in [(-12.5, 7.0), (400.0, 90.0), (-30.0, -200.0), (0.0, 0.0)] {
+            let turn = ViewTurn {
+                yaw_degrees: yaw,
+                pitch_degrees: pitch,
+                pitch_min: -80.0,
+                pitch_max: 80.0,
+            };
+            let late = camera_for_frame_turned(None, &store, Some(pawn), Some(&turn)).unwrap();
+
+            // What the tick writes to the camera: the control yaw and pitch.
+            let mut ticked = store.world.get::<CameraComponent>(instance).unwrap().clone();
+            ticked.control_yaw_deg += yaw;
+            ticked.pitch_deg = turn.pitched(ticked.pitch_deg);
+            store.world.insert(instance, ticked);
+            let written = camera_for_frame(None, &store, Some(pawn)).unwrap();
+            assert!(late.forward.abs_diff_eq(written.forward, 1e-4), "{yaw} {pitch}: {:?} vs {:?}", late.forward, written.forward);
+            assert!(late.up.abs_diff_eq(written.up, 1e-4));
+            assert!((late.position - written.position).length() < 1e-4, "the arm follows the view");
+
+            // The next look turns the view the tick wrote.
+            store.world.insert(
+                instance,
+                CameraComponent {
+                    use_pawn_control_rotation: true,
+                    control_yaw_deg: 30.0,
+                    pitch_deg: 10.0,
+                    eye_offset: [0.0, 0.7, 0.0],
+                    arm_length: 2.0,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    /// A camera that does not follow the control rotation is not turned.
+    #[test]
+    fn a_camera_that_ignores_the_control_rotation_is_not_turned() {
+        let mut store = engine_backend::scene::new_scene();
+        let pawn = placed(&mut store, "Pawn", [0.0; 3]);
+        give_camera(&mut store, pawn, CameraComponent::default());
+        let turn = ViewTurn {
+            yaw_degrees: 45.0,
+            pitch_degrees: 20.0,
+            pitch_min: -80.0,
+            pitch_max: 80.0,
+        };
+        let plain = camera_for_frame(None, &store, Some(pawn)).unwrap();
+        let turned = camera_for_frame_turned(None, &store, Some(pawn), Some(&turn)).unwrap();
+        assert!(plain.forward.abs_diff_eq(turned.forward, 1e-6));
     }
 
     /// A hidden camera still drives the view (visibility culls its *body*

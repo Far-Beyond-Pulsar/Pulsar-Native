@@ -42,14 +42,29 @@ pub struct PointerSample {
 /// The accumulator between the raw-input thread and the tick. Cheap to share:
 /// plain atomics, no lock on either side.
 pub struct PointerSampler {
-    dx: AtomicI64,
-    dy: AtomicI64,
+    /// Every count of motion ever added (never reset, so a reader of the totals
+    /// and a reader of the differences never disagree about what happened).
+    total_dx: AtomicI64,
+    total_dy: AtomicI64,
+    /// The totals as of the last tick sample ([`Self::drain`]): what a tick has
+    /// taken. Written by the tick thread only.
+    taken_dx: AtomicI64,
+    taken_dy: AtomicI64,
+    /// The totals as of the last tick that finished: what the world shows
+    /// ([`Self::end_tick`]).
+    applied_dx: AtomicI64,
+    applied_dy: AtomicI64,
+    /// Odd while a tick is running, even between ticks, one step per start and
+    /// per end ([`Self::begin_tick`]).
+    tick_seq: AtomicU64,
+    /// A tick loop drains this sampler: the motion between `applied` and `total`
+    /// will be applied by the next tick.
+    tick_consumer: AtomicBool,
     /// The same motion for the event loop's own consumers (the free camera),
     /// drained by [`Self::take_view_motion`].
     view_dx: AtomicI64,
     view_dy: AtomicI64,
-    /// Whole counts of motion added since the last drain; 0 means nothing.
-    pending: AtomicU64,
+
     /// The cursor is captured by the game window: motion counts.
     captured: AtomicBool,
     /// The game window has focus: keys count, and so does captured motion.
@@ -61,6 +76,9 @@ pub struct PointerSampler {
     /// handed over yet (the probe's clock; 0 = none).
     unhandled_motion: AtomicU64,
     unhandled_key: AtomicU64,
+    /// Oldest motion no frame has shown through the late look yet (the probe's
+    /// clock; 0 = none).
+    unshown_motion: AtomicU64,
     cursor_x: AtomicU64,
     cursor_y: AtomicU64,
 }
@@ -70,16 +88,23 @@ impl PointerSampler {
     /// attaches the OS thread.
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            dx: AtomicI64::new(0),
-            dy: AtomicI64::new(0),
+            total_dx: AtomicI64::new(0),
+            total_dy: AtomicI64::new(0),
+            taken_dx: AtomicI64::new(0),
+            taken_dy: AtomicI64::new(0),
+            applied_dx: AtomicI64::new(0),
+            applied_dy: AtomicI64::new(0),
+            tick_seq: AtomicU64::new(0),
+            tick_consumer: AtomicBool::new(false),
             view_dx: AtomicI64::new(0),
             view_dy: AtomicI64::new(0),
-            pending: AtomicU64::new(0),
+
             captured: AtomicBool::new(false),
             focused: AtomicBool::new(true),
             raw_feed: AtomicBool::new(false),
             unhandled_motion: AtomicU64::new(0),
             unhandled_key: AtomicU64::new(0),
+            unshown_motion: AtomicU64::new(0),
             cursor_x: AtomicU64::new(0f64.to_bits()),
             cursor_y: AtomicU64::new(0f64.to_bits()),
         })
@@ -95,11 +120,16 @@ impl PointerSampler {
         self.captured.store(captured, Ordering::Release);
         if !captured {
             // Motion from before the release must not turn the view later.
-            self.dx.store(0, Ordering::Release);
-            self.dy.store(0, Ordering::Release);
             self.view_dx.store(0, Ordering::Release);
             self.view_dy.store(0, Ordering::Release);
-            self.pending.store(0, Ordering::Release);
+            let (tx, ty) = (
+                self.total_dx.load(Ordering::Acquire),
+                self.total_dy.load(Ordering::Acquire),
+            );
+            self.taken_dx.store(tx, Ordering::Release);
+            self.taken_dy.store(ty, Ordering::Release);
+            self.applied_dx.store(tx, Ordering::Release);
+            self.applied_dy.store(ty, Ordering::Release);
         }
     }
 
@@ -125,14 +155,16 @@ impl PointerSampler {
         if dx == 0.0 && dy == 0.0 {
             return;
         }
-        self.dx.fetch_add((dx * SUBCOUNT).round() as i64, Ordering::AcqRel);
-        self.dy.fetch_add((dy * SUBCOUNT).round() as i64, Ordering::AcqRel);
-        self.pending.fetch_add(1, Ordering::AcqRel);
+        self.total_dx.fetch_add((dx * SUBCOUNT).round() as i64, Ordering::AcqRel);
+        self.total_dy.fetch_add((dy * SUBCOUNT).round() as i64, Ordering::AcqRel);
         self.view_dx.fetch_add((dx * SUBCOUNT).round() as i64, Ordering::AcqRel);
         self.view_dy.fetch_add((dy * SUBCOUNT).round() as i64, Ordering::AcqRel);
         crate::latency::note_input_at(at);
         let _ = self
             .unhandled_motion
+            .compare_exchange(0, at, Ordering::AcqRel, Ordering::Relaxed);
+        let _ = self
+            .unshown_motion
             .compare_exchange(0, at, Ordering::AcqRel, Ordering::Relaxed);
     }
 
@@ -177,12 +209,12 @@ impl PointerSampler {
     /// The motion since the last call, or `None` when there was none. The
     /// sample point: the tick calls it where it reads input.
     pub fn drain(&self) -> Option<PointerSample> {
-        if self.pending.load(Ordering::Acquire) == 0 {
-            return None;
-        }
-        self.pending.store(0, Ordering::Release);
-        let dx = self.dx.swap(0, Ordering::AcqRel);
-        let dy = self.dy.swap(0, Ordering::AcqRel);
+        let (tx, ty) = (
+            self.total_dx.load(Ordering::Acquire),
+            self.total_dy.load(Ordering::Acquire),
+        );
+        let dx = tx - self.taken_dx.swap(tx, Ordering::AcqRel);
+        let dy = ty - self.taken_dy.swap(ty, Ordering::AcqRel);
         if dx == 0 && dy == 0 {
             return None;
         }
@@ -192,6 +224,78 @@ impl PointerSampler {
             x: f64::from_bits(self.cursor_x.load(Ordering::Relaxed)),
             y: f64::from_bits(self.cursor_y.load(Ordering::Relaxed)),
         })
+    }
+
+    // ── The frame's late look ───────────────────────────────────────────────
+    //
+    // The tick consumes motion at its sample point and the world shows it when
+    // the tick ends; the frame wants the motion in between, to turn the view by it
+    // ahead of the tick. It must count exactly what no finished tick has applied:
+    // a delta counted twice (once by the frame, once by the world) or in neither
+    // would show as the view jumping. So a tick brackets itself with a sequence
+    // number the frame checks around its read of the world.
+
+    /// A tick loop drains this sampler.
+    pub fn attach_tick_consumer(&self) {
+        self.tick_consumer.store(true, Ordering::Release);
+    }
+
+    /// The tick starts (before it takes its sample).
+    pub fn begin_tick(&self) {
+        self.tick_seq.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// The tick is over and every change it made is in the world: what it took
+    /// is shown by the world from now on.
+    pub fn end_tick(&self) {
+        self.applied_dx
+            .store(self.taken_dx.load(Ordering::Acquire), Ordering::Release);
+        self.applied_dy
+            .store(self.taken_dy.load(Ordering::Acquire), Ordering::Release);
+        // The motion the tick applied is no longer one a frame shows ahead of it.
+        self.unshown_motion.store(0, Ordering::Release);
+        self.tick_seq.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// The arrival stamp of the oldest motion the late look shows for the first
+    /// time (the probe's clock; 0 = none).
+    pub fn take_unshown_motion(&self) -> u64 {
+        self.unshown_motion.swap(0, Ordering::AcqRel)
+    }
+
+    /// The tick sequence number; even when no tick is running. A frame that read
+    /// the world between two equal even values read it with no tick between.
+    pub fn tick_sequence(&self) -> u64 {
+        self.tick_seq.load(Ordering::Acquire)
+    }
+
+    /// Wait (at most `limit`) for a running tick to end, then the sequence number.
+    /// `None` when it did not end in time.
+    pub fn wait_for_idle_tick(&self, limit: std::time::Duration) -> Option<u64> {
+        let start = std::time::Instant::now();
+        loop {
+            let seq = self.tick_sequence();
+            if seq % 2 == 0 {
+                return Some(seq);
+            }
+            if start.elapsed() > limit {
+                return None;
+            }
+            std::hint::spin_loop();
+        }
+    }
+
+    /// Motion (device counts, x right and y down) that no finished tick has
+    /// applied, when a tick loop drains this sampler: what the next tick will
+    /// apply. Read it with the world held and between two equal
+    /// [`Self::tick_sequence`] values.
+    pub fn unapplied_motion(&self) -> Option<[f32; 2]> {
+        if !self.tick_consumer.load(Ordering::Acquire) {
+            return None;
+        }
+        let dx = self.total_dx.load(Ordering::Acquire) - self.applied_dx.load(Ordering::Acquire);
+        let dy = self.total_dy.load(Ordering::Acquire) - self.applied_dy.load(Ordering::Acquire);
+        Some([(dx as f64 / SUBCOUNT) as f32, (dy as f64 / SUBCOUNT) as f32])
     }
 
     /// Start the raw-input thread (Windows). Returns whether one is feeding the

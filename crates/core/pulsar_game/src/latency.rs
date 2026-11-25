@@ -198,6 +198,7 @@ pub fn frame_stage(frame_start: u64, stage: FrameStage) {
 
 /// The frame's `present` returned: close the sample, if this frame carries one.
 pub fn frame_presented(frame_start: u64) {
+    look_presented();
     if load(OS_EVENT) == 0 || load(TICK_DONE) == 0 || load(FRAME_START) != frame_start {
         return;
     }
@@ -345,6 +346,68 @@ pub fn note_handler_delay(os_event: u64) {
         metadata: None,
         track_name: Some(TRACK.into()),
     });
+}
+
+/// The motion the frame's late look turned the view by, from the OS to its
+/// `present`, in milliseconds (the last 240): what a mouse movement costs when
+/// the frame applies it ahead of the tick that will, so it skips `wait_for_tick`
+/// and the tick's own stages.
+static LOOK_WAITS: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+/// The oldest late-looked motion's arrival stamp the frame being drawn shows.
+static LOOK_SHOWN: AtomicU64 = AtomicU64::new(0);
+/// The root scope of one late-look chain on the `Input latency` track.
+pub const LOOK_ROOT: &str = "Latency::look_to_present";
+
+/// The frame being drawn turns the view by motion whose oldest part arrived at
+/// the OS at `os_event` ([`stamp`]); [`frame_presented`] closes the chain.
+pub fn look_shown(os_event: u64) {
+    if os_event != 0 {
+        LOOK_SHOWN.store(os_event, Ordering::Release);
+    }
+}
+
+fn look_presented() {
+    let at = LOOK_SHOWN.swap(0, Ordering::AcqRel);
+    if at == 0 {
+        return;
+    }
+    let wait = ms(at, now());
+    {
+        let mut waits = LOOK_WAITS.lock().unwrap_or_else(|p| p.into_inner());
+        if waits.len() >= 240 {
+            waits.remove(0);
+        }
+        waits.push(wait);
+    }
+    let profiler = profiling::init_profiler();
+    if !profiler.is_enabled() {
+        return;
+    }
+    profiler.submit_event(profiling::ProfileEvent {
+        scope_id: profiling::allocate_scope_id(),
+        parent_scope_id: None,
+        parent_name: None,
+        name: LOOK_ROOT.into(),
+        thread_id: TRACK_THREAD,
+        thread_name: Some(TRACK.into()),
+        process_id: profiler.get_process_id(),
+        start_ns: unix_ns().saturating_sub((wait * 1.0e6) as u64),
+        duration_ns: (wait * 1.0e6) as u64,
+        depth: 0,
+        location: None,
+        metadata: None,
+        track_name: Some(TRACK.into()),
+    });
+}
+
+/// The kept late-look chains' mean and worst case, in milliseconds.
+pub fn look_summary() -> Option<(f32, f32)> {
+    let waits = LOOK_WAITS.lock().unwrap_or_else(|p| p.into_inner());
+    if waits.is_empty() {
+        return None;
+    }
+    let mean = waits.iter().sum::<f32>() / waits.len() as f32;
+    Some((mean, waits.iter().copied().fold(0.0, f32::max)))
 }
 
 /// The kept event-loop waits' mean and worst case, in milliseconds.

@@ -182,6 +182,15 @@ pub fn set_asset_focus(scene: &SharedScene, eye: [f64; 3]) {
     }
 }
 
+/// Tell the scene where the viewer is and which way it looks, so loads and
+/// texture uploads start with what is in view, nearest first ([`asset_priority`]).
+/// Free when no asset work is pending.
+pub fn set_asset_view(scene: &SharedScene, view: pulsar_scenedb::AssetViewer) {
+    if scene.read().world.asset_work_pending() {
+        scene.write().world.set_asset_viewer(view);
+    }
+}
+
 /// What one frame may spend in [`pump_assets`]: project settings
 /// `streaming.asset_bind_budget_ms` (default 2) and
 /// `streaming.asset_bind_max_per_frame` (default 8); 0 lifts that limit.
@@ -204,15 +213,47 @@ pub fn frame_asset_budget() -> pulsar_scenedb::AssetBudget {
     }
 }
 
-/// How soon an entity's assets are wanted: its distance from the viewer
-/// ([`pulsar_scenedb::World::asset_focus`]). Parent-relative transforms rank
-/// by their local position, which is the nearest guess before a world
-/// transform exists.
+/// How soon an entity's assets are wanted (lower is sooner): its distance from
+/// the viewer ([`pulsar_scenedb::World::asset_focus`]), stretched the further it
+/// lies outside the cone that holds the view frustum
+/// ([`pulsar_scenedb::World::asset_viewer`], when the host says which way it
+/// looks): what is in view loads and uploads before what is beside or behind
+/// the viewer, and a nearer thing beats a further one in either group. Screen
+/// size follows from the distance (an object of one size covers fewer pixels the
+/// further it is); bounds are not known here, so the ranking does not scale
+/// by them. Parent-relative transforms rank by their local position, which is
+/// the nearest guess before a world transform exists.
 fn asset_priority(world: &pulsar_scenedb::World, entity: pulsar_scenedb::Entity) -> Option<f32> {
     let position = world.get::<pulsar_scene_model::Transform>(entity)?.position;
     let focus = world.asset_focus();
     let delta = [0, 1, 2].map(|axis| position[axis] - focus[axis]);
-    Some((delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt() as f32)
+    let distance = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+    let outside = world
+        .asset_viewer()
+        .map_or(0.0, |view| outside_view(&view, delta, distance));
+    Some((distance * (1.0 + OUTSIDE_VIEW_STRETCH * f64::from(outside))) as f32)
+}
+
+/// How much further a thing is ranked behind the view: at most this many
+/// times its distance more (directly behind the viewer).
+const OUTSIDE_VIEW_STRETCH: f64 = 3.0;
+
+/// How far outside the view cone the direction `delta` points, 0 inside it and
+/// up to 1 straight behind the viewer.
+fn outside_view(view: &pulsar_scenedb::AssetViewer, delta: [f64; 3], distance: f64) -> f32 {
+    if distance < 1.0e-6 {
+        return 0.0;
+    }
+    let cos = (delta[0] * f64::from(view.forward[0])
+        + delta[1] * f64::from(view.forward[1])
+        + delta[2] * f64::from(view.forward[2]))
+        / distance;
+    let angle = cos.clamp(-1.0, 1.0).acos();
+    let half = f64::from(view.tan_half_fov[0].hypot(view.tan_half_fov[1])).atan();
+    if !half.is_finite() || angle <= half {
+        return 0.0;
+    }
+    (((angle - half) / (std::f64::consts::PI - half).max(1.0e-6)) as f32).clamp(0.0, 1.0)
 }
 
 /// Apply one asset update to `world` (SceneDB#84): a changed file reloads
@@ -390,5 +431,44 @@ mod asset_pump_tests {
         assert_eq!(asset_priority(world, far), Some(0.0));
         let bare = world.spawn();
         assert_eq!(asset_priority(world, bare), None, "no transform, no rank");
+    }
+
+    #[test]
+    fn what_is_in_view_ranks_before_what_is_behind_the_viewer() {
+        let mut scene = new_scene();
+        let world = &mut scene.world;
+        let at = |x: f64, z: f64| pulsar_scene_model::Transform {
+            position: [x, 0.0, z],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+        };
+        let ahead_far = world.spawn();
+        let behind_near = world.spawn();
+        let beside = world.spawn();
+        world.insert(ahead_far, at(0.0, -90.0));
+        world.insert(behind_near, at(0.0, 40.0));
+        world.insert(beside, at(40.0, 0.0));
+        // Looking down -Z with a 90 degree vertical field of view at 16:9.
+        world.set_asset_viewer(pulsar_scenedb::AssetViewer {
+            eye: [0.0; 3],
+            forward: [0.0, 0.0, -1.0],
+            tan_half_fov: [16.0 / 9.0, 1.0],
+        });
+        let rank = |entity| asset_priority(world, entity).unwrap();
+        assert_eq!(rank(ahead_far), 90.0, "in view: the distance");
+        assert!(
+            rank(ahead_far) < rank(behind_near),
+            "90 m ahead beats 40 m behind: {} vs {}",
+            rank(ahead_far),
+            rank(behind_near)
+        );
+        assert!(rank(behind_near) > 40.0 * 3.5, "straight behind is ranked at nearly 4x");
+        // 40 m to the side is outside the cone (its half angle is 63 degrees,
+        // the side is at 90): ranked between in view and behind.
+        assert!(rank(beside) > 40.0 && rank(beside) < rank(behind_near));
+        // A host that only says where the viewer is gets the distance alone.
+        world.set_asset_focus([0.0; 3]);
+        assert_eq!(asset_priority(world, behind_near), Some(40.0));
+        assert_eq!(asset_priority(world, beside), Some(40.0));
     }
 }

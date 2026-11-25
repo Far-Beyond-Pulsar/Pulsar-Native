@@ -21,7 +21,7 @@ use winit::{
 use engine_backend::scene::RuntimeLevel;
 use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
 
-use crate::camera_selection::{camera_for_frame, view_target_drives_camera};
+use crate::camera_selection::{camera_for_frame_turned, view_target_drives_camera};
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
@@ -65,6 +65,37 @@ fn running_beside_copies() -> bool {
         .is_some_and(|n| n > 1)
 }
 
+/// The present mode the editor setting `renderer.present_mode` names, when the
+/// surface offers it; Fifo otherwise (every surface has it).
+fn present_mode(offered: &[wgpu::PresentMode]) -> wgpu::PresentMode {
+    let name = match engine_state::settings::global_config().get(
+        engine_state::settings::NS_EDITOR,
+        "renderer",
+        pulsar_settings::editor::renderer::PRESENT_MODE,
+    ) {
+        Ok(engine_state::settings::ConfigValue::String(name)) => name,
+        _ => pulsar_settings::editor::renderer::PRESENT_MODE_DEFAULT.to_string(),
+    };
+    let wanted = match name.as_str() {
+        "fifo_relaxed" => wgpu::PresentMode::FifoRelaxed,
+        "mailbox" => wgpu::PresentMode::Mailbox,
+        "immediate" => wgpu::PresentMode::Immediate,
+        "auto_vsync" => wgpu::PresentMode::AutoVsync,
+        "auto_no_vsync" => wgpu::PresentMode::AutoNoVsync,
+        _ => wgpu::PresentMode::Fifo,
+    };
+    let auto = matches!(
+        wanted,
+        wgpu::PresentMode::AutoVsync | wgpu::PresentMode::AutoNoVsync | wgpu::PresentMode::Fifo
+    );
+    if auto || offered.contains(&wanted) {
+        wanted
+    } else {
+        tracing::warn!(?wanted, ?offered, "present mode not offered by the display: using Fifo");
+        wgpu::PresentMode::Fifo
+    }
+}
+
 impl GameWindow {
     /// Initialise a new window's GPU surface and Helio renderer.
     fn new(
@@ -95,7 +126,7 @@ impl GameWindow {
             format: surface_format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: present_mode(&caps.present_modes),
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: engine_state::settings::global_config()
@@ -426,6 +457,9 @@ pub struct PulsarApp {
     /// Mouse motion and key arrivals taken on the OS-side input thread; the
     /// tick drains the motion where it reads input ([`crate::pointer`]).
     pointer: Arc<crate::pointer::PointerSampler>,
+    /// The frame turns the view by the mouse motion no tick has applied yet
+    /// (project setting `simulation.late_look`, [`crate::late_look`]).
+    late_look: bool,
     /// Told when each frame reads the world, so the tick can end just
     /// before the next one ([`crate::frame_pacer`]).
     pacer: Arc<crate::frame_pacer::FramePacer>,
@@ -508,6 +542,7 @@ impl PulsarApp {
             possession,
             view_targets,
             pointer,
+            late_look: pulsar_settings::project::simulation::LATE_LOOK_DEFAULT,
             pacer,
             focused_window: None,
             cursor_captured: false,
@@ -933,6 +968,15 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             tick_loop.set_tick_rate_hz(rate);
         }
         tracing::info!(tick_rate_hz = rate, "Simulation tick rate");
+        self.late_look = matches!(
+            engine_state::settings::global_config().get(
+                engine_state::settings::NS_PROJECT,
+                "simulation",
+                pulsar_settings::project::simulation::LATE_LOOK,
+            ),
+            Ok(engine_state::settings::ConfigValue::Bool(true)) | Err(_)
+        );
+        tracing::info!(late_look = self.late_look, "Late look");
 
         // Mouse motion is taken where the OS delivers it and drained by the tick
         // where it reads input; without the OS thread the event loop feeds the
@@ -1162,18 +1206,42 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 let bridge = &self.bridge;
                 let view_targets = &self.view_targets;
                 let pacer = &self.pacer;
+                let pointer = &self.pointer;
+                let late_look = self.late_look;
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(pacer, |renderer| {
                         {
                             profiling::profile_scope!("Game::step_scene");
                             renderer.step_scene(&mut scene_store.write());
                         }
+                        // The view as the last tick left it, turned by the mouse
+                        // motion no tick has consumed yet (`late_look`).
                         profiling::profile_scope!("Game::camera_for_frame");
-                        camera_for_frame(
-                            bridge.camera(handle),
-                            &scene_store.read(),
-                            view_targets.local(),
-                        )
+                        let (camera, late) =
+                            crate::late_look::read_with_pending_motion(pointer, |motion| {
+                                let store = scene_store.read();
+                                let turn = match (motion.filter(|_| late_look), view_targets.local()) {
+                                    (Some(motion), Some(pawn)) if motion != [0.0; 2] => {
+                                        engine_backend::scene::game_hooks::pending_view_turn(
+                                            &store.world,
+                                            pawn,
+                                            motion,
+                                        )
+                                    }
+                                    _ => None,
+                                };
+                                let camera = camera_for_frame_turned(
+                                    bridge.camera(handle),
+                                    &store,
+                                    view_targets.local(),
+                                    turn.as_ref(),
+                                );
+                                (camera, turn.is_some())
+                            });
+                        if late {
+                            crate::latency::look_shown(pointer.take_unshown_motion());
+                        }
+                        camera
                     });
                     if background && !gw.focused {
                         gw.next_redraw = gw.next_redraw.max(Instant::now() + BACKGROUND_FRAME);
