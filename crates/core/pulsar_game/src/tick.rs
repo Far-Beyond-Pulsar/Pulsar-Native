@@ -425,6 +425,14 @@ impl TickLoop {
         &self.script_stats
     }
 
+    /// Simulate `hz` ticks a second (a fixed step of `1 / hz`). A loop in
+    /// variable-step mode is left as it is.
+    pub fn set_tick_rate_hz(&mut self, hz: f64) {
+        if let TickMode::Fixed { dt } = &mut self.mode {
+            *dt = std::time::Duration::from_secs_f64(1.0 / hz.max(1.0));
+        }
+    }
+
     fn run_tick(&mut self, time: GameTime) -> GameTime {
         self.last_time = time;
         let latency_stamp = crate::latency::tick_started();

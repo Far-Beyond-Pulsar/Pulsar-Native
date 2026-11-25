@@ -881,6 +881,15 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             self.open_window_with_scene(event_loop, handle, desc, scene);
         }
 
+        // The simulation ticks as often as the display refreshes (unless the
+        // project says otherwise): an input waits for the next tick, which at
+        // 60 Hz on a faster display is the largest part of the input delay.
+        let rate = tick_rate_hz(event_loop);
+        if let Some(tick_loop) = self.tick_loop.as_mut() {
+            tick_loop.set_tick_rate_hz(rate);
+        }
+        tracing::info!(tick_rate_hz = rate, "Simulation tick rate");
+
         // With a level on its way, the tick thread starts when it is applied
         // (`poll_pending_level`).
         if self.pending_level.is_none() {
@@ -1173,3 +1182,24 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// The simulation rate: project setting `simulation.tick_rate_hz`, or 0 for
+/// the primary display's refresh rate, clamped to 60..=240.
+fn tick_rate_hz(event_loop: &ActiveEventLoop) -> f64 {
+    let configured = match engine_state::settings::global_config().get(
+        engine_state::settings::NS_PROJECT,
+        "simulation",
+        "tick_rate_hz",
+    ) {
+        Ok(engine_state::settings::ConfigValue::Int(hz)) => hz,
+        _ => 0,
+    };
+    if configured > 0 {
+        return configured.clamp(30, 1000) as f64;
+    }
+    event_loop
+        .primary_monitor()
+        .and_then(|monitor| monitor.refresh_rate_millihertz())
+        .map_or(60.0, |millihertz| (f64::from(millihertz) / 1000.0).round())
+        .clamp(60.0, 240.0)
+}

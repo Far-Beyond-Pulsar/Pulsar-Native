@@ -1,8 +1,9 @@
-//! Project settings: the graphics, rendering and streaming groups. `register_all` adds them
+//! Project settings: the graphics, rendering, simulation and streaming groups. `register_all` adds them
 //! to a `ConfigManager`.
 
 pub mod graphics;
 pub mod rendering;
+pub mod simulation;
 pub mod streaming;
 
 use pulsar_config::ConfigManager;
@@ -36,6 +37,7 @@ pulsar_plugins::registration!(ProjectSettingsRegistration);
 pub fn register_all(cfg: &'static ConfigManager) {
     graphics::register(cfg);
     rendering::register(cfg);
+    simulation::register(cfg);
     streaming::register(cfg);
     for registration in pulsar_plugins::registered::<ProjectSettingsRegistration>() {
         let before = owners(cfg);
