@@ -181,8 +181,12 @@ impl TickLoop {
 
     /// Assets this tick referenced (a spawned actor's mesh) start loading,
     /// and the finished ones bind, also in a headless run with no render
-    /// loop to do it. An already-loaded mesh binds here.
+    /// loop to do it. An already-loaded mesh binds here. With a render loop
+    /// (`render_loop_pumps_assets`) the frame does it, not the tick.
     pub(super) fn pump_assets(&self) {
+        if self.render_loop_pumps_assets {
+            return;
+        }
         profiling::profile_scope!("TickLoop::pump_assets");
         engine_backend::scene::pump_assets(&self.scene_store);
     }

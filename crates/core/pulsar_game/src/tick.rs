@@ -110,6 +110,11 @@ pub struct TickLoop {
     /// while [`collect_script_problems`](Self::collect_script_problems) is on.
     script_problems: Vec<pulsar_events::ScriptProblem>,
     collect_problems: bool,
+    /// A render loop on another thread pumps the world's assets every frame
+    /// (the windowed host): a tick then leaves it alone. Binding an asset
+    /// takes the scene's write lock and, for textures and meshes, touches the
+    /// GPU, so two threads doing it stall each other and the frame.
+    render_loop_pumps_assets: bool,
     script_stats: ScriptStats,
     /// Reloads updated assets in a world this loop built (SceneDB#84). A
     /// loop over a host's world leaves that to the host, which keeps its
@@ -250,6 +255,7 @@ impl TickLoop {
             },
             script_problems: Vec::new(),
             collect_problems: false,
+            render_loop_pumps_assets: false,
             script_stats: ScriptStats::default(),
             _asset_reloads: Some(asset_reloads),
         }
@@ -302,6 +308,7 @@ impl TickLoop {
             },
             script_problems: Vec::new(),
             collect_problems: false,
+            render_loop_pumps_assets: false,
             script_stats: ScriptStats::default(),
             _asset_reloads: None,
         }
@@ -429,6 +436,7 @@ impl TickLoop {
         self.run_schedule(to_scenedb_time(time));
         self.run_component_phase(time);
         self.flush_component_events();
+        crate::latency::tick_systems_done(latency_stamp);
 
         // Actors can remove/disable live components after their component
         // tick. End their owner-scoped lifecycle now, before SceneDB's
@@ -440,6 +448,7 @@ impl TickLoop {
 
         self.flush_after_systems();
         self.run_script_phase(time);
+        crate::latency::tick_scripts_done(latency_stamp);
 
         // Script commands may remove or disable typed components after the
         // native component and actor phases. Drain those lifecycle endings
@@ -736,6 +745,8 @@ impl TickLoop {
         content: pulsar_content::ContentRoot,
     ) {
         use crate::windowed_app::PulsarApp;
+
+        self.render_loop_pumps_assets = true;
 
         // Build the bridge using the event loop proxy so the ECS thread can
         // send window commands without polling.

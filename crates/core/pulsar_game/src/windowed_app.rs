@@ -213,6 +213,7 @@ impl GameWindow {
         // choice — rather than forcing a reconfigure after every present;
         // an actually-outdated surface will surface as `Outdated` on the
         // next frame's acquire and get reconfigured then.
+        let acquire_scope = profiling::ProfileScope::new_static("Game::acquire_surface");
         let output = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
@@ -249,19 +250,32 @@ impl GameWindow {
                 return;
             }
         };
+        drop(acquire_scope);
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Acquired);
 
-        let frame = self.renderer.prepare_frame(
-            &cam.frame_view(aspect),
-            [self.surface_config.width, self.surface_config.height],
-        );
-        if let Err(e) = self.renderer.render(&frame.camera, &view) {
-            tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
+        let frame = {
+            profiling::profile_scope!("Game::prepare_frame");
+            self.renderer.prepare_frame(
+                &cam.frame_view(aspect),
+                [self.surface_config.width, self.surface_config.height],
+            )
+        };
+        crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Prepared);
+        {
+            profiling::profile_scope!("Game::render");
+            if let Err(e) = self.renderer.render(&frame.camera, &view) {
+                tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
+            }
         }
+        crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Rendered);
 
-        self.queue.present(output);
+        {
+            profiling::profile_scope!("Game::present");
+            self.queue.present(output);
+        }
         crate::latency::frame_presented(latency_frame);
     }
 }
@@ -581,6 +595,7 @@ impl PulsarApp {
         desc: WindowDescriptor,
         scene_path: Option<PathBuf>,
     ) {
+        profiling::profile_scope!("Game::open_window");
         let attrs = Window::default_attributes()
             .with_title(&desc.title)
             .with_inner_size(winit::dpi::LogicalSize::new(desc.width, desc.height));
@@ -594,6 +609,7 @@ impl PulsarApp {
         };
 
         if self.gpu.device.is_none() {
+            profiling::profile_scope!("Game::init_gpu_device");
             let temp_surface = self
                 .gpu
                 .instance
@@ -605,19 +621,25 @@ impl PulsarApp {
         // The renderer takes the level's pipeline when it is made, so choose
         // it first; the level itself is hydrated below, once the renderer's
         // GPU mirror is attached.
-        crate::standalone::select_level_pipeline(self.content.root(), scene_path.as_deref());
+        {
+            profiling::profile_scope!("Game::select_level_pipeline");
+            crate::standalone::select_level_pipeline(self.content.root(), scene_path.as_deref());
+        }
 
         let winit_id = window.id();
-        let game_window = GameWindow::new(
-            handle,
-            window,
-            &self.gpu.instance,
-            self.gpu.adapter(),
-            self.gpu.device(),
-            self.gpu.queue(),
-            desc.editor_mode,
-            &self.scene_store,
-        );
+        let game_window = {
+            profiling::profile_scope!("Game::create_window_renderer");
+            GameWindow::new(
+                handle,
+                window,
+                &self.gpu.instance,
+                self.gpu.adapter(),
+                self.gpu.device(),
+                self.gpu.queue(),
+                desc.editor_mode,
+                &self.scene_store,
+            )
+        };
 
         self.winit_to_handle.insert(winit_id, handle);
 
@@ -850,6 +872,7 @@ impl PulsarApp {
 
 impl ApplicationHandler<WindowCommand> for PulsarApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        profiling::profile_scope!("Game::resumed");
         let initial = std::mem::take(&mut self.initial_windows);
         let default_scene = self.default_scene.take();
 
@@ -890,6 +913,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         // when the cursor is captured.
         if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
             if self.cursor_captured {
+                profiling::profile_scope!("Game::mouse_motion");
                 crate::latency::note_input();
                 let (x, y) = self.last_cursor.unwrap_or((0.0, 0.0));
                 self.events.publish(
@@ -913,6 +937,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
     ) {
         let Some(&handle) = self.winit_to_handle.get(&winit_id) else {
             return;
+        };
+
+        let _event_scope = match &event {
+            WindowEvent::RedrawRequested => None,
+            _ => Some(profiling::ProfileScope::new_static("Game::window_event")),
         };
 
         match event {
@@ -1057,8 +1086,8 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // or CPU object cache to rebuild here (same seam the editor
                 // viewport renderer uses). Bind the meshes that finished
                 // loading first, so they upload with this frame (SceneDB#84).
-                engine_backend::scene::pump_assets(&self.scene_store);
                 if let Some(gw) = self.windows.get_mut(&handle) {
+                    profiling::profile_scope!("Game::step_scene");
                     gw.renderer.step_scene(&mut self.scene_store.write());
                 }
 
@@ -1067,11 +1096,14 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // CameraComponent, a Camera-typed entity; moving the
                 // camera's object moves the view next frame), then the
                 // freecam. See `camera_selection`.
-                let ecs_camera = camera_for_frame(
-                    self.bridge.camera(handle),
-                    &self.scene_store.read(),
-                    self.view_targets.local(),
-                );
+                let ecs_camera = {
+                    profiling::profile_scope!("Game::camera_for_frame");
+                    camera_for_frame(
+                        self.bridge.camera(handle),
+                        &self.scene_store.read(),
+                        self.view_targets.local(),
+                    )
+                };
                 let background = self.throttle_background;
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
