@@ -148,7 +148,9 @@ session_metadata(key TEXT PRIMARY KEY, value TEXT)   -- timestamp, version
   waited for); `metadata` carries `lag_frames`, `readback_drops`, `query_overflows`. The editor viewport and the
   packaged game (`SceneRenderer::render`) publish them while a recording runs.
 - **Input latency**: the game publishes each followed input as scopes on the `Input latency` track (root
-  `Latency::input_to_present`, children `Latency::<stage>`; stages and stamps in `pulsar_game::latency`).
+  `Latency::input_to_present`, children `Latency::<stage>`; stages and stamps in `pulsar_game::latency`). The chain's first
+  stamp is the OS (the raw-input thread), and the time raw input waited for the event loop is its own root,
+  `Latency::os_to_handler`.
 - Names containing wait, lock, fence, present, acquire, sleep, idle, park, block, recv or vsync are
   counted as waits by `profile_threads`.
 
