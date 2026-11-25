@@ -215,7 +215,9 @@ helio-frame-api = { path = "../../crates/renderer/helio/crates/helio-frame-api",
 helio-graph-asset = { path = "../../crates/renderer/helio/crates/helio-graph-asset", default-features = false, features = [] }
 helio-pass-buffer-view = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view", default-features = false, features = [] }
 helio-pass-debug-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay", default-features = false, features = [] }
+helio-pass-denoise = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-denoise", default-features = false, features = [] }
 helio-pass-fxaa = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-fxaa", default-features = false, features = [] }
+helio-pass-history = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-history", default-features = false, features = [] }
 helio-pass-hiz = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-hiz", default-features = false, features = [] }
 helio-pass-perf-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay", default-features = false, features = [] }
 helio-pass-planar-reflection = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-planar-reflection", default-features = false, features = [] }
@@ -382,7 +384,7 @@ pulp-wasm-simd-flag = { version = "=0.1.1", default-features = false, features =
 pulsar_reflection = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection", default-features = false, features = ["default", "prims-core", "prims-glam", "prims-gpui", "prims-std"] }
 pulsar_reflection_codegen = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen", default-features = false, features = [] }
 pulsar_reflection_derive = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive", default-features = false, features = [] }
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = ["default", "gpu", "telemetry"] }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = ["default", "gpu"] }
 pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = [] }
 pxfm = { version = "=0.1.30", default-features = false, features = [] }
 quark = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-features = false, features = [] }
@@ -1303,7 +1305,9 @@ helio-frame-api = { path = "../../crates/renderer/helio/crates/helio-frame-api",
 helio-graph-asset = { path = "../../crates/renderer/helio/crates/helio-graph-asset", default-features = false, features = [] }
 helio-pass-buffer-view = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-buffer-view", default-features = false, features = [] }
 helio-pass-debug-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-debug-overlay", default-features = false, features = [] }
+helio-pass-denoise = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-denoise", default-features = false, features = [] }
 helio-pass-fxaa = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-fxaa", default-features = false, features = [] }
+helio-pass-history = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-history", default-features = false, features = [] }
 helio-pass-hiz = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-hiz", default-features = false, features = [] }
 helio-pass-perf-overlay = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-perf-overlay", default-features = false, features = [] }
 helio-pass-planar-reflection = { path = "../../crates/renderer/helio/crates/passes/3d/helio-pass-planar-reflection", default-features = false, features = [] }
@@ -1470,7 +1474,7 @@ pulp-wasm-simd-flag = { version = "=0.1.1", default-features = false, features =
 pulsar_reflection = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection", default-features = false, features = ["default", "prims-core", "prims-glam", "prims-gpui", "prims-std"] }
 pulsar_reflection_codegen = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen", default-features = false, features = [] }
 pulsar_reflection_derive = { path = "../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive", default-features = false, features = [] }
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = ["default", "gpu", "telemetry"] }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = ["default", "gpu"] }
 pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "f9589128fa018570c768663ed6820c2f6874a00f", default-features = false, features = [] }
 pxfm = { version = "=0.1.30", default-features = false, features = [] }
 quark = { git = "https://github.com/Far-Beyond-Pulsar/Quark", default-features = false, features = [] }
