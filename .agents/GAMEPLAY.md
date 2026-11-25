@@ -150,25 +150,77 @@ mesh collision in the physics plugin (a trimesh from the `.mesh` asset, per stat
 
 ### Input latency
 
-A probe is always on (`pulsar_game::latency`, target `pulsar_game::latency`, at most four log lines a second): one
-sample follows the oldest unshown input through four stamps, the OS event in the window's handler, the end of the
-first tick that began after it (input drained, scripts, movement, physics, the scene written), the start of the next
-frame, and that frame's `present` returning. The log line carries `input_to_tick_ms`, `tick_to_frame_ms`, `frame_ms`
-and `input_to_present_ms`; `latency::summary()` is the mean and worst of the last 240. Read it from the game's
-log (`logs_query` text "input latency").
+A probe is always on (`pulsar_game::latency`; at most four log lines a second, target `pulsar_game::latency`): one
+sample follows the oldest unshown input through ten stamps and nine stages: the OS event in the window's handler,
+`wait_for_tick` (to the start of the next tick), `input_and_systems` (the schedule and component phase: input
+drained, the character, the physics hand-off), `scripts`, `scene_write` (the change window closes),
+`wait_for_frame` (to the next frame), `acquire` (the surface), `extract_upload` (scene flush and camera),
+`render_submit` (recording and submitting the graph) and `present`. While the profiler records, every sample is also
+published as scopes on the `Input latency` track (root `Latency::input_to_present`, one child per stage), so it is in
+the same recording as everything else: **`profile_latency`** returns each stage's mean, p50, p95, p99 and worst and
+its share (MCP.md, "Profiling"). `latency::summary()` is the mean and worst of the last 240.
 
-Measured in the packaged release game (Bistro level, 1705 objects, 60 Hz tick, window frames about 14 ms):
-input to tick 1 to 10 ms, tick to frame 5 to 9 ms, frame 14 ms, **input to present 23 to 29 ms**. So the engine's
-own path is not a quarter of a second. What was: the shipped `IA_Look` had a `smooth` modifier (speed 18, a 55 ms
-time constant: 95 percent of a movement took about 165 ms to arrive), an exponent 1.6 response curve and an
-actuation threshold of 0.5 on a value that is already scaled to degrees, which dropped any movement slower than
-about 4 pixels per frame (it looked like the camera not answering). The action now has no modifiers and a
-threshold of 0.0001. The game's present queue (`desired_maximum_frame_latency`) defaulted to 2 and now to 1
-(Editor Settings > Renderer > Maximum Frame Latency, restart to apply; a deeper queue adds that many frames on top of
-the figure above). Test: `gameplay_defaults::the_look_action_adds_no_delay_and_drops_no_slow_movement`.
-Not measured: the display's own scan-out and the monitor, play-in-editor (the probe is wired in the packaged game's window loop
-only), and a before figure for the look path in milliseconds from the engine (the figures above for the old
-chain are computed from its time constant, not logged).
+The stamp after `present` is the earliest the display can show the frame: the present queue (`max_frame_latency`,
+1) and the scan-out come after it. Not measured: the OS-to-handler time (the winit loop answers events between
+frames, so an event that arrives during a 7 ms frame waits for it; the stamp is taken when the handler runs) and the
+monitor.
+
+Measured in the packaged release game (RTX 4090, 144 Hz display, Bistro level, mouse turning, the same capture
+each time):
+
+| | mean | p95 | wait_for_tick | wait_for_frame | render_submit |
+|---|---|---|---|---|---|
+| before (60 Hz tick, blocking GPU timestamp readback) | 29.6 ms | 38.9 ms | 9.9 ms | 5.8 ms | 12.7 ms |
+| readback no longer blocks | 19.8 ms | 29.8 ms | 7.7 ms | 4.6 ms | 6.6 ms |
+| tick follows the display (`simulation.tick_rate_hz`) | 14.5 ms | 16.8 ms | 3.3 ms | 3.5 ms | 6.0 ms |
+
+What moved it: the render graph read the GPU timestamps with `device.poll(wait_indefinitely)` every frame whenever it
+owned its device (the packaged game), so the CPU waited for the whole GPU frame before starting the next; and a
+fixed 60 Hz tick made every input wait for the next tick (up to 16.7 ms on a 144 Hz display). Earlier work:
+the shipped `IA_Look` had a `smooth` modifier (a 55 ms time constant), an exponent 1.6 curve and an actuation
+threshold that dropped slow movement; it now has no modifiers (`gameplay_defaults::the_look_action_adds_no_delay_and_drops_no_slow_movement`).
+What remains of the 13.5 ms, in order: `render_submit` 6 ms (the Shadow pass's command-buffer finish, 3.3 ms of
+it: see "Where a frame goes" below), `wait_for_frame` 3.5 ms and `wait_for_tick` 3.3 ms (the loops run at
+different phases; a late-latched look, applying the newest mouse delta to the view when the frame starts, would
+remove both for the camera), and the display.
+
+### Where a frame goes (measured with the profiler MCP tools)
+
+The same capture, `profile_top_scopes` / `profile_threads` / `profile_gpu` on the packaged game idle, 144 Hz display:
+
+- Frame period 7.5 ms (134 fps; 18.6 ms / 54 fps before the readback fix), p99 10.3 ms. The frame thread is
+  CPU-bound, not GPU-bound: the GPU frame is 4.1 ms mean (p95 6.9): Atmosphere 1.2 ms, Shadow 0.5 + static layer 0.3,
+  DeferredLight 0.5, ObjectBatch 0.3, the rest under 0.15 each.
+- 4.3 ms of the 7.1 ms is `RenderGraph: wait for encoder-finish threads`. With `HELIO_FINISH_BREAKDOWN=1` the finish of
+  one command buffer dominates: **`Shadow` 3.3 ms** (recording it takes 0.3 ms), then `MeshHitSurfaces gi_probe` 0.7 and
+  `VgBvh` 0.6. The Shadow pass walks every serviced shadow face every frame and records a viewport, a scissor, two
+  pipeline switches, three bind groups and two draws per face and layer (`meshes/feature/shadow/src/lib.rs`, the loop in
+  `execute`); wgpu validates all of it in `CommandEncoder::finish`, which is serial per segment.
+- The tick thread costs 0.3 ms per tick; physics 0.04 ms per step. Neither is a factor.
+
+### Streaming a level in (measured)
+
+First 14 s of the packaged game, same machine, before and after (`profile_frame_times`, `profile_top_scopes`):
+
+| | frames in 14 s | mean frame | p95 | p99 | worst frame |
+|---|---|---|---|---|---|
+| before | 77 | 169 ms | 592 ms | 1523 ms | 1713 ms |
+| after | 1382 | 9.3 ms | 20.8 ms | 39 ms | 76 ms |
+
+Main-thread time in `scene::pump_assets` over the 14 s: 9.7 s before, 0.57 s after (textures 0.43 s). The cause was not a missing worker: textures were already cooked on loader threads. The material bind on the frame
+thread (`Assets::apply_bindings material`, 9.0 s of the 13.7 s) did the rest: (1) a graph's roughness and normal
+maps were cooked as colour on the loader and then again for their real use on the frame thread; (2) a cooked form the
+residency cache had since evicted was read from the derived cache on the frame thread (loads outran the frame; the
+cache is a budgeted LRU); (3) the frame bound up to 8 assets per column walk and read the clock only between walks,
+so one pump could cost 600 ms; (4) the tick thread pumped assets too, taking the scene write lock from the frame, and the
+windowed frame pumped twice. Now: the loader cooks for the use and pins the result until the upload
+(`LoadedTexture::pinned_for`); loads in flight count what has loaded and not bound; a pump binds as many assets
+per walk as the time budget holds at the cost seen so far; a render loop is the only pumper; loader threads are half
+the cores. Remaining on the frame thread while streaming: the GPU upload (`Texture::upload_cooked`, 0.8 ms mean, 4 ms
+max) and the renderer's own first-use work (`Helio: apply pipeline` 360 ms once, `create_window_renderer` 0.9 s before
+the first frame). Derived cache: `install_derived_cache` (`helio_bridge`) points it at `<project>/.pulsar/cache/derived`
+with the `streaming.derived_cache_mb` budget (default 32768); a packaged game's project path is its extracted
+asset cache (`%TEMP%/pulsar-asset-cache/<hash>`), which persists between launches.
 
 ### Input and physics: what stalled (measured)
 
