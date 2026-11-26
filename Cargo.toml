@@ -294,10 +294,19 @@ keywords = ["game-engine", "editor"]
 
 [profile.dev]
 codegen-units = 16
-debug = "limited"
+# Debug info is the largest single item of a dev build (every test binary and plugin DLL gets a PDB that
+# repeats the debug info of everything linked into it: 10.2 GB of 27.6 GB for one test binary). Line tables
+# keep what a backtrace, the profiler and the allocation tracker read (function names and, for this
+# workspace, file:line); dependencies keep function names but lose file:line (see `[profile.dev.package]`).
+# Measured in .agents/BUILD_LESSONS.md section 10. For a debugger session that needs more, build once with
+# CARGO_PROFILE_DEV_DEBUG=limited in a scratch CARGO_TARGET_DIR and delete it afterwards.
+debug = "line-tables-only"
 split-debuginfo = "unpacked"
 
 [profile.dev.package]
+# Dependencies (not workspace members): no debug info. Their frames still resolve to function names in a
+# backtrace; only file:line is lost.
+"*" = { debug = false }
 # Voxel terrain residency, ray casts and world builds run on the CPU every
 # frame; unoptimized they would misrepresent the editor viewport.
 helio-pass-voxel-planet = { opt-level = 3 }

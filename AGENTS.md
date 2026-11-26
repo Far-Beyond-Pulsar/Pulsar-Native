@@ -119,6 +119,32 @@ main, re-pin the submodule to that main commit, then merge the Pulsar PR (see
 
 See `.agents/` for detailed docs on each subsystem.
 
+## Disk and target directories
+
+A debug build of this workspace is tens of GB per distinct build shape (measured: one test binary's closure is
+27 GB; a long-lived target directory reached 450 GB in `debug/deps` alone, 90% of it older copies of crates that
+the newest build no longer uses). Cargo never removes those. Rules, with the numbers in
+`.agents/BUILD_LESSONS.md` section 10:
+
+- **One shared target directory, never one per task.** Agents and worktrees set the same `CARGO_TARGET_DIR`
+  (for example `D:\cargo-target\pulsar`; `debug` and `release` live side by side in it). Do not create `tb_*`,
+  `target-<topic>` or per-worktree `target` directories for a run, a measurement or a worktree: each is a cold
+  copy of the whole graph. If two builds must run at once, reuse a fixed pool (`...\pulsar-1`, `...\pulsar-2`),
+  named by slot, not by task. Cargo's file lock makes concurrent builds in one directory wait; that is cheaper
+  than a second 30 GB copy.
+- **Do not vary what hashes the build.** A different `-p` set, `--features`, `RUSTFLAGS`, `CARGO_PROFILE_*` or
+  `--config profile...` gives the shared crates a new hash and a second full copy (`.agents/BUILD_LESSONS.md`
+  section 2). Use the repository's profiles (`Cargo.toml`) and the recipes in `justfile`; for an experiment on
+  debug info, use the environment override once on a scratch directory and delete it.
+- **Prune.** `just disk` reports where a target directory's space goes; `just clean-stale` (dry run) lists and
+  `just clean-stale --apply` removes older copies of crates, old incremental data, stale `plugin_compat` copies
+  and idle Build & Run game targets (`scripts/target-disk.ps1`; `-ScanDir D:/ -ScratchPattern 'tb*'` also lists
+  idle scratch target directories). Run it when a task ends. It never touches anything modified in the last
+  30 minutes, so it is safe beside a running build.
+- Build & Run builds a game in `<project>/target` (one per project, reused, not per run); the dialog helper and
+  tests use stable directories (`CARGO_HOME/pulsar-dialog/target-<rev>`, `target/tmp`). Add new tools the same
+  way: a directory keyed by what it builds, never by the time of the run.
+
 ## Required for rendering work
 
 Any change that touches Helio (`crates/renderer/helio`) or Pulsar's rendering

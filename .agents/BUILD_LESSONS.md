@@ -218,3 +218,65 @@ cost one cycle (about 45 minutes) and the pipelines are identical per library.
 | What is a crate's real platform graph? | `cargo metadata --filter-platform <triple>` |
 | Did a lock refresh float something? | `git diff Cargo.lock \| grep '^[+-]source'` |
 | Which units must an SDK serve? | `cargo sdk exec --verbose` lists what was served |
+
+## 10. Disk: why a target directory grows without bound, and what bounds it (measured)
+
+A long-lived `target/` reached 570 GB (`debug` 488 GB, `release` 79 GB) while the repository needs about 30 GB per
+build shape. Cargo never deletes the artifacts of a unit it no longer builds that way, so every distinct hash is a
+permanent extra copy. Measured on that directory (Windows, 2026-11-25):
+
+| Where it goes | Size |
+|---|---|
+| `debug/deps` | 454 GB: `.pdb` 198, `.rlib` 120, `.exe` 78, `.rmeta` 50, `.dll` 8 |
+| `debug/incremental` | 25 GB |
+| `debug/build`, `.fingerprint`, `examples` | 3.8, 0.7, 0.7 GB |
+| `release/deps` | 75 GB: `.rlib` 47, `.rmeta` 17, `.dll` 5, `.pdb` 3, `.exe` 2 (release has no debug-info problem; it is hash churn only) |
+| `plugin_compat` cache | 1.7 GB (136 folders; one per plugin and engine-library state, never removed by the engine) |
+
+- `debug/deps` holds 162,974 files in 47,789 distinct unit hashes for 1,305 crates; 1,268 of the crates exist under
+  more than one hash (`ui` 246, `gpui` 235, `engine_backend` 301, `pulsar_scenedb` 354). About 437 of the 451 GB in
+  those crates is older copies. Each integration test of `pulsar_package` (smoke, blueprint_compile, ...) exists under 78 to 88
+  hashes, each an 80 MB executable plus a 700 MB PDB (962 executables and 1,750 PDBs in `debug/deps`).
+- Why so many hashes (from `.fingerprint/*/lib-*.json`): a crate's own features are the same in 213 of 216
+  `ui` variants, so the variants are inherited from dependencies. 250 crates were built with more than one feature
+  set (`windows-sys` 73 feature sets, `windows` 23, `syn` 13, `smallvec`, `serde_json`, `wgpu`, `reqwest`, ...: each
+  `-p` selection, `--features` and test target unifies a different set, section 2; the workspace hack covers only
+  what is inside the shared libraries); 1,137 crates were built under more than one profile hash (`windows-sys` 16:
+  `CARGO_PROFILE_*`, `--config profile`, build-override and host/target units); 774 under two `rustflags` sets
+  (before and after `prefer-dynamic` was added to `.cargo/config.toml`); 190 under more than one source path (crate
+  versions, git revs). Every one of these multiplies everything above it.
+- The same applies to scratch directories: 26 `CACHEDIR.TAG` directories on `D:\` (`tb*`, `bench-*`, `ta`,
+  `pin-test`) and the `target` directories of two worktrees (12 GB and 2 GB), `target-sdk-src` (11 GB) and `target-spike`
+  (13 GB) were each a cold copy.
+
+Measured configuration choices (one test binary, `cargo test -p pulsar_package --test smoke --no-run`, empty
+target directory, 8 jobs, while another build ran on the machine, so times are indicative):
+
+| Variant | Disk | Clean build | Rebuild after touching `pulsar_package` |
+|---|---|---|---|
+| before (`debug = "limited"`) | 27.6 GB (deps 21.5, incremental 5.9; PDB 10.2) | 448 s | 41 s |
+| `debug = "line-tables-only"` and dependencies `debug = false` (**adopted**) | 22.2 GB (PDB 5.4) | 439 s | 61 s (noise: the build ran beside another) |
+| the above and no incremental (`CARGO_INCREMENTAL=0`) | 16.7 GB | 406 s | 163 s |
+
+- Adopted: the first reduction (-20% per build, PDBs -47%). A backtrace still names every frame (functions of
+  dependencies keep their names, only their file:line goes: checked with `std::backtrace` through a dependency at
+  `debug = false`), so the log viewer's caller tracking, allocation profiling and the profiler read the same
+  symbols. No runtime effect (debug info only). A debugger that needs locals or types builds once with
+  `CARGO_PROFILE_DEV_DEBUG=limited` in a scratch directory.
+- Rejected: `incremental = false` for dev. It is the biggest further saving (-25%) and a rebuild after an edit then
+  costs 163 s instead of 41 to 61 s, which is what a developer waits for dozens of times a day; its growth is what
+  `just clean-stale` bounds instead. CI already sets `CARGO_INCREMENTAL=0`; release builds are non-incremental.
+- `[env]` in `.cargo/config.toml` sets variables for the processes Cargo starts, not for Cargo itself, so
+  `CARGO_INCREMENTAL` there would do nothing; the key is `[build] incremental`.
+- Not changed: `strip` and `lto` (release is rlib-bound, not debug-info-bound; the comment on `[profile.release]` explains why
+  `panic = "abort"` stays off), `split-debuginfo` (an MSVC PDB is always a separate file).
+
+What bounds it (`scripts/target-disk.ps1`, `just disk`, `just clean-stale`, `AGENTS.md` "Disk and target
+directories"): the script groups `deps` files into units (`name-<hash>`), keeps the newest three of each family (a
+crate name plus its source identity, so two versions of a crate never count against each other), removes the
+rest with their `.fingerprint`, `build` and `incremental` entries, never touches anything modified in the last
+30 minutes, and does the same for `plugin_compat` (newest folder per plugin file), idle Build & Run game targets
+and, on request, idle scratch target directories. Dry run unless `--apply`. What it does not do: it cannot know
+which of the newest three a particular build wants, so an invocation shape that was not used lately rebuilds once.
+The cure for growth is fewer hash variants (one shared directory, same invocations, no ad hoc profile
+overrides), the script only makes the cost of the variants that remain bounded.

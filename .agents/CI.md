@@ -15,6 +15,12 @@ only; Windows/macOS minutes are spent on `main` and nightly. Tests that need a
 GPU are excluded by `.config/nextest.toml` (`ci` profile). Run a full
 cross-platform pass on a branch with `gh workflow run CI --ref <branch> -f full=true`.
 
+Caches: `CARGO_INCREMENTAL=0` in every workflow; the Linux lane restores the Rust cache on every run but saves it only
+from `main` and the nightly (`cache-save-if`), because a PR cache is not read by other branches and GitHub evicts
+least-recently-used caches at 10 GB per repository. The cache action prunes artifacts the lockfile no longer
+needs before it saves, so a cache does not grow across runs. Local target directories have no such step: see
+`just clean-stale` and AGENTS.md, "Disk and target directories".
+
 The Linux lane also runs `cargo run -p todo_check`. It scans Git-tracked
 source and configuration files in this repository (not submodules) for TODO
 comment markers without an issue reference, such as `#123` or a GitHub issue

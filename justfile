@@ -143,6 +143,18 @@ tree:
 clean:
     cargo clean
 
+# Where the target directory's disk goes, and what `clean-stale` would remove (read-only).
+# Arguments go to scripts/target-disk.ps1 (-TargetDir, -Keep, -ScanDir D:/ ...).
+disk *args:
+    pwsh -NoLogo -NoProfile -File scripts/target-disk.ps1 -ReportOnly {{args}}
+
+# Prune a target directory to bounded size: keep the newest 3 builds of every crate, drop the rest,
+# plus old incremental data, stale plugin_compat copies and idle game target dirs. Dry run by default;
+# `just clean-stale --apply` deletes. `just clean-stale -ScanDir D:/ --apply` also removes idle scratch
+# target dirs (tb*) next to it. See AGENTS.md, "Disk and target directories".
+clean-stale *args:
+    pwsh -NoLogo -NoProfile -File scripts/target-disk.ps1 {{args}}
+
 # ── SceneDB inspector ────────────────────────────────────────────────────────
 
 # Checkout of https://github.com/Far-Beyond-Pulsar/SceneDB (override with SCENEDB_DIR)

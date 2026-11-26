@@ -113,6 +113,10 @@ jobs:
           persist-credentials: false
 
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          # Restore on every run, save only from main and the nightly: a PR branch's cache is a few GB that no other
+          # branch can read, and it evicts main's (GitHub keeps 10 GB per repository, least recently used out first).
+          cache-save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
 
       # The workspace's test binaries (every plugin's GPU tests and examples)
       # outgrew the hosted runner: on #1587 the runner lost communication
