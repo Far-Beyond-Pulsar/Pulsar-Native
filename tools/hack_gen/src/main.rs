@@ -8,8 +8,9 @@
 //! `-p pulsar_workspace_hack`, then get the same crates whatever else is in the build.
 //!
 //! The union is read from cargo's own resolver (`cargo tree --target all`), for the build
-//! `tools/plugin_builder` does: the editor, every plugin root with its `dll` feature, and the shared
-//! libraries. Run `cargo run -p hack_gen` after a dependency or feature change; CI runs it with
+//! `tools/plugin_builder` does (the editor, every plugin root with its `dll` feature, and the shared
+//! libraries) and for the editor with every plugin linked (`pulsar_engine/link-plugins`).
+//! Run `cargo run -p hack_gen` after a dependency or feature change; CI runs it with
 //! `--check`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -230,7 +231,11 @@ fn generate(root: &Path) -> Result<String> {
     for root_crate in &roots {
         union_args.extend(["-p".into(), root_crate.clone()]);
     }
-    let features: Vec<String> = roots.iter().map(|r| format!("{r}/dll")).collect();
+    let mut features: Vec<String> = roots.iter().map(|r| format!("{r}/dll")).collect();
+    // The editor that links every plugin (`--features link-plugins`) is a consumer too: its roots are built
+    // without `dll`, so a feature of a crate inside the libraries that only that build asks for must be pinned
+    // as well, or the libraries of the two builds (and every plugin library) would differ.
+    features.push("pulsar_engine/link-plugins".to_owned());
     union_args.extend(["--features".into(), features.join(",")]);
 
     // Per platform: what the build of that platform pulls from inside the libraries, with its features.

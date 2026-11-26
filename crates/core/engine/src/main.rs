@@ -34,10 +34,10 @@ static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
 #[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
-// The plugins the editor links: render_bps only. Every other installed plugin is a
-// library of its own (tools/plugin_builder) that the plugin loader loads from
-// plugins/editor at startup; the project the editor opens enables some of them
-// (`pulsar_plugins`).
+// The plugins the editor links: render_bps only, or with `--features link-plugins` every
+// installed plugin. Without the feature every other installed plugin is a library of its own
+// (tools/plugin_builder) that the plugin loader loads from plugins/editor at startup; either
+// way the project the editor opens enables some of them (`pulsar_plugins`).
 use linked_plugins as _;
 // The shared UI framework and renderer: this binary and every plugin library use these
 // copies (see .agents/PLUGIN_SYSTEM.md, "Shared libraries").

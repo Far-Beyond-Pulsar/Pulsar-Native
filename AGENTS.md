@@ -13,7 +13,7 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/BUILD_LESSONS.md` | Why these builds went wrong and what not to do: per-image statics, feature unification and the workspace hack, build-script environment leaks, floating git dependencies, hash-named libraries, per-platform linking; the diagnostics that worked. Read before changing linking, features or a CI build |
 | `.agents/CRATES.md` | Complete crate layout — core, editor, subsystems, agents, vendored |
 | `.agents/ENGINE_LIFECYCLE.md` | InitGraph startup, EngineBackend (no subsystem registry), EngineContext |
-| `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading) |
+| `.agents/PLUGIN_SYSTEM.md` | Project plugins (descriptor, root crate, gate, catalog) and dynamic DLL plugins (permanent library, SDK, loading), and linked mode (`--features link-plugins`: every plugin in the executable) |
 | `.agents/SCRIPT_LANGUAGES.md` | Script languages as built: the `Language` registration, the `ScriptLanguage` contract, the module store and one-language-per-class rule, class markers, the server spec and settings, diagnostics sources, `ModuleBuilder` (what a text language emits modules through) with a worked example, what the VM can and cannot express, plugin layout, testing, the layer gate. Read before adding a language |
 | `.agents/PLUGIN_API_REFACTOR_PLAN.md` | The plugin API plan (#1608): the phase 0 audit (registration matrix, raw `inventory` paths, plugin-to-plugin edges), its review, the Q1-Q4 decisions, phases, as built |
 | `.agents/COMPONENT_LIFECYCLE_PLAN.md` | The component lifecycle plan: audit of SceneDB `Actor`/`ActorRegistry`, `ComponentTickRegistration` and the script driver, the target (capability registry, `construct`, session scope, physics, Blueprint class instances), decisions, phases P1-P6, risks |
@@ -110,6 +110,8 @@ just clippy       cargo clippy --workspace -- -D warnings
 just arch         the layer gate: core and editor depend on no plugin or tool, name no kind
 just submodule-init   git submodule update --init --recursive
 cargo run -p plugin_builder   build every plugin except render_bps as its own DLL (its root crate, feature `dll`) and install it
+just build-linked   build the editor (release) with EVERY installed plugin linked into the executable (`--features link-plugins` on `pulsar_engine`); no plugin DLLs
+just run-linked --project-path <dir>   build and run that editor from the repository root (`.agents/PLUGIN_SYSTEM.md`, "Linked mode")
 just check-submodule-pins   every submodule pinned to a commit on its upstream main
 ```
 

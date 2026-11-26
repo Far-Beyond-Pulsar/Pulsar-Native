@@ -389,9 +389,12 @@ fn task_prepare_plugins(_project: &Path) -> TaskResult {
     let count = plugin_manager::prewarm_plugins(
         pulsar_install_layout::InstallLayout::of_running_engine().plugins_dir(),
     );
+    // The plugins the executable links are not libraries (`--features link-plugins`): say both.
+    let linked = plugin_manager::linked_plugins().len();
+    tracing::info!("{count} plugin librar(ies) loaded, {linked} plugin(s) linked into the executable");
     TaskResult {
         elapsed: t.elapsed(),
-        detail: Some(format!("{count} plugin librar(ies)")),
+        detail: Some(format!("{count} plugin librar(ies), {linked} linked")),
     }
 }
 

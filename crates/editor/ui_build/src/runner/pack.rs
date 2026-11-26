@@ -85,6 +85,15 @@ fn with_library_hint(error: &str, report: &plugin_manager::LoadReport) -> String
          older than the class (or one that failed to load) leaves the lookup empty. Rebuild every plugin \
          with `cargo run -p plugin_builder -- --release`, then restart the editor.",
     );
+    // An editor that links its plugins (`--features link-plugins`) has no library of them to be
+    // stale: what is stale is the editor itself.
+    let linked = plugin_manager::linked_plugins().len();
+    if linked > 1 {
+        hint.push_str(&format!(
+            "\nThis editor links {linked} plugins into its executable (`link-plugins`); a plugin it links \
+             is as old as the editor, so rebuild the editor (`just build-linked`) and restart it."
+        ));
+    }
     match &report.directory {
         Some(directory) => hint.push_str(&format!("\nPlugin libraries were loaded from {}.", directory.display())),
         None => hint.push_str("\nNo plugin library directory was read."),

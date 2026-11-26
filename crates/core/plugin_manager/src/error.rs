@@ -42,6 +42,13 @@ pub enum PluginManagerError {
     /// `parking_lot_core` sources, so a thread it parks would not be woken by the host.
     ParkingLotRefused { path: PathBuf },
 
+    /// Every plugin the library carries is linked into the executable already, so the
+    /// library is not installed: its plugins would register twice.
+    AlreadyLinked {
+        path: PathBuf,
+        plugin_ids: Vec<String>,
+    },
+
     /// Failed to create plugin instance
     PluginCreationFailed { message: String },
 
@@ -135,6 +142,13 @@ impl std::fmt::Display for PluginManagerError {
                 f,
                 "Plugin '{}' refused the editor's Helio runtime: it was built from other \n                 Helio sources or features. Rebuild it against this engine.",
                 path.display()
+            ),
+            Self::AlreadyLinked { path, plugin_ids } => write!(
+                f,
+                "Library '{}' not installed: its plugin(s) {} are linked into this executable \
+                 (an editor built with `--features link-plugins`), which registers them itself.",
+                path.display(),
+                plugin_ids.join(", ")
             ),
             Self::PluginCreationFailed { message } => {
                 write!(f, "Failed to create plugin: {}", message)

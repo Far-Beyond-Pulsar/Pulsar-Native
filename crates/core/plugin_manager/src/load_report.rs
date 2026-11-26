@@ -23,6 +23,9 @@ pub enum LibraryOutcome {
     Prepared,
     /// Its plugin is installed.
     Loaded { plugin_id: String },
+    /// Not loaded: its plugin is linked into the executable (`link-plugins`), which
+    /// registers it itself. `plugin_id` is the linked plugin's id.
+    Linked { plugin_id: String },
     /// It did not load. `stage` is where it stopped: `prepare` (the OS loader,
     /// the integrity manifest, the version check) or `install` (dependencies,
     /// attaching the host's state, the plugin's constructor).
@@ -103,6 +106,14 @@ pub(crate) fn prepared(path: &Path, failure: Option<String>) {
             reason,
         };
     }
+}
+
+/// The library at `path` was left alone: its plugin `plugin_id` is linked into the executable.
+pub(crate) fn linked(path: &Path, plugin_id: &str) {
+    let mut report = REPORT.lock();
+    entry(&mut report, path).outcome = LibraryOutcome::Linked {
+        plugin_id: plugin_id.to_owned(),
+    };
 }
 
 /// `path` needed these imports renamed.

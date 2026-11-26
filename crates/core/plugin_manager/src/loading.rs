@@ -108,8 +108,29 @@ impl PluginManager {
     pub fn prepare_plugins_in_dir(
         dir: impl AsRef<Path>,
     ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
+        Self::prepare_plugins_in_dir_except(dir, &crate::linked::linked_plugins())
+    }
+
+    /// [`Self::prepare_plugins_in_dir`] for an executable that links `linked`: the
+    /// library of a linked plugin is not loaded (the plugin registers through the
+    /// executable, a library would register it again), keyed by the plugin's id
+    /// (`crate::linked`). A library of any other plugin loads as always.
+    // Real machine: the engine's own install directory of native plugin libraries,
+    // outside any project and loaded by the OS loader from a real path.
+    #[allow(clippy::disallowed_methods)]
+    pub fn prepare_plugins_in_dir_except(
+        dir: impl AsRef<Path>,
+        linked: &[crate::linked::LinkedPlugin],
+    ) -> Vec<(PathBuf, Result<PreparedPlugin, PluginManagerError>)> {
         let dir = dir.as_ref();
         crate::load_report::begin(dir, dir.exists());
+        if !linked.is_empty() {
+            tracing::info!(
+                count = linked.len(),
+                "plugins linked into the executable: {}",
+                linked.iter().map(|plugin| plugin.id.as_str()).collect::<Vec<_>>().join(", ")
+            );
+        }
         if !dir.exists() {
             tracing::warn!("Plugin directory does not exist: {:?}", dir);
             return Vec::new();
@@ -128,6 +149,22 @@ impl PluginManager {
             .map(|e| e.into_path())
             .filter(|p| p.extension().and_then(|s| s.to_str()) == Some(extension))
             .collect();
+        let (paths, skipped) =
+            crate::linked::split_linked(paths, &crate::linked::lock_of(dir), linked);
+        for library in &skipped {
+            tracing::info!(
+                "not loading {:?}: its plugin {} is linked into the executable",
+                library.path,
+                library.plugin_id
+            );
+            crate::load_report::linked(&library.path, &library.plugin_id);
+        }
+        tracing::info!(
+            "{} plugin librar(ies) to load from {:?}, {} skipped because their plugins are linked",
+            paths.len(),
+            dir,
+            skipped.len()
+        );
         let prepared = std::thread::scope(|scope| {
             let workers: Vec<_> = paths
                 .iter()
@@ -301,13 +338,13 @@ impl PluginManager {
     ) -> Result<PluginId, PluginManagerError> {
         let path = prepared.path.clone();
         let result = self.install_prepared_inner(prepared, cx);
-        crate::load_report::installed(
-            &path,
-            match &result {
-                Ok(id) => Ok(id.as_str()),
-                Err(error) => Err(error.to_string()),
-            },
-        );
+        match &result {
+            Err(PluginManagerError::AlreadyLinked { plugin_ids, .. }) => {
+                crate::load_report::linked(&path, &plugin_ids.join(", "))
+            }
+            Ok(id) => crate::load_report::installed(&path, Ok(id.as_str())),
+            Err(error) => crate::load_report::installed(&path, Err(error.to_string())),
+        }
         result
     }
 
@@ -322,11 +359,26 @@ impl PluginManager {
         Self::attach_host_state(&library, &path)?;
         // The plugins the library carries, through their roots' builds:
         // descriptors to the installed set, registrations to the store.
-        if let Some(imported) = crate::attach::import_plugins(&library) {
-            let imported =
+        if let Some(imported) =
+            crate::attach::import_plugins(&library, &crate::linked::linked_plugins())
+        {
+            let (imported, linked) =
                 imported.map_err(|message| PluginManagerError::PluginCreationFailed {
                     message: format!("{}: its plugin export: {message}", path.display()),
                 })?;
+            if !linked.is_empty() {
+                tracing::info!(
+                    "{}: not importing {}: linked into the executable",
+                    path.display(),
+                    linked.join(", ")
+                );
+                if imported.plugins.is_empty() {
+                    return Err(PluginManagerError::AlreadyLinked {
+                        path,
+                        plugin_ids: linked,
+                    });
+                }
+            }
             for refused in &imported.refused {
                 tracing::error!("{}: {refused}", path.display());
             }

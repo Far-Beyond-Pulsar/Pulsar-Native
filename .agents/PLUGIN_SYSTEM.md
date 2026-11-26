@@ -506,6 +506,60 @@ and plugin-settings `STATE`, and the settings file write lock. Audit a library's
 `engine_state` before relying on them.
 
 
+### Linked mode: the editor with every plugin in its executable
+
+`cargo build --release -p pulsar_engine --features link-plugins` (`just build-linked`) and
+`cargo run --release -p pulsar_engine --features link-plugins -- --project-path <project>`
+(`just run-linked --project-path <project>`, from the repository root) build an editor that
+**links every installed plugin** instead of loading `plugins/editor/*.dll`: the same set the
+plugin builder turns into libraries (`plugins/installed` with its `editor` feature, generated
+from the descriptors) plus `render_bps`. It is opt-in; the default build is the DLL setup above.
+
+- **How.** `pulsar_engine`'s `link-plugins` is `linked_plugins/all`; `plugins/linked` (the host
+  that always links `render_bps`) then also depends on `installed_plugins` with `editor`. Core and
+  editor crates depend on no plugin (`just arch`): only this application crate does, through
+  `linked_plugins`. Each root registers through its `build` (`pulsar_plugins::installed!`) exactly
+  as a game links it, and the editor providers of the roots that have an `export_plugin!` register
+  through their `builtin` feature (workspace dependency features, `Cargo.toml`), which also drops the
+  loader symbols so many roots can share one binary.
+- **One copy.** The framework libraries (`wgpui`, `ui`, `profiling`, `reflection`, SceneDB, Helio)
+  stay shared dylibs beside the executable, so a linked plugin and the editor use the same copy of each;
+  and since every plugin is in the executable there is one copy of each plugin's own statics too (no
+  `attach_*` hand-over is needed for a linked plugin, and none runs for it).
+- **The loader.** `plugin_manager` knows what the executable links (`linked_plugins()`, the
+  `installed!` registrations in the binary) and does not load a library of a linked plugin, so a
+  `plugins/editor` left by `just plugins` is harmless: before loading, a library is matched to a
+  linked plugin by the install's lock (`plugins.lock.json`, `local:<plugin id>`) or by its name
+  (`<root crate>.<ext>`) and never reaches the OS loader; after loading, a library whose exported
+  descriptors name a linked plugin has those plugins dropped from the import (keyed by descriptor
+  id, whatever the file is called), and a library with nothing left is not installed
+  (`PluginManagerError::AlreadyLinked`). A plugin that exists only as a library (hub-installed,
+  third party) matches neither and loads as always. The default editor links `render_bps` only, so
+  nothing else changes for it. The log says it: `plugins linked into the executable: ...`, `not
+  loading <file>: its plugin <id> is linked into the executable`, `<n> plugin librar(ies) to load ...,
+  <m> skipped because their plugins are linked`; `LibraryOutcome::Linked` in the load report; the
+  `plugins_list` MCP tool shows `plugins_linked`, a `linked` flag per plugin and the skipped libraries;
+  the loading screen's Plugins step reads `<n> plugin librar(ies), <m> linked`.
+- **Same libraries either way.** Plugin libraries built for the DLL editor load in a linked editor
+  (the shared libraries have the same file names and hashes) and the reverse, because both builds
+  resolve the shared crates through `tools/workspace_hack`, which pins them for the union of the
+  plugin builder's build and the linked build (`hack_gen` includes `pulsar_engine/link-plugins`).
+  Add a plugin and regenerate (`cargo run -p hack_gen`).
+- **Running it.** `just run-linked --project-path <project>` (`cargo run` puts Rust's `std` and the shared
+  libraries on PATH). A direct launch of `target/release/pulsar_engine.exe` needs beside it `std-<hash>.dll`
+  (`just build-linked` copies it from the toolchain, as `plugin_builder` does), the six `*_dylib` libraries and
+  `DirectML.dll` (cargo puts those there), and the repository root as the working directory (or
+  `PULSAR_INSTALL_DIR`). Without `std-<hash>.dll` Windows reports it as not found (exit `0xC0000135`).
+  Verified on Windows: the editor starts, the loading screen reads `0 plugin librar(ies), 35 linked`, the
+  project opens, the level editor lists its scene and component classes, the viewport renders, and Build & Run
+  packs (the linked languages and record migrations), builds and runs the game.
+- **Tests.** `cargo test -p linked_plugins --features all` (the linked set equals the installed set),
+  `cargo test -p plugin_manager --test linked_libraries --lib linked` (linked wins, the library of the
+  same id is skipped, an unknown library still loads).
+- **Costs.** One binary and no plugin DLLs to build or keep in step with the editor, but a plugin is no
+  longer separately attributable in memory (see "One library per plugin"), and the editor relinks
+  whenever any plugin changes. The nightly keeps testing the libraries.
+
 ## Dynamic editor plugins
 
 Plugins built as native Rust `cdylib` DLLs are loaded at startup and **never unloaded**.

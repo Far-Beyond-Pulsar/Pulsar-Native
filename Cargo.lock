@@ -9037,6 +9037,9 @@ checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
 name = "linked_plugins"
 version = "0.1.0"
 dependencies = [
+ "installed_plugins",
+ "plugin_manager",
+ "pulsar_plugins",
  "render_bps_plugin",
 ]
 

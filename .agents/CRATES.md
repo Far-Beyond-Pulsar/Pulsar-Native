@@ -25,7 +25,7 @@ has a layer by directory: **kernel** (`crates/core`, `crates/editor`,
 `crates/subsystems`, and the chat's `agent_chat_core` /
 `agent_chat_tools`), **tool** (the optional editor tools: `ui_git_manager`,
 `ui_flamegraph`, `ui_log_viewer`, `ui_fab_search`, the agent providers), **plugin**
-(`plugins/vendor`), **host** (the `engine` binary, `plugins/installed`,
+(`plugins/vendor`), **host** (the `engine` binary, `plugins/installed`, `plugins/linked` (what the editor links: `render_bps`, and every installed plugin with `--features link-plugins`),
 `pulsar_package`, `level_migrate`, `scene_inventory`) and **foundation** (UI,
 vendored, external crates, Helio). A kernel crate depends on kernel and foundation
 crates only, dev dependencies included; a test that needs plugins is a host's

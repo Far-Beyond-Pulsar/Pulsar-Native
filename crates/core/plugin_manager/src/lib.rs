@@ -87,6 +87,7 @@ pub mod catalog;
 mod contributions;
 pub mod dependencies;
 mod imports;
+pub mod linked;
 mod details;
 mod editors;
 mod error;
@@ -116,6 +117,7 @@ pub use catalog::{
 pub use dependencies::{plan_load_order, DependencyError, LoadPlan};
 pub use error::PluginManagerError;
 pub use global::{file_type_for_path, global, initialize_global};
+pub use linked::{is_linked, linked_plugins, LinkedPlugin};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeLookup, FileTypeRegistry};
 pub use restorers::{panel_restorers, PanelRestorers, RestoreOutcome};

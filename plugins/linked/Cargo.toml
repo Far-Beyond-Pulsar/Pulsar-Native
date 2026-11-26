@@ -3,7 +3,21 @@ name = "linked_plugins"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "The plugins the editor links statically: render_bps only. Every other installed plugin is built as a library of its own by tools/plugin_builder and loaded from plugins/editor."
+description = "The plugins the editor links statically: render_bps always; with `all`, every installed plugin (the editor's `link-plugins` feature). Without `all`, every other installed plugin is built as a library of its own by tools/plugin_builder and loaded from plugins/editor."
 
 [dependencies]
 render_bps_plugin = { workspace = true }
+# Every installed plugin with its editor registrations, for `all`: the same set
+# tools/plugin_builder builds as libraries (plugins/installed, generated from the descriptors).
+installed_plugins = { workspace = true, optional = true, features = ["editor"] }
+
+[features]
+default = []
+# Link every installed plugin into the executable instead of loading its library
+# (`pulsar_engine`'s `link-plugins`). The editor then loads no library of a plugin it
+# links (`plugin_manager`: a library whose plugin id is linked is skipped).
+all = ["dep:installed_plugins"]
+
+[dev-dependencies]
+pulsar_plugins = { workspace = true }
+plugin_manager = { workspace = true }

@@ -188,6 +188,9 @@ fn plugins_list(arguments: &str) -> ToolResult {
                 LibraryOutcome::Loaded { plugin_id } => {
                     ("loaded", None, Some(plugin_id.clone()), None)
                 }
+                LibraryOutcome::Linked { plugin_id } => {
+                    ("linked_skipped", None, Some(plugin_id.clone()), None)
+                }
                 LibraryOutcome::Failed { stage, reason } => {
                     ("failed", Some(reason.clone()), None, Some(*stage))
                 }
@@ -207,6 +210,11 @@ fn plugins_list(arguments: &str) -> ToolResult {
         .libraries
         .iter()
         .filter(|l| matches!(l.outcome, LibraryOutcome::Failed { .. }))
+        .count();
+    let skipped_linked = report
+        .libraries
+        .iter()
+        .filter(|l| matches!(l.outcome, LibraryOutcome::Linked { .. }))
         .count();
     let renamed = report
         .libraries
@@ -234,6 +242,7 @@ fn plugins_list(arguments: &str) -> ToolResult {
                     }
                 }
             }
+            let linked = plugin_manager::is_linked(&plugin.descriptor.id);
             json!({
                 "id": plugin.descriptor.id,
                 "name": plugin.descriptor.name,
@@ -241,6 +250,8 @@ fn plugins_list(arguments: &str) -> ToolResult {
                 "version": library.map(|l| l.metadata.version.to_string()),
                 "library_path": library.map(|l| l.library_path.display().to_string()),
                 "library_loaded": library.is_some(),
+                // Linked into the executable (`link-plugins`): registered by the editor itself, no library.
+                "linked": linked,
                 "enabled_in_project": plugin.enabled,
                 "editor_only": plugin.descriptor.editor_only,
                 "requires": plugin.requirements.iter().map(|r| format!("{r:?}")).collect::<Vec<_>>(),
@@ -253,7 +264,8 @@ fn plugins_list(arguments: &str) -> ToolResult {
         .collect();
     if only_problems {
         plugins.retain(|p| {
-            !p["library_loaded"].as_bool().unwrap_or(false)
+            !(p["library_loaded"].as_bool().unwrap_or(false)
+                || p["linked"].as_bool().unwrap_or(false))
                 || !p["enabled_in_project"].as_bool().unwrap_or(true)
         });
     }
@@ -270,7 +282,11 @@ fn plugins_list(arguments: &str) -> ToolResult {
         "directory_used_for_load": report.directory.as_ref().map(|d| d.display().to_string()),
         "directory_exists": report.directory_exists,
         "libraries_found": report.libraries.len(),
-        "libraries_loaded": report.libraries.len() - failed,
+        "libraries_loaded": report.libraries.len() - failed - skipped_linked,
+        // Plugins linked into the executable (`--features link-plugins`; render_bps otherwise) and the
+        // libraries of them the loader left alone.
+        "plugins_linked": plugin_manager::linked_plugins().iter().map(|p| p.id.clone()).collect::<Vec<_>>(),
+        "libraries_skipped_because_linked": skipped_linked,
         "libraries_failed": failed,
         "libraries_with_renamed_imports": renamed,
         "libraries": libraries,
@@ -278,7 +294,7 @@ fn plugins_list(arguments: &str) -> ToolResult {
         "engine_contributions": catalog.engine.len(),
         "catalog_problems": problems,
         "activation": activation,
-        "note": "`libraries` is what loading each library file did, with the exact reason for a failure (the OS loader's error with the imports the library is missing, an integrity or version refusal, a dependency or constructor failure) and the imports renamed for a shared library of another build (the plugin_compat copies). `plugins` is every installed plugin with whether its library loaded and whether the project enables it.",
+        "note": "`libraries` is what loading each library file did, with the exact reason for a failure (the OS loader's error with the imports the library is missing, an integrity or version refusal, a dependency or constructor failure) and the imports renamed for a shared library of another build (the plugin_compat copies). `plugins` is every installed plugin with whether its library loaded (or `linked` into the executable) and whether the project enables it.",
     }))
 }
 

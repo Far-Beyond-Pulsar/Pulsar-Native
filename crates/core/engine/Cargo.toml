@@ -124,6 +124,14 @@ profile-tracy = [
     "profiling-v1/profile-with-tracy",
     "gpui-ce/profile-tracy",
 ]
+# Link every installed plugin into the executable (with its editor registrations) instead of
+# loading `plugins/editor/*.dll`: `cargo run --release --features link-plugins`, `just run-linked`.
+# Off (the default) the editor links render_bps only and loads the rest as libraries
+# (tools/plugin_builder). Not a different editor: the same shared libraries and the same
+# plugin set, so a plugin library built for one editor loads in the other (see
+# .agents/PLUGIN_SYSTEM.md, "Linked mode"). A library of a linked plugin is skipped by the loader;
+# a library of a plugin that is not linked (hub-installed, third party) still loads.
+link-plugins = ["linked_plugins/all"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader"] }

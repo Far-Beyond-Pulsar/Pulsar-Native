@@ -43,6 +43,33 @@ plugins-to out:
 run:
     cargo run -p {{project}}
 
+# Build the editor with EVERY installed plugin linked into the executable (release): no plugins/editor
+# libraries and no plugin_builder run, one binary. The same plugins the DLL setup loads (plugins/installed
+# with its editor registrations, render_bps among them). The shared libraries (wgpui, ui, profiling,
+# reflection, SceneDB, Helio) stay shared libraries beside the executable, so each linked plugin uses
+# the editor's copy of them. A library of a linked plugin left in plugins/editor by `just plugins` is
+# skipped by the loader; a plugin that exists only as a library (hub-installed) still loads.
+# Not the default: `just release` / `just plugins` are the DLL setup.
+# The executable needs Rust's own std library next to it (every crate links it dynamically, `-C prefer-dynamic`):
+# `cargo run` finds it through PATH, a double-clicked or directly launched executable does not, so the recipe
+# copies it beside the executable, as plugin_builder does. Beside the executable afterwards: pulsar_engine,
+# std-<hash>, the six shared libraries (*_dylib) and DirectML.dll. Run it from the repository root.
+[windows]
+build-linked:
+    cargo build -p {{project}} --release --features link-plugins
+    $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path "{{justfile_directory()}}" "target" }; $sysroot = (rustc --print sysroot); Copy-Item (Join-Path $sysroot "lib/rustlib/*/lib/std-*.dll") (Join-Path $target "release") -Force; Write-Host "Run $target/release/pulsar_engine.exe from {{justfile_directory()}}"
+
+[unix]
+build-linked:
+    cargo build -p {{project}} --release --features link-plugins
+    target="${CARGO_TARGET_DIR:-{{justfile_directory()}}/target}"; cp -f "$(rustc --print sysroot)"/lib/rustlib/*/lib/libstd-*.* "$target/release/" 2>/dev/null || true
+
+# Build (as above) and run the editor with every plugin linked; arguments go to the editor:
+#   just run-linked --project-path C:/path/to/project
+# Run from the repository root (the editor finds plugins/ and assets/ there).
+run-linked *args:
+    cargo run -p {{project}} --release --features link-plugins -- {{args}}
+
 # Open an example project from assets/examples (voxel_planet, voxel_moon, voxel_desert, voxel_blocks)
 example name="voxel_planet":
     cargo run -p {{project}} --release -- --project-path assets/examples/{{name}}
