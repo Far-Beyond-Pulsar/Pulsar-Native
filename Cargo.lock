@@ -19901,6 +19901,7 @@ dependencies = [
  "pulsar_class",
  "pulsar_events",
  "pulsar_language",
+ "pulsar_mcp",
  "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",

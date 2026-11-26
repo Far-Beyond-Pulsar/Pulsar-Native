@@ -675,6 +675,18 @@ impl Drop for WgpuiProfileBridge {
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
 
 /// Main renderer coordinating Helio 3D rendering with GPUI.
+/// What an editor capture leaves out of its frames. All three default to
+/// shown, which is how the viewport draws.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CaptureView {
+    /// The infinite ground grid.
+    pub hide_grid: bool,
+    /// The transform gizmo on the selection.
+    pub hide_gizmos: bool,
+    /// World-space overlay lines: spline curves, volume bounds.
+    pub hide_overlays: bool,
+}
+
 pub struct HelioRenderer {
     // ── Scene & Input ──
     pub camera_input: Arc<Mutex<CameraInput>>,
@@ -700,6 +712,8 @@ pub struct HelioRenderer {
     pub viewport_bloom: Arc<AtomicBool>,
     /// The toolbar's Realtime toggle; see [`Self::set_viewport_realtime`].
     viewport_realtime: Arc<AtomicBool>,
+    /// What the editor leaves out of a capture's frames; see [`CaptureView`].
+    capture_view: CaptureView,
     /// The toolbar's view mode: the debug mode the graph renders (0 lit).
     /// See [`HelioEditorMailbox::set_viewport_debug_mode`].
     viewport_debug_mode: Arc<AtomicU32>,
@@ -953,6 +967,7 @@ impl HelioRenderer {
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             viewport_realtime: Arc::new(AtomicBool::new(true)),
+            capture_view: CaptureView::default(),
             viewport_debug_mode: Arc::new(AtomicU32::new(0)),
             view_kind: Arc::new(AtomicU8::new(ViewKind::Perspective.to_u8())),
             camera_sync_locked: Arc::new(AtomicBool::new(true)),
@@ -1498,6 +1513,19 @@ impl HelioRenderer {
     /// on the game clock instead (`pulsar_game`).
     pub fn set_viewport_realtime(&self, realtime: bool) {
         self.viewport_realtime.store(realtime, Ordering::Release);
+    }
+
+    /// Leave the editor's ground grid, gizmo and world-space overlay lines out
+    /// of the frames drawn from now on (a screenshot), or put them back
+    /// (`CaptureView::default()`). Call it between frames, holding the renderer.
+    pub fn set_capture_view(&mut self, view: CaptureView) {
+        self.capture_view = view;
+        if let Some(inner) = self.inner.as_mut() {
+            inner
+                .scene
+                .renderer
+                .set_editor_overlay_visibility(!view.hide_grid, !view.hide_overlays);
+        }
     }
 
     /// Advance every frame by exactly `seconds` instead of the measured

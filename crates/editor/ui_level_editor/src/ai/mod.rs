@@ -10,5 +10,6 @@
 //!   exposed as `ai_tools` / `capabilities_for_file` / `execute_ai_tool`,
 //!   that mutate those states through the ordinary `SceneCommand` path.
 
+pub mod screenshot_tool;
 pub mod sessions;
 pub mod tools;

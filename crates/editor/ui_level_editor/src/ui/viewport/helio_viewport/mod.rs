@@ -100,6 +100,7 @@ pub struct HelioViewport {
 
 mod assets;
 mod frame_pump;
+mod mcp_screenshot;
 mod render_steps;
 mod thumbnail;
 use thumbnail::capture_viewport_png_tiled;

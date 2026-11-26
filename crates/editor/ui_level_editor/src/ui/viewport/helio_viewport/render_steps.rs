@@ -138,6 +138,18 @@ impl HelioViewport {
         cx: &mut Context<Self>,
         format: wgpu::TextureFormat,
     ) {
+        // A screenshot the MCP tool asked for needs no dialog and takes
+        // precedence over the window's.
+        let mcp_request = self
+            .shared_state
+            .write()
+            .build
+            .pending_mcp_screenshot
+            .take();
+        if let Some(request) = mcp_request {
+            self.start_mcp_screenshot(request, format);
+            return;
+        }
         let screenshot_size = self
             .shared_state
             .write()

@@ -99,6 +99,7 @@ data so a plugin library built with other `serde_json` features cannot disagree 
 | `tasks_list`, `threads_list`, `problems_list`, `plugins_list` | `ui_mcp/src/inspect.rs` | The Tasks window's tasks and threads, the Problems panel's findings, and every installed plugin: whether its library loaded, whether the project enables it, what it contributes, the plugin directory in use, and for each library file what loading did (loaded, or failed with the exact reason, and which needed its imports renamed for a shared library of another build) |
 | `profile_status`, `profile_start`, `profile_stop`, `profile_list_recordings`, `profile_query_sql`, `profile_top_scopes`, `profile_frame_times`, `profile_frame_breakdown`, `profile_threads`, `profile_gpu`, `profile_latency`, `profile_gaps`, `profile_compare`, `profile_export` | `ui_flamegraph/src/mcp.rs` | The profiler: record the running game or this editor with the Flamegraph window's recorder, read the recording (a SQLite file) through canned read-only queries. See "Profiling" below |
 | `editor_open_file` | `ui_core/src/app/mcp_tools.rs` | Open a file or class folder in its editor tab (what double-clicking in the Content browser does) |
+| `viewport_screenshot` | `ui_level_editor/src/ai/screenshot_tool.rs` | A still of the level viewport as a .png or .jpg file, no dialog: the High res screenshot's tiled, scene-time-frozen frame at `width` x `height` (default 2560 x 1440, clamped to 16..16384), the grid, the gizmo and the editor's overlay lines (spline curves, volume bounds) hidden unless `hide_grid`, `hide_gizmos`, `hide_overlays` say false. Returns path, size, format, bytes, tiles and milliseconds. See "Screenshots" below |
 | `level_editor_*`, `blueprint_*`, `code_editor_*` | existing AI tools, through the provider | Objects, components, hierarchy, selection, transforms, spawn and delete, undo and redo, save, play control, Blueprint graph editing, code editing |
 
 Reading the build while it runs: `build_start`, then `build_status` and `logs_wait` with
@@ -186,12 +187,38 @@ game (walk, turn, jump), `profile_top_scopes`, `profile_frame_times`, `profile_t
 Tests: `ui_flamegraph/src/profile_db.rs` (every query over a recording written with
 `profiling::database`, including the read-only guarantees) and `mcp.rs` (the tools over a file).
 
+## Screenshots
+
+`viewport_screenshot` (`ui_level_editor/src/ai/screenshot_tool.rs`) is the Tools > High res screenshot
+without its save dialog. The call runs on an MCP worker: it validates the arguments, leaves a
+`McpScreenshotRequest` (`state::build`) in the open level editor's build state under one short write lock
+and waits on a channel with a timeout; it never holds a scene lock and never reads the scene (see the
+nested `SceneDomain::world()` deadlock fixed in 77379692b). The level viewport takes the request on its next
+frame (`start_pending_screenshot`, `mcp_screenshot.rs`) and renders it on an editor task, "Viewport
+screenshot (MCP)" in the Tasks window: the same `capture_viewport_png_tiled` as the window, then a copy to
+the destination or a JPEG encode. The grid, gizmo and overlay lines are left out by
+`GpuRenderer::set_capture_view` (`CaptureView`) for the capture's frames only and put back before the
+renderer is released; Helio's `DebugDrawState` carries the grid and overlay switches
+(`Renderer::set_editor_overlay_visibility`).
+
+| Argument | Meaning |
+|---|---|
+| `path` | File to write, `.png`, `.jpg` or `.jpeg` (picks the format); absolute, or relative to the project. Parent folders are created. Default `<project>/.pulsar/screenshots/shot-<ms>-<n>.png`. The server has no allowed-root policy, so none is applied |
+| `width`, `height` | Pixels, default 2560 x 1440, clamped to 16..16384 per side; the result says what was used (`clamped`) |
+| `viewport` | Which open level (its `.level` path); omitted, the only open one |
+| `hide_grid`, `hide_gizmos`, `hide_overlays` | Default true |
+| `jpeg_quality` | 1..100, default 90; a JPEG over 64 megapixels is refused |
+| `timeout_seconds` | Default 120, at most 1800 |
+
+Errors name the cause: no level open or several open, the viewport has not drawn yet, a screenshot already
+running, the viewport not drawing (minimised) within the timeout, the device lost or a tile failing, the
+encode or the write failing. A request needs a drawing viewport: it is served on a frame. Tests: the
+argument rules and the hand-over (a thread playing the viewport) in `screenshot_tool.rs`.
+
 ## Not built yet
 
-- Viewport camera get/set, focus an object and a viewport screenshot as an image: the screenshot
-  facility exists (`state.build.pending_screenshot_size`, which ends in a save dialog) but has no
-  headless destination, and the camera lives in the viewport's panel entity, not in the shared state the
-  tools reach. Tracked in `.agents/GAMEPLAY.md` (issues).
+- Viewport camera get/set and focus an object: the camera lives in the viewport's panel entity, not in
+  the shared state the tools reach. Tracked in `.agents/GAMEPLAY.md` (issues).
 - Input injection into the game; use OS-level input for now.
 - `tools/list` pagination, resources and prompts, server-initiated notifications.
 

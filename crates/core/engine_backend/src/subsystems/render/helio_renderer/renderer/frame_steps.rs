@@ -172,6 +172,9 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_scene_store_read_lock_wait (gizmo)");
             self.scene_store.read()
         };
+        if self.capture_view.hide_gizmos {
+            return;
+        }
         profiling::profile_scope!("helio_draw_gizmo");
         inner
             .interaction

@@ -219,6 +219,14 @@ impl GpuRenderer {
         self.render_frame_to_surface_inner(device, queue, view, width, height, format, None)
     }
 
+    /// Leave the editor's grid, gizmo and overlay lines out of the frames
+    /// drawn from now on (a screenshot's), or restore them with the default.
+    pub fn set_capture_view(&mut self, view: crate::subsystems::render::CaptureView) {
+        if let Some(renderer) = self.helio_renderer.as_mut() {
+            renderer.set_capture_view(view);
+        }
+    }
+
     /// Render one frozen time-slice tile for an oversized screenshot.
     #[allow(clippy::too_many_arguments)] // the device and queue, the target, and the crop's geometry
     pub fn render_capture_tile(

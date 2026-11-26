@@ -29,7 +29,7 @@ pub use render_features::{
     EditorLines, EditorLinesRegistration, RenderFeatureRegistration, ViewOverscanRegistration,
 };
 pub use renderer::{
-    CameraSync, CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer,
+    CameraSync, CaptureView, CompletedDrag, EditorCameraState, HelioEditorMailbox, HelioRenderer,
     PendingPointerEvent, RendererCommand, StaticDragWarning, ToolRay, ViewKind, ViewPayload,
     ViewportDebugLegend, ViewportDebugView, CAMERA_PIVOT_DISTANCE,
 };

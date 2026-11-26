@@ -9,6 +9,7 @@ publish = false
 # modes, create entries, World Settings sections, undo steps, save hooks and
 # overlays, each naming its origin; a disabled plugin's are skipped.
 pulsar_plugins = { workspace = true }
+pulsar_mcp = { workspace = true }
 inventory = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
