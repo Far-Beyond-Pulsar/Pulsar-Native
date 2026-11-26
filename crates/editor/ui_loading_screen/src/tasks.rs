@@ -317,10 +317,12 @@ fn task_check_language_server(
 ) -> TaskResult {
     let t = Instant::now();
     let settings = pulsar_language::ServerSettings::read(language.origin, spec.id);
+    let spec = settings.spec_for(language.origin, spec);
     let progress = |_: &str| {};
     let context = pulsar_language::LocateContext::new(project, settings.path, &progress);
     let detail = match (spec.find)(&context) {
         Some(command) => format!("found: {}", command.program.display()),
+        None if spec.installer.is_some() => "not found".to_string(),
         None => "not found (installed on first use)".to_string(),
     };
     TaskResult {
@@ -391,7 +393,9 @@ fn task_prepare_plugins(_project: &Path) -> TaskResult {
     );
     // The plugins the executable links are not libraries (`--features link-plugins`): say both.
     let linked = plugin_manager::linked_plugins().len();
-    tracing::info!("{count} plugin librar(ies) loaded, {linked} plugin(s) linked into the executable");
+    tracing::info!(
+        "{count} plugin librar(ies) loaded, {linked} plugin(s) linked into the executable"
+    );
     TaskResult {
         elapsed: t.elapsed(),
         detail: Some(format!("{count} plugin librar(ies), {linked} linked")),

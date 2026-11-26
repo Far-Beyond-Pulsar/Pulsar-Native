@@ -240,7 +240,12 @@ impl Harness {
     /// [`Self::frames`], with at least `least` frames: a scene whose far side only shows through
     /// a portal needs more of them to settle than the others (its geometry binds over several
     /// frames under the asset pump's budget).
-    fn frames_at_least(&self, renderer: &mut HelioRenderer, mut ui_frame: impl FnMut(), least: usize) -> Frame {
+    fn frames_at_least(
+        &self,
+        renderer: &mut HelioRenderer,
+        mut ui_frame: impl FnMut(),
+        least: usize,
+    ) -> Frame {
         let view = self.texture.create_view(&Default::default());
         let mut encoded = false;
         let frames = settle_frames().max(least).max(2) & !1;

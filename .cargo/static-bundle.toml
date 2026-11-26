@@ -1,0 +1,6 @@
+# Config overlay for the static bundle (`just build-static`): `cargo ... --config .cargo/static-bundle.toml`.
+# Cargo joins the rustflags arrays of every config source, the command line's last, and rustc keeps the last
+# of a repeated `-C prefer-dynamic`, so this turns off the `prefer-dynamic` of .cargo/config.toml while
+# its `/STACK` and `/FORCE:MULTIPLE` link arguments stay. (`RUSTFLAGS` would replace all of them.)
+[target.'cfg(not(target_family = "wasm"))']
+rustflags = ["-C", "prefer-dynamic=no"]

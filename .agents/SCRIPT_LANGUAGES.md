@@ -99,7 +99,20 @@ documents, status, restart); a plugin never owns a process.
 
 The standard settings group is **derived** from every `Language` with a server
 (`pulsar_settings::plugin::SettingsGroups`, owner path `<plugin id>/<server id>`): `enabled`,
-`path`, `args`, `initialization_options`, `trace`, `start`. The plugin adds nothing for those.
+`path`, `args`, `initialization_options`, `trace`, `start`, `idle_stop_minutes`. The plugin adds
+nothing for those.
+
+**Another server for a language** is a `ServerAlternative { origin, name, label, description,
+spec }`, added from the plugin's `build` beside its `Language`; any server may have any number.
+Its group then gets a `server` dropdown (empty: the language's own) and `<name>_path`,
+`<name>_args` and `<name>_initialization_options` per alternative; the unprefixed three stay the
+language's own server's. A language's server is a slot named by the spec's `id` (settings group,
+`ServerId`, diagnostics source key), so **the alternative's spec has the same `id`**; one with
+another `id` is never offered. Everything else is the alternative's own. `LanguageServers` picks
+the spec (`ServerSettings::spec_for`), and a changed choice removes the running server and creates
+the other one, with its `eager`, roots and installer: a `LanguageServer`'s spec never changes. The
+Rust plugin's `glancer.rs` (rust-glancer, experimental) is the example.
+
 Its own settings are a `PluginSettings { origin, id: "", schema }` (the TypeScript plugin's is
 `compiler_diagnostics`), read through `pulsar_settings::plugin::handle(origin, "")`. Disabling the
 plugin withdraws the group.

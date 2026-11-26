@@ -14866,7 +14866,7 @@ dependencies = [
  "x11-dl",
  "x11rb",
  "x11rb-protocol",
- "xattr",
+ "xattr 0.2.3",
  "xcursor",
  "xkbcommon-dl",
  "xkeysym",
@@ -15984,6 +15984,7 @@ dependencies = [
  "pulsar_settings",
  "serde_json",
  "sha2 0.11.0",
+ "tar",
  "tracing",
  "zip 9.5.0",
 ]
@@ -18179,6 +18180,17 @@ name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr 1.6.1",
+]
 
 [[package]]
 name = "tempfile"
@@ -22274,6 +22286,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix 1.1.4",
+]
+
+[[package]]
 name = "xcursor"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -22479,7 +22501,7 @@ dependencies = [
  "libc",
  "pin-project",
  "redox_syscall 0.2.16",
- "xattr",
+ "xattr 0.2.3",
 ]
 
 [[package]]

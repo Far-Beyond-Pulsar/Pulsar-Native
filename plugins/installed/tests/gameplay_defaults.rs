@@ -151,7 +151,8 @@ fn the_mounted_class_is_found_and_compiled_without_the_project_being_mounted_fir
     // Not mounted: nothing in this process opened the project.
     let dirs = find_class_dirs(root);
     assert!(
-        dirs.iter().any(|dir| dir.ends_with("PlayerCharacter.class")),
+        dirs.iter()
+            .any(|dir| dir.ends_with("PlayerCharacter.class")),
         "{dirs:?}"
     );
     engine_fs::virtual_fs::unmount_project(root);
@@ -305,10 +306,16 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     // Look: the horizontal axis turns the CONTROL rotation (the view), not the
     // body: the body follows by the character's rotation options.
     let control_yaw = |world: &World| {
-        pulsar_world_registry::get_component_property(world, pawn, "CharacterComponent", 0, "control_yaw")
-            .unwrap()
-            .as_f64()
-            .unwrap()
+        pulsar_world_registry::get_component_property(
+            world,
+            pawn,
+            "CharacterComponent",
+            0,
+            "control_yaw",
+        )
+        .unwrap()
+        .as_f64()
+        .unwrap()
     };
     let before = control_yaw(&world);
     send(&mut driver, &mut world, "IA_Look", "triggered", 10.0, 3.0);
@@ -321,18 +328,39 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
     // Look up and down: the vertical axis pitches the camera (positive looks up),
     // and the camera holds its limits however far the stick is pushed.
     let pitch = |world: &World| {
-        pulsar_world_registry::get_component_property(world, pawn, "CharacterComponent", 0, "control_pitch")
-            .unwrap()
-            .as_f64()
-            .unwrap()
+        pulsar_world_registry::get_component_property(
+            world,
+            pawn,
+            "CharacterComponent",
+            0,
+            "control_pitch",
+        )
+        .unwrap()
+        .as_f64()
+        .unwrap()
     };
     assert_eq!(pitch(&world), 3.0, "IA_Look y=3 looked up three degrees");
     send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, -5.0);
     assert_eq!(pitch(&world), -2.0, "a negative axis looks down");
     send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, 500.0);
-    assert_eq!(pitch(&world), 80.0, "looking up stops at the camera's upper limit");
-    send(&mut driver, &mut world, "IA_Look", "triggered", 0.0, -1000.0);
-    assert_eq!(pitch(&world), -80.0, "looking down stops at the lower limit");
+    assert_eq!(
+        pitch(&world),
+        80.0,
+        "looking up stops at the camera's upper limit"
+    );
+    send(
+        &mut driver,
+        &mut world,
+        "IA_Look",
+        "triggered",
+        0.0,
+        -1000.0,
+    );
+    assert_eq!(
+        pitch(&world),
+        -80.0,
+        "looking down stops at the lower limit"
+    );
 
     // The look went through `add_look`, so the frame can turn the view by the mouse
     // motion no tick has applied yet: the control rotation says which action turns
@@ -342,7 +370,10 @@ fn a_level_that_selects_the_mounted_class_spawns_it_through_the_roles_system() {
         let control = pulsar_plugins::registered::<ControlRotationRegistration>()
             .find(|control| control.name == "character.control_rotation")
             .expect("the character plugin registers its control rotation");
-        assert_eq!((control.look_action)(&world, pawn).as_deref(), Some("IA_Look"));
+        assert_eq!(
+            (control.look_action)(&world, pawn).as_deref(),
+            Some("IA_Look")
+        );
         let turn = (control.turn)(&world, pawn, [10.0, 3.0]).expect("a turn");
         assert_eq!((turn.yaw_degrees, turn.pitch_degrees), (-10.0, 3.0));
         assert_eq!((turn.pitch_min, turn.pitch_max), (-80.0, 80.0));
@@ -392,7 +423,11 @@ fn the_look_action_adds_no_delay_and_drops_no_slow_movement() {
         .join("../vendor/gameplay/assets/input/actions/IA_Look.inputaction");
     let action: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    assert_eq!(action["modifiers"], serde_json::json!([]), "no smooth, no curve");
+    assert_eq!(
+        action["modifiers"],
+        serde_json::json!([]),
+        "no smooth, no curve"
+    );
     assert!(
         action["actuation_threshold"].as_f64().unwrap() <= 0.001,
         "one pixel of mouse movement is an input"
@@ -410,8 +445,10 @@ fn the_look_action_adds_no_delay_and_drops_no_slow_movement() {
 fn gameplay_pins_the_character_contract_version_its_graph_needs() {
     let vendor = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../vendor");
     let read = |name: &str| -> toml::Value {
-        toml::from_str(&std::fs::read_to_string(vendor.join(name).join("pulsar-plugin.toml")).unwrap())
-            .unwrap()
+        toml::from_str(
+            &std::fs::read_to_string(vendor.join(name).join("pulsar-plugin.toml")).unwrap(),
+        )
+        .unwrap()
     };
     let provided = read("character")["provides"]
         .as_array()
@@ -440,9 +477,15 @@ fn gameplay_pins_the_character_contract_version_its_graph_needs() {
     for part in graph.split('"') {
         if let Some(rest) = part.strip_prefix("comp_call::CharacterComponent::") {
             let name = format!("CharacterComponent::{rest}");
-            assert!(natives.get(&name).is_some(), "`{name}` is not a registered native");
+            assert!(
+                natives.get(&name).is_some(),
+                "`{name}` is not a registered native"
+            );
             seen += 1;
         }
     }
-    assert!(seen >= 4, "the graph calls the character's methods ({seen})");
+    assert!(
+        seen >= 4,
+        "the graph calls the character's methods ({seen})"
+    );
 }

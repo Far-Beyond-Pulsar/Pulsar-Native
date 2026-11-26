@@ -41,11 +41,17 @@ use ui_log_viewer::TrackingAllocator;
 use linked_plugins as _;
 // The shared UI framework and renderer: this binary and every plugin library use these
 // copies (see .agents/PLUGIN_SYSTEM.md, "Shared libraries").
+#[cfg(feature = "shared-dylibs")]
 use helio_dylib as _;
+#[cfg(feature = "shared-dylibs")]
 use profiling_dylib as _;
+#[cfg(feature = "shared-dylibs")]
 use ui_dylib as _;
+#[cfg(feature = "shared-dylibs")]
 use reflection_dylib as _;
+#[cfg(feature = "shared-dylibs")]
 use scenedb_dylib as _;
+#[cfg(feature = "shared-dylibs")]
 use wgpui_dylib as _;
 // The content packer the build's pack step uses (`pulsar_content::ContentPacker`).
 use pulsar_package as _;

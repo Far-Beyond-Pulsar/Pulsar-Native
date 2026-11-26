@@ -474,7 +474,11 @@ mod tests {
         let mut found = problem(Some("2:23"), "bad call");
         found.end_location = Some("2:38".into());
         let d = &compiler_diagnostics(Path::new("a.ts"), text, &[found.clone()])[0];
-        assert_eq!((d.end_line, d.end_column), (Some(2), Some(38)), "the call, not the word");
+        assert_eq!(
+            (d.end_line, d.end_column),
+            (Some(2), Some(38)),
+            "the call, not the word"
+        );
         found.end_location = Some("3:2".into());
         let d = &compiler_diagnostics(Path::new("a.ts"), text, &[found.clone()])[0];
         assert_eq!((d.end_line, d.end_column), (Some(3), Some(2)));

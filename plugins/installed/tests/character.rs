@@ -267,11 +267,18 @@ fn a_character_capsule_rests_on_a_static_collider() {
         hub.flush(pulsar_events::FlushPoint::AfterSystems);
         let y = f64::from(world.get::<Transform>(owner).unwrap().position[1]);
         lowest = lowest.min(y);
-        still = if (y - last).abs() < 1e-4 { still + 1 } else { 0 };
+        still = if (y - last).abs() < 1e-4 {
+            still + 1
+        } else {
+            0
+        };
         last = y;
         std::thread::sleep(Duration::from_millis(2));
     }
-    assert!(last < 2.9, "the character fell from y = 3 (ended at {last})");
+    assert!(
+        last < 2.9,
+        "the character fell from y = 3 (ended at {last})"
+    );
     assert!(
         lowest >= -0.01,
         "the capsule's origin never went below the floor's top face (lowest {lowest})"
@@ -386,7 +393,10 @@ fn the_body_turns_toward_its_movement_at_the_rotation_rate() {
         "one tick turns one step toward -90 (right): {first}"
     );
     tick(&mut world, &hub, &mut state, 4);
-    assert!((yaw(&world, owner) + 30.0).abs() < 1e-3, "smooth, not a snap");
+    assert!(
+        (yaw(&world, owner) + 30.0).abs() < 1e-3,
+        "smooth, not a snap"
+    );
     tick(&mut world, &hub, &mut state, 30);
     assert!(
         (yaw(&world, owner) + 90.0).abs() < 1e-3,
@@ -394,7 +404,13 @@ fn the_body_turns_toward_its_movement_at_the_rotation_rate() {
         yaw(&world, owner)
     );
     // The camera's control yaw did not move with the body.
-    assert_eq!(world.get::<CharacterComponent>(instance).unwrap().control_yaw, 0.0);
+    assert_eq!(
+        world
+            .get::<CharacterComponent>(instance)
+            .unwrap()
+            .control_yaw,
+        0.0
+    );
     // Standing still keeps the facing.
     world
         .get_mut::<CharacterComponent>(instance)
@@ -427,14 +443,26 @@ fn use_controller_rotation_yaw_makes_the_body_follow_the_look_direction() {
         c.control_pitch = 25.0;
     }
     tick(&mut world, &hub, &mut state, 1);
-    assert_eq!(yaw(&world, owner), 0.0, "with the option off the body keeps its own rotation");
+    assert_eq!(
+        yaw(&world, owner),
+        0.0,
+        "with the option off the body keeps its own rotation"
+    );
     world
         .get_mut::<CharacterComponent>(instance)
         .unwrap()
         .use_controller_rotation_yaw = true;
     tick(&mut world, &hub, &mut state, 1);
-    assert_eq!(yaw(&world, owner), 40.0, "the body faces where the camera looks");
-    assert_eq!(world.get::<Transform>(owner).unwrap().rotation[0], 0.0, "pitch stays off");
+    assert_eq!(
+        yaw(&world, owner),
+        40.0,
+        "the body faces where the camera looks"
+    );
+    assert_eq!(
+        world.get::<Transform>(owner).unwrap().rotation[0],
+        0.0,
+        "pitch stays off"
+    );
     // Walking forward now goes where it faces and where the camera looks.
     world
         .get_mut::<CharacterComponent>(instance)
@@ -489,15 +517,24 @@ fn walked_while_turning(turn: f32, seconds: f32, flood: u32) -> f32 {
     }
     let mut state = ComponentRuntimeState::default();
     // Fall onto the floor and settle first (walking is held back until then).
-    world.get_mut::<CharacterComponent>(instance).unwrap().move_input = [0.0, 0.0];
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .move_input = [0.0, 0.0];
     let settle = Instant::now();
     while settle.elapsed().as_secs_f32() < 2.0 {
         pulsar_world_registry::tick_live_components(&mut world, &hub, 1.0 / 60.0, 1, &mut state);
         hub.flush(pulsar_events::FlushPoint::AfterSystems);
         std::thread::sleep(Duration::from_micros(16_667));
     }
-    eprintln!("settled at y = {:.3}", world.get::<Transform>(owner).unwrap().position[1]);
-    world.get_mut::<CharacterComponent>(instance).unwrap().move_input = [0.0, 1.0];
+    eprintln!(
+        "settled at y = {:.3}",
+        world.get::<Transform>(owner).unwrap().position[1]
+    );
+    world
+        .get_mut::<CharacterComponent>(instance)
+        .unwrap()
+        .move_input = [0.0, 1.0];
     let start = world.get::<Transform>(owner).unwrap().position;
     let begun = Instant::now();
     let mut next = begun;
@@ -509,7 +546,12 @@ fn walked_while_turning(turn: f32, seconds: f32, flood: u32) -> f32 {
         for i in 0..flood {
             hub.publish(
                 pulsar_events::gamma::Channel::Global,
-                pulsar_events::builtin::MouseMoved { x: 0.0, y: 0.0, dx: 1.0, dy: -1.0 },
+                pulsar_events::builtin::MouseMoved {
+                    x: 0.0,
+                    y: 0.0,
+                    dx: 1.0,
+                    dy: -1.0,
+                },
             );
             if i % 10 == 0 {
                 hub.publish(
