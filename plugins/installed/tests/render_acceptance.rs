@@ -233,10 +233,17 @@ impl Harness {
 
     /// Renders `settle_frames()` frames, running `ui_frame` before each one as
     /// the UI thread would, and reads back the last one.
-    fn frames(&self, renderer: &mut HelioRenderer, mut ui_frame: impl FnMut()) -> Frame {
+    fn frames(&self, renderer: &mut HelioRenderer, ui_frame: impl FnMut()) -> Frame {
+        self.frames_at_least(renderer, ui_frame, 0)
+    }
+
+    /// [`Self::frames`], with at least `least` frames: a scene whose far side only shows through
+    /// a portal needs more of them to settle than the others (its geometry binds over several
+    /// frames under the asset pump's budget).
+    fn frames_at_least(&self, renderer: &mut HelioRenderer, mut ui_frame: impl FnMut(), least: usize) -> Frame {
         let view = self.texture.create_view(&Default::default());
         let mut encoded = false;
-        let frames = settle_frames().max(2) & !1;
+        let frames = settle_frames().max(least).max(2) & !1;
         for frame in 0..frames {
             ui_frame();
             if self.nudge_camera.get() {
@@ -4224,7 +4231,7 @@ fn a_portal_shows_the_decals_of_the_far_side() {
     };
     let render = |state: &LevelEditorState| {
         let mut renderer = harness.renderer(state);
-        harness.frames(&mut renderer, || {})
+        harness.frames_at_least(&mut renderer, || {}, 32)
     };
     let without = render(&scene(false));
     let with = render(&scene(true));
