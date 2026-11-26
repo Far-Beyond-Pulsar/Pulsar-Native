@@ -636,3 +636,38 @@ mod symbol_tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
+
+#[cfg(test)]
+mod installed_check {
+    use super::*;
+
+    /// Every plugin library in `PULSAR_PLUGIN_DIR` resolves its imports, by file and by symbol,
+    /// against the shared libraries in `PULSAR_ENGINE_DIR` (the folder of the engine executable):
+    /// what the OS loader checks before a plugin's code runs. `cargo test -p plugin_manager --lib
+    /// installed_plugins_resolve_their_imports -- --ignored` after `just plugins`.
+    #[test]
+    #[ignore = "reads an installed engine and plugins: set PULSAR_PLUGIN_DIR and PULSAR_ENGINE_DIR"]
+    fn installed_plugins_resolve_their_imports() {
+        let (Some(plugins), Some(engine)) =
+            (std::env::var_os("PULSAR_PLUGIN_DIR"), std::env::var_os("PULSAR_ENGINE_DIR"))
+        else {
+            panic!("set PULSAR_PLUGIN_DIR and PULSAR_ENGINE_DIR");
+        };
+        let places = vec![std::path::PathBuf::from(&plugins), std::path::PathBuf::from(&engine)];
+        let (mut checked, mut broken) = (0, Vec::new());
+        for entry in std::fs::read_dir(&plugins).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "dll") {
+                continue;
+            }
+            checked += 1;
+            let bytes = std::fs::read(&path).unwrap();
+            let (absent, stale) = diagnose(&bytes, &places);
+            if !absent.is_empty() || !stale.is_empty() {
+                broken.push(explain_with(&path, &path, "check", &absent, &stale));
+            }
+        }
+        println!("{checked} plugin libraries checked");
+        assert!(broken.is_empty(), "{} of {checked} do not resolve:\n{}", broken.len(), broken.join("\n"));
+    }
+}
