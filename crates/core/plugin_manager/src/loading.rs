@@ -200,7 +200,7 @@ impl PluginManager {
         let library = PermanentLibrary::new(&load_path).map_err(|e| {
             let message = e.to_string();
             PluginManagerError::LibraryLoadError {
-                message: crate::imports::explain(&load_path, &message),
+                message: crate::imports::explain_load(&path, &load_path, &message),
                 path: path.to_path_buf(),
             }
         })?;

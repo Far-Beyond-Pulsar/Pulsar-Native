@@ -683,7 +683,7 @@ with a p95 of 7.0 ms. The one-off stalls (157 to 646 ms, one in two runs, before
 
 ### Final measurement of the performance rounds (round 3, kept for the comparison)
 
-Editor and all 34 plugin libraries rebuilt into their own install (`plugin_builder --release`); Build & Run on a private copy
+Editor and all 34 plugin libraries rebuilt into their own install (`just plugins`, i.e. `plugin_builder -- --release --out <root>`); Build & Run on a private copy
 of the voxel project packed, built and launched the game through the MCP tools (34 libraries found, 34 loaded, none failed);
 the game it built then ran the scripted scenario twice (165 Hz display, vsync, the character spawned). Frames are
 `Game::Frame` periods; the scenario's windows are approximate (the recording starts about a second before the script).
