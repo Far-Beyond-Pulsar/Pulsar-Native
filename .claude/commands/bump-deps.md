@@ -1,4 +1,4 @@
-# Bump Dependency Chain
+# Bump Dependencies (Renovate Enabled)
 
 Get a change in Graphy or Plugin_Blueprints into Pulsar-Native.
 
