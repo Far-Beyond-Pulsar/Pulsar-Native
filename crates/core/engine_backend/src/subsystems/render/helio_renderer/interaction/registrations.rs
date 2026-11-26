@@ -91,6 +91,35 @@ impl pulsar_plugins::Contribution for ViewIconRegistration {
 
 pulsar_plugins::registration!(ViewIconRegistration);
 
+/// The image of a kind's editor icons, and the buffer of icon rows it is drawn
+/// over. The viewport icon plugin draws every registered one; the engine knows
+/// neither the kinds nor the pass.
+pub struct ViewIconImageRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// Stable id of the registration within its plugin (`"lights.icon"`).
+    pub name: &'static str,
+    /// The key of the icon rows the kind publishes.
+    pub rows: &'static str,
+    /// A PNG, which each row's colour multiplies.
+    pub png: &'static [u8],
+}
+
+impl pulsar_plugins::Contribution for ViewIconImageRegistration {
+    const CATEGORY: &'static str = "render.view_icon_image";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(ViewIconImageRegistration);
+
 /// `object`'s editor icon size (the first [`ViewIconRegistration`] that has
 /// one).
 pub(super) fn view_icon(world: &World, object: Entity) -> Option<Vec2> {

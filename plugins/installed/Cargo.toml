@@ -11,6 +11,7 @@ pulsar_plugins = { workspace = true }
 # by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
 skeletal_animation_plugin = { workspace = true }
 asset_viewer_plugin = { workspace = true, optional = true }
+audio_plugin = { workspace = true }
 bake_plugin = { workspace = true }
 blueprint_editor_plugin = { workspace = true, optional = true }
 cables_plugin = { workspace = true }
@@ -42,6 +43,7 @@ editor_table_plugin = { workspace = true, optional = true }
 trait_editor_plugin = { workspace = true, optional = true }
 plugin_typescript = { workspace = true, optional = true }
 ui_editor_plugin = { workspace = true, optional = true }
+view_icons_plugin = { workspace = true }
 voxel_plugin = { workspace = true }
 water_plugin = { workspace = true }
 # END installed plugins
@@ -54,6 +56,7 @@ default = ["editor"]
 editor = [
     "skeletal_animation_plugin/editor",
     "dep:asset_viewer_plugin",
+    "audio_plugin/editor",
     "bake_plugin/editor",
     "dep:blueprint_editor_plugin",
     "cables_plugin/editor",
@@ -85,6 +88,7 @@ editor = [
     "dep:trait_editor_plugin",
     "dep:plugin_typescript",
     "dep:ui_editor_plugin",
+    "view_icons_plugin/editor",
     "voxel_plugin/editor",
     "water_plugin/editor",
 ]

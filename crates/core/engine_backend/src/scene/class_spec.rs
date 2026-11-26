@@ -34,7 +34,7 @@
 use pulsar_component_lifecycle::ActorRegistration;
 pub use pulsar_component_lifecycle::{
     Actor, ActorCx, ActorTable, ConstructInfo, ConstructReason, SessionKind, SessionScope,
-    WorldActor,
+    ViewPose, WorldActor,
 };
 use pulsar_plugins::PluginBuilder;
 use pulsar_world_registry::{

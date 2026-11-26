@@ -89,6 +89,21 @@ impl TickLoop {
             }
         }
         let mut store = self.scene_store.write();
+        // The point of view this tick's component systems see.
+        let view = crate::camera_selection::select_world_camera(&store, self.view_targets.local());
+        let scope = self.component_runtime.scope_mut();
+        match view {
+            Some(camera) => {
+                scope.insert_resource(pulsar_component_lifecycle::ViewPose {
+                    position: camera.position.to_array(),
+                    forward: camera.forward.to_array(),
+                    up: camera.up.to_array(),
+                });
+            }
+            None => {
+                scope.remove_resource::<pulsar_component_lifecycle::ViewPose>();
+            }
+        }
         pulsar_world_registry::tick_live_components(
             &mut store.world,
             &self.events,

@@ -109,6 +109,11 @@ members = [
     # plugins read: the terrain seam and hitbox rows, the wind rows).
     "plugins/vendor/character",
     "plugins/vendor/gameplay",
+    "plugins/vendor/audio",
+    "plugins/vendor/view_icons",
+    "plugins/vendor/view_icons/api",
+    "plugins/vendor/view_icons/feature",
+    "plugins/vendor/audio/component",
     "plugins/vendor/fog",
     "plugins/vendor/fog/component",
     "plugins/vendor/fog/feature",
@@ -199,7 +204,6 @@ members = [
     "plugins/vendor/materials/graph_editor",
     "plugins/vendor/lights",
     "plugins/vendor/lights/api",
-    "plugins/vendor/lights/feature/billboard",
     "plugins/vendor/lights/feature/cull",
     "plugins/vendor/lights/feature/deferred",
     "plugins/vendor/lights/feature/hlfs",
@@ -408,6 +412,8 @@ cables_feature                    = { package = "helio-pass-cables", path = "plu
 fog_component                      = { path = "plugins/vendor/fog/component" }
 character_plugin                   = { path = "plugins/vendor/character" }
 gameplay_plugin                    = { path = "plugins/vendor/gameplay" }
+audio_component = { path = "plugins/vendor/audio/component" }
+audio_plugin = { path = "plugins/vendor/audio" }
 fog_plugin                         = { path = "plugins/vendor/fog" }
 fog_editor                         = { path = "plugins/vendor/fog/editor" }
 post_component                     = { path = "plugins/vendor/post/component" }
@@ -597,7 +603,9 @@ helio-gi-api = { path = "plugins/vendor/gi/api" }
 helio-pass-gi = { path = "plugins/vendor/gi/feature" }
 helio-pass-sky = { path = "plugins/vendor/sky/feature" }
 helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
-helio-pass-billboard = { path = "plugins/vendor/lights/feature/billboard" }
+helio-pass-billboard = { path = "plugins/vendor/view_icons/feature" }
+view-icons-api = { path = "plugins/vendor/view_icons/api" }
+view_icons_plugin = { path = "plugins/vendor/view_icons" }
 helio-pass-forward-lit = { path = "plugins/vendor/meshes/feature/forward" }
 helio-pass-gbuffer = { path = "plugins/vendor/meshes/feature/gbuffer" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }

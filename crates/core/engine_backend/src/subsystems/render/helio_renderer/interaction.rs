@@ -7,7 +7,9 @@ mod registrations;
 #[cfg(test)]
 mod tests;
 
-pub use registrations::{content_triangles, ContentGeometryRegistration, ViewIconRegistration};
+pub use registrations::{
+    content_triangles, ContentGeometryRegistration, ViewIconImageRegistration, ViewIconRegistration,
+};
 
 use super::gizmo_geometry::{shapes, Handle};
 use crate::scene::hierarchy_transform::world_transform_of;

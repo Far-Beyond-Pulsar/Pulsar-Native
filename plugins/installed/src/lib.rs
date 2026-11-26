@@ -22,6 +22,7 @@
 // by `UPDATE_INSTALLED_PLUGINS=1 cargo test -p installed_plugins --test installed_set`.
 #[cfg(feature = "editor")]
 pub use asset_viewer_plugin;
+pub use audio_plugin;
 pub use bake_plugin;
 #[cfg(feature = "editor")]
 pub use blueprint_editor_plugin;
@@ -64,6 +65,7 @@ pub use sprites_plugin;
 pub use trait_editor_plugin;
 #[cfg(feature = "editor")]
 pub use ui_editor_plugin;
+pub use view_icons_plugin;
 pub use voxel_plugin;
 pub use water_plugin;
 // END installed plugins

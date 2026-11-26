@@ -41,6 +41,23 @@ impl SessionKind {
     }
 }
 
+/// Where the local player's view is this frame: the pose of the camera the
+/// frame will be drawn from, without what no tick has applied yet. The host
+/// publishes it as a session resource before the component phase of each tick;
+/// a plugin that needs a point of view (an audio listener, a distance
+/// priority) reads it with `SessionScope::resource`. Absent when the world has
+/// no camera (the host's free camera shows it) and in a session without a host
+/// that publishes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ViewPose {
+    /// World position, metres.
+    pub position: [f64; 3],
+    /// Unit view direction.
+    pub forward: [f32; 3],
+    /// Unit up of the view.
+    pub up: [f32; 3],
+}
+
 /// The session's data: its kind, the level's settings and its resources.
 pub struct SessionScope {
     kind: SessionKind,

@@ -76,7 +76,9 @@ pub use component_lifecycle::{
     pump_construct, tick_live_components, ComponentInstanceKey, ComponentRuntimeState,
     ConstructStats, Session,
 };
-pub use pulsar_component_lifecycle::{ConstructInfo, ConstructReason, SessionKind, SessionScope};
+pub use pulsar_component_lifecycle::{
+    ConstructInfo, ConstructReason, SessionKind, SessionScope, ViewPose,
+};
 
 mod classes;
 mod component_events;

@@ -9,7 +9,8 @@ mod gpu_trace;
 pub mod host_parts;
 mod interaction;
 pub use interaction::{
-    content_triangles, ContentGeometryRegistration, SceneInteraction, ViewIconRegistration,
+    content_triangles, ContentGeometryRegistration, SceneInteraction, ViewIconImageRegistration,
+    ViewIconRegistration,
 };
 pub mod pipelines;
 pub mod project_settings;

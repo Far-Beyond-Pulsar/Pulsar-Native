@@ -96,13 +96,12 @@ fn registered(class: &str) -> bool {
     pulsar_world_registry::component_id_for_class(class).is_some()
 }
 
-const ABSENT_FEATURES: [&str; 7] = [
+const ABSENT_FEATURES: [&str; 6] = [
     "helio.voxel",
     "helio.lights.binning",
     "helio.lights.shadow_views",
     "helio.lights.deferred",
     "helio.hlfs",
-    "helio.billboards",
     "pulsar.materials",
 ];
 
@@ -548,13 +547,7 @@ fn render_with_stand_ins(scene: &SharedScene) {
             .into_iter()
             .map(|(pass, _)| pass.pass)
             .collect();
-        for name in [
-            "ShadowMatrix",
-            "LightCull",
-            "DeferredLight",
-            "HLFS",
-            "Billboard",
-        ] {
+        for name in ["ShadowMatrix", "LightCull", "DeferredLight", "HLFS"] {
             assert!(
                 !passes.contains(&name),
                 "{}: {name} is in the graph",

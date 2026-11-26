@@ -272,6 +272,7 @@ cargo cannot load the workspace without them.
 |---|---|---|
 | `materials` | [Plugin_Materials](https://github.com/Far-Beyond-Pulsar/Plugin_Materials) | `pulsar.materials`: material assets and instances, the material table, templates, the graph compiler and graph editor |
 | `meshes` | [Plugin_Meshes](https://github.com/Far-Beyond-Pulsar/Plugin_Meshes) | `pulsar.meshes`: static, skeletal and virtual-geometry meshes, their drawers, culling, import and LOD |
+| `audio` | [Plugin_Audio](https://github.com/Far-Beyond-Pulsar/Plugin_Audio) | `pulsar.audio`: sound source components, the audio thread and their speaker icons |
 | `lights` | [Plugin_Lights](https://github.com/Far-Beyond-Pulsar/Plugin_Lights) | `pulsar.lights`: lights and reflection captures, the light list, shadows, the lighting models |
 | `sky` | [Plugin_Sky](https://github.com/Far-Beyond-Pulsar/Plugin_Sky) | `pulsar.sky`: the atmosphere, clouds and the sky's lighting inputs (`.agents/SKY.md`) |
 | `gi` | [Plugin_GI](https://github.com/Far-Beyond-Pulsar/Plugin_GI) | `pulsar.gi`: the GI probe clipmap and the frame's radiance cache (the publisher of Helio's `rays::radiance_cache`), traced through the frame's ray streams |
@@ -284,6 +285,7 @@ cargo cannot load the workspace without them.
 | `voxel` | [Plugin_Voxel](https://github.com/Far-Beyond-Pulsar/Plugin_Voxel) | `pulsar.voxel`: destructible voxel worlds (`.agents/VOXEL_STREAMING.md`) |
 | `decals` | [Plugin_Decals](https://github.com/Far-Beyond-Pulsar/Plugin_Decals) | `pulsar.decals`: projected decals |
 | `particles` | [Plugin_Particles](https://github.com/Far-Beyond-Pulsar/Plugin_Particles) | `pulsar.particles`: GPU particle emitters (Corona) |
+| `view_icons` | [Plugin_ViewIcons](https://github.com/Far-Beyond-Pulsar/Plugin_ViewIcons) | `pulsar.view_icons`: the editor viewport's icons, drawn for any plugin that registers an image |
 | `sprites` | [Plugin_Sprites](https://github.com/Far-Beyond-Pulsar/Plugin_Sprites) | `pulsar.sprites`: 2D sprites over the scene |
 | `portals` | [Plugin_Portals](https://github.com/Far-Beyond-Pulsar/Plugin_Portals) | `pulsar.portals`: portals, their pairing, projection and draws |
 | `splines` | [Plugin_Splines](https://github.com/Far-Beyond-Pulsar/Plugin_Splines) | `pulsar.splines`: authored curves and their editor lines |

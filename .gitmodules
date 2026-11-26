@@ -135,3 +135,9 @@
 [submodule "crates/external/scenedb"]
 	path = crates/external/scenedb
 	url = https://github.com/Far-Beyond-Pulsar/SceneDB.git
+[submodule "plugins/vendor/audio"]
+	path = plugins/vendor/audio
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Audio
+[submodule "plugins/vendor/view_icons"]
+	path = plugins/vendor/view_icons
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_ViewIcons
