@@ -256,6 +256,14 @@ pub(crate) fn request_screenshot(
     }
 }
 
+/// Keep each side within the device's 2D texture limit (`0`: not known yet).
+pub(crate) fn clamp_to_device(size: (u32, u32), device_limit: u32) -> (u32, u32) {
+    if device_limit == 0 {
+        return size;
+    }
+    (size.0.min(device_limit), size.1.min(device_limit))
+}
+
 fn format_name(format: ScreenshotFormat) -> &'static str {
     match format {
         ScreenshotFormat::Png => "png",
@@ -287,6 +295,11 @@ fn viewport_screenshot(arguments: &str) -> ToolResult {
             return ToolResult::error(format!("no level viewport to shoot: {message}"));
         }
     };
+    let mut plan = plan;
+    // The device's own limit (what the High res screenshot window clamps to),
+    // known once a viewport has drawn: one short read of the build flags.
+    let device_limit = state.read().build.max_texture_dimension_2d;
+    plan.size = clamp_to_device(plan.size, device_limit);
     match request_screenshot(&state, &plan) {
         Ok(done) => ToolResult::json(&json!({
             "path": done.path.display().to_string(),
@@ -366,6 +379,13 @@ mod tests {
         assert_eq!(plan.requested, (40000, 4));
         assert!(super::plan(&json!({"path": "C:/o.png", "width": 0}), None, 1).is_err());
         assert!(super::plan(&json!({"path": "C:/o.png", "width": "wide"}), None, 1).is_err());
+    }
+
+    #[test]
+    fn sizes_are_clamped_to_the_device_limit() {
+        assert_eq!(clamp_to_device((16384, 4000), 8192), (8192, 4000));
+        assert_eq!(clamp_to_device((2560, 1440), 0), (2560, 1440));
+        assert_eq!(clamp_to_device((100, 100), 8192), (100, 100));
     }
 
     #[test]

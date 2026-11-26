@@ -204,7 +204,7 @@ renderer is released; Helio's `DebugDrawState` carries the grid and overlay swit
 | Argument | Meaning |
 |---|---|
 | `path` | File to write, `.png`, `.jpg` or `.jpeg` (picks the format); absolute, or relative to the project. Parent folders are created. Default `<project>/.pulsar/screenshots/shot-<ms>-<n>.png`. The server has no allowed-root policy, so none is applied |
-| `width`, `height` | Pixels, default 2560 x 1440, clamped to 16..16384 per side; the result says what was used (`clamped`) |
+| `width`, `height` | Pixels, default 2560 x 1440, clamped to 16..16384 per side and to the device's 2D texture limit; the result says what was used (`clamped`). A very wide frame can still fail inside a Helio pass (a post-process texture over 2048 at 16384 x 100 on the test GPU): that comes back as a tile error, not a hang |
 | `viewport` | Which open level (its `.level` path); omitted, the only open one |
 | `hide_grid`, `hide_gizmos`, `hide_overlays` | Default true |
 | `jpeg_quality` | 1..100, default 90; a JPEG over 64 megapixels is refused |
@@ -214,6 +214,14 @@ Errors name the cause: no level open or several open, the viewport has not drawn
 running, the viewport not drawing (minimised) within the timeout, the device lost or a tile failing, the
 encode or the write failing. A request needs a drawing viewport: it is served on a frame. Tests: the
 argument rules and the hand-over (a thread playing the viewport) in `screenshot_tool.rs`.
+
+Blog capture notes: the call is `viewport_screenshot {"path": "D:/shots/a.png", "width": 2560, "height": 1440,
+"viewport": "<.level path when several are open>"}` over `tools/call`; a 2560 x 1440 frame of a sample level
+took about 0.8 s and 1920 x 1080 about 0.6 s with the editor window minimised. The grid, axis lines and gizmo
+are off by default (`hide_grid: false` brings them back, which makes a before/after pair); the light
+billboard icons are scene icons, not overlays, and stay. Verified end to end on a private copy of the voxel
+reference project (Ocean.level) with `WGPU_BACKEND=dx12`, `PULSAR_MCP=1`, `PULSAR_MCP_PORT`, and plugin
+libraries from `cargo run -p plugin_builder -- --release --out <dir>` with `PULSAR_INSTALL_DIR=<dir>`.
 
 ## Not built yet
 
