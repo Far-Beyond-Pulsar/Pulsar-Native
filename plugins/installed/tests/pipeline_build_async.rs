@@ -171,7 +171,10 @@ fn a_pipeline_builds_while_frames_draw_and_installs_when_done() {
             id: "test.first".into()
         }
     );
-    assert!(renderer.needs_frame(), "a host that draws on demand keeps drawing");
+    assert!(
+        renderer.needs_frame(),
+        "a host that draws on demand keeps drawing"
+    );
     for _ in 0..3 {
         frame(&gpu, &mut renderer);
     }

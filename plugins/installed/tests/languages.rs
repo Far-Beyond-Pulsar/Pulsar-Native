@@ -400,6 +400,94 @@ fn with_rust_disabled_a_rs_file_has_no_server_and_no_settings_group() {
     pulsar_plugins::deactivate();
 }
 
+/// The Server dropdown: choosing rust-glancer replaces the running
+/// rust-analyzer with it, under the same server id, and choosing back
+/// replaces it again. Nothing is installed or spawned: both are configured
+/// with a path that does not exist.
+#[gpui::test]
+fn choosing_another_rust_server_replaces_the_running_one(cx: &mut gpui::TestAppContext) {
+    use gpui::AppContext as _;
+    use pulsar_lsp::{LanguageServers, LanguageServersEvent};
+
+    let _guard = ACTIVATION.lock().unwrap_or_else(|p| p.into_inner());
+    pulsar_plugins::deactivate();
+    static BOUND: std::sync::Once = std::sync::Once::new();
+    BOUND.call_once(|| {
+        // Another test of this binary may have bound them already.
+        if engine_state::global_config()
+            .owner_handle(pulsar_settings::plugin::NS, "pulsar.rust/rust-analyzer")
+            .is_none()
+        {
+            pulsar_settings::register_all_settings(engine_state::global_config());
+        }
+    });
+    pulsar_settings::plugin::sync(engine_state::global_config());
+    let settings = engine_state::global_config()
+        .owner_handle(pulsar_settings::plugin::NS, "pulsar.rust/rust-analyzer")
+        .expect("the Rust server group is registered while the plugin is enabled");
+    settings
+        .set("path", "/pulsar-test/no-such-rust-analyzer")
+        .unwrap();
+    settings
+        .set("rust-glancer_path", "/pulsar-test/no-such-rust-glancer")
+        .unwrap();
+    settings.set("server", "").unwrap();
+
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("Cargo.toml"),
+        "[package]\nname = \"p\"\n",
+    )
+    .unwrap();
+    let file = project.path().join("lib.rs");
+
+    let service = cx.new(LanguageServers::new);
+    service.update(cx, |service, cx| {
+        service.set_project(project.path().to_path_buf(), cx)
+    });
+    let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen = events.clone();
+    let _subscription = cx.update(|cx| {
+        cx.subscribe(&service, move |_, event: &LanguageServersEvent, _| {
+            seen.borrow_mut().push(event.clone())
+        })
+    });
+    let running = |cx: &mut gpui::TestAppContext| {
+        service.read_with(cx, |service, cx| {
+            assert_eq!(service.servers().len(), 1);
+            let server = service.servers()[0].read(cx);
+            (server.id().clone(), server.spec().display_name)
+        })
+    };
+    let (id, name) = running(cx);
+    assert_eq!(name, "rust-analyzer");
+
+    for (chosen, expected) in [("rust-glancer", "rust-glancer"), ("", "rust-analyzer")] {
+        events.borrow_mut().clear();
+        settings.set("server", chosen).unwrap();
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(5));
+        cx.run_until_parked();
+
+        assert_eq!(running(cx), (id.clone(), expected));
+        service.read_with(cx, |service, _| {
+            let (_, spec) = service.server_spec_for(&file).unwrap();
+            assert_eq!(spec.display_name, expected);
+        });
+        let events = events.borrow();
+        assert!(events.contains(&LanguageServersEvent::Removed(id.clone())));
+        assert!(events.contains(&LanguageServersEvent::Added(id.clone())));
+    }
+
+    settings.set("server", "").unwrap();
+    service.update(cx, |service, cx| {
+        let id = service.servers()[0].read(cx).id().clone();
+        service.stop(&id, cx);
+    });
+    pulsar_plugins::deactivate();
+    pulsar_settings::plugin::sync(engine_state::global_config());
+}
+
 /// The whole of "disabled": a running Rust server, with diagnostics of its
 /// own and of another source, loses its plugin. The service stops and drops
 /// it (its status entry is gone with it), the server's diagnostics are cleared

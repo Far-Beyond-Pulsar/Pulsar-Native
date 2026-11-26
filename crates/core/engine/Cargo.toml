@@ -68,16 +68,16 @@ window_manager.workspace = true
 linked_plugins = { workspace = true }
 # The shared UI and renderer libraries: the editor and every plugin library link them dynamically
 # (`-C prefer-dynamic`, .cargo/config.toml), so each framework static exists once per process.
-wgpui_dylib = { workspace = true }
-helio_dylib = { workspace = true }
-ui_dylib = { workspace = true }
-profiling_dylib = { workspace = true }
+wgpui_dylib = { workspace = true, optional = true }
+helio_dylib = { workspace = true, optional = true }
+ui_dylib = { workspace = true, optional = true }
+profiling_dylib = { workspace = true, optional = true }
 # Pins the features of every crate inside those libraries, so building the editor alone gives the same
 # libraries as building it with every plugin (tools/hack_gen). Nothing links it.
 pulsar_workspace_hack = { path = "../../../tools/workspace_hack" }
-reflection_dylib = { workspace = true }
-scenedb_dylib = { workspace = true }
-plugin_editor_api = { workspace = true, features = ["shared-dylibs"] }
+reflection_dylib = { workspace = true, optional = true }
+scenedb_dylib = { workspace = true, optional = true }
+plugin_editor_api = { workspace = true }
 # The content packer (`pulsar_content::ContentPacker`): the build's pack step cooks
 # and packs the project through it, before Cargo builds the game.
 # Without `link-plugins`: the editor loads plugins from their libraries.
@@ -111,7 +111,7 @@ dhat = { version = "0.3", optional = true }
 # Blueprints, TypeScript and the trait and render graph editors are plugins
 # (`pulsar.blueprints`, `pulsar.typescript`, `pulsar.trait_editor`,
 # `pulsar.render_graph`) in the installed set, which a project enables.
-default = []
+default = ["shared-dylibs"]
 dhat-heap = ["dep:dhat"]
 # Live shader editing is on by default through helio; this forwards the feature
 # for builds that disable helio's defaults. See engine_backend's feature of the
@@ -132,6 +132,24 @@ profile-tracy = [
 # .agents/PLUGIN_SYSTEM.md, "Linked mode"). A library of a linked plugin is skipped by the loader;
 # a library of a plugin that is not linked (hub-installed, third party) still loads.
 link-plugins = ["linked_plugins/all"]
+# The six shared Rust libraries (`*_dylib`) the editor and every plugin library link, and `std` as a
+# shared library with them (`-C prefer-dynamic`, .cargo/config.toml): the DLL setup. On by default;
+# `static-bundle` is built with `--no-default-features`, which drops them (see below).
+shared-dylibs = [
+    "dep:wgpui_dylib",
+    "dep:helio_dylib",
+    "dep:ui_dylib",
+    "dep:profiling_dylib",
+    "dep:reflection_dylib",
+    "dep:scenedb_dylib",
+    "plugin_editor_api/shared-dylibs",
+]
+# One self-contained executable: every installed plugin (`link-plugins`) and every framework crate
+# linked statically, `std` included, so no `*_dylib` library and no `std-<hash>.dll` sits beside it.
+# Build with `just build-static`, i.e. `--no-default-features --features static-bundle` and the
+# `-C prefer-dynamic=no` override (.agents/PLUGIN_SYSTEM.md, "Static bundle"). It is not a feature to
+# add to a default build: with `shared-dylibs` also on, the six libraries are linked again.
+static-bundle = ["link-plugins"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_Diagnostics_Debug", "Win32_System_LibraryLoader"] }

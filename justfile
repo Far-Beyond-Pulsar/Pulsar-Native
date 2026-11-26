@@ -70,6 +70,29 @@ build-linked:
 run-linked *args:
     cargo run -p {{project}} --release --features link-plugins -- {{args}}
 
+# Build ONE self-contained editor (release): every installed plugin linked in, and the frameworks and
+# Rust's std linked statically, so no *_dylib library and no std-<hash> sits beside the executable
+# (.agents/PLUGIN_SYSTEM.md, "Static bundle"). .cargo/static-bundle.toml turns `prefer-dynamic` off.
+# It builds into <target>/static, so the default build and the plugin libraries built for it stay as
+# they are. Plugin libraries cannot be loaded by this editor. Not the default.
+[windows]
+build-static:
+    $base = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path "{{justfile_directory()}}" "target" }; cargo build -p {{project}} --release --no-default-features --features static-bundle --config .cargo/static-bundle.toml --target-dir (Join-Path $base "static")
+
+[unix]
+build-static:
+    cargo build -p {{project}} --release --no-default-features --features static-bundle --config .cargo/static-bundle.toml --target-dir "${CARGO_TARGET_DIR:-{{justfile_directory()}}/target}/static"
+
+# Build (as above) and run the static bundle; arguments go to the editor:
+#   just run-static --project-path C:/path/to/project
+[windows]
+run-static *args:
+    $base = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path "{{justfile_directory()}}" "target" }; cargo run -p {{project}} --release --no-default-features --features static-bundle --config .cargo/static-bundle.toml --target-dir (Join-Path $base "static") -- {{args}}
+
+[unix]
+run-static *args:
+    cargo run -p {{project}} --release --no-default-features --features static-bundle --config .cargo/static-bundle.toml --target-dir "${CARGO_TARGET_DIR:-{{justfile_directory()}}/target}/static" -- {{args}}
+
 # Open an example project from assets/examples (voxel_planet, voxel_moon, voxel_desert, voxel_blocks)
 example name="voxel_planet":
     cargo run -p {{project}} --release -- --project-path assets/examples/{{name}}

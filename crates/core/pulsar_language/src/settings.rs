@@ -7,6 +7,9 @@ use std::path::PathBuf;
 use pulsar_config::{DropdownOption, FieldType, NamespaceSchema, SchemaEntry, Validator};
 use serde_json::Value;
 
+use crate::alternative::{alternatives_of, ServerAlternative};
+use crate::spec::LanguageServerSpec;
+
 /// How much of the protocol conversation reaches the server's log.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TraceLevel {
@@ -81,6 +84,10 @@ pub struct ServerSettings {
     /// Stop the server after this many idle minutes (no open document of it);
     /// 0 never stops it.
     pub idle_stop_minutes: u32,
+    /// The [`ServerAlternative`] chosen, by name: its spec runs instead of
+    /// the language's own, and `path`, `args` and `initialization_options`
+    /// are the ones set for it.
+    pub alternative: Option<&'static str>,
 }
 
 impl Default for ServerSettings {
@@ -93,6 +100,7 @@ impl Default for ServerSettings {
             trace: TraceLevel::Off,
             start: StartSetting::Auto,
             idle_stop_minutes: 0,
+            alternative: None,
         }
     }
 }
@@ -135,70 +143,127 @@ impl ServerSettings {
         let Some(handle) = pulsar_settings::plugin::handle(origin, id) else {
             return Self::default();
         };
-        Self::from_values(|key| handle.value(key))
+        let value = |key: &str| handle.value(key);
+        let mut settings = Self::from_values(value);
+        settings.choose_alternative(alternatives_of(origin, id), value);
+        settings
+    }
+
+    /// Apply the server dropdown: the one of `alternatives` it names, with the
+    /// launch settings made for that one. A name none of them has leaves the
+    /// language's own server.
+    pub fn choose_alternative<'a>(
+        &mut self,
+        alternatives: impl IntoIterator<Item = &'a ServerAlternative>,
+        value: impl Fn(&str) -> Option<pulsar_config::ConfigValue>,
+    ) {
+        let chosen = text_of(&value, SERVER_KEY);
+        let Some(alternative) = alternatives
+            .into_iter()
+            .find(|alternative| alternative.name == chosen)
+        else {
+            return;
+        };
+        self.alternative = Some(alternative.name);
+        self.read_launch(&value, &launch_prefix(alternative));
+    }
+
+    /// The settings that say how one server is launched, under `prefix`.
+    fn read_launch(
+        &mut self,
+        value: &impl Fn(&str) -> Option<pulsar_config::ConfigValue>,
+        prefix: &str,
+    ) {
+        let text = |key: &str| text_of(value, &format!("{prefix}{key}"));
+        let path = text("path");
+        let init = text("initialization_options");
+        self.path = (!path.trim().is_empty()).then(|| PathBuf::from(path.trim()));
+        self.args = split_args(&text("args"));
+        self.initialization_options = (!init.trim().is_empty())
+            .then(|| serde_json::from_str(&init).ok())
+            .flatten();
+    }
+
+    /// The spec that runs under these settings: `base`, or the chosen
+    /// alternative of it.
+    pub fn spec_for(
+        &self,
+        origin: &str,
+        base: &'static LanguageServerSpec,
+    ) -> &'static LanguageServerSpec {
+        self.alternative
+            .and_then(|name| {
+                alternatives_of(origin, base.id).find(|alternative| alternative.name == name)
+            })
+            .map_or(base, |alternative| alternative.spec)
     }
 
     /// Build from a key lookup (what the tests drive).
     pub fn from_values(value: impl Fn(&str) -> Option<pulsar_config::ConfigValue>) -> Self {
-        let text = |key: &str| {
-            value(key)
-                .and_then(|v| v.as_str().ok().map(str::to_owned))
-                .unwrap_or_default()
-        };
-        let path = text("path");
-        let init = text("initialization_options");
-        Self {
+        let mut settings = Self {
             enabled: value("enabled")
                 .and_then(|v| v.as_bool().ok())
                 .unwrap_or(true),
-            path: (!path.trim().is_empty()).then(|| PathBuf::from(path.trim())),
-            args: split_args(&text("args")),
-            initialization_options: (!init.trim().is_empty())
-                .then(|| serde_json::from_str(&init).ok())
-                .flatten(),
-            trace: TraceLevel::parse(&text("trace")),
-            start: StartSetting::parse(&text("start")),
+            trace: TraceLevel::parse(&text_of(&value, "trace")),
+            start: StartSetting::parse(&text_of(&value, "start")),
             idle_stop_minutes: value("idle_stop_minutes")
                 .and_then(|v| v.as_int().ok())
                 .unwrap_or(0)
                 .clamp(0, 24 * 60) as u32,
-        }
+            ..Self::default()
+        };
+        settings.read_launch(&value, "");
+        settings
     }
 
     /// Whether `other` differs in a way that needs the process restarted.
     pub fn needs_restart(&self, other: &Self) -> bool {
-        self.path != other.path
+        self.alternative != other.alternative
+            || self.path != other.path
             || self.args != other.args
             || self.initialization_options != other.initialization_options
     }
 }
 
-/// The standard group: every server exposes the same controls.
-pub fn server_settings_schema(display_name: &str, description: &str) -> NamespaceSchema {
+/// The key of the dropdown that chooses between a language's own server and
+/// its alternatives.
+const SERVER_KEY: &str = "server";
+
+fn text_of(value: &impl Fn(&str) -> Option<pulsar_config::ConfigValue>, key: &str) -> String {
+    value(key)
+        .and_then(|v| v.as_str().ok().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+fn launch_prefix(alternative: &ServerAlternative) -> String {
+    format!("{}_", alternative.name)
+}
+
+/// The settings that say how one server is launched: its executable, its
+/// arguments and its initialization options, keyed under `prefix`. `server`
+/// names it in the labels when the group configures more than one.
+fn launch_settings(schema: NamespaceSchema, prefix: &str, server: Option<&str>) -> NamespaceSchema {
     let page = "Language server";
-    NamespaceSchema::new(display_name, description)
+    let label = |text: &str| match server {
+        Some(server) => format!("{server}: {}", text.to_lowercase()),
+        None => text.to_string(),
+    };
+    schema
         .setting(
-            "enabled",
-            SchemaEntry::new("Run this language server", true)
-                .label("Enabled")
-                .page(page)
-                .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "path",
+            format!("{prefix}path"),
             SchemaEntry::new(
                 "Executable to use instead of searching for one (empty: find or install it)",
                 "",
             )
-            .label("Executable path")
+            .label(label("Executable path"))
             .page(page)
             .field_type(FieldType::PathSelector { directory: false })
             .requires_restart(),
         )
         .setting(
-            "args",
+            format!("{prefix}args"),
             SchemaEntry::new("Extra command-line arguments", "")
-                .label("Arguments")
+                .label(label("Arguments"))
                 .page(page)
                 .field_type(FieldType::TextInput {
                     placeholder: Some("--flag value".into()),
@@ -206,12 +271,12 @@ pub fn server_settings_schema(display_name: &str, description: &str) -> Namespac
                 }),
         )
         .setting(
-            "initialization_options",
+            format!("{prefix}initialization_options"),
             SchemaEntry::new(
                 "JSON merged over the server's initialization options (empty: none)",
                 "",
             )
-            .label("Initialization options")
+            .label(label("Initialization options"))
             .page(page)
             .field_type(FieldType::TextInput {
                 placeholder: Some("{ \"key\": \"value\" }".into()),
@@ -229,6 +294,65 @@ pub fn server_settings_schema(display_name: &str, description: &str) -> Namespac
                 }
             })),
         )
+}
+
+/// The dropdown choosing between `own` (the language's server, the empty
+/// value) and `alternatives`.
+fn server_choice(own: &str, alternatives: &[&ServerAlternative]) -> SchemaEntry {
+    let mut description = format!("Which server runs ({own} is the default).");
+    for alternative in alternatives {
+        description.push_str(&format!(
+            " {}: {}",
+            alternative.label, alternative.description
+        ));
+    }
+    let options = std::iter::once(DropdownOption::new(own, ""))
+        .chain(
+            alternatives
+                .iter()
+                .map(|alternative| DropdownOption::new(alternative.label, alternative.name)),
+        )
+        .collect();
+    let names: Vec<&str> = std::iter::once("")
+        .chain(alternatives.iter().map(|alternative| alternative.name))
+        .collect();
+    SchemaEntry::new(description, "")
+        .label("Server")
+        .page("Language server")
+        .field_type(FieldType::Dropdown { options })
+        .validator(Validator::string_one_of(names))
+        .requires_restart()
+}
+
+/// The standard group: every server exposes the same controls. A server with
+/// `alternatives` also gets the dropdown that chooses between them, and launch
+/// settings for each.
+pub fn server_settings_schema(
+    display_name: &str,
+    description: &str,
+    alternatives: &[&ServerAlternative],
+) -> NamespaceSchema {
+    let page = "Language server";
+    let mut schema = NamespaceSchema::new(display_name, description).setting(
+        "enabled",
+        SchemaEntry::new("Run this language server", true)
+            .label("Enabled")
+            .page(page)
+            .field_type(FieldType::Checkbox),
+    );
+    let several = !alternatives.is_empty();
+    if several {
+        schema = schema.setting(SERVER_KEY, server_choice(display_name, alternatives));
+    }
+    schema = launch_settings(schema, "", several.then_some(display_name));
+    for alternative in alternatives {
+        schema = launch_settings(
+            schema,
+            &launch_prefix(alternative),
+            Some(alternative.spec.display_name),
+        );
+    }
+    schema
         .setting(
             "trace",
             SchemaEntry::new("How much of the protocol conversation is logged", "off")
@@ -282,7 +406,7 @@ mod tests {
     fn settings_with(entries: &[(&str, ConfigValue)]) -> ServerSettings {
         let cfg = ConfigManager::new();
         let handle = cfg
-            .register("plugin", "t", server_settings_schema("T", ""))
+            .register("plugin", "t", server_settings_schema("T", "", &[]))
             .unwrap();
         for (key, value) in entries {
             handle.set(key, value.clone()).unwrap();
@@ -325,15 +449,76 @@ mod tests {
     fn invalid_initialization_options_are_refused_by_the_schema() {
         let cfg = ConfigManager::new();
         let handle = cfg
-            .register("plugin", "t", server_settings_schema("T", ""))
+            .register("plugin", "t", server_settings_schema("T", "", &[]))
             .unwrap();
         assert!(handle.set("initialization_options", "{ not json").is_err());
         assert!(handle.set("initialization_options", "[1]").is_err());
         assert!(handle.set("initialization_options", "{\"a\":1}").is_ok());
     }
 
+    static OTHER: LanguageServerSpec = LanguageServerSpec {
+        id: "t",
+        display_name: "Other",
+        find: |_| None,
+        locate: |_| Err(crate::spec::LocateError::new("not used")),
+        roots: crate::spec::RootStrategy::ProjectRoot,
+        initialization_options: |_| Value::Null,
+        configuration: |_, _| Value::Null,
+        client_capabilities: || Value::Null,
+        hooks: crate::spec::ServerHooks::DEFAULT,
+        readiness: crate::spec::ReadinessRule::Immediate,
+        max_indexing: std::time::Duration::from_secs(1),
+        eager: false,
+        commands: &[],
+        prepare_workspace: None,
+        installer: None,
+    };
+
+    const ALTERNATIVE: ServerAlternative = ServerAlternative {
+        origin: "t",
+        name: "other",
+        label: "Other (experimental)",
+        description: "A second server.",
+        spec: &OTHER,
+    };
+
     #[test]
-    fn only_path_args_and_options_need_a_restart() {
+    fn the_dropdown_chooses_a_server_and_its_own_launch_settings() {
+        let cfg = ConfigManager::new();
+        let schema = server_settings_schema("T", "", &[&ALTERNATIVE]);
+        let handle = cfg.register("plugin", "t", schema).unwrap();
+        handle.set("path", "C:/tools/own.exe").unwrap();
+        handle.set("other_args", "--other").unwrap();
+        let read = || {
+            let mut settings = ServerSettings::from_values(|key| handle.get(key).ok());
+            settings.choose_alternative([&ALTERNATIVE], |key| handle.get(key).ok());
+            settings
+        };
+        let own = read();
+        assert_eq!(own.alternative, None);
+        assert_eq!(own.path, Some(PathBuf::from("C:/tools/own.exe")));
+        assert!(own.args.is_empty());
+
+        assert!(handle.set("server", "nobody").is_err());
+        handle.set("server", "other").unwrap();
+        let other = read();
+        assert_eq!(other.alternative, Some("other"));
+        assert_eq!(other.path, None, "the other server's path does not apply");
+        assert_eq!(other.args, ["--other"]);
+        assert!(own.needs_restart(&other));
+    }
+
+    #[test]
+    fn a_server_without_alternatives_has_no_dropdown() {
+        let cfg = ConfigManager::new();
+        let handle = cfg
+            .register("plugin", "t", server_settings_schema("T", "", &[]))
+            .unwrap();
+        assert!(handle.get(SERVER_KEY).is_err());
+    }
+
+    #[test]
+    fn only_path_args_options_and_the_server_need_a_restart() {
         let base = ServerSettings::default();
         let traced = ServerSettings {
             trace: TraceLevel::Verbose,

@@ -109,12 +109,16 @@ mod tests {
             uri_to_path("file:///c%3A/Users/a%20b/x.rs"),
             PathBuf::from("c:/Users/a b/x.rs")
         );
-        assert_eq!(uri_to_path("file:///home/a/x.rs"), PathBuf::from("/home/a/x.rs"));
+        assert_eq!(
+            uri_to_path("file:///home/a/x.rs"),
+            PathBuf::from("/home/a/x.rs")
+        );
     }
 
     #[test]
     fn both_shapes_of_a_workspace_edit_give_one_based_edits() {
-        let range = json!({ "start": { "line": 0, "character": 4 }, "end": { "line": 0, "character": 7 } });
+        let range =
+            json!({ "start": { "line": 0, "character": 4 }, "end": { "line": 0, "character": 7 } });
         let edit = json!({
             "changes": { "file:///home/a/x.rs": [{ "range": range, "newText": "new" }] },
             "documentChanges": [
@@ -125,7 +129,11 @@ mod tests {
         let edits = edits_in_workspace_edit(&edit);
         assert_eq!(edits.len(), 2);
         assert_eq!(
-            (edits[0].start_line, edits[0].start_column, edits[0].end_column),
+            (
+                edits[0].start_line,
+                edits[0].start_column,
+                edits[0].end_column
+            ),
             (1, 5, 8)
         );
         assert_eq!(edits[1].new_text, "y");

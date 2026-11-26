@@ -18,6 +18,7 @@
 //! This crate is GPUI-free so the class registry (`pulsar_class`), the
 //! packager and command-line tools use it without the editor.
 
+pub mod alternative;
 pub mod download;
 pub mod lsp_edits;
 pub mod registry;
@@ -28,6 +29,7 @@ pub mod spec;
 use std::path::Path;
 use std::sync::Arc;
 
+pub use alternative::ServerAlternative;
 pub use registry::LanguageRegistry;
 pub use script::{
     CheckContext, CompileDiagnostic, ComponentEventMetadata, CookOptimization, DiagnosticSeverity,
@@ -168,7 +170,9 @@ macro_rules! submit_test_language {
 /// The standard settings group every language server gets (D10), derived from
 /// the registrations: `enabled`, `path`, `args`, `initialization_options`,
 /// `trace`, `start`, `idle_stop_minutes`. Registered under the language's own
-/// plugin while it is enabled; the plugin adds nothing for it.
+/// plugin while it is enabled; the plugin adds nothing for it. A server with
+/// a [`ServerAlternative`] also gets the `server` dropdown, and launch
+/// settings for each alternative.
 fn server_settings_groups() -> Vec<pulsar_settings::plugin::SettingsGroup> {
     pulsar_plugins::all_registered::<Language>()
         .filter_map(|language| {
@@ -177,12 +181,15 @@ fn server_settings_groups() -> Vec<pulsar_settings::plugin::SettingsGroup> {
                 origin: language.origin,
                 id: spec.id,
                 schema: Arc::new(move || {
+                    let alternatives: Vec<_> =
+                        alternative::alternatives_of(language.origin, spec.id).collect();
                     server_settings_schema(
                         spec.display_name,
                         &format!(
                             "The {} language server: completion, diagnostics and navigation for {} files",
                             spec.display_name, language.display_name
                         ),
+                        &alternatives,
                     )
                 }),
             })

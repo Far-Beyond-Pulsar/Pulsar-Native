@@ -4,7 +4,10 @@
 //! [`DiagnosticsStore`]. A file is routed to its server by `server_for`: the
 //! language the registry (`pulsar_language::LanguageRegistry`) says owns the
 //! file's extension, that language's server spec, the root its `RootStrategy`
-//! picks, created on first use. Servers that say `eager` (and a project that
+//! picks, created on first use. Which spec that is, the language's own or the
+//! alternative chosen in its settings (`pulsar_language::ServerAlternative`),
+//! is decided by `configured`; choosing another replaces the running server.
+//! Servers that say `eager` (and a project that
 //! has their language's config files) start when the project opens; every
 //! other starts on its first file, unless its `start` setting says
 //! otherwise. A server stops when it is switched off in its settings, when its
@@ -119,12 +122,15 @@ impl LanguageServers {
     }
 
     /// The language and server spec that handle `path`: what the language
-    /// registry says owns its extension, when that language has a server.
+    /// registry says owns its extension, when that language has a server, as
+    /// its settings choose it.
     pub fn server_spec_for(
         &self,
         path: &Path,
     ) -> Option<(&'static Language, &'static LanguageServerSpec)> {
-        LanguageRegistry::current().server_for_path(path)
+        let (language, base) = LanguageRegistry::current().server_for_path(path)?;
+        let (spec, _) = configured(language, base);
+        Some((language, spec))
     }
 
     /// The server that handles `path` if it exists already; never creates or
@@ -153,8 +159,8 @@ impl LanguageServers {
         cx: &mut Context<Self>,
     ) -> Option<Entity<LanguageServer>> {
         let project_root = self.project_root.clone()?;
-        let (language, spec) = self.server_spec_for(path)?;
-        let settings = ServerSettings::read(language.origin, spec.id);
+        let (language, base) = LanguageRegistry::current().server_for_path(path)?;
+        let (spec, settings) = configured(language, base);
         if !settings.enabled {
             return None;
         }
@@ -213,29 +219,41 @@ impl LanguageServers {
         self.remove_all(StopReason::ProjectChanged, cx);
         self.drop_all_checks(cx);
         self.project_root = Some(root.clone());
-        for (language, spec) in active_servers() {
-            let settings = ServerSettings::read(language.origin, spec.id);
-            if !settings.enabled {
-                continue;
-            }
-            let eager = match settings.start {
-                StartSetting::Project => true,
-                StartSetting::FirstFile => false,
-                StartSetting::Auto => spec.eager,
-            };
-            if !eager || !project_has_config(language, &root) {
-                continue;
-            }
-            let Some(server_root) = spec.roots.root_for(&root.join("_"), &root) else {
-                continue;
-            };
-            let server = self.ensure_server(language, spec, server_root, settings, cx);
-            server.update(cx, |server, cx| {
-                if matches!(server.status(), ServerStatus::Idle) {
-                    server.start(cx);
-                }
-            });
+        for (language, base) in active_servers() {
+            self.start_eager(language, base, &root, cx);
         }
+    }
+
+    /// Start `language`'s server now if the one its settings choose starts
+    /// with the project, and the project has what it works on.
+    fn start_eager(
+        &mut self,
+        language: &'static Language,
+        base: &'static LanguageServerSpec,
+        project_root: &Path,
+        cx: &mut Context<Self>,
+    ) {
+        let (spec, settings) = configured(language, base);
+        if !settings.enabled {
+            return;
+        }
+        let eager = match settings.start {
+            StartSetting::Project => true,
+            StartSetting::FirstFile => false,
+            StartSetting::Auto => spec.eager,
+        };
+        if !eager || !project_has_config(language, project_root) {
+            return;
+        }
+        let Some(root) = spec.roots.root_for(&project_root.join("_"), project_root) else {
+            return;
+        };
+        let server = self.ensure_server(language, spec, root, settings, cx);
+        server.update(cx, |server, cx| {
+            if matches!(server.status(), ServerStatus::Idle) {
+                server.start(cx);
+            }
+        });
     }
 
     fn remove_all(&mut self, reason: StopReason, cx: &mut Context<Self>) {
@@ -349,6 +367,21 @@ impl LanguageServers {
         cx.notify();
     }
 
+    /// Stop `server` and forget it.
+    fn remove(
+        &mut self,
+        server: &Entity<LanguageServer>,
+        reason: StopReason,
+        cx: &mut Context<Self>,
+    ) {
+        self.servers.retain(|other| other != server);
+        let id = server.read(cx).id().clone();
+        server.update(cx, |server, cx| server.stop(reason, cx));
+        self._subscriptions.remove(&id);
+        cx.emit(LanguageServersEvent::Removed(id));
+        cx.notify();
+    }
+
     fn apply_settings_of(&mut self, spec_id: &'static str, cx: &mut Context<Self>) {
         let Some((language, spec)) = known_servers()
             .into_iter()
@@ -356,13 +389,24 @@ impl LanguageServers {
         else {
             return;
         };
-        let settings = ServerSettings::read(language.origin, spec.id);
-        let servers: Vec<_> = self
+        let (chosen, settings) = configured(language, spec);
+        // Another server was chosen: the running one goes, with its rules and
+        // its root, and the chosen one is created like any other (editors give
+        // up a removed server's documents and ask again).
+        let (servers, replaced): (Vec<_>, Vec<_>) = self
             .servers
             .iter()
             .filter(|server| server.read(cx).id().server == spec_id)
             .cloned()
-            .collect();
+            .partition(|server| std::ptr::eq(server.read(cx).spec(), chosen));
+        if !replaced.is_empty() {
+            for server in replaced {
+                self.remove(&server, StopReason::Requested, cx);
+            }
+            if let Some(project_root) = self.project_root.clone() {
+                self.start_eager(language, spec, &project_root, cx);
+            }
+        }
         for server in servers {
             let settings = settings.clone();
             server.update(cx, |server, cx| {
@@ -402,6 +446,16 @@ impl LanguageServers {
             }
         }
     }
+}
+
+/// The spec that runs for `language`, whose own server is `base`, and the
+/// settings it runs under.
+fn configured(
+    language: &Language,
+    base: &'static LanguageServerSpec,
+) -> (&'static LanguageServerSpec, ServerSettings) {
+    let settings = ServerSettings::read(language.origin, base.id);
+    (settings.spec_for(language.origin, base), settings)
 }
 
 /// Whether the project has what the spec's server works on (its config
