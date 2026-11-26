@@ -29,11 +29,6 @@ rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]
 
 [build]
 jobs = 4
-# No incremental compilation data. Cargo keeps a per-crate incremental cache under target/*/incremental
-# that grows with every rebuild; with this off, rebuilding writes the same artifact files over again.
-# The cost is that a rebuild after an edit recompiles the whole edited crate (measured on one test
-# binary: 41 to 61 s with incremental, 163 s without). Set CARGO_INCREMENTAL=1 for a one-off session.
-incremental = false
 
 [alias]
 set-logo = "run --manifest-path tools/set-logo/Cargo.toml --"
