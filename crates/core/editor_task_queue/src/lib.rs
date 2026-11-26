@@ -31,6 +31,7 @@ mod reveal;
 pub mod pools;
 mod services;
 pub mod threads;
+pub mod thread_stack;
 mod track;
 mod ui_watch;
 

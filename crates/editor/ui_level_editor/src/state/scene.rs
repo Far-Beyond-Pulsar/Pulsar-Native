@@ -179,9 +179,16 @@ impl SceneDomain {
     // ── The world ─────────────────────────────────────────────────────────
 
     /// Read access to the scene's `World`. Holds the scene lock for as long as
-    /// the guard lives; do not hold it across a call that also locks the scene.
+    /// the guard lives.
+    ///
+    /// The read is recursive: it is granted even while a writer waits, so a
+    /// caller that holds one `world()` guard and calls a helper that takes
+    /// another (`require_object` under `level_editor_get_hierarchy`) cannot
+    /// deadlock. A plain `read()` queues behind a waiting writer (the render
+    /// thread writes the scene every frame), the writer waits for the first
+    /// guard, and the UI thread then waits for the writer for good.
     pub fn world(&self) -> MappedRwLockReadGuard<'_, World> {
-        RwLockReadGuard::map(self.scene.read(), |scene| &scene.world)
+        RwLockReadGuard::map(self.scene.read_recursive(), |scene| &scene.world)
     }
 
     /// Write access to the scene's `World`. Same locking rule as [`Self::world`].
@@ -541,5 +548,47 @@ impl SceneDomain {
         // component the restore touched.
         self.construct_pump.resume_after_play();
         self.editor_mode = EditorMode::Edit;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// A `world()` guard held while a writer waits must not stop a second
+    /// `world()` on the same thread (the AI tools do this: a helper such as
+    /// `require_object` takes its own read under the caller's). With a plain
+    /// `read()` this deadlocked the editor: the render thread's per-frame
+    /// scene write queued, the second read queued behind it, and the writer
+    /// waited for the first read.
+    #[test]
+    fn nested_world_reads_do_not_deadlock_behind_a_waiting_writer() {
+        let domain = Arc::new(SceneDomain::default());
+        let (done_tx, done_rx) = mpsc::channel();
+        let (held_tx, held_rx) = mpsc::channel();
+        let reader = {
+            let domain = Arc::clone(&domain);
+            std::thread::spawn(move || {
+                let _first = domain.world();
+                held_tx.send(()).unwrap();
+                // Give the writer time to queue behind the first read.
+                std::thread::sleep(Duration::from_millis(300));
+                let _second = domain.world();
+                done_tx.send(()).unwrap();
+            })
+        };
+        held_rx.recv().unwrap();
+        let writer = {
+            let domain = Arc::clone(&domain);
+            std::thread::spawn(move || drop(domain.world_mut()))
+        };
+        assert!(
+            done_rx.recv_timeout(Duration::from_secs(10)).is_ok(),
+            "a nested world() read deadlocked behind a waiting writer"
+        );
+        reader.join().unwrap();
+        writer.join().unwrap();
     }
 }

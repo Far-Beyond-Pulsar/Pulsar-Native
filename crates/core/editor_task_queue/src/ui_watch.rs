@@ -10,10 +10,11 @@
 //! the work to move into a task.
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Once;
 use std::time::Duration;
 
+use crate::thread_stack;
 use crate::threads::{self, ThreadRole, ThreadSpec};
 use crate::{global, now_ms, TaskDescription};
 
@@ -28,6 +29,14 @@ const SAMPLE_EVERY: Duration = Duration::from_millis(50);
 const SUSPENDED_AFTER: Duration = Duration::from_secs(2);
 
 static LAST_BEAT_MS: AtomicU64 = AtomicU64::new(0);
+/// The OS id of the thread that beats (the UI thread), for its stack.
+static UI_THREAD_ID: AtomicU32 = AtomicU32::new(0);
+/// A stall this long gets its stack logged while it is still going, so a
+/// UI thread that never comes back is still explained (the episode is only
+/// recorded as a task when the beats resume).
+const STALL_STACK_AFTER: Duration = Duration::from_secs(5);
+/// How often the stack of a stall that goes on is logged again.
+const STALL_STACK_EVERY: Duration = Duration::from_secs(30);
 
 /// The UI framework's own account of what the UI thread is running (the
 /// callback, view or foreground future, as a path outer to inner). The
@@ -86,6 +95,9 @@ pub fn record_slow_ui_work(what: String, elapsed: Duration) {
 /// executor. The first call starts the watcher.
 pub fn ui_beat() {
     LAST_BEAT_MS.store(now_ms(), Ordering::Release);
+    if UI_THREAD_ID.load(Ordering::Relaxed) == 0 {
+        UI_THREAD_ID.store(thread_stack::current_thread_id(), Ordering::Relaxed);
+    }
     static START: Once = Once::new();
     START.call_once(start_watcher);
 }
@@ -109,7 +121,9 @@ fn start_watcher() {
                 }
                 let silent = now.saturating_sub(beat);
                 if silent >= UNRESPONSIVE_AFTER.as_millis() as u64 {
-                    episode.get_or_insert_with(|| Episode::new(beat)).sample();
+                    let episode = episode.get_or_insert_with(|| Episode::new(beat));
+                    episode.sample();
+                    episode.report_ongoing(silent);
                 } else if let Some(ended) = episode.take() {
                     ended.record(beat);
                 }
@@ -128,6 +142,8 @@ struct Episode {
     /// What the UI thread was doing, by how many samples saw it.
     seen: BTreeMap<String, u32>,
     samples: u32,
+    /// When the stack of this still-running stall was last logged.
+    stack_logged_ms: Option<u64>,
 }
 
 impl Episode {
@@ -136,7 +152,39 @@ impl Episode {
             from_ms,
             seen: BTreeMap::new(),
             samples: 0,
+            stack_logged_ms: None,
         }
+    }
+
+    /// A stall that is still going after [`STALL_STACK_AFTER`] logs the UI
+    /// thread's stack (and again every [`STALL_STACK_EVERY`]): a thread that
+    /// never comes back never ends its episode, so nothing else would say
+    /// what it waits on. Logged as an error the log file keeps, with the
+    /// frame where the wait is (a lock's `lock_shared_slow`, a channel's
+    /// `recv`, a GPU wait) and the callers that asked for it.
+    fn report_ongoing(&mut self, silent_ms: u64) {
+        if silent_ms < STALL_STACK_AFTER.as_millis() as u64 {
+            return;
+        }
+        let now = now_ms();
+        if self
+            .stack_logged_ms
+            .is_some_and(|at| now.saturating_sub(at) < STALL_STACK_EVERY.as_millis() as u64)
+        {
+            return;
+        }
+        self.stack_logged_ms = Some(now);
+        let id = UI_THREAD_ID.load(Ordering::Relaxed);
+        let stack = (id != 0)
+            .then(|| thread_stack::capture(id))
+            .flatten()
+            .map(|frames| frames.join("\n    "))
+            .unwrap_or_else(|| "(the stack is not available on this platform)".to_owned());
+        tracing::error!(
+            "[UI-STALL] the UI thread has run no frame for {:.1}s; it is {}. Its stack:\n    {stack}",
+            silent_ms as f64 / 1000.0,
+            ui_thread_activity(),
+        );
     }
 
     fn sample(&mut self) {

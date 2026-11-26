@@ -1,5 +1,7 @@
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::components::FileManagerDrawer;
 use crate::utils::cloud_join;
@@ -220,8 +222,7 @@ impl FileManagerDrawer {
                 ..Default::default()
             })
             .ok()?;
-        let marker_paths = self.folder_marker_paths(&index);
-        let class_dirs = class_marker_dirs(&index);
+        let (marker_paths, class_dirs) = self.marker_sets(project_root, &index);
         Some(
             entries
                 .into_iter()
@@ -230,6 +231,39 @@ impl FileManagerDrawer {
                 })
                 .collect(),
         )
+    }
+
+    /// The project-wide marker sets ([`Self::folder_marker_paths`],
+    /// [`class_marker_dirs`]) every folder listing needs. They are index
+    /// scans over the whole project, and a listing runs per folder opened
+    /// (561 calls on the UI thread in one session), so they are kept for a
+    /// moment and shared. A marker file created or removed shows within
+    /// [`MARKER_CACHE_TTL`].
+    fn marker_sets(
+        &self,
+        project_root: &Path,
+        index: &engine_fs::ProjectFileIndex,
+    ) -> (Arc<HashSet<String>>, Arc<HashSet<String>>) {
+        static CACHE: Mutex<Option<MarkerCache>> = Mutex::new(None);
+        let types = self.registered_file_types.len();
+        if let Some(cache) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if cache.root == project_root
+                && cache.types == types
+                && cache.at.elapsed() < MARKER_CACHE_TTL
+            {
+                return (cache.marker_paths.clone(), cache.class_dirs.clone());
+            }
+        }
+        let marker_paths = Arc::new(self.folder_marker_paths(index));
+        let class_dirs = Arc::new(class_marker_dirs(index));
+        *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some(MarkerCache {
+            at: Instant::now(),
+            root: project_root.to_path_buf(),
+            types,
+            marker_paths: marker_paths.clone(),
+            class_dirs: class_dirs.clone(),
+        });
+        (marker_paths, class_dirs)
     }
 
     /// The indexed paths of the marker files of the folder-based file types.
@@ -341,4 +375,16 @@ fn class_marker_dirs(index: &engine_fs::ProjectFileIndex) -> HashSet<String> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// How long [`FileManagerDrawer::marker_sets`] reuses its result.
+const MARKER_CACHE_TTL: Duration = Duration::from_secs(2);
+
+/// The last marker sets, for the project and file types they were read for.
+struct MarkerCache {
+    at: Instant,
+    root: PathBuf,
+    types: usize,
+    marker_paths: Arc<HashSet<String>>,
+    class_dirs: Arc<HashSet<String>>,
 }
