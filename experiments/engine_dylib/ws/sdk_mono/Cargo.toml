@@ -1,0 +1,59 @@
+[package]
+name = "sdk_mono"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+gpui-ce = { path = "../../../../crates/ui/wgpui", features = ["inspector", "flamegraph"] }
+ui = { path = "../../../../crates/ui/wgpui-component/crates/ui", features = ["inspector", "flamegraph", "tree-sitter-languages", "chat-components"] }
+plugin_editor_api = { path = "../../../../crates/core/plugin_editor_api", default-features = false, features = ["editor"] }
+# --- Stage C: Helio kernel crates + wgpu + engine_state
+helio = { path = "../../../../crates/renderer/helio/crates/helio" }
+helio-core = { path = "../../../../crates/renderer/helio/crates/helio-core" }
+helio-tasks = { path = "../../../../crates/renderer/helio/crates/helio-tasks" }
+helio-feature-api = { path = "../../../../crates/renderer/helio/crates/helio-feature-api" }
+helio-frame-api = { path = "../../../../crates/renderer/helio/crates/helio-frame-api" }
+helio-spine = { path = "../../../../crates/renderer/helio/crates/helio-spine" }
+helio-scene-join = { path = "../../../../crates/renderer/helio/crates/helio-scene-join" }
+helio-scene-derivations = { path = "../../../../crates/renderer/helio/crates/helio-scene-derivations" }
+helio-graph-asset = { path = "../../../../crates/renderer/helio/crates/helio-graph-asset" }
+helio-presets = { path = "../../../../crates/renderer/helio/crates/helio-presets" }
+helio-settings = { path = "../../../../crates/renderer/helio/crates/helio-settings" }
+helio-components = { path = "../../../../crates/renderer/helio/crates/helio-components" }
+wgpu = { version = "30", features = ["static-dxc"] }
+engine_state = { path = "../../../../crates/core/engine_state" }
+pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154", features = ["gpu"] }
+# --- Stage C2: the engine/editor crates a plugin root reaches (fog_plugin: engine_backend, ui_level_editor, ...)
+engine_backend = { path = "../../../../crates/core/engine_backend" }
+ui_common = { path = "../../../../crates/editor/ui_common" }
+ui_types_common = { path = "../../../../crates/editor/ui_types_common" }
+plugin_manager = { path = "../../../../crates/core/plugin_manager" }
+ui_level_editor = { path = "../../../../crates/editor/ui_level_editor" }
+ui_core = { path = "../../../../crates/editor/ui_core" }
+ui_loading_screen = { path = "../../../../crates/editor/ui_loading_screen" }
+ui_log_viewer = { path = "../../../../crates/editor/ui_log_viewer" }
+editor_task_queue = { path = "../../../../crates/core/editor_task_queue" }
+pulsar_world_registry = { path = "../../../../crates/core/pulsar_world_registry" }
+pulsar_std = { path = "../../../../crates/core/pulsar_std" }
+ui_git_manager = { path = "../../../../crates/editor/ui_git_manager" }
+ui_flamegraph = { path = "../../../../crates/editor/ui_flamegraph" }
+ui_fab_search = { path = "../../../../crates/editor/ui_fab_search" }
+pulsar_auth = { path = "../../../../crates/core/pulsar_auth" }
+pulsar_package = { path = "../../../../crates/core/pulsar_package", default-features = false, features = ["scripting"] }
+pulsar_dialog_embed = { path = "../../../../crates/core/pulsar_dialog_embed" }
+pulsar_install_layout = { path = "../../../../crates/core/pulsar_install_layout" }
+agent_chat_core = { path = "../../../../crates/agent-providers/agent_chat_core" }
+agent_provider_demo_random = { path = "../../../../crates/agent-providers/agent_provider_demo_random" }
+agent_provider_github_copilot = { path = "../../../../crates/agent-providers/agent_provider_github_copilot" }
+agent_provider_openai = { path = "../../../../crates/agent-providers/agent_provider_openai" }
+agent_provider_opencode = { path = "../../../../crates/agent-providers/agent_provider_opencode" }
+agent_provider_anthropic = { path = "../../../../crates/agent-providers/agent_provider_anthropic" }
+agent_provider_gemini = { path = "../../../../crates/agent-providers/agent_provider_gemini" }
+agent_provider_docker_model_runner = { path = "../../../../crates/agent-providers/agent_provider_docker_model_runner" }
+agent_provider_aws_bedrock = { path = "../../../../crates/agent-providers/agent_provider_aws_bedrock" }
+agent_provider_vertex_ai = { path = "../../../../crates/agent-providers/agent_provider_vertex_ai" }
+linked_plugins = { path = "../../../../plugins/linked" }

@@ -1,0 +1,26 @@
+[package]
+name = "sdk_extra"
+version = "0.1.0"
+edition = "2021"
+publish = false
+[lib]
+crate-type = ["dylib"]
+[dependencies]
+sdk_dylib = { path = "../sdk_dylib" }
+ui_flamegraph = { path = "../../../../crates/editor/ui_flamegraph" }
+ui_fab_search = { path = "../../../../crates/editor/ui_fab_search" }
+pulsar_auth = { path = "../../../../crates/core/pulsar_auth" }
+pulsar_package = { path = "../../../../crates/core/pulsar_package", default-features = false, features = ["scripting"] }
+pulsar_dialog_embed = { path = "../../../../crates/core/pulsar_dialog_embed" }
+pulsar_install_layout = { path = "../../../../crates/core/pulsar_install_layout" }
+agent_chat_core = { path = "../../../../crates/agent-providers/agent_chat_core" }
+agent_provider_demo_random = { path = "../../../../crates/agent-providers/agent_provider_demo_random" }
+agent_provider_github_copilot = { path = "../../../../crates/agent-providers/agent_provider_github_copilot" }
+agent_provider_openai = { path = "../../../../crates/agent-providers/agent_provider_openai" }
+agent_provider_opencode = { path = "../../../../crates/agent-providers/agent_provider_opencode" }
+agent_provider_anthropic = { path = "../../../../crates/agent-providers/agent_provider_anthropic" }
+agent_provider_gemini = { path = "../../../../crates/agent-providers/agent_provider_gemini" }
+agent_provider_docker_model_runner = { path = "../../../../crates/agent-providers/agent_provider_docker_model_runner" }
+agent_provider_aws_bedrock = { path = "../../../../crates/agent-providers/agent_provider_aws_bedrock" }
+agent_provider_vertex_ai = { path = "../../../../crates/agent-providers/agent_provider_vertex_ai" }
+linked_plugins = { path = "../../../../plugins/linked" }

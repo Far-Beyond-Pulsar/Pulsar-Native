@@ -29,11 +29,38 @@ scene lighting (including moonlight) comes from `LightComponent`s.
 | `sky_texture_{yaw,pitch,roll}_deg` | Orientation (yaw about Y, then pitch about X, then roll about Z) |
 
 The panorama, stars and shooting stars fade by the directional lights'
-brightness, not a horizon test: `sky_daylight` sums each light's luminance
-weighted by its elevation, and `sky_darkness` maps that to 0..1 (full dark below
-~0.05, full day above ~0.6; the default sun is ~2, the default moon 0.025). A
-dim moon light being up does not end the night. The panorama is not a daytime
-backdrop.
+brightness, not a horizon test: the sky's resolve kernel (`resolve` in
+`atmosphere_luts.wgsl`) sums each light's luminance weighted by its elevation
+(`daylight`) and maps it to a darkness 0..1 (`sky_darkness_of`: full dark below
+~0.05, full day above ~0.6; the default sun is ~2, the default moon 0.025),
+once a frame, into `SkyLayersFrame::night.x`; the composite and the clouds read
+that one value. A dim moon light being up does not end the night. The panorama
+is not a daytime backdrop. `helio_pass_sky::night` is the CPU twin of the
+constants and the formulas (`tests/night.rs` holds them to the WGSL).
+
+## Clouds at night
+
+The moon is not the sky's: it is a directional `LightComponent` with an emitter
+disk, and the clouds sum every directional light with its own direction and
+radiance (`cloud_directional_radiance`), the air's irradiance (`sky_table_eval`,
+also per light) as their ambient. At the engine's exposure the authored moon
+(0.025 against the sun's 2) scatters about 0.002 towards the eye, and the
+airglow and starlight that light a real night are in no light, so the clouds
+rendered as black blobs. Two sky settings (Night Sky category of the
+`AtmosphereComponent`, so in World Settings and the inspector) add what the sum
+lacks; both multiply by the darkness, so a lit day is bit-identical:
+
+| Property | Meaning |
+|---|---|
+| `night_cloud_light` | Linear radiance of the airglow and starlight that fills the clouds (the sky table's unit, irradiance over pi), cool-tinted (`CLOUD_NIGHT_TINT`); an ambient reaching what the moon does not: thin parts, the sides turned from it, the cores. Default 0.02 |
+| `cloud_moon_boost` | Stops (EV) by which a celestial body, a light whose emitter disk is enabled (`sky_is_celestial`), lights the clouds brighter in the dark than it is authored (the clouds seen by an eye adapted to the night). 0 as authored. Default 5 |
+
+The moon's phase is its light's authored intensity (the disk already shades by
+the other lights' direction); its elevation and the air in front of it come
+through the transmittance table, as for the sun, so a low moon is dimmer and
+warmer. Stars behind thin cloud show through its transmittance (the composite
+multiplies the sky by `1 - opacity`). Zeroed rows (a host that sets neither)
+leave the clouds as they were.
 
 ## Stars and shooting stars
 

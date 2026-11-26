@@ -1,0 +1,8 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+shared = { path = "../shared" }
+shared_dylib = { path = "../shared_dylib" }
+libloading = "0.8"

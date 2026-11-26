@@ -1,0 +1,18 @@
+[package]
+name = "host_probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sdk_dylib = { path = "../sdk_dylib" }
+gpui-ce = { path = "../../../../crates/ui/wgpui", features = ["inspector", "flamegraph"] }
+ui = { path = "../../../../crates/ui/wgpui-component/crates/ui", features = ["inspector", "flamegraph", "tree-sitter-languages", "chat-components"] }
+pulsar_lsp = { path = "../../../../crates/core/pulsar_lsp" }
+pulsar_plugins = { path = "../../../../crates/core/pulsar_plugins" }
+helio-core = { path = "../../../../crates/renderer/helio/crates/helio-core" }
+helio-tasks = { path = "../../../../crates/renderer/helio/crates/helio-tasks" }
+engine_state = { path = "../../../../crates/core/engine_state" }
+libloading = "0.8"
+sdk_extra = { path = "../sdk_extra" }
+agent_chat_core = { path = "../../../../crates/agent-providers/agent_chat_core" }

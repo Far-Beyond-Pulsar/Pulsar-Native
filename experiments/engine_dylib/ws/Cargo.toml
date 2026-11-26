@@ -1,0 +1,75 @@
+# Spike workspace (own [workspace], so the repo's Cargo.toml/Cargo.lock are untouched).
+# Paths point into the monorepo; [patch] sections are copied from the root Cargo.toml
+# (paths rewritten with a ../../../ prefix) because patches only apply from a workspace root.
+[workspace]
+resolver = "2"
+members = ["sdk_dylib", "sdk_extra", "fog_wrapper", "fog_wrapper_static", "host_probe"]
+
+[profile.release]
+# same as the monorepo (defaults)
+
+[patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
+gpui-ce = { path = "../../../crates/ui/wgpui" }
+
+# Helio's wgpu: the upstream v30.0.1 tag plus Helio's patches, on our fork's
+# helio/v30.0.1 branch (acceleration-structure refit and safe compaction;
+# texture tracker start states, which put HiZ mips in the wrong Vulkan
+# layout; handles compared by instance and id). Patches only
+# apply from the root manifest, so this mirrors Helio's own
+# `[patch.crates-io]`; patching the whole wgpu workspace keeps naga and
+# wgpu-types a single version. Change it together with Helio's.
+[patch.crates-io]
+# Pulsar's parking_lot_core: one parked-thread table for the host and every plugin library.
+parking_lot_core = { path = "../../../crates/third-party/parking_lot_core" }
+naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core-deps-apple = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core-deps-emscripten = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-core-deps-windows-linux-android = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-hal = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-naga-bridge = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+wgpu-types = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", branch = "helio/v30.0.1" }
+
+# The flamegraph reads ONE global profiler. Helio and SceneDB pin the
+# Pulsar-Profiling repository by git rev (different revs); unpatched, each
+# would link its own copy with a private `PROFILER` static, and their scopes
+# would go to a profiler nobody drains.
+[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling"]
+profiling = { path = "../../../crates/external/pulsar-profiling/crates/profiling" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/Graphy"]
+graphy = { path = "../../../crates/third-party/graphy" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/PulsarConfig"]
+pulsar-config = { path = "../../../crates/third-party/pulsar-config" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/WGPUI-Component"]
+ui = { path = "../../../crates/ui/wgpui-component/crates/ui" }
+ui-macros = { path = "../../../crates/ui/wgpui-component/crates/ui-macros" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/ToolbeltRS"]
+tool_registry = { path = "../../../crates/third-party/toolbelt/crates/tool_registry" }
+tool_registry_macros = { path = "../../../crates/third-party/toolbelt/crates/tool_registry_macros" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/PSGC"]
+psgc = { path = "../../../crates/third-party/psgc/crates/psgc" }
+wgsl_std = { path = "../../../crates/third-party/psgc/crates/wgsl_std" }
+
+# Pulsar-Reflection is a plain git dependency (Pulsar-Native#844): the root pins
+# above name the rev, and every other copy in the graph -- SceneDB's and
+# Helio's own pins, the plugins' -- is patched onto it so the reflection types
+# keep a single identity. Bump by changing the pins and the three revs below
+# together. The `//` URL spelling is what lets a patch point at a different rev
+# of the "same" source.
+[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
+pulsar_reflection = { path = "../../../crates/external/pulsar-reflection/crates/pulsar_reflection" }
+pulsar_reflection_derive = { path = "../../../crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
+pulsar_reflection_codegen = { path = "../../../crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
+# SceneDB: Pulsar, Helio and the plugins pin it by git rev; every copy in the
+# graph resolves to the one rev Pulsar names (the `//` URL spelling lets a
+# patch point at a different rev of the same repository), so SceneDB's types
+# are one set of types for all of them.
+[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "cdad160514f6acc2c3cac178120d1e99b1b8f154" }

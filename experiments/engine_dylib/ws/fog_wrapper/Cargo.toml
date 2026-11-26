@@ -1,0 +1,21 @@
+[package]
+name = "fog_wrapper"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sdk_dylib = { path = "../sdk_dylib" }
+# the real, unmodified plugin root (editor feature = what its `dll` feature turns on, minus the export macro, which the wrapper invokes)
+fog_plugin = { path = "../../../../plugins/vendor/fog", features = ["editor"] }
+plugin_editor_api = { path = "../../../../crates/core/plugin_editor_api", default-features = false, features = ["editor"] }
+gpui-ce = { path = "../../../../crates/ui/wgpui", features = ["inspector", "flamegraph"] }
+ui = { path = "../../../../crates/ui/wgpui-component/crates/ui", features = ["inspector", "flamegraph", "tree-sitter-languages", "chat-components"] }
+pulsar_lsp = { path = "../../../../crates/core/pulsar_lsp" }
+pulsar_plugins = { path = "../../../../crates/core/pulsar_plugins" }
+helio-core = { path = "../../../../crates/renderer/helio/crates/helio-core" }
+helio-tasks = { path = "../../../../crates/renderer/helio/crates/helio-tasks" }
+engine_state = { path = "../../../../crates/core/engine_state" }
