@@ -27,13 +27,11 @@ impl SceneInspectorView {
                     cx,
                     move |this, cx| {
                         if this.scene.as_ref().map(|(current, _)| *current) != Some(id) {
-                            if let Some(listed) =
-                                engine_backend::services::scene_directory::list()
-                                    .into_iter()
-                                    .find(|scene| scene.id == id)
+                            if let Some(listed) = engine_backend::services::scene_directory::list()
+                                .into_iter()
+                                .find(|scene| scene.id == id)
                             {
-                                this.scene =
-                                    Some((id, std::sync::Arc::downgrade(&listed.scene)));
+                                this.scene = Some((id, std::sync::Arc::downgrade(&listed.scene)));
                                 this.reset_scene(cx);
                             }
                         }
@@ -75,23 +73,21 @@ impl SceneInspectorView {
             .child(caption("Scene", cx))
             .children(scenes)
             .child(div().flex_1())
-            .child(
-                chip(
-                    "follow-editor",
-                    "Follow editor selection",
-                    self.follow_editor,
-                    cx,
-                    |this, cx| {
-                        this.follow_editor = !this.follow_editor;
-                        if this.follow_editor {
-                            // Jump to what is selected in the editor now.
-                            this.followed = None;
-                            this.request_refresh(false, cx);
-                        }
-                        cx.notify();
-                    },
-                ),
-            )
+            .child(chip(
+                "follow-editor",
+                "Follow editor selection",
+                self.follow_editor,
+                cx,
+                |this, cx| {
+                    this.follow_editor = !this.follow_editor;
+                    if this.follow_editor {
+                        // Jump to what is selected in the editor now.
+                        this.followed = None;
+                        this.request_refresh(false, cx);
+                    }
+                    cx.notify();
+                },
+            ))
             .child(chip(
                 "live",
                 if self.live { "● Live" } else { "Paused" },

@@ -163,7 +163,11 @@ impl SceneInspectorView {
     pub(crate) fn refresh_scenes(&mut self, cx: &mut Context<Self>) {
         let scenes = scene_directory::list();
         let ids: Vec<(u64, &str)> = scenes.iter().map(|s| (s.id, s.label.as_str())).collect();
-        let had: Vec<(u64, &str)> = self.scenes.iter().map(|(id, label)| (*id, label.as_str())).collect();
+        let had: Vec<(u64, &str)> = self
+            .scenes
+            .iter()
+            .map(|(id, label)| (*id, label.as_str()))
+            .collect();
         let changed = ids != had;
         let current = self.scene.as_ref().map(|(id, _)| *id);
         if !current.is_some_and(|id| scenes.iter().any(|s| s.id == id)) {
@@ -175,10 +179,7 @@ impl SceneInspectorView {
             }
         }
         if changed {
-            self.scenes = scenes
-                .iter()
-                .map(|s| (s.id, s.label.clone()))
-                .collect();
+            self.scenes = scenes.iter().map(|s| (s.id, s.label.clone())).collect();
             cx.notify();
         }
     }
@@ -197,7 +198,8 @@ impl SceneInspectorView {
         };
         let now = Instant::now();
         let force_index = std::mem::take(&mut self.refresh.force_index);
-        let index_due = force_index || self.index.is_none() || (self.live && now >= self.refresh.index_due);
+        let index_due =
+            force_index || self.index.is_none() || (self.live && now >= self.refresh.index_due);
         let job = Job {
             scene,
             scene_id,
@@ -218,7 +220,10 @@ impl SceneInspectorView {
         self.refresh.requested = false;
         self.refresh.running = true;
         cx.spawn(async move |view, cx| {
-            let done = cx.background_executor().spawn(async move { run(job) }).await;
+            let done = cx
+                .background_executor()
+                .spawn(async move { run(job) })
+                .await;
             let _ = view.update(cx, |view, cx| view.apply(done, cx));
         })
         .detach();

@@ -152,12 +152,15 @@ impl SceneInspectorView {
                             })),
                     ),
             )
-            .child(line("Entity", format!(
-                "{} (index {}, generation {})",
-                format::entity(entity),
-                entity.index(),
-                entity.generation()
-            )))
+            .child(line(
+                "Entity",
+                format!(
+                    "{} (index {}, generation {})",
+                    format::entity(entity),
+                    entity.index(),
+                    entity.generation()
+                ),
+            ))
             .child(line("Bits", format!("{:#018x}", entity.bits())))
             .child(line(
                 "Archetype",
@@ -186,9 +189,7 @@ impl SceneInspectorView {
                                 .text_color(theme.link)
                                 .child(format!("{label} ({})", format::entity(owner))),
                         )
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.follow_link(owner, cx)),
-                        ),
+                        .on_click(cx.listener(move |this, _, _, cx| this.follow_link(owner, cx))),
                 )
             })
             .into_any_element()
@@ -221,17 +222,11 @@ fn component_row(
                 .border_color(theme.border)
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(theme.muted_foreground)
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .child(if own {
-                            "On this entity".to_string()
-                        } else {
-                            format!("Attached: {}", content.title)
-                        }),
-                )
+                .child(div().flex_1().min_w_0().truncate().child(if own {
+                    "On this entity".to_string()
+                } else {
+                    format!("Attached: {}", content.title)
+                }))
                 .when(content.enabled == Some(false), |row| {
                     row.child(div().text_color(theme.warning).child("disabled"))
                 })
@@ -244,9 +239,7 @@ fn component_row(
                                 .text_color(theme.link)
                                 .child(format::entity(entity)),
                         )
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.follow_link(entity, cx)),
-                        )
+                        .on_click(cx.listener(move |this, _, _, cx| this.follow_link(entity, cx)))
                 })
                 .into_any_element()
         }
@@ -261,15 +254,13 @@ fn component_row(
                 .tooltip(move |window, cx| {
                     ui::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
                 })
-                .child(
-                    Icon::new(IconName::Component)
-                        .size_3p5()
-                        .text_color(if item.class.is_some() {
-                            theme.info
-                        } else {
-                            theme.muted_foreground
-                        }),
-                )
+                .child(Icon::new(IconName::Component).size_3p5().text_color(
+                    if item.class.is_some() {
+                        theme.info
+                    } else {
+                        theme.muted_foreground
+                    },
+                ))
                 .child(
                     div()
                         .flex_1()

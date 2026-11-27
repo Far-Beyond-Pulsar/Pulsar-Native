@@ -13,7 +13,7 @@ use gpui::{prelude::*, *};
 use pulsar_reflection::{BoundPropertyEditor, PropertyEditorArgs};
 use std::path::{Path, PathBuf};
 use ui::button::{Button, ButtonVariants as _};
-use ui::{h_flex, popover::Popover, ActiveTheme, Sizable};
+use ui::{h_flex, popover::Popover, Sizable};
 
 /// A property value that is a project-relative asset path.
 pub trait AssetPathValue: Clone + Send + Sync + 'static {
@@ -120,51 +120,41 @@ impl<P: AssetPathValue> Render for AssetPathEditor<P> {
         let clear_id = format!("{id}-clear");
         let write_back = self.write_back.clone();
         let entity = cx.entity();
-        let muted = cx.theme().muted_foreground;
 
-        h_flex()
-            .w_full()
-            .justify_between()
+        let control = h_flex()
+            .gap_1()
             .items_center()
-            .gap_2()
-            .py_1()
-            .child(div().text_sm().text_color(muted).child(self.label.clone()))
             .child(
-                h_flex()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        Popover::<AssetPicker>::new(format!("{id}-picker"))
-                            .anchor(Corner::BottomRight)
-                            .trigger(
-                                Button::new(format!("{id}-btn"))
-                                    .label(display)
-                                    .small()
-                                    .ghost()
-                                    .dropdown_caret(true),
-                            )
-                            .content(move |_window, _cx| picker.clone()),
+                Popover::<AssetPicker>::new(format!("{id}-picker"))
+                    .anchor(Corner::BottomLeft)
+                    .trigger(
+                        Button::new(format!("{id}-btn"))
+                            .label(display)
+                            .xsmall()
+                            .ghost()
+                            .dropdown_caret(true),
                     )
-                    .when(clear_enabled, |row| {
-                        row.child(
-                            Button::new(clear_id)
-                                .label("Clear")
-                                .small()
-                                .ghost()
-                                .tooltip("Remove the path")
-                                .on_click(move |_, window, cx| {
-                                    picker_for_clear.update(cx, |picker, _| {
-                                        picker.set_selected_path(String::new())
-                                    });
-                                    entity.update(cx, |this, cx| {
-                                        this.path.clear();
-                                        cx.notify();
-                                    });
-                                    write_back(Box::new(P::from_path(String::new())), window, cx);
-                                }),
-                        )
-                    }),
+                    .content(move |_window, _cx| picker.clone()),
             )
+            .when(clear_enabled, |row| {
+                row.child(
+                    Button::new(clear_id)
+                        .label("Clear")
+                        .xsmall()
+                        .ghost()
+                        .tooltip("Remove the path")
+                        .on_click(move |_, window, cx| {
+                            picker_for_clear
+                                .update(cx, |picker, _| picker.set_selected_path(String::new()));
+                            entity.update(cx, |this, cx| {
+                                this.path.clear();
+                                cx.notify();
+                            });
+                            write_back(Box::new(P::from_path(String::new())), window, cx);
+                        }),
+                )
+            });
+        pulsar_reflection::prims::style::property_row(&self.label, control, cx)
     }
 }
 

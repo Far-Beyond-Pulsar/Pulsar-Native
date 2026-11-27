@@ -6,6 +6,7 @@
 
 use crate::asset_picker::{AssetPickedEvent, AssetPicker, AssetQuery};
 use gpui::{prelude::*, *};
+use pulsar_reflection::prims::style;
 use pulsar_reflection::{AssetKind, AssetRef, BoundPropertyEditor, PropertyEditorArgs};
 use std::path::{Path, PathBuf};
 use ui::button::{Button, ButtonVariants as _};
@@ -133,63 +134,48 @@ impl<K: AssetKind> Render for AssetRefEditor<K> {
         let entity = cx.entity();
         let muted = cx.theme().muted_foreground;
 
-        v_flex()
-            .w_full()
-            .gap_0p5()
-            .py_1()
+        let control = h_flex()
+            .gap_1()
+            .items_center()
             .child(
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(div().text_sm().text_color(muted).child(self.label.clone()))
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .items_center()
-                            .child(
-                                Popover::<AssetPicker>::new(format!("{id}-picker"))
-                                    .anchor(Corner::BottomRight)
-                                    .trigger(
-                                        Button::new(format!("{id}-btn"))
-                                            .label(display)
-                                            .small()
-                                            .ghost()
-                                            .dropdown_caret(true),
-                                    )
-                                    .content(move |_window, _cx| picker.clone()),
-                            )
-                            .when(clear_enabled, |row| {
-                                row.child(
-                                    Button::new(clear_id)
-                                        .label("Clear")
-                                        .small()
-                                        .ghost()
-                                        .tooltip("Remove the reference")
-                                        .on_click(move |_, window, cx| {
-                                            picker_for_clear.update(cx, |picker, _| {
-                                                picker.set_selected_path(String::new())
-                                            });
-                                            entity.update(cx, |this, cx| {
-                                                this.path.clear();
-                                                cx.notify();
-                                            });
-                                            write_back(Box::new(None::<AssetRef<K>>), window, cx);
-                                        }),
-                                )
-                            }),
-                    ),
+                Popover::<AssetPicker>::new(format!("{id}-picker"))
+                    .anchor(Corner::BottomLeft)
+                    .trigger(
+                        Button::new(format!("{id}-btn"))
+                            .label(display)
+                            .xsmall()
+                            .ghost()
+                            .dropdown_caret(true),
+                    )
+                    .content(move |_window, _cx| picker.clone()),
             )
-            .children(details.into_iter().map(|(name, value)| {
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(div().text_xs().text_color(muted).child(name))
-                    .child(div().text_xs().text_color(muted).child(value))
-            }))
+            .when(clear_enabled, |row| {
+                row.child(
+                    Button::new(clear_id)
+                        .label("Clear")
+                        .xsmall()
+                        .ghost()
+                        .tooltip("Remove the reference")
+                        .on_click(move |_, window, cx| {
+                            picker_for_clear
+                                .update(cx, |picker, _| picker.set_selected_path(String::new()));
+                            entity.update(cx, |this, cx| {
+                                this.path.clear();
+                                cx.notify();
+                            });
+                            write_back(Box::new(None::<AssetRef<K>>), window, cx);
+                        }),
+                )
+            });
+        let row = style::property_row(&self.label, control, cx);
+        let details: Vec<_> = details
+            .into_iter()
+            .map(|(name, value)| {
+                let value = style::mono().text_color(muted).child(value);
+                style::property_row(&name, value, cx)
+            })
+            .collect();
+        v_flex().w_full().child(row).children(details)
     }
 }
 

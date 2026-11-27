@@ -81,14 +81,17 @@ impl Query {
     }
 
     fn entity(&self, row: &EntityRow, per_archetype: &[Vec<bool>]) -> bool {
-        self.terms.iter().zip(per_archetype).all(|(term, by_archetype)| {
-            let found = if term.component {
-                by_archetype[row.archetype as usize]
-            } else {
-                row.haystack.contains(&term.text)
-            };
-            found != term.negated
-        })
+        self.terms
+            .iter()
+            .zip(per_archetype)
+            .all(|(term, by_archetype)| {
+                let found = if term.component {
+                    by_archetype[row.archetype as usize]
+                } else {
+                    row.haystack.contains(&term.text)
+                };
+                found != term.negated
+            })
     }
 
     /// Whether a component type passes the plain and component terms, for

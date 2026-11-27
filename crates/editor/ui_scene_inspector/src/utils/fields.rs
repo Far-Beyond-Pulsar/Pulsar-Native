@@ -694,7 +694,10 @@ mod tests {
         toggled.toggle("0");
         let (open, _) = rows(&set, &toggled, "");
         // 25,000 items: three ranges of 10,000.
-        assert_eq!(paths(&open), ["0", "0#0+10000", "0#10000+10000", "0#20000+10000"]);
+        assert_eq!(
+            paths(&open),
+            ["0", "0#0+10000", "0#10000+10000", "0#20000+10000"]
+        );
 
         toggled.toggle("0#20000+10000");
         let (deeper, _) = rows(&set, &toggled, "");

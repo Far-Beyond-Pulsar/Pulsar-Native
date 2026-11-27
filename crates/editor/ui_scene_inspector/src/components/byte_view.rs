@@ -227,9 +227,7 @@ impl SceneInspectorView {
                         .xsmall()
                         .icon(IconName::ChevronRight)
                         .disabled(page + 1 >= pages)
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| this.set_page(page + 1, cx)),
-                        ),
+                        .on_click(cx.listener(move |this, _, _, cx| this.set_page(page + 1, cx))),
                 )
             })
             .child(div().flex_1())
@@ -257,9 +255,8 @@ impl SceneInspectorView {
     ) -> AnyElement {
         let theme = cx.theme().clone();
 
-        let heading = |text: String, width: f32| {
-            div().flex_none().w(px(width)).text_center().child(text)
-        };
+        let heading =
+            |text: String, width: f32| div().flex_none().w(px(width)).text_center().child(text);
         let column_heads = |cell: f32, gaps: bool| {
             (0..grid.per_row).map(move |at| {
                 heading(format!("{at:02x}"), cell).ml(px(if gaps { grid.gap(at) } else { 0.0 }))
@@ -278,18 +275,20 @@ impl SceneInspectorView {
                     .flex_none()
                     .w(px(grid.gutter()))
                     .px_2()
-                    .child(if grid.column { "Entity · offset" } else { "Offset" }),
+                    .child(if grid.column {
+                        "Entity · offset"
+                    } else {
+                        "Offset"
+                    }),
             )
             .children(column_heads(grid.cell(), true))
             .when(grid.binary, |header| {
-                header
-                    .child(div().flex_none().w(px(SEPARATOR)))
-                    .child(
-                        div()
-                            .flex_none()
-                            .w(px(ASIDE_HEX_CELL * grid.per_row as f32))
-                            .child("Hex"),
-                    )
+                header.child(div().flex_none().w(px(SEPARATOR))).child(
+                    div()
+                        .flex_none()
+                        .w(px(ASIDE_HEX_CELL * grid.per_row as f32))
+                        .child("Hex"),
+                )
             })
             .child(div().flex_none().w(px(SEPARATOR)))
             .child(div().flex_none().child("Text"));
@@ -413,8 +412,7 @@ impl SceneInspectorView {
                     }),
                 )
                 .on_mouse_move(cx.listener(move |this, event: &MouseMoveEvent, _, cx| {
-                    if event.pressed_button == Some(MouseButton::Left)
-                        && this.bytes.cursor != index
+                    if event.pressed_button == Some(MouseButton::Left) && this.bytes.cursor != index
                     {
                         this.place_cursor(index, true, cx);
                     }
@@ -451,9 +449,9 @@ impl SceneInspectorView {
                                 .cursor_pointer()
                                 .text_color(theme.link)
                                 .child(format::entity(entity))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.follow_link(entity, cx)
-                                })),
+                                .on_click(
+                                    cx.listener(move |this, _, _, cx| this.follow_link(entity, cx)),
+                                ),
                         )
                         .child(
                             div()
@@ -695,9 +693,9 @@ impl SceneInspectorView {
                             .text_color(theme.foreground)
                             .child(value),
                     )
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.copy(copied.clone(), label, cx)
-                    }))
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| this.copy(copied.clone(), label, cx)),
+                    )
                     .into_any_element()
             })
             .collect();
@@ -730,15 +728,11 @@ impl SceneInspectorView {
                     )),
             )
             .child(h_flex().flex_wrap().gap_1().children(readings))
-            .child(
-                div()
-                    .text_color(theme.muted_foreground)
-                    .child(
-                        "These are the value's bytes as stored in its column. Heap data (a \
+            .child(div().text_color(theme.muted_foreground).child(
+                "These are the value's bytes as stored in its column. Heap data (a \
                          String's text, a Vec's items) appears only as pointer, length and \
                          capacity.",
-                    ),
-            )
+            ))
             .into_any_element()
     }
 }

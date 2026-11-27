@@ -2,11 +2,7 @@
 //! archetypes.
 
 use gpui::{prelude::*, *};
-use ui::{
-    h_flex,
-    input::TextInput,
-    v_flex, ActiveTheme, Icon, IconName, Sizable as _,
-};
+use ui::{h_flex, input::TextInput, v_flex, ActiveTheme, Icon, IconName, Sizable as _};
 
 use crate::components::widgets::{chip, empty_state, virtual_list, MONO};
 use crate::screen::SceneInspectorView;
@@ -46,7 +42,10 @@ impl SceneInspectorView {
                     "Terms match names and ids. has:Type matches by component, -term excludes.",
                 )
             } else {
-                ("Nothing here", "The scene has nothing to list in this view.")
+                (
+                    "Nothing here",
+                    "The scene has nothing to list in this view.",
+                )
             };
             empty_state(IconName::Search, title, detail, cx)
         } else {
@@ -201,15 +200,13 @@ impl SceneInspectorView {
                 base.pl(px(4.0))
                     .text_color(theme.foreground)
                     .child(chevron(Some(open), cx))
-                    .child(
-                        Icon::new(IconName::Component)
-                            .size_3p5()
-                            .text_color(if ty.class.is_some() {
-                                theme.info
-                            } else {
-                                theme.muted_foreground
-                            }),
-                    )
+                    .child(Icon::new(IconName::Component).size_3p5().text_color(
+                        if ty.class.is_some() {
+                            theme.info
+                        } else {
+                            theme.muted_foreground
+                        },
+                    ))
                     .child(name(ty.name.to_string().into()))
                     .child(aside(format!(
                         "{} × {}",

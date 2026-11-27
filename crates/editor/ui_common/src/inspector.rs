@@ -18,6 +18,7 @@ use crate::inspector_model::{
     Query,
 };
 use gpui::{prelude::*, *};
+use pulsar_reflection::prims::style;
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::scroll::{Scrollbar, ScrollbarState};
@@ -215,20 +216,37 @@ impl<V: Render + 'static> Inspector<V> {
                 }
             })
         });
-        h_flex()
+        // One table row: a hairline under it, every second property tinted,
+        // lit under the pointer. The tint goes by the property, so the rows
+        // one long value offers share it and read as one block.
+        let stripe = (prop % 2 == 1).then(|| cx.theme().muted.opacity(0.08));
+        let hover = cx.theme().list_hover;
+        div()
             .w_full()
-            .px_3()
-            .py(px(2.))
-            .gap_1()
-            .items_stretch()
-            .bg(cx.theme().sidebar)
+            .bg(cx.theme().background)
             .border_l_1()
             .border_r_1()
             .border_color(cx.theme().border)
-            .when_some(accent, |d, color| {
-                d.child(div().w(px(3.)).rounded_full().flex_shrink_0().bg(color))
-            })
-            .child(div().flex_1().min_w_0().child(row))
+            .child(
+                h_flex()
+                    .w_full()
+                    .px_2()
+                    .gap_2()
+                    .items_stretch()
+                    .border_b_1()
+                    .border_color(cx.theme().border.opacity(0.35))
+                    .when_some(stripe, |d, color| d.bg(color))
+                    .hover(move |d| d.bg(hover))
+                    // The bar's slot is kept without a category, so names
+                    // line up from card top to bottom.
+                    .child(
+                        div()
+                            .w(px(2.))
+                            .flex_shrink_0()
+                            .when_some(accent, |d, color| d.bg(color)),
+                    )
+                    .child(div().flex_1().min_w_0().child(row)),
+            )
             .into_any_element()
     }
 
@@ -240,18 +258,18 @@ impl<V: Render + 'static> Inspector<V> {
 
         v_flex()
             .w_full()
-            .pt_2()
+            .pt_1p5()
             .child(
                 v_flex()
                     .w_full()
                     .gap_1()
-                    .px_3()
-                    .py_2()
+                    .px_2()
+                    .py_1p5()
                     .bg(cx.theme().sidebar)
                     .border_1()
                     .border_color(cx.theme().border)
-                    .when(collapsed, |d| d.rounded(px(8.0)))
-                    .when(!collapsed, |d| d.rounded_t(px(8.0)))
+                    .when(collapsed, |d| d.rounded(px(4.0)))
+                    .when(!collapsed, |d| d.rounded_t(px(4.0)))
                     .child(
                         h_flex()
                             .id(SharedString::from(format!("{}-card-{key}", self.id)))
@@ -268,27 +286,24 @@ impl<V: Render + 'static> Inspector<V> {
                                     cx.notify();
                                 }),
                             )
+                            .child(style::chevron(!collapsed, cx))
                             .child(
-                                Icon::new(if collapsed {
-                                    IconName::ChevronRight
-                                } else {
-                                    IconName::ChevronDown
-                                })
-                                .xsmall()
-                                .text_color(cx.theme().muted_foreground),
+                                Icon::new(IconName::Component)
+                                    .size_3p5()
+                                    .text_color(cx.theme().info),
                             )
-                            .child(Icon::new(IconName::Component).small())
                             .child(
                                 div()
                                     .flex_1()
-                                    .text_sm()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_xs()
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_color(cx.theme().foreground)
                                     .child(card.title.clone()),
                             )
                             .child(
-                                div()
-                                    .text_xs()
+                                style::mono()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(card.props.len().to_string()),
                             ),
@@ -318,13 +333,15 @@ impl<V: Render + 'static> Inspector<V> {
 
         h_flex()
             .w_full()
-            .px_3()
-            .pt(px(4.))
-            .items_center()
-            .justify_between()
+            .min_h(px(style::ROW_HEIGHT))
+            .px_2()
+            .gap_2()
+            .items_end()
+            .pb_1()
             .bg(cx.theme().sidebar)
             .border_l_1()
             .border_r_1()
+            .border_b_1()
             .border_color(cx.theme().border)
             .cursor_pointer()
             .on_mouse_down(
@@ -338,22 +355,8 @@ impl<V: Render + 'static> Inspector<V> {
                     cx.notify();
                 }),
             )
-            .child(
-                div()
-                    .text_sm()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(color)
-                    .child(name.to_string()),
-            )
-            .child(
-                Icon::new(if collapsed {
-                    IconName::ChevronRight
-                } else {
-                    IconName::ChevronDown
-                })
-                .xsmall()
-                .text_color(color),
-            )
+            .child(style::chevron(!collapsed, cx).text_color(color))
+            .child(style::heading(name, color).flex_1().min_w_0().truncate())
             .into_any_element()
     }
 

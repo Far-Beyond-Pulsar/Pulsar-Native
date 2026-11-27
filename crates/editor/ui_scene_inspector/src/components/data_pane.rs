@@ -38,9 +38,13 @@ impl SceneInspectorView {
         .into_iter()
         .enumerate()
         .map(|(ix, (choice, label))| {
-            chip(("data-tab", ix), label, tab == choice, cx, move |this, cx| {
-                this.set_tab(choice, cx)
-            })
+            chip(
+                ("data-tab", ix),
+                label,
+                tab == choice,
+                cx,
+                move |this, cx| this.set_tab(choice, cx),
+            )
             .into_any_element()
         })
         .collect::<Vec<_>>();
@@ -65,9 +69,13 @@ impl SceneInspectorView {
                         .child(chip("open-hex", "View as hex", true, cx, |this, cx| {
                             this.set_tab(DataTab::Hex, cx)
                         }))
-                        .child(chip("open-binary", "View as binary", true, cx, |this, cx| {
-                            this.set_tab(DataTab::Binary, cx)
-                        })),
+                        .child(chip(
+                            "open-binary",
+                            "View as binary",
+                            true,
+                            cx,
+                            |this, cx| this.set_tab(DataTab::Binary, cx),
+                        )),
                 )
                 .into_any_element(),
             DataTab::Hex | DataTab::Binary => self.render_bytes(cx),
@@ -139,8 +147,8 @@ impl SceneInspectorView {
                                 .label("JSON")
                                 .icon(IconName::Copy)
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    let text = serde_json::to_string_pretty(&json)
-                                        .unwrap_or_default();
+                                    let text =
+                                        serde_json::to_string_pretty(&json).unwrap_or_default();
                                     this.copy(text, "the value as JSON", cx)
                                 })),
                         )

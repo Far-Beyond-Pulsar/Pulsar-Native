@@ -10,9 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use engine_backend::scene::SharedScene;
-use pulsar_scene_model::{
-    ComponentMeta, ComponentOwner, Name, Parent, SiblingIndex, StableId,
-};
+use pulsar_scene_model::{ComponentMeta, ComponentOwner, Name, Parent, SiblingIndex, StableId};
 use pulsar_scenedb::{ComponentId, Entity, World};
 
 use super::format;
@@ -48,7 +46,10 @@ pub enum EntityKind {
     /// A scene object (it has a [`StableId`]).
     Object,
     /// A component instance attached to an object.
-    Instance { owner: Entity, enabled: bool },
+    Instance {
+        owner: Entity,
+        enabled: bool,
+    },
     Other,
 }
 
@@ -110,9 +111,7 @@ impl SceneIndex {
 /// The registered component classes by the component id they are stored as.
 pub fn class_names() -> HashMap<ComponentId, &'static str> {
     pulsar_world_registry::registered_world_component_classes()
-        .filter_map(|name| {
-            pulsar_world_registry::component_id_for_class(name).map(|id| (id, name))
-        })
+        .filter_map(|name| pulsar_world_registry::component_id_for_class(name).map(|id| (id, name)))
         .collect()
 }
 
@@ -234,32 +233,31 @@ impl Builder {
     fn entity_row(&self, world: &World, entity: Entity, archetype: u32) -> EntityRow {
         let stable_id: Option<Box<str>> =
             world.get::<StableId>(entity).map(|id| id.0.as_str().into());
-        let (kind, label): (EntityKind, Box<str>) = if let Some(meta) =
-            world.get::<ComponentMeta>(entity)
-        {
-            let owner = world.get::<ComponentOwner>(entity);
-            (
-                EntityKind::Instance {
-                    owner: owner.map_or(Entity::DANGLING, ComponentOwner::entity),
-                    enabled: owner.is_none_or(ComponentOwner::is_enabled),
-                },
-                meta.class_name.as_str().into(),
-            )
-        } else {
-            let kind = if stable_id.is_some() {
-                EntityKind::Object
+        let (kind, label): (EntityKind, Box<str>) =
+            if let Some(meta) = world.get::<ComponentMeta>(entity) {
+                let owner = world.get::<ComponentOwner>(entity);
+                (
+                    EntityKind::Instance {
+                        owner: owner.map_or(Entity::DANGLING, ComponentOwner::entity),
+                        enabled: owner.is_none_or(ComponentOwner::is_enabled),
+                    },
+                    meta.class_name.as_str().into(),
+                )
             } else {
-                EntityKind::Other
+                let kind = if stable_id.is_some() {
+                    EntityKind::Object
+                } else {
+                    EntityKind::Other
+                };
+                let label = match world.get::<Name>(entity) {
+                    Some(name) if !name.0.is_empty() => name.0.as_str().into(),
+                    _ => match &stable_id {
+                        Some(id) => id.clone(),
+                        None => self.stand_in_label(archetype),
+                    },
+                };
+                (kind, label)
             };
-            let label = match world.get::<Name>(entity) {
-                Some(name) if !name.0.is_empty() => name.0.as_str().into(),
-                _ => match &stable_id {
-                    Some(id) => id.clone(),
-                    None => self.stand_in_label(archetype),
-                },
-            };
-            (kind, label)
-        };
         let haystack = format!(
             "{} {} {}",
             label,
@@ -340,7 +338,11 @@ impl Builder {
                 .and_then(|parent| index.by_entity.get(&parent))
                 .filter(|&&parent| index.entities[parent as usize].kind == EntityKind::Object);
             match parent {
-                Some(&parent) => index.children.entry(parent).or_default().push(row_ix as u32),
+                Some(&parent) => index
+                    .children
+                    .entry(parent)
+                    .or_default()
+                    .push(row_ix as u32),
                 None => index.roots.push(row_ix as u32),
             }
         }

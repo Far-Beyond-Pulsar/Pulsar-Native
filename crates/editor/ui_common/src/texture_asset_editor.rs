@@ -7,7 +7,7 @@ use pulsar_reflection::{
 };
 use std::path::PathBuf;
 use ui::button::{Button, ButtonVariants as _};
-use ui::{h_flex, popover::Popover, ActiveTheme, Sizable};
+use ui::{popover::Popover, Sizable};
 
 struct TextureSrcEditor {
     label: String,
@@ -112,36 +112,23 @@ impl Render for TextureSrcEditor {
                 .to_owned()
         };
         let picker = self.picker.clone();
-        h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .py_1()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(self.label.clone()),
-            )
-            .child(
-                Popover::<AssetPicker>::new(format!(
-                    "texture-asset-picker-{}-{}",
-                    self.id_prefix, self.prop_name
-                ))
-                .anchor(Corner::BottomRight)
-                .trigger(
-                    Button::new(format!(
-                        "texture-asset-picker-btn-{}-{}",
-                        self.id_prefix, self.prop_name
-                    ))
-                    .label(display)
-                    .small()
-                    .ghost()
-                    .dropdown_caret(true),
-                )
-                .content(move |_window, _cx| picker.clone()),
-            )
+        let control = Popover::<AssetPicker>::new(format!(
+            "texture-asset-picker-{}-{}",
+            self.id_prefix, self.prop_name
+        ))
+        .anchor(Corner::BottomLeft)
+        .trigger(
+            Button::new(format!(
+                "texture-asset-picker-btn-{}-{}",
+                self.id_prefix, self.prop_name
+            ))
+            .label(display)
+            .xsmall()
+            .ghost()
+            .dropdown_caret(true),
+        )
+        .content(move |_window, _cx| picker.clone());
+        pulsar_reflection::prims::style::property_row(&self.label, control, cx)
     }
 }
 

@@ -86,9 +86,10 @@ fn label_of(world: &World, entity: Entity) -> String {
     }
     match world.get::<Name>(entity) {
         Some(name) if !name.0.is_empty() => name.0.clone(),
-        _ => world
-            .get::<StableId>(entity)
-            .map_or_else(|| format!("Entity {}", format::entity(entity)), |id| id.0.clone()),
+        _ => world.get::<StableId>(entity).map_or_else(
+            || format!("Entity {}", format::entity(entity)),
+            |id| id.0.clone(),
+        ),
     }
 }
 
@@ -399,8 +400,14 @@ mod tests {
         let name = pulsar_scenedb::component_id::<Name>();
         let detail = read_detail(&world, b).unwrap();
         assert_eq!(
-            detail.pick(Some(ComponentRef { entity: a, id: name })),
-            Some(ComponentRef { entity: b, id: name })
+            detail.pick(Some(ComponentRef {
+                entity: a,
+                id: name
+            })),
+            Some(ComponentRef {
+                entity: b,
+                id: name
+            })
         );
         assert_eq!(
             detail.pick(None).unwrap().id,

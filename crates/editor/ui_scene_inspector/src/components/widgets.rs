@@ -6,7 +6,7 @@ use ui::{scroll::Scrollbar, v_flex, ActiveTheme, Icon, IconName};
 use crate::screen::{ListScroll, SceneInspectorView};
 
 /// The face of addresses, bytes and values.
-pub const MONO: &str = "JetBrains Mono";
+pub use pulsar_reflection::prims::style::MONO;
 
 /// One of a row of choices.
 pub fn chip(

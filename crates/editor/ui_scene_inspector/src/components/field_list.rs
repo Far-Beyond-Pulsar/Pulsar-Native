@@ -1,6 +1,7 @@
 //! The typed fields of a component, one row each.
 
 use gpui::{prelude::*, *};
+use pulsar_reflection::prims::style;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -13,8 +14,7 @@ use crate::screen::SceneInspectorView;
 use crate::utils::fields::{self, Display, FieldRow};
 use crate::utils::format;
 
-const ROW_HEIGHT: f32 = 26.0;
-const INDENT: f32 = 16.0;
+use style::{INDENT, ROW_HEIGHT};
 const MAX_INDENT_DEPTH: u16 = 16;
 /// Characters of a string drawn in its row; copying gives all of it.
 const MAX_TEXT: usize = 400;
@@ -26,7 +26,10 @@ impl SceneInspectorView {
             let (title, text) = if self.field_filter.trim().is_empty() {
                 ("No fields", "This component is a marker: it holds no data.")
             } else {
-                ("Nothing matches", "No field name or value contains the filter.")
+                (
+                    "Nothing matches",
+                    "No field name or value contains the filter.",
+                )
             };
             empty_state(IconName::Search, title, text, cx)
         } else {
@@ -128,17 +131,10 @@ impl SceneInspectorView {
                     }))
             })
             .child(
-                div().flex_none().w(px(14.0)).when_some(row.open, |el, open| {
-                    el.child(
-                        Icon::new(if open {
-                            IconName::ChevronDown
-                        } else {
-                            IconName::ChevronRight
-                        })
-                        .size_3()
-                        .text_color(theme.muted_foreground),
-                    )
-                }),
+                div()
+                    .flex_none()
+                    .w(px(14.0))
+                    .when_some(row.open, |el, open| el.child(style::chevron(open, cx))),
             )
             .child(
                 div()
@@ -211,7 +207,7 @@ fn value_element(
     cx: &mut Context<SceneInspectorView>,
 ) -> AnyElement {
     let theme = cx.theme().clone();
-    let mono = || div().truncate().font_family(MONO);
+    let mono = style::mono;
     match display {
         Display::Category => div().into_any_element(),
         Display::Null => mono()
@@ -219,30 +215,7 @@ fn value_element(
             .italic()
             .child("none")
             .into_any_element(),
-        Display::Bool(value) => h_flex()
-            .gap_1p5()
-            .items_center()
-            .child(
-                div()
-                    .size(px(12.0))
-                    .rounded(px(3.0))
-                    .border_1()
-                    .border_color(if *value { theme.success } else { theme.border })
-                    .when(*value, |el| {
-                        el.bg(theme.success.opacity(0.25))
-                            .child(Icon::new(IconName::Check).size_2p5().text_color(theme.success))
-                    }),
-            )
-            .child(
-                mono()
-                    .text_color(if *value {
-                        theme.success
-                    } else {
-                        theme.muted_foreground
-                    })
-                    .child(value.to_string()),
-            )
-            .into_any_element(),
+        Display::Bool(value) => style::bool_value(*value, cx).into_any_element(),
         Display::Number(text) => mono()
             .text_color(theme.cyan)
             .child(text.clone())
@@ -259,14 +232,7 @@ fn value_element(
                 .child(format!("\"{shown}\""))
                 .into_any_element()
         }
-        Display::Variant(name) => div()
-            .px_1p5()
-            .rounded(px(4.0))
-            .bg(theme.magenta.opacity(0.16))
-            .font_family(MONO)
-            .text_color(theme.magenta)
-            .child(name.clone())
-            .into_any_element(),
+        Display::Variant(name) => style::variant_box(name.clone(), cx).into_any_element(),
         Display::Color(rgba, text) => {
             let channel = |value: f32| value.clamp(0.0, 1.0);
             let swatch: Hsla = Rgba {
@@ -279,39 +245,11 @@ fn value_element(
             h_flex()
                 .gap_2()
                 .items_center()
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(28.0))
-                        .h(px(14.0))
-                        .rounded(px(3.0))
-                        .border_1()
-                        .border_color(theme.border)
-                        .bg(swatch),
-                )
+                .child(style::color_swatch(swatch, cx))
                 .child(mono().text_color(theme.foreground).child(text.clone()))
                 .into_any_element()
         }
-        Display::Vector(items) => {
-            let axes = [theme.red, theme.green, theme.blue, theme.yellow];
-            let names = ["x", "y", "z", "w"];
-            h_flex()
-                .gap_1()
-                .children(items.iter().zip(axes.iter().zip(names)).map(
-                    |(item, (color, name))| {
-                        h_flex()
-                            .gap_1()
-                            .px_1p5()
-                            .min_w(px(64.0))
-                            .rounded(px(3.0))
-                            .bg(theme.muted.opacity(0.3))
-                            .font_family(MONO)
-                            .child(div().text_color(*color).child(name))
-                            .child(div().text_color(theme.foreground).child(item.clone()))
-                    },
-                ))
-                .into_any_element()
-        }
+        Display::Vector(items) => style::vector_value(items, cx).into_any_element(),
         Display::Entity(entity) => {
             let entity = *entity;
             if entity == pulsar_scenedb::Entity::DANGLING {

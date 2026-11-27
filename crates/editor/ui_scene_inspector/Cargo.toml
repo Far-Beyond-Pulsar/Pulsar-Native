@@ -10,7 +10,8 @@ gpui-ce.workspace = true
 inventory = { workspace = true }
 parking_lot = { workspace = true }
 pulsar_plugins = { workspace = true }
-pulsar_reflection = { workspace = true }
+# `prims-gpui`: the shared look of reflected values (`prims::style`).
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 pulsar_scene_model = { workspace = true }
 pulsar_scenedb = { workspace = true }
 pulsar_world_registry = { workspace = true }

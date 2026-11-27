@@ -146,10 +146,11 @@ impl Render for ObjectHeaderSection {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
-            .gap_3()
-            .p_3()
-            .bg(cx.theme().sidebar)
-            .rounded(px(8.0))
+            .gap_0p5()
+            .px_2()
+            .py_1()
+            .bg(cx.theme().background)
+            .rounded(px(4.0))
             .border_1()
             .border_color(cx.theme().border)
             // Name field

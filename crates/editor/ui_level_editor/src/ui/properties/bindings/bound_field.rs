@@ -5,9 +5,9 @@
 //! syncs changes bidirectionally between UI and scene data.
 
 use gpui::{prelude::*, *};
+use pulsar_reflection::prims::style;
 use std::sync::Arc;
 use ui::{
-    checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction, TextInput},
     ActiveTheme, Sizable,
@@ -293,18 +293,11 @@ impl StringBoundField {
 
 impl Render for StringBoundField {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .gap_2()
-            .items_center()
-            .child(
-                div()
-                    .w_1_3()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(self.label.clone()),
-            )
-            .child(TextInput::new(&self.input).flex_1())
+        style::property_row(
+            &self.label,
+            style::control_box(TextInput::new(&self.input).xsmall().w_full()),
+            cx,
+        )
     }
 }
 
@@ -364,13 +357,13 @@ impl Render for BoolBoundField {
             self.checked = value;
         }
 
-        h_flex().w_full().gap_2().items_center().child(
-            Checkbox::new("checkbox")
-                .label(self.label.clone())
-                .checked(self.checked)
-                .on_click(cx.listener(|this, _event, _window, cx| {
-                    this.toggle(cx);
-                })),
-        )
+        let toggle = div()
+            .id("checkbox")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _event, _window, cx| {
+                this.toggle(cx);
+            }))
+            .child(style::bool_value(self.checked, cx));
+        style::property_row(&self.label, toggle, cx)
     }
 }

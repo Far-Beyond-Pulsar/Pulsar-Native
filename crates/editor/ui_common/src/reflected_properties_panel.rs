@@ -257,6 +257,12 @@ pub fn render_property_row_runtime<V: 'static>(
             };
             if let (Some(rows), Some(wake)) = (&editor.rows, &state.wake) {
                 rows.on_change(wake.clone());
+                // An editor that starts open has rows before anything changed,
+                // and this render has already counted them: count again.
+                if rows.row_count(cx) > 0 {
+                    let wake = wake.clone();
+                    cx.defer(move |cx| wake(cx));
+                }
             }
             state.editors.insert(key, editor.clone());
             editor

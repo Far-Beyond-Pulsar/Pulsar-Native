@@ -294,11 +294,14 @@ impl SceneInspectorView {
             .as_ref()
             .is_some_and(|previous| previous.target == data.target);
         if let Some(previous) = previous.as_ref().filter(|_| same_target) {
-            let same_fields = previous.fields.as_ref().map(|set| {
-                set.fields.iter().map(|f| &f.value).collect::<Vec<_>>()
-            }) == data.fields.as_ref().map(|set| {
-                set.fields.iter().map(|f| &f.value).collect::<Vec<_>>()
-            });
+            let same_fields = previous
+                .fields
+                .as_ref()
+                .map(|set| set.fields.iter().map(|f| &f.value).collect::<Vec<_>>())
+                == data
+                    .fields
+                    .as_ref()
+                    .map(|set| set.fields.iter().map(|f| &f.value).collect::<Vec<_>>());
             if previous.bytes == data.bytes && same_fields {
                 return false;
             }
@@ -422,7 +425,8 @@ impl SceneInspectorView {
         if let Some(previous) = &self.bytes.page_data {
             if previous.request == page.request {
                 let now = Instant::now();
-                for (index, (old, new)) in previous.bytes.iter().zip(page.bytes.iter()).enumerate() {
+                for (index, (old, new)) in previous.bytes.iter().zip(page.bytes.iter()).enumerate()
+                {
                     if old != new {
                         self.changed_bytes.insert(index, now);
                     }

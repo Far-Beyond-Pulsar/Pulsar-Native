@@ -295,7 +295,11 @@ mod tests {
     fn bytes_read_both_ways_round_and_only_as_far_as_they_go() {
         let bytes = 1.5f32.to_le_bytes();
         let read = interpret(&bytes, false);
-        let get = |label: &str| read.iter().find(|(l, _)| *l == label).map(|(_, v)| v.clone());
+        let get = |label: &str| {
+            read.iter()
+                .find(|(l, _)| *l == label)
+                .map(|(_, v)| v.clone())
+        };
         assert_eq!(get("f32").as_deref(), Some("1.5"));
         assert_eq!(get("u32").as_deref(), Some("1069547520"));
         assert_eq!(get("u64"), None);

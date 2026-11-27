@@ -6,6 +6,10 @@
 //! expanded and returns one [`TreeRow`] per visible node, which the editor then
 //! feeds to a virtual list.  Nothing here is proportional to the number of
 //! nodes that are *not* shown.
+//!
+//! A list or map with more than [`CHUNK`] children is shown as ranges, each of
+//! which opens to its items (or to narrower ranges), so opening a huge
+//! container never adds more than [`CHUNK`] rows.
 
 use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, WrapperType};
 use serde_json::Value;
@@ -14,11 +18,21 @@ use std::any::TypeId;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+/// Most children a list or map shows before it splits into ranges.
+pub const CHUNK: usize = 100;
+
 /// One step from a node to its child.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Seg {
     Index(u32),
     Key(Arc<str>),
+    /// A run of a long container's children, from `start`, in steps of `span`.
+    /// It only names a row that opens: it is not a value, and the paths of the
+    /// children under it do not include it.
+    Range {
+        start: u32,
+        span: u32,
+    },
 }
 
 /// Location of a node under the composite's root (empty = the root itself).
@@ -77,6 +91,8 @@ pub enum RowKind {
     ReadOnly,
     /// A container; `len` children, expanded or not.
     Branch { len: usize, expanded: bool },
+    /// `len` children of a long container. The row's type is the container's.
+    Range { len: usize, expanded: bool },
 }
 
 #[derive(Clone)]
@@ -95,6 +111,13 @@ impl TreeRow {
         match self.path.last() {
             Some(Seg::Index(i)) => format!("[{i}]"),
             Some(Seg::Key(k)) => k.to_string(),
+            Some(&Seg::Range { start, .. }) => {
+                let len = match self.kind {
+                    RowKind::Range { len, .. } => len as u32,
+                    _ => 1,
+                };
+                format!("[{start} … {}]", start + len.saturating_sub(1))
+            }
             None => String::new(),
         }
     }
@@ -138,84 +161,162 @@ pub fn flatten(
     has_editor: &dyn Fn(TypeId) -> bool,
 ) -> Vec<TreeRow> {
     let mut rows = Vec::new();
-    let (_, shape) = resolve(root_ty, has_editor);
-    push_children(
-        root,
-        shape,
-        &Path::new(),
-        0,
+    let (ty, shape) = resolve(root_ty, has_editor);
+    let walk = Walk {
         expanded,
         has_editor,
-        &mut rows,
-    );
+    };
+    let path = Path::new();
+    let root_container = Container {
+        ty,
+        shape,
+        path: &path,
+    };
+    walk.children(root, root_container, 0, &mut rows);
     rows
 }
 
-fn push_children(
-    value: &Value,
+struct Walk<'a> {
+    expanded: &'a HashSet<Path>,
+    has_editor: &'a dyn Fn(TypeId) -> bool,
+}
+
+/// The container whose children are being listed.
+#[derive(Clone, Copy)]
+struct Container<'a> {
+    ty: &'static RuntimeTypeInfo,
     shape: Shape,
-    path: &Path,
-    depth: u16,
-    expanded: &HashSet<Path>,
-    has_editor: &dyn Fn(TypeId) -> bool,
-    rows: &mut Vec<TreeRow>,
-) {
-    let in_seq = matches!(shape, Shape::Seq(_));
-    let visit = |seg: Seg, child: &Value, rows: &mut Vec<TreeRow>| {
-        let Some(ty) = child_type(shape, &seg) else {
+    path: &'a Path,
+}
+
+impl Walk<'_> {
+    fn children(&self, value: &Value, parent: Container<'_>, depth: u16, rows: &mut Vec<TreeRow>) {
+        let len = match value {
+            Value::Array(items) => items.len(),
+            Value::Object(map) => map.len(),
+            _ => return,
+        };
+        // A struct lists its fields however many there are.
+        if len > CHUNK && !matches!(parent.shape, Shape::Record(_)) {
+            self.ranges(value, parent, (0, len), depth, rows);
+        } else {
+            self.run(value, parent, (0, len), depth, rows);
+        }
+    }
+
+    /// Children `start..end`: each of them.
+    fn run(
+        &self,
+        value: &Value,
+        parent: Container<'_>,
+        (start, end): (usize, usize),
+        depth: u16,
+        rows: &mut Vec<TreeRow>,
+    ) {
+        match value {
+            Value::Array(items) => {
+                for (i, item) in items[start..end].iter().enumerate() {
+                    self.child(Seg::Index((start + i) as u32), item, parent, depth, rows);
+                }
+            }
+            Value::Object(map) => {
+                for (key, item) in map.iter().skip(start).take(end - start) {
+                    let seg = Seg::Key(Arc::from(key.as_str()));
+                    self.child(seg, item, parent, depth, rows);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Children `start..end`, too many to list, as at most [`CHUNK`] ranges.
+    fn ranges(
+        &self,
+        value: &Value,
+        parent: Container<'_>,
+        (start, end): (usize, usize),
+        depth: u16,
+        rows: &mut Vec<TreeRow>,
+    ) {
+        let mut span = CHUNK;
+        while (end - start).div_ceil(span) > CHUNK {
+            span *= CHUNK;
+        }
+        for from in (start..end).step_by(span) {
+            let to = (from + span).min(end);
+            let mut path = parent.path.clone();
+            path.push(Seg::Range {
+                start: from as u32,
+                span: span as u32,
+            });
+            let expanded = self.expanded.contains(&path);
+            rows.push(TreeRow {
+                path,
+                depth,
+                ty: parent.ty,
+                kind: RowKind::Range {
+                    len: to - from,
+                    expanded,
+                },
+                removable: false,
+            });
+            if !expanded {
+                continue;
+            }
+            if to - from > CHUNK {
+                self.ranges(value, parent, (from, to), depth + 1, rows);
+            } else {
+                self.run(value, parent, (from, to), depth + 1, rows);
+            }
+        }
+    }
+
+    fn child(
+        &self,
+        seg: Seg,
+        value: &Value,
+        parent: Container<'_>,
+        depth: u16,
+        rows: &mut Vec<TreeRow>,
+    ) {
+        let Some(ty) = child_type(parent.shape, &seg) else {
             return;
         };
-        let (ty, child_shape) = resolve(ty, has_editor);
-        let mut child_path = path.clone();
-        child_path.push(seg);
-        let kind = match child_shape {
-            Shape::Leaf if child.is_null() => RowKind::ReadOnly,
-            Shape::Leaf if has_editor(ty.type_id) => RowKind::Leaf,
+        let (ty, shape) = resolve(ty, self.has_editor);
+        let mut path = parent.path.clone();
+        path.push(seg);
+        let kind = match shape {
+            Shape::Leaf if value.is_null() => RowKind::ReadOnly,
+            Shape::Leaf if (self.has_editor)(ty.type_id) => RowKind::Leaf,
             Shape::Leaf => RowKind::ReadOnly,
             Shape::Seq(_) | Shape::Map(_) | Shape::Record(_) => {
-                let len = match child {
+                let len = match value {
                     Value::Array(a) => a.len(),
                     Value::Object(o) => o.len(),
                     _ => 0,
                 };
                 RowKind::Branch {
                     len,
-                    expanded: expanded.contains(&child_path),
+                    expanded: self.expanded.contains(&path),
                 }
             }
         };
         let descend = matches!(kind, RowKind::Branch { expanded: true, .. });
         rows.push(TreeRow {
-            path: child_path.clone(),
+            path: path.clone(),
             depth,
             ty,
             kind,
-            removable: in_seq,
+            removable: matches!(parent.shape, Shape::Seq(_)),
         });
         if descend {
-            push_children(
-                child,
-                child_shape,
-                &child_path,
-                depth + 1,
-                expanded,
-                has_editor,
-                rows,
-            );
+            let container = Container {
+                ty,
+                shape,
+                path: &path,
+            };
+            self.children(value, container, depth + 1, rows);
         }
-    };
-    match value {
-        Value::Array(items) => {
-            for (i, item) in items.iter().enumerate() {
-                visit(Seg::Index(i as u32), item, rows);
-            }
-        }
-        Value::Object(map) => {
-            for (key, item) in map {
-                visit(Seg::Key(Arc::from(key.as_str())), item, rows);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -289,6 +390,38 @@ mod tests {
                 .collect(),
         );
         let rows = flatten(&value, ty, &HashSet::new(), &editable);
-        assert_eq!(rows.len(), 1000);
+        assert_eq!(rows.len(), 10);
+        assert!(rows.iter().all(|r| matches!(r.kind, RowKind::Range { .. })));
+    }
+
+    #[test]
+    fn a_long_list_opens_through_ranges_and_items_keep_their_own_paths() {
+        let ty = <Vec<i32> as Reflectable>::type_info();
+        let value = Value::Array((0..25_000).map(|i| json!(i)).collect());
+        let mut open = HashSet::new();
+        let top = flatten(&value, ty, &open, &editable);
+        let labels: Vec<String> = top.iter().map(TreeRow::label).collect();
+        assert_eq!(labels, ["[0 … 9999]", "[10000 … 19999]", "[20000 … 24999]"]);
+
+        open.insert(top[2].path.clone());
+        let narrower = flatten(&value, ty, &open, &editable);
+        assert_eq!(narrower.len(), 3 + 50);
+        open.insert(narrower[3].path.clone());
+        let rows = flatten(&value, ty, &open, &editable);
+        assert_eq!(rows.len(), 3 + 50 + CHUNK);
+        let item = &rows[4];
+        assert_eq!((item.label(), item.depth), ("[20000]".to_string(), 2));
+        assert!(item.removable);
+        assert_eq!(get(&value, &item.path), Some(&json!(20_000)));
+        assert_eq!(get(&value, &rows[0].path), None, "a range is not a value");
+    }
+
+    #[test]
+    fn a_list_of_just_a_chunk_has_no_ranges() {
+        let ty = <Vec<i32> as Reflectable>::type_info();
+        let value = Value::Array((0..CHUNK).map(|i| json!(i)).collect());
+        let rows = flatten(&value, ty, &HashSet::new(), &editable);
+        assert_eq!(rows.len(), CHUNK);
+        assert!(rows.iter().all(|r| r.kind == RowKind::Leaf));
     }
 }

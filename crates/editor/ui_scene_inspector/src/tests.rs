@@ -116,7 +116,12 @@ fn every_view_and_tab_draws_over_a_live_scene(cx: &mut TestAppContext) {
     act(&view, cx, |view, cx| view.set_mode(Mode::Objects, cx));
 
     // A live change reaches the view and is marked.
-    scene.write().world.get_mut::<Transform>(first).unwrap().position[1] = 42.0;
+    scene
+        .write()
+        .world
+        .get_mut::<Transform>(first)
+        .unwrap()
+        .position[1] = 42.0;
     act(&view, cx, |view, cx| view.request_refresh(false, cx));
     view.read_with(cx, |view, _| {
         assert_eq!(position(view), Some(serde_json::json!(42.0)));
@@ -127,7 +132,12 @@ fn every_view_and_tab_draws_over_a_live_scene(cx: &mut TestAppContext) {
 
     // Paused, a change waits for Refresh.
     act(&view, cx, |view, _| view.live = false);
-    scene.write().world.get_mut::<Transform>(first).unwrap().position[1] = 7.0;
+    scene
+        .write()
+        .world
+        .get_mut::<Transform>(first)
+        .unwrap()
+        .position[1] = 7.0;
     act(&view, cx, |view, cx| {
         view.refresh.value_due = std::time::Instant::now();
         view.tick(cx);
@@ -186,7 +196,10 @@ fn every_view_and_tab_draws_over_a_live_scene(cx: &mut TestAppContext) {
         assert_eq!(view.bytes.selection(), (17, 19));
     });
     cx.simulate_keystrokes("ctrl-c");
-    let copied = cx.read_from_clipboard().and_then(|item| item.text()).unwrap();
+    let copied = cx
+        .read_from_clipboard()
+        .and_then(|item| item.text())
+        .unwrap();
     assert_eq!(copied.split(' ').count(), 3);
 
     // A type nothing describes: the Fields tab offers its bytes instead.

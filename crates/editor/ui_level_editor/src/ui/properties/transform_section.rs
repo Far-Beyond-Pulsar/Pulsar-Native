@@ -4,6 +4,7 @@
 //! of scene objects using the field binding system for automatic sync and undo/redo.
 
 use gpui::{prelude::*, *};
+use pulsar_reflection::prims::style;
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
@@ -286,48 +287,24 @@ impl TransformSection {
         z_field: &Entity<NumberBoundField>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        // The name sits above: three inputs need the panel's whole width.
+        let theme = cx.theme();
+        let (east, up, north) = (theme.red, theme.yellow, theme.blue);
         v_flex()
-            .gap_2()
+            .gap_1()
             .child(
                 div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
                     .child(label.to_string()),
             )
             .child(
                 h_flex()
                     .w_full()
-                    .gap_2()
-                    .child(self.render_axis_field(
-                        x_field,
-                        Hsla {
-                            h: 0.0,
-                            s: 0.8,
-                            l: 0.5,
-                            a: 1.0,
-                        }, // Red - East/West
-                        cx,
-                    ))
-                    .child(self.render_axis_field(
-                        y_field,
-                        Hsla {
-                            h: 50.0,
-                            s: 0.9,
-                            l: 0.5,
-                            a: 1.0,
-                        }, // Yellow - Vertical
-                        cx,
-                    ))
-                    .child(self.render_axis_field(
-                        z_field,
-                        Hsla {
-                            h: 220.0,
-                            s: 0.8,
-                            l: 0.55,
-                            a: 1.0,
-                        }, // Blue - North/South
-                        cx,
-                    )),
+                    .gap_1()
+                    .child(self.render_axis_field(x_field, east, cx))
+                    .child(self.render_axis_field(y_field, up, cx))
+                    .child(self.render_axis_field(z_field, north, cx)),
             )
     }
 
@@ -343,35 +320,20 @@ impl TransformSection {
         let label = field.read(cx).label.clone();
         let input = field.read(cx).input.clone();
 
+        // A vector's tinted box (`style::vector_value`) holding an input.
         h_flex()
             .flex_1()
-            .h_7()
+            .min_w_0()
+            .h(px(style::ROW_HEIGHT))
             .items_center()
-            .rounded(px(4.0))
-            .border_1()
-            .border_color(cx.theme().border)
+            .pl_1p5()
+            .rounded(px(3.0))
+            .bg(cx.theme().muted.opacity(0.3))
             .overflow_hidden()
+            .font_family(style::MONO)
+            .child(div().text_xs().text_color(axis_color).child(label))
             .child(
-                // Axis label with color indicator
-                div()
-                    .w_6()
-                    .h_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(axis_color.opacity(0.2))
-                    .border_r_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(axis_color)
-                            .child(label),
-                    ),
-            )
-            .child(
-                div().flex_1().h_full().child(
+                div().flex_1().min_w_0().h_full().child(
                     ui::input::NumberInput::new(&input)
                         .appearance(false) // No border/background from NumberInput
                         .xsmall(),
@@ -382,15 +344,9 @@ impl TransformSection {
 
 impl Render for TransformSection {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let chevron_icon = if self.collapsed {
-            IconName::ChevronRight
-        } else {
-            IconName::ChevronDown
-        };
-
         v_flex()
             .w_full()
-            .rounded(px(8.0))
+            .rounded(px(4.0))
             .border_1()
             .border_color(cx.theme().border)
             .overflow_hidden()
@@ -399,8 +355,8 @@ impl Render for TransformSection {
                 h_flex()
                     .id("transform-section-header")
                     .w_full()
-                    .px_3()
-                    .py_2()
+                    .px_2()
+                    .py_1p5()
                     .gap_2()
                     .items_center()
                     .bg(cx.theme().sidebar)
@@ -415,20 +371,16 @@ impl Render for TransformSection {
                             this.toggle_collapsed(cx);
                         }),
                     )
-                    .child(
-                        ui::Icon::new(chevron_icon)
-                            .size(px(14.0))
-                            .text_color(cx.theme().foreground),
-                    )
+                    .child(style::chevron(!self.collapsed, cx))
                     .child(
                         ui::Icon::new(IconName::Axes)
                             .size(px(14.0))
-                            .text_color(cx.theme().foreground),
+                            .text_color(cx.theme().info),
                     )
                     .child(
                         div()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
                             .text_color(cx.theme().foreground)
                             .child("Transform"),
                     ),
@@ -436,9 +388,9 @@ impl Render for TransformSection {
             .when(!self.collapsed, |this| {
                 this.child(
                     // Section content - only shown when not collapsed
-                    div().w_full().p_3().bg(cx.theme().background).child(
+                    div().w_full().p_2().bg(cx.theme().background).child(
                         v_flex()
-                            .gap_3()
+                            .gap_1p5()
                             .child(self.render_vector3_field(
                                 "Position",
                                 &self.position_x,

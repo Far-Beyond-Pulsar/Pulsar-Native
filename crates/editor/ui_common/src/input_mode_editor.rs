@@ -6,7 +6,7 @@ use pulsar_reflection::{
     BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, PropertyWriteBack,
 };
 use pulsar_world_registry::input_mode::InputModeName;
-use ui::{button::Button, h_flex, menu::PopupMenuItem, ActiveTheme, Sizable};
+use ui::{button::Button, menu::PopupMenuItem, Sizable};
 
 struct InputModeEditor {
     label: String,
@@ -19,41 +19,32 @@ impl Render for InputModeEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
         let selected = self.value.clone();
-        let muted = cx.theme().muted_foreground;
-        h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .py_1()
-            .child(div().text_sm().text_color(muted).child(self.label.clone()))
-            .child(
-                Button::new(self.id.clone())
-                    .label(selected.clone())
-                    .dropdown_caret(true)
-                    .outline()
-                    .small()
-                    .dropdown_menu_with_anchor(Corner::TopRight, move |menu, _, _| {
-                        InputModeName::CHOICES.iter().fold(menu, |menu, choice| {
-                            let view = view.clone();
-                            menu.item(
-                                PopupMenuItem::new(*choice)
-                                    .checked(choice.eq_ignore_ascii_case(&selected))
-                                    .on_click(move |_, window, cx| {
-                                        view.update(cx, |this, cx| {
-                                            this.value = (*choice).to_owned();
-                                            (this.write_back)(
-                                                Box::new(InputModeName((*choice).to_owned())),
-                                                window,
-                                                cx,
-                                            );
-                                            cx.notify();
-                                        });
-                                    }),
-                            )
-                        })
-                    }),
-            )
+        let control = Button::new(self.id.clone())
+            .label(selected.clone())
+            .dropdown_caret(true)
+            .outline()
+            .xsmall()
+            .dropdown_menu_with_anchor(Corner::TopLeft, move |menu, _, _| {
+                InputModeName::CHOICES.iter().fold(menu, |menu, choice| {
+                    let view = view.clone();
+                    menu.item(
+                        PopupMenuItem::new(*choice)
+                            .checked(choice.eq_ignore_ascii_case(&selected))
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |this, cx| {
+                                    this.value = (*choice).to_owned();
+                                    (this.write_back)(
+                                        Box::new(InputModeName((*choice).to_owned())),
+                                        window,
+                                        cx,
+                                    );
+                                    cx.notify();
+                                });
+                            }),
+                    )
+                })
+            });
+        pulsar_reflection::prims::style::property_row(&self.label, control, cx)
     }
 }
 

@@ -341,7 +341,7 @@ fn composite_editor_huge_array(cx: &mut TestAppContext) {
     editor.update(&mut vcx, |e, cx| e.set_open(true, cx));
     let open = draw(&mut vcx);
     let open_items = host.read_with(&vcx, |h, _| h.inspector.item_count());
-    editor.update(&mut vcx, |e, cx| e.expand_top_level(cx));
+    editor.update(&mut vcx, |e, cx| e.expand_all(cx));
     let t = Instant::now();
     let expand = draw(&mut vcx);
     let expand_total = ms(t);
@@ -395,11 +395,9 @@ fn opening_a_composite_adds_its_rows_to_the_panel_list(cx: &mut TestAppContext) 
     let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let (mut vcx, host) = array_host(cx, vec![vec![1, 2, 3], vec![4, 5]]);
     draw(&mut vcx);
-    assert_eq!(host.read_with(&vcx, |h, _| h.inspector.item_count()), 2); // card + header
-
-    composite_of(&host, &vcx).update(&mut vcx, |e, cx| e.set_open(true, cx));
     draw(&mut vcx);
-    // card header, the property row, and its two top-level rows
+    // Two elements are few enough to start open: card header, the property
+    // row, and its two top-level rows.
     assert_eq!(host.read_with(&vcx, |h, _| h.inspector.item_count()), 4);
 
     composite_of(&host, &vcx).update(&mut vcx, |e, cx| e.expand_top_level(cx));
@@ -409,6 +407,20 @@ fn opening_a_composite_adds_its_rows_to_the_panel_list(cx: &mut TestAppContext) 
     composite_of(&host, &vcx).update(&mut vcx, |e, cx| e.set_open(false, cx));
     draw(&mut vcx);
     assert_eq!(host.read_with(&vcx, |h, _| h.inspector.item_count()), 2);
+}
+
+#[gpui::test]
+fn a_composite_with_many_children_starts_closed_and_opens_to_ranges(cx: &mut TestAppContext) {
+    let _lock = RENDER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut vcx, host) = array_host(cx, vec![vec![1]; 250]);
+    draw(&mut vcx);
+    draw(&mut vcx);
+    assert_eq!(host.read_with(&vcx, |h, _| h.inspector.item_count()), 2);
+
+    composite_of(&host, &vcx).update(&mut vcx, |e, cx| e.set_open(true, cx));
+    draw(&mut vcx);
+    // Three ranges, not 250 rows.
+    assert_eq!(host.read_with(&vcx, |h, _| h.inspector.item_count()), 2 + 3);
 }
 
 // Registry entry for the test's value type, the way `pulsar_world_registry`

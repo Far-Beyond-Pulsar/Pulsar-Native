@@ -7,10 +7,12 @@
 //! Only expanded branches contribute rows, and the rows are drawn by a
 //! `gpui::list` when it has a viewport, which measures just the rows in view and remembers their
 //! heights, so a 100,000-element array or a deeply nested struct costs what is
-//! on screen.  By default the rows flow with the surrounding panel, 50 at a
-//! time with a "Show more" button, so there is no nested scrolling.  A type that
-//! explicitly asks for a sub-scroll area ([`request_subscroll`]) gets a windowed
-//! viewport instead, where every row is virtualized.
+//! on screen.  By default the rows join the surrounding panel's list, so there
+//! is no nested scrolling.  A type that explicitly asks for a sub-scroll area
+//! ([`request_subscroll`]) gets a windowed viewport instead.
+//!
+//! A small value starts open ([`OPEN_BY_DEFAULT`]); what is inside it starts
+//! closed, and long lists open through ranges ([`composite_model::CHUNK`]).
 //!
 //! Elements are edited by the editor registered for their type.  An edit
 //! replaces that element in the JSON, rebuilds the whole value from it and
@@ -19,6 +21,7 @@
 use crate::composite_model::{self, get, get_mut, Path, RowKind, Seg, TreeRow};
 use crate::property_editor_registry::PROPERTY_EDITOR_REGISTRY;
 use gpui::{prelude::*, *};
+use pulsar_reflection::prims::style;
 use pulsar_reflection::{
     BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack, RuntimeTypeInfo, VirtualRows,
     RUNTIME_TYPE_REGISTRY,
@@ -30,7 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use ui::button::{Button, ButtonVariants as _};
 use ui::scroll::{Scrollbar, ScrollbarState};
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable as _};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable as _};
 
 /// Where the panel's wake-up callback is kept, shared by the editor and
 /// its [`VirtualRows`] handle.
@@ -60,7 +63,18 @@ fn requested_subscroll(type_id: TypeId) -> Option<f32> {
 /// Leaf editors kept alive for rows that scrolled away.  Past this the cache
 /// is dropped; visible rows rebuild theirs on the next frame.
 const LEAF_CACHE_LIMIT: usize = 256;
-const INDENT: f32 = 12.0;
+const INDENT: f32 = style::INDENT;
+/// A value with no more children than this starts open, in a panel that shows
+/// its rows.
+pub const OPEN_BY_DEFAULT: usize = 16;
+
+fn child_count(value: &Value) -> usize {
+    match value {
+        Value::Array(a) => a.len(),
+        Value::Object(o) => o.len(),
+        _ => 0,
+    }
+}
 
 fn has_editor(id: TypeId) -> bool {
     PROPERTY_EDITOR_REGISTRY.has(id)
@@ -93,8 +107,11 @@ pub struct CompositeEditor {
     id_prefix: String,
     class_name: String,
     root: Value,
-    /// Header open/closed.
-    open: bool,
+    /// Header open/closed, once something has chosen.
+    open: Option<bool>,
+    /// Whether the value was small enough, when first shown, to start open.
+    /// Decided once, so an edit never opens or closes the header.
+    auto_open: bool,
     expanded: HashSet<Path>,
     rows: Vec<TreeRow>,
     list_state: ListState,
@@ -122,6 +139,7 @@ impl CompositeEditor {
         let root = RUNTIME_TYPE_REGISTRY
             .serialize_json_for_any(args.current_value)
             .unwrap_or(Value::Null);
+        let auto_open = (1..=OPEN_BY_DEFAULT).contains(&child_count(&root));
         let mut this = Self {
             label: args.display_name.to_string(),
             id: SharedString::from(format!(
@@ -132,7 +150,8 @@ impl CompositeEditor {
             id_prefix: args.id_prefix.to_string(),
             class_name: args.class_name.to_string(),
             root,
-            open: false,
+            open: None,
+            auto_open,
             expanded: HashSet::new(),
             rows: Vec::new(),
             list_state: ListState::new(0, ListAlignment::Top, px(240.0)),
@@ -149,10 +168,22 @@ impl CompositeEditor {
         this
     }
 
+    /// Whether the header is open.  Until something chooses, a small value is
+    /// open where the panel draws its rows.  A panel that never registered for
+    /// them would show an open header over nothing, and a sub-scroll viewport
+    /// is opened by hand.
+    fn is_open(&self) -> bool {
+        self.open.unwrap_or_else(|| {
+            self.auto_open
+                && self.viewport.is_none()
+                && self.wake.lock().is_ok_and(|slot| slot.is_some())
+        })
+    }
+
     /// Rows offered to the panel's list: all of them while open, none when the
     /// header is closed or the rows scroll in a viewport of their own.
     fn rows_offered(&self) -> usize {
-        if self.open && self.viewport.is_none() {
+        if self.is_open() && self.viewport.is_none() {
             self.rows.len()
         } else {
             0
@@ -255,9 +286,13 @@ impl CompositeEditor {
             items.remove(*index as usize);
         }
         // Indices after the removed one shifted: cached editors and expansion
-        // are addressed by index, so start those afresh.
+        // are addressed by index, so start those afresh.  The list's own open
+        // ranges stay: they are runs of positions, whatever is in them.
         self.leaves.clear();
-        self.expanded.retain(|p| !p.starts_with(parent));
+        self.expanded.retain(|p| {
+            !p.starts_with(parent)
+                || (p.len() == parent.len() + 1 && matches!(p.last(), Some(Seg::Range { .. })))
+        });
         self.relayout();
         self.commit(window, cx);
     }
@@ -360,61 +395,41 @@ impl CompositeEditor {
                 None => div().into_any_element(),
             },
             RowKind::ReadOnly => {
-                let text = get(&self.root, &row.path)
-                    .map(|v| match v {
-                        Value::Null => "None".to_string(),
-                        other => other.to_string(),
-                    })
-                    .unwrap_or_default();
-                h_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .justify_between()
-                    .gap_2()
-                    .child(div().text_sm().text_color(muted).child(row.label()))
-                    .child(
-                        div()
-                            .text_xs()
-                            .max_w(px(160.))
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
-                            .child(text),
-                    )
-                    .into_any_element()
+                let value = get(&self.root, &row.path)
+                    .map(|value| read_only_value(value, cx))
+                    .unwrap_or_else(|| div().into_any_element());
+                style::property_row(&row.label(), value, cx)
             }
-            RowKind::Branch { len, expanded } => {
+            RowKind::Branch { len, expanded } | RowKind::Range { len, expanded } => {
                 let path = row.path.clone();
                 let push_path = row.path.clone();
-                let is_seq = matches!(
-                    composite_model::resolve(row.ty, &has_editor).1,
-                    composite_model::Shape::Seq(_)
-                );
+                // Items are added to the list itself, not to one of its ranges.
+                let is_seq = matches!(row.kind, RowKind::Branch { .. })
+                    && matches!(
+                        composite_model::resolve(row.ty, &has_editor).1,
+                        composite_model::Shape::Seq(_)
+                    );
+                // A range has no value of its own: only its length to tell.
+                let summary = summary(get(&self.root, &row.path).unwrap_or(&Value::Null), *len);
                 h_flex()
                     .id(SharedString::from(format!("{}-row-{ix}", self.id)))
                     .flex_1()
                     .min_w_0()
-                    .gap_1()
+                    .min_h(px(style::ROW_HEIGHT))
+                    .gap_2()
                     .items_center()
+                    .text_xs()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle(&path, cx)))
-                    .child(
-                        Icon::new(if *expanded {
-                            IconName::ChevronDown
-                        } else {
-                            IconName::ChevronRight
-                        })
-                        .xsmall()
-                        .text_color(muted),
-                    )
+                    .child(branch_name(*expanded, row.label(), cx))
                     .child(
                         div()
                             .flex_1()
-                            .text_sm()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(row.label()),
+                            .min_w_0()
+                            .truncate()
+                            .text_color(muted)
+                            .child(summary),
                     )
-                    .child(div().text_xs().text_color(muted).child(len.to_string()))
                     .when(is_seq && *len > 0, |d| {
                         d.child(
                             Button::new(SharedString::from(format!("{}-add-{ix}", self.id)))
@@ -435,7 +450,6 @@ impl CompositeEditor {
         h_flex()
             .w_full()
             .pl(indent)
-            .py(px(1.))
             .gap_1()
             .items_center()
             .child(body)
@@ -444,43 +458,95 @@ impl CompositeEditor {
     }
 }
 
+/// The name column of a row that opens: its marker and its name, as wide as
+/// the names of the rows around it.
+fn branch_name(open: bool, label: String, cx: &App) -> Div {
+    h_flex()
+        .flex_none()
+        .w(relative(style::NAME_SHARE))
+        .min_w_0()
+        .gap_1()
+        .items_center()
+        .child(style::chevron(open, cx))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_color(cx.theme().foreground)
+                .child(label),
+        )
+}
+
+/// What a closed container holds: a list's length, a struct's first names.
+fn summary(value: &Value, len: usize) -> String {
+    match value {
+        Value::Object(map) if !map.is_empty() => {
+            let mut names: Vec<&str> = map.keys().take(4).map(String::as_str).collect();
+            if map.len() > names.len() {
+                names.push("…");
+            }
+            format!("{{ {} }}", names.join(", "))
+        }
+        _ if len == 0 => "empty".to_string(),
+        _ if len == 1 => "1 item".to_string(),
+        _ => format!("{len} items"),
+    }
+}
+
+/// A value nothing can edit, drawn by what it is.
+fn read_only_value(value: &Value, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    match value {
+        Value::Null => style::mono()
+            .italic()
+            .text_color(theme.muted_foreground)
+            .child("none")
+            .into_any_element(),
+        Value::Bool(value) => style::bool_value(*value, cx).into_any_element(),
+        Value::Number(number) => style::mono()
+            .text_color(theme.cyan)
+            .child(number.to_string())
+            .into_any_element(),
+        Value::String(text) => style::mono()
+            .text_color(theme.green)
+            .child(format!("\"{}\"", text.replace('\n', "↵")))
+            .into_any_element(),
+        other => style::mono()
+            .text_color(theme.muted_foreground)
+            .child(other.to_string())
+            .into_any_element(),
+    }
+}
+
 impl Render for CompositeEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let muted = cx.theme().muted_foreground;
-        let count = match &self.root {
-            Value::Array(a) => a.len(),
-            Value::Object(o) => o.len(),
-            _ => 0,
-        };
+        let count = child_count(&self.root);
+        let open = self.is_open();
         let header = h_flex()
             .id(SharedString::from(format!("{}-header", self.id)))
             .w_full()
-            .gap_1()
+            .min_h(px(style::ROW_HEIGHT))
+            .gap_2()
             .items_center()
+            .text_xs()
             .cursor_pointer()
             .on_click(cx.listener(|this, _, _, cx| {
-                this.open = !this.open;
+                this.open = Some(!this.is_open());
                 this.changed(cx);
             }))
-            .child(
-                Icon::new(if self.open {
-                    IconName::ChevronDown
-                } else {
-                    IconName::ChevronRight
-                })
-                .xsmall()
-                .text_color(muted),
-            )
+            .child(branch_name(open, self.label.clone(), cx))
             .child(
                 div()
                     .flex_1()
-                    .text_sm()
-                    .text_color(cx.theme().foreground)
-                    .child(self.label.clone()),
-            )
-            .child(div().text_xs().text_color(muted).child(count.to_string()));
+                    .min_w_0()
+                    .truncate()
+                    .text_color(muted)
+                    .child(summary(&self.root, count)),
+            );
 
-        let body = (self.open && !self.rows.is_empty() && self.viewport.is_some()).then(|| {
+        let body = (open && !self.rows.is_empty() && self.viewport.is_some()).then(|| {
             match self.viewport {
                 // Only a type that explicitly asked for a sub-scroll area gets one.
                 Some(height) => {
@@ -574,9 +640,9 @@ pub fn build(
 }
 
 impl CompositeEditor {
-    /// Open or close the header (closed by default).
+    /// Open or close the header (see [`OPEN_BY_DEFAULT`] for how it starts).
     pub fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        self.open = open;
+        self.open = Some(open);
         self.changed(cx);
     }
 
@@ -588,6 +654,36 @@ impl CompositeEditor {
     /// Number of rows currently in the tree (expanded branches included).
     pub fn row_count(&self) -> usize {
         self.rows.len()
+    }
+
+    /// Open every branch and range, however deep.  The rows this adds grow
+    /// with the whole value.
+    pub fn expand_all(&mut self, cx: &mut Context<Self>) {
+        loop {
+            let closed: Vec<Path> = self
+                .rows
+                .iter()
+                .filter(|r| {
+                    matches!(
+                        r.kind,
+                        RowKind::Branch {
+                            expanded: false,
+                            ..
+                        } | RowKind::Range {
+                            expanded: false,
+                            ..
+                        }
+                    )
+                })
+                .map(|r| r.path.clone())
+                .collect();
+            if closed.is_empty() {
+                break;
+            }
+            self.expanded.extend(closed);
+            self.relayout();
+        }
+        self.changed(cx);
     }
 
     /// Expand every top-level branch.

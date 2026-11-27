@@ -8,12 +8,12 @@ use std::any::Any;
 use std::mem::{offset_of, size_of};
 
 use pulsar_scene_model::attachments::ClassSlot;
+use pulsar_scene_model::components::RenderProps;
 use pulsar_scene_model::{
     ComponentAttachments, ComponentMeta, ComponentOwner, ContentSpace, LevelInstanceMember,
     LevelInstanceRoot, Name, ObjectType, Parent, RigidFrame, Selected, SiblingIndex, SpaceSlot,
     StableId, Transform, UnresolvedComponent, Visibility,
 };
-use pulsar_scene_model::components::RenderProps;
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
 
@@ -61,7 +61,11 @@ pub fn decode(value: &dyn Any) -> Option<(FieldSet, Vec<Region>)> {
         return Some((
             set(vec![
                 field("position", "[f64; 3]", json!(transform.position)),
-                field("rotation", "[f32; 3] (degrees, YXZ)", json!(transform.rotation)),
+                field(
+                    "rotation",
+                    "[f32; 3] (degrees, YXZ)",
+                    json!(transform.rotation),
+                ),
                 field("scale", "[f32; 3]", json!(transform.scale)),
             ]),
             vec![
@@ -121,7 +125,11 @@ pub fn decode(value: &dyn Any) -> Option<(FieldSet, Vec<Region>)> {
                 .collect()
         };
         return Some((
-            set(vec![field("props", "HashMap<String, Value>", Value::Object(map))]),
+            set(vec![field(
+                "props",
+                "HashMap<String, Value>",
+                Value::Object(map),
+            )]),
             Vec::new(),
         ));
     }
@@ -132,7 +140,12 @@ pub fn decode(value: &dyn Any) -> Option<(FieldSet, Vec<Region>)> {
                 field("enabled", "bool", json!(owner.is_enabled())),
             ]),
             vec![
-                region("owner_index", "u32", offset_of!(ComponentOwner, owner_index), 4),
+                region(
+                    "owner_index",
+                    "u32",
+                    offset_of!(ComponentOwner, owner_index),
+                    4,
+                ),
                 region(
                     "owner_generation",
                     "u32",
@@ -168,7 +181,10 @@ pub fn decode(value: &dyn Any) -> Option<(FieldSet, Vec<Region>)> {
         ));
     }
     if let Some(ComponentAttachments(instances)) = value.downcast_ref() {
-        let list: Vec<Value> = instances.iter().map(|&entity| entity_value(entity)).collect();
+        let list: Vec<Value> = instances
+            .iter()
+            .map(|&entity| entity_value(entity))
+            .collect();
         return Some((
             set(vec![field("instances", "Vec<Entity>", Value::Array(list))]),
             whole("Vec<Entity>", size_of::<Vec<Entity>>()),

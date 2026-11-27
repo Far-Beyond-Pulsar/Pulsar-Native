@@ -23,7 +23,12 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub const ALL: [Self; 4] = [Self::Objects, Self::Entities, Self::Components, Self::Archetypes];
+    pub const ALL: [Self; 4] = [
+        Self::Objects,
+        Self::Entities,
+        Self::Components,
+        Self::Archetypes,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -275,7 +280,11 @@ mod tests {
                     depth,
                     matched,
                     ..
-                } => Some((index.entities[ix as usize].label.to_string(), depth, matched)),
+                } => Some((
+                    index.entities[ix as usize].label.to_string(),
+                    depth,
+                    matched,
+                )),
                 _ => None,
             })
             .collect()
@@ -321,7 +330,10 @@ mod tests {
         assert_eq!(closed.len(), 2, "StableId and Name");
         let name = index.types.iter().find(|t| &*t.name == "Name").unwrap().id;
         open.toggle(Node::Type(name));
-        assert_eq!(rows(&index, Mode::Components, &Query::default(), &open).len(), 4);
+        assert_eq!(
+            rows(&index, Mode::Components, &Query::default(), &open).len(),
+            4
+        );
 
         let archetypes = rows(&index, Mode::Archetypes, &Query::default(), &open);
         assert_eq!(archetypes.len(), 1, "emptied archetypes are not listed");
