@@ -549,6 +549,7 @@ pulsar_studio_client  = { path = "crates/core/pulsar_studio_client" }
 ui_problems           = { path = "crates/editor/ui_problems" }
 ui_flamegraph         = { path = "crates/editor/ui_flamegraph" }
 ui_vram_map           = { path = "crates/editor/ui_vram_map" }
+ui_scene_inspector    = { path = "crates/editor/ui_scene_inspector" }
 ui_file_manager       = { path = "crates/editor/ui_file_manager" }
 ui_common             = { path = "crates/editor/ui_common" }
 ui_loading_screen     = { path = "crates/editor/ui_loading_screen" }

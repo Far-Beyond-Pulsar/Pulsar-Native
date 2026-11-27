@@ -13645,6 +13645,7 @@ dependencies = [
  "ui_loading_screen",
  "ui_log_viewer",
  "ui_mcp",
+ "ui_scene_inspector",
  "ui_vram_map",
  "urlencoding",
  "wgpu",
@@ -20273,6 +20274,26 @@ dependencies = [
  "serde",
  "similar 3.2.0",
  "tracing",
+ "ui",
+ "ui_common",
+ "window_manager",
+]
+
+[[package]]
+name = "ui_scene_inspector"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "gpui-ce",
+ "inventory",
+ "parking_lot",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
  "ui",
  "ui_common",
  "window_manager",

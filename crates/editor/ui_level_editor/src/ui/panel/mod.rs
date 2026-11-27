@@ -70,6 +70,8 @@ pub struct LevelEditorPanel {
 
     // Shared state for all panels (single source of truth)
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    /// This editor's entry in the live-scene directory.
+    _published_scene: engine_backend::services::scene_directory::PublishedScene,
 
     // Workspace for draggable panels
     workspace: Option<Entity<Workspace>>,

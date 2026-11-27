@@ -11,6 +11,7 @@ pub mod device_loss;
 #[cfg(feature = "render")]
 pub mod gpu_renderer;
 pub mod memory_owners;
+pub mod scene_directory;
 pub mod vram;
 pub mod native_scripts;
 #[cfg(feature = "pie")]

@@ -89,6 +89,7 @@ pulsar_package = { workspace = true, default-features = false, features = ["scri
 ui_git_manager = { workspace = true }
 ui_flamegraph = { workspace = true }
 ui_vram_map = { workspace = true }
+ui_scene_inspector = { workspace = true }
 ui_fab_search = { workspace = true }
 agent_provider_demo_random = { workspace = true }
 agent_provider_github_copilot = { workspace = true }

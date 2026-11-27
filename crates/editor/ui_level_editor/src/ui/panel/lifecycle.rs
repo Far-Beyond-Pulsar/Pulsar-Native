@@ -274,6 +274,25 @@ impl LevelEditorPanel {
         // Reachable by the AI tools for as long as this panel lives (unregistered
         // in `Drop`), whatever level it shows or whether that was ever saved.
         crate::ai_sessions::register_editor(&shared_state);
+        // Listed for the scene tools (the SceneDB Inspector) while this panel
+        // lives, under whatever level it shows at the time.
+        let published_scene = {
+            let state = Arc::downgrade(&shared_state);
+            engine_backend::services::scene_directory::publish(
+                &scene_store,
+                Box::new(move || {
+                    let file = state.upgrade().and_then(|state| {
+                        let state = state.try_read()?;
+                        let file = state.scene.current_scene.as_ref()?.file_name()?;
+                        Some(file.to_string_lossy().into_owned())
+                    });
+                    match file {
+                        Some(file) => format!("Level: {file}"),
+                        None => "Level editor".to_string(),
+                    }
+                }),
+            )
+        };
 
         // Temporary debug toggle: replace viewport with a solid yellow panel to
         // verify layout/overlap issues independently of GPU rendering.
@@ -522,6 +541,7 @@ impl LevelEditorPanel {
             _asset_reloads: asset_reloads,
             decoration: parking_lot::Mutex::new(TabDecoration::default()),
             shared_state,
+            _published_scene: published_scene,
             workspace: None,
             viewport_panel: None,
             game_panel: None,

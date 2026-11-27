@@ -1,0 +1,29 @@
+[package]
+name = "ui_scene_inspector"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+engine_backend = { workspace = true }
+gpui-ce.workspace = true
+inventory = { workspace = true }
+parking_lot = { workspace = true }
+pulsar_plugins = { workspace = true }
+pulsar_reflection = { workspace = true }
+pulsar_scene_model = { workspace = true }
+pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
+serde_json = { workspace = true }
+ui.workspace = true
+ui_common.workspace = true
+window_manager.workspace = true
+
+[dev-dependencies]
+# A headless window for the view's test (`src/tests.rs`).
+gpui-ce = { workspace = true, features = ["test-support"] }
+# What `#[derive(Reflectable)]` output names.
+serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

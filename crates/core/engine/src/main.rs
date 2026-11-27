@@ -70,6 +70,7 @@ use agent_provider_vertex_ai as _;
 use ui_fab_search as _;
 use ui_flamegraph as _;
 use ui_vram_map as _;
+use ui_scene_inspector as _;
 use ui_git_manager as _;
 
 #[cfg(not(feature = "dhat-heap"))]
