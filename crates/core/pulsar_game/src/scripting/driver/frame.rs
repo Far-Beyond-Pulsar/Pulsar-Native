@@ -133,7 +133,12 @@ impl ScriptDriver {
         }
         self.run_role_hooks(world, report);
         if let Some(events) = self.events.as_mut() {
-            events.announce_level(&self.level);
+            if !self.roles_held {
+                events.announce_level(&self.level);
+            }
+        }
+        self.notify_level_loaded(world, report);
+        if let Some(events) = self.events.as_mut() {
             for failure in events.reconcile_component_subscriptions(&self.runtime, world) {
                 tracing::warn!("{failure}");
                 report.failures.push(failure);

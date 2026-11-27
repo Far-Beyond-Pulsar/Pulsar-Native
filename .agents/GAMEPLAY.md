@@ -81,7 +81,8 @@ Starting script instances (begin_play) instances=3   (then 1 for the character)
   are not in the world's space and spawn at the origin). No key: the origin. The key is a plain level
   setting that a level file carries untouched; the editor has no field for it yet.
 - **Session scopes**: packaged and headless games, and Play-in-Editor, all run `start_roles` in the
-  driver's first script phase; the editor's own edit mode spawns no roles (a level in the editor is
+  first script phase after a level is in the world, once per level (see "The game instance and level
+  switching"); the editor's own edit mode spawns no roles (a level in the editor is
   data; roles are session objects, never saved).
 - **Events a role's script gets**: the trait methods (`GameMode.on_game_start`, ...) through the one
   dispatcher, `begin_play`, `tick` every frame and `end_play` at the session's end (Blueprint nodes
@@ -96,6 +97,134 @@ real path, run the packaged content headless the way a game's `main()` does, and
 counters (hooks heard, `begin_play`, ticks), the four role entities, an `IA_Jump` event reaching the
 pawn's Blueprint, and that no role entity outlives the session. The probes are written by a script
 (`mkprobe.js`, in this change's scratch notes: counters in class variables, one `log_info` per event).
+
+## The game instance and level switching
+
+### What a project says
+
+`Pulsar/project.json` is the single source (the game, the packer and the cooked content all read it;
+Project Settings > **Game** edits the two keys in place and keeps every other key,
+`ui_settings::utils::game`, `pulsar_content::edit_project_file`):
+
+| Key | Absent | `""` | Value |
+|---|---|---|---|
+| `startup_level` | the editor's `project.default_map` (dev builds), else `scene/default.level`, `scenes/default.level`, `scenes/default_level.json` (`pulsar_content::default_level`) | **no level**: nothing loads until a script asks; no fallback, in the editor, the packer and the game | that level (a missing one falls back to the default, with a warning; the packer refuses it) |
+| `game_instance` | none | none | a class folder (`classes/Main.class`); cooked content names it by class id |
+
+The cooked settings keep `""` as `""`. The packer checks the game instance (a project class, with a
+compiled module, that the trait index lists as implementing `pulsar.GameInstance`) and fails
+otherwise: shipped content carries no trait index, so the game could not tell.
+
+### The game instance
+
+A Blueprint class implementing the **Game Instance** trait (`pulsar.GameInstance`,
+`plugins/Pulsar/traits/game_instance.trait.json`; all methods have default bodies): `on_init()`,
+`on_level_loaded(level: String)`, `on_shutdown()`. It is **not** a level role: World Settings does
+not list it and a level switch does not end it (`pulsar_game/src/scripting/driver/game_instance.rs`).
+
+- **Start** (`TickLoop::start_game_instance`, called by every host after the project's setup enabled
+  scripting): spawned as the object `pulsar_game_instance` with its prefab components; its script
+  starts at once (`begin_play`, then `on_init`) before any level is read. Native components'
+  `begin_play` and the component systems (widgets, audio) start with the first tick, as every
+  component's do. While no level is in the world the level roles and `LevelLoaded` wait
+  (`ScriptDriver::hold_level_roles`).
+- **What is its own**: its object, everything parented under it, and their components. Everything
+  else in the world belongs to the level, **including objects it spawns at the root** (spawn a child
+  of `Get Game Instance` to keep an object across levels; root objects spawned before the first level
+  leave with that level). Its variables, timers, event subscriptions, global scripts and native
+  script actors also persist.
+- **`on_level_loaded`** runs in the new level's first script phase, after its objects' `begin_play`
+  and the roles' hooks (possession completes a frame later). The startup level raises it too.
+- **Shutdown** (`TickLoop::end_session`): the level ends first (as in a switch), then `on_shutdown`
+  with the game instance's components still live, then its script's `end_play`, then the components
+  end. World requests made from `on_shutdown` are dropped. Without a game instance the session ends
+  as before.
+
+### Loading and switching levels (`pulsar_game/src/tick/levels.rs`)
+
+One flow for every host: the windowed game, headless and Play-in-Editor (`TickLoop::request_level`,
+the `game::load_level` native). A new request replaces one still preparing (latest wins); loading the
+current level restarts it.
+
+1. **Prepare**, on the `level-prepare` worker, while the current level runs: read, parse, migrate,
+   **validate** (`PreparedLevelFile::validate`: version, ids and parent order, every registered
+   component's data decodes), scan classes, resolve roles and the render pipeline. A failure leaves
+   the current level as it is; it is logged and reported as a script problem
+   (`Load Level 'x' failed: ...`: the PIE Problems panel, a headless run's `problems`).
+2. **Commit**, at the start of a tick: `TickLoop::end_level`: possession, `GameMode.on_game_end`,
+   `GameEnded`, level scripts' `end_play` (components still live), role entities, then the level
+   components' `end_play` (`Session::end_owned`), the objects (sublevels and GPU rows go with them),
+   and plugins' level state (`game_hooks::LevelEndRegistration`: physics drops its simulation and
+   thread; audio stops what the level's objects play, the game instance's sounds play on). Never
+   `end_session`. World requests made by the leaving scripts' `end_play` are dropped. Then the new
+   pipeline is selected; hosts follow it (`SceneRenderer::follow_level_pipeline`; the same pipeline is
+   not rebuilt; the old one draws until a new one is built).
+3. **Hydrate**, `HYDRATION_BUDGET` (4 ms) a tick. While the level is partial **nothing of gameplay
+   ticks** (no system, component, script or timer; input is still flushed to the hub, rendering goes
+   on). The game instance is paused too. Then the level's roles and `world_settings` become the
+   session's (gravity before any physics component begins), and the next tick runs. Physics starts a
+   fresh simulation for the level, so it again waits for mesh collider geometry
+   (`holds_for_geometry`).
+
+Headless runs (and tests) load blocking: the whole switch happens in the tick that finds the request,
+so a run is the same on any machine. A failure of hydration after the commit (what validation cannot
+see) is reported and the game runs with what loaded.
+
+**No level.** Before the first level (or when none loads) the renderer runs the fallback pipeline a
+plugin offers (`pipelines::FallbackPipeline`; `pulsar.default_pipelines` offers
+`Deferred.rendergraph`, which has the widget nodes), so the game instance's widgets draw. The packer
+cooks it when the project has a game instance or starts with no level. A loaded level that names no
+pipeline still shows the "No render pipeline assigned" screen.
+
+### Script nodes (every Blueprint; `scripting/game_natives.rs`, palette category Game)
+
+| Node | Native | Pins |
+|---|---|---|
+| Load Level | `game::load_level` | `level` (string; the pin editor is the `.level` picker, `pin_type.level = LevelPath`) |
+| Set Input Mode | `game::set_input_mode` | `mode` (`Game` or `UI`; a dropdown, `pin_type.mode = InputModeName`) |
+| Quit Game | `game::quit` | |
+| Get Game Instance | `game::instance` | result: the game instance's entity (null without one) |
+
+The first three are queued like `world::spawn` and applied by the tick loop after the script phase.
+Blueprint pin editors honour any native's `pin_type.<pin>` attribute (the name of a reflected type
+with a property editor).
+
+**Input mode UI** (`game_control::InputMode`, kept across levels): windowed, the cursor is released
+and a click does not capture it; the free camera and the late look stand down; the input runtime
+reads no device (`GameplayInputSuppressed`: held actions complete, a key held across the menu counts
+again when pressed again). Raw key and mouse events still reach scripts (a pause menu's Escape), and
+widgets get the pointer. Back to `Game` captures the cursor at once if the window has focus (the
+start of a session is `Game`, captured on the first click, as before). Esc frees the cursor in every
+mode. Headless ignores the cursor; the input suppression applies. Play-in-Editor: the Game tab never
+grabs the OS cursor; UI mode suppresses gameplay input and the free camera the same way.
+
+**Quit Game**: windowed closes the window and ends the session; a headless run stops
+(`HeadlessReport::quit`); Play-in-Editor stops Play (PIE ABI v6 `control::QUIT_REQUESTED`).
+
+**Play-in-Editor** plays the level the editor has open, not the default level: the game instance
+starts first, and a Load Level in its `on_init` replaces the open level as it would the default one.
+Load Level of the open level reads the Play snapshot (`target/pie/play.level`, unsaved edits
+included; the ABI passes the open level's name). Stop restores the editor's world from its pre-Play
+snapshot, whatever levels were loaded. Saving is refused while Play runs: the world is the game's.
+The fast path reuses a built game library only if this editor build made it
+(`<library>.engine-stamp`: the PIE ABI and the editor executable) as well as no source being newer.
+
+How others do it: Unreal's `UGameInstance` outlives every `UWorld`; `OpenLevel` tears the world down
+and loads the next behind a loading screen; Unity keeps `DontDestroyOnLoad` objects across
+`SceneManager.LoadSceneAsync`; `FInputModeUIOnly` / `FInputModeGameOnly` are the input modes.
+
+Tests: `plugins/installed/tests/game_instance.rs` (packaged and headless: order, no level before a
+widget click, two switches and a reload, state surviving, nothing left behind, gravity per level, a
+failed load, Quit, `on_init`'s Load Level over the default; hydration across ticks with gameplay
+held; Play-in-Editor switches and Stop restoring the world).
+
+### Not done
+
+- No loading screen while a level hydrates; the game instance cannot tick during hydration (its
+  widgets stay on screen, unchanging).
+- No seamless/additive travel: sublevels are `SubLevelDisplayComponent`; there is no streaming of a
+  second level beside the current one.
+- The input mode's `Game` state has no "capture without a click at start" option.
 
 ## The default player character
 
@@ -137,16 +266,19 @@ pawn's Blueprint, and that no role entity outlives the session. The probes are w
   `pitch_deg` and its limits, all reflected properties. The host builds the frame's camera from
   the owner's pose and this rig (`pulsar_game::camera_selection::render_camera`).
 
-### Falling through the map
+### Collision with a level's geometry
 
-The capsule exists (`CharacterControllerComponent`) and the physics plugin's character path runs it, but
-the Bistro level had **no colliders at all**, and the plugin's mesh collider shapes (`ConvexHull`,
-`TriangleMesh`) are declared and **not simulated** (`physics_plugin/src/components/collider.rs`:
-"mesh colliders are not simulated yet; skipping"). So the project's default level got a static
-**box collider as the ground** (object `Ground Collider`, a `ColliderComponent` box of 800 x 1 x 800 m whose
-top is at y = 0, where the Bistro's street lamps stand) and `player_start` `[0, 1.2, 0]`.
-This is a flat floor, not the street's real surface: steps and kerbs are not walked on. The proper fix is
-mesh collision in the physics plugin (a trimesh from the `.mesh` asset, per static mesh), listed below.
+A `ColliderComponent` of shape `TriangleMesh` (or `ConvexHull`) with an empty `mesh` is made from the
+geometry its object shows **and that of every object under it** (`physics_plugin/src/components/collider_geometry.rs`),
+so one collider on a level folder makes everything in it solid. It reads the engine's content geometry
+(`content_triangles`, which meshes register), places each object's triangles through the hierarchy
+(`world_matrix_of`), and builds the shape on the physics thread (the Bistro: 2.8 million triangles, 0.8 s).
+
+- The simulation does not start while such a collider's level is still loading assets
+  (`holds_for_geometry`, capped at 30 s): the packaged game streams meshes in after play begins.
+- Not handled: geometry that appears later (a sublevel, a streamed or spawned mesh) does not rebuild the
+  collider until the collider itself changes; a mesh named by path in `mesh` is not simulated.
+- Every triangle collides, foliage included.
 
 ### Input latency
 
@@ -595,6 +727,56 @@ Each was seen in a recording of the packaged game on the Bistro level (`profile_
     Vulkan build of `helio` and the plugin passes' own GPU tests were not re-run beyond `helio-core`'s deferred tests (6 pass on this GPU)
     and `engine_backend`'s `pacing` tests (8 pass); the other `create_*_pipeline` sites (about 120) still compile in line.
 
+### Round 5: the built game at 3440x1440 (2026-11-27)
+
+Reported: about 85 fps on an RTX 4090 at 3440x1440. Measured with `PULSAR_FRAME_STATS=2` (`pulsar_game::frame_stats`: every
+2 s the frame rate, each CPU stage of the game window's frame as mean/worst, the render graph's CPU and GPU pass times, and every
+fifth report wgpu's allocator report by allocation name), release game, 165 Hz display, Fifo, frame latency 1, steady state after
+the level streamed in. `coin_town` was loaded as the startup level from a scratch content folder linking the project's loose files;
+the menu level (`coin_town_menu`) is the same street with nothing moving.
+
+| | menu, before | coin_town, before | coin_town, after |
+|---|---|---|---|
+| fps | 139 to 146 | 101 to 106 | 111.8 |
+| frame period ms | 6.9 to 7.2 | 9.4 to 9.9 | 8.95 |
+| GPU frame ms | 6.8 to 7.1 | 8.4 to 8.8 | 7.95 |
+| CPU: record and submit ms | 3.0 to 4.2 | 4.0 to 4.5 | 3.06 |
+| CPU: render graph passes ms | | 0.81 to 0.90 | 0.58 |
+| CPU: acquire (waiting for the GPU) ms | 1.7 to 3.2 | 3.5 to 3.8 | 4.85 |
+| CPU: copy and present ms | 0.7 to 1.0 | 1.2 to 1.3 | 0.77 |
+| ObjectBatch GPU ms | 0.14 | 0.49 (full rebuild 300 of 300 frames) | under 0.07 (moved-slot path) |
+| VgBvh GPU ms | none | 0.29 (rebuild every frame) | under 0.07 |
+| VRAM allocated (reserved) | | 10.85 GB (12.35) | 4.65 GB (5.18) |
+| of which textures | | 8.26 GB, 565 textures | 2.07 GB |
+
+The first 30 to 40 s after the level starts run at 45 to 78 fps while it streams in (`record_submit` 11 to 22 ms: asset binding and
+uploads); that and the overlay's 1% low (82) are what "about 85" was. The game is GPU bound at this size throughout.
+
+Fixed:
+- *No texture compression in the game.* `request_engine_device` (the factory every engine device comes from) now asks for
+  `TEXTURE_COMPRESSION_BC` where the adapter has it; only the editor's window asked before (`engine/startup.rs`, removed), so the game
+  cooked and held every texture as RGBA8 (`CookFormat::best_for`). Four times the VRAM and the sampling bandwidth. See
+  `.agents/MEMORY.md`. The first run after this re-cooks the textures as BC7 (cached in the derived cache after that).
+- *Moving objects re-derived the virtual-geometry instances every frame.* `VirtualGeometryInstances` keyed its rerun on the object
+  rows' content, which moves with every transform, and every rerun moved its outputs' generations: the object batch saw the
+  classic-suppressed buffer change and re-sorted the whole scene (a full rebuild every frame), and the VG BVH saw new instances and
+  rebuilt instead of refitting. It reads only the rows' structure (mesh slot, generation, flags), so it keys on the scene join's
+  structure marker now; the one transform-dependent bit, whether cone culling is valid (uniform scale, no mirroring), moved to the
+  VG cull, which loads the transform every frame anyway (`vg_cull.wgsl`, `cone_cull_allowed`).
+
+What the 7.95 ms GPU frame is now (coin_town, ms): DeferredLight+AtmosphereComposite 1.69; the GI chain about 2.9 at the project's
+`gi.quality = pixels_16` (Denoise 0.78 with reconstruct 0.31, temporal 0.24, spatial 0.19; GIGatherShade 0.39; GIGather 0.31 with near
+field 0.26 and spatial 0.24; MeshRays gi_pixels 0.19; GILight 0.18; HistoryPixels 0.16; MeshRays gi 0.16; LightSamples 0.13; GIResolve
+0.11; the rest under 0.1 each); GBuffer 0.55; HiZBuild 0.47; Atmosphere 0.32; PostProcess 0.27; Shadow Matrix residency solve 0.21;
+portal occurrences 0.26 in two passes; Lens 0.13. Open:
+- *HiZBuild 0.47 ms*, rebuilt every frame anything moves: it copies the full-resolution depth into a buffer and back into the
+  pyramid's mip 0, then runs one dispatch per mip level. A single-pass downsampler that reads the depth texture directly (as AMD's
+  SPD does) removes both copies and the per-mip barriers; it needs the translated-shader concern in the pass's header checked.
+- *Shadow Matrix residency solve 0.21 ms* every frame something moves.
+- *The detail budget does not hold* (`texture_detail`): textures bound before the total crossed the budget keep their full size.
+- The CPU frame (about 4.5 ms of record, submit, copy and present) is under the GPU's at this size; at 1280x720 the game sits at
+  the 165 Hz refresh (GPU 3.5 ms, CPU about 3.5 ms).
+
 ### Round 4: measurement and the profile it began from
 
 Rules: the existing recorder (`profile_start`, `profile_gpu`, `profile_query_sql`) on the packaged game, one fixed
@@ -768,9 +950,8 @@ architecture skill and the profiler tooling another agent is building; start fro
   500 x 0.5 x 500 under a capsule falling from 1.5 m: it passed the floor and ended at y = -0.3; 50 and 400 stood at
   y = 0.92; 150 rested 0.4 m low). Not understood and not fixed; the test floors use 50. The voxel project's floor is 400.
 
-- **Mesh colliders are not simulated** (`physics_plugin/src/components/collider.rs:268`, `builder()`
-  returns `None` for `ConvexHull` and `TriangleMesh`). A level's static meshes cannot collide; the Bistro
-  default level uses one flat box.
+- **A mesh collider named by path is not simulated** (only an object's own geometry is; see "Collision with
+  a level's geometry"). The voxel project's default level still uses one flat box.
 - **Every plugin library has its own `engine_fs` mount state** (`engine_fs/src/virtual_fs/mounts/projects.rs:36`,
   `tree.rs`): code in a plugin library that reads a path under `plugins/<Name>/` must mount the project
   first. Three call sites do now; the structural fix is an attach hook (`_plugin_attach_engine_fs`) like the

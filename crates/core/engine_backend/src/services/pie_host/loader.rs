@@ -44,6 +44,7 @@ pub(super) struct ContextParams<'a> {
     pub(super) shared_world: *const c_void,
     pub(super) reload: bool,
     pub(super) view: Option<crate::subsystems::render::EditorCameraState>,
+    pub(super) level_name: Option<&'a str>,
 }
 
 /// The path to load the library from, and the temp copy that owns it when
@@ -70,6 +71,35 @@ pub(super) fn load_path_for(dylib_path: &Path) -> Result<(PathBuf, Option<TempCo
     } else {
         Ok((dylib_path.to_path_buf(), None))
     }
+}
+
+/// Connects the game library to this process, before any of its code runs.
+///
+/// The library is a second copy of the engine's crates working on the
+/// editor's GPU device and world. It shares this process's parking lot, so a
+/// thread parked in one copy on a lock the two share (the device's, say) is
+/// woken by the other's unlock, and Helio's runtime, so its renderer's
+/// threads and pipeline builds are the editor's tasks, as a plugin
+/// library's are (`plugin_manager::attach`).
+pub(super) unsafe fn attach_host_runtimes(lib: &Library) -> Result<(), String> {
+    const REBUILD: &str = "Rebuild the game library (its src/lib.rs must call \
+                           pulsar_game::export_pie_runtime_attach!()).";
+    let parking: parking_lot_core::AttachFn =
+        required(lib, parking_lot_core::ATTACH_SYMBOL.as_bytes())
+            .map_err(|error| format!("{error}. {REBUILD}"))?;
+    // SAFETY: the symbol is the library's parking lot entry point, and the
+    // host keeps the library loaded while its code can run.
+    if !unsafe { parking_lot_core::share_with(parking) } {
+        return Err(format!("The game library refused the editor's parking lot. {REBUILD}"));
+    }
+    let helio: helio_core::runtime::AttachFn =
+        required(lib, helio_core::runtime::ATTACH_SYMBOL.as_bytes())
+            .map_err(|error| format!("{error}. {REBUILD}"))?;
+    // SAFETY: as above, the library's Helio entry point.
+    if !unsafe { helio_core::runtime::share_with(helio) } {
+        return Err(format!("The game library refused the editor's renderer runtime. {REBUILD}"));
+    }
+    Ok(())
 }
 
 /// Fails when the library was built against another ABI version.
@@ -163,6 +193,8 @@ pub(super) fn build_context(params: &ContextParams<'_>) -> Box<PieContext> {
         // host says so (ABI v5), the guest never guesses.
         session_kind: pulsar_pie_abi::session_kind::PLAY_IN_EDITOR,
         _reserved: 0,
+        level_name_ptr: params.level_name.map_or(std::ptr::null(), str::as_ptr),
+        level_name_len: params.level_name.map_or(0, str::len),
     })
 }
 

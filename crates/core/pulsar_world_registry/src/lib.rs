@@ -77,12 +77,16 @@ pub use component_lifecycle::{
     ConstructStats, Session,
 };
 pub use pulsar_component_lifecycle::{
-    ConstructInfo, ConstructReason, SessionKind, SessionScope, ViewPose,
+    ConstructInfo, ConstructReason, GameplayInputSuppressed, SessionKind, SessionScope, ViewPose,
 };
 
+#[doc(hidden)]
+pub mod asset_path;
 mod classes;
 mod component_events;
 mod gpu_mirror;
+/// The reflected type of the input mode pin.
+pub mod input_mode;
 mod registration;
 #[cfg(test)]
 mod tests;

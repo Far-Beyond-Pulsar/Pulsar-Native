@@ -1,6 +1,5 @@
 # Level Editor - ko
 
-LevelEditor.Toolbar.StartSimulation: "시뮬레이션 시작 (F5)"
 LevelEditor.Toolbar.SimulationRunning: "시뮬레이션 실행 중"
 LevelEditor.Toolbar.PauseSimulation: "시뮬레이션 일시정지 (F6)"
 LevelEditor.Toolbar.StopSimulation: "시뮬레이션 중지 (Shift+F5)"

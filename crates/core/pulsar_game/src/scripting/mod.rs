@@ -30,11 +30,13 @@ pub mod commands;
 pub mod driver;
 pub mod events;
 pub mod export;
+pub mod game_natives;
 #[cfg(test)]
 mod tests;
 mod traits;
 
 pub use commands::WorldCommand;
+pub use driver::GameInstanceEntity;
 pub use driver::{
     global_instance_id, instance_id_for, module_file, scripting_config_path, DriverReport,
     LockTimes, ReloadRequests, ScriptDriver, ScriptingConfig, MODULE_BINARY_FILE, MODULE_JSON_FILE,
@@ -83,6 +85,7 @@ inventory::submit! {
 pub fn new_runtime() -> ScriptRuntime {
     // Reference pulsar_std so its natives are linked into this binary.
     let _ = pulsar_std::get_all_nodes().len();
+    game_natives::keep_linked();
     ScriptRuntime::new(std::env::temp_dir().join("pulsar_script_libraries"))
 }
 

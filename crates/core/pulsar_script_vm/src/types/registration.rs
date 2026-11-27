@@ -54,6 +54,28 @@ impl ComponentAddressing {
     };
 }
 
+/// A Rust string newtype scripts read and write as a plain `string`
+/// (an asset path, say). Submitted by
+/// [`script_text_type!`](crate::script_text_type).
+pub struct TextTypeRegistration {
+    pub binding: fn() -> TypeBinding,
+}
+
+inventory::collect!(TextTypeRegistration);
+
+/// Let scripts read and write `$ty` as a `string`. `$ty` is
+/// `Clone + From<String> + Deref<Target = str>`.
+#[macro_export]
+macro_rules! script_text_type {
+    ($ty:ty) => {
+        $crate::__private::inventory::submit! {
+            $crate::types::TextTypeRegistration {
+                binding: || $crate::types::TypeBinding::text::<$ty>(),
+            }
+        }
+    };
+}
+
 /// A value type visible to scripts under a stable name. Submitted by
 /// [`script_value_type!`](crate::script_value_type).
 pub struct ValueTypeRegistration {

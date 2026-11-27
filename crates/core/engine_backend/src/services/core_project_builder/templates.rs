@@ -76,6 +76,9 @@ mod classes;
 mod engine_main;
 mod plugins;
 
+// What the editor connects before running any code of this library.
+pulsar_game::export_pie_runtime_attach!();
+
 /// ABI revision this game was built against; the editor refuses to load on a
 /// mismatch and asks the user to rebuild.
 #[no_mangle]

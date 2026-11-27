@@ -30,6 +30,7 @@ pub use pulsar_scenedb::{
 // through it (P5a of the component lifecycle plan).
 pub mod latency;
 pub mod frame_pacer;
+pub mod frame_stats;
 pub mod pointer;
 pub mod late_look;
 pub mod lifecycle;
@@ -56,6 +57,10 @@ pub mod tick;
 
 // The Blueprints a level assigns to the engine roles, resolved for the spawn step.
 pub mod roles;
+
+// What a running game asks of its host (input mode, quit), and the level
+// events a host follows.
+pub mod game_control;
 
 // Whether the local player possesses a pawn: the gate that keeps the free
 // camera off the keys the pawn listens to. What a possession attaches to the
@@ -193,4 +198,23 @@ pub mod prelude {
 #[cfg(test)]
 mod test_language {
     pulsar_language::submit_test_language!("test.graph", ["graph_save.json"]);
+}
+
+/// The crates [`export_pie_runtime_attach!`] expands through.
+#[doc(hidden)]
+pub mod __attach {
+    pub use helio_core;
+    pub use parking_lot_core;
+}
+
+/// Exports, from a game library, the entry points the editor calls before any
+/// other code of it when Play-in-Editor loads it: the library's parking lot
+/// and Helio runtime become the editor's. Without them a lock shared with the
+/// editor deadlocks. Call it once, in the library's root.
+#[macro_export]
+macro_rules! export_pie_runtime_attach {
+    () => {
+        $crate::__attach::parking_lot_core::export_attach!();
+        $crate::__attach::helio_core::export_runtime_attach!();
+    };
 }

@@ -18,9 +18,10 @@
 //! - the level's gravity decides the fall;
 //! - the session ends: the physics thread is joined and unregistered.
 //!
-//! The windowed path shares the settings install (`standalone::adopt_level`)
-//! and ends its session on the tick thread, which the app now joins; opening
-//! a window itself is not covered here.
+//! The windowed path loads levels through the same level flow
+//! (`pulsar_game::tick::levels`, which sets the level's settings) and ends its
+//! session on the tick thread, which the app joins; opening a window itself is
+//! not covered here.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};

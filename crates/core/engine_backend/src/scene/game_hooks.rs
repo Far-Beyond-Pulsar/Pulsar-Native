@@ -55,6 +55,72 @@ pub fn tick_phases() -> Vec<&'static TickPhaseRegistration> {
     phases
 }
 
+/// Something of a plugin's that takes pointer presses for itself (an
+/// on-screen button), so the game does not act on them too.
+///
+/// The host asks before it publishes a press: a claimed press, and its
+/// release, are published as `PointerClaimedDown`/`PointerClaimedUp` instead
+/// of the mouse button events, and do not capture the cursor. Whoever claims
+/// subscribes to the claimed events. How others do it: Slate and UI Toolkit
+/// mark a UI-handled click so the player controller never sees it; Bevy's UI
+/// `Interaction` is checked by gameplay by hand, which this avoids.
+pub struct PointerClaimRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    /// For diagnostics.
+    pub name: &'static str,
+    /// Whether a press at window pixel `(x, y)` is taken. Read only: it runs
+    /// on the host's input path.
+    pub claims: fn(world: &World, x: f64, y: f64) -> bool,
+}
+
+impl pulsar_plugins::Contribution for PointerClaimRegistration {
+    const CATEGORY: &'static str = "game.pointer_claim";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(PointerClaimRegistration);
+
+/// Whether anything enabled claims a press at `(x, y)`.
+pub fn pointer_claimed(world: &World, x: f64, y: f64) -> bool {
+    pulsar_plugins::registered::<PointerClaimRegistration>()
+        .any(|claim| (claim.claims)(world, x, y))
+}
+
+/// Which pressed mouse buttons a host's input path found claimed, so each
+/// release goes the way its press went.
+#[derive(Default)]
+pub struct ClaimedButtons(u64);
+
+impl ClaimedButtons {
+    fn bit(button: i64) -> u64 {
+        1 << button.clamp(0, 63)
+    }
+
+    /// Record how `button`'s press went.
+    pub fn pressed(&mut self, button: i64, claimed: bool) {
+        if claimed {
+            self.0 |= Self::bit(button);
+        } else {
+            self.0 &= !Self::bit(button);
+        }
+    }
+
+    /// Whether the press `button` now releases was claimed.
+    pub fn released(&mut self, button: i64) -> bool {
+        let claimed = self.0 & Self::bit(button) != 0;
+        self.0 &= !Self::bit(button);
+        claimed
+    }
+}
+
 /// A line of a headless run's report: `key` with what `report` says about
 /// the world (the meshes': how many mesh components, how many bound).
 pub struct ContentReportRegistration {
@@ -184,6 +250,47 @@ pulsar_plugins::registration!(GameSessionRegistration);
 /// Every enabled game session hook, in name order.
 pub fn game_sessions() -> Vec<&'static GameSessionRegistration> {
     let mut hooks: Vec<_> = pulsar_plugins::registered::<GameSessionRegistration>().collect();
+    hooks.sort_by_key(|hook| hook.name);
+    hooks
+}
+
+/// What a plugin does when the game leaves a level for another one (the game
+/// session goes on, `GameSessionRegistration::end` does not run): the level's
+/// objects are already gone from the world, their components' `end_play`
+/// delivered. A plugin that keeps level-wide state of its own in the session
+/// (a simulation built with the level's settings, sounds the level's objects
+/// started) drops or rebuilds it here. Objects that persist (the game
+/// instance's) keep their state. The new level's settings are not set yet.
+///
+/// How others do it: Unreal's `UWorld` teardown on `OpenLevel` destroys the
+/// per-world subsystems while the `UGameInstance` lives on.
+pub struct LevelEndRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`): skipped
+    /// while that package's plugin is disabled.
+    pub origin: &'static str,
+    /// Its stable id in the plugin catalog (`<kind>.<what>`); hooks run in
+    /// name order.
+    pub name: &'static str,
+    pub level_ended: fn(world: &mut World, scope: &mut pulsar_world_registry::SessionScope),
+}
+
+impl pulsar_plugins::Contribution for LevelEndRegistration {
+    const CATEGORY: &'static str = "game.level_end";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(LevelEndRegistration);
+
+/// Every enabled level-end hook, in name order.
+pub fn level_end_hooks() -> Vec<&'static LevelEndRegistration> {
+    let mut hooks: Vec<_> = pulsar_plugins::registered::<LevelEndRegistration>().collect();
     hooks.sort_by_key(|hook| hook.name);
     hooks
 }

@@ -242,6 +242,9 @@ impl Render for LevelEditorPanel {
 
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
+        if window.is_window_active() {
+            self._playback_host.shown();
+        }
 
         // Play requested without a window (the AI tools).
         if self.shared_state.read().play.pie.play_requested {

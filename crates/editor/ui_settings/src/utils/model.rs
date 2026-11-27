@@ -109,14 +109,31 @@ pub fn build_pages(kind: WindowKind) -> Vec<Page> {
     match kind {
         WindowKind::Editor => owner_pages(NS_EDITOR, |_| true, "editor"),
         WindowKind::Project => {
-            let mut pages = owner_pages(
+            let mut pages = vec![game_page()];
+            pages.extend(owner_pages(
                 NS_PROJECT,
                 |owner| pulsar_settings::project::owner_origin(owner).is_none(),
                 "project",
-            );
+            ));
             pages.extend(plugin_pages());
             pages
         }
+    }
+}
+
+/// The project's first page: what the game starts with. Its rows are not
+/// database settings: they are keys of the project file
+/// ([`super::game::GameSettings`]).
+fn game_page() -> Page {
+    Page {
+        id: "project:game".into(),
+        title: "Game".into(),
+        description: Some("What the game starts with. Saved in Pulsar/project.json.".into()),
+        sections: vec![Section {
+            title: "Startup".into(),
+            settings: super::game::rows(),
+        }],
+        plugin: false,
     }
 }
 

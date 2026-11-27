@@ -51,17 +51,57 @@ impl PluginManager {
     // Component Registration
     // ========================================================================
 
+    /// Compile every script class of `project_root` into its module store with
+    /// every enabled language, linking native calls against `natives`, the
+    /// registry the game will run with: what a packaged game's scripts go
+    /// through, for a game Play runs in the editor's process. It is also a
+    /// check: `Err` joins the failures.
+    pub fn compile_scripts(
+        &self,
+        project_root: &std::path::Path,
+        natives: &pulsar_script_vm::NativeRegistry,
+    ) -> Result<(), String> {
+        let component_events = component_events();
+        // A project from before the module store keeps modules beside its
+        // classes: move them in before anything compiles or reads them.
+        pulsar_class::modules::migrate_legacy_modules(
+            project_root,
+            &pulsar_class::ClassRegistry::scan(project_root),
+        );
+        let mut failures: Vec<String> = pulsar_class::class_problems(project_root)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        for (language, compiler) in pulsar_language::LanguageRegistry::current().compilers() {
+            let diagnostics = compiler.compile_project_for_cook(
+                project_root,
+                natives,
+                &component_events,
+                plugin_editor_api::CookOptimization::Fast,
+            );
+            failures.extend(diagnostics.iter().filter(|d| d.is_error()).map(|d| {
+                let class = d.class.as_deref().unwrap_or("?");
+                match &d.location {
+                    Some(location) => {
+                        format!("{}: [{class}] {} ({location})", language.display_name, d.message)
+                    }
+                    None => format!("{}: [{class}] {}", language.display_name, d.message),
+                }
+            }));
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
+    }
+
     /// Run every scripting language's pre-Play validation on `project_root`
     /// (the compilers of the enabled languages, from the language registry),
     /// after the host's own class checks (a class that is two languages').
     /// `Err` joins the failures.
     pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
-        let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
-            .map(|registration| plugin_editor_api::ComponentEventMetadata {
-                component_class: registration.class_name.to_owned(),
-                event: (registration.declaration)(),
-            })
-            .collect();
+        let component_events = component_events();
         let mut failures: Vec<String> = pulsar_class::class_problems(project_root)
             .iter()
             .map(ToString::to_string)
@@ -108,4 +148,14 @@ impl PluginManager {
     ) -> Vec<(String, plugin_editor_api::ComponentFactory)> {
         std::mem::take(&mut self.plugin_component_registrations)
     }
+}
+
+/// The component events the engine offers scripts, for their compilers.
+fn component_events() -> Vec<plugin_editor_api::ComponentEventMetadata> {
+    pulsar_world_registry::component_event_registrations()
+        .map(|registration| plugin_editor_api::ComponentEventMetadata {
+            component_class: registration.class_name.to_owned(),
+            event: (registration.declaration)(),
+        })
+        .collect()
 }

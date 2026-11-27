@@ -106,6 +106,13 @@ Timings for your own images: `real_texture_cook.rs` (ignored test, see its heade
 
 ## Done since, and not done yet
 
+- **Every engine device asks for BC texture compression**
+  (`render_runtimes::request_engine_device`). Only the editor's window asked for it
+  before, so the built game's device had none and every texture cooked and stayed as
+  RGBA8: the Bistro's 565 textures took 8.26 GB of VRAM in the game and 2.07 GB as
+  BC7 (allocator report, `PULSAR_FRAME_STATS`, `.agents/GAMEPLAY.md` round 5). The
+  detail budget did not catch it: the bias is set as textures bind, and the ones
+  bound before the total crossed the budget stay at full size until they bind again.
 - **Texture use decides the format.** `TextureUse` (Color / Data / Normal) is part
   of the cook key and the per-device share key; the material graph's
   `texture_uses` assigns it. Data and normals are linear BC7 (not BC5: BC5 would

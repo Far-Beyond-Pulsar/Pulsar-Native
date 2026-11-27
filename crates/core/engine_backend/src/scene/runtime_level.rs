@@ -95,6 +95,40 @@ impl PreparedLevelFile {
         editor_camera(&self.file.editor)
     }
 
+    /// Check, without a world, what hydrating this level would refuse: its
+    /// version, its objects' ids and parent order, and that every registered
+    /// component's data decodes. A level switch calls it on the worker, so a
+    /// level that cannot load leaves the one being played as it is. (Ids that
+    /// collide with objects already in a world are only checked by the
+    /// hydration itself.) Slow for a large level: not for a frame thread.
+    pub fn validate(&self) -> Result<(), RuntimeLevelError> {
+        profiling::profile_scope!("runtime_level::validate");
+        check_version(&version_string(&self.file.version))?;
+        let nothing = World::new();
+        let mut seen = HashSet::new();
+        for obj in &self.file.objects {
+            validate_object(&nothing, &mut seen, obj)?;
+        }
+        let persisted = persisted_components(&self.file.components);
+        for obj in &self.file.objects {
+            for record in component_records_of(&persisted, obj) {
+                pulsar_world_registry::instances::check_record(
+                    &pulsar_scene_model::ComponentInstance {
+                        class_name: record.class_name.clone(),
+                        enabled: record.enabled,
+                        data: record.data,
+                    },
+                )
+                .map_err(|message| RuntimeLevelError::ComponentHydration {
+                    object_id: obj.id.clone(),
+                    class_name: record.class_name,
+                    message,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// Start hydrating this level a little at a time ([`LevelHydration`]), for
     /// a frame thread that can spend only a few milliseconds per frame.
     pub fn begin_hydration(self) -> Result<LevelHydration, RuntimeLevelError> {
@@ -159,10 +193,7 @@ impl LevelHydration {
         registry: pulsar_class::ClassRegistry,
     ) -> Result<Self, RuntimeLevelError> {
         let version = version_string(&file.version);
-        // Same accepted set as the editor's own loader: 1.x and 2.x.
-        if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
-            return Err(RuntimeLevelError::UnsupportedVersion(version));
-        }
+        check_version(&version)?;
         let extras = LevelExtras {
             editor_camera: editor_camera(&file.editor),
         };
@@ -274,23 +305,7 @@ impl LevelHydration {
                     let Some(entity) = world.entity_for(&obj.id) else {
                         continue;
                     };
-                    let instances = match self.persisted.get(&obj.id) {
-                        // A persisted entry is authoritative, including an
-                        // explicit empty array: the object has no components.
-                        Some(records) => records.clone(),
-                        None => component_instances_from_props(
-                            &obj.props,
-                            obj.component_instances.as_ref(),
-                        )
-                        .into_iter()
-                        .map(|(index, class_name, data)| ComponentRecord {
-                            index,
-                            class_name,
-                            data,
-                            enabled: true,
-                        })
-                        .collect::<Vec<_>>(),
-                    };
+                    let instances = component_records_of(&self.persisted, obj);
                     // Legacy shapes were migrated with the file
                     // (`pulsar_class::records`).
                     profiling::profile_scope!("level_hydration::components");
@@ -721,6 +736,35 @@ fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegist
         .get("blueprint_bindings")
         .and_then(|b| serde_json::from_value(b.clone()).ok())
         .unwrap_or_default();
+}
+
+/// The accepted level versions, as the editor's own loader: 1.x and 2.x.
+fn check_version(version: &str) -> Result<(), RuntimeLevelError> {
+    if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
+        return Err(RuntimeLevelError::UnsupportedVersion(version.to_owned()));
+    }
+    Ok(())
+}
+
+/// One object's component records: a persisted entry is authoritative,
+/// including an explicit empty array (the object has no components), else the
+/// records of its props.
+fn component_records_of(
+    persisted: &HashMap<String, Vec<ComponentRecord>>,
+    obj: &pulsar_scene::format::SceneObject,
+) -> Vec<ComponentRecord> {
+    match persisted.get(&obj.id) {
+        Some(records) => records.clone(),
+        None => component_instances_from_props(&obj.props, obj.component_instances.as_ref())
+            .into_iter()
+            .map(|(index, class_name, data)| ComponentRecord {
+                index,
+                class_name,
+                data,
+                enabled: true,
+            })
+            .collect(),
+    }
 }
 
 fn version_string(version: &Value) -> String {

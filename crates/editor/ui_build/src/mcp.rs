@@ -78,6 +78,7 @@ fn configurations(_: &str) -> ToolResult {
     let configs = build_configurations();
     let configs = configs.read();
     let selected = configs.selected_id().map(str::to_owned);
+    let plays_in_editor = configs.plays_in_editor();
     let list: Vec<Value> = configs
         .configs()
         .iter()
@@ -86,7 +87,8 @@ fn configurations(_: &str) -> ToolResult {
     ToolResult::json(&json!({
         "configurations": list,
         "profiles": ["debug", "release", "shipping"],
-        "note": "build_start runs the selected configuration unless it names another. 'Build & Run' builds the game and launches it; 'Build' only builds.",
+        "play_in_editor_selected": plays_in_editor,
+        "note": "The toolbar's Play button runs the selected configuration, or plays in the editor (built in, not a configuration). build_start runs the selected configuration unless it names another; name one while Play in Editor is selected. 'Build & Run' builds the game and launches it; 'Build' only builds.",
     }))
 }
 
@@ -94,9 +96,16 @@ fn set_mode(arguments: &str) -> ToolResult {
     let arguments = args(arguments);
     ensure_loaded();
     if let Some(wanted) = arguments.get("configuration").and_then(Value::as_str) {
-        match find_config(wanted) {
-            Ok(config) => build_configurations().update(|c| c.select(&config.id)),
-            Err(message) => return ToolResult::error(message),
+        if wanted.eq_ignore_ascii_case("play in editor")
+            || wanted == engine_state::build_config::PLAY_IN_EDITOR_ID
+        {
+            build_configurations()
+                .update(|c| c.select(engine_state::build_config::PLAY_IN_EDITOR_ID));
+        } else {
+            match find_config(wanted) {
+                Ok(config) => build_configurations().update(|c| c.select(&config.id)),
+                Err(message) => return ToolResult::error(message),
+            }
         }
     }
     if let Some(profile) = arguments.get("profile").and_then(Value::as_str) {
@@ -121,7 +130,7 @@ fn set_mode(arguments: &str) -> ToolResult {
     let configs = handle.read();
     match configs.selected() {
         Some(config) => ToolResult::json(&json!({ "selected": config_json(config, true) })),
-        None => ToolResult::error("no build configuration is selected"),
+        None => ToolResult::json(&json!({ "selected": "Play in Editor" })),
     }
 }
 
@@ -136,7 +145,11 @@ fn start(arguments: &str) -> ToolResult {
         },
         None => match build_configurations().read().selected().cloned() {
             Some(config) => config,
-            None => return ToolResult::error("no build configuration is selected"),
+            None => {
+                return ToolResult::error(
+                    "Play in Editor is selected, which is not a build: pass `configuration`",
+                );
+            }
         },
     };
     let mut config = config;

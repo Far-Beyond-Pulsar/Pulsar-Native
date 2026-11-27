@@ -1,6 +1,5 @@
 # Level Editor - zh-HK
 
-LevelEditor.Toolbar.StartSimulation: "開始模擬 (F5)"
 LevelEditor.Toolbar.SimulationRunning: "模擬運行中"
 LevelEditor.Toolbar.PauseSimulation: "暫停模擬 (F6)"
 LevelEditor.Toolbar.StopSimulation: "停止模擬 (Shift+F5)"

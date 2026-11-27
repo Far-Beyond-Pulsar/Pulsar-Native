@@ -7,7 +7,6 @@
 //! thread to the winit event loop.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -18,13 +17,13 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::RuntimeLevel;
 use engine_backend::subsystems::render::{
     DeviceOwner, PipelineBuildMode, SceneRenderer, SceneRendererOptions,
 };
 
 use crate::camera_selection::{camera_for_frame_turned, view_target_drives_camera};
 use crate::freecam::FreeCam;
+use crate::game_control::{GameControl, InputMode, LevelEvent};
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
 // ── Per-window GPU state ──────────────────────────────────────────────────────
@@ -56,6 +55,8 @@ struct GameWindow {
     next_redraw: Instant,
     /// Built with the editor's overlays (kept to rebuild it on a new device).
     editor_mode: bool,
+    /// The frame-time breakdown `PULSAR_FRAME_STATS` logs (`crate::frame_stats`).
+    stats: crate::frame_stats::FrameStats,
 }
 
 /// The texture a frame is drawn into before the swapchain image is acquired,
@@ -67,6 +68,8 @@ struct SceneTarget {
 
 impl SceneTarget {
     fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+        // The window's own video memory (`engine_backend::services::vram`).
+        let _vram_owner = helio_core::vram::root_scope("Game window");
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Game scene target"),
             size: wgpu::Extent3d {
@@ -243,6 +246,7 @@ impl GameWindow {
             focused: true,
             next_redraw: Instant::now(),
             editor_mode,
+            stats: crate::frame_stats::FrameStats::new(),
         }
     }
 
@@ -343,6 +347,7 @@ impl GameWindow {
             return;
         };
         let _span = self.runtime.task().span().entered();
+        self.stats.begin();
 
         // The world as late as possible: right before the camera goes into the
         // frame's uniforms. The input chain's frame starts here: this is the
@@ -363,6 +368,8 @@ impl GameWindow {
         // foliage clocks all advance from that), so there is nothing to push
         // in from here.
         crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Sampled);
+        // The sample's stages (lock, step, camera) are recorded by the caller.
+        self.stats.restart();
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;
 
@@ -374,6 +381,7 @@ impl GameWindow {
             )
         };
         crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Prepared);
+        self.stats.mark(crate::frame_stats::PREPARE);
         {
             profiling::profile_scope!("Game::render");
             if let Err(e) = self.renderer.render(&frame.camera, &self.scene_target.view) {
@@ -381,6 +389,7 @@ impl GameWindow {
             }
         }
         crate::latency::frame_stage(latency_frame, crate::latency::FrameStage::Rendered);
+        self.stats.mark(crate::frame_stats::RECORD_SUBMIT);
 
         // The display wait: the GPU is already working on the frame.
         let output = {
@@ -395,6 +404,7 @@ impl GameWindow {
                 }
             }
         };
+        self.stats.mark(crate::frame_stats::ACQUIRE);
         {
             profiling::profile_scope!("Game::copy_to_surface");
             let mut encoder = self
@@ -424,6 +434,23 @@ impl GameWindow {
         {
             profiling::profile_scope!("Game::latency_publish");
             crate::latency::frame_presented(latency_frame);
+        }
+        self.stats.mark(crate::frame_stats::COPY_PRESENT);
+    }
+
+    /// Close the frame's stats with the sample stages the caller timed.
+    fn finish_stats(&mut self, sampled: [std::time::Duration; 3]) {
+        if !self.stats.enabled() {
+            return;
+        }
+        self.stats.record(crate::frame_stats::SCENE_LOCK, sampled[0]);
+        self.stats.record(crate::frame_stats::STEP_SCENE, sampled[1]);
+        self.stats.record(crate::frame_stats::CAMERA, sampled[2]);
+        if self.stats.end(
+            [self.surface_config.width, self.surface_config.height],
+            self.renderer.renderer.timing_snapshot(),
+        ) {
+            crate::frame_stats::log_gpu_memory();
         }
     }
 }
@@ -542,9 +569,14 @@ pub struct PulsarApp {
     /// The game's content (project or packaged); levels and classes load
     /// from it.
     content: pulsar_content::ContentRoot,
-    default_scene: Option<PathBuf>,
+    /// What scripts ask of this host (input mode, quit) and the level events.
+    control: GameControl,
+    /// The input mode the cursor was last set up for.
+    input_mode: InputMode,
+    /// The first window: its free camera takes each level's editor camera.
+    primary_window: Option<WindowHandle>,
     /// The ONE shared, SceneDB-owned world: cloned out
-    /// of the TickLoop, hydrated with the requested level, and read by every
+    /// of the TickLoop, hydrated with each level, and read by every
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
     scene_store: engine_backend::scene::SharedScene,
@@ -573,43 +605,14 @@ pub struct PulsarApp {
     cursor_captured: bool,
     /// Where the cursor last was, in window pixels, for motion deltas.
     last_cursor: Option<(f64, f64)>,
+    /// Buttons whose press the screen claimed (an on-screen button's).
+    claimed_buttons: engine_backend::scene::game_hooks::ClaimedButtons,
     /// Time of last `about_to_wait` — used to compute per-frame dt for freecam.
     last_frame: Instant,
     /// When the last frame was drawn, for the profiler's frame markers.
     last_redraw: Option<Instant>,
     /// Several copies of the game are running; unfocused windows draw slowly.
     throttle_background: bool,
-    /// The startup level a worker is preparing; the tick thread starts once
-    /// it has been applied.
-    pending_level: Option<PendingLevel>,
-}
-
-/// A level being prepared off the event loop.
-struct PendingLevel {
-    /// The window whose free camera takes the level's editor camera.
-    window: WindowHandle,
-    path: PathBuf,
-    state: LevelLoadState,
-}
-
-/// Where the startup level is: with the worker, or being hydrated a few
-/// milliseconds per frame.
-enum LevelLoadState {
-    Preparing(std::sync::mpsc::Receiver<Result<LoadedLevel, String>>),
-    Hydrating {
-        hydration: engine_backend::scene::LevelHydration,
-        roles: pulsar_traits::WorldRoles,
-    },
-}
-
-/// What one frame spends hydrating the level, so input and drawing stay
-/// responsive while it arrives.
-const LEVEL_HYDRATION_BUDGET: std::time::Duration = std::time::Duration::from_millis(4);
-
-/// What the worker hands back: the parsed level and the roles it selects.
-struct LoadedLevel {
-    prepared: engine_backend::scene::PreparedLevelFile,
-    roles: pulsar_traits::WorldRoles,
 }
 
 impl PulsarApp {
@@ -618,7 +621,6 @@ impl PulsarApp {
         mut tick_loop: crate::tick::TickLoop,
         initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
         content: pulsar_content::ContentRoot,
-        default_scene: Option<PathBuf>,
         display: winit::event_loop::OwnedDisplayHandle,
     ) -> Self {
         // The tick loop's store handle is cloned BEFORE the loop moves into
@@ -627,6 +629,8 @@ impl PulsarApp {
         let events = tick_loop.events.clone();
         let possession = tick_loop.possession_gate();
         let view_targets = tick_loop.view_targets();
+        let control = tick_loop.control();
+        let primary_window = initial_windows.first().map(|(handle, _)| *handle);
         let pacer = crate::frame_pacer::FramePacer::new();
         tick_loop.set_frame_pacer(pacer.clone());
         let pointer = crate::pointer::PointerSampler::new();
@@ -639,7 +643,9 @@ impl PulsarApp {
             winit_to_handle: HashMap::new(),
             windows: HashMap::new(),
             content,
-            default_scene,
+            control,
+            input_mode: InputMode::Game,
+            primary_window,
             scene_store,
             events,
             possession,
@@ -650,10 +656,62 @@ impl PulsarApp {
             focused_window: None,
             cursor_captured: false,
             last_cursor: None,
+            claimed_buttons: Default::default(),
             last_frame: Instant::now(),
             last_redraw: None,
             throttle_background: running_beside_copies(),
-            pending_level: None,
+        }
+    }
+
+    // ── What the game asks of the window ──────────────────────────────────────
+
+    /// Set the cursor up for the input mode a script set, follow level
+    /// changes (the render pipeline, the free camera's start) and quit when
+    /// asked.
+    fn follow_game_control(&mut self, event_loop: &ActiveEventLoop) {
+        let mode = self.control.input_mode();
+        if mode != self.input_mode {
+            self.input_mode = mode;
+            match mode {
+                InputMode::Ui => self.release_cursor(),
+                InputMode::Game => {
+                    let focused = self
+                        .focused_window
+                        .or(self.primary_window)
+                        .filter(|handle| self.windows.get(handle).is_some_and(|w| w.focused));
+                    if let Some(handle) = focused {
+                        self.capture_cursor(handle);
+                    }
+                }
+            }
+        }
+        for event in self.control.take_level_events() {
+            match event {
+                LevelEvent::Begun { .. } | LevelEvent::Failed { .. } => {
+                    for window in self.windows.values_mut() {
+                        window.renderer.follow_level_pipeline();
+                    }
+                }
+                LevelEvent::Loaded { editor_camera, .. } => {
+                    let primary = self
+                        .primary_window
+                        .and_then(|handle| self.windows.get_mut(&handle));
+                    // The editor camera saved in the level file, so the first
+                    // frame without a game camera matches the editor view.
+                    if let (Some(cam), Some(window)) = (editor_camera, primary) {
+                        window.freecam = FreeCam::default().place(
+                            glam::DVec3::from_array(cam.position),
+                            cam.yaw,
+                            cam.pitch,
+                        );
+                    }
+                }
+            }
+        }
+        if self.control.quit_requested() {
+            self.release_cursor();
+            tracing::info!("The game quit: closing");
+            event_loop.exit();
         }
     }
 
@@ -754,21 +812,13 @@ impl PulsarApp {
 
     // ── Window lifecycle ──────────────────────────────────────────────────────
 
+    /// Open a window. Its renderer takes the pipeline selected for the level
+    /// loading or loaded (or the fallback while there is none).
     fn open_window(
         &mut self,
         event_loop: &ActiveEventLoop,
         handle: WindowHandle,
         desc: WindowDescriptor,
-    ) {
-        self.open_window_with_scene(event_loop, handle, desc, None);
-    }
-
-    fn open_window_with_scene(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        handle: WindowHandle,
-        desc: WindowDescriptor,
-        scene_path: Option<PathBuf>,
     ) {
         profiling::profile_scope!("Game::open_window");
         let mut attrs = Window::default_attributes()
@@ -796,14 +846,6 @@ impl PulsarApp {
             self.gpu.ensure_device(&temp_surface);
         }
 
-        // The renderer takes the level's pipeline when it is made, so choose
-        // it first; the level itself is hydrated below, once the renderer's
-        // GPU mirror is attached.
-        {
-            profiling::profile_scope!("Game::select_level_pipeline");
-            crate::standalone::select_level_pipeline(self.content.root(), scene_path.as_deref());
-        }
-
         let winit_id = window.id();
         let game_window = {
             profiling::profile_scope!("Game::create_window_renderer");
@@ -820,189 +862,8 @@ impl PulsarApp {
         };
 
         self.winit_to_handle.insert(winit_id, handle);
-
-        // Load the scene into the SHARED world + wire this window's renderer
-        // to it. The store already exists (the tick
-        // loop's), so the level merges INTO it -- setup-time-registered
-        // actors survive; no pulsar_scene::SceneLoader's second world.
-        // The level is read, parsed and migrated by a worker; the window is
-        // up and its event loop answering while that runs, and the level is
-        // hydrated by `poll_pending_level` once it is ready.
-        if let Some(path) = scene_path {
-            self.begin_level_load(handle, path);
-        }
-
         self.windows.insert(handle, game_window);
         tracing::info!(id = handle.id(), title = %desc.title, "Window opened");
-    }
-
-    /// Start preparing the level at `path` on a worker. Its assets (meshes)
-    /// load through the renderer's per-frame pump; their sources resolve
-    /// against the engine global, which `standalone::prepare_engine` set before
-    /// the event loop ran. Placed classes resolve against the content's classes
-    /// (its class index when packaged).
-    fn begin_level_load(&mut self, window: WindowHandle, path: PathBuf) {
-        tracing::info!(scene = %path.display(), window = window.id(), "Preparing scene");
-        let (send, receive) = std::sync::mpsc::channel();
-        let root = self.content.root().to_path_buf();
-        let worker_path = path.clone();
-        let spawned = editor_task_queue::spawn_thread(
-            editor_task_queue::ThreadSpec::new("level-prepare", editor_task_queue::ThreadRole::Io)
-                .owner("pulsar_game"),
-            move || {
-                // The project's file index is what components resolve an asset id
-                // through (a cable's tile texture) while they hydrate on the
-                // frame thread. Its first open scans the project (29 ms measured);
-                // opened here, the frame finds it ready.
-                if let Some(project) = engine_state::get_project_path() {
-                    profiling::profile_scope!("level-prepare: project file index");
-                    let _ = engine_fs::open_project_file_index(std::path::Path::new(&project));
-                }
-                let registry = pulsar_class::ClassRegistry::scan(&root);
-                let loaded = RuntimeLevel::prepare(&worker_path, &registry)
-                    .map(|prepared| {
-                        let roles = match engine_fs::virtual_fs::read_to_string(&worker_path) {
-                            Ok(json) => pulsar_traits::WorldRoles::for_level(&json, &root),
-                            Err(_) => pulsar_traits::WorldRoles::default(),
-                        };
-                        LoadedLevel { prepared, roles }
-                    })
-                    .map_err(|error| error.to_string());
-                let _ = send.send(loaded);
-            },
-        );
-        match spawned {
-            Ok(_) => {
-                self.pending_level = Some(PendingLevel {
-                    window,
-                    path,
-                    state: LevelLoadState::Preparing(receive),
-                });
-            }
-            Err(error) => {
-                tracing::warn!(scene = %path.display(), "No thread to load the scene: {error}")
-            }
-        }
-    }
-
-    /// Advance the startup level: pick up what the worker prepared, then
-    /// hydrate it a few milliseconds per call (`LEVEL_HYDRATION_BUDGET`), so
-    /// the window keeps drawing and answering input however large the level
-    /// is. Objects appear as they are spawned and their assets stream in
-    /// through the renderer's pump. Nothing here reads a file or waits for an
-    /// asset. The tick thread starts when the level is complete, so the session
-    /// begins with all of it in place (its roles and world settings first).
-    fn poll_pending_level(&mut self) {
-        let Some(pending) = &mut self.pending_level else {
-            return;
-        };
-        if let LevelLoadState::Preparing(loaded) = &pending.state {
-            let loaded = match loaded.try_recv() {
-                Ok(loaded) => loaded,
-                Err(std::sync::mpsc::TryRecvError::Empty) => return,
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    Err("the loader thread ended without a result".to_string())
-                }
-            };
-            let begun = loaded.and_then(|LoadedLevel { prepared, roles }| {
-                prepared
-                    .begin_hydration()
-                    .map(|hydration| LevelLoadState::Hydrating { hydration, roles })
-                    .map_err(|error| error.to_string())
-            });
-            match begun {
-                Ok(state) => pending.state = state,
-                Err(error) => {
-                    let PendingLevel { window, path, .. } = self.pending_level.take().unwrap();
-                    self.finish_level_load(window, path, Err(error));
-                    return;
-                }
-            }
-        }
-        let LevelLoadState::Hydrating { hydration, .. } = &mut pending.state else {
-            return;
-        };
-        let stepped = {
-            let mut store = self.scene_store.write();
-            hydration.step(&mut store.world, LEVEL_HYDRATION_BUDGET)
-        };
-        match stepped {
-            Ok(engine_backend::scene::HydrationProgress::More) => {}
-            Ok(engine_backend::scene::HydrationProgress::Done(extras)) => {
-                let PendingLevel {
-                    window,
-                    path,
-                    state,
-                } = self.pending_level.take().unwrap();
-                if let LevelLoadState::Hydrating { roles, .. } = state {
-                    // Displays of other levels are requested from workers.
-                    engine_backend::scene::sublevel_display::sync_level_instances_deferred(
-                        &mut self.scene_store.write().world,
-                    );
-                    self.finish_level_load(window, path, Ok((extras, roles)));
-                }
-            }
-            Err(error) => {
-                let PendingLevel { window, path, .. } = self.pending_level.take().unwrap();
-                self.finish_level_load(window, path, Err(error.to_string()));
-            }
-        }
-    }
-
-    /// The level is in (or could not be): seed the camera, adopt its roles
-    /// and settings, and start the game.
-    fn finish_level_load(
-        &mut self,
-        window: WindowHandle,
-        path: PathBuf,
-        result: Result<
-            (
-                engine_backend::scene::LevelExtras,
-                pulsar_traits::WorldRoles,
-            ),
-            String,
-        >,
-    ) {
-        match result {
-            Ok((extras, roles)) => {
-                // Seed the freecam from the editor camera saved in the level
-                // file, if present, so the first frame matches the editor view.
-                if let (Some(cam), Some(game_window)) =
-                    (extras.editor_camera, self.windows.get_mut(&window))
-                {
-                    game_window.freecam = FreeCam::default().place(
-                        glam::DVec3::from_array(cam.position),
-                        cam.yaw,
-                        cam.pitch,
-                    );
-                    tracing::info!(
-                        window = window.id(),
-                        "FreeCam seeded from scene editor camera"
-                    );
-                }
-                // The level's roles and world settings (gravity,
-                // `physics_enabled`, ...) are the session's: the loop is still
-                // ours (its thread starts below).
-                if let Some(tick_loop) = self.tick_loop.as_mut() {
-                    crate::standalone::adopt_prepared_level(tick_loop, &self.content, &path, roles);
-                }
-                // Scripts need nothing else here: the tick loop's script driver
-                // finds the level's class instances in the shared world at its
-                // first reconcile.
-                tracing::info!(
-                    window = window.id(),
-                    scene = %path.display(),
-                    "Scene hydrated into shared world"
-                );
-            }
-            Err(error) => tracing::warn!(
-                window = window.id(),
-                scene = %path.display(),
-                "Failed to load scene: {error}"
-            ),
-        }
-        // Loaded or not, the game runs.
-        self.spawn_ecs_thread();
     }
 
     fn close_window(&mut self, handle: WindowHandle) {
@@ -1059,12 +920,8 @@ impl PulsarApp {
 impl ApplicationHandler<WindowCommand> for PulsarApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         profiling::profile_scope!("Game::resumed");
-        let initial = std::mem::take(&mut self.initial_windows);
-        let default_scene = self.default_scene.take();
-
-        for (i, (handle, desc)) in initial.into_iter().enumerate() {
-            let scene = if i == 0 { default_scene.clone() } else { None };
-            self.open_window_with_scene(event_loop, handle, desc, scene);
+        for (handle, desc) in std::mem::take(&mut self.initial_windows) {
+            self.open_window(event_loop, handle, desc);
         }
 
         // The simulation ticks as often as the display refreshes (unless the
@@ -1087,11 +944,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         }
         tracing::info!(raw_input_thread = raw, "Pointer sampling");
 
-        // With a level on its way, the tick thread starts when it is applied
-        // (`poll_pending_level`).
-        if self.pending_level.is_none() {
-            self.spawn_ecs_thread();
-        }
+        // The tick thread loads the levels (`tick::levels`): nothing of
+        // gameplay runs while one is partly in the world.
+        self.spawn_ecs_thread();
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WindowCommand) {
@@ -1179,7 +1034,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 if focused {
                     self.focused_window = Some(handle);
                     // Re-capture when regaining focus (if we were captured before).
-                    if self.cursor_captured {
+                    if self.cursor_captured && self.control.input_mode() == InputMode::Game {
                         self.capture_cursor(handle);
                     }
                 } else {
@@ -1269,14 +1124,50 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     winit::event::MouseButton::Other(n) => i64::from(n),
                 };
                 let channel = pulsar_events::gamma::Channel::Global;
+                // With a free cursor, something on screen may take the press
+                // (an on-screen button): gameplay does not see it then, and
+                // the cursor stays free.
+                let (x, y) = self.last_cursor.unwrap_or_default();
                 if state == ElementState::Pressed {
+                    let claimed = !self.cursor_captured
+                        && self.last_cursor.is_some()
+                        && engine_backend::scene::game_hooks::pointer_claimed(
+                            &self.scene_store.read().world,
+                            x,
+                            y,
+                        );
+                    self.claimed_buttons.pressed(index, claimed);
+                    if claimed {
+                        self.events.publish(
+                            channel,
+                            pulsar_events::builtin::PointerClaimedDown {
+                                button: index,
+                                x,
+                                y,
+                            },
+                        );
+                    } else {
+                        self.events.publish(
+                            channel,
+                            pulsar_events::builtin::MouseButtonDown { button: index },
+                        );
+                        // A menu (`InputMode::Ui`) keeps the cursor free.
+                        if button == winit::event::MouseButton::Left
+                            && !self.cursor_captured
+                            && self.control.input_mode() == InputMode::Game
+                        {
+                            self.capture_cursor(handle);
+                        }
+                    }
+                } else if self.claimed_buttons.released(index) {
                     self.events.publish(
                         channel,
-                        pulsar_events::builtin::MouseButtonDown { button: index },
+                        pulsar_events::builtin::PointerClaimedUp {
+                            button: index,
+                            x,
+                            y,
+                        },
                     );
-                    if button == winit::event::MouseButton::Left && !self.cursor_captured {
-                        self.capture_cursor(handle);
-                    }
                 } else {
                     self.events.publish(
                         channel,
@@ -1309,13 +1200,21 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 let view_targets = &self.view_targets;
                 let pacer = &self.pacer;
                 let pointer = &self.pointer;
-                let late_look = self.late_look;
+                // A menu turns no view.
+                let late_look = self.late_look && self.control.input_mode() == InputMode::Game;
                 if let Some(gw) = self.windows.get_mut(&handle) {
+                    // Lock wait, scene step and camera, for `frame_stats`.
+                    let mut sampled = [std::time::Duration::ZERO; 3];
                     gw.render(pacer, |renderer| {
+                        let started = Instant::now();
                         {
                             profiling::profile_scope!("Game::step_scene");
-                            renderer.step_scene(&mut scene_store.write());
+                            let mut store = scene_store.write();
+                            sampled[0] = started.elapsed();
+                            renderer.step_scene(&mut store);
                         }
+                        let stepped = Instant::now();
+                        sampled[1] = stepped - started - sampled[0];
                         // The view as the last tick left it, turned by the mouse
                         // motion no tick has consumed yet (`late_look`).
                         profiling::profile_scope!("Game::camera_for_frame");
@@ -1343,8 +1242,10 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                         if late {
                             crate::latency::look_shown(pointer.take_unshown_motion());
                         }
+                        sampled[2] = stepped.elapsed();
                         camera
                     });
+                    gw.finish_stats(sampled);
                     if background && !gw.focused {
                         gw.next_redraw = gw.next_redraw.max(Instant::now() + BACKGROUND_FRAME);
                     }
@@ -1372,7 +1273,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         {
             self.recover_lost_device();
         }
-        self.poll_pending_level();
+        self.follow_game_control(event_loop);
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
@@ -1383,10 +1284,12 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         let mut wake: Option<Instant> = None;
         // The free camera stands down only while a possessed pawn's camera is
         // the view: a pawn with no camera leaves the view to the free camera.
-        let pawn_view = self.possession.is_possessed()
-            && view_target_drives_camera(&self.scene_store.read(), self.view_targets.local());
+        // A menu suspends it too.
+        let suspended = self.control.input_mode() == InputMode::Ui
+            || (self.possession.is_possessed()
+                && view_target_drives_camera(&self.scene_store.read(), self.view_targets.local()));
         for gw in self.windows.values_mut() {
-            gw.freecam.set_suspended(pawn_view);
+            gw.freecam.set_suspended(suspended);
             let start = gw.freecam.position();
             gw.freecam.update(dt);
             let end = gw.freecam.position();
@@ -1405,11 +1308,6 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             } else {
                 wake = Some(wake.map_or(gw.next_redraw, |w| w.min(gw.next_redraw)));
             }
-        }
-        // While a level is being prepared, look again soon.
-        if self.pending_level.is_some() {
-            let soon = now + std::time::Duration::from_millis(16);
-            wake = Some(wake.map_or(soon, |w| w.min(soon)));
         }
         event_loop.set_control_flow(match wake {
             Some(at) => ControlFlow::WaitUntil(at),

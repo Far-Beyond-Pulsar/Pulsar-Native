@@ -30,6 +30,8 @@ engine_state.workspace = true
 pulsar_settings.workspace = true
 # The reflected-list item contract (`ReflectedListItem`) the list editor reads.
 helio_component = { workspace = true }
+# The reflected types of script pins (the input mode choice).
+pulsar_world_registry = { workspace = true }
 # Text-edited value types (`TextEditedType`), edited by the line editor.
 ui_types_common = { workspace = true }
 pulsar_auth.workspace = true

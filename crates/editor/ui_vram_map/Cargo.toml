@@ -1,0 +1,18 @@
+[package]
+name = "ui_vram_map"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+engine_backend = { workspace = true }
+gpui-ce.workspace = true
+inventory = { workspace = true }
+parking_lot = { workspace = true }
+pulsar_plugins = { workspace = true }
+ui.workspace = true
+ui_common.workspace = true
+window_manager.workspace = true
+
+[lints]
+workspace = true

@@ -912,7 +912,9 @@ mod undo_redo_tests {
                     class_name: "SubLevelDisplayComponent".into(),
                     component_index: 0,
                     prop_name: "level".into(),
-                    value: Box::new(level.to_string_lossy().into_owned()),
+                    value: Box::new(helio_component::asset_paths::LevelPath(
+                        level.to_string_lossy().into_owned(),
+                    )),
                 },
             )
             .changed

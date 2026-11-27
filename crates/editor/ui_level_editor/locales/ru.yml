@@ -1,6 +1,5 @@
 # Level Editor - ru
 
-LevelEditor.Toolbar.StartSimulation: "Запустить симуляцию (F5)"
 LevelEditor.Toolbar.SimulationRunning: "Симуляция запущена"
 LevelEditor.Toolbar.PauseSimulation: "Пауза симуляции (F6)"
 LevelEditor.Toolbar.StopSimulation: "Остановить симуляцию (Shift+F5)"

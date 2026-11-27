@@ -1,6 +1,5 @@
 # Level Editor - lol (LOLCAT)
 
-LevelEditor.Toolbar.StartSimulation: "Start Simulayshun (F5)"
 LevelEditor.Toolbar.SimulationRunning: "Simulayshun Runnin"
 LevelEditor.Toolbar.PauseSimulation: "Pawz Simulayshun (F6)"
 LevelEditor.Toolbar.StopSimulation: "Stahp Simulayshun (Shift+F5)"

@@ -766,7 +766,12 @@ impl ScriptEvents {
         self.bridge.hub().drain_queued();
     }
 
-    /// Publish `LevelLoaded` once per session. `true` if it did now.
+    /// A level ended or another began: announce the next one again.
+    pub fn reset_level_announcement(&mut self) {
+        self.level_announced = false;
+    }
+
+    /// Publish `LevelLoaded` once per level. `true` if it did now.
     pub fn announce_level(&mut self, level: &str) -> bool {
         if self.level_announced {
             return false;

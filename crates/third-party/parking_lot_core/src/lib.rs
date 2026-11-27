@@ -59,7 +59,7 @@ mod util;
 mod word_lock;
 
 pub use self::parking_lot::deadlock;
-pub use self::parking_lot::{attach, host_handle, HostHandle, Shared};
+pub use self::parking_lot::{attach, host_handle, share_with, AttachFn, HostHandle, Shared};
 pub use self::parking_lot::{park, unpark_all, unpark_filter, unpark_one, unpark_requeue};
 pub use self::parking_lot::{
     FilterOp, ParkResult, ParkToken, RequeueOp, UnparkResult, UnparkToken,

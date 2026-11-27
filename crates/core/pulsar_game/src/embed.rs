@@ -1,14 +1,17 @@
 //! **Play In Editor** embedding — host-driven, no window of our own.
 //!
-//! When the user presses *Play* in the level editor, the editor compiles the
-//! game project as a `cdylib` and loads it. Instead of `main.rs` opening a winit
-//! window and owning a GPU device, the editor hands us **its** `wgpu::Device` /
-//! `Queue` and drives us one frame at a time. We build an *offscreen* Helio
-//! renderer that draws into a texture the editor then samples into its viewport.
+//! When the user presses *Play* in the level editor, a game runs on the
+//! editor's world and its `wgpu::Device` / `Queue`, driven one frame at a
+//! time and drawn by an *offscreen* Helio renderer into a texture the editor
+//! samples into its viewport. It runs one of two ways:
 //!
-//! The generated `lib.rs` is only a thin `extern "C"` shim around the functions
-//! here; all the real logic lives in-workspace so it is type- and API-checked
-//! against Helio during the normal Pulsar build.
+//! - **In the editor's process** ([`InEditorGame`]), for a project whose
+//!   gameplay is scripts only: no build of native code, and the engine the
+//!   editor runs is the engine the game runs (one copy of its caches,
+//!   registries and renderer code).
+//! - **As a library** for a project with native gameplay code: the editor
+//!   compiles the project as a `cdylib` and loads it. The generated `lib.rs`
+//!   is only a thin `extern "C"` shim around the `pie_*` functions here.
 //!
 //! ## Threading contract
 //!
@@ -22,7 +25,9 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::subsystems::render::{DeviceOwner, SceneRenderer, SceneRendererOptions};
+use engine_backend::subsystems::render::{
+    DeviceOwner, PipelineBuildMode, SceneRenderer, SceneRendererOptions,
+};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
     EngineContext as PieContext, InputEvent, LogFn, INIT_ERR, INIT_OK, LOG_ERROR, LOG_INFO,
@@ -62,8 +67,11 @@ pub struct PieSession {
 }
 
 impl PieSession {
-    /// A session over `tick_loop`, whose project `setup()` already ran.
-    /// `level` names the level `LevelLoaded` reports.
+    /// A session over `tick_loop`, whose project `setup()` already ran, whose
+    /// world holds the level the editor has open (`level` names it; its
+    /// roles are set already). The project's game instance starts before
+    /// anything of that level ticks; a level it asks for in `on_init`
+    /// replaces the open one, as it would the startup level.
     pub fn new(mut tick_loop: TickLoop, level: Option<String>) -> Self {
         // Scripts follow the shared world: the driver `setup()`
         // enabled finds the level the host already hydrated at its first
@@ -75,17 +83,15 @@ impl PieSession {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .subscribe_class_reloads()
         });
-        if let (Some(level), Some(driver)) = (level, &tick_loop.scripts) {
-            driver
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .set_level_name(level);
-        }
         // Play-in-Editor is a debugging session: record recently flushed
         // events for the editor's events panel (`pie_events_snapshot`) and
         // keep script problems for the problems panel.
         tick_loop.events.set_tap(true, PIE_EVENT_TAP_CAPACITY);
         tick_loop.collect_script_problems(true);
+        tick_loop.adopt_open_level(&level.unwrap_or_default());
+        if let Some(content) = pulsar_content::current() {
+            crate::standalone::start_game_instance(&mut tick_loop, &content);
+        }
         Self {
             tick_loop,
             _class_reloads: class_reloads,
@@ -174,6 +180,7 @@ impl PieSession {
             }
             control::IS_PAUSED => u64::from(self.tick_loop.is_paused()),
             control::FRAME => self.tick_loop.ticks(),
+            control::QUIT_REQUESTED => u64::from(self.tick_loop.control().quit_requested()),
             _ => 0,
         }
     }
@@ -239,6 +246,8 @@ pub struct EmbeddedGame {
     freecam: FreeCam,
     /// Where the pointer last was (normalized), for motion deltas.
     last_pointer: Option<(f32, f32)>,
+    /// Buttons whose press the screen claimed (an on-screen button's).
+    claimed_buttons: engine_backend::scene::game_hooks::ClaimedButtons,
 
     // ── Host log callback ───────────────────────────────────────────────────
     userdata: *mut std::ffi::c_void,
@@ -322,10 +331,130 @@ fn make_target(
     (texture, view)
 }
 
+/// What an embedded game is built on, however the host runs it.
+struct GameParts {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    color_format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
+    project_root: PathBuf,
+    /// The level the editor has open, as saved for this Play.
+    scene_path: Option<PathBuf>,
+    /// Its project-relative path; a never-saved level has none.
+    level_name: Option<String>,
+    /// The editor camera when Play was pressed.
+    view: Option<([f64; 3], f32, f32)>,
+    pipeline_build: PipelineBuildMode,
+    userdata: *mut std::ffi::c_void,
+    log: LogFn,
+}
+
 impl EmbeddedGame {
+    /// The game over `tick_loop`, whose project setup already ran: its
+    /// level's roles and pipeline, its offscreen renderer on the host's
+    /// device, and its session.
+    fn assemble(mut tick_loop: TickLoop, parts: GameParts) -> Self {
+        let GameParts {
+            device,
+            queue,
+            color_format,
+            width,
+            height,
+            project_root,
+            scene_path,
+            level_name,
+            view,
+            pipeline_build,
+            userdata,
+            log,
+        } = parts;
+        // Resolve which Blueprints the level assigned to the engine roles
+        // (game mode, controller, character, game state). Nothing is spawned
+        // here: the script driver spawns them as session entities at its first
+        // frame and despawns them at shutdown (`roles.rs`).
+        if let Some(scene) = &scene_path {
+            tick_loop.load_world_roles(scene, &project_root);
+            // Load Level of the open level plays what the editor has now (the
+            // snapshot, unsaved edits included), not the saved file.
+            if let Some(name) = &level_name {
+                tick_loop.set_level_source(name.clone(), scene.clone());
+            }
+        }
+
+        // ── Offscreen Helio renderer (external device) ───────────────────────
+        let (out_texture, out_view) = make_target(&device, color_format, width, height);
+
+        // ── Renderer seam onto the shared world ──────────────────
+        // The world already holds the level (the host hydrated it before
+        // Play). The renderer is the editor viewport's construction on the
+        // host's device; its GPU mirror is the viewport's when that already
+        // attached one.
+        let scene_store = Arc::clone(&tick_loop.scene_store);
+        // The level's pipeline, as a game chooses it (only game renderers
+        // read this slot; the editor viewport has the level's own setting).
+        crate::standalone::select_level_pipeline(&project_root, scene_path.as_deref());
+        let mut options = SceneRendererOptions::game(DeviceOwner::Host, false);
+        options.pipeline_build = pipeline_build;
+        let renderer = SceneRenderer::new(
+            device.clone(),
+            queue.clone(),
+            &scene_store,
+            width,
+            height,
+            color_format,
+            options,
+        );
+
+        // Camera selection prefers Camera-typed entities from the shared
+        // world; the free camera starts where the editor view was (ABI v4).
+        let freecam = match view {
+            Some((position, yaw, pitch)) => {
+                FreeCam::default().place(glam::DVec3::from_array(position), yaw, pitch)
+            }
+            None => FreeCam::default(),
+        };
+        // The world comes pre-hydrated; this names the level it holds
+        // (`LevelLoaded`, `on_level_loaded`).
+        let level = level_name.or_else(|| scene_path.map(|p| p.display().to_string()));
+        let session = PieSession::new(tick_loop, level);
+
+        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::register(
+            engine_backend::services::render_runtimes::RuntimeDescription {
+                label: "Play in Editor".into(),
+                origin: pulsar_plugins::engine_origin!(),
+                scene_label: "game".into(),
+                priority: 20,
+                mode: engine_backend::services::render_runtimes::UpdateMode::Always,
+            },
+        );
+        runtime.set_size(width, height);
+
+        Self {
+            session,
+            renderer,
+            runtime,
+            device,
+            queue,
+            color_format,
+            width,
+            height,
+            out_texture,
+            out_view,
+            scene_store,
+            freecam,
+            last_pointer: None,
+            claimed_buttons: Default::default(),
+            userdata,
+            log,
+        }
+    }
+
     /// Build the embedded game from the host context and a project-supplied
     /// `setup` closure (the generated `engine_main::setup`, which registers the
     /// project's actor classes / blueprint dispatcher on the tick loop).
+    /// This is the library form: it also sets up this library's own copies of
+    /// the engine's process globals.
     ///
     /// # Safety
     /// `ctx` must be a valid [`PieContext`] whose `device`/`queue` point at live
@@ -360,6 +489,10 @@ impl EmbeddedGame {
             .map(PathBuf::from)
             .ok_or_else(|| "PiE: invalid project_root".to_string())?;
         let scene_path = read_str(ctx.scene_path_ptr, ctx.scene_path_len).map(PathBuf::from);
+        // The open level's own project-relative path (ABI v6); a never-saved
+        // level has none.
+        let level_name =
+            read_str(ctx.level_name_ptr, ctx.level_name_len).map(|name| name.replace('\\', "/"));
 
         // ── Engine state / settings (mirror `TickLoop::run_with_windows`) ────
         // Must happen before scene loading: component sync reads the global
@@ -439,96 +572,67 @@ impl EmbeddedGame {
         // register against the host's world. The scene file is NOT loaded:
         // under v2 the shared world already holds the hydrated level.
         setup(&mut tick_loop).map_err(|e| format!("Project setup failed: {e}"))?;
-        // Resolve which Blueprints the level assigned to the engine roles
-        // (game mode, controller, character, game state). Nothing is spawned
-        // here: the script driver spawns them as session entities at its first
-        // frame and despawns them at shutdown (`roles.rs`).
-        if let Some(scene) = &scene_path {
-            tick_loop.load_world_roles(scene, &project_root);
-        }
-
-        // ── Offscreen Helio renderer (external device) ───────────────────────
-        let (out_texture, out_view) = make_target(&device, color_format, width, height);
-
-        // ── Renderer seam onto the shared world ──────────────────
-        // The world already holds the level (the host hydrated it before Play,
-        // and under v2 we adopted that very store). The renderer is the
-        // editor viewport's construction on the host's device; its GPU mirror
-        // is the viewport's when that already attached one.
-        let scene_store = Arc::clone(&tick_loop.scene_store);
-        // The level's pipeline, chosen in this library (its pipeline registry
-        // and level slot are its own copies, not the editor's).
-        crate::standalone::select_level_pipeline(&project_root, scene_path.as_deref());
-        let renderer = SceneRenderer::new(
-            device.clone(),
-            queue.clone(),
-            &scene_store,
-            width,
-            height,
-            color_format,
-            SceneRendererOptions::game(DeviceOwner::Host, false),
-        );
-
-        // Camera selection prefers Camera-typed entities from the shared
-        // world; the free camera starts where the editor view was (ABI v4).
-        let freecam = if ctx.view.present != 0 {
-            FreeCam::default().place(
-                glam::DVec3::from_array(ctx.view.position),
-                ctx.view.yaw,
-                ctx.view.pitch,
-            )
-        } else {
-            FreeCam::default()
-        };
         engine_state::set_project_path(project_root.display().to_string());
-        // Advisory only under v2 (the world comes pre-hydrated); it names
-        // the level `LevelLoaded` reports.
-        let session = PieSession::new(tick_loop, scene_path.map(|p| p.display().to_string()));
+
+        let game = Self::assemble(
+            tick_loop,
+            GameParts {
+                device,
+                queue,
+                color_format,
+                width,
+                height,
+                project_root,
+                scene_path,
+                level_name,
+                view: (ctx.view.present != 0)
+                    .then_some((ctx.view.position, ctx.view.yaw, ctx.view.pitch)),
+                pipeline_build: PipelineBuildMode::Blocking,
+                userdata: ctx.userdata,
+                log: ctx.log,
+            },
+        );
         // Nothing below can fail: the adopted count is the game's now and
         // drops with it at shutdown.
         host_count.armed = false;
-
-        let runtime = engine_backend::services::render_runtimes::DrivenRuntime::register(
-            engine_backend::services::render_runtimes::RuntimeDescription {
-                label: "Play in Editor".into(),
-                origin: pulsar_plugins::engine_origin!(),
-                scene_label: "game".into(),
-                priority: 20,
-                mode: engine_backend::services::render_runtimes::UpdateMode::Always,
-            },
-        );
-        runtime.set_size(width, height);
-
-        Ok(Self {
-            session,
-            renderer,
-            runtime,
-            device,
-            queue,
-            color_format,
-            width,
-            height,
-            out_texture,
-            out_view,
-            scene_store,
-            freecam,
-            last_pointer: None,
-            userdata: ctx.userdata,
-            log: ctx.log,
-        })
+        Ok(game)
     }
 
     /// The free camera stands down while a possessed pawn owns the player's
-    /// input and its camera is the view (see `possession::PossessionGate`);
-    /// a pawn with no camera leaves the view to the free camera.
+    /// input and its camera is the view (see `possession::PossessionGate`),
+    /// and in a menu (`InputMode::Ui`); a pawn with no camera leaves the view
+    /// to the free camera.
     fn sync_freecam(&mut self) {
         let tick_loop = &self.session.tick_loop;
-        let pawn_view = tick_loop.possession_gate().is_possessed()
-            && view_target_drives_camera(
-                &self.scene_store.read(),
-                tick_loop.view_targets().local(),
-            );
-        self.freecam.set_suspended(pawn_view);
+        let suspended = tick_loop.control().input_mode() == crate::game_control::InputMode::Ui
+            || (tick_loop.possession_gate().is_possessed()
+                && view_target_drives_camera(
+                    &self.scene_store.read(),
+                    tick_loop.view_targets().local(),
+                ));
+        self.freecam.set_suspended(suspended);
+    }
+
+    /// Follow the level the game switched to: its render pipeline, and where
+    /// its free camera starts.
+    fn follow_levels(&mut self) {
+        use crate::game_control::LevelEvent;
+        for event in self.session.tick_loop.control().take_level_events() {
+            match event {
+                LevelEvent::Begun { .. } | LevelEvent::Failed { .. } => {
+                    self.renderer.follow_level_pipeline();
+                }
+                LevelEvent::Loaded { editor_camera, .. } => {
+                    if let Some(camera) = editor_camera {
+                        self.freecam = FreeCam::default().place(
+                            glam::DVec3::from_array(camera.position),
+                            camera.yaw,
+                            camera.pitch,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Advance simulation and render one frame into the offscreen target.
@@ -544,6 +648,7 @@ impl EmbeddedGame {
         // host's lock callbacks remain the policy/witness surface for
         // guests that don't share that universe.
         let time = self.session.tick();
+        self.follow_levels();
         // The game's animation (foliage wind, particles, shader-graph
         // `time`) runs on the game clock: it stops while the game is paused
         // and advances by exactly a stepped frame.
@@ -618,8 +723,11 @@ impl EmbeddedGame {
                 let (dx, dy) = self.last_pointer.map_or((0.0, 0.0), |(lx, ly)| {
                     ((f64::from(ev.x - lx)) * w, f64::from(ev.y - ly) * h)
                 });
+                // The first report has no motion but says where the pointer
+                // is.
+                let first = self.last_pointer.is_none();
                 self.last_pointer = Some((ev.x, ev.y));
-                if dx != 0.0 || dy != 0.0 {
+                if first || dx != 0.0 || dy != 0.0 {
                     self.session
                         .tick_loop
                         .publish_input(pulsar_events::builtin::MouseMoved { x, y, dx, dy });
@@ -655,10 +763,37 @@ impl EmbeddedGame {
             }
             input_kind::MOUSE_BUTTON => {
                 let button = i64::from(ev.button_or_key);
+                // Where the pointer last was, in pixels of the render size
+                // (button reports carry no position of their own).
+                let at = self.last_pointer.map(|(x, y)| {
+                    (
+                        f64::from(x) * f64::from(self.width),
+                        f64::from(y) * f64::from(self.height),
+                    )
+                });
                 if ev.pressed != 0 {
+                    let claimed = at.is_some_and(|(x, y)| {
+                        engine_backend::scene::game_hooks::pointer_claimed(
+                            &self.scene_store.read().world,
+                            x,
+                            y,
+                        )
+                    });
+                    self.claimed_buttons.pressed(button, claimed);
+                    match at.filter(|_| claimed) {
+                        Some((x, y)) => self.session.tick_loop.publish_input(
+                            pulsar_events::builtin::PointerClaimedDown { button, x, y },
+                        ),
+                        None => self
+                            .session
+                            .tick_loop
+                            .publish_input(pulsar_events::builtin::MouseButtonDown { button }),
+                    }
+                } else if self.claimed_buttons.released(button) {
+                    let (x, y) = at.unwrap_or_default();
                     self.session
                         .tick_loop
-                        .publish_input(pulsar_events::builtin::MouseButtonDown { button });
+                        .publish_input(pulsar_events::builtin::PointerClaimedUp { button, x, y });
                 } else {
                     self.session
                         .tick_loop
@@ -671,6 +806,156 @@ impl EmbeddedGame {
 
     fn out_texture_ptr(&self) -> *const std::ffi::c_void {
         &self.out_texture as *const wgpu::Texture as *const std::ffi::c_void
+    }
+}
+
+// ── A game in the host's own process ────────────────────────────────────────
+
+/// What [`InEditorGame::start`] runs.
+pub struct InEditorStart {
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    /// The format of the surface the host samples the game's texture into.
+    pub color_format: wgpu::TextureFormat,
+    pub width: u32,
+    pub height: u32,
+    /// The editor's world, holding the open level; the host snapshotted it
+    /// and restores it after the game is dropped.
+    pub world: engine_backend::scene::SharedScene,
+    pub project_root: PathBuf,
+    /// The open level as saved for this Play.
+    pub scene_path: PathBuf,
+    /// Its project-relative path; a never-saved level has none.
+    pub level_name: Option<String>,
+    /// The editor camera: position, yaw, pitch.
+    pub view: Option<([f64; 3], f32, f32)>,
+}
+
+/// Play-in-Editor in the editor's own process, for a project whose gameplay
+/// is scripts (their modules already compiled into the project's module
+/// store). The same game as the library form, on the engine the editor runs:
+/// its process globals are the editor's, so nothing is set up again but the
+/// content the game reads, which is the editor's project and is put back when
+/// the game is dropped.
+///
+/// Drive it from one thread. Dropping it ends the session.
+pub struct InEditorGame {
+    game: Option<EmbeddedGame>,
+    content_before: Option<pulsar_content::ContentRoot>,
+}
+
+/// The host log callback of an in-editor game, which has none: its lines go
+/// to the editor's log through tracing, so nothing needs forwarding.
+extern "C" fn no_host_log(
+    _userdata: *mut std::ffi::c_void,
+    _level: u32,
+    _message: *const u8,
+    _len: usize,
+) {
+}
+
+impl InEditorGame {
+    pub fn start(start: InEditorStart) -> Result<Self, String> {
+        let content_before = pulsar_content::current();
+        // Current only: the editor's virtual filesystem already serves the
+        // project and must not be replaced.
+        pulsar_content::set_current(Some(pulsar_content::ContentRoot::project(
+            start.project_root.clone(),
+        )));
+        // Dropped on an error: the content is put back.
+        let mut this = Self {
+            game: None,
+            content_before,
+        };
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
+        let mut tick_loop =
+            TickLoop::with_scene_store(start.world, TickMode::default(), threads);
+        tick_loop.set_session_kind(SessionKind::PlayInEditor);
+        tick_loop.enable_project_scripting()?;
+        this.game = Some(EmbeddedGame::assemble(
+            tick_loop,
+            GameParts {
+                device: Arc::new(start.device),
+                queue: Arc::new(start.queue),
+                color_format: start.color_format,
+                width: start.width.max(1),
+                height: start.height.max(1),
+                project_root: start.project_root,
+                scene_path: Some(start.scene_path),
+                level_name: start.level_name,
+                view: start.view,
+                // The editor keeps drawing while the game's pipeline builds.
+                pipeline_build: PipelineBuildMode::Background,
+                userdata: std::ptr::null_mut(),
+                log: no_host_log,
+            },
+        ));
+        Ok(this)
+    }
+
+    fn game(&self) -> &EmbeddedGame {
+        self.game.as_ref().expect("started")
+    }
+
+    fn game_mut(&mut self) -> &mut EmbeddedGame {
+        self.game.as_mut().expect("started")
+    }
+
+    /// Advance the game one frame and draw it.
+    pub fn tick(&mut self) {
+        profiling::profile_scope!("PIE::in_editor_tick");
+        self.game_mut().tick();
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.game_mut().resize(width, height);
+    }
+
+    pub fn input(&mut self, event: &InputEvent) {
+        self.game_mut().input(event);
+    }
+
+    /// The texture the game draws into.
+    pub fn out_texture(&self) -> &wgpu::Texture {
+        &self.game().out_texture
+    }
+
+    /// A [`pulsar_pie_abi::control`] command.
+    pub fn control(&mut self, command: u32, arg: u64) -> u64 {
+        self.game_mut().session.control(command, arg)
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.game().session.tick_loop.is_paused()
+    }
+
+    pub fn quit_requested(&self) -> bool {
+        self.game().session.tick_loop.control().quit_requested()
+    }
+
+    /// The script problems raised since the last call.
+    pub fn take_problems(&mut self) -> Vec<pulsar_events::ScriptProblem> {
+        self.game_mut().session.take_problems()
+    }
+
+    pub fn events_snapshot(&self) -> pulsar_events::EventsSnapshot {
+        self.game().session.tick_loop.events.snapshot()
+    }
+
+    /// The session's event hub, for editor plugins (the caller owns the
+    /// reference it holds).
+    pub fn export_event_bus(&self) -> pulsar_events::gamma::ffi::RawBus {
+        self.game().session.export_event_bus()
+    }
+}
+
+impl Drop for InEditorGame {
+    fn drop(&mut self) {
+        if let Some(mut game) = self.game.take() {
+            // Scripts get end_play while the world still holds their objects.
+            game.session.shutdown();
+        }
+        pulsar_content::set_current(self.content_before.take());
     }
 }
 
@@ -942,7 +1227,7 @@ mod session_kind_tests {
     /// The version a v4 library reports is refused by this host's gate, and
     /// this guest refuses a context from another version.
     #[test]
-    fn the_abi_version_is_five() {
-        assert_eq!(PIE_ABI_VERSION, 5);
+    fn the_abi_version_is_six() {
+        assert_eq!(PIE_ABI_VERSION, 6);
     }
 }

@@ -6,8 +6,8 @@
 //!
 //! - [`runner`]: a configuration becomes a [`runner::plan::Plan`] of cargo
 //!   commands, which a worker thread runs with live progress and cancellation.
-//! - [`picker`]: the searchable dropdown behind the Build button.
-//! - [`button`]: the Build split button the global toolbar shows.
+//! - [`picker`]: the searchable dropdown behind the Play button.
+//! - [`button`]: the Play split button the global toolbar shows.
 //! - [`configurator`]: the window for creating and editing configurations.
 //! - [`dashboard`]: the window that opens with each build: its output, its
 //!   compiler processes, and CPU and memory use.
@@ -23,7 +23,7 @@ pub mod picker;
 pub mod runner;
 mod text;
 
-pub use button::build_button;
+pub use button::play_button;
 pub use configurator::BuildConfiguratorWindow;
 pub use picker::BuildPicker;
 pub use runner::{cancel_build, run_configuration, stop_game};

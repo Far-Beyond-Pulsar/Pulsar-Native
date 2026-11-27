@@ -923,6 +923,7 @@ dependencies = [
  "engine_class_derive",
  "engine_fs",
  "engine_state",
+ "gpui-ce",
  "helio-scene-join",
  "profiling 0.1.0",
  "pulsar_reflection",
@@ -934,6 +935,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "ui_common",
  "view-icons-api",
  "wgpu",
 ]
@@ -3942,6 +3944,7 @@ dependencies = [
  "inventory",
  "libloading 0.9.0",
  "parking_lot",
+ "parking_lot_core",
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_class",
@@ -7131,6 +7134,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-ui"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "helio-feature-api",
+ "helio-frame-api",
+ "helio-mats",
+ "helio-ui-api",
+ "naga",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-vg"
 version = "0.1.0"
 dependencies = [
@@ -7457,6 +7474,15 @@ dependencies = [
 [[package]]
 name = "helio-tasks"
 version = "0.1.0"
+
+[[package]]
+name = "helio-ui-api"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "naga",
+]
 
 [[package]]
 name = "helio-vg-build"
@@ -8263,6 +8289,7 @@ dependencies = [
  "graphy-blueprint",
  "helio",
  "helio-core",
+ "helio-feature-api",
  "helio-frame-api",
  "helio-graph-asset",
  "helio-mats",
@@ -8273,6 +8300,7 @@ dependencies = [
  "helio-pass-portal-cull",
  "helio-pass-water-sim",
  "helio-presets",
+ "helio-ui-api",
  "helio-vg-format",
  "helio_component",
  "image",
@@ -8296,10 +8324,14 @@ dependencies = [
  "psgc",
  "pulsar-config",
  "pulsar_class",
+ "pulsar_content",
+ "pulsar_core",
  "pulsar_events",
  "pulsar_game",
  "pulsar_language",
  "pulsar_lsp",
+ "pulsar_package",
+ "pulsar_pie_abi",
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -8332,6 +8364,7 @@ dependencies = [
  "voxel_plugin",
  "water_plugin",
  "wgpu",
+ "widget_component",
 ]
 
 [[package]]
@@ -8996,6 +9029,7 @@ dependencies = [
  "engine_backend",
  "engine_class_derive",
  "glam 0.33.5",
+ "gpui-ce",
  "helio",
  "helio-feature-api",
  "helio-light-api",
@@ -9015,6 +9049,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "ui_common",
  "view-icons-api",
  "wgpu",
 ]
@@ -10154,7 +10189,7 @@ dependencies = [
 [[package]]
 name = "naga"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -10179,7 +10214,7 @@ dependencies = [
 [[package]]
 name = "naga-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",
@@ -12456,6 +12491,7 @@ dependencies = [
  "skeletal_assets",
  "tracing",
  "ui",
+ "ui_common",
  "ui_level_editor",
  "wgpu",
 ]
@@ -12651,6 +12687,7 @@ dependencies = [
  "pulsar_language",
  "pulsar_lsp",
  "pulsar_plugins",
+ "pulsar_script_vm",
  "pulsar_settings",
  "pulsar_world_registry",
  "serde_json",
@@ -13608,6 +13645,7 @@ dependencies = [
  "ui_loading_screen",
  "ui_log_viewer",
  "ui_mcp",
+ "ui_vram_map",
  "urlencoding",
  "wgpu",
  "wgpui_dylib",
@@ -13658,11 +13696,13 @@ dependencies = [
  "engine_state",
  "glam 0.33.5",
  "helio",
+ "helio-core",
  "helio_component",
  "installed_plugins",
  "inventory",
  "libloading 0.9.0",
  "parking_lot",
+ "parking_lot_core",
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
@@ -19668,6 +19708,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_content",
+ "pulsar_events",
  "pulsar_findings",
  "pulsar_mcp",
  "pulsar_plugins",
@@ -19702,6 +19743,7 @@ dependencies = [
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_settings",
+ "pulsar_world_registry",
  "reqwest 0.13.4",
  "rust-i18n",
  "rust-i18n-macro",
@@ -19807,20 +19849,27 @@ dependencies = [
 
 [[package]]
 name = "ui_editor_plugin"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
+ "engine_backend",
  "engine_fs",
  "gpui-ce",
+ "helio_component",
  "plugin_editor_api",
  "plugin_manager",
  "pulsar_plugins",
  "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
  "serde",
  "serde_json",
  "tracing",
  "ui",
  "ui_common",
+ "ui_types_common",
  "uuid",
+ "widget_asset",
+ "widget_component",
 ]
 
 [[package]]
@@ -20030,7 +20079,9 @@ dependencies = [
  "png",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_content",
  "pulsar_events",
+ "pulsar_game",
  "pulsar_language",
  "pulsar_mcp",
  "pulsar_pie_abi",
@@ -20231,10 +20282,15 @@ dependencies = [
 name = "ui_settings"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "engine_state",
  "gpui-ce",
+ "pulsar_content",
  "pulsar_plugins",
  "pulsar_settings",
+ "pulsar_traits",
+ "serde_json",
+ "tempfile",
  "tracing",
  "ui",
  "ui_common",
@@ -20285,6 +20341,20 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ui_vram_map"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "gpui-ce",
+ "inventory",
+ "parking_lot",
+ "pulsar_plugins",
+ "ui",
+ "ui_common",
+ "window_manager",
 ]
 
 [[package]]
@@ -21244,7 +21314,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 [[package]]
 name = "wgpu"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.1",
@@ -21273,7 +21343,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "arrayvec",
  "bit-set 0.10.0",
@@ -21306,7 +21376,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-apple"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "wgpu-hal",
 ]
@@ -21314,7 +21384,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-emscripten"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "wgpu-hal",
 ]
@@ -21322,7 +21392,7 @@ dependencies = [
 [[package]]
 name = "wgpu-core-deps-windows-linux-android"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "wgpu-hal",
 ]
@@ -21330,7 +21400,7 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -21386,7 +21456,7 @@ dependencies = [
 [[package]]
 name = "wgpu-naga-bridge"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "naga",
  "wgpu-types 30.0.1",
@@ -21410,7 +21480,7 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "30.0.1"
-source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#d1bb54f81f28c932841cf6f0ae039ddf791e9d0a"
+source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?branch=helio%2Fv30.0.1#0883b3b85ed09086915abf646e74efb06435e1a7"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",
@@ -21534,6 +21604,67 @@ checksum = "de2aaf408e58689c2096682331b1f42bb2d9f2ed6b11560407d023cd0a6c634e"
 dependencies = [
  "bytemuck",
  "safe_arch 1.2.0",
+]
+
+[[package]]
+name = "widget_asset"
+version = "0.1.1"
+dependencies = [
+ "engine_fs",
+ "pulsar_reflection",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "widget_component"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_class_derive",
+ "engine_fs",
+ "engine_state",
+ "glam 0.33.5",
+ "gpui-ce",
+ "helio",
+ "helio-core",
+ "helio-feature-api",
+ "helio-pass-ui",
+ "helio-ui-api",
+ "helio_component",
+ "inventory",
+ "plugin_editor_api",
+ "profiling 0.1.0",
+ "pulsar_component_lifecycle",
+ "pulsar_events",
+ "pulsar_findings",
+ "pulsar_plugins",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ui",
+ "ui_common",
+ "ui_types_common",
+ "wgpu",
+ "widget_asset",
+ "widget_text",
+]
+
+[[package]]
+name = "widget_text"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "helio-ui-api",
+ "tracing",
+ "ttf-parser",
+ "widget_asset",
 ]
 
 [[package]]

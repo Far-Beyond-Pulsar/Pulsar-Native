@@ -34,6 +34,8 @@ const ASSET_KEYS: &[&str] = &[
     "material_path",
     "asset",
     "asset_path",
+    // `.physmat` is not a content asset kind, so its key names it.
+    "physics_material",
 ];
 
 /// Top-level level sections only the editor uses.

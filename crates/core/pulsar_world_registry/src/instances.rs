@@ -677,6 +677,19 @@ fn spec_of(record: &ComponentRecord, split: &SplitRecord, index: Option<usize>) 
     }
 }
 
+/// Whether a record's data decodes, without a world: `Err` for a registered
+/// class whose data this build cannot read (what would fail a level load). An
+/// unregistered class is fine here (it loads as an unresolved payload). A
+/// loader preparing a level on a worker checks it before it gives up the
+/// level it is playing.
+pub fn check_record(record: &ComponentRecord) -> Result<(), String> {
+    let Some(registration) = crate::world_component(&record.class_name) else {
+        return Ok(());
+    };
+    let split = split_record(&record.data);
+    (registration.decode)(&split.body).map(drop)
+}
+
 /// Attach one record as a live instance: the registered class decodes its
 /// data. Refused (nothing written) for an unregistered class or data that
 /// does not decode. The record's parent index is ignored here; see

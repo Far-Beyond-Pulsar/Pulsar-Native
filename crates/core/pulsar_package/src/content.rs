@@ -49,8 +49,14 @@ pub(crate) fn cook_content(
     cook.cook_classes(&compiled.classes)?;
     cook.add_class_index_and_scripting(&registry)?;
     cook.add_plugin_snapshot();
+    let game_instance = cook.game_instance(&settings, &registry, &compiled.classes)?;
     let startup = cook.startup_level(&settings);
-    cook.cook_levels(&registry, startup.as_deref())?;
+    cook.cook_levels(&registry, &startup)?;
+    // A game instance draws its menu before the first level is in, and a project
+    // may start with no level: both run the fallback pipeline until one loads.
+    if game_instance.is_some() || !matches!(startup, Startup::Level(_)) {
+        cook.add_fallback_pipeline();
+    }
 
     let mut cooked_assets = BTreeMap::new();
     collect_asset_dependencies(
@@ -62,7 +68,9 @@ pub(crate) fn cook_content(
         &mut cooked_assets,
     )?;
     cook.warn_unresolved_assets();
-    cook.add_project_settings(&mut settings, startup.as_deref());
+    // Cooked content names the game instance by its class id.
+    settings.game_instance = game_instance;
+    cook.add_project_settings(&mut settings, &startup);
 
     let (mut registry_out, mut asset_bytes) = cook.cook_assets(&cooked_assets)?;
     cook.add_selected_pipelines(&file_types, &mut registry_out, &mut asset_bytes)?;
@@ -106,6 +114,17 @@ fn class_dir(project: &Path, entry: &pulsar_class::ClassEntry) -> String {
         })
         .filter(|rel| !rel.is_empty())
         .unwrap_or_else(|| format!("src/classes/{}", entry.name))
+}
+
+/// The level the game starts in.
+#[derive(Debug)]
+enum Startup {
+    /// This level, project-relative.
+    Level(String),
+    /// The project says none.
+    None,
+    /// The project says nothing and has no default level.
+    Missing,
 }
 
 /// What one cook accumulates: the shipped files, the assets they reference
@@ -223,46 +242,113 @@ impl Cook<'_> {
         }
     }
 
-    /// The startup level (project-relative): the option, the project's own,
-    /// the editor's default map, or a conventional default level.
-    fn startup_level(&self, settings: &ProjectSettings) -> Option<String> {
+    /// The game instance the project names, checked and as cooked content
+    /// names it (its class id). A shipped game ships no trait index it could
+    /// check it against, so a class that is not a Game Instance fails here.
+    fn game_instance(
+        &mut self,
+        settings: &ProjectSettings,
+        registry: &ClassRegistry,
+        compiled: &[compile::CompiledClass],
+    ) -> Result<Option<String>, PackageError> {
+        let Some(class) = settings.game_instance_class() else {
+            return Ok(None);
+        };
+        let problem = |why: String| {
+            Err(PackageError::Project(format!(
+                "game instance `{class}` (Pulsar/project.json `game_instance`) {why}"
+            )))
+        };
+        let Some(entry) = registry
+            .by_asset(self.project, class)
+            .or_else(|| registry.by_id(&pulsar_class::ClassId::from(class)))
+            .or_else(|| registry.by_name(class))
+        else {
+            return problem("is not a class of this project".into());
+        };
+        if !compiled
+            .iter()
+            .any(|c| c.entry.id == entry.id && c.module.is_some())
+        {
+            return problem("has no compiled script".into());
+        }
+        let dir = class_dir(self.project, entry);
+        let index = pulsar_traits::TraitIndex::load(self.project)
+            .map_err(|e| PackageError::Project(format!("the trait index: {e:#}")))?;
+        let implements = index
+            .implementers_of(pulsar_traits::builtin::GAME_INSTANCE_TRAIT_ID)
+            .iter()
+            .any(|implementer| {
+                matches!(&implementer.binding,
+                    Some(pulsar_traits::Binding::ScriptClass { dir: found })
+                        if found.trim_matches('/').eq_ignore_ascii_case(&dir))
+            });
+        if !implements {
+            return problem(
+                "does not implement the Game Instance trait: add it in the Blueprint's Traits panel"
+                    .into(),
+            );
+        }
+        Ok(Some(entry.id.as_str().to_owned()))
+    }
+
+    /// The pipeline a game with no level runs (a menu before any level), when
+    /// an enabled plugin offers one. Plugin files are in the snapshot already;
+    /// selecting it records it as one the game needs.
+    fn add_fallback_pipeline(&mut self) {
+        use engine_backend::subsystems::render::helio_renderer::pipelines;
+        let Some(id) = pipelines::fallback_pipeline() else {
+            self.report.warnings.push(
+                "no enabled plugin offers a pipeline for a game with no level: its widgets are \
+                 not drawn until a level loads"
+                    .into(),
+            );
+            return;
+        };
+        let source = self.project.join(&id);
+        self.selected_pipelines.entry(id).or_insert(source);
+    }
+
+    /// The startup level (project-relative): the option, then the project's
+    /// own choice; an empty one is none, an absent one the default level.
+    fn startup_level(&self, settings: &ProjectSettings) -> Startup {
         let project = self.project;
-        self.options
-            .startup_level
-            .clone()
-            .or_else(|| settings.startup_level.clone())
-            .or_else(|| default_map(project))
-            .or_else(|| {
-                [
-                    "scene/default.level",
-                    "scenes/default.level",
-                    "scenes/default_level.json",
-                ]
-                .into_iter()
-                .find(|rel| virtual_fs::is_file(&project.join(rel)))
-                .map(str::to_owned)
+        let chosen = match &self.options.startup_level {
+            Some(option) => Some(option.as_str()),
+            None => settings.startup_level.as_deref(),
+        };
+        match chosen.map(str::trim) {
+            Some("") => Startup::None,
+            Some(level) => Startup::Level(level.replace('\\', "/")),
+            None => pulsar_content::default_level(default_map(project).as_deref(), |rel| {
+                virtual_fs::is_file(&project.join(rel))
             })
-            .map(|rel| rel.replace('\\', "/"))
+            .map_or(Startup::Missing, Startup::Level),
+        }
     }
 
     /// Levels: every `.level` file, plus the startup level.
     fn cook_levels(
         &mut self,
         registry: &ClassRegistry,
-        startup: Option<&str>,
+        startup: &Startup,
     ) -> Result<(), PackageError> {
         let mut levels = cook::find_levels(self.project, &[self.options.out.clone()]);
-        if let Some(startup) = startup {
-            if !virtual_fs::is_file(&self.project.join(startup)) {
-                return Err(PackageError::Project(format!(
-                    "startup level {startup} does not exist"
-                )));
+        match startup {
+            Startup::Level(startup) => {
+                if !virtual_fs::is_file(&self.project.join(startup)) {
+                    return Err(PackageError::Project(format!(
+                        "startup level {startup} does not exist"
+                    )));
+                }
+                levels.insert(startup.clone());
             }
-            levels.insert(startup.to_owned());
-        } else {
-            self.report
+            // The project's choice: nothing to report.
+            Startup::None => {}
+            Startup::Missing => self
+                .report
                 .warnings
-                .push("no startup level: the game starts with an empty world".into());
+                .push("no startup level: the game starts with no level".into()),
         }
         for rel in &levels {
             self.cook_level(registry, rel)?;
@@ -306,13 +392,18 @@ impl Cook<'_> {
     }
 
     /// Project settings, cooked.
-    fn add_project_settings(&mut self, settings: &mut ProjectSettings, startup: Option<&str>) {
+    fn add_project_settings(&mut self, settings: &mut ProjectSettings, startup: &Startup) {
         settings.profile = self.options.profile;
-        settings.startup_level = startup.and_then(pulsar_content::normalize_rel);
+        settings.startup_level = match startup {
+            // Explicitly none: the game must not fall back to a default level.
+            Startup::None => Some(String::new()),
+            Startup::Level(level) => pulsar_content::normalize_rel(level),
+            Startup::Missing => None,
+        };
         if settings.name.is_empty() {
             settings.name = project_name(self.project);
         }
-        self.report.startup_level = settings.startup_level.clone();
+        self.report.startup_level = settings.startup_level.clone().filter(|l| !l.is_empty());
         self.files.insert(
             PROJECT_SETTINGS_FILE.into(),
             settings.to_json().into_bytes(),

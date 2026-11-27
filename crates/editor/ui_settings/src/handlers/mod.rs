@@ -6,6 +6,7 @@ use gpui::{px, Context, ListOffset, Window};
 use ui::{notification::Notification, ContextModal as _};
 
 use crate::components::SettingsScreen;
+use crate::utils::game;
 use crate::utils::model::{self, SettingId, Target, WindowKind, PLUGINS_FOLDER};
 use crate::utils::store;
 
@@ -15,6 +16,8 @@ pub fn rebuild(screen: &mut SettingsScreen) {
     screen.plugin_generation = pulsar_plugins::generation();
     screen.all_pages = screen.build_pages();
     screen.fields.clear();
+    // The pickers list what the project holds now.
+    screen.game_pickers.clear();
     refilter(screen);
 }
 
@@ -170,6 +173,14 @@ pub fn reset_setting(
     requires_restart: bool,
     cx: &mut gpui::App,
 ) {
+    if id.namespace == game::NAMESPACE {
+        if let Some(settings) = screen.game.as_mut() {
+            settings.reset(&id.key);
+            screen.game_pickers.remove(&id.key);
+            mark_changed(screen, requires_restart);
+        }
+        return;
+    }
     match store::reset(id) {
         Ok(()) => {
             mark_changed(screen, requires_restart);
@@ -178,6 +189,17 @@ pub fn reset_setting(
         Err(error) => tracing::error!("reset {}: {error}", id.key_string()),
     }
     screen.fields.remove(id);
+}
+
+/// Whether the setting differs from its default.
+pub fn is_changed(screen: &SettingsScreen, id: &SettingId) -> bool {
+    if id.namespace == game::NAMESPACE {
+        return screen
+            .game
+            .as_ref()
+            .is_some_and(|settings| settings.is_changed(&id.key));
+    }
+    store::is_changed(id)
 }
 
 /// Write the window's settings to disk: the editor's, or the project's and
@@ -208,6 +230,12 @@ pub fn save_pending_changes(
                 if let Err(error) = engine_state::plugin_settings::save() {
                     tracing::error!("Error saving plugin settings: {error:?}");
                     errors.push(format!("Plugin settings: {error:#}"));
+                }
+                if let Some(game) = screen.game.as_mut() {
+                    if let Err(error) = game.save() {
+                        tracing::error!("Error saving the project file: {error}");
+                        errors.push(format!("Game settings: {error}"));
+                    }
                 }
             }
             None => errors.push("No project is open: project settings cannot be saved.".into()),

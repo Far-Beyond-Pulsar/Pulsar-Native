@@ -24,6 +24,8 @@ use serde_json::json;
 const SIZE: u32 = 192;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const FRAMES: usize = 6;
+/// Frames for a scene whose far side shows only through a portal.
+const PORTAL_FRAMES: usize = 24;
 
 /// The pipeline a level that names none runs: Helio's old default id, which
 /// the default pipelines plugin's migration makes its deferred graph
@@ -57,6 +59,29 @@ struct Target {
 }
 
 impl Target {
+    /// An offscreen colour target the size of the frame.
+    fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("runtime-parity-target"),
+            size: wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        Self {
+            device,
+            queue,
+            texture,
+        }
+    }
+
     fn read(&self) -> Vec<u8> {
         let row = SIZE * 4;
         let padded =
@@ -155,6 +180,18 @@ enum Runtime {
 /// Render `scene` through `runtime` for a few frames from a camera looking
 /// at the origin from `distance`, and read the image back.
 fn render(runtime: Runtime, target: &Target, scene: &SharedScene, distance: f32) -> Vec<u8> {
+    render_frames(runtime, target, scene, distance, FRAMES)
+}
+
+/// [`render`] over `frames` frames: content that binds over several frames
+/// under the asset pump's budget (what a portal shows) needs more to settle.
+fn render_frames(
+    runtime: Runtime,
+    target: &Target,
+    scene: &SharedScene,
+    distance: f32,
+    frames: usize,
+) -> Vec<u8> {
     let view = target.texture.create_view(&Default::default());
     let eye = glam::Vec3::new(0.0, distance / 6.0, distance);
     match runtime {
@@ -168,7 +205,7 @@ fn render(runtime: Runtime, target: &Target, scene: &SharedScene, distance: f32)
                 yaw: 0.0,
                 pitch: (-(eye.y / eye.z)).atan(),
             });
-            for _ in 0..FRAMES {
+            for _ in 0..frames {
                 renderer.queue_gizmo_mode(engine_backend::scene::GizmoType::None);
                 renderer.render_frame(&target.device, &target.queue, &view, SIZE, SIZE, FORMAT);
                 target
@@ -184,8 +221,10 @@ fn render(runtime: Runtime, target: &Target, scene: &SharedScene, distance: f32)
             };
             let mut renderer = game_renderer(target, scene, owner);
             let camera = look_at(eye, glam::Vec3::ZERO, distance * 10.0);
-            for _ in 0..FRAMES {
-                // As the game loop and the PIE tick do: step the world, then render.
+            for _ in 0..frames {
+                // As the game loop and the PIE tick do: bind the meshes that
+                // finished loading, step the world, then render.
+                engine_backend::scene::pump_assets(scene);
                 renderer.step_scene(&mut scene.write());
                 let frame = renderer.prepare_frame(&camera, [SIZE, SIZE]);
                 renderer.render(&frame.camera, &view).expect("render");
@@ -262,25 +301,7 @@ fn every_runtime_renders_the_same_level() {
     };
     assert!(radius > 0.5, "the cube's geometry loaded");
     let distance = radius * 4.0;
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("runtime-parity-target"),
-        size: wgpu::Extent3d {
-            width: SIZE,
-            height: SIZE,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let target = Target {
-        device,
-        queue,
-        texture,
-    };
+    let target = Target::new(device, queue);
 
     for runtime in [Runtime::Standalone, Runtime::Embedded, Runtime::Editor] {
         let reference = render(runtime, &target, &load(&empty), distance);
@@ -302,6 +323,144 @@ fn every_runtime_renders_the_same_level() {
         assert!(
             hidden < (SIZE * SIZE / 200) as usize,
             "{runtime:?} still draws a disabled mesh ({hidden} pixels)"
+        );
+    }
+}
+
+/// Portals are on in a running game with no toggle: a level with two linked
+/// portals, loaded by the runtime loader, shows what is beside the far one
+/// through the near one in the standalone game's renderer and the PIE
+/// game's (no editor mode, so no editor overlay), as in the editor viewport.
+/// Turning either portal's `enabled` off shows nothing through it.
+#[test]
+fn portals_show_their_destination_in_every_runtime_until_disabled() {
+    use installed_plugins::portals_plugin::portals_component::PortalComponent;
+
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let project = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(project.path().join("meshes")).unwrap();
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/meshes/primitives/SM_Cube.fbx"),
+        project.path().join("meshes/cube.fbx"),
+    )
+    .unwrap();
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(project.path().display().to_string());
+
+    // The cube's size, from a level holding only it.
+    let mesh = json!({
+        "mesh_asset": "meshes/cube.fbx",
+        "legacy_material_override": {
+            "base_color": [1.0, 0.5, 0.1, 1.0], "metallic": 0.0, "roughness": 0.7,
+            "emissive_color": [1.0, 0.5, 0.1], "emissive_intensity": 4.0, "alpha": 1.0
+        }
+    });
+    let object = |id: &str, object_type: serde_json::Value, position: [f32; 3], yaw: f32| {
+        json!({
+            "id": id, "name": id, "object_type": object_type,
+            "transform": { "position": position, "rotation": [0.0, yaw, 0.0], "scale": [1.0, 1.0, 1.0] },
+            "parent": null, "visible": true, "locked": false, "props": {}
+        })
+    };
+    let write = |name: &str, objects: Vec<serde_json::Value>, components: serde_json::Value| {
+        let path = project.path().join(name);
+        let level = json!({
+            "version": "2.1", "objects": objects, "components": components, "metadata": {}
+        });
+        std::fs::write(&path, level.to_string()).unwrap();
+        path
+    };
+    let load = |path: &Path| RuntimeLevel::load(path).expect("level loads").scene();
+    let mesh_component =
+        json!([{ "index": 0, "class_name": "StaticMeshComponent", "data": mesh, "enabled": true }]);
+    let radius = {
+        let probe = write(
+            "probe.level",
+            vec![object("cube", json!({ "Mesh": "Custom" }), [0.0; 3], 0.0)],
+            json!({ "cube": mesh_component }),
+        );
+        let scene = load(&probe);
+        let scene = scene.read();
+        let cube = scene.world.entity_for("cube").unwrap();
+        let instance = attachments::instances(&scene.world, cube)[0];
+        scene
+            .world
+            .get::<StaticMeshComponent>(instance)
+            .unwrap()
+            .bounds_local[3]
+    };
+    assert!(radius > 0.5, "the cube's geometry loaded");
+
+    // The near portal at the origin faces the camera (an opening shows its far
+    // side to eyes on its local -Z side, so it is turned); the far one is
+    // 100 m to the side with a cube on each side of it, out of the camera's
+    // view unless the portals are linked.
+    let portal = |link: i32| {
+        json!([{ "index": 0, "class_name": "PortalComponent", "enabled": true, "data": {
+            "enabled": true, "link_id": link, "width": radius * 3.0, "height": radius * 3.0
+        } }])
+    };
+    let level = |name: &str, far_link: i32| {
+        write(
+            name,
+            vec![
+                object("near", json!("Empty"), [0.0; 3], 180.0),
+                object("far", json!("Empty"), [100.0, 0.0, 0.0], 0.0),
+                object("front", json!({ "Mesh": "Custom" }), [100.0, 0.0, radius * 2.0], 0.0),
+                object("back", json!({ "Mesh": "Custom" }), [100.0, 0.0, -radius * 2.0], 0.0),
+            ],
+            json!({
+                "near": portal(5),
+                "far": portal(far_link),
+                "front": mesh_component,
+                "back": mesh_component,
+            }),
+        )
+    };
+    let linked = level("linked.level", 5);
+    let unlinked = level("unlinked.level", 6);
+    let distance = radius * 4.0;
+    let target = Target::new(device, queue);
+
+    for runtime in [Runtime::Standalone, Runtime::Embedded, Runtime::Editor] {
+        let reference = render_frames(
+            runtime,
+            &target,
+            &load(&unlinked),
+            distance,
+            PORTAL_FRAMES,
+        );
+        let scene = load(&linked);
+        let shown = changed(
+            &render_frames(runtime, &target, &scene, distance, PORTAL_FRAMES),
+            &reference,
+        );
+        println!("PORTALS {runtime:?}: the far side changes {shown} pixels");
+        assert!(
+            shown > (SIZE * SIZE / 100) as usize,
+            "{runtime:?} showed nothing through a linked portal ({shown} pixels)"
+        );
+
+        {
+            let mut scene = scene.write();
+            let far = scene.world.entity_for("far").unwrap();
+            let instance = attachments::instances(&scene.world, far)[0];
+            scene
+                .world
+                .get_mut::<PortalComponent>(instance)
+                .expect("the far portal's component")
+                .enabled = false;
+        }
+        let disabled = changed(
+            &render_frames(runtime, &target, &scene, distance, PORTAL_FRAMES),
+            &reference,
+        );
+        assert!(
+            disabled < (SIZE * SIZE / 200) as usize,
+            "{runtime:?} still shows the far side through a disabled portal ({disabled} pixels)"
         );
     }
 }

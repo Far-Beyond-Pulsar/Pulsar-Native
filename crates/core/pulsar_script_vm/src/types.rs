@@ -25,7 +25,7 @@ mod script_value;
 pub use binding::{ComponentBinding, TypeBinding};
 pub use registration::{
     ComponentAddressing, ComponentProvider, ComponentRegistration, EventValueCodecRegistration,
-    ProvidedComponent, ValueOpsRegistration, ValueTypeRegistration,
+    ProvidedComponent, TextTypeRegistration, ValueOpsRegistration, ValueTypeRegistration,
 };
 pub use registry::TypeRegistry;
 pub use script_value::{Obj, Outcome, ScriptKey, ScriptValue};

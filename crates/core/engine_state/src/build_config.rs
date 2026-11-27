@@ -362,6 +362,11 @@ fn default_true() -> bool {
 
 pub type ConfigId = String;
 
+/// The selection that plays the game in the editor instead of running a
+/// build configuration. It is built in: no configuration is stored for it, so
+/// it cannot be edited or removed, and it is what a new project has selected.
+pub const PLAY_IN_EDITOR_ID: &str = "play-in-editor";
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BuildConfiguration {
     pub id: ConfigId,
@@ -541,13 +546,21 @@ impl BuildConfigurations {
         self.selected.as_deref()
     }
 
-    /// The configuration the Build button runs.
+    /// The configuration the Play button runs; `None` when it plays in the
+    /// editor ([`Self::plays_in_editor`]).
     pub fn selected(&self) -> Option<&BuildConfiguration> {
         self.selected.as_deref().and_then(|id| self.get(id))
     }
 
+    /// Whether the Play button plays in the editor: that is selected, or
+    /// nothing else that exists is.
+    pub fn plays_in_editor(&self) -> bool {
+        self.selected().is_none()
+    }
+
+    /// Select a configuration, or [`PLAY_IN_EDITOR_ID`].
     pub fn select(&mut self, id: &str) {
-        if self.get(id).is_some() {
+        if id == PLAY_IN_EDITOR_ID || self.get(id).is_some() {
             self.selected = Some(id.to_owned());
         }
     }
@@ -673,18 +686,15 @@ impl BuildConfigurations {
             configs: file.configuration,
             project: None,
         })
-        .unwrap_or_else(|| {
-            let configs = BuildConfiguration::defaults();
-            Self {
-                selected: configs.first().map(|c| c.id.clone()),
-                configs,
-                project: None,
-            }
+        .unwrap_or_else(|| Self {
+            selected: None,
+            configs: BuildConfiguration::defaults(),
+            project: None,
         });
 
-        // A selection that no longer exists falls back to the first entry.
+        // No selection, or one that no longer exists: play in the editor.
         if loaded.selected().is_none() {
-            loaded.selected = loaded.configs.first().map(|c| c.id.clone());
+            loaded.selected = Some(PLAY_IN_EDITOR_ID.to_owned());
         }
         loaded.project = Some(project_root.to_owned());
         loaded
@@ -840,11 +850,12 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_file_gives_the_defaults_with_the_first_selected() {
+    fn a_missing_file_gives_the_defaults_with_play_in_editor_selected() {
         let dir = temp_project("missing");
         let store = BuildConfigurations::load(&dir);
         assert_eq!(store.configs().len(), BuildConfiguration::defaults().len());
-        assert_eq!(store.selected().unwrap().name, "Build");
+        assert!(store.plays_in_editor());
+        assert!(store.selected().is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

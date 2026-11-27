@@ -101,13 +101,19 @@ impl pulsar_plugins::Contribution for RenderHostPartRegistration {
 
 pulsar_plugins::registration!(RenderHostPartRegistration);
 
-/// A part of every enabled registration, in name order.
-pub(super) fn new_parts() -> Vec<Box<dyn RenderHostPart>> {
+/// A part of every enabled registration, in name order, with the video-memory
+/// owner its allocations are made under (`Renderer host/<name>`,
+/// `helio_core::vram`).
+pub(super) fn new_parts() -> Vec<(&'static str, Box<dyn RenderHostPart>)> {
     let mut registrations: Vec<_> =
         pulsar_plugins::registered::<RenderHostPartRegistration>().collect();
     registrations.sort_by_key(|registration| registration.name);
     registrations
         .into_iter()
-        .map(|registration| (registration.new)())
+        .map(|registration| {
+            let owner = helio_core::vram::intern(&format!("Renderer host/{}", registration.name));
+            let _vram_owner = helio_core::vram::root_scope(owner);
+            (owner, (registration.new)())
+        })
         .collect()
 }

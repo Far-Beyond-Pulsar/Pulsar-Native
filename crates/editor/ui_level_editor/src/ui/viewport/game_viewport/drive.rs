@@ -1,10 +1,13 @@
 //! Per-frame driving of the embedded game: honouring stop and start requests,
-//! loading the game library, ticking it and blitting its output.
+//! starting it (in the editor, or by loading the game library), ticking it
+//! and blitting its output.
 use std::time::Instant;
 
 use engine_backend::services::{PieBlit, PieHost};
 use gpui::WgpuSurfaceHandle;
+use pulsar_game::embed::{InEditorGame, InEditorStart};
 
+use super::running::{EditorHosted, RunningGame};
 use super::GameViewport;
 use crate::state::PieStartRequest;
 
@@ -39,8 +42,8 @@ impl GameViewport {
     }
 
     fn stop_game(&mut self) {
-        if let Some(mut host) = self.pie_host.take() {
-            host.stop();
+        if let Some(mut game) = self.game.take() {
+            game.stop();
         }
         self.loaded = None;
         self.captured = false;
@@ -68,24 +71,34 @@ impl GameViewport {
     }
 
     /// Play again with only script changes: keep the running game
-    /// and reload every class in it; no new library.
+    /// and reload every class in it; no new game.
     fn reload_classes_in_running_game(
         &self,
         pending: Option<PieStartRequest>,
     ) -> Option<PieStartRequest> {
+        let Some(game) = &self.game else {
+            return pending;
+        };
         match pending {
-            Some(req) if req.scripts_only && self.pie_host.is_some() => {
+            Some(req) if req.scripts_only && game.is_in_editor() == req.library.is_none() => {
                 let events = crate::ui::panel::pie::class_reload_events(&req.project_root);
                 tracing::info!(
                     classes = events.len(),
                     "PiE: script-only change; reloading classes in the running game"
                 );
-                self.shared_state
-                    .write()
-                    .play
-                    .pie
-                    .pending_asset_updates
-                    .extend(events);
+                if game.is_in_editor() {
+                    // The game listens on the editor's own bus.
+                    events
+                        .into_iter()
+                        .for_each(pulsar_events::publish_asset_updated);
+                } else {
+                    self.shared_state
+                        .write()
+                        .play
+                        .pie
+                        .pending_asset_updates
+                        .extend(events);
+                }
                 None
             }
             other => other,
@@ -93,64 +106,34 @@ impl GameViewport {
     }
 
     fn load_game(&mut self, surface: &WgpuSurfaceHandle, req: PieStartRequest, w: u32, h: u32) {
-        // Native hot reload: a pending start while a game is
-        // already running means "swap the library". Stop the OLD host
-        // first — its actors die with it, but the world survives because
-        // it lives HERE, in the editor's shared store — then load the new
-        // build against that same store. The guest's RELOAD session flag
-        // makes project setup re-bind actor registrations to their
-        // existing entities instead of spawning duplicates.
-        let was_running = self.pie_host.is_some();
-        if let Some(mut old) = self.pie_host.take() {
+        // A pending start while a game is already running replaces it. Stop
+        // the old one first — its actors die with it, but the world survives
+        // because it lives HERE, in the editor's shared store — then start
+        // the new one against that same store. A library's RELOAD session
+        // flag makes its setup re-bind actor registrations to their existing
+        // entities instead of spawning duplicates.
+        let was_running = self.game.is_some();
+        if let Some(mut old) = self.game.take() {
             old.stop();
         }
 
-        // ABI v2: hand the guest THE editor's world -- one count is
-        // transferred for the session; the editor keeps its own. The
-        // guest adopts it, so mid-session edits and gameplay mutations
-        // meet in one world.
-        let shared_world = self.shared_state.read().scene.shared_scene();
-        // SAFETY: `PieHost::load` requires `device`/`queue` to be valid for
-        // the call and the game library to share the editor's `wgpu`
-        // version. Both handles are borrowed from `surface`, which outlives
-        // this call; the game library is the project's own `cdylib`, built
-        // by the editor's play-in-editor build step against this workspace's
-        // `wgpu`. The ABI-version check inside `load` guards the struct
-        // contract. `shared_world` is an owned `SharedScene`, so the count
-        // handed to the guest is ours to transfer.
-        let loaded = unsafe {
-            PieHost::load(
-                &req.dylib_path,
-                surface.device(),
-                surface.queue(),
-                surface.format(),
-                w,
-                h,
-                &req.project_root,
-                Some(&req.scene_path),
-                shared_world,
-                req.reload,
-                req.view.as_ref().map(|view| {
-                    engine_backend::subsystems::render::EditorCameraState {
-                        position: view.position,
-                        yaw: view.yaw,
-                        pitch: view.pitch,
-                    }
-                }),
-            )
+        let started = match &req.library {
+            Some(library) => self.load_library(surface, &req, library, w, h),
+            None => self.start_in_editor(surface, &req, w, h),
         };
-        match loaded {
-            Ok(host) => {
+        match started {
+            Ok(game) => {
                 let mut st = self.shared_state.write();
                 st.play.pie.active = true;
                 st.play.pie.last_error = None;
-                st.play.pie.supports_control = host.has_simulation_control();
+                st.play.pie.supports_control = game.has_simulation_control();
                 st.play.pie.paused = false;
-                st.play.pie.loaded_artifact =
-                    crate::ui::panel::pie::artifact_mtime(&req.dylib_path)
-                        .map(|mtime| (req.dylib_path.clone(), mtime));
+                st.play.pie.loaded_artifact = req.library.as_ref().and_then(|library| {
+                    crate::ui::panel::pie::artifact_mtime(library)
+                        .map(|mtime| (library.clone(), mtime))
+                });
                 drop(st);
-                self.pie_host = Some(host);
+                self.game = Some(game);
                 self.loaded = Some(req.clone());
                 self.last_frame = Instant::now();
             }
@@ -169,10 +152,86 @@ impl GameViewport {
         }
     }
 
+    /// Start the game in the editor's process, on the editor's world and the
+    /// viewport's GPU device.
+    fn start_in_editor(
+        &self,
+        surface: &WgpuSurfaceHandle,
+        req: &PieStartRequest,
+        w: u32,
+        h: u32,
+    ) -> Result<RunningGame, String> {
+        let start = InEditorStart {
+            device: surface.device().clone(),
+            queue: surface.queue().clone(),
+            color_format: surface.format(),
+            width: w,
+            height: h,
+            world: self.shared_state.read().scene.shared_scene(),
+            project_root: req.project_root.clone(),
+            scene_path: req.scene_path.clone(),
+            level_name: req.level_name.clone(),
+            view: req
+                .view
+                .as_ref()
+                .map(|view| (view.position, view.yaw, view.pitch)),
+        };
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| InEditorGame::start(start)))
+            .map_err(|_| "The game panicked while starting".to_string())?
+            .map(|game| RunningGame::Editor(Box::new(EditorHosted::new(game))))
+    }
+
+    /// Load the project's compiled game library.
+    fn load_library(
+        &self,
+        surface: &WgpuSurfaceHandle,
+        req: &PieStartRequest,
+        library: &std::path::Path,
+        w: u32,
+        h: u32,
+    ) -> Result<RunningGame, String> {
+        // ABI v2: hand the guest THE editor's world -- one count is
+        // transferred for the session; the editor keeps its own. The
+        // guest adopts it, so mid-session edits and gameplay mutations
+        // meet in one world.
+        let shared_world = self.shared_state.read().scene.shared_scene();
+        // SAFETY: `PieHost::load` requires `device`/`queue` to be valid for
+        // the call and the game library to share the editor's `wgpu`
+        // version. Both handles are borrowed from `surface`, which outlives
+        // this call; the game library is the project's own `cdylib`, built
+        // by the editor's play-in-editor build step against this workspace's
+        // `wgpu`. The ABI-version check inside `load` guards the struct
+        // contract. `shared_world` is an owned `SharedScene`, so the count
+        // handed to the guest is ours to transfer.
+        unsafe {
+            PieHost::load(
+                library,
+                surface.device(),
+                surface.queue(),
+                surface.format(),
+                w,
+                h,
+                &req.project_root,
+                Some(&req.scene_path),
+                shared_world,
+                req.reload,
+                req.view.as_ref().map(|view| {
+                    engine_backend::subsystems::render::EditorCameraState {
+                        position: view.position,
+                        yaw: view.yaw,
+                        pitch: view.pitch,
+                    }
+                }),
+                req.level_name.as_deref(),
+            )
+        }
+        .map(RunningGame::Library)
+    }
+
     /// Feed the running game its queued asset updates and pause/step
     /// requests, then advance it one frame.
     fn tick_game(&mut self, w: u32, h: u32) {
-        let Some(host) = self.pie_host.as_mut() else {
+        let Some(host) = self.game.as_mut() else {
             return;
         };
         // Class edits made while playing: the game reloads them
@@ -207,6 +266,13 @@ impl GameViewport {
         self.last_frame = now;
         host.tick(dt);
         Self::report_problems(host, &self.shared_state);
+        // Quit Game ends Play, as Stop does; the next frame shuts the game
+        // down and restores the editor's world.
+        if host.quit_requested() {
+            tracing::info!("PiE: the game quit; stopping Play");
+            self.captured = false;
+            crate::ui::panel::pie::end_pie(self.shared_state.clone());
+        }
     }
 
     /// Copy the game's offscreen texture into the surface's back buffer.
@@ -215,13 +281,10 @@ impl GameViewport {
         if self.pie_blit.as_ref().map(|b| b.format) != Some(format) {
             self.pie_blit = Some(PieBlit::new(surface.device(), format));
         }
-        if let (Some(blit), Some(host)) = (self.pie_blit.as_mut(), self.pie_host.as_ref()) {
-            // SAFETY: `out_texture` borrows memory owned by the loaded game
-            // library. `host` is a live `&PieHost` (the library stays mapped
-            // until `stop`/drop, which need `&mut` or ownership), and `tex` is
-            // only used for this blit on the render thread, so it cannot outlive
-            // the host.
-            if let Some(tex) = unsafe { host.out_texture() } {
+        if let (Some(blit), Some(game)) = (self.pie_blit.as_mut(), self.game.as_ref()) {
+            // The texture is only used for this blit, while the game is
+            // borrowed.
+            if let Some(tex) = game.out_texture() {
                 blit.blit(surface.device(), surface.queue(), tex, view);
             }
         }

@@ -7,37 +7,25 @@ use ui::{
     IconName, Selectable,
 };
 
-/// Play / Pause / Step / Stop for the engine's play session.
+/// Play / Pause / Step / Stop.
 ///
-/// Purely a view of [`PlaybackState`] that sends [`PlaybackCommand`]s; whichever
-/// editor is the playback host does the work.
+/// A view of [`PlaybackState`]. `play` is the Play split button (play in the
+/// editor, or run a build configuration); Pause, Step and Stop send
+/// [`PlaybackCommand`]s that whichever editor is the playback host carries
+/// out. Stop also ends a game a build launched.
 pub struct PlaybackControls;
 
 impl PlaybackControls {
-    pub fn render(state: &PlaybackState) -> impl IntoElement {
+    pub fn render(state: &PlaybackState, play: impl IntoElement) -> impl IntoElement {
         let stopped = state.phase == PlayPhase::Stopped;
+        let game_running = state.game_running;
         let can_control = state.phase == PlayPhase::Playing && state.supports_control;
         let paused = state.paused;
 
         ui::h_flex()
             .gap_1p5()
             .items_center()
-            .child(if stopped {
-                Button::new("play")
-                    .icon(IconName::Play)
-                    .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
-                    .on_click(|_, _, _| send(PlaybackCommand::Play))
-                    .into_any_element()
-            } else {
-                // Native hot reload: Play while a game runs rebuilds it
-                // and swaps the dylib without stopping the world.
-                Button::new("play_active")
-                    .icon(IconName::Play)
-                    .tooltip(t!("LevelEditor.Toolbar.ReloadSimulation"))
-                    .selected(true)
-                    .on_click(|_, _, _| send(PlaybackCommand::Play))
-                    .into_any_element()
-            })
+            .child(play)
             .child({
                 let btn = Button::new("pause")
                     .icon(if paused {
@@ -75,8 +63,14 @@ impl PlaybackControls {
                 let btn = Button::new("stop")
                     .icon(IconName::Square)
                     .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
-                    .on_click(|_, _, _| send(PlaybackCommand::Stop));
-                if stopped {
+                    .on_click(move |_, _, _| {
+                        if game_running {
+                            ui_build::stop_game();
+                        } else {
+                            send(PlaybackCommand::Stop);
+                        }
+                    });
+                if stopped && !game_running {
                     btn.opacity(0.5).into_any_element()
                 } else {
                     btn.into_any_element()

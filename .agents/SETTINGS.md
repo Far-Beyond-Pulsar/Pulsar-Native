@@ -64,6 +64,19 @@ scrollbars) applies at once: `ui_common::appearance::apply` runs at startup and 
 in the window. The title bars' light/dark toggles persist the theme through
 `ui_common::appearance::set_theme_mode`.
 
+## The Game page (`Pulsar/project.json`)
+
+The Project Settings window's first page, **Game**, edits two keys of the project file the game reads,
+not the settings database: **Default Level** (`startup_level`; absent shows the level that would load,
+marked "(default)"; None writes `""`, "no level"; reset removes the key) and **Game Instance**
+(`game_instance`; a class folder; None or reset removes it). Both are asset pickers
+(`ui_common::AssetPicker` in a popover, with a None button); the game instance picker offers only the
+class folders that implement the Game Instance trait (`utils::game::game_instance_classes`, from the
+project's trait index). Edits are staged like other settings (changed dot, reset, Save bar); Save
+re-reads the file and writes only the keys edited, keeping every other key (`utils::game::GameSettings`,
+`pulsar_content::edit_project_file`). What the keys mean: `GAMEPLAY.md`, "The game instance and level
+switching".
+
 ## Reading a setting
 
 - Core: `global_config().get(ns, owner, key)`, or the owner module's consts.

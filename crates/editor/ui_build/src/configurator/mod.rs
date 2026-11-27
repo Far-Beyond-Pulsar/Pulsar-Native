@@ -137,10 +137,14 @@ impl window_manager::PulsarWindow for BuildConfiguratorWindow {
 impl BuildConfiguratorWindow {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         ensure_loaded();
-        let editing = build_configurations()
-            .read()
-            .selected_id()
-            .map(str::to_owned);
+        let editing = {
+            let store = build_configurations();
+            let configs = store.read();
+            configs
+                .selected()
+                .or_else(|| configs.configs().first())
+                .map(|c| c.id.clone())
+        };
 
         let input = |placeholder: String, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
@@ -306,11 +310,13 @@ impl BuildConfiguratorWindow {
             .as_deref()
             .is_none_or(|id| store.read().get(id).is_none());
         if gone {
-            self.editing = store
-                .read()
-                .selected_id()
-                .map(str::to_owned)
-                .or_else(|| store.read().configs().first().map(|c| c.id.clone()));
+            self.editing = {
+                let configs = store.read();
+                configs
+                    .selected()
+                    .or_else(|| configs.configs().first())
+                    .map(|c| c.id.clone())
+            };
             self.name_error = None;
             self.delete_armed = false;
         }

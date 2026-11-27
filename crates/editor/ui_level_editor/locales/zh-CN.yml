@@ -1,6 +1,5 @@
 # Level Editor - zh-CN
 
-LevelEditor.Toolbar.StartSimulation: "开始模拟 (F5)"
 LevelEditor.Toolbar.SimulationRunning: "模拟运行中"
 LevelEditor.Toolbar.PauseSimulation: "暂停模拟 (F6)"
 LevelEditor.Toolbar.StopSimulation: "停止模拟 (Shift+F5)"

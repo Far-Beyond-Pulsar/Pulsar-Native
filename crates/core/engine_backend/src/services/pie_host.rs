@@ -216,7 +216,9 @@ impl PieHost {
     /// registrations to their existing entities instead of spawning duplicates
     /// (the flag rides `EngineContext::session_flags`; see ABI v3).
     /// `view` is the editor camera at Play, which the game's free camera
-    /// starts from (ABI v4).
+    /// starts from (ABI v4). `level_name` is the open level's
+    /// project-relative path (ABI v6), so a script's Load Level of it plays
+    /// `scene_path`.
     ///
     /// # Safety
     /// `device`/`queue` must be valid and outlive the call; the loaded library
@@ -235,6 +237,7 @@ impl PieHost {
         shared_world: crate::scene::SharedScene,
         reload: bool,
         view: Option<crate::subsystems::render::EditorCameraState>,
+        level_name: Option<&str>,
     ) -> Result<Self, String> {
         if !engine_fs::virtual_fs::exists(dylib_path).unwrap_or(false) {
             return Err(format!("Game library not found: {}", dylib_path.display()));
@@ -244,6 +247,7 @@ impl PieHost {
         let lib =
             Library::new(&load_path).map_err(|e| format!("Failed to load game library: {e}"))?;
 
+        loader::attach_host_runtimes(&lib)?;
         loader::check_abi_version(&lib)?;
         let entry = loader::resolve_entry_points(&lib)?;
 
@@ -279,6 +283,7 @@ impl PieHost {
             shared_world: shared_world_ptr,
             reload,
             view,
+            level_name,
         });
 
         let ok = (entry.init)(&mut *ctx as *mut PieContext);
@@ -435,6 +440,11 @@ impl PieHost {
     pub fn is_paused(&self) -> Option<bool> {
         self.control(pulsar_pie_abi::control::IS_PAUSED, 0)
             .map(|v| v != 0)
+    }
+
+    /// Whether the game asked to quit (`game::quit`): the host stops Play.
+    pub fn quit_requested(&self) -> bool {
+        self.control(pulsar_pie_abi::control::QUIT_REQUESTED, 0) == Some(1)
     }
 
     /// Whether the game supports pause / step.

@@ -355,7 +355,7 @@ mod tests {
             world,
             object,
             SubLevelDisplayComponent {
-                level: level.to_string(),
+                level: level.into(),
                 ..SubLevelDisplayComponent::default()
             },
         )

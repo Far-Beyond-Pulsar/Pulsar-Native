@@ -114,7 +114,11 @@ use core::ffi::c_void;
 /// v4 reports its version through [`SYM_ABI_VERSION`] and the host refuses it
 /// ("Rebuild the project"); a v5 library started by a v4 host fails the
 /// guest's own `abi_version` check.
-pub const PIE_ABI_VERSION: u64 = 5;
+/// v6 appends [`EngineContext::level_name_ptr`] (the open level's own path:
+/// a script's Load Level of it plays the snapshot) and the
+/// [`control::QUIT_REQUESTED`] command (Quit Game stops Play). A v5 library
+/// has neither the game instance nor the `game::` natives, so it is refused.
+pub const PIE_ABI_VERSION: u64 = 6;
 
 /// Bit flags carried in [`EngineContext::session_flags`].
 ///
@@ -250,6 +254,15 @@ pub struct EngineContext {
     /// not know instead of guessing.
     pub session_kind: u32,
     pub _reserved: u32,
+
+    // ── ABI v6 additions: the open level ───────────────────────────────────
+    /// UTF-8 project-relative path of the level the editor has open, whose
+    /// current content (unsaved edits included) is the file at
+    /// [`Self::scene_path_ptr`] and in the shared world. Null for a
+    /// never-saved level. Valid only for the duration of the [`SYM_INIT`]
+    /// call.
+    pub level_name_ptr: *const u8,
+    pub level_name_len: usize,
 }
 
 /// Values of [`EngineContext::session_kind`], mirroring
@@ -353,6 +366,9 @@ pub mod control {
     pub const IS_PAUSED: u32 = 4;
     /// Returns the number of simulation frames run so far.
     pub const FRAME: u32 = 5;
+    /// Returns 1 once the game asked to quit (`game::quit`): the host stops
+    /// Play.
+    pub const QUIT_REQUESTED: u32 = 6;
 }
 
 /// Optional: `extern "C" fn(out, capacity) -> len` — the script

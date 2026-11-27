@@ -1,8 +1,6 @@
 # Level Editor - en
 
-LevelEditor.Toolbar.StartSimulation: "Start Simulation (F5)"
 LevelEditor.Toolbar.SimulationRunning: "Simulation Running"
-LevelEditor.Toolbar.ReloadSimulation: "Reload Simulation — recompile scripts, keep world state (F5)"
 LevelEditor.Toolbar.PauseSimulation: "Pause Simulation (F6)"
 LevelEditor.Toolbar.ResumeSimulation: "Resume Simulation (F6)"
 LevelEditor.Toolbar.StepSimulation: "Step one frame (paused)"

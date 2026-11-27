@@ -310,6 +310,49 @@ impl Session {
         self.reset();
     }
 
+    /// End the lifecycle of the live instances whose owner object `ends`
+    /// accepts, with the world alive and the components still in it: their
+    /// `end_play`, in the frame's order, and their event subscriptions go. The
+    /// session goes on for every other instance, and its resources stay: a
+    /// level switch ends the level's objects this way while the game
+    /// instance's components keep running. Returns how many ended.
+    pub fn end_owned(
+        &mut self,
+        world: &mut World,
+        events: &EventHub,
+        ends: &dyn Fn(Entity) -> bool,
+    ) -> usize {
+        profiling::profile_scope!("Session::end_owned");
+        self.run_deferred_ends(world, events);
+        let mut count = 0;
+        for lifecycle in lifecycles() {
+            let key = lifecycle.key();
+            let Some(active) = self.active.get_mut(&key) else {
+                continue;
+            };
+            let mut ending: Vec<(Entity, Entity)> = active
+                .iter()
+                .filter(|(_, owner)| ends(**owner))
+                .map(|(instance, owner)| (*instance, *owner))
+                .collect();
+            for (instance, _) in &ending {
+                active.remove(instance);
+            }
+            ending.sort_by_key(|(instance, _)| instance.bits());
+            for &(instance, owner) in &ending {
+                lifecycle.end_play(Some(&mut *world), instance, owner, events, &mut self.scope);
+            }
+            count += ending.len();
+            for (entity, _) in ending {
+                self.unsubscribe_instance(ComponentInstanceKey {
+                    component_type: key.component_type,
+                    entity,
+                });
+            }
+        }
+        count
+    }
+
     /// Run the world-form ends a `&World` path queued.
     pub(super) fn run_deferred_ends(&mut self, world: &mut World, events: &EventHub) {
         profiling::profile_scope!("Lifecycle::deferred_ends");

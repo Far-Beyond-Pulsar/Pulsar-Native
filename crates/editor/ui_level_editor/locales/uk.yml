@@ -1,6 +1,5 @@
 # Level Editor - uk
 
-LevelEditor.Toolbar.StartSimulation: "Запустити симуляцію (F5)"
 LevelEditor.Toolbar.SimulationRunning: "Симуляція запущена"
 LevelEditor.Toolbar.PauseSimulation: "Призупинити симуляцію (F6)"
 LevelEditor.Toolbar.StopSimulation: "Зупинити симуляцію (Shift+F5)"

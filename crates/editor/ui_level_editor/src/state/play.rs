@@ -89,12 +89,16 @@ pub const MAX_PIE_PROBLEMS: usize = 200;
 /// Everything the viewport needs to load an embedded game.
 #[derive(Clone)]
 pub struct PieStartRequest {
-    /// Path to the freshly built game `cdylib`.
-    pub dylib_path: PathBuf,
+    /// The freshly built game `cdylib`; `None` to run the game in the
+    /// editor's own process (a project whose gameplay is scripts).
+    pub library: Option<PathBuf>,
     /// Game project root (contains `Cargo.toml` and `.pulsar/`).
     pub project_root: PathBuf,
     /// Path to the `.level` written from the editor's current `SceneDb`.
     pub scene_path: PathBuf,
+    /// The open level's project-relative path (`None` for a never-saved
+    /// one): a script's Load Level of it plays `scene_path`.
+    pub level_name: Option<String>,
     /// The editor camera when Play was pressed: the game's free camera
     /// starts there.
     pub view: Option<crate::scene_edit::LevelEditorCameraState>,

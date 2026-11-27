@@ -1,5 +1,7 @@
+pub mod levels;
 mod phases;
 
+use crate::game_control::HostRequest;
 use crate::time::to_scenedb_time;
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
 
@@ -122,6 +124,10 @@ pub struct TickLoop {
     /// ([`crate::frame_pacer`]).
     pacer: Option<Arc<crate::frame_pacer::FramePacer>>,
     script_stats: ScriptStats,
+    /// The level requests: prepare, end the old level, hydrate (`levels`).
+    levels: levels::LevelFlow,
+    /// What scripts ask of the host, and level events for it.
+    control: crate::game_control::GameControl,
     /// Reloads updated assets in a world this loop built (SceneDB#84). A
     /// loop over a host's world leaves that to the host, which keeps its
     /// own world current.
@@ -265,6 +271,8 @@ impl TickLoop {
             pointer: None,
             pacer: None,
             script_stats: ScriptStats::default(),
+            levels: Default::default(),
+            control: Default::default(),
             _asset_reloads: Some(asset_reloads),
         }
     }
@@ -320,6 +328,8 @@ impl TickLoop {
             pointer: None,
             pacer: None,
             script_stats: ScriptStats::default(),
+            levels: Default::default(),
+            control: Default::default(),
             _asset_reloads: None,
         }
     }
@@ -467,6 +477,17 @@ impl TickLoop {
         }
         self.sample_pointer();
         self.flush_after_input();
+        // A level switch happens at this boundary. While a level is partly in
+        // the world, nothing of gameplay runs.
+        if self.advance_level_flow() {
+            self.pump_assets();
+            self.close_change_window();
+            if let Some(pointer) = &self.pointer {
+                pointer.end_tick();
+            }
+            crate::latency::tick_done(latency_stamp);
+            return time;
+        }
         self.run_before_systems(time);
         self.run_schedule(to_scenedb_time(time));
         self.run_component_phase(time);
@@ -483,6 +504,7 @@ impl TickLoop {
 
         self.flush_after_systems();
         self.run_script_phase(time);
+        self.apply_host_requests();
         crate::latency::tick_scripts_done(latency_stamp);
 
         // Script commands may remove or disable typed components after the
@@ -505,6 +527,67 @@ impl TickLoop {
         }
         crate::latency::tick_done(latency_stamp);
         time
+    }
+
+    /// What scripts asked of the host: level loads go to the level flow, the
+    /// input mode and quitting to the host's shared [`GameControl`].
+    ///
+    /// [`GameControl`]: crate::game_control::GameControl
+    pub(super) fn apply_host_requests(&mut self) {
+        let Some(driver) = &self.scripts else {
+            return;
+        };
+        let requests = driver
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take_host_requests();
+        for request in requests {
+            match request {
+                HostRequest::LoadLevel(level) => self.request_level(level),
+                HostRequest::SetInputMode(mode) => {
+                    tracing::info!(?mode, "Input mode set");
+                    self.control.set_input_mode(mode);
+                }
+                HostRequest::Quit => {
+                    tracing::info!("The game asked to quit");
+                    self.control.request_quit();
+                }
+            }
+        }
+    }
+
+    /// What scripts ask of the host, and the level events: clone it before
+    /// the loop moves to its thread.
+    pub fn control(&self) -> crate::game_control::GameControl {
+        self.control.clone()
+    }
+
+    /// Spawn the game instance of class `class` (a class folder, GUID or
+    /// name): its script starts (`begin_play`, then `on_init`) now, before
+    /// any level loads, and it lives until the session ends. Call it once,
+    /// after scripting is enabled and before the first level; a level it asks
+    /// for in `on_init` is requested when this returns. With no level in the
+    /// world yet, the level roles wait for one.
+    pub fn start_game_instance(&mut self, class: &str) {
+        let Some(driver) = self.scripts.clone() else {
+            tracing::error!(class, "The project has a game instance but scripting is not enabled");
+            return;
+        };
+        {
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if !self.levels.has_level() {
+                driver.hold_level_roles();
+            }
+            let mut store = self.scene_store.write();
+            let report = driver.start_game_instance(&mut store.world, class);
+            self.script_stats.absorb(&report);
+            if self.collect_problems && report.has_problems() {
+                self.script_problems.extend(driver.problems(&report));
+            }
+        }
+        self.apply_host_requests();
     }
 
     /// Queue an input event (a `pulsar_events::builtin::KeyDown`, ...) on
@@ -702,10 +785,43 @@ impl TickLoop {
     /// session hooks and drains the hub), then the host gets control back.
     /// PIE's host restores the editor's snapshot only after this returned
     /// (`PieSession::shutdown`, then `pie_shutdown`). Idempotent.
+    ///
+    /// With a game instance, it ends last: the level ends first (as a level
+    /// switch ends it), then the game instance hears `on_shutdown` and its
+    /// scripts end while its components are still live; then the order above
+    /// ends the rest.
     pub fn end_session(&mut self) {
         profiling::profile_scope!("TickLoop::end_session");
+        self.cancel_level_requests();
+        let game_instance = self.scripts.as_ref().and_then(|driver| {
+            let running = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .game_instance()
+                .is_some();
+            running.then(|| Arc::clone(driver))
+        });
+        if let Some(driver) = &game_instance {
+            self.end_level();
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut store = self.scene_store.write();
+            let report = driver.shutdown_game_instance(&mut store.world);
+            self.script_stats.absorb(&report);
+            if self.collect_problems && report.has_problems() {
+                self.script_problems.extend(driver.problems(&report));
+            }
+        }
         self.end_component_runtime();
         self.end_scripts();
+        if let Some(driver) = &game_instance {
+            let mut store = self.scene_store.write();
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .despawn_game_instance(&mut store.world);
+        }
     }
 
     /// What kind of session this loop is: [`Standalone`](pulsar_world_registry::SessionKind::Standalone)
@@ -796,10 +912,10 @@ impl TickLoop {
     }
 
     /// Start a windowed game session on `content` (a project, or a
-    /// packaged game's `Content/`): opens `primary_window`, loads the
-    /// startup level ([`crate::standalone::startup_level`]) into the shared
-    /// world and starts the tick thread. See
-    /// [`run_with_windows`](Self::run_with_windows).
+    /// packaged game's `Content/`): starts the game instance and asks for the
+    /// startup level ([`crate::standalone::start_game`]), opens
+    /// `primary_window` and starts the tick thread, which loads the level.
+    /// See [`run_with_windows`](Self::run_with_windows).
     pub fn run_with_content(
         mut self,
         event_loop: winit::event_loop::EventLoop<WindowCommand>,
@@ -834,25 +950,18 @@ impl TickLoop {
         if let Err(error) = crate::standalone::prepare_engine(&content) {
             tracing::error!("{error}");
         }
-        let default_scene = crate::standalone::startup_level(&content);
-        match &default_scene {
-            Some(scene) => tracing::info!(scene = %scene.display(), "Startup level"),
-            None => tracing::warn!("No startup level found; starting with an empty world"),
-        }
+        // The game instance first, then the startup level is asked for; the
+        // tick thread loads it. The windows' renderers take its pipeline (or,
+        // with no level, the fallback) when they are made.
+        crate::standalone::start_game(&mut self, &content);
+        crate::standalone::select_requested_level_pipeline(&self, &content);
 
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open. The renderer shares THIS
         // loop's scene store (cloned handle) -- one world for gameplay and
         // rendering.
         let display = event_loop.owned_display_handle();
-        let mut app = PulsarApp::new(
-            bridge,
-            self,
-            initial_windows,
-            content,
-            default_scene,
-            display,
-        );
+        let mut app = PulsarApp::new(bridge, self, initial_windows, content, display);
 
         // Main thread: drive the winit event loop (required on macOS).
         event_loop

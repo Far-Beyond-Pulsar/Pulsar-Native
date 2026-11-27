@@ -41,6 +41,15 @@ impl SessionKind {
     }
 }
 
+/// The game's input mode is "UI": the player is in a menu, so gameplay input
+/// (movement, look, actions) is not read from the devices. The host publishes
+/// it as a session resource while the mode is set, before the component phase
+/// of each tick; the input runtime releases its keys while it is there.
+/// On-screen widgets still get the pointer, and scripts still hear raw key
+/// events.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GameplayInputSuppressed;
+
 /// Where the local player's view is this frame: the pose of the camera the
 /// frame will be drawn from, without what no tick has applied yet. The host
 /// publishes it as a session resource before the component phase of each tick;

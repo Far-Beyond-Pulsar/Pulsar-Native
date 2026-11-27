@@ -17,11 +17,12 @@
 //! (`PieHost::events_snapshot`, polled a few times a second).
 
 mod drive;
+mod running;
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use engine_backend::services::{PieBlit, PieHost};
+use engine_backend::services::PieBlit;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use pulsar_pie_abi::{input_kind, InputEvent};
@@ -34,13 +35,16 @@ pub struct GameViewport {
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     surface: Option<WgpuSurfaceHandle>,
-    pie_host: Option<PieHost>,
+    game: Option<running::RunningGame>,
     /// What loaded the running game, to load it again on a new GPU device.
     loaded: Option<crate::state::PieStartRequest>,
     pie_blit: Option<PieBlit>,
     last_frame: Instant,
     /// Whether this tab currently owns input (click to capture, Esc to release).
     captured: bool,
+    /// Where the panel was last painted, in window coordinates: pointer
+    /// positions are fractions of it.
+    bounds: std::rc::Rc<std::cell::Cell<Bounds<Pixels>>>,
     /// Track transitions for one-shot notifications.
     was_active: bool,
     /// The events overlay is open.
@@ -69,11 +73,12 @@ impl GameViewport {
             shared_state,
             focus_handle: cx.focus_handle(),
             surface: None,
-            pie_host: None,
+            game: None,
             loaded: None,
             pie_blit: None,
             last_frame: Instant::now(),
             captured: false,
+            bounds: Default::default(),
             was_active: false,
             events_open: false,
             events: None,
@@ -115,7 +120,10 @@ impl GameViewport {
             return;
         }
         self.events_polled = Instant::now();
-        self.events = self.pie_host.as_ref().and_then(PieHost::events_snapshot);
+        self.events = self
+            .game
+            .as_ref()
+            .and_then(running::RunningGame::events_snapshot);
     }
 
     fn events_overlay(&self, cx: &App) -> AnyElement {
@@ -173,10 +181,34 @@ impl GameViewport {
             .into_any_element()
     }
 
-    fn forward(&self, ev: InputEvent) {
-        if let Some(host) = &self.pie_host {
-            host.input(&ev);
+    fn forward(&mut self, ev: InputEvent) {
+        if let Some(game) = &mut self.game {
+            game.input(&ev);
         }
+    }
+
+    /// `position` (window coordinates) as a fraction of the panel the game is
+    /// shown in; the game scales it to its own render size.
+    fn pointer_fraction(&self, position: Point<Pixels>) -> (f32, f32) {
+        let bounds = self.bounds.get();
+        let within = position - bounds.origin;
+        (
+            f32::from(within.x) / f32::from(bounds.size.width).max(1.0),
+            f32::from(within.y) / f32::from(bounds.size.height).max(1.0),
+        )
+    }
+
+    /// Tell the game where the pointer is.
+    fn forward_pointer(&mut self, position: Point<Pixels>) {
+        let (x, y) = self.pointer_fraction(position);
+        self.forward(InputEvent {
+            kind: input_kind::MOUSE_MOVE,
+            x,
+            y,
+            button_or_key: 0,
+            pressed: 0,
+            delta: 0.0,
+        });
     }
 
     /// Map a GPUI key name to the physical key code a standalone game window
@@ -245,10 +277,14 @@ impl GameViewport {
         // and forwarded to the game so the editor does not also react.
         self.captured = true;
         self.focus_handle.focus(window, cx);
+        // The press is where the pointer is, also when it has not moved
+        // since the panel was captured.
+        self.forward_pointer(event.position);
+        let (x, y) = self.pointer_fraction(event.position);
         self.forward(InputEvent {
             kind: input_kind::MOUSE_BUTTON,
-            x: 0.0,
-            y: 0.0,
+            x,
+            y,
             button_or_key: Self::button_index(event.button),
             pressed: 1,
             delta: 0.0,
@@ -261,10 +297,12 @@ impl GameViewport {
         if !self.captured {
             return;
         }
+        self.forward_pointer(event.position);
+        let (x, y) = self.pointer_fraction(event.position);
         self.forward(InputEvent {
             kind: input_kind::MOUSE_BUTTON,
-            x: 0.0,
-            y: 0.0,
+            x,
+            y,
             button_or_key: Self::button_index(event.button),
             pressed: 0,
             delta: 0.0,
@@ -275,25 +313,13 @@ impl GameViewport {
     fn on_mouse_move(
         &mut self,
         event: &MouseMoveEvent,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if !self.captured {
             return;
         }
-        // The pointer as a fraction of the window; the game scales it to its
-        // own render size.
-        let view = window.viewport_size();
-        let x = f32::from(event.position.x) / f32::from(view.width).max(1.0);
-        let y = f32::from(event.position.y) / f32::from(view.height).max(1.0);
-        self.forward(InputEvent {
-            kind: input_kind::MOUSE_MOVE,
-            x,
-            y,
-            button_or_key: 0,
-            pressed: 0,
-            delta: 0.0,
-        });
+        self.forward_pointer(event.position);
         cx.stop_propagation();
     }
 
@@ -331,10 +357,10 @@ impl GameViewport {
         tracing::warn!("PiE: GPU device lost; the game restarts on the new device");
         self.surface = None;
         self.pie_blit = None;
-        let Some(mut host) = self.pie_host.take() else {
+        let Some(mut game) = self.game.take() else {
             return;
         };
-        host.stop();
+        game.stop();
         if let Some(loaded) = self.loaded.take() {
             let mut st = self.shared_state.write();
             st.play
@@ -352,7 +378,10 @@ impl GameViewport {
     /// problems panel and the Blueprint editor hear them on the host bus.
     /// With the "pause on script error" setting, an error pauses the game
     /// before its next frame.
-    fn report_problems(host: &PieHost, shared_state: &Arc<parking_lot::RwLock<LevelEditorState>>) {
+    fn report_problems(
+        host: &mut running::RunningGame,
+        shared_state: &Arc<parking_lot::RwLock<LevelEditorState>>,
+    ) {
         let problems = host.take_problems();
         if problems.is_empty() {
             let paused = host.is_paused().unwrap_or(false);
@@ -437,8 +466,15 @@ impl GameViewport {
         if self.surface.is_none() {
             // Until the window has rebuilt on a new device after a loss, a new
             // surface is on the lost one too; the rebuild renders this again.
+            // The game draws linear colour into an sRGB surface, as the editor
+            // viewport does: composite it as such, or it shows too dark.
             self.surface = window
-                .create_wgpu_surface(1280, 720, format)
+                .create_wgpu_surface_with_color_conversion(
+                    1280,
+                    720,
+                    format,
+                    SurfaceColorConversion::LinearToSrgb,
+                )
                 .filter(|surface| !surface.is_device_lost());
         }
     }
@@ -468,7 +504,7 @@ impl GameViewport {
         } else if building {
             "Building game…".into()
         } else {
-            "Press Start Simulation to play".into()
+            "Press Play to start the game".into()
         }
     }
 
@@ -543,7 +579,7 @@ impl Render for GameViewport {
         self.drive_surface();
 
         self.poll_events();
-        let running = self.pie_host.is_some();
+        let running = self.game.is_some();
         if running {
             // Keep the game ticking every frame while it runs.
             self.idle_watch = None;
@@ -571,6 +607,13 @@ impl Render for GameViewport {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .child(surface_el)
+            .child({
+                // Records the panel's bounds as it is laid out.
+                let bounds = self.bounds.clone();
+                canvas(move |painted, _, _| bounds.set(painted), |_, _, _, _| {})
+                    .absolute()
+                    .inset_0()
+            })
             .child(Self::status_badge(status, cx))
             .child(self.events_toggle(cx))
             .when(self.events_open, |el| el.child(self.events_overlay(cx)))

@@ -78,7 +78,7 @@
 
 mod session;
 
-pub use session::{SessionKind, SessionScope, ViewPose};
+pub use session::{GameplayInputSuppressed, SessionKind, SessionScope, ViewPose};
 
 use pulsar_events::EventHub;
 use pulsar_scenedb::{component_id, Component, ComponentId, Entity, World};

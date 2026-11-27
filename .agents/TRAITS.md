@@ -146,6 +146,12 @@ contract, edit the file and bump its `meta.contractVersion`.
 Ids are plain integers until the spawn path hands Blueprints typed actor
 references (a parameter type change is a contract version bump).
 
+The engine also serves **Game Instance** (`pulsar.GameInstance`: `on_init()`,
+`on_level_loaded(level: String)`, `on_shutdown()`, all with default bodies).
+It is **not a role**: the project picks it in Project Settings (`Pulsar/project.json`
+`game_instance`), it is not listed in World Settings and a level switch does not
+end it. See `GAMEPLAY.md`, "The game instance and level switching".
+
 ## Roles
 
 A role is a `pulsar_traits::RoleRegistration` (an origin-gated contribution,

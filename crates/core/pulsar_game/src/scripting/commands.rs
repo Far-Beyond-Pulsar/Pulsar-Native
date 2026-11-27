@@ -54,6 +54,10 @@ pub enum WorldCommand {
     /// The local player's view follows `entity` (`Entity::DANGLING` clears
     /// it). See `ScriptDriver::set_view_target`.
     SetViewTarget { entity: Entity },
+    /// A request to the host (a level load, the input mode, quitting): the
+    /// `game::` natives. The driver keeps it for the tick loop
+    /// (`ScriptDriver::take_host_requests`).
+    Host(crate::game_control::HostRequest),
 }
 
 thread_local! {

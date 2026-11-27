@@ -5,6 +5,7 @@
 
 mod content;
 mod fields;
+mod game;
 mod save_bar;
 mod sidebar;
 
@@ -67,6 +68,11 @@ pub struct SettingsScreen {
 
     /// The editor state of text, number and color fields, by setting.
     pub(crate) fields: HashMap<SettingId, FieldState>,
+    /// The Game page's keys of the project file (the project window with a
+    /// project open).
+    pub(crate) game: Option<crate::utils::game::GameSettings>,
+    /// The Game page's asset pickers, by key.
+    pub(crate) game_pickers: HashMap<String, game::GamePicker>,
 
     pub(crate) has_pending_changes: bool,
     /// A changed setting applies only after the editor restarts.
@@ -105,9 +111,15 @@ impl SettingsScreen {
         let mut expanded = BTreeSet::new();
         expanded.insert(PLUGINS_FOLDER.to_string());
 
+        let game = project_path
+            .as_deref()
+            .filter(|_| kind == WindowKind::Project)
+            .map(crate::utils::game::GameSettings::load);
         let mut this = Self {
             kind,
             project_path,
+            game,
+            game_pickers: HashMap::new(),
             focus_handle: cx.focus_handle(),
             search,
             query: String::new(),

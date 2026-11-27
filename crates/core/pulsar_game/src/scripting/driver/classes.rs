@@ -52,6 +52,19 @@ impl ScriptDriver {
         find(&self.registry)
     }
 
+    /// The class a project setting names: by where it is (the class folder, or
+    /// an asset in it), else by GUID or name (cooked content names it by id).
+    pub(super) fn resolve_class_path(&mut self, class: &str) -> Option<ClassEntry> {
+        if let Some(entry) = self.registry.by_asset(&self.project_root, class) {
+            return Some(entry.clone());
+        }
+        self.refresh_registry();
+        if let Some(entry) = self.registry.by_asset(&self.project_root, class) {
+            return Some(entry.clone());
+        }
+        self.resolve_class_ref(class)
+    }
+
     /// The runtime's name for `entry`'s script class, loading its module
     /// on first use. `None` when the class has no compiled script.
     pub(super) fn ensure_class_loaded(

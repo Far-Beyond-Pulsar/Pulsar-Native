@@ -29,7 +29,7 @@ runs, tools and tests: `RuntimeLevel::load_into[_with_classes]`, `load`,
 | Sublevel displays from the render loop (`helio_bridge::sync`) | **Blocking.** Read file + class scan + parse + hydrate under the world write lock, on the frame thread | File prepared by a worker (`sublevel-prepare`); the frame applies it when ready. `needs_level_instance_sync` is false while a file is pending |
 | Sublevel displays after an edit (`commands/executor.rs`) and undo restore (`state/scene.rs`) | **Blocking** on the UI thread (same work) | Deferred sync |
 | Editor hydration finish (`level_io::finish_prepared_hydration`) | Read sublevel files under the write lock on the loader worker | Deferred sync |
-| Windowed game startup (`pulsar_game::windowed_app`) | **Blocking** the winit event loop: class scan, parse, hydrate, up to 120 s asset wait | Worker prepares level and roles (`level-prepare`); `LevelHydration::step` spends 4 ms per frame applying it, objects appear as they spawn; the tick thread starts when it is complete |
+| Game level loads and switches, every host (`pulsar_game::tick::levels`) | **Blocking** the winit event loop: class scan, parse, hydrate, up to 120 s asset wait (startup only; no switching) | One flow in the tick loop: a `level-prepare` worker reads, parses, validates (`PreparedLevelFile::validate`: version, ids, every component's data decodes) and resolves roles and pipeline while the current level runs; at a tick boundary the old level ends and `LevelHydration::step` spends 4 ms a tick, objects appearing as they spawn, with **no gameplay tick** on the partial level. Headless runs load blocking inside the tick (deterministic). See `GAMEPLAY.md`, "The game instance and level switching" |
 | Render-graph preview (`render_bps` `preview.rs`) | **Blocking** UI thread: load plus 120 s asset wait | `prepare` + `apply_prepared`, no asset wait |
 | Hierarchy refresh for a sublevel that lands in a frame | n/a (was synchronous) | `sublevel_display::applied_generation` polled by the level editor's 50 ms loop bumps the scene revision |
 
@@ -89,10 +89,11 @@ still runs on the frame thread.
 
 ## Still blocking or not yet done
 
-- `standalone::select_level_pipeline` still reads the level and may build
-  render graphs on the event loop before the renderer exists (the renderer
-  takes its pipeline at construction).
-- Headless `standalone::load_level` is blocking by design (no UI).
+- `standalone::select_level_pipeline` still reads the startup level and may
+  build render graphs on the event loop before the first renderer exists (the
+  renderer takes its pipeline at construction). A level switch does this on
+  the prepare worker.
+- Headless level loads are blocking by design (no UI).
 - Not audited: Play-In-Editor snapshot capture (`enter_play_mode`), the
   `class_reload_events` scan in `pie.rs`, `ui_loading_screen` startup tasks.
 - No loading screen in the windowed game: it renders an empty world until the

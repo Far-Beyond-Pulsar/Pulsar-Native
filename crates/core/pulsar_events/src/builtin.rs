@@ -23,6 +23,7 @@
 //! | [`BeginPlay`] / [`EndPlay`] | the instance's entity | the script driver, after an instance's `begin_play` / `end_play` |
 //! | [`EntitySpawned`] / [`EntityDestroyed`] | global | the script driver (`world::spawn` / `world::destroy`, objects removed from the world) |
 //! | [`KeyDown`] / [`KeyUp`], [`MouseButtonDown`] / [`MouseButtonUp`] | global | the game window / Play-in-Editor input forwarding |
+//! | [`PointerClaimedDown`] / [`PointerClaimedUp`] | global | the same, for a press something on screen claimed |
 //! | [`Hit`], [`BeginOverlap`], [`EndOverlap`] | the entity hit / overlapping | physics (see below) |
 //! | [`TimerFired`] | the timer owner's entity (global for unbound scripts) | `timer::set` timers |
 //! | [`Damage`] | the damaged entity | `game::apply_damage` |
@@ -207,6 +208,28 @@ pub struct PossessionChanged {
     pub possessed: bool,
 }
 
+/// A mouse button went down on something that takes the pointer for itself
+/// (`engine_backend::scene::game_hooks::PointerClaimRegistration`: an
+/// on-screen button), at window pixel `(x, y)`. Published instead of
+/// [`MouseButtonDown`], so gameplay does not act on the same press.
+#[pulsar_event(dynamic, name = "PointerClaimedDown", crate = gamma)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointerClaimedDown {
+    pub button: i64,
+    pub x: f64,
+    pub y: f64,
+}
+
+/// The release of a press published as [`PointerClaimedDown`], wherever the
+/// pointer is by then; published instead of [`MouseButtonUp`].
+#[pulsar_event(dynamic, name = "PointerClaimedUp", crate = gamma)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PointerClaimedUp {
+    pub button: i64,
+    pub x: f64,
+    pub y: f64,
+}
+
 /// Every built-in event with its palette category, in a stable order.
 pub fn builtin_events() -> Vec<(EventDescriptor, EventCategory)> {
     fn d<T: Event>(category: EventCategory) -> (EventDescriptor, EventCategory) {
@@ -228,6 +251,8 @@ pub fn builtin_events() -> Vec<(EventDescriptor, EventCategory)> {
         d::<MouseButtonUp>(C::Input),
         d::<MouseMoved>(C::Input),
         d::<MouseWheel>(C::Input),
+        d::<PointerClaimedDown>(C::Input),
+        d::<PointerClaimedUp>(C::Input),
         d::<Hit>(C::Physics),
         d::<BeginOverlap>(C::Physics),
         d::<EndOverlap>(C::Physics),
@@ -248,9 +273,9 @@ mod tests {
     #[test]
     fn descriptors_use_script_friendly_fields() {
         let events = builtin_events();
-        // 16 plus the four session events (GameBegan, GameEnded,
+        // 18 plus the four session events (GameBegan, GameEnded,
         // RoleSpawned, PossessionChanged).
-        assert_eq!(events.len(), 20);
+        assert_eq!(events.len(), 22);
         let hit = &events.iter().find(|(d, _)| d.name == "Hit").unwrap().0;
         assert_eq!(hit.id, Hit::stable_type_id());
         assert_eq!(

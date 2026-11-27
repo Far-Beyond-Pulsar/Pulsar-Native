@@ -16,8 +16,17 @@ pulsar_settings.workspace = true
 pulsar_plugins.workspace = true
 # Appearance settings apply live (`ui_common::appearance`).
 ui_common.workspace = true
+# The Game page: the project file the game reads, and the classes that can be
+# the game instance.
+pulsar_content = { workspace = true }
+pulsar_traits = { workspace = true }
+engine_fs = { workspace = true }
+serde_json = { workspace = true }
 # Logging
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

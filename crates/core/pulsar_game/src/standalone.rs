@@ -17,9 +17,14 @@
 //! [`HeadlessReport`]. Nothing about the project's location is compiled
 //! into the game.
 //!
-//! The level loaded at startup is `startup_level` from
-//! `Pulsar/project.json`; dev builds fall back to the editor's
-//! `project.default_map` setting and the usual default level files.
+//! The project's game instance class (`game_instance` in
+//! `Pulsar/project.json`) starts first, before any level
+//! ([`start_game_instance`]). Then the startup level loads: `startup_level`
+//! from `Pulsar/project.json`, or, when the key is absent, the editor's
+//! `project.default_map` setting (dev builds) and the usual default level
+//! files. An empty `startup_level` is no level: the game runs with none until
+//! a script asks for one (`game::load_level`). A level the game instance asks
+//! for in `on_init` replaces the startup level.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -136,43 +141,64 @@ pub fn prepare_engine(content: &ContentRoot) -> Result<(), String> {
 }
 
 /// The level to load at startup, as a path under the content root (it may
-/// live only in the pak; load it through `engine_fs::virtual_fs`).
+/// live only in the pak; load it through `engine_fs::virtual_fs`). `None`
+/// when the project says none (an empty `startup_level`) or has none.
 pub fn startup_level(content: &ContentRoot) -> Option<PathBuf> {
     let settings = content.settings();
-    if let Some(rel) = settings.startup_level.as_deref().filter(|l| !l.is_empty()) {
-        if content.exists(rel) {
-            return Some(content.path(rel));
-        }
-        tracing::warn!(
-            level = rel,
-            "Startup level from Pulsar/project.json not found"
-        );
-    }
-    if !content.is_packaged() {
-        // Dev builds: the editor's own setting (`.pulsar/project/*.toml`).
-        let configured =
-            engine_state::settings::ProjectSettings::new(content.root()).and_then(|ps| {
-                ps.load_all();
-                ps.get("project", "default_map")?
-                    .as_str()
-                    .ok()
-                    .map(str::to_owned)
-            });
-        if let Some(rel) = configured.filter(|m| !m.is_empty()) {
-            if content.exists(&rel) {
-                return Some(content.path(&rel));
+    match settings.startup_choice() {
+        pulsar_content::StartupChoice::None => return None,
+        pulsar_content::StartupChoice::Level(rel) => {
+            if content.exists(rel) {
+                return Some(content.path(rel));
             }
-            tracing::warn!(level = %rel, "project.default_map not found; trying the default level files");
+            tracing::warn!(
+                level = rel,
+                "Startup level from Pulsar/project.json not found; trying the default level"
+            );
         }
+        pulsar_content::StartupChoice::Default => {}
     }
-    [
-        "scene/default.level",
-        "scenes/default.level",
-        "scenes/default_level.json",
-    ]
-    .into_iter()
-    .find(|rel| content.exists(rel))
-    .map(|rel| content.path(rel))
+    // Dev builds: the editor's own setting (`.pulsar/project/*.toml`).
+    let configured = (!content.is_packaged())
+        .then(|| engine_state::settings::ProjectSettings::new(content.root()))
+        .flatten()
+        .and_then(|ps| {
+            ps.load_all();
+            ps.get("project", "default_map")?
+                .as_str()
+                .ok()
+                .map(str::to_owned)
+        });
+    pulsar_content::default_level(configured.as_deref(), |rel| content.exists(rel))
+        .map(|rel| content.path(&rel))
+}
+
+/// Start the game instance `content`'s settings name, if any: before any
+/// level (`TickLoop::start_game_instance`). Every host calls it after the
+/// project's setup enabled scripting.
+pub fn start_game_instance(game: &mut TickLoop, content: &ContentRoot) {
+    if let Some(class) = content.settings().game_instance_class() {
+        game.start_game_instance(class);
+    }
+}
+
+/// [`start_game_instance`], then ask for the startup level unless the game
+/// instance already asked for one: how a standalone game starts. Returns the
+/// level that will load first, content-relative.
+pub fn start_game(game: &mut TickLoop, content: &ContentRoot) -> Option<String> {
+    start_game_instance(game, content);
+    if let Some(requested) = game.requested_level() {
+        return Some(requested);
+    }
+    let level = startup_level(content).and_then(|path| content.relative(&path));
+    match &level {
+        Some(level) => {
+            tracing::info!(level = %level, "Startup level");
+            game.request_level(level.clone());
+        }
+        None => tracing::info!("No startup level: the game starts with no level"),
+    }
+    level
 }
 
 /// The game's `setup()`: registers actors and turns on scripting (the
@@ -301,8 +327,14 @@ pub struct HeadlessReport {
     pub packaged: bool,
     pub pak: bool,
     pub profile: String,
-    /// The startup level, content-relative.
+    /// The first level loaded, content-relative (`None`: no level).
     pub level: Option<String>,
+    /// The level in the world at the end, content-relative.
+    pub final_level: Option<String>,
+    /// Every level that finished loading, in order.
+    pub levels_loaded: Vec<String>,
+    /// The game asked to quit (the run ends there).
+    pub quit: bool,
     pub frames: u64,
     pub scripts: ScriptStats,
     /// Every script instance alive after the last frame.
@@ -365,19 +397,36 @@ pub fn run_headless_with(
     prepare_engine(content)?;
     // No window, no renderer: a headless session, whatever built the loop.
     game.set_session_kind(pulsar_world_registry::SessionKind::Headless);
+    // Levels load whole inside the tick that asks for them, so a run does the
+    // same whatever the machine.
+    game.set_blocking_level_loads(true);
+    let control = game.control();
     let settings = content.settings();
-    let level = startup_level(content);
-    if let Some(path) = &level {
-        load_level(game, content, path)?;
-    } else {
-        tracing::warn!("No startup level: running an empty world");
-    }
+    let mut levels_loaded = Vec::new();
+    let mut take_loaded = |control: &crate::game_control::GameControl| {
+        for event in control.take_level_events() {
+            if let crate::game_control::LevelEvent::Loaded { level, .. } = event {
+                levels_loaded.push(level);
+            }
+        }
+    };
+    game.collect_script_problems(true);
+    let level = start_game(game, content);
+    // The first level is in the world before the first tick.
+    game.process_level_requests()?;
+    take_loaded(&control);
     if let Some(after_load) = hooks.after_load.take() {
         after_load(game);
     }
-    game.collect_script_problems(true);
+    let mut ran = 0;
     for index in 0..frames {
+        if control.quit_requested() {
+            tracing::info!(frame = index, "The game quit");
+            break;
+        }
         game.tick_once();
+        ran += 1;
+        take_loaded(&control);
         if let Some(after_tick) = hooks.after_tick.as_mut() {
             after_tick(game, index);
         }
@@ -387,8 +436,11 @@ pub fn run_headless_with(
         packaged: content.is_packaged(),
         pak: content.pak().is_some(),
         profile: settings.profile.as_str().to_owned(),
-        level: level.as_deref().and_then(|p| content.relative(p)),
-        frames,
+        level,
+        final_level: game.current_level().map(str::to_owned),
+        levels_loaded,
+        quit: control.quit_requested(),
+        frames: ran,
         scripts: game.script_stats().clone(),
         instances: Vec::new(),
         problems: game.take_script_problems(),
@@ -436,96 +488,60 @@ pub fn run_headless_with(
     Ok(report)
 }
 
-/// Hydrate the level at `path` (under the content root) into `game`'s
-/// world, resolving placed classes against the content's classes.
-pub fn load_level(
-    game: &mut TickLoop,
-    content: &ContentRoot,
-    path: &std::path::Path,
-) -> Result<(), String> {
-    select_level_pipeline(content.root(), Some(path));
-    let registry = pulsar_class::ClassRegistry::scan(content.root());
-    let name = content
-        .relative(path)
-        .unwrap_or_else(|| path.display().to_string());
-    {
-        let mut store = game.scene_store.write();
-        engine_backend::scene::RuntimeLevel::load_into_with_classes(
-            path,
-            &mut store.world,
-            &registry,
-        )
-        .map_err(|e| format!("Failed to load level {name}: {e}"))?;
-    }
-    adopt_level(game, content, path);
-    tracing::info!(level = %name, "Level loaded");
-    Ok(())
-}
-
-/// Choose the render pipeline the level at `level` asks for (its World
-/// Settings), for the renderers built after this: every host calls it before
-/// it builds one (headless and windowed games, Play-In-Editor), since a
-/// game's renderer takes its pipeline when it is made
-/// (`SceneRendererOptions::game`). Offers the project's render graphs first
-/// (`content_root`, plugin folders included); building them learns Helio's
-/// pins once, so only a level that names a pipeline pays for it. No level,
-/// or one that names none, chooses none: the renderer says so on screen.
-pub fn select_level_pipeline(content_root: &std::path::Path, level: Option<&std::path::Path>) {
+/// The render pipeline a game runs for the level whose file text is `level`
+/// (its World Settings), or with no level the plugins' fallback
+/// (`pipelines::FallbackPipeline`, so a menu before any level still draws).
+/// A level that names no pipeline runs none: the renderer says so on screen.
+/// Offers the project's render graphs first (`content_root`, plugin folders
+/// included) when one is named; building them learns Helio's pins once.
+/// Reads the disk: the level flow calls it on its worker.
+pub fn level_pipeline_for(content_root: &std::path::Path, level: Option<&str>) -> Option<String> {
     use engine_backend::subsystems::render::helio_renderer::pipelines;
-    let requested = level.and_then(|path| {
-        engine_fs::virtual_fs::read_to_string(path)
-            .map_err(|error| {
-                tracing::warn!(level = %path.display(), "Level not read for its render pipeline: {error}");
-            })
-            .ok()
-            .and_then(|json| pipelines::render_pipeline_of_level(&json))
-    });
+    let requested = match level {
+        Some(json) => pipelines::render_pipeline_of_level(json),
+        None => pipelines::fallback_pipeline(),
+    };
     if requested.is_some() {
         let report = pipelines::refresh_project_pipelines(content_root);
         for (graph, error) in &report.failed {
             tracing::warn!(graph = %graph, "Render graph not offered: {error}");
         }
     }
+    requested
+}
+
+/// The pipeline of a game with no level: see [`level_pipeline_for`].
+pub(crate) fn no_level_pipeline() -> Option<String> {
+    engine_backend::subsystems::render::helio_renderer::pipelines::fallback_pipeline()
+}
+
+/// Choose the render pipeline for the level file at `level` (see
+/// [`level_pipeline_for`]), for the renderers built after this: every host
+/// calls it before it builds one, since a game's renderer takes its pipeline
+/// when it is made (`SceneRendererOptions::game`). A level switch selects its
+/// own (`tick::levels`).
+pub fn select_level_pipeline(content_root: &std::path::Path, level: Option<&std::path::Path>) {
+    use engine_backend::subsystems::render::helio_renderer::pipelines;
+    let json = level.and_then(|path| {
+        engine_fs::virtual_fs::read_to_string(path)
+            .map_err(|error| {
+                tracing::warn!(level = %path.display(), "Level not read for its render pipeline: {error}");
+            })
+            .ok()
+    });
+    let requested = level_pipeline_for(content_root, json.as_deref());
     tracing::info!(pipeline = ?requested, "Level render pipeline selected");
     pipelines::set_level_pipeline(requested);
 }
 
-/// What a loaded level tells the session, for every host path (headless and
-/// windowed): its name for the script driver, and its roles and
-/// `world_settings` (gravity, `physics_enabled`, ...), which become the
-/// session's settings before its first tick. A host that hydrates the level
-/// itself (the windowed game does, once the window exists) must call this
-/// too, or the session runs with the defaults.
-pub fn adopt_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
-    set_level_name(game, content, path);
-    game.load_world_roles(path, content.root());
-}
-
-/// [`adopt_level`] with the roles already resolved (by a loader thread, so the
-/// level file is not read again here).
-pub fn adopt_prepared_level(
-    game: &mut TickLoop,
-    content: &ContentRoot,
-    path: &std::path::Path,
-    roles: pulsar_traits::WorldRoles,
-) {
-    set_level_name(game, content, path);
-    for message in roles.diagnostics() {
-        tracing::warn!("{message}");
-    }
-    game.set_world_roles(roles);
-}
-
-fn set_level_name(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) {
-    let name = content
-        .relative(path)
-        .unwrap_or_else(|| path.display().to_string());
-    if let Some(driver) = &game.scripts {
-        driver
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .set_level_name(name);
-    }
+/// [`select_level_pipeline`] for the level `game` is about to load, or for no
+/// level.
+pub(crate) fn select_requested_level_pipeline(game: &TickLoop, content: &ContentRoot) {
+    let level = game
+        .requested_level()
+        .map(|level| content.path(&level))
+        .filter(|path| engine_fs::virtual_fs::is_file(path));
+    select_level_pipeline(content.root(), level.as_deref());
 }
 
 #[cfg(test)]

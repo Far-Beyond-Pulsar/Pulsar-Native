@@ -54,9 +54,9 @@ pub use root::{
     PROJECT_ROOT_ENV,
 };
 pub use settings::{
-    BuildProfile, PresentModeSetting, ProjectSettings, ScriptProfileLimits, ScriptSettings,
-    SimulationSettings, WindowSettings,
-    PROJECT_SETTINGS_FILE,
+    default_level, edit_project_file, read_project_file, BuildProfile, PresentModeSetting,
+    ProjectSettings, ScriptProfileLimits, ScriptSettings, SimulationSettings, StartupChoice,
+    WindowSettings, DEFAULT_LEVELS, PROJECT_SETTINGS_FILE,
 };
 
 /// Class GUID -> class directory index a packaged game reads instead of

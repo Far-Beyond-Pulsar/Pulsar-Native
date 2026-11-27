@@ -1,6 +1,5 @@
 # レベルエディタ翻訳 - ja
 
-LevelEditor.Toolbar.StartSimulation: "シミュレーション開始 (F5)"
 LevelEditor.Toolbar.SimulationRunning: "シミュレーション実行中"
 LevelEditor.Toolbar.PauseSimulation: "シミュレーション一時停止 (F6)"
 LevelEditor.Toolbar.StopSimulation: "シミュレーション停止 (Shift+F5)"

@@ -9,6 +9,7 @@
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 pub mod asset_component;
+pub mod asset_paths;
 pub mod components;
 pub mod cooked_texture;
 mod motion_gate;

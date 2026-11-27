@@ -43,6 +43,7 @@ impl ScriptDriver {
                     let target = (entity != Entity::DANGLING).then_some(entity);
                     self.set_view_target(world, target);
                 }
+                WorldCommand::Host(request) => self.host_requests.push(request),
             }
         }
     }
@@ -52,6 +53,22 @@ impl ScriptDriver {
         world: &mut World,
         entity: Entity,
         class: &str,
+        parent: Option<Entity>,
+        position: [f64; 3],
+        report: &mut DriverReport,
+    ) {
+        self.spawn_instance(world, entity, class, None, parent, position, report);
+    }
+
+    /// [`Self::apply_spawn`] with the object's StableId given (`None`: the
+    /// next spawn id of the class).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn spawn_instance(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        class: &str,
+        stable_id: Option<String>,
         parent: Option<Entity>,
         position: [f64; 3],
         report: &mut DriverReport,
@@ -90,7 +107,7 @@ impl ScriptDriver {
             ..Transform::default()
         };
         let def = &template.def;
-        let stable_id = self.next_spawn_id(world, &def.name);
+        let stable_id = stable_id.unwrap_or_else(|| self.next_spawn_id(world, &def.name));
         let spec = SpawnObject {
             stable_id: Some(stable_id),
             name: def.name.clone(),

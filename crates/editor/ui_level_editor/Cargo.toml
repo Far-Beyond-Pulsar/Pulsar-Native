@@ -37,6 +37,10 @@ pulsar_scene.workspace = true
 pulsar_class.workspace = true
 # Play-In-Editor input ABI (game tab forwards InputEvent to the embedded game)
 pulsar_pie_abi.workspace = true
+pulsar_content = { workspace = true }
+# Play-in-Editor in the editor's own process (projects whose gameplay is
+# scripts): the game runtime.
+pulsar_game = { workspace = true }
 # The PIE events panel reads the game's event hub snapshot (#924).
 pulsar_events.workspace = true
 ui_build.workspace = true

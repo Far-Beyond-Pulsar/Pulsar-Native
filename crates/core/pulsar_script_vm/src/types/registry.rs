@@ -98,6 +98,10 @@ impl TypeRegistry {
                 registry.components_by_rust.insert(type_id, provided.name);
             }
         }
+        for reg in inventory::iter::<TextTypeRegistration> {
+            let binding = (reg.binding)();
+            registry.by_rust.insert(binding.rust.type_id(), binding);
+        }
         for reg in inventory::iter::<ValueTypeRegistration> {
             if registry.objects.insert(reg.name, reg).is_some() {
                 tracing::error!("script value type name `{}` registered twice", reg.name);

@@ -35,6 +35,7 @@ pub mod composite_model;
 pub mod file_utils;
 pub mod generic_window;
 pub mod in_task;
+mod input_mode_editor;
 pub mod ui_call;
 pub mod inspector;
 pub mod inspector_model;
@@ -50,6 +51,7 @@ pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
 pub mod text_line_editor;
+mod kernel_asset_paths;
 mod texture_asset_editor;
 pub mod thumbnails;
 

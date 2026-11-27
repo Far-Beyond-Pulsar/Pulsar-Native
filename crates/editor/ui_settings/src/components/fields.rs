@@ -113,6 +113,9 @@ impl SettingsScreen {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if info.namespace == crate::utils::game::NAMESPACE {
+            return self.render_game_field(&info.key, window, cx);
+        }
         let id = SettingId::of(info);
         let restart = info.requires_restart();
         let current = store::read(&id).unwrap_or_else(|| info.default_value.clone());

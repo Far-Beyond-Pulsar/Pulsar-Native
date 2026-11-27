@@ -63,7 +63,6 @@ pub use splines_plugin;
 pub use sprites_plugin;
 #[cfg(feature = "editor")]
 pub use trait_editor_plugin;
-#[cfg(feature = "editor")]
 pub use ui_editor_plugin;
 pub use view_icons_plugin;
 pub use voxel_plugin;

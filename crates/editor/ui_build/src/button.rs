@@ -1,19 +1,20 @@
-//! The toolbar's Build control.
+//! The toolbar's Play control.
 //!
-//! A split button: the left half runs the selected build configuration, the
-//! chevron opens [`BuildPicker`] to choose another or edit them. While a build
-//! runs the group is replaced by a Cancel button; while the game it launched
-//! runs there is a Stop button beside it.
+//! A split button: the left half does what is selected, the chevron opens
+//! [`BuildPicker`] to choose or to edit the build configurations. The
+//! selection is either the built-in Play in Editor (it publishes a Play
+//! command; the editor hosting play sessions runs the game) or a build
+//! configuration, which it runs. While a build runs the control is a Cancel
+//! button. Stop is the playback controls'.
 
 use engine_state::build_config::{BuildConfigurations, build_configurations};
 use engine_state::playback::{PlayPhase, PlaybackState};
-use gpui::{
-    App, Corner, Entity, IntoElement, ParentElement as _, Styled as _, prelude::FluentBuilder as _,
-};
+use gpui::{App, Corner, Entity, IntoElement, ParentElement as _, Styled as _};
+use pulsar_events::{PlaybackCommand, publish_playback_command};
 use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::popover::Popover;
-use ui::{Disableable as _, IconName, h_flex};
+use ui::{Disableable as _, IconName, Selectable as _, h_flex};
 
 use crate::picker::{BuildPicker, config_icon};
 use crate::runner::{cancel_build, run_configuration};
@@ -29,8 +30,8 @@ fn shorten(name: &str) -> String {
     format!("{}…", kept.trim_end())
 }
 
-/// Render the Build control for the current state.
-pub fn build_button(
+/// Render the Play control for the current state.
+pub fn play_button(
     state: &PlaybackState,
     configs: &BuildConfigurations,
     picker: &Entity<BuildPicker>,
@@ -49,61 +50,51 @@ pub fn build_button(
             .into_any_element();
     }
 
-    let selected = configs.selected().cloned();
-    // Not while a play session or the launched game is using the project.
-    let busy = state.phase != PlayPhase::Stopped || state.game_running;
-    let (icon, label, tooltip) = match &selected {
-        Some(config) => (
-            config_icon(config),
-            shorten(&config.name),
-            crate::text::subtitle(config),
-        ),
-        None => (
-            IconName::Hammer,
-            t!("Build.Button.NoConfiguration").to_string(),
-            t!("Build.Button.NoConfigurationTooltip").to_string(),
-        ),
+    let playing = state.phase != PlayPhase::Stopped;
+    // Not while the launched game is using the project.
+    let run = match configs.selected() {
+        Some(config) => Button::new("build-run")
+            .icon(config_icon(config))
+            .label(shorten(&config.name))
+            .tooltip(crate::text::subtitle(config))
+            .disabled(playing || state.game_running)
+            .on_click(|_, window, cx| {
+                let selected = build_configurations().read().selected().cloned();
+                if let Some(config) = selected {
+                    run_configuration(&config, window, cx);
+                }
+            }),
+        // Pressed again while playing, it reloads the running game.
+        None => Button::new("play-in-editor")
+            .icon(IconName::Play)
+            .label(t!("Build.Button.PlayInEditor").to_string())
+            .tooltip(if playing {
+                t!("Build.Button.ReloadPlayTooltip").to_string()
+            } else {
+                t!("Build.Button.PlayInEditorTooltip").to_string()
+            })
+            .selected(playing)
+            .disabled(state.game_running)
+            .on_click(|_, _, _| publish_playback_command(PlaybackCommand::Play)),
     };
-
-    let run = Button::new("build-run")
-        .icon(icon)
-        .label(label)
-        .tooltip(tooltip)
-        .disabled(busy || selected.is_none())
-        .on_click(|_, window, cx| {
-            let selected = build_configurations().read().selected().cloned();
-            if let Some(config) = selected {
-                run_configuration(&config, window, cx);
-            }
-        });
 
     let picker = picker.clone();
     let chooser = Popover::<BuildPicker>::new("build-picker-popover")
-        .anchor(Corner::TopRight)
+        .anchor(Corner::TopLeft)
         .trigger(
             Button::new("build-choose")
                 .ghost()
                 .icon(IconName::ChevronDown)
                 .tooltip(t!("Build.Button.ChooseTooltip").to_string())
-                .disabled(busy),
+                .disabled(playing || state.game_running),
         )
         .content(move |_, _| picker.clone());
 
     h_flex()
-        .gap_1()
+        .gap_px()
         .items_center()
-        .child(h_flex().gap_px().items_center().child(run).child(chooser))
-        .when(state.game_running, |el| {
-            el.child(
-                Button::new("build-stop-game")
-                    .icon(IconName::Square)
-                    .label(t!("Build.Button.StopGame").to_string())
-                    .tooltip(t!("Build.Button.StopGameTooltip").to_string())
-                    .on_click(|_, _, _| {
-                        crate::runner::stop_game();
-                    }),
-            )
-        })
+        .child(run)
+        .child(chooser)
         .into_any_element()
 }
 

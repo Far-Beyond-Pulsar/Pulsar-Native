@@ -17,7 +17,6 @@ use ui::{
 
 use super::{empty_note, SettingsScreen};
 use crate::utils::model::{ContentRow, SettingId};
-use crate::utils::store;
 
 /// Rows never grow wider than this, so a wide window stays readable.
 const MAX_WIDTH: f32 = 880.0;
@@ -148,7 +147,7 @@ impl SettingsScreen {
             .clone()
             .unwrap_or_else(|| info.key.clone())
             .into();
-        let changed = store::is_changed(&id);
+        let changed = crate::handlers::is_changed(self, &id);
         let field = self.render_field(&info, window, cx);
 
         h_flex()

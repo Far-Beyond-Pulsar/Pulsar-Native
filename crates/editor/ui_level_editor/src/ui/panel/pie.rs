@@ -1,7 +1,7 @@
 //! Play-In-Editor build orchestration.
 //!
 //! `begin_pie`/`end_pie` are the shared entry points for both the `PlayScene`
-//! action handler and the toolbar's "Start Simulation" button
+//! action handler and the toolbar's Play button
 //! (`toolbar::playback_controls`); the rest of this module is the dylib build
 //! pipeline they drive (scaffolding regeneration, source-staleness fastpath,
 //! crate-name probing). Re-exported at the `panel` level so existing
@@ -22,7 +22,7 @@ use crate::state::{LevelEditorState, PieStartRequest};
 /// camera starts at `view`, the editor camera.
 ///
 /// Free function (not a panel method) so BOTH the `PlayScene` action handler and
-/// the toolbar "Start Simulation" button (`playback_controls`) can share one
+/// the toolbar's Play button (through a `PlaybackCommand`) can share one
 /// code path — they previously diverged, and only the action handler had PiE.
 pub(crate) fn begin_pie(
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -59,11 +59,16 @@ pub(crate) fn begin_pie(
     // level file first (off the UI thread: the class scan, serialization and
     // write all take time).
     let scene_path = root.join("target").join("pie").join("play.level");
-    let (play_scene, play_settings) = {
+    let (play_scene, play_settings, level_name) = {
         let state = shared_state.read();
         (
             state.scene.shared_scene(),
             state.scene.world_settings.clone(),
+            state
+                .scene
+                .current_scene
+                .as_deref()
+                .and_then(|level| project_relative(&root, level)),
         )
     };
 
@@ -129,6 +134,7 @@ pub(crate) fn begin_pie(
                     build_pie_dylib(
                         &root,
                         &scene_path,
+                        level_name.clone(),
                         view.clone(),
                         reload,
                         loaded_artifact.as_ref(),
@@ -236,24 +242,47 @@ pub(crate) fn finish_stop(state: &mut LevelEditorState, game_stopped: bool) -> b
 /// running and its world state must survive the swap. The flag only rides the
 /// request — a failed rebuild leaves the old game untouched either way.
 ///
-/// Fastpath: if a release library already exists and no `.rs`/`.toml` under the
-/// project is newer than it, skip regeneration + `cargo build` entirely and reuse
-/// the last-built artifact — pressing Play with no source changes is instant.
+/// Fastpath: if a release library already exists, this editor built it (its
+/// [`engine_stamp`]: a rebuilt engine has natives the old library lacks) and no
+/// `.rs`/`.toml` under the project is newer than it, skip regeneration +
+/// `cargo build` entirely and reuse the last-built artifact — pressing Play with
+/// no source changes is instant.
 fn build_pie_dylib(
     root: &Path,
     scene_path: &Path,
+    level_name: Option<String>,
     view: Option<LevelEditorCameraState>,
     reload: bool,
     loaded_artifact: Option<&(std::path::PathBuf, std::time::SystemTime)>,
     task: &editor_task_queue::TaskContext,
 ) -> Result<PieStartRequest, String> {
+    // A project whose gameplay is scripts plays on the engine the editor
+    // runs: compile its scripts and start, with no game library to build.
+    let native = engine_backend::services::native_scripts::native_gameplay(root);
+    let Some(reason) = native else {
+        compile_for_play(root, task)?;
+        return Ok(PieStartRequest {
+            library: None,
+            project_root: root.to_path_buf(),
+            scene_path: scene_path.to_path_buf(),
+            level_name,
+            view,
+            reload,
+            // An in-editor game already running only needs its classes again.
+            scripts_only: reload && loaded_artifact.is_none(),
+        });
+    };
+    tracing::info!(%reason, "PiE: the project has native gameplay; building its game library");
+
     // PiE uses the release library (faster at runtime, and matches the artifact
     // `cargo build --release` / `cargo run --release` produce).
     let release = true;
 
+
     // Script preflight: every scripting language plugin validates its
     // saved classes. Bad scripts stop Play here instead of surfacing as
-    // runtime failures inside the embedded game.
+    // runtime failures inside the embedded game. (The in-editor form
+    // compiles them, which is the same check.)
     if let Some(plugins) = plugin_manager::global() {
         task.report_progress(0.08, "Validating scripts");
         if let Err(summary) = plugins.read().validate_scripts(root) {
@@ -273,7 +302,10 @@ fn build_pie_dylib(
     if let Ok(crate_name) = read_crate_name(root) {
         let dylib_path =
             engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
-        if artifact_exists(&dylib_path) && !any_source_newer(root, &dylib_path) {
+        if artifact_exists(&dylib_path)
+            && stamp_matches(&dylib_path, &engine_stamp())
+            && !any_source_newer(root, &dylib_path)
+        {
             // Script classes are data (their compiled modules are
             // reloaded in place); only native sources need cargo. With the
             // running game loaded from this very artifact, Play again only
@@ -286,9 +318,10 @@ fn build_pie_dylib(
             );
             task.report_progress(0.95, "Reusing existing build");
             return Ok(PieStartRequest {
-                dylib_path,
+                library: Some(dylib_path),
                 project_root: root.to_path_buf(),
                 scene_path: scene_path.to_path_buf(),
+                level_name,
                 view,
                 reload,
                 scripts_only,
@@ -332,15 +365,93 @@ fn build_pie_dylib(
     }
 
     task.report_progress(0.95, "Finalizing build artifact");
+    write_stamp(&dylib_path, &engine_stamp());
 
     Ok(PieStartRequest {
-        dylib_path,
+        library: Some(dylib_path),
         project_root: root.to_path_buf(),
         scene_path: scene_path.to_path_buf(),
+        level_name,
         view,
         reload,
         scripts_only: false,
     })
+}
+
+/// Compile every script class of the project into its module store, as a
+/// packaged game's are, for the in-editor game to run.
+fn compile_for_play(root: &Path, task: &editor_task_queue::TaskContext) -> Result<(), String> {
+    task.report_progress(0.1, "Compiling scripts");
+    task.set_phase("Compiling scripts");
+    let Some(plugins) = plugin_manager::global() else {
+        return Err("No scripting languages are loaded".into());
+    };
+    // The natives the game runs with, which is the editor's copy of them.
+    let runtime = pulsar_game::scripting::new_runtime();
+    plugins
+        .read()
+        .compile_scripts(root, runtime.natives())
+        .map_err(|errors| format!("Scripts failed to compile:\n{errors}"))?;
+    if task.is_cancelled() {
+        return Err("Build cancelled".into());
+    }
+    Ok(())
+}
+
+/// `level` relative to the project at `root`, with forward slashes; `None`
+/// when it is not inside the project.
+fn project_relative(root: &Path, level: &Path) -> Option<String> {
+    let relative = match level.strip_prefix(root) {
+        Ok(relative) => relative,
+        // A rooted path elsewhere (`has_root`: `/q` has no drive on Windows).
+        Err(_) if level.is_absolute() || level.has_root() => return None,
+        Err(_) => level,
+    };
+    pulsar_content::normalize_rel(&relative.to_string_lossy())
+}
+
+/// Which engine a game library was built by: the PIE ABI and this editor
+/// executable (its size and modification time). A rebuilt engine may have new
+/// natives or behaviour the old library does not.
+// Allowed std::fs: the executable is this machine's, not a project file.
+#[allow(clippy::disallowed_methods)]
+fn engine_stamp() -> String {
+    let editor = std::env::current_exe()
+        .and_then(std::fs::metadata)
+        .map(|meta| {
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_nanos());
+            format!("{} {modified}", meta.len())
+        })
+        .unwrap_or_default();
+    format!(
+        "pie-abi {}\neditor {editor}\n",
+        pulsar_pie_abi::PIE_ABI_VERSION
+    )
+}
+
+/// Where the [`engine_stamp`] of the library at `dylib` is kept.
+fn stamp_path(dylib: &Path) -> std::path::PathBuf {
+    let mut name = dylib.as_os_str().to_owned();
+    name.push(".engine-stamp");
+    name.into()
+}
+
+// Allowed std::fs: beside cargo's output on this machine, not a project file.
+#[allow(clippy::disallowed_methods)]
+fn stamp_matches(dylib: &Path, stamp: &str) -> bool {
+    std::fs::read_to_string(stamp_path(dylib)).is_ok_and(|saved| saved == stamp)
+}
+
+// Allowed std::fs: beside cargo's output on this machine, not a project file.
+#[allow(clippy::disallowed_methods)]
+fn write_stamp(dylib: &Path, stamp: &str) {
+    if let Err(error) = std::fs::write(stamp_path(dylib), stamp) {
+        tracing::warn!("PiE: the library's engine stamp was not saved: {error}");
+    }
 }
 
 /// Whether `dylib` is the library the running game was loaded from,
@@ -502,6 +613,32 @@ mod tests {
             any_source_newer(root.path(), &artifact),
             "native changes still rebuild"
         );
+    }
+
+    /// A library another engine build made (or one with no stamp, as every
+    /// library built before the stamp) is not reused.
+    #[test]
+    fn a_library_of_another_engine_build_is_not_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let dylib = dir.path().join("game.dll");
+        std::fs::write(&dylib, b"lib").unwrap();
+        let now = engine_stamp();
+        assert!(now.contains(&format!("pie-abi {}", pulsar_pie_abi::PIE_ABI_VERSION)));
+        assert!(!stamp_matches(&dylib, &now), "no stamp: rebuild");
+        write_stamp(&dylib, "pie-abi 5\neditor 1 2\n");
+        assert!(!stamp_matches(&dylib, &now));
+        write_stamp(&dylib, &now);
+        assert!(stamp_matches(&dylib, &now));
+    }
+
+    #[test]
+    fn open_level_names_are_project_relative() {
+        let root = Path::new("/p");
+        assert_eq!(
+            project_relative(root, Path::new("/p/scene/a.level")).as_deref(),
+            Some("scene/a.level")
+        );
+        assert_eq!(project_relative(root, Path::new("/q/a.level")), None);
     }
 
     #[test]

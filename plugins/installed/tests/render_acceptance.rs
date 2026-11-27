@@ -3155,7 +3155,7 @@ fn sprites_draw_in_2d_over_the_3d_scene() {
         &mut state,
         [60.0, -60.0],
         SpriteComponent {
-            texture: image.to_string_lossy().into_owned(),
+            texture: image.to_string_lossy().into_owned().into(),
             ..square([1.0, 1.0, 1.0, 1.0], 0)
         },
     )

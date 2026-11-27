@@ -52,6 +52,7 @@ names_kinds = true
 "crates/agent-providers" = { layer = "tool" }
 "crates/editor/ui_git_manager" = { layer = "tool" }
 "crates/editor/ui_flamegraph" = { layer = "tool" }
+"crates/editor/ui_vram_map" = { layer = "tool" }
 "crates/editor/ui_log_viewer" = { layer = "tool" }
 "crates/editor/ui_fab_search" = { layer = "tool" }
 "crates/ui" = { layer = "foundation" }

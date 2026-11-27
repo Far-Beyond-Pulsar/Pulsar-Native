@@ -2,6 +2,7 @@
 //! converts to and from script values.
 
 use std::any::{Any, TypeId};
+use std::sync::Arc;
 
 use pulsar_reflection::methods::TypeRef;
 use pulsar_scenedb::{ComponentId, Entity, World};
@@ -91,6 +92,47 @@ impl TypeBinding {
 }
 
 impl TypeBinding {
+    /// Binding for a string newtype: scripts see a plain `string`. Used by
+    /// [`script_text_type!`](crate::script_text_type).
+    pub fn text<T>() -> Self
+    where
+        T: Clone + From<String> + std::ops::Deref<Target = str> + 'static,
+    {
+        fn script() -> Type {
+            Type::Str
+        }
+        fn text_of<T: std::ops::Deref<Target = str>>(value: &T) -> Value {
+            Value::Str(Arc::from(&**value))
+        }
+        fn parse<T: From<String>>(value: &Value) -> Result<T, String> {
+            String::from_value(value)
+                .map(T::from)
+                .ok_or_else(|| format!("expected {}, got {}", Type::Str, value.kind()))
+        }
+        Self {
+            rust: TypeRef::of::<T>(),
+            script,
+            to_value: |any| {
+                text_of::<T>(
+                    any.downcast_ref::<T>()
+                        .expect("binding called with its own type"),
+                )
+            },
+            from_value: |value| parse::<T>(value).map(|v| Box::new(v) as Box<dyn Any>),
+            // SAFETY: upheld by the callers of `TypeBinding::load`, which must
+            // pass a live, aligned `T` (see its `# Safety`).
+            load: |ptr| text_of::<T>(unsafe { &*ptr.cast::<T>() }),
+            store: |ptr, value| {
+                let value = parse::<T>(value)?;
+                // SAFETY: upheld by the callers of `TypeBinding::store`, which
+                // must pass a live, aligned, uniquely borrowed `T`; the old
+                // value is dropped by the assignment.
+                unsafe { *ptr.cast::<T>() = value };
+                Ok(())
+            },
+        }
+    }
+
     /// Binding for a registered value type. Used by `script_value_type!`.
     pub fn object<T: Clone + Send + Sync + 'static>(name: &'static str) -> Self {
         fn script<T: 'static>() -> Type {

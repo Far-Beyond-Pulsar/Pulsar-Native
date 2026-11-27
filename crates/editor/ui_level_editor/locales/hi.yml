@@ -1,6 +1,5 @@
 # Level Editor - hi
 
-LevelEditor.Toolbar.StartSimulation: "सिमुलेशन प्रारंभ करें (F5)"
 LevelEditor.Toolbar.SimulationRunning: "सिमुलेशन चल रहा है"
 LevelEditor.Toolbar.PauseSimulation: "सिमुलेशन रोकें (F6)"
 LevelEditor.Toolbar.StopSimulation: "सिमुलेशन बंद करें (Shift+F5)"

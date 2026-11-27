@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "typeKind": "trait",
+  "id": "pulsar.GameInstance",
+  "name": "GameInstance",
+  "displayName": "Game Instance",
+  "description": "The game's own object: spawned when the engine starts, before any level loads, and kept across level loads. The project picks its class in Project Settings (Game).",
+  "methods": [
+    {
+      "name": "on_init",
+      "signature": {
+        "params": [],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "defaultBody": "{}",
+      "doc": "Called once, after begin_play and before the first level loads. A Load Level here replaces the default level."
+    },
+    {
+      "name": "on_level_loaded",
+      "signature": {
+        "params": [
+          {
+            "name": "level",
+            "type": {
+              "kind": "Primitive",
+              "name": "String"
+            }
+          }
+        ],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "defaultBody": "{}",
+      "doc": "Called each time a level has loaded and its objects and roles have begun, with the level's project-relative path."
+    },
+    {
+      "name": "on_shutdown",
+      "signature": {
+        "params": [],
+        "return": {
+          "kind": "Primitive",
+          "name": "()"
+        }
+      },
+      "defaultBody": "{}",
+      "doc": "Called once when the game ends, after the level ended and while the game instance's components still exist."
+    }
+  ],
+  "meta": {
+    "builtin": true,
+    "contractVersion": 1
+  }
+}

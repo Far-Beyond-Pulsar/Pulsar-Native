@@ -104,6 +104,15 @@ impl TickLoop {
                 scope.remove_resource::<pulsar_component_lifecycle::ViewPose>();
             }
         }
+        // In a menu (`InputMode::Ui`) the input runtime reads no device.
+        match self.control.input_mode() {
+            crate::game_control::InputMode::Ui => {
+                scope.insert_resource(pulsar_world_registry::GameplayInputSuppressed);
+            }
+            crate::game_control::InputMode::Game => {
+                scope.remove_resource::<pulsar_world_registry::GameplayInputSuppressed>();
+            }
+        }
         pulsar_world_registry::tick_live_components(
             &mut store.world,
             &self.events,

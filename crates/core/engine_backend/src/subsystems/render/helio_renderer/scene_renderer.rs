@@ -164,6 +164,8 @@ pub struct SceneRenderer {
     ground: GroundQueries,
     /// The plugins' per-renderer state (`RenderHostPartRegistration`).
     host_parts: Vec<Box<dyn RenderHostPart>>,
+    /// The video-memory owner of each of `host_parts` (`helio_core::vram`).
+    host_part_owners: Vec<&'static str>,
     /// What the graph was built from: a registered pipeline, or why none runs.
     pipeline: super::pipelines::PipelineState,
     pipeline_build: PipelineBuildMode,
@@ -208,6 +210,10 @@ impl SceneRenderer {
         format: wgpu::TextureFormat,
         options: SceneRendererOptions,
     ) -> Self {
+        // What building the renderer allocates (its scene derivations, before
+        // they run under their own names) is Helio's (`helio_core::vram`); the
+        // host parts open their own owners below.
+        let _vram_owner = helio_core::vram::helio();
         // Every renderer setting comes from the project, through Helio's
         // description of them; under "Automatic" TSR the scene content's
         // preset.
@@ -219,7 +225,8 @@ impl SceneRenderer {
                 [width, height],
             )
         };
-        let mut host_parts = super::host_parts::new_parts();
+        let (host_part_owners, mut host_parts): (Vec<_>, Vec<_>) =
+            super::host_parts::new_parts().into_iter().unzip();
         for part in &mut host_parts {
             for (_, setup) in &options.host_part_setups {
                 setup(part.as_mut());
@@ -249,7 +256,8 @@ impl SceneRenderer {
             .with_scene_derivation(crate::scene::scene_join(&device, options.editor_mode));
         // The plugins' host parts' derivations (the meshes' virtual
         // geometry and authored LOD), between the object and row joins.
-        for part in &mut host_parts {
+        for (part, owner) in host_parts.iter_mut().zip(&host_part_owners) {
+            let _vram_owner = helio_core::vram::root_scope(*owner);
             for derivation in part.derivations(&device, &scene_db) {
                 builder = builder.with_scene_derivation(derivation);
             }
@@ -294,6 +302,7 @@ impl SceneRenderer {
             asset_view: None,
             ground: GroundQueries::default(),
             host_parts,
+            host_part_owners,
             pipeline: super::pipelines::PipelineState::Unassigned,
             pipeline_reported: true,
             pipeline_build: options.pipeline_build,
@@ -343,6 +352,19 @@ impl SceneRenderer {
         if self.pipeline_build == PipelineBuildMode::Blocking {
             self.renderer.apply_pending_pipeline();
             self.follow_pipeline();
+        }
+    }
+
+    /// Run the pipeline the game's loaded level asks for
+    /// (`pipelines::set_level_pipeline`) when it differs from the one running:
+    /// a game's host calls it when its level changes. The same pipeline is
+    /// not built again.
+    pub fn follow_level_pipeline(&mut self) {
+        use super::pipelines;
+        let state = pipelines::pipeline_state(pipelines::level_pipeline().as_deref());
+        if state != self.pipeline {
+            tracing::info!(pipeline = ?state.id(), "Switching the game's render pipeline");
+            self.set_pipeline_state(state);
         }
     }
 
@@ -497,7 +519,8 @@ impl SceneRenderer {
         self.follow_pipeline();
         // The plugins' per-renderer state (the virtual-geometry assets the
         // scene asks for, built and streamed).
-        for part in &mut self.host_parts {
+        for (part, owner) in self.host_parts.iter_mut().zip(&self.host_part_owners) {
+            let _vram_owner = helio_core::vram::root_scope(*owner);
             part.prepare_frame(&self.scene);
         }
         let read = self.scene_read();
@@ -640,7 +663,8 @@ impl SceneRenderer {
         // What the plugins publish from the uploaded scene (the meshes'
         // ray-traced scene).
         profiling::profile_scope!("helio_publish_host_parts");
-        for part in &mut self.host_parts {
+        for (part, owner) in self.host_parts.iter_mut().zip(&self.host_part_owners) {
+            let _vram_owner = helio_core::vram::root_scope(*owner);
             part.publish_frame(&self.scene, &mut self.renderer, self.camera.as_ref());
         }
     }

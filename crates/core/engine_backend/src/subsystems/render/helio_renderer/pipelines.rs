@@ -792,6 +792,45 @@ pub fn render_pipeline_of_level(json: &str) -> Option<String> {
     migrated_render_pipeline(version, saved)
 }
 
+/// The pipeline a game runs while no level is loaded (a menu the game
+/// instance draws before any level, or a project whose startup level is
+/// none). It must draw widgets. The engine names no pipeline of its own: the
+/// plugin that ships pipelines offers one (`pulsar.default_pipelines` offers
+/// its `Deferred.rendergraph`). A level that is loaded and names no pipeline
+/// still runs none: this is only for no level.
+pub struct FallbackPipeline {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    /// The pipeline's id (a project-relative `.rendergraph` path).
+    pub id: fn() -> String,
+}
+
+impl pulsar_plugins::Contribution for FallbackPipeline {
+    const CATEGORY: &'static str = "render.fallback_pipeline";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.origin.to_owned()
+    }
+
+    fn label(&self) -> String {
+        "Pipeline for a game with no level".to_owned()
+    }
+}
+
+pulsar_plugins::registration!(FallbackPipeline);
+
+/// What a game with no level runs: the first enabled plugin's
+/// [`FallbackPipeline`], or none.
+pub fn fallback_pipeline() -> Option<String> {
+    pulsar_plugins::registered::<FallbackPipeline>()
+        .next()
+        .map(|fallback| (fallback.id)())
+}
+
 /// Shared slot a UI thread writes and the render thread reads: the pipeline
 /// the level asks for. A change rebuilds the renderer at the next frame
 /// boundary, like the project's graph settings.

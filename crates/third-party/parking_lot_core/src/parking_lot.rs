@@ -112,6 +112,25 @@ pub fn host_handle() -> Box<HostHandle> {
     })
 }
 
+/// The signature of the entry point [`export_attach!`](crate::export_attach)
+/// exports.
+pub type AttachFn = unsafe extern "C" fn(*const core::ffi::c_void) -> bool;
+
+/// Hands this copy's state to a loaded library through its entry point
+/// `attach`, and returns what the library answered ([`attach`]). Call it
+/// before anything else of the library runs.
+///
+/// # Safety
+///
+/// `attach` is the [`export_attach!`](crate::export_attach) entry point of a
+/// library that stays loaded for as long as it can park or wake a thread.
+pub unsafe fn share_with(attach: AttachFn) -> bool {
+    // Leaked: the library keeps it.
+    let handle: &'static HostHandle = Box::leak(host_handle());
+    // SAFETY: the caller's contract; the handle lives for the process.
+    unsafe { attach((handle as *const HostHandle).cast()) }
+}
+
 /// Makes this copy of the crate use the host's state, so a thread parked
 /// here is found by the host's unlock and the other way round. Returns false,
 /// changing nothing, when `host` is null or from other sources, or when this

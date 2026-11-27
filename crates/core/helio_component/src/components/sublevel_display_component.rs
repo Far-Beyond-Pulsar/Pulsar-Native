@@ -17,6 +17,8 @@
 
 use engine_class_derive::{engine_class, register_world_component};
 
+use crate::asset_paths::LevelPath;
+
 pub const SUBLEVEL_DISPLAY_CLASS_NAME: &str = "SubLevelDisplayComponent";
 
 #[engine_class(category = "Level", clone, debug, serialize, deserialize)]
@@ -29,14 +31,14 @@ pub struct SubLevelDisplayComponent {
     /// `levels/room.level`). Its origin is this object's origin.
     #[property(category = "General")]
     #[serde(default)]
-    pub level: String,
+    pub level: LevelPath,
 }
 
 impl Default for SubLevelDisplayComponent {
     fn default() -> Self {
         Self {
             enabled: true,
-            level: String::new(),
+            level: LevelPath::default(),
         }
     }
 }

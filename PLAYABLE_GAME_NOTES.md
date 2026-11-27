@@ -264,3 +264,123 @@ Failing, in files this work does not touch, **not compared with a clean checkout
 - Particles appear in `viewport_screenshot` only once they have built up; right after placing an emitter there are none.
 - The level load took about 22 s on the last two launches against about 120 s before. Cause unknown.
 
+## 13. Asset pickers, the player's height and feel
+
+### Asset properties (audit of every component)
+
+Fixed: the three audio components' sound, sprite texture, decal texture, light function material, collider
+mesh and physics material (and the legacy physics material), sublevel level. Each is now a path type declared
+with `pulsar_world_registry::asset_path_type!`, with the shared picker, the same saved string and unchanged
+Blueprint get/set nodes (`PlayerInputComponent.mapping` gained them). The LOD level list is editable, and the
+Blueprint component panel shows proper labels (its arguments were shifted by one).
+
+Found, not fixed:
+
+- Typed or UUID references are not collected by the packer, so they likely do not ship: skeletal mesh,
+  animation graph, sky and cable textures, the input mapping and the world's player input mapping
+  (read from the code, not tried in a packaged game).
+- Names typed as text where a picker would help: look action, collision layers, native script crate and type.
+- The Blueprint component panel does not expand list or composite editors.
+- A reflected property write of the wrong value type is silently ignored and reports success.
+
+### Node titles
+
+Component nodes showed their type id (`comp call::CharacterComponent::set_move`) and event nodes repeated the
+owner's path. Titles now say what the node does; the owner is kept only where no reference pin shows it.
+
+### The player was short and floaty
+
+- Short: the invisible floor I had added sat at y = 0 and the visible street is 0.28 to 0.69 m above it, so the
+  player waded in it. The level now has a `TriangleMesh` collider on the Bistro folder instead (see
+  `.agents/GAMEPLAY.md`), and `player_start` is at y = 1.5. Verified in the packaged game: grounded with the
+  capsule centre at 1.249, on the 0.32 m street. Two engine bugs on the way: mesh colliders were never
+  simulated, and the game starts play while meshes are still streaming in.
+- Floaty: 1 g and a 5 m/s jump (1.3 m, 1 s in the air). The coin player now has 2x gravity and 5.5 m/s
+  (about 0.77 m, 0.56 s; computed, not felt: needs the user's verdict). Also fixed: when the physics thread ran
+  late, the old vertical speed read back as a script's write and undid a step of gravity.
+
+### More first-frame bugs
+
+- The viewport kept "No render pipeline assigned" and "Loading scene..." on screen while the level was loaded
+  and rendering underneath.
+- The Blueprint editor's component properties appeared only after a second click.
+- An asset picker whose row is near the top of the panel opens above it, where it cannot be seen.
+
+### Rendering resolution and display scale
+
+The renderer works in physical pixels (viewport surface = logical size x Windows scale; the game swapchain is
+the window's physical size), composited 1:1. The 3D scene is shaded at `render_scale` (default 0.75 per axis)
+of that unless temporal upscaling picks its own. UI must lay out in logical units and draw at physical
+resolution after upscaling. Read from the code, not measured on a scaled display.
+
+
+## 14. Runtime widgets: first test
+
+Built from `plugins/vendor/ui_editor/RUNTIME_DESIGN.md`. Demo: `scene/coin_town_ui.level` (`DemoHud`, `DemoSign`).
+
+- Editor viewport capture: the HUD draws correctly (panel gradient, border and corners, accented, Cyrillic and
+  Greek text, monospace, gradient bar, dashed border, outlined and rotated text, button). The world sign was not
+  in view.
+- Packaged game, from its log: runs, no widget errors. The picture itself was not seen by Claude.
+- Fixed: a cooked widget named its images and instanced widgets by project path, but the packer ships them under
+  `assets/`, so the packaged game could not find them.
+
+Found, not fixed:
+
+- `editor_open_file` over MCP reports success when the level then fails to load (here: an object without
+  `scene_path`), and the failure shows only in the log; the tab stays empty on "No render pipeline assigned".
+- The game output MCP returns (`build_output` for the game) stopped after the first seconds while the game was
+  still logging; the engine log had everything.
+- No demo script changes the score or reacts to the button; typed per-widget Blueprint nodes, object
+  references and casting, cursor control, level travel and quit are not built.
+- The subagent's report lists more: no `ledger.toml`, no "As built" docs, installed-plugin tests not
+  baselined, world widgets not drawn through portals, display scale not applied.
+
+## 15. Score HUD and sign
+
+- `WidgetComponent.visible` is now `enabled`, **off by default**, so no widget covers the editor viewport; the
+  class's Blueprint turns it on with the generated Set Enabled node.
+- Coin Town: `CoinGameMode` holds `ui/CoinHud.widget`, enables it at game start, sets the score on every coin and
+  a message on the eighth; it broadcasts `score_changed`, which a placed `ScoreSign` class
+  (`ui/CoinSign.widget`, world space) shows. Checked in the packaged game with a temporary coin at the spawn:
+  both widgets got `1 / 8`. The eighth-coin message and the look on screen were not checked.
+- Wired with a broadcast because a script still cannot reach another object's component or variables.
+
+Missing, seen while doing it:
+
+- A text parameter cannot be bound as a number with a format ("{n} / 8"): the Blueprint builds the string.
+- No MCP tool creates a class, adds a variable or an event, or adds an event node; the class files were edited by
+  script.
+- A level object that holds a widget but no Blueprint can never show it now (the demo level's two widgets).
+
+## 16. Main menu: game instance, level loading, button events
+
+- The `CoinMenu` game instance (set in Project Settings > Game, with `scene/coin_town_menu.level` as the default
+  level) shows `ui/MainMenu.widget` over a backdrop copy of Coin Town: Play, Settings (a backdrop shade switch),
+  Back, Quit. Play loads Coin Town; after the eighth coin the HUD shows Main Menu, which loads the backdrop again.
+- Every button of the widget a component names now has its own Blueprint events (Clicked, Pressed, Released,
+  Hovered, Unhovered), offered from the `.widget` asset like animation notifies
+  (`plugins/vendor/ui_editor/RUNTIME_DESIGN.md`, "Button events"). Before this, `on_action`'s value could not be
+  read by a Blueprint at all, so no menu with two buttons could work.
+- Added: `String Equals` node. Fixed: asset pickers offered files under `.pulsar/` (the trash) and `target/`.
+- Played on screen in the packaged game (2026-11-26): hover look, Settings, the shade switch, Back, Play, all
+  eight coins, the win message, Main Menu, a second round, Quit (clean exit). For the two full rounds four coins
+  were temporarily moved onto the start line (restored after); with the real placement six were collected, the
+  last two were not found by keyboard-only steering.
+
+Found, not fixed:
+
+- **Play in the editor crashes the editor.** With the game project's temporary PIE setup (`cdylib`,
+  `pulsar_pie_abi`, generated `lib.rs`), the library builds, then a Deferred pipeline build panics:
+  `IndirectDispatch Pipeline ... Pipeline constant error: HLSL: MissingValue("STAT_BATCHES")`, and the process
+  exits (0xc000041d). The packaged game builds the same pipeline fine. Suspected, not confirmed: constants
+  crossing between the editor's and the game library's copies of the renderer.
+- One Play click queued two "Build game for Play In Editor" tasks 40 ms apart (seen once).
+- This project cannot use Play as it is: its own `src/lib.rs` has no PIE exports.
+- Project > Project Settings (menu actions) did nothing until something in the workspace had focus.
+- The editor took about 3 minutes to load the startup level, with "Loading scene" and "No render pipeline
+  assigned" on screen meanwhile.
+- Blueprints still cannot read `on_action`'s value (an opaque payload struct); other component events with a
+  payload struct likely have the same problem.
+- Coins 7 and 8's real positions may be hard or impossible to reach; not checked.
+- The menu backdrop camera faces a dim wall; a better view is worth choosing.

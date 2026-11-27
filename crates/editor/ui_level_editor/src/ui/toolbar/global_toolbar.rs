@@ -1,4 +1,5 @@
-//! The engine-global toolbar: playback, speed, multiplayer and build controls.
+//! The engine-global toolbar: playback (with its Play and build button), speed
+//! and multiplayer controls.
 //!
 //! These controls belong to the engine, not to any editor. They show and drive
 //! `engine_state::playback` and know nothing about which editors are open: the
@@ -100,7 +101,10 @@ impl Render for GlobalToolbarView {
             .items_center()
             .bg(background)
             .on_action(cx.listener(|this, a: &SetTimeScale, _, _| this.set(|s| s.time_scale = a.0)))
-            .child(PlaybackControls::render(&state))
+            .child({
+                let play = ui_build::play_button(&state, &configs, &self.build_picker, cx);
+                PlaybackControls::render(&state, play)
+            })
             .child(separator(cx))
             .child(TimeScaleDropdown::render(&state, cx))
             .child(separator(cx))
@@ -118,12 +122,5 @@ impl Render for GlobalToolbarView {
                     )
                     .content(move |_, _| panel.clone())
             })
-            .child(div().flex_1())
-            .child(ui_build::build_button(
-                &state,
-                &configs,
-                &self.build_picker,
-                cx,
-            ))
     }
 }

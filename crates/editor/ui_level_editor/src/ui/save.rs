@@ -201,6 +201,12 @@ fn save_blocking(
     // save counts as saved from this point: later edits dirty it again.
     let (scene, settings, editor_data) = {
         let mut state = state.write();
+        // While Play runs the world is the game's: spawned objects, or
+        // another level a script loaded. Saving it would write that over the
+        // open level.
+        if state.scene.is_play_mode() {
+            return Err("Stop Play before saving: the world is the running game's".into());
+        }
         if kind == SaveKind::Level {
             state.scene.has_unsaved_changes = false;
         }

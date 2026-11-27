@@ -9,15 +9,47 @@
 //! With several level editors open, one is the playback host: the
 //! editor the user last pressed Play in, or else the first one to report. Only
 //! the host reports its status and handles Stop, Pause and Step; Play goes to
-//! the editor in the active window, which becomes the host.
+//! one editor, the one last drawn in the active window ([`FrontEditor`]: a
+//! hidden tab is not drawn), which becomes the host.
 
 use engine_state::playback::{
     claim_playback_host, claim_playback_host_if_free, is_playback_host, playback,
     release_playback_host, update_playback_if_changed, PlayPhase,
 };
 use pulsar_events::{subscribe_playback_commands, PlaybackCommand, PlaybackSubscription};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::*;
+
+/// Which open level editor the user is looking at, by host id (0: none).
+/// Every open editor hears a Play, and none has reported a session yet when
+/// they decide, so exactly one must be able to take it.
+struct FrontEditor(AtomicU64);
+
+static FRONT: FrontEditor = FrontEditor(AtomicU64::new(0));
+
+impl FrontEditor {
+    fn show(&self, host_id: u64) {
+        self.0.store(host_id, Ordering::Relaxed);
+    }
+
+    /// Whether `host_id` is the front editor, becoming it if there is none.
+    fn is_or_takes(&self, host_id: u64) -> bool {
+        match self
+            .0
+            .compare_exchange(0, host_id, Ordering::Relaxed, Ordering::Relaxed)
+        {
+            Ok(_) => true,
+            Err(front) => front == host_id,
+        }
+    }
+
+    fn close(&self, host_id: u64) {
+        let _ = self
+            .0
+            .compare_exchange(host_id, 0, Ordering::Relaxed, Ordering::Relaxed);
+    }
+}
 
 /// Keeps the editor subscribed to playback commands and, when it goes away
 /// as the playback host, leaves the shared state as "stopped" since it no
@@ -28,8 +60,16 @@ pub(super) struct PlaybackHostBinding {
     _commands: Task<()>,
 }
 
+impl PlaybackHostBinding {
+    /// The editor was drawn in the active window: Play is for it now.
+    pub(super) fn shown(&self) {
+        FRONT.show(self.host_id);
+    }
+}
+
 impl Drop for PlaybackHostBinding {
     fn drop(&mut self) {
+        FRONT.close(self.host_id);
         // Another editor's status is not this one's to reset; the next editor
         // to report becomes the host.
         if release_playback_host(self.host_id) {
@@ -58,13 +98,13 @@ impl LevelEditorPanel {
             while let Ok(command) = rx.recv().await {
                 let handled = this.update_in(cx, |panel, window, cx| {
                     // Every open level editor hears the command. Play goes to
-                    // the one in the window the user is working in, unless
-                    // another editor's session is still running; the rest go
-                    // to the host.
+                    // the one the user is looking at, unless another editor's
+                    // session is still running; the rest go to the host.
                     let acts = match command {
                         PlaybackCommand::Play => {
                             window.is_window_active()
                                 && (is_playback_host(host_id) || playback().get().is_stopped())
+                                && FRONT.is_or_takes(host_id)
                         }
                         _ => is_playback_host(host_id),
                     };

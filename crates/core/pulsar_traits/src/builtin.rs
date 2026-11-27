@@ -25,6 +25,9 @@ pub const GAME_MODE_TRAIT_ID: &str = "pulsar.GameMode";
 pub const PLAYER_CONTROLLER_TRAIT_ID: &str = "pulsar.PlayerController";
 pub const PLAYER_CHARACTER_TRAIT_ID: &str = "pulsar.PlayerCharacter";
 pub const GAME_STATE_TRAIT_ID: &str = "pulsar.GameState";
+/// The game instance: the project's one object that lives from engine start to
+/// engine end, across level loads (Project Settings, not a level role).
+pub const GAME_INSTANCE_TRAIT_ID: &str = "pulsar.GameInstance";
 
 /// Where the engine's trait files are in a project.
 pub const GAME_MODE_TRAIT_PATH: &str = "plugins/Pulsar/traits/game_mode.trait.json";
@@ -32,6 +35,7 @@ pub const PLAYER_CONTROLLER_TRAIT_PATH: &str = "plugins/Pulsar/traits/player_con
 pub const PLAYER_CHARACTER_TRAIT_PATH: &str = "plugins/Pulsar/traits/player_character.trait.json";
 pub const GAME_STATE_TRAIT_PATH: &str = "plugins/Pulsar/traits/game_state.trait.json";
 pub const INTO_GRAPH_TRAIT_PATH: &str = "plugins/Pulsar/traits/into_graph.trait.json";
+pub const GAME_INSTANCE_TRAIT_PATH: &str = "plugins/Pulsar/traits/game_instance.trait.json";
 
 /// The engine's roles: the rules of a level, its shared state, and the local
 /// player's controller and body. The game runtime gives these four their
@@ -45,6 +49,7 @@ pub const PLAYER_CHARACTER_ROLE: &str = "pulsar.player_character";
 /// The engine's trait files, embedded.
 pub const TRAIT_FILES: &[engine_fs::EmbeddedFile] = engine_fs::embedded_files!("content":
     "traits/into_graph.trait.json",
+    "traits/game_instance.trait.json",
     "traits/game_mode.trait.json",
     "traits/game_state.trait.json",
     "traits/player_character.trait.json",
@@ -148,6 +153,7 @@ mod tests {
             PLAYER_CHARACTER_TRAIT_PATH,
             GAME_STATE_TRAIT_PATH,
             INTO_GRAPH_TRAIT_PATH,
+            GAME_INSTANCE_TRAIT_PATH,
         ] {
             assert!(
                 TRAIT_FILES

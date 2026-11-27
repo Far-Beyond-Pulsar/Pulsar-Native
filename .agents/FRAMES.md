@@ -455,6 +455,22 @@ Known, not fixed. Ordered roughly by how much they matter.
   owner's placement. Both endpoints need to be present in the scene. In this
   editor mode W/S follows the view direction, including pitch.
 
+- **On in every runtime.** The editor viewport, the standalone game window and
+  the Play-in-Editor game all build their renderer as a `SceneRenderer` with
+  the same `SpaceSync` (the portals' `PortalSync` producer) and the same
+  pipeline, so linked portals draw their destination in a running game with
+  no toggle. What turns one off: the portal's own `enabled` property (it then
+  shows nothing, and neither does its partner), hiding its object, a Link ID
+  with no single partner, the project setting `project.portals.enabled`, or
+  disabling the plugin. The checkerboard over openings is the editor overlay
+  pass, which draws only in editor mode (the game renderers pass
+  `editor_mode: false`). Test: `portals_show_their_destination_in_every_
+  runtime_until_disabled` (`plugins/installed/tests/runtime_render_parity.rs`).
+  Camera traversal in a game: the standalone window's free camera crosses
+  through `SceneRenderer::traverse_camera`; the PIE game's free camera only
+  looks (it has no key flight), and a possessed pawn's camera takes its
+  owner's space, so a pawn walking into an opening is not carried across (no
+  pawn traversal exists yet).
 - **A portal is a rigid map between coordinate spaces, never a view.** The
   host publishes every opening and every route through them to the
   configured depth (`helio_portal_api::PORTAL_CHAIN_SET` from `PortalSync`,

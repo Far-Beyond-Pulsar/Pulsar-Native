@@ -6,12 +6,14 @@ Build.Button.CancelTooltip: "Stop the build"
 Build.Button.NoConfiguration: "No configuration"
 Build.Button.NoConfigurationTooltip: "Choose a build configuration"
 Build.Button.ChooseTooltip: "Choose build configuration"
-Build.Button.StopGame: "Stop"
-Build.Button.StopGameTooltip: "Stop the running game"
+Build.Button.PlayInEditor: "Play in Editor"
+Build.Button.PlayInEditorTooltip: "Play the game in the editor. A game with Rust gameplay code is built first."
+Build.Button.ReloadPlayTooltip: "Reload the running game"
 
 # Picker
 Build.Picker.Empty: "No build configurations yet."
 Build.Picker.Edit: "Edit Configurations…"
+Build.Picker.PlayInEditorHint: "Runs in the editor · builds first if the game has Rust code"
 
 # Search
 Build.Search.Configurations: "Search configurations…"

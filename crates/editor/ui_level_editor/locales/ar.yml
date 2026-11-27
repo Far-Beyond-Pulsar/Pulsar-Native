@@ -1,6 +1,5 @@
 # Level Editor - ar
 
-LevelEditor.Toolbar.StartSimulation: "بدء المحاكاة (F5)"
 LevelEditor.Toolbar.SimulationRunning: "المحاكاة قيد التشغيل"
 LevelEditor.Toolbar.PauseSimulation: "إيقاف المحاكاة مؤقتًا (F6)"
 LevelEditor.Toolbar.StopSimulation: "إيقاف المحاكاة (Shift+F5)"

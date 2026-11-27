@@ -417,7 +417,7 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
                 }
             }
         }
-        return out.into_iter().collect();
+        return out.into_iter().filter(|path| is_offered(path)).collect();
     }
 
     let extensions: std::collections::HashSet<String> = queries
@@ -466,9 +466,29 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
         }
     }
 
-    out.into_iter().collect()
+    out.into_iter().filter(|path| is_offered(path)).collect()
+}
+
+/// Whether a project-relative path is one of the project's assets: not the
+/// editor's own data (`.pulsar`, which holds the trash) or build output
+/// (`target`, which holds cooked copies).
+fn is_offered(path: &str) -> bool {
+    !matches!(path.split('/').next(), Some(".pulsar" | "target"))
 }
 
 fn normalize_asset_path(path: impl AsRef<str>) -> String {
     path.as_ref().replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_offered;
+
+    #[test]
+    fn trash_and_build_output_are_not_offered() {
+        assert!(is_offered("scene/a.level"));
+        assert!(is_offered("targets/a.level"));
+        assert!(!is_offered(".pulsar/trash/1/scene/a.level"));
+        assert!(!is_offered("target/pie/play.level"));
+    }
 }

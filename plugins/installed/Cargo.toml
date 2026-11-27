@@ -42,7 +42,7 @@ sprites_plugin = { workspace = true }
 editor_table_plugin = { workspace = true, optional = true }
 trait_editor_plugin = { workspace = true, optional = true }
 plugin_typescript = { workspace = true, optional = true }
-ui_editor_plugin = { workspace = true, optional = true }
+ui_editor_plugin = { workspace = true }
 view_icons_plugin = { workspace = true }
 voxel_plugin = { workspace = true }
 water_plugin = { workspace = true }
@@ -87,7 +87,7 @@ editor = [
     "dep:editor_table_plugin",
     "dep:trait_editor_plugin",
     "dep:plugin_typescript",
-    "dep:ui_editor_plugin",
+    "ui_editor_plugin/editor",
     "view_icons_plugin/editor",
     "voxel_plugin/editor",
     "water_plugin/editor",
@@ -106,6 +106,9 @@ pulsar_scenedb = { workspace = true }
 helio = { workspace = true }
 helio-core = { workspace = true }
 helio-presets = { workspace = true }
+# The UI plugin presence test (tests/ui_widgets.rs).
+helio-feature-api = { workspace = true }
+helio-ui-api = { workspace = true }
 # The shipped pipelines as the editor and a game read them (tests/default_pipelines.rs).
 helio-graph-asset = { workspace = true }
 engine_fs = { workspace = true }
@@ -178,6 +181,14 @@ helio-pass-portal-cull = { workspace = true }
 helio-pass-foliage-place = { workspace = true }
 blueprint_compiler = { path = "../vendor/blueprint_editor/compiler" }
 graphy-blueprint = { workspace = true }
+
+# The game instance and level switching, end to end (tests/game_instance.rs):
+# packaged through the real path, with the widget plugin's click.
+pulsar_package = { workspace = true, features = ["scripting"] }
+widget_component = { workspace = true }
+pulsar_pie_abi = { workspace = true }
+pulsar_content = { workspace = true }
+pulsar_core = { workspace = true }
 
 [lints]
 workspace = true

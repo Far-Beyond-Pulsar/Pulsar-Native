@@ -92,6 +92,28 @@ pub fn string_is_empty(text: String) -> bool {
     text.is_empty()
 }
 
+/// Checks if two strings are the same text.
+///
+/// # Inputs
+/// - `a`: The first string
+/// - `b`: The second string
+///
+/// # Returns
+/// Returns `true` if both strings hold the same characters, `false` otherwise
+///
+/// # Example
+/// If `a` is "scene/menu.level" and `b` is "scene/menu.level", the output will be true.
+/// The comparison is case sensitive.
+///
+/// # Notes
+/// Use this function to branch on a name: a level, a widget action, a state.
+/// # String Equals
+/// Returns true if two strings are the same.
+#[blueprint(type: NodeTypes::pure, category: "String", color: "#7ED321")]
+pub fn string_equals(a: String, b: String) -> bool {
+    a == b
+}
+
 // =============================================================================
 // String Searching and Pattern Matching
 // =============================================================================

@@ -5,7 +5,7 @@
 //! always in the same place however many configurations there are.
 
 use engine_state::build_config::{
-    BuildConfiguration, build_configurations, ensure_loaded, persist,
+    BuildConfiguration, PLAY_IN_EDITOR_ID, build_configurations, ensure_loaded, persist,
 };
 use gpui::{
     App, AppContext as _, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
@@ -20,6 +20,15 @@ use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 
 pub const CONFIGURATOR_WINDOW: &str = "BuildConfiguratorWindow";
+
+/// Whether the search `query` matches the built-in Play in Editor entry, by
+/// the same rule as a configuration's.
+fn play_in_editor_matches(query: &str) -> bool {
+    let name = t!("Build.Button.PlayInEditor").to_lowercase();
+    query
+        .split_whitespace()
+        .all(|word| name.contains(&word.to_lowercase()))
+}
 
 /// An icon for what a configuration mainly does.
 pub fn config_icon(config: &BuildConfiguration) -> IconName {
@@ -120,22 +129,37 @@ impl BuildPicker {
         cx.emit(DismissEvent);
     }
 
+    /// The rows the search matches, in order: Play in Editor, then the
+    /// configurations.
+    fn rows(&self, cx: &App) -> Vec<String> {
+        let built_in = play_in_editor_matches(&self.query(cx))
+            .then(|| PLAY_IN_EDITOR_ID.to_owned());
+        built_in
+            .into_iter()
+            .chain(self.filtered(cx).into_iter().map(|config| config.id))
+            .collect()
+    }
+
     fn choose_highlighted(&mut self, cx: &mut Context<Self>) {
-        let filtered = self.filtered(cx);
-        if let Some(config) = filtered.get(self.highlighted.min(filtered.len().saturating_sub(1))) {
-            let id = config.id.clone();
+        let rows = self.rows(cx);
+        if let Some(id) = rows.get(self.highlighted.min(rows.len().saturating_sub(1))) {
+            let id = id.clone();
             self.select(&id, cx);
         }
     }
 
     fn move_highlight(&mut self, delta: isize, cx: &mut Context<Self>) {
-        let len = self.filtered(cx).len();
-        if len == 0 {
+        let rows = self.rows(cx);
+        if rows.is_empty() {
             return;
         }
-        let next = (self.highlighted as isize + delta).rem_euclid(len as isize) as usize;
-        self.highlighted = next;
-        self.scroll_handle.scroll_to_item(next);
+        let len = rows.len() as isize;
+        self.highlighted = (self.highlighted as isize + delta).rem_euclid(len) as usize;
+        // The built-in row stays above the scrolling list.
+        let fixed = usize::from(rows[0] == PLAY_IN_EDITOR_ID);
+        if let Some(listed) = self.highlighted.checked_sub(fixed) {
+            self.scroll_handle.scroll_to_item(listed);
+        }
         cx.notify();
     }
 
@@ -150,11 +174,18 @@ impl BuildPicker {
 impl Render for BuildPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let filtered = self.filtered(cx);
-        let highlighted = self.highlighted.min(filtered.len().saturating_sub(1));
-        let selected = build_configurations()
-            .read()
-            .selected_id()
-            .map(str::to_owned);
+        let rows = self.rows(cx);
+        let highlighted = self.highlighted.min(rows.len().saturating_sub(1));
+        let highlighted_id = rows.get(highlighted).cloned();
+        let selected = {
+            let store = build_configurations();
+            let configs = store.read();
+            if configs.plays_in_editor() {
+                Some(PLAY_IN_EDITOR_ID.to_owned())
+            } else {
+                configs.selected_id().map(str::to_owned)
+            }
+        };
         let query = self.query(cx);
         let total = build_configurations().read().configs().len();
 
@@ -192,6 +223,59 @@ impl Render for BuildPicker {
                     .child(Icon::new(IconName::Search).size(px(14.)).text_color(muted))
                     .child(div().flex_1().child(TextInput::new(&self.search).small())),
             )
+            // The built-in entry, above the list: not a configuration, so it
+            // has nothing to edit or remove.
+            .when(
+                rows.first().is_some_and(|id| id == PLAY_IN_EDITOR_ID),
+                |el| {
+                    let is_selected = selected.as_deref() == Some(PLAY_IN_EDITOR_ID);
+                    let is_highlighted = highlighted_id.as_deref() == Some(PLAY_IN_EDITOR_ID);
+                    el.child(
+                        h_flex()
+                            .id("build-play-in-editor")
+                            .w_full()
+                            .px_3()
+                            .py(px(6.))
+                            .gap_3()
+                            .items_center()
+                            .cursor_pointer()
+                            .border_b_1()
+                            .border_color(border)
+                            .bg(if is_highlighted {
+                                hover_bg
+                            } else if is_selected {
+                                active_bg
+                            } else {
+                                bg
+                            })
+                            .hover(|s| s.bg(hover_bg))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| this.select(PLAY_IN_EDITOR_ID, cx)),
+                            )
+                            .child(Icon::new(IconName::Play).size(px(16.)).text_color(muted))
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(fg)
+                                            .child(t!("Build.Button.PlayInEditor").to_string()),
+                                    )
+                                    .child(
+                                        div().text_xs().text_color(muted).child(
+                                            t!("Build.Picker.PlayInEditorHint").to_string(),
+                                        ),
+                                    ),
+                            )
+                            .when(is_selected, |el| {
+                                el.child(Icon::new(IconName::Check).size(px(14.)).text_color(fg))
+                            }),
+                    )
+                },
+            )
             // Scrolling list
             .child(
                 div()
@@ -221,10 +305,11 @@ impl Render for BuildPicker {
                                         .child(message),
                                 )
                             })
-                            .children(filtered.iter().enumerate().map(|(ix, config)| {
+                            .children(filtered.iter().map(|config| {
                                 let id = config.id.clone();
                                 let is_selected = selected.as_deref() == Some(config.id.as_str());
-                                let is_highlighted = ix == highlighted;
+                                let is_highlighted =
+                                    highlighted_id.as_deref() == Some(config.id.as_str());
                                 h_flex()
                                     .id(SharedString::from(format!("build-config-{}", config.id)))
                                     .w_full()

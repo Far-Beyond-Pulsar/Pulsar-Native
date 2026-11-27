@@ -188,7 +188,7 @@ fn box_collider(half: [f32; 3], material: &str, layer: &str) -> ColliderComponen
         radius: 0.5,
         height: 1.0,
         axis: ColliderAxis::Y,
-        mesh: String::new(),
+        mesh: Default::default(),
         is_trigger: false,
         physics_material: material.into(),
         layer: layer.into(),
@@ -399,7 +399,7 @@ fn build_level() -> Value {
         layer: "Triggers".into(),
         ..box_collider([2.0, 1.5, 2.5], "", "Triggers")
     };
-    zone.physics_material = String::new();
+    zone.physics_material = Default::default();
     objects.push(
         Obj::new("finish_zone", "Finish Trigger Zone", [9.0, 1.5, 8.0])
             .mesh(

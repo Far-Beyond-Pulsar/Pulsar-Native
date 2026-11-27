@@ -149,7 +149,7 @@ impl ScriptDriver {
             self.globals_started = true;
             self.start_globals(world, report);
         }
-        if !self.roles_started {
+        if !self.roles_started && !self.roles_held {
             self.roles_started = true;
             self.start_roles(world, report);
         }

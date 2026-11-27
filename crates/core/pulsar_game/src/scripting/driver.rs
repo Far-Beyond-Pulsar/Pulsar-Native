@@ -73,6 +73,7 @@ mod classes;
 mod config;
 mod event_hub;
 mod frame;
+mod game_instance;
 mod native_libs;
 mod problems;
 mod reconcile;
@@ -84,6 +85,7 @@ pub use config::{
     global_instance_id, instance_id_for, module_file, scripting_config_path, ScriptingConfig,
     MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE,
 };
+pub use game_instance::{GameInstanceEntity, GAME_INSTANCE_STABLE_ID};
 pub use report::{DriverReport, LockTimes};
 
 use std::collections::{HashMap, HashSet};
@@ -151,6 +153,14 @@ pub struct ScriptDriver {
     /// the globals (see `start_roles`).
     world_roles: pulsar_traits::WorldRoles,
     roles_started: bool,
+    /// No level is in the world: the roles and `LevelLoaded` wait for one.
+    roles_held: bool,
+    /// The level began: tell the game instance after the next script start.
+    level_loaded_pending: bool,
+    /// The game instance's object (`game_instance`), kept across levels.
+    game_instance: Option<Entity>,
+    /// What scripts asked of the host, for the tick loop.
+    host_requests: Vec<crate::game_control::HostRequest>,
     /// `GameBegan` is announced after the start hooks queued with the roles.
     game_began_pending: bool,
     /// Trait hooks of role entities, run after `begin_play`.
@@ -221,6 +231,10 @@ impl ScriptDriver {
             globals_started: false,
             world_roles: pulsar_traits::WorldRoles::default(),
             roles_started: false,
+            roles_held: false,
+            level_loaded_pending: false,
+            game_instance: None,
+            host_requests: Vec::new(),
             game_began_pending: false,
             role_hooks: Vec::new(),
             role_entities: Vec::new(),

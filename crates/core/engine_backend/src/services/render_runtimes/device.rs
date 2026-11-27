@@ -32,6 +32,11 @@ pub fn request_engine_device(
     adapter: &wgpu::Adapter,
     host: &wgpu::DeviceDescriptor<'_>,
 ) -> Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> {
+    // SceneDB names itself the owner of what it allocates on any engine device
+    // (`services::vram`; wgpu's allocation owners).
+    pulsar_scenedb::gpu::set_owner_hook(|| {
+        Box::new(wgpu::wgt::allocation_owner::root_scope("SceneDB"))
+    });
     let ray_query = wgpu::Features::EXPERIMENTAL_RAY_QUERY;
     let adapter_features = helio::usable_adapter_features(adapter);
     let info = adapter.get_info();
@@ -53,7 +58,13 @@ pub fn request_engine_device(
     } else {
         helio::required_wgpu_features(adapter_features - ray_query)
     };
-    let features = (host.required_features - ray_query) | helio_features;
+    // Cooked textures are BC7 where the device samples it
+    // (`helio_component::cooked_texture::CookFormat::best_for`); without the
+    // feature every texture is cooked and held as RGBA8, four times the video
+    // memory and the bandwidth. Every engine device asks for it, whatever host
+    // made it.
+    let texture_compression = adapter_features & wgpu::Features::TEXTURE_COMPRESSION_BC;
+    let features = (host.required_features - ray_query) | helio_features | texture_compression;
     // Each limit the better of the host's and Helio's (the texture table holds
     // as many textures as the binding arrays allow), except the buffer size:
     // wgpu-core asserts `max_buffer_size <= u32::MAX` at device creation, so

@@ -46,6 +46,9 @@ glam    = { workspace = true }
 pollster = "1.0"
 # Shared-world store locking (same crate engine_backend's RwLock<SceneDb> uses)
 parking_lot = { workspace = true }
+# The entry points a Play-in-Editor library exports (export_pie_runtime_attach!).
+parking_lot_core = "0.9"
+helio-core = { workspace = true }
 
 # Scene loading + settings
 pulsar_scene    = { workspace = true }

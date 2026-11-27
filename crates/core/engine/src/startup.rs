@@ -32,8 +32,8 @@ pub(crate) fn build_gpui_application() -> (gpui::Application, wgpu::Backends) {
 
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
-        // TEXTURE_COMPRESSION_BC: cooked textures are stored as BC7 where the device can sample it
-        optional_features: wgpu::Features::TEXTURE_COMPRESSION_BC,
+        // Texture compression is the engine's to ask for, in the device factory below.
+        optional_features: wgpu::Features::empty(),
         desired_maximum_frame_latency: max_frame_latency,
         backends: renderer_backends,
         power_preference,

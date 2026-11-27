@@ -46,6 +46,11 @@ members = [
     "plugins/vendor/physics_plugin/api",
     # Widget assets (.widget) and the WYSIWYG widget editor; built-in plugin of the editor.
     "plugins/vendor/ui_editor",
+    "plugins/vendor/ui_editor/asset",
+    "plugins/vendor/ui_editor/text",
+    "plugins/vendor/ui_editor/api",
+    "plugins/vendor/ui_editor/feature",
+    "plugins/vendor/ui_editor/component",
     # Input actions (.inputaction), input mappings (.inputmap), and the input
     # runtime that publishes them on the event bus; built-in plugin of the editor.
     "plugins/vendor/input_plugin",
@@ -351,6 +356,8 @@ lyon = { opt-level = 3 }
 ###################################
 
 [workspace.dependencies]
+cosmic-text = "0.18.2"
+ttf-parser = "0.25.1"
 owo-colors = "4"
 
 # ---------- GPUI (vendored) ----------
@@ -459,6 +466,11 @@ script_editor_plugin = { path = "plugins/vendor/code_editor", features = ["built
 skeletal_animation_plugin = { path = "plugins/vendor/skm_editor" }
 skeletal_animation_editor = { path = "plugins/vendor/skm_editor/editor", features = ["builtin"] }
 ui_editor_plugin = { path = "plugins/vendor/ui_editor", features = ["builtin"] }
+widget_asset = { path = "plugins/vendor/ui_editor/asset" }
+widget_text = { path = "plugins/vendor/ui_editor/text" }
+helio-ui-api = { path = "plugins/vendor/ui_editor/api" }
+helio-pass-ui = { path = "plugins/vendor/ui_editor/feature" }
+widget_component = { path = "plugins/vendor/ui_editor/component" }
 # Every installed plugin's modules (runtime; `editor` adds the editor
 # plugins). Hosts link the set, never a plugin by name.
 installed_plugins                  = { path = "plugins/installed", default-features = false }
@@ -536,6 +548,7 @@ pulsar_dialog_embed    = { path = "crates/core/pulsar_dialog_embed" }
 pulsar_studio_client  = { path = "crates/core/pulsar_studio_client" }
 ui_problems           = { path = "crates/editor/ui_problems" }
 ui_flamegraph         = { path = "crates/editor/ui_flamegraph" }
+ui_vram_map           = { path = "crates/editor/ui_vram_map" }
 ui_file_manager       = { path = "crates/editor/ui_file_manager" }
 ui_common             = { path = "crates/editor/ui_common" }
 ui_loading_screen     = { path = "crates/editor/ui_loading_screen" }
