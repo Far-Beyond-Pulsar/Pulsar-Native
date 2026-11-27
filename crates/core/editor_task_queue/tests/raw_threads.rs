@@ -66,10 +66,22 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// `text` without its `#[cfg(test)]` items: each attribute and the item it
-/// gates (a `mod tests;` line, or everything to the brace closing the block
-/// it opens). Test code may spawn what it likes; code after a test module is
-/// still checked.
+/// What follows a test-only attribute on its line: `#[cfg(test)]`, or
+/// `#[cfg(all(test, ..))]`, which compiles in test builds only too. `None`
+/// for any other line, `cfg(any(test, ..))` included: that also compiles into
+/// the engine.
+fn after_test_attribute(line: &str) -> Option<&str> {
+    if let Some(rest) = line.strip_prefix("#[cfg(test)]") {
+        return Some(rest);
+    }
+    let predicates = line.strip_prefix("#[cfg(all(test,")?;
+    Some(predicates.split_once(")]").map_or("", |(_, rest)| rest))
+}
+
+/// `text` without its test-only items: each attribute
+/// ([`after_test_attribute`]) and the item it gates (a `mod tests;` line, or
+/// everything to the brace closing the block it opens). Test code may spawn
+/// what it likes; code after a test module is still checked.
 fn without_test_items(text: &str) -> String {
     let mut kept = String::with_capacity(text.len());
     let mut skipping = false;
@@ -79,7 +91,7 @@ fn without_test_items(text: &str) -> String {
         let mut line = line;
         if !skipping {
             let trimmed = line.trim_start();
-            let Some(rest) = trimmed.strip_prefix("#[cfg(test)]") else {
+            let Some(rest) = after_test_attribute(trimmed) else {
                 kept.push_str(line);
                 kept.push('\n');
                 continue;
@@ -210,6 +222,27 @@ fn b() { std::thread::spawn(|| {}); }
     let code = without_test_items(text);
     assert!(!code.contains("fn t()"));
     assert!(code.contains("fn b()"));
+
+    // Test-only with a further condition is skipped; anything that also
+    // compiles outside tests is not.
+    let skipped = "#[cfg(all(test, not(windows)))]
+mod tests {
+    fn t() { std::thread::spawn(|| {}); }
+}
+";
+    assert!(!without_test_items(skipped).contains("fn t()"));
+    for attribute in [
+        "#[cfg(any(test, windows))]",
+        "#[cfg(not(test))]",
+        "#[cfg(all(windows, not(test)))]",
+    ] {
+        let kept = format!("{attribute}\nfn shipped() {{ std::thread::spawn(|| {{}}); }}\n");
+        assert!(
+            without_test_items(&kept).contains("fn shipped()"),
+            "{attribute} must still be checked"
+        );
+    }
+
     assert!(calls("std::thread::spawn(f)", "thread::spawn("));
     assert!(!calls("ScriptRuntime::new(dir)", "Runtime::new("));
     assert!(calls("tokio::runtime::Runtime::new()", "Runtime::new("));
