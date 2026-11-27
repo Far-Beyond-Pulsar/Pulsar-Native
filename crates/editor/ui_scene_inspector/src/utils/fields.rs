@@ -8,6 +8,7 @@
 
 use std::collections::HashSet;
 
+use pulsar_reflection::value_tree::{self, number_text};
 use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, WrapperType};
 use pulsar_scenedb::Entity;
 use serde_json::Value;
@@ -15,9 +16,7 @@ use serde_json::Value;
 use super::format;
 
 /// Most children a list shows before it splits into ranges.
-pub const CHUNK: usize = 100;
-/// A top-level value with no more children than this starts open.
-const OPEN_BY_DEFAULT: usize = 16;
+pub use pulsar_reflection::value_tree::CHUNK;
 /// Most values a field search reads.
 const SEARCH_LIMIT: usize = 100_000;
 const ENTITY_KEY: &str = "$entity";
@@ -340,8 +339,10 @@ impl Walk<'_> {
                 // Opened by the search when something inside matches.
                 true
             } else {
-                self.toggled
-                    .is_open(&node.path, depth == 0 && children <= OPEN_BY_DEFAULT)
+                self.toggled.is_open(
+                    &node.path,
+                    depth == 0 && value_tree::opens_by_default(children),
+                )
             }
         });
         self.rows.push(FieldRow {
@@ -422,10 +423,7 @@ impl Walk<'_> {
             }
             return;
         }
-        let mut step = CHUNK;
-        while count.div_ceil(step) > CHUNK {
-            step *= CHUNK;
-        }
+        let step = value_tree::range_span(count);
         for from in (start..end).step_by(step) {
             let to = (from + step).min(end);
             let path = format!("{parent}#{from}+{step}");
@@ -433,9 +431,9 @@ impl Walk<'_> {
             self.rows.push(FieldRow {
                 path,
                 depth,
-                label: format!("[{} … {}]", format::count(from), format::count(to - 1)),
+                label: value_tree::range_label(from, to - from),
                 type_label: String::new(),
-                display: Display::Summary(format!("{} items", format::count(to - from))),
+                display: Display::Summary(value_tree::summary(&Value::Null, to - from)),
                 open: Some(open),
             });
             if open {
@@ -578,36 +576,11 @@ fn display(node: &Node<'_>, ty: Option<&'static RuntimeTypeInfo>) -> Display {
                         .map(number_text)
                         .collect(),
                 )
-            } else if items.is_empty() {
-                Display::Summary("empty".to_string())
             } else {
-                Display::Summary(format!("{} items", format::count(items.len())))
+                Display::Summary(value_tree::summary(value, items.len()))
             }
         }
-        Value::Object(map) if map.is_empty() => Display::Summary("{ }".to_string()),
-        Value::Object(map) => {
-            let mut names: Vec<&str> = map.keys().take(4).map(String::as_str).collect();
-            if map.len() > names.len() {
-                names.push("…");
-            }
-            Display::Summary(format!("{{ {} }}", names.join(", ")))
-        }
-    }
-}
-
-fn number_text(number: &serde_json::Number) -> String {
-    match number.as_f64() {
-        Some(float) if number.is_f64() => {
-            // An f32 widened to f64 prints its widening noise; if the value
-            // is exactly an f32, print it as one.
-            let narrow = float as f32;
-            if f64::from(narrow) == float {
-                format!("{narrow:?}")
-            } else {
-                format!("{float:?}")
-            }
-        }
-        _ => number.to_string(),
+        Value::Object(map) => Display::Summary(value_tree::summary(value, map.len())),
     }
 }
 

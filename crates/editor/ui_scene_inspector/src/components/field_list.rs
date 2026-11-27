@@ -16,8 +16,6 @@ use crate::utils::format;
 
 use style::{INDENT, ROW_HEIGHT};
 const MAX_INDENT_DEPTH: u16 = 16;
-/// Characters of a string drawn in its row; copying gives all of it.
-const MAX_TEXT: usize = 400;
 
 impl SceneInspectorView {
     pub(crate) fn render_fields(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -93,10 +91,7 @@ impl SceneInspectorView {
                 .pb_1()
                 .border_b_1()
                 .border_color(theme.border)
-                .text_xs()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme.muted_foreground)
-                .child(row.label.to_uppercase())
+                .child(style::heading(&row.label, theme.muted_foreground))
                 .into_any_element();
         }
 
@@ -107,8 +102,7 @@ impl SceneInspectorView {
         let copy_path = row.path.clone();
         let expandable = row.open.is_some();
 
-        h_flex()
-            .id(("field-row", position))
+        style::table_row(h_flex().id(("field-row", position)), position % 2 == 1, cx)
             .group(group.clone())
             .w_full()
             .h(px(ROW_HEIGHT))
@@ -117,11 +111,7 @@ impl SceneInspectorView {
             .pr_2()
             .pl(px(indent))
             .text_xs()
-            .border_b_1()
-            .border_color(theme.border.opacity(0.35))
-            .when(position % 2 == 1, |el| el.bg(theme.muted.opacity(0.08)))
             .when(changed, |el| el.bg(theme.warning.opacity(0.18)))
-            .hover(|el| el.bg(theme.list_hover))
             .when(expandable, |el| {
                 el.cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -207,31 +197,12 @@ fn value_element(
     cx: &mut Context<SceneInspectorView>,
 ) -> AnyElement {
     let theme = cx.theme().clone();
-    let mono = style::mono;
     match display {
         Display::Category => div().into_any_element(),
-        Display::Null => mono()
-            .text_color(theme.muted_foreground)
-            .italic()
-            .child("none")
-            .into_any_element(),
+        Display::Null => style::null_value(cx).into_any_element(),
         Display::Bool(value) => style::bool_value(*value, cx).into_any_element(),
-        Display::Number(text) => mono()
-            .text_color(theme.cyan)
-            .child(text.clone())
-            .into_any_element(),
-        Display::Text(text) => {
-            let mut shown: String = text.chars().take(MAX_TEXT).collect();
-            // A row is one line.
-            shown = shown.replace('\n', "↵");
-            if text.chars().count() > MAX_TEXT {
-                shown.push('…');
-            }
-            mono()
-                .text_color(theme.green)
-                .child(format!("\"{shown}\""))
-                .into_any_element()
-        }
+        Display::Number(text) => style::number_value(text.clone(), cx).into_any_element(),
+        Display::Text(text) => style::text_value(text, cx).into_any_element(),
         Display::Variant(name) => style::variant_box(name.clone(), cx).into_any_element(),
         Display::Color(rgba, text) => {
             let channel = |value: f32| value.clamp(0.0, 1.0);
@@ -242,18 +213,13 @@ fn value_element(
                 a: channel(rgba[3]),
             }
             .into();
-            h_flex()
-                .gap_2()
-                .items_center()
-                .child(style::color_swatch(swatch, cx))
-                .child(mono().text_color(theme.foreground).child(text.clone()))
-                .into_any_element()
+            style::color_value(swatch, text.clone(), cx).into_any_element()
         }
         Display::Vector(items) => style::vector_value(items, cx).into_any_element(),
         Display::Entity(entity) => {
             let entity = *entity;
             if entity == pulsar_scenedb::Entity::DANGLING {
-                return mono()
+                return style::mono()
                     .text_color(theme.muted_foreground)
                     .child("no entity")
                     .into_any_element();
@@ -271,11 +237,7 @@ fn value_element(
                 }))
                 .into_any_element()
         }
-        Display::Summary(text) => div()
-            .truncate()
-            .text_color(theme.muted_foreground)
-            .child(text.clone())
-            .into_any_element(),
+        Display::Summary(text) => style::summary_value(text.clone(), cx).into_any_element(),
         Display::Error(text) => div()
             .truncate()
             .text_color(theme.danger)

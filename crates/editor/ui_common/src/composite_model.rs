@@ -18,8 +18,9 @@ use std::any::TypeId;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use pulsar_reflection::value_tree;
 /// Most children a list or map shows before it splits into ranges.
-pub const CHUNK: usize = 100;
+pub use pulsar_reflection::value_tree::CHUNK;
 
 /// One step from a node to its child.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -113,10 +114,10 @@ impl TreeRow {
             Some(Seg::Key(k)) => k.to_string(),
             Some(&Seg::Range { start, .. }) => {
                 let len = match self.kind {
-                    RowKind::Range { len, .. } => len as u32,
+                    RowKind::Range { len, .. } => len,
                     _ => 1,
                 };
-                format!("[{start} … {}]", start + len.saturating_sub(1))
+                value_tree::range_label(start as usize, len)
             }
             None => String::new(),
         }
@@ -238,10 +239,7 @@ impl Walk<'_> {
         depth: u16,
         rows: &mut Vec<TreeRow>,
     ) {
-        let mut span = CHUNK;
-        while (end - start).div_ceil(span) > CHUNK {
-            span *= CHUNK;
-        }
+        let span = value_tree::range_span(end - start);
         for from in (start..end).step_by(span) {
             let to = (from + span).min(end);
             let mut path = parent.path.clone();
@@ -401,7 +399,10 @@ mod tests {
         let mut open = HashSet::new();
         let top = flatten(&value, ty, &open, &editable);
         let labels: Vec<String> = top.iter().map(TreeRow::label).collect();
-        assert_eq!(labels, ["[0 … 9999]", "[10000 … 19999]", "[20000 … 24999]"]);
+        assert_eq!(
+            labels,
+            ["[0 … 9,999]", "[10,000 … 19,999]", "[20,000 … 24,999]"]
+        );
 
         open.insert(top[2].path.clone());
         let narrower = flatten(&value, ty, &open, &editable);

@@ -17,17 +17,7 @@ pub fn bytes(bytes: u64) -> String {
 }
 
 /// A count with thousands separators.
-pub fn count(count: usize) -> String {
-    let digits = count.to_string();
-    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-    out
-}
+pub use pulsar_reflection::value_tree::grouped as count;
 
 /// `12v1`: slot index and generation.
 pub fn entity(entity: Entity) -> String {

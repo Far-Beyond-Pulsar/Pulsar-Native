@@ -22,6 +22,11 @@ beside it, `ROW_HEIGHT` at least), `control_box` for inputs, and the pieces for
 values drawn by kind (`bool_value`, `vector_value`, `color_swatch`,
 `variant_box`, `heading`, `chevron`, `mono`).
 
+The rules for a value shown as a tree (what starts open, how long containers split into ranges, how a closed one
+is summarized, how numbers are written) are `pulsar_reflection::value_tree`. Change them there: the properties
+panel and the SceneDB Inspector both follow it. Each still walks its own tree, because the panel edits and the
+inspector only reads (entity links, changed values, copying).
+
 A new editor lays out with `property_row` (or `prims::editor_row`, which is the
 same) and takes its widgets from there; do not hand-roll a label and control
 row, or the columns stop lining up. `Inspector::wrap_row` draws the hairlines,
@@ -35,10 +40,10 @@ the tint of every second property and the hover.
 - Editors must not do work proportional to their data per frame. Skip `set_value` unless the value's address changed
   or `mark_stale` was called; the host calls `PropertyStateManager::mark_stale(editor_key)` when it re-reads a value.
 - Cards and sections start collapsed, and so does everything inside a composite value; field editors are created
-  when first drawn. The exception: a composite property with 1 to `OPEN_BY_DEFAULT` (16) children starts open, in a
+  when first drawn. The exception: a composite property with 1 to `value_tree::OPEN_BY_DEFAULT` (16) children starts open, in a
   host that registered a wake (`PropertyStateManager::set_wake`). It is decided when the editor is built, so edits
   never open or close it.
-- A composite list or map with more than `composite_model::CHUNK` (100) children shows as ranges, each opening to
+- A composite list or map with more than `value_tree::CHUNK` (100) children shows as ranges, each opening to
   its items or to narrower ranges. A struct always lists its fields.
 - A sub-scroll area is opt-in only (`composite_editor::request_subscroll`), never a shortcut.
 - The level editor resolves the project class registry only for a selected class root or generated child, where class variables or slot defaults can appear. Ordinary entities use their attached SceneDB components without scanning project class directories. The selected section retains its registry until the class-definition generation changes.

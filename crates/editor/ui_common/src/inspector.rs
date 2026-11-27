@@ -216,11 +216,9 @@ impl<V: Render + 'static> Inspector<V> {
                 }
             })
         });
-        // One table row: a hairline under it, every second property tinted,
-        // lit under the pointer. The tint goes by the property, so the rows
-        // one long value offers share it and read as one block.
-        let stripe = (prop % 2 == 1).then(|| cx.theme().muted.opacity(0.08));
-        let hover = cx.theme().list_hover;
+        // The tint goes by the property, so the rows one long value offers
+        // share it and read as one block.
+        let striped = prop % 2 == 1;
         div()
             .w_full()
             .bg(cx.theme().background)
@@ -228,15 +226,11 @@ impl<V: Render + 'static> Inspector<V> {
             .border_r_1()
             .border_color(cx.theme().border)
             .child(
-                h_flex()
+                style::table_row(h_flex(), striped, cx)
                     .w_full()
                     .px_2()
                     .gap_2()
                     .items_stretch()
-                    .border_b_1()
-                    .border_color(cx.theme().border.opacity(0.35))
-                    .when_some(stripe, |d, color| d.bg(color))
-                    .hover(move |d| d.bg(hover))
                     // The bar's slot is kept without a category, so names
                     // line up from card top to bottom.
                     .child(

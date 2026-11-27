@@ -11,7 +11,7 @@
 //! is no nested scrolling.  A type that explicitly asks for a sub-scroll area
 //! ([`request_subscroll`]) gets a windowed viewport instead.
 //!
-//! A small value starts open ([`OPEN_BY_DEFAULT`]); what is inside it starts
+//! A small value starts open ([`value_tree::opens_by_default`]); what is inside it starts
 //! closed, and long lists open through ranges ([`composite_model::CHUNK`]).
 //!
 //! Elements are edited by the editor registered for their type.  An edit
@@ -22,6 +22,7 @@ use crate::composite_model::{self, get, get_mut, Path, RowKind, Seg, TreeRow};
 use crate::property_editor_registry::PROPERTY_EDITOR_REGISTRY;
 use gpui::{prelude::*, *};
 use pulsar_reflection::prims::style;
+use pulsar_reflection::value_tree::{self, summary};
 use pulsar_reflection::{
     BoundPropertyEditor, PropertyEditorArgs, PropertyWriteBack, RuntimeTypeInfo, VirtualRows,
     RUNTIME_TYPE_REGISTRY,
@@ -64,10 +65,6 @@ fn requested_subscroll(type_id: TypeId) -> Option<f32> {
 /// is dropped; visible rows rebuild theirs on the next frame.
 const LEAF_CACHE_LIMIT: usize = 256;
 const INDENT: f32 = style::INDENT;
-/// A value with no more children than this starts open, in a panel that shows
-/// its rows.
-pub const OPEN_BY_DEFAULT: usize = 16;
-
 fn child_count(value: &Value) -> usize {
     match value {
         Value::Array(a) => a.len(),
@@ -139,7 +136,7 @@ impl CompositeEditor {
         let root = RUNTIME_TYPE_REGISTRY
             .serialize_json_for_any(args.current_value)
             .unwrap_or(Value::Null);
-        let auto_open = (1..=OPEN_BY_DEFAULT).contains(&child_count(&root));
+        let auto_open = value_tree::opens_by_default(child_count(&root));
         let mut this = Self {
             label: args.display_name.to_string(),
             id: SharedString::from(format!(
@@ -396,7 +393,7 @@ impl CompositeEditor {
             },
             RowKind::ReadOnly => {
                 let value = get(&self.root, &row.path)
-                    .map(|value| read_only_value(value, cx))
+                    .map(|value| style::json_value(value, cx))
                     .unwrap_or_else(|| div().into_any_element());
                 style::property_row(&row.label(), value, cx)
             }
@@ -476,47 +473,6 @@ fn branch_name(open: bool, label: String, cx: &App) -> Div {
                 .text_color(cx.theme().foreground)
                 .child(label),
         )
-}
-
-/// What a closed container holds: a list's length, a struct's first names.
-fn summary(value: &Value, len: usize) -> String {
-    match value {
-        Value::Object(map) if !map.is_empty() => {
-            let mut names: Vec<&str> = map.keys().take(4).map(String::as_str).collect();
-            if map.len() > names.len() {
-                names.push("…");
-            }
-            format!("{{ {} }}", names.join(", "))
-        }
-        _ if len == 0 => "empty".to_string(),
-        _ if len == 1 => "1 item".to_string(),
-        _ => format!("{len} items"),
-    }
-}
-
-/// A value nothing can edit, drawn by what it is.
-fn read_only_value(value: &Value, cx: &App) -> AnyElement {
-    let theme = cx.theme();
-    match value {
-        Value::Null => style::mono()
-            .italic()
-            .text_color(theme.muted_foreground)
-            .child("none")
-            .into_any_element(),
-        Value::Bool(value) => style::bool_value(*value, cx).into_any_element(),
-        Value::Number(number) => style::mono()
-            .text_color(theme.cyan)
-            .child(number.to_string())
-            .into_any_element(),
-        Value::String(text) => style::mono()
-            .text_color(theme.green)
-            .child(format!("\"{}\"", text.replace('\n', "↵")))
-            .into_any_element(),
-        other => style::mono()
-            .text_color(theme.muted_foreground)
-            .child(other.to_string())
-            .into_any_element(),
-    }
 }
 
 impl Render for CompositeEditor {
@@ -640,7 +596,7 @@ pub fn build(
 }
 
 impl CompositeEditor {
-    /// Open or close the header (see [`OPEN_BY_DEFAULT`] for how it starts).
+    /// Open or close the header (see [`value_tree::opens_by_default`] for how it starts).
     pub fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
         self.open = Some(open);
         self.changed(cx);
