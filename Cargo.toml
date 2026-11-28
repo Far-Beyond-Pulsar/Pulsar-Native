@@ -12,6 +12,10 @@ members = [
     "plugins/vendor/code_editor",
     "plugins/vendor/matter_editor",
     "plugins/vendor/table_editor",
+    # The terminal window (`pulsar.terminal`).
+    "plugins/vendor/terminal",
+    "plugins/vendor/terminal/shell",
+    "plugins/vendor/terminal/ui_tests",
     # Visual editor for Helio render graphs; reuses the Blueprint editor through
     # its profile API. A plugin DLL: never link it into a binary that embeds the
     # Blueprint editor (they would share one profile).
@@ -457,6 +461,8 @@ pulsar_project                     = { path = "crates/core/pulsar_project" }
 asset_viewer_plugin = { path = "plugins/vendor/asset_viewer", features = ["builtin"] }
 blueprint_editor_plugin = { path = "plugins/vendor/blueprint_editor", features = ["builtin"] }
 editor_table_plugin = { path = "plugins/vendor/table_editor" }
+editor_terminal = { path = "plugins/vendor/terminal" }
+pulsar_shell = { path = "plugins/vendor/terminal/shell" }
 input_plugin = { path = "plugins/vendor/input_plugin", features = ["builtin"] }
 physics_plugin = { path = "plugins/vendor/physics_plugin", features = ["builtin"] }
 physics_api = { path = "plugins/vendor/physics_plugin/api" }

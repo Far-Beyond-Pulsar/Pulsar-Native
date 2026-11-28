@@ -231,6 +231,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "alacritty_terminal"
+version = "0.25.1-dev"
+source = "git+https://github.com/zed-industries/alacritty.git?rev=828457c9ff1f7ea0a0469337cc8a37ee3a1b0590#828457c9ff1f7ea0a0469337cc8a37ee3a1b0590"
+dependencies = [
+ "base64 0.22.1",
+ "bitflags 2.13.1",
+ "home",
+ "libc",
+ "log",
+ "miow",
+ "parking_lot",
+ "piper",
+ "polling",
+ "regex-automata",
+ "rustix-openpty",
+ "serde",
+ "signal-hook",
+ "unicode-width 0.1.14",
+ "vte",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "aligned-vec"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3779,6 +3802,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "editor_terminal"
+version = "0.1.1"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "editor_task_queue",
+ "engine_state",
+ "futures",
+ "gpui-ce",
+ "itertools 0.15.0",
+ "parking_lot",
+ "plugin_editor_api",
+ "pulsar_plugins",
+ "pulsar_shell",
+ "smol",
+ "tracing",
+ "ui",
+ "ui_shell",
+ "which 6.0.3",
+]
+
+[[package]]
+name = "editor_terminal_ui_tests"
+version = "0.1.0"
+dependencies = [
+ "editor_terminal",
+ "gpui-ce",
+ "ui",
+]
+
+[[package]]
 name = "ego-tree"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5608,6 +5662,8 @@ dependencies = [
  "web-sys",
  "web-time",
  "wgpu",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
  "winit",
  "x11-dl",
 ]
@@ -8279,6 +8335,7 @@ dependencies = [
  "decals_plugin",
  "default_pipelines_plugin",
  "editor_table_plugin",
+ "editor_terminal",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
@@ -9921,6 +9978,15 @@ dependencies = [
  "log",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "miow"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "536bfad37a309d62069485248eeaba1e8d9853aaf951caaeaed0585a95346f08"
+dependencies = [
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -14102,6 +14168,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_shell"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "editor_task_queue",
+ "regex",
+ "tempfile",
+ "which 6.0.3",
+]
+
+[[package]]
 name = "pulsar_std"
 version = "0.1.0"
 dependencies = [
@@ -16124,6 +16201,7 @@ checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
  "bitflags 2.13.1",
  "errno",
+ "itoa",
  "libc",
  "linux-raw-sys 0.4.15",
  "windows-sys 0.59.0",
@@ -16140,6 +16218,17 @@ dependencies = [
  "libc",
  "linux-raw-sys 0.12.1",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "rustix-openpty"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a25c3aad9fc1424eb82c88087789a7d938e1829724f3e4043163baf0d13cfc12"
+dependencies = [
+ "errno",
+ "libc",
+ "rustix 0.38.44",
 ]
 
 [[package]]
@@ -20902,6 +20991,20 @@ dependencies = [
  "voxel_component",
  "voxel_editor",
  "wgpu",
+]
+
+[[package]]
+name = "vte"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
+dependencies = [
+ "arrayvec",
+ "bitflags 2.13.1",
+ "cursor-icon",
+ "log",
+ "memchr",
+ "serde",
 ]
 
 [[package]]

@@ -141,3 +141,6 @@
 [submodule "plugins/vendor/view_icons"]
 	path = plugins/vendor/view_icons
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_ViewIcons
+[submodule "plugins/vendor/terminal"]
+	path = plugins/vendor/terminal
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Terminal

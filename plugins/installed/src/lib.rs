@@ -32,6 +32,8 @@ pub use decals_plugin;
 pub use default_pipelines_plugin;
 #[cfg(feature = "editor")]
 pub use editor_table_plugin;
+#[cfg(feature = "editor")]
+pub use editor_terminal;
 pub use fog_plugin;
 pub use foliage_plugin;
 pub use gameplay_plugin;
