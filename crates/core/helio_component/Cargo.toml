@@ -51,7 +51,7 @@ engine_fs = { workspace = true }
 [dev-dependencies]
 pollster = "=0.4.0"
 bytemuck = { workspace = true }
-naga = { version = "30.0.0", features = ["wgsl-in"] }
+naga = { version = "=30.0.1", features = ["wgsl-in"] }
 tempfile = { workspace = true }
 
 [lints]

@@ -174,7 +174,7 @@ jobs:
         run: brew install cmake pkg-config
 
       # The released binaries of the tool: nothing is compiled here.
-      - uses: Far-Beyond-Pulsar/Cargo-SDK@v0.1.1
+      - uses: Far-Beyond-Pulsar/Cargo-SDK@2eb50c7541327e9519c3a36f15f775bc20d457c3 # v0.1.1
 
       # Every crate inside the shared libraries, already compiled by the library release (Helio's SDK covers the
       # whole chain: Helio, SceneDB, Reflection, UI, WGPUI and Profiling). The build below serves them from it

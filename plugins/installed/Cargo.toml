@@ -121,7 +121,7 @@ plugin_editor_api = { workspace = true, features = ["editor"] }
 # The absent meshes: no model importer, no skinned access.
 asset_import = { workspace = true }
 wgpu = { workspace = true }
-pollster = "1.0"
+pollster = "=1.0.1"
 glam = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
