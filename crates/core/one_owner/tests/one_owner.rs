@@ -87,6 +87,16 @@ fn a_planted_copy_is_caught() {
             "plugins/vendor/fog/feature/src/lib.rs",
             "fn run(r: &Registry) {\n    let v = r.get(helio_core::ResourceKey::new(\"pre_aa\"));\n    let label = Some(\"pre_aa\"); // a label is no key\n    let sent = analyzer.read(cx).did_open_file(&path, \"pre_aa\"); // nor what another call takes\n}\n#[gpu(buffer = \"pre_aa\")]\nstruct Row;\n",
         ),
+        // A plugin pass's resource list names the key; a function that
+        // merely shares the name `reads` matches names of its own.
+        source(
+            "plugins/vendor/fog/feature/src/pass.rs",
+            "fn reads(&self) -> &'static [&'static str] {\n    &[\"pre_aa\"]\n}\n",
+        ),
+        source(
+            "plugins/vendor/fog/component/src/lib.rs",
+            "pub fn reads(&self, name: &str) -> bool {\n    match name {\n        \"pre_aa\" => true,\n        _ => false,\n    }\n}\n",
+        ),
         // Test code may name what it likes.
         source(
             "plugins/vendor/fog/feature/tests/fog.rs",
@@ -104,6 +114,7 @@ fn a_planted_copy_is_caught() {
             "plugins/vendor/fog/feature/shaders/fog.wgsl | struct Camera",
             "plugins/vendor/fog/feature/shaders/fog.wgsl | struct FogView",
             "plugins/vendor/fog/feature/src/lib.rs | \"pre_aa\"",
+            "plugins/vendor/fog/feature/src/pass.rs | \"pre_aa\"",
         ]
     );
 }

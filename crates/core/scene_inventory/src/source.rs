@@ -148,8 +148,8 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
     },
     SitePattern {
         id: "asset-kind",
-        needles: &["register_loader"],
-        regex: r"(?:^|[^.\w])register_loader\s*\(",
+        needles: &["register_loader", "register_tiered_loader"],
+        regex: r"(?:^|[^.\w])register_(?:tiered_)?loader\s*\(",
         meaning: "Registers an asset kind's loader with SceneDB's asset table (SceneDB#84); a method of the same name (a format importer's registry) is not one",
     },
     SitePattern {
@@ -167,7 +167,7 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
     SitePattern {
         id: "asset-pump",
         needles: &["pump_assets", "resolve_assets_blocking"],
-        regex: r"\.pump_assets\s*\(|\.resolve_assets_blocking\s*\(",
+        regex: r"\.pump_assets(?:_within)?\s*\(|\.resolve_assets_blocking\s*\(",
         meaning: "Starts asset loads and binds finished ones",
     },
 ];
@@ -401,9 +401,16 @@ pub struct BufferGraph {
 }
 
 /// Buffer key constants in production source, by name: `const NAME: &str =
-/// "key"`, `const NAME: BufferKey = BufferKey::of("key")`, and contract
-/// constants (`BufferContract::new("key")` or `::new(OTHER_CONST)`).
+/// "key"`, `const NAME: BufferKey = BufferKey::of("key")`, contract
+/// constants (`BufferContract::new("key")` or `::new(OTHER_CONST)`), and
+/// constants that name another's key (`= CONTRACT.name()` or `.key()`).
+/// Lookups are resolved by name alone, so a constant that names another's key
+/// wins over an unrelated string constant of the same name.
 fn key_constants(root: &Path) -> HashMap<String, String> {
+    key_constants_in(production_files(root))
+}
+
+fn key_constants_in(files: &[SourceFile]) -> HashMap<String, String> {
     let literal = Regex::new(
         r#"const\s+(\w+)\s*:\s*(?:&(?:'static\s+)?str|BufferKey|[\w:]*(?:Buffer|Pool)Contract<[^=]*>)\s*=\s*(?:[\w:]*BufferKey::of\(|[\w:]*(?:Buffer|Pool)Contract::new\()?\s*"([^"]+)""#,
     )
@@ -412,9 +419,14 @@ fn key_constants(root: &Path) -> HashMap<String, String> {
         r#"const\s+(\w+)\s*:\s*[\w:]*(?:Buffer|Pool)Contract<[^=]*>\s*=\s*[\w:]*(?:Buffer|Pool)Contract::new\(\s*(?:[\w:]+::)?(\w+)\s*\)"#,
     )
     .expect("valid regex");
+    let renamed = Regex::new(
+        r"const\s+(\w+)\s*:\s*(?:&(?:'static\s+)?str|[\w:]*BufferKey)\s*=\s*(?:[\w:]+::)?(\w+)\.(?:name|key)\(\)",
+    )
+    .expect("valid regex");
     let mut keys = HashMap::new();
     let mut aliases = Vec::new();
-    for file in production_files(root) {
+    let mut renames = Vec::new();
+    for file in files {
         for (index, (_, line)) in file.lines.iter().enumerate() {
             if !line.contains("const ") {
                 continue;
@@ -432,15 +444,45 @@ fn key_constants(root: &Path) -> HashMap<String, String> {
                 keys.insert(caps[1].to_string(), caps[2].to_string());
             } else if let Some(caps) = alias.captures(line) {
                 aliases.push((caps[1].to_string(), caps[2].to_string()));
+            } else if let Some(caps) = renamed.captures(line) {
+                renames.push((caps[1].to_string(), caps[2].to_string()));
             }
         }
     }
-    for (name, target) in aliases {
+    // Contract aliases first: a rename may name one of them.
+    for (name, target) in aliases.into_iter().chain(renames) {
         if let Some(key) = keys.get(&target).cloned() {
             keys.insert(name, key);
         }
     }
     keys
+}
+
+#[cfg(test)]
+mod key_constant_tests {
+    use super::*;
+
+    #[test]
+    fn a_renamed_contract_key_beats_an_unrelated_string_of_the_same_name() {
+        let file = |package: &str, text: &str| SourceFile {
+            path: format!("{package}/src/lib.rs"),
+            lines: production_lines(text),
+            package: package.to_string(),
+        };
+        let keys = key_constants_in(&[
+            file(
+                "drawer",
+                "pub const INSTANCES: &str = meshes_api::INSTANCE_ROWS.name();",
+            ),
+            file("counters", r#"pub const INSTANCES: &str = "instances";"#),
+            file(
+                "meshes-api",
+                "pub const ROWS: &str = \"vg_instances\";\n\
+                 pub const INSTANCE_ROWS: BufferContract<Row> =\n    BufferContract::new(ROWS);",
+            ),
+        ]);
+        assert_eq!(keys["INSTANCES"], "vg_instances");
+    }
 }
 
 pub fn buffer_graph(root: &Path) -> BufferGraph {

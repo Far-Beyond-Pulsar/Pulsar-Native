@@ -51,10 +51,12 @@ read. Rebuilding from Cold costs a decode, a resize, a mip chain and an encode.
 4. **The upload understands mips and blocks.** `TextureStore::register_mips`
    checks every level's byte length against the format's block layout *before*
    taking a slot, then writes each level (small levels round up to a block).
-5. **A texture is a device resource.** `register_shared` lets a second scene's
-   store adopt a texture another scene on the same device uploaded. Helio keeps
-   one upload per (device, texture, version) (`SharedTexture` in
-   `texture_assets.rs`), pruned lazily when no store holds it.
+5. **A texture is a device resource.** SceneDB
+   (`gpu::shared_textures`) keeps one upload per device for each (asset,
+   variant) at one revision, and one slot per texture store, pruned lazily when
+   no store holds it. The owner makes the texels: for images, `texture_assets.rs`
+   (the variant is the use; the revision is the content version and detail
+   bias).
 6. **Lock discipline.** The residency cache lock is never taken while holding a
    value's slot lock, values are dropped after every lock is released, a rebuild
    never runs under a lock, and `resident_slot` fetches cooked data before it
@@ -62,7 +64,7 @@ read. Rebuilding from Cold costs a decode, a resize, a mip chain and an encode.
 7. **State goes through the runtime.** The residency and derived caches live in
    `AssetRegistries`, so every statically linked copy of SceneDB shares one (see
    `PLUGIN_SYSTEM.md`, "Plugin components and the World"). Adding a `static`
-   there fails `tests/world_state.rs`; adding a field bumps the ABI version (now 5).
+   there fails `tests/world_state.rs`; adding a field bumps the ABI version (now 6).
 
 ## Settings (project, namespace `streaming`)
 

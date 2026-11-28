@@ -112,11 +112,17 @@ impl HelioViewport {
                 if let Some(registration) = component_for_asset(&payload.kind)
                     .filter(|registration| REGISTRY.has_class(registration.class_name))
                 {
+                    // A new component made for the dropped asset.
+                    let mut value = (registration.value_for)(&asset_path);
+                    helio_component::asset_component::seed_new_component(
+                        registration.class_name,
+                        &mut *value,
+                    );
                     crate::scene_edit::components::add_component_value_enabled(
                         &mut world,
                         &id,
                         registration.class_name,
-                        Some((registration.value_for)(&asset_path)),
+                        Some(value),
                         true,
                     );
                 }

@@ -37,7 +37,6 @@ impl Mesh {
             );
             vertex.tex_coords0 = packed.tex_coords0;
             vertex.tangent = packed.tangent;
-            vertex.bitangent_sign = packed.bitangent_sign;
         }
     }
     pub(crate) fn triangle(&mut self, a: Vec3, b: Vec3, c: Vec3) {

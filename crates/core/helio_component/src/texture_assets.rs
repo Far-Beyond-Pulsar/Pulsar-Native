@@ -14,10 +14,14 @@
 //! the source its asset was declared under, for
 //! `World::asset_source_changed`, which rebinds every component showing it.
 
+use pulsar_scenedb::gpu::shared_textures::{
+    self, SharedTextureError, TextureImage, TextureRequest, TextureUpload,
+};
 use pulsar_scenedb::{AssetId, AssetView, TierLoad};
 use std::sync::Arc;
 
-use crate::cooked_texture::{COOK_VERSION, CookFormat, CookedTexture, TextureUse, cook_as};
+use crate::cooked_texture::{cook_as, CookFormat, CookedTexture, TextureUse, COOK_VERSION};
+use crate::texture_options::TextureOptions;
 
 /// The SceneDB asset kind of image files. A texture asset's source is the
 /// file's absolute path, normalized lexically ([`texture_source`]).
@@ -50,7 +54,7 @@ pub struct LoadedTexture {
     /// uploaded it ([`Self::take_pinned`]): the residency cache is a budgeted
     /// LRU and a bind that waits behind many others would find it evicted and
     /// read it back from disk on the frame thread.
-    pinned: std::sync::Mutex<Option<(CookFormat, TextureUse, Arc<CookedTexture>)>>,
+    pinned: std::sync::Mutex<Vec<(CookFormat, TextureUse, Arc<CookedTexture>)>>,
 }
 
 impl LoadedTexture {
@@ -98,9 +102,23 @@ impl LoadedTexture {
 
     /// Hold `cooked` (made on a loader thread) for the upload.
     fn pin(&self, format: CookFormat, usage: TextureUse, cooked: Arc<CookedTexture>) {
+        let format = self.effective_format(format);
         if let Ok(mut pinned) = self.pinned.lock() {
-            *pinned = Some((self.effective_format(format), usage, cooked));
+            pinned.retain(|(f, u, _)| (*f, *u) != (format, usage));
+            pinned.push((format, usage, cooked));
         }
+    }
+
+    /// Make the form `usage` uploads in the engine's preferred format, and
+    /// hold it for the upload: for whoever is on a loader thread and knows the
+    /// frame thread will bind it. Nothing is done when it is already held.
+    pub fn prepare(&self, usage: TextureUse) -> Result<(), String> {
+        let format = preferred_cook_format();
+        if self.pinned_for(format, usage).is_none() {
+            let cooked = self.cooked_for(format, usage)?;
+            self.pin(format, usage, cooked);
+        }
+        Ok(())
     }
 
     /// The pinned cooked form when it is the one asked for (`format` as
@@ -110,16 +128,16 @@ impl LoadedTexture {
         let format = self.effective_format(format);
         let pinned = self.pinned.lock().ok()?;
         pinned
-            .as_ref()
-            .filter(|(f, u, _)| *f == format && *u == usage)
+            .iter()
+            .find(|(f, u, _)| *f == format && *u == usage)
             .map(|(_, _, cooked)| Arc::clone(cooked))
     }
 
-    /// Let go of the pinned cooked form (the GPU holds the texture now); the
+    /// Let go of what is held for `usage` (the GPU holds the texture now); the
     /// residency cache and the derived-data cache still serve a rebuild.
-    pub fn unpin(&self) {
+    pub fn unpin(&self, usage: TextureUse) {
         if let Ok(mut pinned) = self.pinned.lock() {
-            *pinned = None;
+            pinned.retain(|(_, u, _)| *u != usage);
         }
     }
 
@@ -437,7 +455,7 @@ fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
         let (width, height) = image_dimensions(path)?;
         let (full_w, full_h) = capped_dimensions(width, height, full_cap);
         if full_w.max(full_h) > coarse {
-            let image = decode_image_file_at(path, coarse, TextureUse::Color)?;
+            let image = decode_for_wanted_uses(source, path, coarse)?;
             return Ok(TierLoad {
                 payload: Arc::new(image),
                 last: false,
@@ -445,9 +463,62 @@ fn load_texture_tier(source: &str, tier: u8) -> Result<TierLoad, String> {
         }
     }
     Ok(TierLoad {
-        payload: Arc::new(decode_image_file_at(path, full_cap, TextureUse::Color)?),
+        payload: Arc::new(decode_for_wanted_uses(source, path, full_cap)?),
         last: true,
     })
+}
+
+/// The uses each source has been asked for, so the loader prepares those and
+/// no others: a map that is only a normal map is not also encoded as a
+/// colour. A use missing here costs nothing but time: whoever binds it
+/// prepares it ([`LoadedTexture::prepare`]).
+fn wanted_uses() -> &'static std::sync::Mutex<std::collections::HashMap<String, Vec<TextureUse>>> {
+    // Static: noted from loader threads and writers with no context, and read
+    // by loaders.
+    static WANTED: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Vec<TextureUse>>>,
+    > = std::sync::OnceLock::new();
+    WANTED.get_or_init(Default::default)
+}
+
+/// Note that the texture at `source` will be sampled for `usage`.
+fn want_use(source: &str, usage: TextureUse) {
+    if let Ok(mut wanted) = wanted_uses().lock() {
+        match wanted.get_mut(source) {
+            Some(uses) if uses.contains(&usage) => {}
+            Some(uses) => uses.push(usage),
+            None => {
+                wanted.insert(source.to_string(), vec![usage]);
+            }
+        }
+    }
+}
+
+/// Decode the image at `path` capped at `cap` and prepare the uses `source`
+/// is wanted for; a colour when nothing has said.
+fn decode_for_wanted_uses(
+    source: &str,
+    path: &std::path::Path,
+    cap: u32,
+) -> Result<LoadedTexture, String> {
+    let uses = wanted_uses()
+        .lock()
+        .ok()
+        .and_then(|wanted| wanted.get(source).cloned())
+        .unwrap_or_else(|| vec![TextureUse::Color]);
+    let image = decode_image_file_at(path, cap, uses[0])?;
+    for &usage in &uses[1..] {
+        image.prepare(usage)?;
+    }
+    Ok(image)
+}
+
+/// The texture asset of the file at `source` (a [`texture_source`]), declared
+/// so a world can load it, for an asset that needs it sampled as `usage`.
+pub fn needed_texture(source: &str, usage: TextureUse) -> AssetId {
+    register_texture_assets();
+    want_use(source, usage);
+    AssetId::declare(TEXTURE_ASSET_KIND, source)
 }
 
 /// Load the image file at `path`: read its size, and cook it now, on this
@@ -500,8 +571,7 @@ fn decode_image_file_at(
         cooked: Default::default(),
         pinned: Default::default(),
     };
-    let cooked = texture.cooked_for(preferred_cook_format(), usage)?;
-    texture.pin(preferred_cook_format(), usage, cooked);
+    texture.prepare(usage)?;
     Ok(texture)
 }
 
@@ -605,15 +675,21 @@ pub fn bind_texture(bound: &mut BoundTexture, path: &str, view: &AssetView, what
 /// [`AssetId::ZERO`] for none (the ledger diffs a value's handles by
 /// position, as it does a derived collector's fields).
 pub fn collect_texture(path: &str, out: &mut Vec<pulsar_scenedb::handle_ledger::HandleId>) {
+    // A component shows its image as a colour.
+    if let Some(source) = texture_source(path) {
+        want_use(&source, TextureUse::Color);
+    }
     out.push(texture_asset_id(path).handle());
 }
 
 /// The scene texture store slot of `bound`'s image when it is the one
 /// `path` names, uploading it on first use and again after a reload;
-/// `u32::MAX` for none (the tint alone).
+/// `u32::MAX` for none (the tint alone). The GPU copy is made as `options`,
+/// the component's own choice, asks.
 pub fn texture_slot(
     bound: &BoundTexture,
     path: &str,
+    options: TextureOptions,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
     what: &str,
 ) -> u32 {
@@ -621,12 +697,14 @@ pub fn texture_slot(
         return u32::MAX;
     };
     let current = bound.0.as_ref().expect("image_for found it");
-    match resident_slot(
+    match resident_slot_with(
         current.id,
         current.version,
         image,
         TextureUse::Color,
+        options,
         mirror,
+        TextureUpload::Whole,
     ) {
         Ok(slot) => slot,
         Err(error) => {
@@ -636,80 +714,13 @@ pub fn texture_slot(
     }
 }
 
-struct ResidentTexture {
-    owner: std::sync::Weak<std::sync::RwLock<pulsar_scenedb::gpu::TextureStore>>,
-    version: u64,
-    /// The detail bias it was uploaded at ([`crate::texture_detail`]).
-    bias: u32,
-    slot: u32,
-}
-
-/// Each texture's slot in each scene texture store, with the content version
-/// it holds. A texture is keyed by its asset *and* its use, because an image
-/// sampled as a colour and the same image sampled as data are different bytes
-/// on the GPU. The store is keyed by its address.
-type Residency = std::collections::HashMap<(usize, AssetId, TextureUse), ResidentTexture>;
-
-fn resident() -> &'static std::sync::Mutex<Residency> {
-    // Static: process-wide GPU residency table, locked on every texture upload and
-    // used by the game runtime too, where no `EngineContext` need exist.
-    static RESIDENT: std::sync::OnceLock<std::sync::Mutex<Residency>> = std::sync::OnceLock::new();
-    RESIDENT.get_or_init(Default::default)
-}
-
-/// A texture uploaded to a device, shared by every scene texture store on
-/// that device that shows it.
-struct SharedTexture {
-    version: u64,
-    bias: u32,
-    /// What the texture would take in full, for the detail budget.
-    native_bytes: u64,
-    texture: wgpu::Texture,
-    /// The stores holding a clone; the entry goes when none is left.
-    users: Vec<std::sync::Weak<std::sync::RwLock<pulsar_scenedb::gpu::TextureStore>>>,
-}
-
-/// One GPU upload per (device, texture asset, use): a texture is a device
-/// resource, so two scenes on one device (two viewports of a level) show the
-/// same image from the same allocation instead of one private copy each.
-type SharedTextures = std::collections::HashMap<(usize, AssetId, TextureUse), SharedTexture>;
-
-fn shared_textures() -> &'static std::sync::Mutex<SharedTextures> {
-    // Static: per-device texture sharing table; same reasons as `RESIDENT`.
-    static SHARED: std::sync::OnceLock<std::sync::Mutex<SharedTextures>> =
-        std::sync::OnceLock::new();
-    SHARED.get_or_init(Default::default)
-}
-
-/// The shared texture for `key` at `version`, with `store` recorded as a user.
-fn shared_texture(
-    key: (usize, AssetId, TextureUse),
-    version: u64,
-    bias: u32,
-    store: &Arc<std::sync::RwLock<pulsar_scenedb::gpu::TextureStore>>,
-) -> Option<wgpu::Texture> {
-    let mut shared = shared_textures().lock().ok()?;
-    // Forget textures no store holds any more, so a dropped scene's images
-    // can be freed.
-    shared.retain(|_, entry| {
-        entry.users.retain(|user| user.strong_count() != 0);
-        !entry.users.is_empty()
-    });
-    let entry = shared.get_mut(&key)?;
-    if entry.version != version || entry.bias != bias {
-        return None;
-    }
-    let me = Arc::downgrade(store);
-    if !entry.users.iter().any(|user| user.ptr_eq(&me)) {
-        entry.users.push(me);
-    }
-    Some(entry.texture.clone())
-}
-
 /// The slot `image` (content `version` of the texture `id`) holds in
 /// `mirror`'s texture store, uploading it when the store does not hold that
 /// version yet. A device that already holds that version for another scene
 /// shares it: no decode, no second upload, no second GPU allocation.
+///
+/// Where textures live and who shares them is SceneDB's
+/// ([`shared_textures`]); what their texels are is this module's.
 pub fn resident_slot(
     id: AssetId,
     version: u64,
@@ -717,7 +728,16 @@ pub fn resident_slot(
     usage: TextureUse,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
 ) -> Result<u32, String> {
-    resident_slot_with(id, version, image, usage, mirror, Upload::Whole)
+    let options = TextureOptions::default();
+    resident_slot_with(
+        id,
+        version,
+        image,
+        usage,
+        options,
+        mirror,
+        TextureUpload::Whole,
+    )
 }
 
 /// [`resident_slot`] for a frame thread: the GPU copy is staged and written a
@@ -733,16 +753,39 @@ pub fn resident_slot_staged(
     usage: TextureUse,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
 ) -> Result<u32, String> {
-    resident_slot_with(id, version, image, usage, mirror, Upload::Staged)
+    let options = TextureOptions::default();
+    resident_slot_with(
+        id,
+        version,
+        image,
+        usage,
+        options,
+        mirror,
+        TextureUpload::Staged,
+    )
 }
 
-/// When the GPU copy of a texture is written.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Upload {
-    /// Before the call returns.
-    Whole,
-    /// Over the following frames.
-    Staged,
+/// What SceneDB keys the GPU copy by: the image, its use (an image sampled
+/// as a colour and as data are different texels) and the choice it was asked
+/// with, at the content version and the detail bias ([`crate::texture_detail`])
+/// it is uploaded with.
+fn texture_request(
+    id: AssetId,
+    version: u64,
+    usage: TextureUse,
+    options: TextureOptions,
+    bias: u32,
+) -> TextureRequest {
+    let usage = match usage {
+        TextureUse::Color => 0,
+        TextureUse::Data => 1,
+        TextureUse::Normal => 2,
+    };
+    TextureRequest {
+        asset: id,
+        variant: usage | (options.variant_bits() << 2),
+        revision: (version << 8) | u64::from(bias.min(0xff)),
+    }
 }
 
 fn resident_slot_with(
@@ -750,220 +793,119 @@ fn resident_slot_with(
     version: u64,
     image: &LoadedTexture,
     usage: TextureUse,
+    options: TextureOptions,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
-    upload: Upload,
+    upload: TextureUpload,
 ) -> Result<u32, String> {
     profiling::profile_scope!("Texture::resident_slot");
-    let texture_store = mirror
-        .texture_store()
-        .ok_or_else(|| "SceneDB has no texture store".to_string())?;
-    let key = (Arc::as_ptr(&texture_store) as usize, id, usage);
     let bias = crate::texture_detail::detail_bias();
-    {
-        let mut resident = resident()
-            .lock()
-            .map_err(|_| "texture residency lock poisoned".to_string())?;
-        resident.retain(|_, entry| entry.owner.strong_count() != 0);
-        if let Some(entry) = resident.get(&key) {
-            if entry.version == version && entry.bias == bias {
-                image.unpin();
-                return Ok(entry.slot);
-            }
-        }
-    }
-
-    // Not in this store yet. Another scene on the same device may have
-    // uploaded it; otherwise the texels may have to be decoded again, which
-    // takes a while. Either way, no lock is held while finding out.
-    let device = mirror.store().device_arc();
-    let device_key = (Arc::as_ptr(&device) as usize, id, usage);
-    let shared = {
-        profiling::profile_scope!("Texture::find_shared");
-        shared_texture(device_key, version, bias, &texture_store)
-    };
-    let cooked = match shared {
-        Some(_) => None,
-        None => {
+    let mut made = false;
+    let slot = shared_textures::acquire(
+        mirror,
+        texture_request(id, version, usage, options, bias),
+        upload,
+        |device| {
+            made = true;
             // A texture whose cook is not resident or in the derived cache is
             // cooked here, on the caller's thread: this scope is that cost.
             profiling::profile_scope!("Texture::cooked_for (cook, read or join)");
-            let format = CookFormat::best_for(device.features(), image.width, image.height);
-            match image.pinned_for(format, usage) {
-                Some(cooked) => Some(cooked),
-                None => Some(image.cooked_for(format, usage)?),
-            }
-        }
-    };
-
-    let lock_scope = profiling::ProfileScope::new_static("Texture::lock_residency_and_store");
-    let mut resident = resident()
-        .lock()
-        .map_err(|_| "texture residency lock poisoned".to_string())?;
-    if let Some(entry) = resident.get(&key) {
-        if entry.version == version && entry.bias == bias {
-            image.unpin();
-            return Ok(entry.slot);
-        }
-    }
-    let mut store = texture_store
-        .write()
-        .map_err(|_| "SceneDB texture store lock poisoned".to_string())?;
-    drop(lock_scope);
-    let old = resident.remove(&key);
-    let mut uploaded = None;
-    let slot = match (shared, cooked) {
-        (Some(texture), _) => {
-            if let Some(old) = old {
-                profiling::profile_scope!("Texture::unregister_replaced");
-                let _ = store.unregister(old.slot);
-            }
-            store.register_shared(texture).map_err(|error| {
-                store_error(error, store.slot_count(), "could not share a texture")
-            })?
-        }
-        (None, Some(cooked)) => {
+            let format = if options.compressed {
+                CookFormat::best_for(device.features(), image.width, image.height)
+            } else {
+                CookFormat::Rgba8
+            };
+            let cooked = match image.pinned_for(format, usage) {
+                Some(cooked) => cooked,
+                None => image.cooked_for(format, usage)?,
+            };
             let native_bytes = cooked.byte_size() as u64;
-            let cooked = if bias == 0 {
+            let drop = bias + options.levels_to_drop(cooked.width, cooked.height);
+            let cooked = if drop == 0 {
                 cooked
             } else {
-                Arc::new(cooked.without_top_mips(bias))
+                Arc::new(cooked.without_top_mips(drop))
             };
-            match upload {
-                Upload::Whole => {
-                    if let Some(old) = old {
-                        profiling::profile_scope!("Texture::unregister_replaced");
-                        let _ = store.unregister(old.slot);
-                    }
-                    let slot = upload_cooked(&mut store, mirror, &cooked)?;
-                    uploaded = store
-                        .texture(slot)
-                        .cloned()
-                        .map(|texture| (texture, native_bytes));
-                    slot
-                }
-                Upload::Staged => {
-                    // The slot a finer version replaces keeps its texture until
-                    // the new one is whole; the device-wide entry is published
-                    // then, not now (another scene must not share half a texture).
-                    let owner = Arc::downgrade(&texture_store);
-                    stage_cooked(
-                        &mut store,
-                        mirror,
-                        cooked,
-                        old.map(|old| old.slot),
-                        id.0,
-                        Box::new(move |texture: &wgpu::Texture| {
-                            publish_shared(
-                                device_key,
-                                version,
-                                bias,
-                                native_bytes,
-                                texture.clone(),
-                                owner,
-                            );
-                        }),
-                    )?
-                }
-            }
-        }
-        (None, None) => unreachable!("the cooked texture is fetched whenever nothing is shared"),
-    };
-    resident.insert(
-        key,
-        ResidentTexture {
-            owner: Arc::downgrade(&texture_store),
-            version,
-            bias,
-            slot,
+            Ok(TextureImage {
+                descriptor: cooked_descriptor(&cooked),
+                texels: cooked,
+                native_bytes,
+                // Fit the detail of what scenes show to the video memory
+                // budget; the next texture bound (or this one, next time)
+                // uses the new bias.
+                published: Some(Box::new(|native_total| {
+                    crate::texture_detail::rebalance(native_total);
+                })),
+            })
         },
-    );
-    drop(store);
-    drop(resident);
-    if let Some((texture, native_bytes)) = uploaded {
-        publish_shared(
-            device_key,
-            version,
-            bias,
-            native_bytes,
-            texture,
-            Arc::downgrade(&texture_store),
-        );
-    }
-    image.unpin();
+    )
+    .map_err(|error| {
+        let what = match (made, upload) {
+            (false, _) => "could not share a texture",
+            (true, TextureUpload::Whole) => "could not register texture in SceneDB",
+            (true, TextureUpload::Staged) => "could not stage a texture in SceneDB",
+        };
+        texture_error(error, what)
+    })?;
+    image.unpin(usage);
     Ok(slot)
 }
 
-/// Record `texture` as the device's one copy of (asset, use) so other scenes on
-/// the device share it, and fit the detail of what scenes show to the video
-/// memory budget; the next texture bound (or this one, next time) uses the new
-/// bias.
-fn publish_shared(
-    device_key: (usize, AssetId, TextureUse),
-    version: u64,
-    bias: u32,
-    native_bytes: u64,
-    texture: wgpu::Texture,
-    owner: std::sync::Weak<std::sync::RwLock<pulsar_scenedb::gpu::TextureStore>>,
-) {
-    profiling::profile_scope!("Texture::publish_shared");
-    let Ok(mut shared) = shared_textures().lock() else {
-        return;
-    };
-    shared.insert(
-        device_key,
-        SharedTexture {
-            version,
-            bias,
-            native_bytes,
-            texture,
-            users: vec![owner],
-        },
-    );
-    let native_total = shared.values().map(|entry| entry.native_bytes).sum();
-    crate::texture_detail::rebalance(native_total);
+/// What a texture that got no slot means to whoever shows it. A full store
+/// is the scene's texture table at its capacity (the device's,
+/// [`helio_core::texture_table_capacity`], in the editor): the texture gets
+/// no slot and the caller draws without it (a material its fallback
+/// surface), so the message says so plainly.
+fn texture_error(error: SharedTextureError, what: &str) -> String {
+    use pulsar_scenedb::gpu::TextureError;
+    match error {
+        SharedTextureError::NoTextureStore => "SceneDB has no texture store".to_string(),
+        SharedTextureError::Poisoned => "SceneDB texture lock poisoned".to_string(),
+        SharedTextureError::Produce(error) => error,
+        SharedTextureError::Store {
+            error: TextureError::SlotsExhausted,
+            slots,
+        } => format!("{what}: the scene's texture table is full (all {slots} slots are in use)"),
+        SharedTextureError::Store { error, .. } => format!("{what}: {error:?}"),
+    }
 }
 
-/// Start cooking, on the asset loader threads, every texture in `images` that
-/// `mirror`'s store would have to upload at `version`, so the cooks run in
+/// The GPU texture a cooked texture is uploaded as.
+fn cooked_descriptor(cooked: &CookedTexture) -> wgpu::TextureDescriptor<'static> {
+    wgpu::TextureDescriptor {
+        label: Some("Scene Texture"),
+        size: wgpu::Extent3d {
+            width: cooked.width,
+            height: cooked.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: cooked.mip_count(),
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: cooked.wgpu_format(),
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    }
+}
+
+/// Start cooking, on the asset loader threads, every texture in `images` (with
+/// its content version) that `mirror`'s store would have to upload, so the cooks run in
 /// parallel instead of one after another on the thread that is about to need
 /// them. A texture the store already holds, or that another scene on the same
 /// device has uploaded, is left alone: nothing about it would be used. The
 /// `resident_slot` calls that follow join the work in flight.
 pub fn prefetch_missing<'a>(
-    images: impl IntoIterator<Item = (AssetId, TextureUse, &'a LoadedTexture)>,
-    version: u64,
+    images: impl IntoIterator<Item = (AssetId, u64, TextureUse, &'a LoadedTexture)>,
     mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
 ) {
     profiling::profile_scope!("Texture::prefetch_missing");
-    let Some(texture_store) = mirror.texture_store() else {
+    if mirror.texture_store().is_none() {
         return;
-    };
-    let device = mirror.store().device_arc();
-    let features = device.features();
-    for (id, usage, image) in images {
-        let key = (Arc::as_ptr(&texture_store) as usize, id, usage);
-        let held = resident()
-            .lock()
-            .ok()
-            .and_then(|resident| {
-                resident.get(&key).map(|entry| {
-                    entry.version == version && entry.bias == crate::texture_detail::detail_bias()
-                })
-            })
-            .unwrap_or(false);
-        let shared = shared_textures()
-            .lock()
-            .ok()
-            .and_then(|shared| {
-                shared
-                    .get(&(Arc::as_ptr(&device) as usize, id, usage))
-                    .map(|entry| {
-                        entry.version == version
-                            && entry.bias == crate::texture_detail::detail_bias()
-                    })
-            })
-            .unwrap_or(false);
-        if !held && !shared {
+    }
+    let features = mirror.store().device_arc().features();
+    let bias = crate::texture_detail::detail_bias();
+    for (id, version, usage, image) in images {
+        let request = texture_request(id, version, usage, TextureOptions::default(), bias);
+        if !shared_textures::holds(mirror, request) {
             drop(image.prefetch_for(
                 CookFormat::best_for(features, image.width, image.height),
                 usage,
@@ -971,6 +913,7 @@ pub fn prefetch_missing<'a>(
         }
     }
 }
+
 #[cfg(test)]
 mod residency_tests {
     use super::*;
@@ -1030,7 +973,7 @@ mod residency_tests {
             image.pinned_for(format, TextureUse::Color).is_none(),
             "another use is a different cook"
         );
-        image.unpin();
+        image.unpin(TextureUse::Normal);
         assert!(image.pinned_for(format, TextureUse::Normal).is_none());
         // Unpinned, the form is still served (the residency cache or a rebuild).
         assert!(image.cooked_for(format, TextureUse::Normal).is_ok());
@@ -1341,96 +1284,5 @@ mod shared_upload_tests {
             "{error}"
         );
         assert_eq!(textures.read().unwrap().slot_count(), 16);
-    }
-}
-
-/// Stage a cooked texture (its full mip chain, in its own format) for upload
-/// into `store`: the slot comes back at once and its texture is written a few
-/// rows a frame ([`pulsar_scenedb::gpu::TextureStore::register_mips_staged`]).
-fn stage_cooked(
-    store: &mut pulsar_scenedb::gpu::TextureStore,
-    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
-    cooked: Arc<CookedTexture>,
-    replace: Option<u32>,
-    key: u128,
-    on_complete: Box<dyn FnOnce(&wgpu::Texture) + Send + Sync>,
-) -> Result<u32, String> {
-    profiling::profile_scope!("Texture::stage_cooked");
-    let device = mirror.store().device_arc();
-    let descriptor = cooked_descriptor(&cooked);
-    store
-        .register_mips_staged(&device, &descriptor, cooked, replace, key, Some(on_complete))
-        .map_err(|error| {
-            store_error(
-                error,
-                store.slot_count(),
-                "could not stage a texture in SceneDB",
-            )
-        })
-}
-
-/// The GPU texture a cooked texture is uploaded as.
-fn cooked_descriptor(cooked: &CookedTexture) -> wgpu::TextureDescriptor<'static> {
-    wgpu::TextureDescriptor {
-        label: Some("Scene Texture"),
-        size: wgpu::Extent3d {
-            width: cooked.width,
-            height: cooked.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: cooked.mip_count(),
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: cooked.wgpu_format(),
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    }
-}
-
-/// Upload a cooked texture (its full mip chain, in its own format) into
-/// `store`, the texture store of `mirror`'s scene, and return its slot.
-fn upload_cooked(
-    store: &mut pulsar_scenedb::gpu::TextureStore,
-    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
-    cooked: &crate::cooked_texture::CookedTexture,
-) -> Result<u32, String> {
-    profiling::profile_scope!("Texture::upload_cooked");
-    let device = mirror.store().device_arc();
-    let descriptor = wgpu::TextureDescriptor {
-        label: Some("Scene Texture"),
-        size: wgpu::Extent3d {
-            width: cooked.width,
-            height: cooked.height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: cooked.mip_count(),
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: cooked.wgpu_format(),
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    };
-    store
-        .register_mips(&device, mirror.queue(), &descriptor, &cooked.mips())
-        .map_err(|error| {
-            store_error(
-                error,
-                store.slot_count(),
-                "could not register texture in SceneDB",
-            )
-        })
-}
-
-/// What a texture store error means to whoever shows the texture. A full
-/// store (`slots` of them, all taken) is the scene's texture table at its
-/// capacity (the device's, [`helio_core::texture_table_capacity`], in the
-/// editor): the texture gets no slot and the caller draws without it (a
-/// material its fallback surface), so the message says so plainly.
-fn store_error(error: pulsar_scenedb::gpu::TextureError, slots: u32, what: &str) -> String {
-    match error {
-        pulsar_scenedb::gpu::TextureError::SlotsExhausted => {
-            format!("{what}: the scene's texture table is full (all {slots} slots are in use)")
-        }
-        other => format!("{what}: {other:?}"),
     }
 }

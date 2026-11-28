@@ -36,8 +36,8 @@
 //! checks every length against what the format and dimensions require, so a
 //! damaged or outdated file is refused instead of uploaded.
 
-use helio_core::texture_mips::{TexelKind, mip_chain};
-use intel_tex_2::{RgbaSurface, bc7};
+use helio_core::texture_mips::{mip_chain, TexelKind};
+use intel_tex_2::{bc7, RgbaSurface};
 
 const MAGIC: [u8; 4] = *b"PTX2";
 const HEADER_LEN: usize = 24;
@@ -241,7 +241,11 @@ impl CookedTexture {
     pub fn without_top_mips(&self, drop: u32) -> CookedTexture {
         let mut drop = drop.min(self.mip_count().saturating_sub(1));
         if self.format == CookFormat::Bc7 {
-            while drop > 0 && ((self.width >> drop) < 4 || (self.height >> drop) < 4) {
+            // The largest level left must still be whole blocks.
+            while drop > 0 && {
+                let (width, height) = (self.width >> drop, self.height >> drop);
+                width < 4 || height < 4 || width % 4 != 0 || height % 4 != 0
+            } {
                 drop -= 1;
             }
         }
@@ -642,4 +646,3 @@ impl pulsar_scenedb::gpu::MipSource for CookedTexture {
         self.mip(level)
     }
 }
-

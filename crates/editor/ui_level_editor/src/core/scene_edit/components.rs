@@ -183,6 +183,9 @@ pub fn add_component_value_enabled(
         tracing::warn!("Could not attach {class_name} to '{object_id}': {reason}");
         return None;
     }
+    // With no value this is a new component: it starts from the class default
+    // with the project's defaults. A value given is attached as it is.
+    let value = value.or_else(|| helio_component::asset_component::new_component_value(class_name));
     let payload = match value {
         Some(value) => pulsar_world_registry::ComponentPayload::Value(value),
         None => pulsar_world_registry::ComponentPayload::Default,

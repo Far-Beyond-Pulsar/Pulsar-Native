@@ -6,7 +6,7 @@
 use std::any::Any;
 use std::path::{Component, Path, PathBuf};
 
-use pulsar_scenedb::{AssetId, AssetPayload};
+use pulsar_scenedb::{AssetDependency, AssetId, AssetPayload};
 use ui_types_common::AssetKind;
 
 /// The component an asset of a kind becomes when dropped in a level.
@@ -45,6 +45,60 @@ pub fn component_for_asset(kind: &AssetKind) -> Option<&'static AssetComponentRe
         .find(|registration| registration.asset_kind == *kind)
 }
 
+/// What a plugin does to a component of `class_name` that is being made new:
+/// it copies the project's defaults into the component's own fields. Only
+/// for new components; a loaded, copied or rebuilt one keeps what it has.
+pub struct NewComponentRegistration {
+    /// The package that submitted it (`pulsar_plugins::origin!()`).
+    pub origin: &'static str,
+    pub class_name: &'static str,
+    /// Given the component's value, of `class_name`'s type.
+    pub seed: fn(&mut dyn Any),
+}
+
+impl pulsar_plugins::Contribution for NewComponentRegistration {
+    const CATEGORY: &'static str = "component.new_defaults";
+
+    fn origin(&self) -> &'static str {
+        self.origin
+    }
+
+    fn id(&self) -> String {
+        self.class_name.to_string()
+    }
+}
+
+pulsar_plugins::registration!(NewComponentRegistration);
+
+fn new_component_registration(class_name: &str) -> Option<&'static NewComponentRegistration> {
+    pulsar_plugins::registered::<NewComponentRegistration>()
+        .find(|registration| registration.class_name == class_name)
+}
+
+/// Give `value`, a new component of `class_name` about to be authored, the
+/// project's defaults. Call it before applying anything the author asked for.
+pub fn seed_new_component(class_name: &str, value: &mut dyn Any) {
+    if let Some(registration) = new_component_registration(class_name) {
+        (registration.seed)(value);
+    }
+}
+
+/// A new component of `class_name` with the project's defaults, for a class
+/// that has any; `None` when its class default is all there is.
+pub fn new_component_value(class_name: &str) -> Option<Box<dyn Any + Send + Sync>> {
+    new_component_registration(class_name)?;
+    match pulsar_world_registry::decode_world_component_value(class_name, &serde_json::json!({}))? {
+        Ok(mut value) => {
+            seed_new_component(class_name, &mut *value);
+            Some(value)
+        }
+        Err(error) => {
+            tracing::warn!("no default value of '{class_name}': {error}");
+            None
+        }
+    }
+}
+
 /// The owner of a SceneDB asset kind: how its assets load (on a SceneDB
 /// worker thread) and how much a loaded one holds for the cache budget. The
 /// owning plugin's root crate submits one with `inventory::submit!`;
@@ -60,6 +114,18 @@ pub struct AssetLoaderRegistration {
     pub load: fn(source: &str) -> Result<AssetPayload, String>,
     /// Bytes a payload holds outside SceneDB's residency cache.
     pub size: Option<pulsar_scenedb::SizeFn>,
+    /// For assets made from other assets: what `load` made is composed with
+    /// them (`pulsar_scenedb::register_composer`).
+    pub compose: Option<AssetCompose>,
+}
+
+/// The two halves of a composed asset kind.
+#[derive(Clone, Copy)]
+pub struct AssetCompose {
+    /// The assets a loaded payload needs, by declared ids.
+    pub dependencies: fn(&AssetPayload) -> Vec<AssetId>,
+    /// The payload components bind, from the loader's and what it needs.
+    pub compose: fn(&AssetPayload, &[AssetDependency]) -> Result<AssetPayload, String>,
 }
 
 impl pulsar_plugins::Contribution for AssetLoaderRegistration {
@@ -95,6 +161,13 @@ pub fn install_asset_loaders() {
         if let Some(size) = registration.size {
             pulsar_scenedb::register_payload_size(registration.kind, size);
         }
+        if let Some(compose) = registration.compose {
+            pulsar_scenedb::register_composer(
+                registration.kind,
+                compose.dependencies,
+                compose.compose,
+            );
+        }
     }
 }
 
@@ -119,7 +192,10 @@ pub fn load_asset_now(kind: &str, source: &str) -> Result<AssetPayload, String> 
     let registration = pulsar_plugins::registered::<AssetLoaderRegistration>()
         .find(|registration| registration.kind == kind)
         .ok_or_else(|| format!("no enabled plugin loads '{kind}' assets"))?;
-    (registration.load)(source)
+    let payload = (registration.load)(source)?;
+    // What it needs is loaded and composed the way a world would.
+    install_asset_loaders();
+    pulsar_scenedb::compose_asset_now(registration.kind, payload)
 }
 
 /// Which world assets a changed file of an asset kind reloads: the owner of

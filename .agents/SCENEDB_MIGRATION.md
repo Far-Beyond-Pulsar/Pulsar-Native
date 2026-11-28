@@ -126,6 +126,13 @@ in-flight load to cancel or complete stale. Components of one asset share one
 GPU geometry allocation. A re-import publishes `AssetUpdated(Mesh)`; the level
 editor reloads every static mesh naming that file through the same write.
 
+Assets named by `AssetId` load through the world's pump. An asset that needs
+others (a material its textures) says so with `register_composer`: SceneDB
+counts, loads, shares and reloads them like any other, and composes the parent
+from them on a loader thread. Their GPU forms live in
+`gpu::shared_textures`. The model, what is built and what is not:
+`ASSET_SYSTEM_PLAN.md`.
+
 ## Architecture checks
 
 `crates/core/scene_inventory/tests/architecture.rs` fails when:

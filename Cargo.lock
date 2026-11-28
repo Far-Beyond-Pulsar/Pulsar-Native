@@ -1848,6 +1848,7 @@ dependencies = [
  "helio_component",
  "plugin_editor_api",
  "pulsar_plugins",
+ "pulsar_settings",
 ]
 
 [[package]]
@@ -3138,6 +3139,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
+ "engine_state",
  "helio-feature-api",
  "helio-pass-decal",
  "helio-scene-join",
@@ -3174,6 +3176,7 @@ dependencies = [
  "pollster 0.4.0",
  "pulsar_plugins",
  "pulsar_scenedb",
+ "pulsar_settings",
  "pulsar_world_registry",
  "serde_json",
  "tempfile",
@@ -17540,6 +17543,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
+ "engine_state",
  "helio-feature-api",
  "helio-pass-sprite-batch",
  "helio-scene-join",
@@ -17585,6 +17589,7 @@ dependencies = [
  "pollster 0.4.0",
  "pulsar_plugins",
  "pulsar_scenedb",
+ "pulsar_settings",
  "pulsar_world_registry",
  "sprites_component",
  "sprites_editor",
@@ -19861,6 +19866,7 @@ dependencies = [
  "pulsar_plugins",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_settings",
  "pulsar_world_registry",
  "serde",
  "serde_json",

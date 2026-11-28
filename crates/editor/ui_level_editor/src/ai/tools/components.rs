@@ -119,7 +119,10 @@ fn patch_component(class_name: &str, data: &mut Value, patch: &Value) -> Result<
 
 /// Default data for `class_name` with `properties` patched over it.
 pub(super) fn build_component_data(class_name: &str, properties: Option<&Value>) -> Result<Value> {
-    let instance = create_instance(class_name).ok_or_else(|| unknown_class(class_name))?;
+    let mut instance = create_instance(class_name).ok_or_else(|| unknown_class(class_name))?;
+    // A new component starts with the project's defaults; what the caller's
+    // properties name replaces them.
+    helio_component::asset_component::seed_new_component(class_name, instance.as_any_mut());
     let mut data = default_data(instance.as_ref());
     match properties {
         Some(patch) => patch_component(class_name, &mut data, patch)?,

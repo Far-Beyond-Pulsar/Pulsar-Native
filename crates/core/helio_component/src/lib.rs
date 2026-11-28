@@ -18,6 +18,7 @@ mod static_move_watch;
 pub mod subsystems;
 pub mod texture_assets;
 pub mod texture_detail;
+pub mod texture_options;
 pub use static_move_watch::StaticMoveWatch;
 
 pub use asset_component::*;

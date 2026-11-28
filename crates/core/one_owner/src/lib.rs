@@ -528,11 +528,14 @@ pub fn rust_copies(sources: &[Source]) -> Vec<Copy> {
         for line in logical_lines(without_tests(&source.text)) {
             let code = line.as_str();
             let trimmed = code.trim_start();
-            // A pass's `reads` / `writes` lists are resource names.
+            // A pass's `reads` / `writes` lists are resource names. A list
+            // returns strings: a `reads(name) -> bool` of another type is
+            // not one.
             if list_depth.is_none()
                 && ["fn reads(", "fn writes(", "fn static_reads("]
                     .iter()
                     .any(|f| trimmed.contains(f))
+                && trimmed.contains("&'static str]")
             {
                 list_depth = Some(0);
             }

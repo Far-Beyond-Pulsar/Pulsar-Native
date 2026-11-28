@@ -47,7 +47,8 @@ unbounded call, on every frame thread:
 What the profiler showed on a real level (Bistro, 560 textures, `GAMEPLAY.md` "Streaming a level in"), and what changed:
 
 - **Backpressure.** Loads in flight count what has loaded and is not bound yet (`start_pending_loads`): loaders used to outrun the frame, and the residency LRU evicted what they cooked before the frame bound it (the bind then re-read it from the derived cache on the frame thread).
-- **Pinned cooks.** A graph material's textures are cooked on the loader thread for their real use (colour or data) and pinned in the `LoadedTexture` until the upload (`pinned_for` / `unpin`).
+- **Pinned cooks.** A graph material's textures are prepared on a loader thread for their real use (colour, data or normal) and held in the `LoadedTexture` until the upload (`prepare` / `pinned_for` / `unpin`). The texture loader prepares the uses each file has been asked for (`needed_texture`, `collect_texture`), and the material's compose step prepares any it missed.
+- **Materials load coarse first.** A graph's textures are assets it needs (`register_composer`): the material composes once each has its first tier, and again as each sharpens or reloads. Each texture's GPU copy follows that texture's version, so one sharpening re-uploads only itself.
 - **The time budget is honoured inside a pump.** A bind chunk is sized from the measured cost per asset (`AssetTable::bind_cost`), not a fixed 16: one material bind can cost milliseconds.
 - **One pumper.** A render loop pumps once per frame (`SceneRenderer::upload`, nearest the camera); a tick leaves it alone (`TickLoop::render_loop_pumps_assets`), and the windowed frame no longer pumps before the renderer does.
 - **Loader threads are half the cores** (`asset_load_workers`), so cooking does not preempt the frame, the renderer's encoder threads and physics.

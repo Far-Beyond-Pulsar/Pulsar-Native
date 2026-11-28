@@ -216,16 +216,6 @@ test = "crates/core/engine_backend/src/subsystems/render/helio_renderer/animated
 status = "verified"
 
 [[site]]
-pattern = "change-cursor"
-file = "crates/core/pulsar_game/src/scripting/driver/reconcile.rs"
-count = 4
-owner = "core::pulsar_game::scripting::driver::reconcile"
-disposition = "keep: independent ClassInstance and ComponentOwner cursors (a placement changed, or its ClassInstance enabled/disabled); reference pattern for Phase 5"
-target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/core/pulsar_game/src/scripting/tests.rs (an_overflowed_class_instance_journal_rescans, a_replaced_world_is_rescanned, disabling_a_class_instance_stops_its_script_and_enabling_restarts_it)"
-status = "verified"
-
-[[site]]
 pattern = "record-attach"
 file = "crates/core/pulsar_world_registry/src/instances.rs"
 count = 3
@@ -868,3 +858,107 @@ disposition = "keep: the directional lights, published by the lights' join and r
 target_contract = "Phase 3; .agents/PLUGIN_API_REFACTOR_PLAN.md section 14"
 test = "plugins/installed/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
 status = "verified"
+
+# ── Editor selection ────────────────────────────────────────────────────
+
+[[schema]]
+type = "Selected"
+path = "pulsar_scene_model::components::Selected"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "none: the authored marker has no column of its own; every insert, removal and replay derives the object's ObjectSelected row, and removal clears it"
+owner = "pulsar_scene_model::components"
+disposition = "keep: selection is ordinary world state (the marker and its pick order), read by the inspector, the gizmo and box select; the renderer sees only the derived row"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "plugins/installed/tests/render_acceptance.rs (a_selected_mesh_is_outlined_in_the_editor_and_the_outline_leaves_with_the_selection)"
+status = "verified"
+
+[[schema]]
+type = "ObjectSelected"
+path = "pulsar_scene_model::components::ObjectSelected"
+buffers = ["object_selected"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "Selected's GPU registration (1 while the object is selected, zeroed on removal)"
+owner = "pulsar_scene_model::components"
+disposition = "keep: the object's selection bit for the selection outline, keyed by object entity; a selection change writes only the rows of the objects whose selection changed"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "plugins/installed/tests/render_acceptance.rs (a_selected_mesh_is_outlined_in_the_editor_and_the_outline_leaves_with_the_selection)"
+status = "verified"
+
+[[buffer]]
+key = "object_selected"
+producers = ["ObjectSelected"]
+consumers = ["helio-frame-api", "helio-pass-gbuffer"]
+owner = "helio_frame_api::selection (contract OBJECT_SELECTED); written by pulsar_scene_model"
+disposition = "keep: the host's selection rows; helio-frame-api declares the contract, and the meshes' selection drawers read it to draw the selected instances into the selection mask"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "plugins/installed/tests/render_acceptance.rs (a_selected_mesh_is_outlined_in_the_editor_and_the_outline_leaves_with_the_selection)"
+status = "verified"
+
+# ── Frame-service passes ────────────────────────────────────────────────
+
+[[pass]]
+crate = "helio-pass-denoise"
+in_default_graph = true
+reads = []
+owner = "helio-pass-denoise"
+disposition = "keep: the frame's denoiser (helio_frame_api::denoise), over frame contracts alone; reads no scene buffer"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-denoise/tests/denoise_gpu.rs"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-history"
+in_default_graph = false
+reads = []
+owner = "helio-pass-history"
+disposition = "keep: the spine's pixel history (helio_frame_api::history): reprojection, where each pixel was and the previous guides, per view; scheduled only in a graph with a reader; reads no scene buffer"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-history/tests/pixels_gpu.rs"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-selection-outline"
+in_default_graph = true
+reads = []
+owner = "helio-pass-selection-outline"
+disposition = "keep: the editor's selection outline from the selection mask every kind draws into; knows no kind, reads no scene buffer, records nothing outside the editor"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "plugins/installed/tests/render_acceptance.rs (a_selected_mesh_is_outlined_in_the_editor_and_the_outline_leaves_with_the_selection)"
+status = "verified"
+
+[[pass]]
+crate = "helio-pass-status-screen"
+in_default_graph = false
+reads = []
+owner = "helio-pass-status-screen (added to a graph by helio's renderer::status_screen)"
+disposition = "not part of a scene graph: what a renderer draws when it has no pipeline or its pipeline is invalid; reads no scene data"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-status-screen/tests/abi.rs"
+status = "unverified"
+
+# ── Hierarchy panel and game tick ───────────────────────────────────────
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/objects.rs"
+count = 12
+owner = "ui_level_editor::scene_edit::objects (HierarchyWatch)"
+disposition = "keep: the hierarchy panel's independent cursors over the components its rows are built from, with one for Selected; a poll with no change rebuilds nothing, a transform write is not followed, and an overflowed journal or replaced world counts as a change"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/objects.rs (hierarchy_watch_ignores_transforms_and_tells_selection_from_structure)"
+status = "verified"
+
+[[site]]
+pattern = "asset-pump"
+file = "crates/core/pulsar_game/src/tick.rs"
+count = 2
+owner = "core::pulsar_game::tick (TickLoop::pump_assets, in tick/phases.rs)"
+disposition = "keep: the tick's two exits (a level partly in the world, and the end of a whole tick) call the loop's wrapper of engine_backend::scene::pump_assets, so a headless game binds its assets"
+target_contract = "SceneDB#84; 07-assets-and-runtime-lifecycle.md"
+test = "crates/core/pulsar_package/tests/smoke.rs (packaged_game_runs_from_a_clean_directory: every mesh bound in a headless run)"
+status = "unverified"

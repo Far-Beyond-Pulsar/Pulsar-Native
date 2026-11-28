@@ -294,16 +294,14 @@ fn geometry_matches_demo_triangle_count() {
     assert_eq!(triangles, 242_180);
 }
 
-fn vertex_bits(v: &PackedVertex) -> [u32; 10] {
+fn vertex_bits(v: &PackedVertex) -> [u32; 8] {
     [
         v.position[0].to_bits(),
         v.position[1].to_bits(),
         v.position[2].to_bits(),
-        v.bitangent_sign.to_bits(),
         v.tex_coords0[0].to_bits(),
         v.tex_coords0[1].to_bits(),
-        v.tex_coords1[0].to_bits(),
-        v.tex_coords1[1].to_bits(),
+        u32::from(v.tex_coords1[0]) | (u32::from(v.tex_coords1[1]) << 16),
         v.normal,
         v.tangent,
     ]
@@ -315,11 +313,8 @@ fn vertex_matches(a: &PackedVertex, b: &PackedVertex) -> bool {
             v.position[0],
             v.position[1],
             v.position[2],
-            v.bitangent_sign,
             v.tex_coords0[0],
             v.tex_coords0[1],
-            v.tex_coords1[0],
-            v.tex_coords1[1],
         ]
     };
     // The generator uses transcendental and vector math whose last bits can
@@ -332,6 +327,7 @@ fn vertex_matches(a: &PackedVertex, b: &PackedVertex) -> bool {
                 && b.is_finite()
                 && (a - b).abs() <= 8.0 * f32::EPSILON * a.abs().max(b.abs()).max(1.0)
         })
+        && a.tex_coords1 == b.tex_coords1
         && a.normal == b.normal
         && a.tangent == b.tangent
 }
